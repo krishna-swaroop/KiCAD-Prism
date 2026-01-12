@@ -25,6 +25,7 @@ class CommentLocation(BaseModel):
     x: float
     y: float
     layer: str = ""
+    page: str = ""
 
 class CreateCommentRequest(BaseModel):
     context: str  # "PCB" or "SCH"

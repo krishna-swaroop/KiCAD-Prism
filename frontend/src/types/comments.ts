@@ -24,6 +24,8 @@ export interface CommentLocation {
     y: number;
     /** Layer name (e.g., "F.Cu", "B.Cu") */
     layer: string;
+    /** Schematic page identifier (filename or path) */
+    page?: string;
 }
 
 /**

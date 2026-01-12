@@ -6,7 +6,7 @@ import { Model3DViewer } from "./model-3d-viewer";
 import { CommentOverlay } from "./comment-overlay";
 import { CommentForm } from "./comment-form";
 import { CommentPanel } from "./comment-panel";
-import type { Comment, CommentContext, CommentLocation } from "@/types/comments";
+import type { Comment, CommentContext } from "@/types/comments";
 
 // Wrapper to inject content via property instead of attribute to avoid size limits/parsing
 const EcadBlobWrapper = ({ filename, content }: { filename: string, content: string }) => {
@@ -48,6 +48,8 @@ export function Visualizer({ projectId }: VisualizerProps) {
 
     // Comment state
     const [comments, setComments] = useState<Comment[]>([]);
+    const [activeContext, setActiveContext] = useState<CommentContext>("PCB");
+    const [activePage, setActivePage] = useState<string>("root.kicad_sch");
     const [commentMode, setCommentMode] = useState(false);
     const [showCommentForm, setShowCommentForm] = useState(false);
     const [showCommentPanel, setShowCommentPanel] = useState(false);
@@ -81,6 +83,9 @@ export function Visualizer({ projectId }: VisualizerProps) {
                     const text = await response.text();
                     console.log("Visualizer: Loaded schematic content", text.slice(0, 50));
                     setSchematicContent(text);
+                    setActiveContext("SCH"); // Default to SCH if present? Or wait for tab event?
+                    // Actually ecad-viewer defaults to whatever it verifies first.
+                    // But we track it via events.
 
                     // Fetch subsheets
                     try {
@@ -92,24 +97,11 @@ export function Visualizer({ projectId }: VisualizerProps) {
                                     const res = await fetch(f.url);
                                     const content = await res.text();
 
-                                    // Try to get proper relative path/filename
-                                    // If the API provides 'name' or 'path', use it. 
-                                    // Otherwise, we check if the URL contains "Subsheets" and preserve that structure.
                                     let filename = f.name || f.path || f.url.split('/').pop() || "subsheet.kicad_sch";
-
-                                    // Heuristic: If we don't have a path, and it's a subsheet, it might need to be in "Subsheets/"
-                                    // But typically the root schematic refers to exactly what is in the .kicad_sch file.
-                                    // We should look at the "Schematic File" property in the root sheet? No, we can't parse it easily here.
-                                    // Let's assume standard KiCAD structure: if the file was in Subsheets/, correct name is needed.
-                                    // For now, let's just make sure it has the extension.
                                     if (!filename.endsWith('.kicad_sch')) filename += '.kicad_sch';
-
-                                    // Hack: If the project structure implies subsheets are in a folder, we might need to prepend.
-                                    // For JTYU-OBC, user mentioned "Subsheets directory".
                                     if (!filename.includes('/') && f.url.includes('Subsheets')) {
                                         filename = `Subsheets/${filename}`;
                                     }
-
                                     return { filename, content };
                                 });
                                 const loadedSubsheets = await Promise.all(subsheetPromises);
@@ -133,12 +125,14 @@ export function Visualizer({ projectId }: VisualizerProps) {
                     const text = await response.text();
                     console.log("Visualizer: Loaded PCB content", text.slice(0, 50));
                     setPcbContent(text);
+                    // If PCB loads, usually it becomes the default view if available?
+                    // We'll rely on events.
                 }
             } catch (err) {
                 setError(prev => ({ ...prev, pcb: "PCB file not found" }));
             }
 
-            // Fetch 3D model (still using URL for this one as it's binary/blob managed by Online3DViewer)
+            // Fetch 3D model
             try {
                 const response = await fetch(`${baseUrl}/3d-model`);
                 if (response.ok) {
@@ -159,44 +153,65 @@ export function Visualizer({ projectId }: VisualizerProps) {
             }
 
             setLoading(false);
-
-            // Fetch comments after file content
             fetchComments();
         };
 
         fetchFileContent();
     }, [projectId, fetchComments]);
 
-    // Handle comment click event from ecad-viewer
+    // Update activeContext when content loading finishes or changes
+    useEffect(() => {
+        if (!loading) {
+            if (pcbContent) {
+                setActiveContext("PCB");
+            } else if (schematicContent) {
+                setActiveContext("SCH");
+            }
+        }
+    }, [loading, pcbContent, schematicContent]);
+
+    // Handle events from ecad-viewer (navigation, clicks)
     useEffect(() => {
         const viewer = viewerRef.current;
-        if (!viewer) {
-            console.log("CommentClick: viewerRef not yet available");
-            return;
-        }
-
-        console.log("CommentClick: Attaching event listener to viewer", viewer);
+        if (!viewer) return;
 
         const handleCommentClick = (e: CustomEvent) => {
             const detail = e.detail;
-            console.log("Comment click received in React:", detail);
-
             setPendingLocation({
                 x: detail.worldX,
                 y: detail.worldY,
                 layer: detail.layer || "F.Cu",
             });
-            setPendingContext(detail.context);
+            setPendingContext(detail.context); // "PCB" | "SCH"
             setShowCommentForm(true);
         };
 
+        const handleTabActivate = (e: CustomEvent) => {
+            // detail.current is "pcb" or "sch" (TabKind enum values)
+            const kind = e.detail.current;
+            if (kind === "pcb") setActiveContext("PCB");
+            if (kind === "sch") setActiveContext("SCH");
+            console.log("Visualizer: Tab activated:", kind);
+        };
+
+        const handleSheetLoad = (e: CustomEvent) => {
+            // detail is the filename/path
+            if (typeof e.detail === 'string') {
+                setActivePage(e.detail);
+                console.log("Visualizer: Sheet loaded:", e.detail);
+            }
+        };
+
         viewer.addEventListener("ecad-viewer:comment:click", handleCommentClick as EventListener);
+        viewer.addEventListener("kicanvas:tab:activate", handleTabActivate as EventListener);
+        viewer.addEventListener("kicanvas:sheet:loaded", handleSheetLoad as EventListener);
 
         return () => {
-            console.log("CommentClick: Removing event listener");
             viewer.removeEventListener("ecad-viewer:comment:click", handleCommentClick as EventListener);
+            viewer.removeEventListener("kicanvas:tab:activate", handleTabActivate as EventListener);
+            viewer.removeEventListener("kicanvas:sheet:loaded", handleSheetLoad as EventListener);
         };
-    }, [loading, schematicContent, pcbContent]); // Re-run when content loads
+    }, [loading, schematicContent, pcbContent]);
 
     // Toggle comment mode on the viewer
     const toggleCommentMode = () => {
@@ -207,12 +222,8 @@ export function Visualizer({ projectId }: VisualizerProps) {
         if (viewer?.setCommentMode) {
             viewer.setCommentMode(newMode);
         } else if (viewer) {
-            // Fallback: set attribute directly
-            if (newMode) {
-                viewer.setAttribute("comment-mode", "true");
-            } else {
-                viewer.removeAttribute("comment-mode");
-            }
+            if (newMode) viewer.setAttribute("comment-mode", "true");
+            else viewer.removeAttribute("comment-mode");
         }
     };
 
@@ -222,12 +233,15 @@ export function Visualizer({ projectId }: VisualizerProps) {
 
         setIsSubmittingComment(true);
         try {
+            // If context is SCH, include the active page
+            const location = { ...pendingLocation, page: pendingContext === "SCH" ? activePage : "" };
+
             const response = await fetch(`/api/projects/${projectId}/comments`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     context: pendingContext,
-                    location: pendingLocation,
+                    location: location,
                     content: content,
                 }),
             });
@@ -248,10 +262,42 @@ export function Visualizer({ projectId }: VisualizerProps) {
     };
 
     // Handle pin click
-    const handlePinClick = (comment: Comment) => {
-        console.log("Comment pin clicked:", comment);
+    const handlePinClick = (_comment: Comment) => {
         setShowCommentPanel(true);
-        // TODO: Zoom to comment
+    };
+
+    const handleCommentNavigate = (comment: Comment) => {
+        const viewer = viewerRef.current as any;
+        if (!viewer) return;
+
+        // 1. Ensure we are in ECAD tab
+        if (activeTab !== "ecad") setActiveTab("ecad");
+
+        // 2. Switch context if needed (handled by viewer usually if we request zoom, but better to be explicit)
+        // ecad-viewer doesn't expose strict "switch to tab" API easily, but if we are in "ecad" mode,
+        // checks if comment context matches active context.
+        // If mismatched, we might need a way to tell viewers to switch.
+        // However, since we added `switchPage` for SCH, we can use that.
+        // For PCB vs SCH toggle, usually `ecad-viewer` has UI tabs.
+        // We can check if `viewer.switchTab` exists? No.
+
+        // Let's rely on standard behavior or implicit switching if possible.
+        // If not, we might need to add `switchTab` to ecad-viewer.
+        // But context switching (PCB<->SCH) is major.
+
+        if (comment.context === "SCH") {
+            // Switch to SCH if on PCB??
+            // We don't have a direct API for that yet. 
+            // Assuming user can manually switch if needed, or we implement that in ecad-viewer too?
+
+            if (comment.location.page) {
+                viewer.switchPage(comment.location.page);
+            }
+        }
+
+        if (viewer.zoomToLocation) {
+            viewer.zoomToLocation(comment.location.x, comment.location.y);
+        }
     };
 
     // Handle resolve/reopen comment
@@ -283,13 +329,31 @@ export function Visualizer({ projectId }: VisualizerProps) {
 
             if (response.ok) {
                 const data = await response.json();
-                // data contains { comment: updatedComment, reply: newReply }
                 setComments(prev => prev.map(c => c.id === commentId ? data.comment : c));
             }
         } catch (err) {
             console.error("Error replying to comment:", err);
         }
     };
+
+    // Filter comments for overlay
+    const overlayComments = comments.filter(c => {
+        // Must match active context (PCB or SCH)
+        if (c.context !== activeContext) return false;
+
+        // If SCH, must match active page
+        if (activeContext === "SCH") {
+            // New comments have valid page.
+            if (c.location.page) return c.location.page === activePage;
+
+            // Legacy/fallback: if activePage is root, show comments with no page?
+            // User cleared comments so strictly speaking only new comments exist.
+            // But if page is missing, maybe default to root?
+            return activePage === "root.kicad_sch";
+        }
+
+        return true;
+    });
 
     const tabs: { id: VisualizerTab; label: string; icon: any }[] = [
         { id: "ecad", label: "Schematic & PCB", icon: Cpu },
@@ -380,7 +444,7 @@ export function Visualizer({ projectId }: VisualizerProps) {
 
                             {/* Comment Overlay */}
                             <CommentOverlay
-                                comments={comments}
+                                comments={overlayComments}
                                 viewerRef={viewerRef}
                                 onPinClick={handlePinClick}
                                 showResolved={true}
@@ -441,12 +505,7 @@ export function Visualizer({ projectId }: VisualizerProps) {
                         onClose={() => setShowCommentPanel(false)}
                         onResolve={handleResolveComment}
                         onReply={handleReplyComment}
-                        onCommentClick={(comment) => {
-                            const viewer = viewerRef.current as any;
-                            if (viewer?.zoomToLocation) {
-                                viewer.zoomToLocation(comment.location.x, comment.location.y);
-                            }
-                        }}
+                        onCommentClick={handleCommentNavigate}
                     />
                 </div>
             )}
