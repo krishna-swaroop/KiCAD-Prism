@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, History, Box, FolderOpen, MessageSquare, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw } from "lucide-react";
+import { ArrowLeft, FileText, History, Box, FolderOpen, MessageSquare, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AssetsPortal } from "@/components/assets-portal";
 import ReactMarkdown from "react-markdown";
@@ -11,6 +11,8 @@ import "github-markdown-css/github-markdown-dark.css";
 import { DocumentationBrowser } from "@/components/documentation-browser";
 import { HistoryViewer } from "@/components/history-viewer";
 import { Visualizer } from "@/components/visualizer";
+
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface Project {
     id: string;
@@ -152,14 +154,58 @@ export function ProjectDetailPage() {
 
     return (
         <div className="h-screen flex flex-col bg-background">
-            <header className="border-b px-6 py-4 flex items-center gap-4">
-                <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
+            <header className="border-b px-4 md:px-6 py-4 flex items-center gap-4">
+                {/* Mobile Menu */}
+                <Sheet>
+                    <SheetTrigger asChild>
+                        <Button variant="ghost" size="icon" className="md:hidden">
+                            <Menu className="h-5 w-5" />
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="w-[240px] sm:w-[300px] p-0">
+                        <div className="py-4">
+                            <h2 className="px-4 text-lg font-semibold tracking-tight mb-2">Project Navigation</h2>
+                            <nav className="space-y-1 p-2">
+                                {navItems.map((item) => {
+                                    const Icon = item.icon;
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => {
+                                                if (!item.disabled) {
+                                                    setActiveSection(item.id);
+                                                    // Close sheet hack (simulate click on close or use ref - for simplicity we rely on user clicking outside or close button, 
+                                                    // but ideally we'd control open state. Since we didn't add open state control, we accept this limitations for MVP or can improve)
+                                                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+                                                }
+                                            }}
+                                            disabled={item.disabled}
+                                            className={cn(
+                                                "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+                                                activeSection === item.id
+                                                    ? "bg-primary text-primary-foreground"
+                                                    : "hover:bg-muted text-foreground",
+                                                item.disabled && "opacity-50 cursor-not-allowed"
+                                            )}
+                                        >
+                                            <Icon className="h-4 w-4" />
+                                            <span className="flex-1 text-left">{item.label}</span>
+                                            {item.disabled && <span className="text-xs">(Soon)</span>}
+                                        </button>
+                                    );
+                                })}
+                            </nav>
+                        </div>
+                    </SheetContent>
+                </Sheet>
+
+                <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="hidden md:flex">
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
                 </Button>
                 <div className="flex-1">
-                    <h1 className="text-xl font-bold">{project.name}</h1>
-                    <p className="text-sm text-muted-foreground">{project.description}</p>
+                    <h1 className="text-xl font-bold truncate max-w-[200px] md:max-w-none">{project.name}</h1>
+                    <p className="text-sm text-muted-foreground hidden md:block">{project.description}</p>
                 </div>
 
                 {/* Sync Button */}
@@ -223,7 +269,7 @@ export function ProjectDetailPage() {
             <div className="flex flex-1 overflow-hidden">
                 <aside
                     className={cn(
-                        "border-r bg-muted/10 p-4 transition-all duration-300 relative",
+                        "hidden md:block border-r bg-muted/10 p-4 transition-all duration-300 relative",
                         (!sidebarCollapsed || sidebarHovered) ? "w-64" : "w-16"
                     )}
                     onMouseEnter={() => setSidebarHovered(true)}

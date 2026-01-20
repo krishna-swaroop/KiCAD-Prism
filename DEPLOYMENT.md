@@ -286,7 +286,38 @@ server {
 
 ---
 
-## 6. Troubleshooting
+## 6. Deploying on Local Network
+
+To access KiCAD Prism from other devices on your local network (e.g., tablets, other computers):
+
+### 1. Backend
+
+Run with host set to `0.0.0.0` to listen on all interfaces:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### 2. Frontend
+
+Run with the `--host` flag:
+
+```bash
+npm run dev -- --host
+```
+
+### 3. Accessing the App
+
+Find your computer's local IP address (e.g., `192.168.1.x`) and access:
+
+- **Frontend**: `http://192.168.1.x:5173`
+- **Backend API**: `http://192.168.1.x:8000`
+
+> **Note**: Ensure your firewall allows incoming connections on port 8000 and 5173.
+
+---
+
+## 7. Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
