@@ -1,7 +1,7 @@
 import os
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from typing import List
+from typing import List, Optional
 from app.services import project_service, file_service
 from app.services.git_service import get_releases, get_commits_list, get_file_from_commit, file_exists_in_commit, sync_with_remote
 
