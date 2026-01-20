@@ -55,7 +55,7 @@ The backend expects a directory named `project-database` to exist one level ABOV
 ### Running the Backend
 
 ```bash
-python main.py
+uvicorn app.main:app --reload --port 8000
 ```
 
 By default, it runs on `http://localhost:8000`.

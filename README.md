@@ -56,10 +56,18 @@ For the expected structure of imported KiCAD projects, see [KICAD-PRJ-REPO-STRUC
 cd backend
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python main.py
+uvicorn app.main:app --reload --port 8000
 
 # Frontend (in another terminal)
 cd frontend
+npm install
+npm run dev
+```
+
+For instantiating the frontend, run:
+
+```bash
+$KiCAD-Prism$ cd frontend
 npm install
 npm run dev
 ```
