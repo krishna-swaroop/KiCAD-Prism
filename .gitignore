@@ -2,6 +2,10 @@
 .DS_Store
 .vscode/
 
+# Environment Files
+.env
+.env.example
+
 # Backend
 **/__pycache__/
 backend/**/*.pyc

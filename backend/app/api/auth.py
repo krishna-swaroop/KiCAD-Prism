@@ -27,8 +27,8 @@ class UserSession(BaseModel):
 class AuthConfig(BaseModel):
     """Authentication configuration exposed to frontend."""
     auth_enabled: bool
-    allowed_domains: list[str]
     dev_mode: bool
+    google_client_id: str
 
 
 @router.get("/config", response_model=AuthConfig)
@@ -41,8 +41,8 @@ async def get_auth_config():
     """
     return AuthConfig(
         auth_enabled=settings.AUTH_ENABLED,
-        allowed_domains=settings.ALLOWED_DOMAINS,
-        dev_mode=settings.DEV_MODE
+        dev_mode=settings.DEV_MODE,
+        google_client_id=settings.GOOGLE_CLIENT_ID
     )
 
 
@@ -73,13 +73,12 @@ async def login(request: TokenRequest):
         email = id_info.get("email", "")
         hd = id_info.get("hd", "")  # Hosted Domain (for Google Workspace accounts)
 
-        # Validate domain
-        if settings.ALLOWED_DOMAINS:
-            if hd not in settings.ALLOWED_DOMAINS:
-                allowed = ", ".join(f"@{d}" for d in settings.ALLOWED_DOMAINS)
+        # Validate allowed users
+        if settings.ALLOWED_USERS:
+            if email.lower() not in settings.ALLOWED_USERS:
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Unauthorized domain. Please sign in with an email from: {allowed}"
+                    detail="Access denied. Your email is not in the allowed users list."
                 )
 
         return UserSession(

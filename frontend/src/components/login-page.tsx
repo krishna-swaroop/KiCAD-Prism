@@ -4,11 +4,10 @@ import { useState } from 'react';
 
 interface LoginPageProps {
     onLoginSuccess: (user: any) => void;
-    allowedDomains?: string[];
     devMode?: boolean;
 }
 
-export function LoginPage({ onLoginSuccess, allowedDomains = [], devMode = false }: LoginPageProps) {
+export function LoginPage({ onLoginSuccess, devMode = false }: LoginPageProps) {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -55,7 +54,7 @@ export function LoginPage({ onLoginSuccess, allowedDomains = [], devMode = false
                         <div className="h-8 w-8 bg-primary rounded-md"></div>
                         <CardTitle className="text-2xl">KiCAD Prism</CardTitle>
                     </div>
-                    <CardDescription>Sign in to access hardware designs</CardDescription>
+                    <CardDescription>Sign in to access KiCAD projects</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-4">
                     <GoogleLogin
@@ -72,11 +71,6 @@ export function LoginPage({ onLoginSuccess, allowedDomains = [], devMode = false
                     {error && (
                         <div className="text-center">
                             <p className="text-sm text-red-500">{error}</p>
-                            {error.includes('domain') && allowedDomains.length > 0 && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Allowed domains: {allowedDomains.map(d => `@${d}`).join(', ')}
-                                </p>
-                            )}
                         </div>
                     )}
 
@@ -100,12 +94,6 @@ export function LoginPage({ onLoginSuccess, allowedDomains = [], devMode = false
                                 Skip Authentication (Dev Bypass)
                             </button>
                         </>
-                    )}
-
-                    {allowedDomains.length > 0 && !devMode && (
-                        <p className="text-xs text-muted-foreground text-center">
-                            Sign in with your {allowedDomains.map(d => `@${d}`).join(' or ')} account
-                        </p>
                     )}
                 </CardContent>
             </Card>

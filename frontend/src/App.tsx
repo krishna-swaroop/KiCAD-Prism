@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './components/login-page';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
 import { Workspace } from './components/workspace';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
@@ -13,8 +14,8 @@ interface User {
 
 interface AuthConfig {
     auth_enabled: boolean;
-    allowed_domains: string[];
     dev_mode: boolean;
+    google_client_id: string;
 }
 
 function App() {
@@ -59,12 +60,22 @@ function App() {
 
     // If auth is enabled and no user, show login page
     if (authConfig?.auth_enabled && !user) {
+        // Fallback for missing client ID in config
+        if (!authConfig.google_client_id) {
+            return (
+                <div className="flex items-center justify-center h-screen bg-background">
+                    <div className="text-red-500">Error: Missing Google Client ID in backend configuration.</div>
+                </div>
+            );
+        }
+
         return (
-            <LoginPage
-                onLoginSuccess={setUser}
-                allowedDomains={authConfig.allowed_domains}
-                devMode={authConfig.dev_mode}
-            />
+            <GoogleOAuthProvider clientId={authConfig.google_client_id}>
+                <LoginPage
+                    onLoginSuccess={setUser}
+                    devMode={authConfig.dev_mode}
+                />
+            </GoogleOAuthProvider>
         );
     }
 

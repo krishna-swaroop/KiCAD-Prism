@@ -136,7 +136,7 @@ Shows the Google Sign-in button with a "Dev Bypass" option for testing.
 ```bash
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 DEV_MODE=True
-ALLOWED_DOMAINS_STR=pixxel.co.in,spacepixxel.in
+ALLOWED_USERS_STR=user1@pixxel.co.in,user2@pixxel.co.in
 ```
 
 **Frontend `.env`:**
@@ -175,16 +175,16 @@ VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
    - Production: `https://your-domain.com`
 7. Copy the **Client ID** to both backend and frontend `.env` files
 
-### Managing Allowed Domains
+### Managing Allowed Users
 
-To add or remove allowed domains, update the `ALLOWED_DOMAINS_STR` variable in the backend `.env`:
+To add or remove allowed users, update the `ALLOWED_USERS_STR` variable in the backend `.env`:
 
 ```bash
-# Single domain
-ALLOWED_DOMAINS_STR=pixxel.co.in
+# Single user
+ALLOWED_USERS_STR=jane@pixxel.co.in
 
-# Multiple domains (comma-separated)
-ALLOWED_DOMAINS_STR=pixxel.co.in,spacepixxel.in,example.com
+# Multiple users (comma-separated)
+ALLOWED_USERS_STR=jane@pixxel.co.in,bob@gmail.com
 ```
 
 > **Note**: The domain is extracted from the user's email. For `user@pixxel.co.in`, the domain is `pixxel.co.in`.

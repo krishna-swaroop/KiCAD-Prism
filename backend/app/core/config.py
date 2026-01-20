@@ -24,10 +24,10 @@ class Settings(BaseSettings):
         description="OAuth Client ID from Google Cloud Console. Leave empty to skip authentication."
     )
     
-    # Comma-separated list of allowed email domains
-    ALLOWED_DOMAINS_STR: str = Field(
-        default="pixxel.co.in,spacepixxel.in",
-        description="Comma-separated list of allowed Google Workspace domains"
+    # Comma-separated list of allowed user emails
+    ALLOWED_USERS_STR: str = Field(
+        default="",
+        description="Comma-separated list of allowed user emails"
     )
     
     # ===========================================
@@ -42,9 +42,9 @@ class Settings(BaseSettings):
     # Computed Properties
     # ===========================================
     @property
-    def ALLOWED_DOMAINS(self) -> List[str]:
-        """Parse allowed domains from comma-separated string."""
-        return [d.strip() for d in self.ALLOWED_DOMAINS_STR.split(",") if d.strip()]
+    def ALLOWED_USERS(self) -> List[str]:
+        """Parse allowed emails from comma-separated string."""
+        return [u.strip().lower() for u in self.ALLOWED_USERS_STR.split(",") if u.strip()]
     
     @property
     def AUTH_ENABLED(self) -> bool:
