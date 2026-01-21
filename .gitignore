@@ -16,6 +16,8 @@ backend/venv/
 frontend/node_modules/
 frontend/dist/
 frontend/.env.local
+frontend/.env.example
+frontend/.env 
 frontend/.env.development.local
 frontend/.env.test.local
 frontend/.env.production.local
