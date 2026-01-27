@@ -122,7 +122,7 @@ export function CommentOverlay({
                 className="absolute inset-0 pointer-events-none overflow-hidden"
                 style={{ zIndex: 100 }}
             >
-                {visibleComments.map((comment, index) => {
+                {visibleComments.map((comment) => {
                     const position = pinPositions.get(comment.id);
                     if (!position || !position.visible) return null;
 

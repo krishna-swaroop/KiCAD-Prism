@@ -97,6 +97,46 @@ Trigger `kicad-cli` powered jobs directly from the browser to generate the lates
 For detailed installation and server setup, see [DEPLOYMENT.md](./DEPLOYMENT.md).  
 For the expected structure of imported KiCAD projects, see [KICAD-PRJ-REPO-STRUCTURE.md](./KICAD-PRJ-REPO-STRUCTURE.md).
 
+### Quick Start with Docker (Recommended)
+
+The easiest way to run KiCAD Prism is with Docker. This works on any machine with Docker installed.
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/KiCAD-Prism.git
+cd KiCAD-Prism
+
+# Start the application (no authentication)
+AUTH_ENABLED=false docker compose up -d
+
+# OR: Start with Google OAuth
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com docker compose up -d
+
+# Access the UI at http://localhost
+```
+
+To stop: `docker compose down`
+
+#### Setting Up Google OAuth for Docker
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create or select a project
+3. Create an **OAuth 2.0 Client ID** (Web application type)
+4. Add these **Authorized JavaScript Origins**:
+   - `http://localhost`
+   - `http://localhost:80`
+   - `http://127.0.0.1`
+5. Copy the Client ID and pass it to Docker:
+
+```bash
+# Create a .env file for convenience
+echo "GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com" > .env
+echo "AUTH_ENABLED=true" >> .env
+
+# Docker Compose automatically reads .env
+docker compose up -d
+```
+
 ### Quick Local Dev Setup
 
 ```bash

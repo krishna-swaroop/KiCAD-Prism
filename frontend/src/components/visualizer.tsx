@@ -53,7 +53,7 @@ export function Visualizer({ projectId, user }: VisualizerProps) {
     const [modelUrl, setModelUrl] = useState<string | null>(null);
     const [ibomUrl, setIbomUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<Record<string, string>>({});
+    const [_error, setError] = useState<Record<string, string>>({});
 
     // Comment state
     const [comments, setComments] = useState<Comment[]>([]);

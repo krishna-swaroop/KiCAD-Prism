@@ -34,7 +34,7 @@ const Tooltip = ({ children }: { children: React.ReactNode }) => {
 const TooltipTrigger = React.forwardRef<
     HTMLElement,
     React.HTMLAttributes<HTMLElement> & { asChild?: boolean }
->(({ children, ...props }, ref) => {
+>(({ children }) => {
     return <>{children}</>
 })
 TooltipTrigger.displayName = "TooltipTrigger"

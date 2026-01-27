@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as OV from "online-3d-viewer";
-import { Sun, Settings2, Moon, Sparkles, RotateCcw, BoxSelect, Zap } from "lucide-react";
+import { Sun, Settings2, Moon, RotateCcw, BoxSelect, Zap } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

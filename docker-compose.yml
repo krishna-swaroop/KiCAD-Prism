@@ -1,0 +1,27 @@
+
+services:
+  backend:
+    build: ./backend
+    container_name: kicad-prism-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount projects directory for persistence
+      - ./data/projects:/app/projects
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Google OAuth Configuration (required for authentication)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - ALLOWED_DOMAINS=${ALLOWED_DOMAINS:-}
+      # Set to false to disable authentication entirely
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+
+  frontend:
+    build: ./frontend
+    container_name: kicad-prism-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
