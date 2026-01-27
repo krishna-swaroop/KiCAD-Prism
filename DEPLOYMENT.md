@@ -35,7 +35,7 @@ By default, Docker creates a `data` directory in the repository root to store pe
 
 - **`./data/projects`**: This is where your KiCAD repositories are stored.
 - **Data Survival**: Your projects remain available even if you stop or update the containers.
-- **Manual Import**: You can drop existing KiCAD projects into `./data/projects` on your host machine, and they will appear in the dashboard.
+- **Manual Import**: You can clone existing KiCAD project repositories into `./data/projects` on your host machine, and they will appear in the dashboard.
 
 ---
 
