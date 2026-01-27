@@ -1,6 +1,6 @@
 # Backend Dockerfile
-# Using official KiCad image which supports ARM64
-FROM kicad/kicad:9.0.7-full
+# Using official KiCad image with ARM64 support
+FROM kicad/kicad:9.0.0-arm64
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
