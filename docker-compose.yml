@@ -17,6 +17,8 @@ services:
       - ALLOWED_DOMAINS=${ALLOWED_DOMAINS:-}
       # Set to false to disable authentication entirely
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      # Development mode (set to false for production/bundling)
+      - DEV_MODE=false
 
   frontend:
     build: ./frontend

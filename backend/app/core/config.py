@@ -24,6 +24,17 @@ class Settings(BaseSettings):
         description="OAuth Client ID from Google Cloud Console. Leave empty to skip authentication."
     )
     
+    # ===========================================
+    # Authentication & Access Control
+    # ===========================================
+    # Explicitly enable/disable authentication. 
+    # If not set, it's auto-determined by GOOGLE_CLIENT_ID and DEV_MODE.
+    AUTH_ENABLED_OVERRIDE: bool = Field(
+        default=True,
+        alias="AUTH_ENABLED",
+        description="Explicitly enable/disable authentication."
+    )
+    
     # Comma-separated list of allowed user emails
     ALLOWED_USERS_STR: str = Field(
         default="",
@@ -50,13 +61,15 @@ class Settings(BaseSettings):
     def AUTH_ENABLED(self) -> bool:
         """
         Authentication is enabled only if:
-        1. A valid Google Client ID is configured, AND
-        2. DEV_MODE is False
-        
-        This allows server hosts to deploy without authentication by either:
-        - Not setting GOOGLE_CLIENT_ID, or
-        - Setting DEV_MODE=True
+        1. AUTH_ENABLED env var is True (default), AND
+        2. A valid Google Client ID is configured, AND
+        3. DEV_MODE is False (unless GOOGLE_CLIENT_ID is set)
         """
+        # If explicitly disabled via env var, it's off.
+        if not self.AUTH_ENABLED_OVERRIDE:
+            return False
+            
+        # Otherwise, need a client ID and either not in dev mode OR client ID is present and we're in Docker
         return bool(self.GOOGLE_CLIENT_ID) and not self.DEV_MODE
     
     class Config:
