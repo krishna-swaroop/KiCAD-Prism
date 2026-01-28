@@ -41,27 +41,34 @@ By default, Docker creates a `data` directory in the repository root to store pe
 
 ## 2. Environment Configuration
 
-For Docker deployments, create a `.env` file in the **root directory** of the project.
+For Docker deployments, you **must** create a `.env` file in the **root directory** of the project (where `docker-compose.yml` is located).
+
+### Example .env File
+
+Place this at the root of the `KiCAD-Prism/` directory:
 
 ```bash
 # --- .env (Project Root) ---
 
-# Force authentication toggle (default is true if GOOGLE_CLIENT_ID is provided)
+# [AUTH] Force authentication toggle
+# Set to 'false' for public gallery mode
 AUTH_ENABLED=true
 
-# Google OAuth Configuration
+# [AUTH] Google OAuth Configuration
 GOOGLE_CLIENT_ID=your-id.apps.googleusercontent.com
 
-# Access Control
+# [AUTH] Access Control
 ALLOWED_DOMAINS_STR=yourcompany.com
 ALLOWED_USERS_STR=admin@yourcompany.com
 
-# Development Mode (set to false for production)
+# [CONFIG] Development Mode
+# Set to 'false' for production (enforces login)
 DEV_MODE=false
 
-# --- Private Repository Access ---
-# Optional: Provide a GitHub PAT to allow the UI to Sync/Push/Import private repos.
-GITHUB_TOKEN=ghp_your_token_here
+# [GIT] Private Repository Access (Optional)
+# Enter your GitHub Personal Access Token (classic) to enable 
+# Sync, Push, and Import for private/organizational repos.
+GITHUB_TOKEN=ghp_your_secret_token_here
 ```
 
 ### Accessing Private/Organizational Repos
