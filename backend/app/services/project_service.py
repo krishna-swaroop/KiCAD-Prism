@@ -20,6 +20,7 @@ class Project(BaseModel):
     repo_url: Optional[str] = None  # Original Git URL
     import_type: Optional[str] = None  # "type1" or "type2_subproject"
     parent_repo_path: Optional[str] = None  # Path to parent repo for Type-2
+    folder_id: Optional[str] = None  # Folder ID for organization
 
 # PROJECTS_ROOT is where imported projects are stored.
 # In Docker, this should be a persistent volume mount.
@@ -58,17 +59,17 @@ def _save_project_registry(registry: Dict[str, dict]) -> None:
 
 def register_project(project_id: str, name: str, path: str, repo_url: str,
                      sub_path: Optional[str] = None, parent_repo: Optional[str] = None,
-                     description: Optional[str] = None) -> None:
+                     description: Optional[str] = None, folder_id: Optional[str] = None) -> None:
     """Register a project in the registry."""
     registry = _load_project_registry()
-    
+
     # Get last modified time
     try:
         mtime = os.path.getmtime(path)
         last_modified = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d')
     except:
         last_modified = "Unknown"
-    
+
     registry[project_id] = {
         "name": name,
         "path": path,
@@ -77,9 +78,10 @@ def register_project(project_id: str, name: str, path: str, repo_url: str,
         "parent_repo": parent_repo,
         "description": description or f"Project {name}",
         "last_modified": last_modified,
-        "registered_at": datetime.datetime.now().isoformat()
+        "registered_at": datetime.datetime.now().isoformat(),
+        "folder_id": folder_id
     }
-    
+
     _save_project_registry(registry)
 
 def _normalize_path(path: str) -> str:
@@ -176,7 +178,8 @@ def get_registered_projects() -> List[Project]:
             parent_repo=data.get("parent_repo"),
             repo_url=data.get("repo_url"),
             import_type=data.get("import_type"),
-            parent_repo_path=_normalize_path(data.get("parent_repo_path")) if data.get("import_type") == "type2_subproject" else None
+            parent_repo_path=_normalize_path(data.get("parent_repo_path")) if data.get("import_type") == "type2_subproject" else None,
+            folder_id=data.get("folder_id")
         ))
     
     _projects_cache = projects
@@ -226,7 +229,8 @@ def get_project_by_id(project_id: str) -> Optional[Project]:
         parent_repo=data.get("parent_repo"),
         repo_url=data.get("repo_url"),
         import_type=data.get("import_type"),
-        parent_repo_path=_normalize_path(data.get("parent_repo_path")) if data.get("import_type") == "type2_subproject" else None
+        parent_repo_path=_normalize_path(data.get("parent_repo_path")) if data.get("import_type") == "type2_subproject" else None,
+        folder_id=data.get("folder_id")
     )
 
 import threading
@@ -710,3 +714,30 @@ def get_subsheets(project_path: str, main_schematic: str) -> List[str]:
                 subsheets.append(subsheet_rel)
                 
     return subsheets
+
+
+def update_project_folder_id(project_id: str, folder_id: Optional[str]) -> bool:
+    """
+    Update the folder_id of a project in the registry.
+    
+    Args:
+        project_id: Project ID to update
+        folder_id: New folder ID (or None to remove from folder)
+    
+    Returns:
+        True if updated successfully, False otherwise
+    """
+    registry = _load_project_registry()
+    
+    if project_id not in registry:
+        return False
+    
+    registry[project_id]["folder_id"] = folder_id
+    _save_project_registry(registry)
+    
+    # Clear cache so next get_registered_projects() fetches fresh data
+    global _projects_cache, _projects_cache_time
+    _projects_cache = []
+    _projects_cache_time = 0
+    
+    return True
