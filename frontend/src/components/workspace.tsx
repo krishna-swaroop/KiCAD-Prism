@@ -4,6 +4,7 @@ import { Project, FolderTreeItem } from "@/types/project";
 import { ProjectCard } from "./project-card";
 import { FolderTree } from "./folder-tree";
 import { FolderView } from "./folder-view";
+import { FolderCard } from "./folder-card";
 import { FolderDialog } from "./folder-dialog";
 import { MoveProjectMenu } from "./move-project-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -519,14 +520,43 @@ export function Workspace() {
             <FolderView
               folder={selectedFolder}
               projects={projects}
+              folders={folders}
+              onFolderClick={handleFolderClick}
               onProjectClick={(id) => {
                 handleSelectProject(projects.find((p) => p.id === id)!);
               }}
+              onMoveProject={handleMoveProject}
+              onCreateFolder={handleCreateFolderFromMenu}
               isLoading={loading}
             />
           ) : (
             // All Projects View
             <div className="space-y-8">
+              {/* Folders Grid */}
+              {folders.filter(f => f.parent_id === null).length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-muted-foreground">Folders</h3>
+                    <Button variant="ghost" size="sm" onClick={handleCreateFolder} className="h-7 text-xs">
+                      <FolderPlus className="h-3 w-3 mr-1" />
+                      New Folder
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {folders
+                      .filter(f => f.parent_id === null)
+                      .map((folder) => (
+                        <FolderCard
+                          key={folder.id}
+                          folder={folder}
+                          onClick={() => handleFolderClick(folder.id)}
+                        />
+                      ))
+                    }
+                  </div>
+                </div>
+              )}
+
               {recentProjects.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-4">Recent</h3>
