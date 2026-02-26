@@ -452,7 +452,7 @@ def _run_workflow_job(job_id: str, project_id: str, workflow_type: str):
         #jobset_file = "Outputs.kicad_jobset"
         config = path_config_service.get_path_config(project.path)
         resolved = path_config_service.resolve_paths(project.path, config)
-        jobset_file = resolved.jobset
+        jobset_file = resolved.jobset_path
         # Check if jobset exists
         if not os.path.exists(os.path.join(project.path, jobset_file)):
              raise ValueError(f"{jobset_file} not found in project root")
