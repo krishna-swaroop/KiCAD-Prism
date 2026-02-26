@@ -450,7 +450,9 @@ def _run_workflow_job(job_id: str, project_id: str, workflow_type: str):
 
         
         #jobset_file = "Outputs.kicad_jobset"
-        jobset_file = find_jobset_file()
+        config = path_config_service.get_path_config(project.path)
+        resolved = path_config_service.resolve_paths(project.path, config)
+        jobset_file = resolved.jobset
         # Check if jobset exists
         if not os.path.exists(os.path.join(project.path, jobset_file)):
              raise ValueError(f"{jobset_file} not found in project root")
@@ -605,11 +607,6 @@ def get_project_thumbnail_path(project_id: str) -> Optional[str]:
     
     print(f"[DEBUG] No valid thumbnail found")
     return None
-
-def find_jobset_file(project_path: str) -> Optional[str]:
-    """Find the main .kicad_sch file using path config."""
-    resolved = path_config_service.resolve_paths(project_path)
-    return resolved.jobset
 
 def find_schematic_file(project_path: str) -> Optional[str]:
     """Find the main .kicad_sch file using path config."""
