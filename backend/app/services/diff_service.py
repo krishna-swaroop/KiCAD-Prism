@@ -14,7 +14,7 @@ import json
 import re
 from pathlib import Path
 from typing import Optional, List, Dict
-from app.services.project_service import get_registered_projects, find_schematic_file, get_subsheets
+from app.services.project_service import get_registered_projects, find_schematic_file
 from app.services import bom_diff_service
 
 # Global job store
@@ -265,71 +265,44 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
         COLOR_NEW = "#00AA00" # Slightly darker green for visibility on white
         COLOR_OLD = "#FF0000"
         
-        # Track sheet filenames as the union across both commits, so sheets that
-        # exist in only one commit (added/removed) still appear in the dropdown.
-        all_sheet_names: set = set()
+        # Per-commit sch output dirs, captured for the post-loop union.
+        sch_dirs: Dict[str, Path] = {}
 
         for commit, directory, color in [(commit1, c1_dir, COLOR_NEW), (commit2, c2_dir, COLOR_OLD)]:
             # 1. Locate design files
-            # Discover schematics the same way the regular viewer does: the
-            # path-config-resolved root, plus any extras in the configured
-            # Subsheets/ directory. Falls back gracefully if no main is found.
+            # Use the path-config-resolved root so kicad-cli walks the full
+            # hierarchy. Picking an arbitrary .kicad_sch via rglob would miss
+            # subsheets not reachable from that match.
             main_sch_str = find_schematic_file(str(directory))
-            main_sch = Path(main_sch_str) if main_sch_str else None
-
-            schematics: List[Path] = []
-            if main_sch and main_sch.exists():
-                schematics.append(main_sch)
-                for rel in get_subsheets(str(directory), main_sch_str):
-                    extra = directory / rel
-                    if extra.exists() and extra.resolve() != main_sch.resolve():
-                        schematics.append(extra)
+            sch_file = Path(main_sch_str) if main_sch_str else None
+            if sch_file and not sch_file.exists():
+                sch_file = None
 
             pcb_file = next(directory.rglob("*.kicad_pcb"), None)
 
             # 2. Export Schematics
-            if schematics:
+            if sch_file:
                 sch_out_dir = directory / "sch"
                 sch_out_dir.mkdir(exist_ok=True)
-                job['logs'].append(f"Exporting {len(schematics)} schematic(s) for {commit}...")
+                sch_dirs[commit] = sch_out_dir
+                job['logs'].append(f"Exporting Schematics for {commit}...")
 
-                multi_source = len(schematics) > 1
-                for sch_file in schematics:
-                    # Export to a per-source temp dir so KiCad-emitted filenames
-                    # cannot collide across sources mid-run, then flatten the
-                    # results into sch_out_dir for the frontend's flat URL scheme.
-                    tmp_out = sch_out_dir / f"_tmp_{sch_file.stem}"
-                    tmp_out.mkdir(exist_ok=True)
+                cmd = [
+                    CLI_CMD, "sch", "export", "svg",
+                    "--black-and-white",
+                    "--output", str(sch_out_dir),
+                    str(sch_file)
+                ]
+                job['logs'].append(f"SCH CMD: {' '.join(cmd)}")
+                res = subprocess.run(cmd, capture_output=True, text=True)
 
-                    cmd = [
-                        CLI_CMD, "sch", "export", "svg",
-                        "--black-and-white",
-                        "--output", str(tmp_out),
-                        str(sch_file)
-                    ]
-                    job['logs'].append(f"SCH CMD: {' '.join(cmd)}")
-                    res = subprocess.run(cmd, capture_output=True, text=True)
-
-                    if res.returncode != 0:
-                        job['logs'].append(f"SCH Export FAILED for {sch_file.name} (Code {res.returncode})")
-                        continue
-
-                    for svg in list(tmp_out.glob("*.svg")):
-                        # Single-source projects keep today's flat naming.
-                        # Multi-source projects always namespace by source stem
-                        # to guarantee no cross-source collisions in sch_out_dir.
-                        target_name = f"{sch_file.stem}__{svg.name}" if multi_source else svg.name
-                        target = sch_out_dir / target_name
-                        if target.exists() and target.resolve() != svg.resolve():
-                            target.unlink()
-                        svg.rename(target)
-                        _colorize_svg(target, color)
-                        all_sheet_names.add(target_name)
-
-                    try:
-                        tmp_out.rmdir()
-                    except OSError:
-                        pass
+                if res.returncode == 0:
+                    for svg in list(sch_out_dir.glob("*.svg")):
+                        _colorize_svg(svg, color)
+                    if commit == commit1:
+                        manifest["schematic"] = True
+                else:
+                    job['logs'].append(f"SCH Export FAILED (Code {res.returncode})")
             else:
                 job['logs'].append(f"No .kicad_sch found for {commit}")
             
@@ -394,9 +367,13 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
             else:
                 job['logs'].append(f"No .kicad_pcb found for {commit}")
 
-        # Publish the union of sheets discovered across both commits.
-        if all_sheet_names:
-            manifest["sheets"] = sorted(all_sheet_names)
+        # Publish the union of emitted SVG filenames across both commits, so
+        # sheets that exist in only one commit (added/removed) still appear.
+        sheet_union: set = set()
+        for d in sch_dirs.values():
+            sheet_union.update(p.name for p in d.glob("*.svg"))
+        if sheet_union:
+            manifest["sheets"] = sorted(sheet_union)
 
         # 4. BoM Diff
         job['logs'].append("Generating BoM Diff...")

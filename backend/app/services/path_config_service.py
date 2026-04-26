@@ -223,16 +223,27 @@ def _find_directory_by_keywords(directory: Path, keywords: List[str], required_c
 
 def _detect_schematic_path(project_path: Path) -> Optional[str]:
     """Detect main schematic file path."""
-    # Look for .kicad_sch files in root
     sch_files = list(project_path.glob("*.kicad_sch"))
-    if sch_files:
-        # Prefer one matching project directory name, otherwise first found
-        project_name = project_path.name
+    if not sch_files:
+        return None
+
+    # Canonical KiCad layout: the root schematic shares its stem with the
+    # .kicad_pro project file. This is reliable even when project_path is a
+    # synthetic dir (e.g. a git-archive snapshot) whose dir name doesn't
+    # match the project, where the fallbacks below would pick the wrong
+    # sheet alphabetically.
+    pro_files = list(project_path.glob("*.kicad_pro"))
+    if pro_files:
         for sch in sch_files:
-            if sch.stem.lower() == project_name.lower():
+            if sch.stem == pro_files[0].stem:
                 return sch.name
-        return sch_files[0].name
-    return None
+
+    # Fallback: prefer one matching the project directory name.
+    project_name = project_path.name
+    for sch in sch_files:
+        if sch.stem.lower() == project_name.lower():
+            return sch.name
+    return sch_files[0].name
 
 
 def _detect_pcb_path(project_path: Path) -> Optional[str]:
