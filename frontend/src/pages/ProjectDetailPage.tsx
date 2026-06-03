@@ -231,6 +231,13 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
         navigate("/");
     };
 
+    const resolveProjectAssetSrc = (src: string | undefined) => {
+        if (!src) return src;
+        if (src.startsWith('http')) return src;
+        const assetUrl = `/api/projects/${projectId}/asset/${src}`;
+        return currentCommit ? `${assetUrl}?commit=${encodeURIComponent(currentCommit)}` : assetUrl;
+    };
+
     return (
         <div className="h-screen flex flex-col bg-background">
             <header className="border-b px-4 md:px-6 py-4 flex items-center gap-4">
@@ -424,9 +431,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                 <Suspense fallback={<div className="text-sm text-muted-foreground">Loading README...</div>}>
                                     <MarkdownContent
                                         content={readme}
-                                        resolveImageSrc={(src) =>
-                                            src?.startsWith('http') ? src : `/api/projects/${projectId}/asset/${src}`
-                                        }
+                                        resolveImageSrc={resolveProjectAssetSrc}
                                     />
                                 </Suspense>
                             )}
@@ -441,7 +446,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         <div>
                             {projectId && (
                                 <Suspense fallback={<div className="text-sm text-muted-foreground">Loading assets...</div>}>
-                                    <AssetsPortal projectId={projectId} />
+                                    <AssetsPortal projectId={projectId} commit={currentCommit} />
                                 </Suspense>
                             )}
                         </div>

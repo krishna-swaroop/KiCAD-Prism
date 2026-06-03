@@ -1,6 +1,10 @@
 import asyncio
+import json
+import mimetypes
 import os
+import posixpath
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
@@ -32,8 +36,6 @@ from app.services.git_service import (
     get_commit_file_summary,
     get_commits_list,
     get_commits_list_filtered,
-    get_file_from_commit,
-    get_file_from_commit_with_prefix,
     get_releases,
     get_releases_filtered,
 )
@@ -141,6 +143,224 @@ def _resolve_output_dir(project_path: str, output_type: str) -> str:
     return output_dir
 
 
+def _join_relative_paths(*parts: str | None) -> str:
+    cleaned = []
+    for part in parts:
+        if not part:
+            continue
+        normalized = posixpath.normpath(str(part).replace("\\", "/"))
+        if normalized in ("", "."):
+            continue
+        if (
+            normalized.startswith("/")
+            or normalized == ".."
+            or normalized.startswith("../")
+        ):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+        cleaned.append(normalized)
+    return posixpath.join(*cleaned) if cleaned else ""
+
+
+def _default_commit_path_config() -> PathConfig:
+    return PathConfig(**path_config_service.DEFAULT_PATHS)
+
+
+def _path_config_from_commit(
+    project: project_service.Project, commit: str | None
+) -> PathConfig:
+    if not commit:
+        return path_config_service.get_path_config(project.path)
+
+    repo_path, sub_path = _repo_context(project)
+    try:
+        prism_file = file_service.read_file_from_commit(
+            repo_path,
+            commit,
+            ".prism.json",
+            relative_prefix=sub_path,
+            not_found_detail=".prism.json not found",
+        )
+    except HTTPException as error:
+        if error.status_code == 404:
+            return _default_commit_path_config()
+        raise
+
+    try:
+        raw_config = json.loads(prism_file.content.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise HTTPException(
+            status_code=500, detail=f"Invalid .prism.json in commit: {error}"
+        ) from error
+
+    if not isinstance(raw_config, dict):
+        return _default_commit_path_config()
+
+    merged: dict[str, object] = {}
+    if isinstance(raw_config.get("paths"), dict):
+        merged.update(raw_config["paths"])
+    for key, value in raw_config.items():
+        if key != "paths":
+            merged[key] = value
+
+    for key, default_value in path_config_service.DEFAULT_PATHS.items():
+        if not str(merged.get(key) or "").strip():
+            merged[key] = default_value
+
+    return PathConfig(**merged)
+
+
+def _output_dir_from_config(config: PathConfig, output_type: str) -> str:
+    output_dir = (
+        config.designOutputs if output_type == "design" else config.manufacturingOutputs
+    )
+    if not output_dir:
+        raise HTTPException(
+            status_code=404, detail=f"{output_type} outputs folder not configured"
+        )
+    return output_dir
+
+
+def _read_commit_file(
+    project: project_service.Project,
+    commit: str,
+    file_path: str,
+    *,
+    relative_prefix: str | None = None,
+    not_found_detail: str = "File not found",
+) -> file_service.CommitFile:
+    repo_path, sub_path = _repo_context(project)
+    prefix = sub_path
+    if relative_prefix:
+        prefix = _join_relative_paths(prefix, relative_prefix)
+
+    return file_service.read_file_from_commit(
+        repo_path,
+        commit,
+        file_path,
+        relative_prefix=prefix,
+        not_found_detail=not_found_detail,
+    )
+
+
+def _read_configured_commit_file(
+    project: project_service.Project,
+    commit: str,
+    configured_path: str | None,
+    *,
+    not_found_detail: str,
+) -> file_service.CommitFile:
+    path = configured_path or ""
+    if not path:
+        raise HTTPException(status_code=404, detail=not_found_detail)
+
+    if "*" not in path:
+        return _read_commit_file(
+            project, commit, path, not_found_detail=not_found_detail
+        )
+
+    repo_path, sub_path = _repo_context(project)
+    matches = file_service.find_files_in_commit(
+        repo_path, commit, path, relative_prefix=sub_path
+    )
+    if not matches:
+        raise HTTPException(status_code=404, detail=not_found_detail)
+    return _read_commit_file(
+        project, commit, matches[0], not_found_detail=not_found_detail
+    )
+
+
+def _commit_file_response(
+    commit_file: file_service.CommitFile,
+    *,
+    inline: bool = True,
+    headers: dict[str, str] | None = None,
+) -> Response:
+    media_type = mimetypes.guess_type(commit_file.name)[0] or "application/octet-stream"
+    response_headers = dict(headers or {})
+    disposition = "inline" if inline else "attachment"
+    safe_name = commit_file.name.replace('"', "")
+    response_headers["Content-Disposition"] = (
+        f"{disposition}; filename=\"{safe_name}\"; filename*=UTF-8''{quote(commit_file.name)}"
+    )
+    return Response(
+        content=commit_file.content, media_type=media_type, headers=response_headers
+    )
+
+
+def _files_from_commit(
+    project: project_service.Project,
+    commit: str,
+    directory_path: str,
+) -> list[file_service.FileItem]:
+    repo_path, sub_path = _repo_context(project)
+    return file_service.get_files_from_commit(
+        repo_path,
+        commit,
+        directory_path,
+        relative_prefix=sub_path,
+    )
+
+
+def _find_commit_3d_model(
+    project: project_service.Project,
+    commit: str,
+    config: PathConfig,
+) -> file_service.CommitFile:
+    design_dir = _output_dir_from_config(config, "design")
+    files = _files_from_commit(project, commit, design_dir)
+
+    model_files = [
+        item
+        for item in files
+        if not item.is_dir and item.name.lower().endswith((".glb", ".step", ".stp"))
+    ]
+    selected = next(
+        (item for item in model_files if item.path.lower().startswith("3dmodel/")), None
+    )
+    if selected is None:
+        selected = next((item for item in model_files if "/" not in item.path), None)
+    if selected is None:
+        raise HTTPException(status_code=404, detail="3D model not found")
+
+    return _read_commit_file(
+        project,
+        commit,
+        selected.path,
+        relative_prefix=design_dir,
+        not_found_detail="3D model not found",
+    )
+
+
+def _find_commit_ibom(
+    project: project_service.Project,
+    commit: str,
+    config: PathConfig,
+) -> file_service.CommitFile:
+    design_dir = _output_dir_from_config(config, "design")
+    files = _files_from_commit(project, commit, design_dir)
+    selected = next(
+        (
+            item
+            for item in files
+            if not item.is_dir
+            and "/" not in item.path
+            and "ibom" in item.name.lower()
+            and item.name.lower().endswith(".html")
+        ),
+        None,
+    )
+    if selected is None:
+        raise HTTPException(status_code=404, detail="iBoM not found")
+
+    return _read_commit_file(
+        project,
+        commit,
+        selected.path,
+        relative_prefix=design_dir,
+        not_found_detail="iBoM not found",
+    )
+
+
 def _read_utf8_file(
     file_path: str | Path, *, not_found_detail: str, read_error_prefix: str
 ) -> str:
@@ -171,15 +391,18 @@ def _read_file_from_commit(
     - Standalone: uses project path directly.
     - Type-2: reads from parent repo and applies project sub-path prefix.
     """
-    repo_path, sub_path = _repo_context(project)
-    if sub_path is None:
-        return get_file_from_commit(repo_path, commit, file_path)
-
-    prefix = sub_path
-    if relative_prefix:
-        prefix = f"{sub_path}/{relative_prefix}" if sub_path else relative_prefix
-
-    return get_file_from_commit_with_prefix(repo_path, commit, file_path, prefix)
+    try:
+        commit_file = _read_commit_file(
+            project,
+            commit,
+            file_path,
+            relative_prefix=relative_prefix,
+        )
+        return commit_file.content.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise HTTPException(
+            status_code=400, detail="Binary file cannot be decoded"
+        ) from error
 
 
 def _filter_projects_for_user(
@@ -197,7 +420,7 @@ def _load_project_readme_content(
     project: project_service.Project,
     commit: str | None = None,
 ) -> str | None:
-    config = path_config_service.get_path_config(project.path)
+    config = _path_config_from_commit(project, commit)
     readme_filename = config.readme or "README.md"
 
     if commit:
@@ -675,6 +898,7 @@ async def delete_project_endpoint(
 async def get_project_files(
     project_id: str,
     type: str = "design",
+    commit: str | None = None,
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
@@ -686,6 +910,11 @@ async def get_project_files(
     """
     output_type = require_output_type(type)
     project = get_project_for_role_or_404(project_id, user.role)
+    if commit:
+        config = _path_config_from_commit(project, commit)
+        return _files_from_commit(
+            project, commit, _output_dir_from_config(config, output_type)
+        )
     return file_service.get_project_files(project.path, output_type)
 
 
@@ -695,6 +924,7 @@ async def download_file(
     path: str,
     type: str = "design",
     inline: bool = False,
+    commit: str | None = None,
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
@@ -708,6 +938,18 @@ async def download_file(
     """
     output_type = require_output_type(type)
     project = get_project_for_role_or_404(project_id, user.role)
+
+    if commit:
+        config = _path_config_from_commit(project, commit)
+        commit_file = _read_commit_file(
+            project,
+            commit,
+            path,
+            relative_prefix=_output_dir_from_config(config, output_type),
+            not_found_detail="File not found",
+        )
+        return _commit_file_response(commit_file, inline=inline)
+
     output_dir = _resolve_output_dir(project.path, output_type)
 
     file_path = resolve_path_within_root(
@@ -748,6 +990,7 @@ async def get_project_readme(
 async def get_project_asset(
     project_id: str,
     asset_path: str,
+    commit: str | None = None,
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
@@ -755,6 +998,15 @@ async def get_project_asset(
     Typically used for README image references.
     """
     project = get_project_for_role_or_404(project_id, user.role)
+    if commit:
+        commit_file = _read_commit_file(
+            project,
+            commit,
+            asset_path,
+            not_found_detail="Asset not found",
+        )
+        return _commit_file_response(commit_file, inline=True)
+
     file_path = resolve_path_within_root(
         project.path, asset_path, invalid_detail="Invalid asset path"
     )
@@ -770,12 +1022,19 @@ async def get_project_asset(
 
 @router.get("/{project_id}/docs")
 async def get_docs_files(
-    project_id: str, user: AuthenticatedUser = Depends(require_viewer)
+    project_id: str,
+    commit: str | None = None,
+    user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
     List all files in the documentation folder.
     """
     project = get_project_for_role_or_404(project_id, user.role)
+
+    if commit:
+        config = _path_config_from_commit(project, commit)
+        docs_path = config.documentation or "docs"
+        return _files_from_commit(project, commit, docs_path)
 
     resolved = path_config_service.resolve_paths(project.path)
     docs_dir = resolved.documentation_dir
@@ -801,19 +1060,14 @@ async def get_doc_file_content(
     project = get_project_for_role_or_404(project_id, user.role)
 
     # Get documentation path from config
-    config = path_config_service.get_path_config(project.path)
+    config = _path_config_from_commit(project, commit)
     docs_path = config.documentation or "docs"
 
     # If viewing a specific commit, use Git
     if commit:
         try:
-            file_path = (
-                path
-                if project.import_type == "type2_subproject"
-                else f"{docs_path}/{path}"
-            )
             content = _read_file_from_commit(
-                project, commit, file_path, relative_prefix=docs_path
+                project, commit, path, relative_prefix=docs_path
             )
             return {"content": content, "path": path}
         except HTTPException:
@@ -1145,9 +1399,21 @@ def _enrich_with_diff(
 
 @router.get("/{project_id}/schematic")
 async def get_project_schematic(
-    project_id: str, user: AuthenticatedUser = Depends(require_viewer)
+    project_id: str,
+    commit: str | None = None,
+    user: AuthenticatedUser = Depends(require_viewer),
 ):
     project = get_project_for_role_or_404(project_id, user.role)
+
+    if commit:
+        config = _path_config_from_commit(project, commit)
+        commit_file = _read_configured_commit_file(
+            project,
+            commit,
+            config.schematic or "*.kicad_sch",
+            not_found_detail="Schematic not found",
+        )
+        return _commit_file_response(commit_file, inline=True)
 
     path = project_service.find_schematic_file(project.path)
     if not path:
@@ -1157,9 +1423,46 @@ async def get_project_schematic(
 
 @router.get("/{project_id}/schematic/subsheets")
 async def get_project_subsheets(
-    project_id: str, user: AuthenticatedUser = Depends(require_viewer)
+    project_id: str,
+    commit: str | None = None,
+    user: AuthenticatedUser = Depends(require_viewer),
 ):
     project = get_project_for_role_or_404(project_id, user.role)
+
+    if commit:
+        config = _path_config_from_commit(project, commit)
+        main_schematic = _read_configured_commit_file(
+            project,
+            commit,
+            config.schematic or "*.kicad_sch",
+            not_found_detail="Schematic not found",
+        )
+        repo_path, sub_path = _repo_context(project)
+        root_sheets = [
+            path
+            for path in file_service.find_files_in_commit(
+                repo_path,
+                commit,
+                "*.kicad_sch",
+                relative_prefix=sub_path,
+            )
+            if path != main_schematic.path
+        ]
+        subsheets_dir = config.subsheets or "Subsheets"
+        nested_sheets = [
+            _join_relative_paths(subsheets_dir, item.path)
+            for item in _files_from_commit(project, commit, subsheets_dir)
+            if not item.is_dir and item.name.endswith(".kicad_sch")
+        ]
+        subsheets = sorted({*root_sheets, *nested_sheets})
+        subsheet_urls = [
+            {
+                "name": sheet,
+                "url": f"/api/projects/{quote(project_id, safe='')}/asset/{quote(sheet, safe='/')}?commit={quote(commit, safe='')}",
+            }
+            for sheet in subsheets
+        ]
+        return {"files": subsheet_urls}
 
     main_path = project_service.find_schematic_file(project.path)
     if not main_path:
@@ -1175,9 +1478,21 @@ async def get_project_subsheets(
 
 @router.get("/{project_id}/pcb")
 async def get_project_pcb(
-    project_id: str, user: AuthenticatedUser = Depends(require_viewer)
+    project_id: str,
+    commit: str | None = None,
+    user: AuthenticatedUser = Depends(require_viewer),
 ):
     project = get_project_for_role_or_404(project_id, user.role)
+
+    if commit:
+        config = _path_config_from_commit(project, commit)
+        commit_file = _read_configured_commit_file(
+            project,
+            commit,
+            config.pcb or "*.kicad_pcb",
+            not_found_detail="PCB not found",
+        )
+        return _commit_file_response(commit_file, inline=True)
 
     path = project_service.find_pcb_file(project.path)
     if not path:
@@ -1187,9 +1502,20 @@ async def get_project_pcb(
 
 @router.get("/{project_id}/3d-model")
 async def get_project_3d_model(
-    project_id: str, user: AuthenticatedUser = Depends(require_viewer)
+    project_id: str,
+    commit: str | None = None,
+    user: AuthenticatedUser = Depends(require_viewer),
 ):
     project = get_project_for_role_or_404(project_id, user.role)
+
+    if commit:
+        config = _path_config_from_commit(project, commit)
+        commit_file = _find_commit_3d_model(project, commit, config)
+        return _commit_file_response(
+            commit_file,
+            inline=True,
+            headers={"Cache-Control": "public, max-age=300"},
+        )
 
     path = project_service.find_3d_model(project.path)
     if not path:
@@ -1199,9 +1525,20 @@ async def get_project_3d_model(
 
 @router.get("/{project_id}/ibom")
 async def get_project_ibom(
-    project_id: str, user: AuthenticatedUser = Depends(require_viewer)
+    project_id: str,
+    commit: str | None = None,
+    user: AuthenticatedUser = Depends(require_viewer),
 ):
     project = get_project_for_role_or_404(project_id, user.role)
+
+    if commit:
+        config = _path_config_from_commit(project, commit)
+        commit_file = _find_commit_ibom(project, commit, config)
+        return _commit_file_response(
+            commit_file,
+            inline=True,
+            headers={"Cache-Control": "public, max-age=60"},
+        )
 
     path = project_service.find_ibom_file(project.path)
     if not path:

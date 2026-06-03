@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, File, FileText, Package, Image as ImageIcon, Folder, ChevronRight, ChevronDown, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,6 +7,7 @@ import { PdfViewer } from "@/components/pdf-viewer";
 
 interface AssetsPortalProps {
     projectId: string;
+    commit?: string | null;
 }
 
 function getFileIcon(type: string, isDir: boolean) {
@@ -127,18 +128,24 @@ function TreeNodeComponent({
     );
 }
 
-export function AssetsPortal({ projectId }: AssetsPortalProps) {
+export function AssetsPortal({ projectId, commit }: AssetsPortalProps) {
     const [designFiles, setDesignFiles] = useState<FileItem[]>([]);
     const [mfgFiles, setMfgFiles] = useState<FileItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [pdfViewer, setPdfViewer] = useState<{ url: string; downloadUrl: string; filename: string } | null>(null);
 
+    const appendCommit = useCallback((url: string) => {
+        if (!commit) return url;
+        return `${url}${url.includes("?") ? "&" : "?"}commit=${encodeURIComponent(commit)}`;
+    }, [commit]);
+
     useEffect(() => {
         const fetchFiles = async () => {
+            setLoading(true);
             try {
                 const [designRes, mfgRes] = await Promise.all([
-                    fetch(`/api/projects/${projectId}/files?type=design`),
-                    fetch(`/api/projects/${projectId}/files?type=manufacturing`)
+                    fetch(appendCommit(`/api/projects/${projectId}/files?type=design`)),
+                    fetch(appendCommit(`/api/projects/${projectId}/files?type=manufacturing`))
                 ]);
 
                 if (designRes.ok) {
@@ -157,16 +164,16 @@ export function AssetsPortal({ projectId }: AssetsPortalProps) {
         };
 
         fetchFiles();
-    }, [projectId]);
+    }, [projectId, appendCommit]);
 
     const handleDownload = (path: string, type: string) => {
-        const url = `/api/projects/${projectId}/download?path=${encodeURIComponent(path)}&type=${type}`;
+        const url = appendCommit(`/api/projects/${projectId}/download?path=${encodeURIComponent(path)}&type=${type}`);
         window.open(url, '_blank');
     };
 
     const handlePreview = (path: string, type: string) => {
-        const inlineUrl = `/api/projects/${projectId}/download?path=${encodeURIComponent(path)}&type=${type}&inline=true`;
-        const downloadUrl = `/api/projects/${projectId}/download?path=${encodeURIComponent(path)}&type=${type}`;
+        const inlineUrl = appendCommit(`/api/projects/${projectId}/download?path=${encodeURIComponent(path)}&type=${type}&inline=true`);
+        const downloadUrl = appendCommit(`/api/projects/${projectId}/download?path=${encodeURIComponent(path)}&type=${type}`);
         const filename = path.split("/").pop() ?? path;
         setPdfViewer({ url: inlineUrl, downloadUrl, filename });
     };

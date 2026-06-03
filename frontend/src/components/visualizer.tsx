@@ -189,12 +189,13 @@ type ViewerBlobSource = {
 const buildViewerKey = (
     kind: "schematic" | "pcb",
     projectId: string,
+    commit: string | null | undefined,
     sources: ViewerBlobSource[],
 ) => {
     const signature = sources
         .map(({ filename, content }) => `${filename}:${content.length}`)
         .join("|");
-    return `${kind}:${projectId}:${signature}`;
+    return `${kind}:${projectId}:${commit ?? "latest"}:${signature}`;
 };
 
 
@@ -448,6 +449,21 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         }
     };
 
+    const appendCommit = useCallback((url: string) => {
+        if (!commit) return url;
+        return `${url}${url.includes("?") ? "&" : "?"}commit=${encodeURIComponent(commit)}`;
+    }, [commit]);
+
+    useEffect(() => {
+        setModelUrl(null);
+        setIbomUrl(null);
+        setSchematicContent(null);
+        setPcbContent(null);
+        setSubsheets([]);
+        setSchematicContentLoaded(false);
+        setPcbContentLoaded(false);
+    }, [projectId, commit]);
+
     // Initial Data Fetch
     useEffect(() => {
         const controller = new AbortController();
@@ -460,10 +476,10 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             try {
                 // Parallel fetch for main assets (excluding schematic and PCB content for now)
                 const [modelRes, ibomRes, commentsRes, filesRes] = await Promise.allSettled([
-                    fetch(`${baseUrl}/3d-model`, { signal }),
-                    fetch(`${baseUrl}/ibom`, { signal }),
+                    fetch(appendCommit(`${baseUrl}/3d-model`), { signal }),
+                    fetch(appendCommit(`${baseUrl}/ibom`), { signal }),
                     fetch(`/api/projects/${projectId}/comments`, { signal }),
-                    fetch(`${baseUrl}/files?type=design`, { signal }),
+                    fetch(appendCommit(`${baseUrl}/files?type=design`), { signal }),
                 ]);
 
                 // Handle 3D
@@ -477,7 +493,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                             f.name.toLowerCase().endsWith(".glb")
                         );
                         if (glbFile) {
-                            glbUrl = `${baseUrl}/asset/Design-Outputs/${glbFile.path}`;
+                            glbUrl = appendCommit(`${baseUrl}/download?path=${encodeURIComponent(glbFile.path)}&type=design&inline=true`);
                         }
                     } catch (e) {
                         if (!isAbortError(e)) {
@@ -489,14 +505,14 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                 if (glbUrl) {
                     setModelUrl(glbUrl);
                 } else if (modelRes.status === "fulfilled" && modelRes.value.ok) {
-                    setModelUrl(`${baseUrl}/3d-model`);
+                    setModelUrl(appendCommit(`${baseUrl}/3d-model`));
                 } else {
                     setModelUrl(null);
                 }
 
                 // Handle iBoM
                 if (ibomRes.status === "fulfilled" && ibomRes.value.ok) {
-                    setIbomUrl(`${baseUrl}/ibom`);
+                    setIbomUrl(appendCommit(`${baseUrl}/ibom`));
                 } else {
                     setIbomUrl(null);
                 }
@@ -540,7 +556,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
 
         void fetchData();
         return () => controller.abort();
-    }, [projectId]);
+    }, [projectId, appendCommit]);
 
     // When diff data arrives (commit view), populate schematic content from it directly
     useEffect(() => {
@@ -578,8 +594,8 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                     const baseUrl = `/api/projects/${projectId}`;
 
                     const [schRes, subsheetsRes] = await Promise.allSettled([
-                        fetch(`${baseUrl}/schematic`, { signal }),
-                        fetch(`${baseUrl}/schematic/subsheets`, { signal })
+                        fetch(appendCommit(`${baseUrl}/schematic`), { signal }),
+                        fetch(appendCommit(`${baseUrl}/schematic/subsheets`), { signal })
                     ]);
 
                     // Handle Schematic
@@ -652,7 +668,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             const loadPcb = async () => {
                 try {
                     const baseUrl = `/api/projects/${projectId}`;
-                    const pcbRes = await fetch(`${baseUrl}/pcb`, { signal });
+                    const pcbRes = await fetch(appendCommit(`${baseUrl}/pcb`), { signal });
 
                     if (pcbRes.ok) {
                         const pcbText = await pcbRes.text();
@@ -1051,10 +1067,10 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
     // When viewing a commit, use a stable key so the viewer doesn't remount when diff content arrives
     const schematicViewerKey = commit
         ? `schematic:${projectId}:commit:${commit}`
-        : buildViewerKey("schematic", projectId, schematicSources);
+        : buildViewerKey("schematic", projectId, commit, schematicSources);
     const pcbViewerKey = commit
         ? `pcb:${projectId}:commit:${commit}`
-        : buildViewerKey("pcb", projectId, pcbSources);
+        : buildViewerKey("pcb", projectId, commit, pcbSources);
 
     // Build diff markers for the active schematic page
     const diffMarkers = useMemo<DiffMarker[]>(() => {
