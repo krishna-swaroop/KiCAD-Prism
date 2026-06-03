@@ -103,9 +103,6 @@ def is_local_path(url_or_path: str) -> bool:
     # Windows absolute paths (C:\..., \\server\share) and POSIX absolute paths
     if os.path.isabs(p) or p.startswith("\\\\"):
         return True
-    # Relative paths that exist on disk
-    if os.path.exists(p):
-        return True
     return False
 
 

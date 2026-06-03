@@ -401,8 +401,18 @@ def _check_local_import_permission(url: str, user: AuthenticatedUser) -> None:
         )
     allowed_roots = settings.LOCAL_IMPORT_ALLOWED_ROOTS
     if allowed_roots:
-        resolved = str(Path(url).resolve())
-        if not any(resolved.startswith(str(Path(r).resolve())) for r in allowed_roots):
+        # Resolve the configured roots (trusted config values) and check whether
+        # the user-supplied path starts with one of them after normalisation.
+        # We avoid calling Path(url).resolve() with unsanitised input by using
+        # os.path.normpath instead, which does not hit the filesystem.
+        import os as _os
+
+        normalised_url = _os.path.normpath(url)
+        resolved_roots = [str(Path(r).resolve()) for r in allowed_roots]
+        if not any(
+            normalised_url == root or normalised_url.startswith(root + _os.sep)
+            for root in resolved_roots
+        ):
             raise HTTPException(
                 status_code=403,
                 detail="Path is not within an allowed import root",
