@@ -7,8 +7,9 @@ a structured change set suitable for the interactive schematic diff viewer.
 
 import logging
 import re
-import subprocess
 from pathlib import Path
+
+from git import Repo
 
 from app.services.workspace_service import workspace
 
@@ -487,17 +488,31 @@ def _is_safe_rel_path(rel_path: str) -> bool:
     return ".." not in parts and "" not in parts[:-1]
 
 
+def list_tree_paths(repo_root: Path, commit: str) -> list[str]:
+    """Return all blob (file) paths in a commit's tree, repo-root-relative.
+
+    GitPython equivalent of `git ls-tree -r --name-only <commit>`. Validates
+    the commit at the trust boundary and fails soft (empty list) on any error,
+    matching the previous subprocess behaviour. Shared by the schematic and
+    PCB diff services.
+    """
+    if not is_valid_commit_hash(commit):
+        logger.debug("Rejected unsafe commit for tree listing: %s", commit)
+        return []
+    try:
+        tree = Repo(repo_root).commit(commit).tree
+        return [item.path for item in tree.traverse() if item.type == "blob"]
+    except Exception as err:
+        logger.debug("Could not enumerate tree at %s: %s", commit, err)
+        return []
+
+
 def _git_root(project_path: Path) -> Path:
     """Return the git repository root for project_path."""
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=project_path,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            return Path(result.stdout.strip())
+        repo = Repo(project_path, search_parent_directories=True)
+        if repo.working_tree_dir:
+            return Path(repo.working_tree_dir)
     except Exception as err:
         logger.debug(
             "Falling back to project path for git root %s: %s", project_path, err
@@ -508,22 +523,18 @@ def _git_root(project_path: Path) -> Path:
 def _read_file_at_commit(repo_root: Path, commit: str, rel_path: str) -> str | None:
     """Return file content at a given commit using a path relative to the repo root."""
     # Trust boundary: reject anything that isn't a hex object id or a clean
-    # repo-relative path before it reaches `git show`.
+    # repo-relative path before it reaches git.
     if not is_valid_commit_hash(commit) or not _is_safe_rel_path(rel_path):
         logger.debug("Rejected unsafe commit/path: %s:%s", commit, rel_path)
         return None
     try:
-        result = subprocess.run(
-            ["git", "show", f"{commit}:{rel_path}"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if result.returncode == 0:
-            return result.stdout
+        blob = Repo(repo_root).commit(commit).tree / rel_path
+        # Mirror the previous `git show` behaviour: tolerate undecodable bytes
+        # rather than failing the whole diff on one odd file.
+        return blob.data_stream.read().decode("utf-8", "replace")
     except Exception as err:
+        # Missing path (KeyError), bad commit, or any git error → fail soft,
+        # exactly as the subprocess version did.
         logger.debug("Could not read %s at %s: %s", rel_path, commit, err)
     return None
 
@@ -536,24 +547,11 @@ def _find_all_sch_paths(
     When sub_path is set (Type-2 project) only paths inside that subtree are
     returned, so sibling boards in the same monorepo are not included.
     """
-    if not is_valid_commit_hash(commit):
-        logger.debug("Rejected unsafe commit for ls-tree: %s", commit)
-        return []
-    try:
-        result = subprocess.run(
-            ["git", "ls-tree", "-r", "--name-only", commit, "--"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-        )
-        paths = [p for p in result.stdout.splitlines() if p.endswith(".kicad_sch")]
-        if sub_path:
-            prefix = sub_path.rstrip("/") + "/"
-            paths = [p for p in paths if p == sub_path or p.startswith(prefix)]
-        return paths
-    except Exception as err:
-        logger.debug("Could not enumerate schematic paths at %s: %s", commit, err)
-        return []
+    paths = [p for p in list_tree_paths(repo_root, commit) if p.endswith(".kicad_sch")]
+    if sub_path:
+        prefix = sub_path.rstrip("/") + "/"
+        paths = [p for p in paths if p == sub_path or p.startswith(prefix)]
+    return paths
 
 
 # ---------------------------------------------------------------------------

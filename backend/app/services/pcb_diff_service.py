@@ -6,7 +6,6 @@ a structured change set suitable for the interactive PCB diff viewer.
 
 """
 
-import subprocess
 from pathlib import Path
 
 # Reuse the s-expression parser and git helpers from sch_diff_service
@@ -19,6 +18,7 @@ from app.services.sch_diff_service import (
     _read_file_at_commit,
     _uuid,
     is_valid_commit_hash,
+    list_tree_paths,
 )
 from app.services.workspace_service import workspace
 
@@ -568,22 +568,11 @@ def _find_all_pcb_paths(
     When sub_path is set (Type-2 project) only paths inside that subtree are
     returned, so sibling boards in the same monorepo are not included.
     """
-    if not is_valid_commit_hash(commit):
-        return []
-    try:
-        result = subprocess.run(
-            ["git", "ls-tree", "-r", "--name-only", commit, "--"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-        )
-        paths = [p for p in result.stdout.splitlines() if p.endswith(".kicad_pcb")]
-        if sub_path:
-            prefix = sub_path.rstrip("/") + "/"
-            paths = [p for p in paths if p == sub_path or p.startswith(prefix)]
-        return paths
-    except Exception:
-        return []
+    paths = [p for p in list_tree_paths(repo_root, commit) if p.endswith(".kicad_pcb")]
+    if sub_path:
+        prefix = sub_path.rstrip("/") + "/"
+        paths = [p for p in paths if p == sub_path or p.startswith(prefix)]
+    return paths
 
 
 # ---------------------------------------------------------------------------
