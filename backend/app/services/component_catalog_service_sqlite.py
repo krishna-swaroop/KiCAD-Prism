@@ -18,11 +18,12 @@ import threading
 import time
 import uuid
 import zipfile
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 from app.core.config import settings
 
@@ -144,7 +145,7 @@ class CatalogPreview:
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _utc_now_iso() -> str:
@@ -152,12 +153,17 @@ def _utc_now_iso() -> str:
 
 
 def _slugify(value: str, default: str = "component") -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "-", (value or "").strip().lower()).strip("._-")
+    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "-", (value or "").strip().lower()).strip(
+        "._-"
+    )
     return cleaned or default
 
 
 def _sanitize_name(value: str, default: str) -> str:
-    cleaned = "".join(ch if ch.isalnum() or ch in {"_", "-", "."} else "_" for ch in (value or "").strip())
+    cleaned = "".join(
+        ch if ch.isalnum() or ch in {"_", "-", "."} else "_"
+        for ch in (value or "").strip()
+    )
     cleaned = cleaned.strip("._-")
     return cleaned or default
 
@@ -184,12 +190,14 @@ def _sha256_file(file_path: Path) -> str:
     return digest.hexdigest()
 
 
-def _symbol_property_block(name: str, value: str, *, indent: str = "    ", hidden: bool = True) -> str:
+def _symbol_property_block(
+    name: str, value: str, *, indent: str = "    ", hidden: bool = True
+) -> str:
     hide = " hide" if hidden else ""
     child_indent = f"{indent}  "
     return (
         f'{indent}(property "{name}" "{_escape_symbol_property_value(value)}" (at 0 0 0)\n'
-        f'{child_indent}(effects (font (size 1.27 1.27)){hide})\n'
+        f"{child_indent}(effects (font (size 1.27 1.27)){hide})\n"
         f"{indent})\n"
     )
 
@@ -197,10 +205,15 @@ def _symbol_property_block(name: str, value: str, *, indent: str = "    ", hidde
 def _symbol_metadata_fields(component: dict[str, Any] | None) -> dict[str, str]:
     if not component:
         return {label: "" for label in SYMBOL_METADATA_FIELD_ORDER}
-    return {label: str(component.get(key) or "") for label, key in SYMBOL_METADATA_LABEL_TO_KEY.items()}
+    return {
+        label: str(component.get(key) or "")
+        for label, key in SYMBOL_METADATA_LABEL_TO_KEY.items()
+    }
 
 
-def _extract_top_level_symbol_properties(header: str) -> tuple[str, list[tuple[str, str]], str, str]:
+def _extract_top_level_symbol_properties(
+    header: str,
+) -> tuple[str, list[tuple[str, str]], str, str]:
     lines = header.splitlines(keepends=True)
     prefix_parts: list[str] = []
     property_blocks: list[tuple[str, str]] = []
@@ -238,10 +251,16 @@ def _extract_top_level_symbol_properties(header: str) -> tuple[str, list[tuple[s
     return "".join(prefix_parts), property_blocks, trailing, first_indent or "    "
 
 
-def _rewrite_symbol_payload(payload: bytes, footprint_ref: str | None, component: dict[str, Any] | None = None) -> bytes:
+def _rewrite_symbol_payload(
+    payload: bytes, footprint_ref: str | None, component: dict[str, Any] | None = None
+) -> bytes:
     text = payload.decode("utf-8")
     first_symbol_index = text.find('(symbol "')
-    marker_index = text.find('(symbol "', first_symbol_index + 1) if first_symbol_index != -1 else -1
+    marker_index = (
+        text.find('(symbol "', first_symbol_index + 1)
+        if first_symbol_index != -1
+        else -1
+    )
     if marker_index <= 0:
         header = text
         suffix = ""
@@ -249,7 +268,9 @@ def _rewrite_symbol_payload(payload: bytes, footprint_ref: str | None, component
         header = text[:marker_index]
         suffix = text[marker_index:]
 
-    prefix, extracted_blocks, trailing, indent = _extract_top_level_symbol_properties(header)
+    prefix, extracted_blocks, trailing, indent = _extract_top_level_symbol_properties(
+        header
+    )
     if not extracted_blocks:
         return payload
 
@@ -257,11 +278,15 @@ def _rewrite_symbol_payload(payload: bytes, footprint_ref: str | None, component
     ordered_names = [name for name, _ in extracted_blocks]
     metadata_fields = _symbol_metadata_fields(component)
     custom_blocks = {
-        label: _symbol_property_block(label, metadata_fields[label], indent=indent, hidden=label != "Value")
+        label: _symbol_property_block(
+            label, metadata_fields[label], indent=indent, hidden=label != "Value"
+        )
         for label in SYMBOL_METADATA_FIELD_ORDER
     }
     if footprint_ref:
-        custom_blocks["Footprint"] = _symbol_property_block("Footprint", footprint_ref, indent=indent)
+        custom_blocks["Footprint"] = _symbol_property_block(
+            "Footprint", footprint_ref, indent=indent
+        )
     elif "Footprint" in existing_blocks:
         custom_blocks["Footprint"] = existing_blocks["Footprint"]
 
@@ -285,7 +310,11 @@ def _rewrite_footprint_payload(payload: bytes, asset: dict[str, Any]) -> bytes:
     if destination in {"/RemoteLibrary", "$/RemoteLibrary"}:
         destination = "${KIPRJMOD}/RemoteLibrary"
     target_name = asset.get("target_name") or asset.get("name") or "model.step"
-    file_stem = target_name[:-10] if str(target_name).lower().endswith(".kicad_mod") else str(target_name)
+    file_stem = (
+        target_name[:-10]
+        if str(target_name).lower().endswith(".kicad_mod")
+        else str(target_name)
+    )
     model_path = f"{destination}/{prefix}_3d/{file_stem}.step"
     if "(model " in text:
         text = re.sub(r'\(model\s+"[^"]+"', f'(model "{model_path}"', text)
@@ -362,7 +391,9 @@ def _part_number_nocolon(value: str) -> str:
     return cleaned or "PART"
 
 
-def _dbl_symbol_library_name(part_number: str, symbol_asset: dict[str, Any] | None) -> str:
+def _dbl_symbol_library_name(
+    part_number: str, symbol_asset: dict[str, Any] | None
+) -> str:
     if not symbol_asset:
         return ""
     raw = f"Prism_{part_number}_{symbol_asset['target_library']}_{symbol_asset['target_name']}"
@@ -370,12 +401,20 @@ def _dbl_symbol_library_name(part_number: str, symbol_asset: dict[str, Any] | No
 
 
 class ComponentCatalogService:
-    def __init__(self, store_root: Path | None = None, database_url: str | None = None) -> None:
+    def __init__(
+        self, store_root: Path | None = None, database_url: str | None = None
+    ) -> None:
         prism_root = Path(settings.KICAD_PROJECTS_ROOT) / DEFAULT_STORE_DIRNAME
         self._store_root = Path(store_root or prism_root / "components").resolve()
         self._db_path = self._database_path(database_url)
-        default_export_root = self._store_root.parent / "exports" / DBL_EXPORT_DIRNAME if store_root else prism_root / "exports" / DBL_EXPORT_DIRNAME
-        self._export_root = Path(settings.CATALOG_DBL_EXPORT_DIR or default_export_root).resolve()
+        default_export_root = (
+            self._store_root.parent / "exports" / DBL_EXPORT_DIRNAME
+            if store_root
+            else prism_root / "exports" / DBL_EXPORT_DIRNAME
+        )
+        self._export_root = Path(
+            settings.CATALOG_DBL_EXPORT_DIR or default_export_root
+        ).resolve()
         self._lock = threading.Lock()
         self._initialized = False
         self._kicad_cli: str | None = None
@@ -390,7 +429,11 @@ class ComponentCatalogService:
             if configured.startswith("sqlite:///"):
                 configured = configured.removeprefix("sqlite:///")
             return Path(configured).expanduser().resolve()
-        return (Path(settings.KICAD_PROJECTS_ROOT) / DEFAULT_STORE_DIRNAME / CATALOG_DB_FILENAME).resolve()
+        return (
+            Path(settings.KICAD_PROJECTS_ROOT)
+            / DEFAULT_STORE_DIRNAME
+            / CATALOG_DB_FILENAME
+        ).resolve()
 
     @property
     def store_root(self) -> Path:
@@ -665,9 +708,13 @@ class ComponentCatalogService:
                 "SELECT COUNT(1) AS count, COALESCE(MAX(updated_at), '') AS updated_at FROM component_revisions"
             ).fetchone()
             signature = f"{int(signature_row['count'])}:{signature_row['updated_at']}"
-            stored = conn.execute("SELECT value FROM catalog_meta WHERE key = 'component_revisions_fts_signature'").fetchone()
+            stored = conn.execute(
+                "SELECT value FROM catalog_meta WHERE key = 'component_revisions_fts_signature'"
+            ).fetchone()
             if not stored or str(stored["value"]) != signature:
-                conn.execute("INSERT INTO component_revisions_fts(component_revisions_fts) VALUES ('rebuild')")
+                conn.execute(
+                    "INSERT INTO component_revisions_fts(component_revisions_fts) VALUES ('rebuild')"
+                )
                 conn.execute(
                     """
                     INSERT INTO catalog_meta(key, value)
@@ -679,7 +726,10 @@ class ComponentCatalogService:
             self._fts_available = True
         except sqlite3.OperationalError as exc:
             self._fts_available = False
-            logger.warning("SQLite FTS5 is unavailable; falling back to LIKE catalog search: %s", exc)
+            logger.warning(
+                "SQLite FTS5 is unavailable; falling back to LIKE catalog search: %s",
+                exc,
+            )
 
     def _migrate_workflow_stages(self, conn: sqlite3.Connection) -> None:
         for old_stage, new_stage in LEGACY_WORKFLOW_STAGE_MAP.items():
@@ -698,7 +748,9 @@ class ComponentCatalogService:
             "/usr/bin/kicad-cli",
             "/usr/local/bin/kicad-cli",
             "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli",
-            os.path.expanduser("~/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"),
+            os.path.expanduser(
+                "~/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
+            ),
         )
         for candidate in candidates:
             if candidate and Path(candidate).exists():
@@ -711,11 +763,17 @@ class ComponentCatalogService:
         if not cli:
             return False, "kicad-cli is not available in the backend runtime"
         try:
-            result = subprocess.run([cli, *args], capture_output=True, text=True, timeout=60, check=False)
+            result = subprocess.run(
+                [cli, *args], capture_output=True, text=True, timeout=60, check=False
+            )
         except subprocess.TimeoutExpired:
             return False, "kicad-cli timed out after 60 seconds"
         if result.returncode != 0:
-            return False, (result.stderr or result.stdout or f"kicad-cli exited with code {result.returncode}").strip()
+            return False, (
+                result.stderr
+                or result.stdout
+                or f"kicad-cli exited with code {result.returncode}"
+            ).strip()
         return True, ""
 
     def _preview_output_path(self, asset_id: str, kind: str) -> Path:
@@ -770,9 +828,13 @@ class ComponentCatalogService:
         normalized = {
             "value": str(payload.get("value") or "").strip(),
             "description": str(payload.get("description") or "").strip(),
-            "datasheet_url": str(payload.get("datasheet_url") or payload.get("datasheet") or "").strip(),
+            "datasheet_url": str(
+                payload.get("datasheet_url") or payload.get("datasheet") or ""
+            ).strip(),
             "manufacturer": str(payload.get("manufacturer") or "").strip(),
-            "mpn": str(payload.get("mpn") or payload.get("manufacturer_part_number") or "").strip(),
+            "mpn": str(
+                payload.get("mpn") or payload.get("manufacturer_part_number") or ""
+            ).strip(),
             "category": str(payload.get("category") or "").strip(),
             "package_name": str(payload.get("package_name") or "").strip(),
             "vendor": str(payload.get("vendor") or "").strip(),
@@ -782,7 +844,9 @@ class ComponentCatalogService:
             "rqjc_top_c_w": str(payload.get("rqjc_top_c_w") or "").strip(),
             "temp_max_c": str(payload.get("temp_max_c") or "").strip(),
             "temp_min_c": str(payload.get("temp_min_c") or "").strip(),
-            "power_dissipation_w": str(payload.get("power_dissipation_w") or "").strip(),
+            "power_dissipation_w": str(
+                payload.get("power_dissipation_w") or ""
+            ).strip(),
             "rate": str(payload.get("rate") or "").strip(),
             "sap_code": str(payload.get("sap_code") or "").strip(),
         }
@@ -797,17 +861,27 @@ class ComponentCatalogService:
         slug = _slugify(base or "component")
         candidate = slug
         counter = 2
-        while conn.execute("SELECT 1 FROM components WHERE slug = ?", (candidate,)).fetchone():
+        while conn.execute(
+            "SELECT 1 FROM components WHERE slug = ?", (candidate,)
+        ).fetchone():
             candidate = f"{slug}-{counter}"
             counter += 1
         return candidate
 
-    def _component_row(self, conn: sqlite3.Connection, component_id: str) -> dict[str, Any] | None:
-        row = conn.execute("SELECT * FROM components WHERE id = ?", (component_id,)).fetchone()
+    def _component_row(
+        self, conn: sqlite3.Connection, component_id: str
+    ) -> dict[str, Any] | None:
+        row = conn.execute(
+            "SELECT * FROM components WHERE id = ?", (component_id,)
+        ).fetchone()
         return dict(row) if row else None
 
-    def _revision_row(self, conn: sqlite3.Connection, revision_id: str) -> dict[str, Any] | None:
-        row = conn.execute("SELECT * FROM component_revisions WHERE id = ?", (revision_id,)).fetchone()
+    def _revision_row(
+        self, conn: sqlite3.Connection, revision_id: str
+    ) -> dict[str, Any] | None:
+        row = conn.execute(
+            "SELECT * FROM component_revisions WHERE id = ?", (revision_id,)
+        ).fetchone()
         return dict(row) if row else None
 
     def _active_revision_row(
@@ -820,25 +894,36 @@ class ComponentCatalogService:
         component = self._component_row(conn, component_id)
         if not component:
             return None, None
-        revision_id = component["released_revision_id"] if released else component["current_revision_id"]
+        revision_id = (
+            component["released_revision_id"]
+            if released
+            else component["current_revision_id"]
+        )
         if not revision_id:
             return component, None
         return component, self._revision_row(conn, str(revision_id))
 
-    def _clone_revision(self, conn: sqlite3.Connection, component_id: str) -> dict[str, Any]:
-        component, current = self._active_revision_row(conn, component_id, released=False)
+    def _clone_revision(
+        self, conn: sqlite3.Connection, component_id: str
+    ) -> dict[str, Any]:
+        component, current = self._active_revision_row(
+            conn, component_id, released=False
+        )
         if not component or not current:
             raise ValueError("Component not found")
         if _normalize_workflow_stage(str(current["release_status"])) == "open":
             return current
 
         now = _utc_now_iso()
-        next_version = int(
-            conn.execute(
-                "SELECT COALESCE(MAX(version), 0) AS max_version FROM component_revisions WHERE component_id = ?",
-                (component_id,),
-            ).fetchone()["max_version"]
-        ) + 1
+        next_version = (
+            int(
+                conn.execute(
+                    "SELECT COALESCE(MAX(version), 0) AS max_version FROM component_revisions WHERE component_id = ?",
+                    (component_id,),
+                ).fetchone()["max_version"]
+            )
+            + 1
+        )
         revision_id = str(uuid.uuid4())
         conn.execute(
             """
@@ -873,7 +958,9 @@ class ComponentCatalogService:
         )
         return self._revision_row(conn, revision_id) or {}
 
-    def _load_assets_for_revision(self, conn: sqlite3.Connection, revision_id: str) -> list[dict[str, Any]]:
+    def _load_assets_for_revision(
+        self, conn: sqlite3.Connection, revision_id: str
+    ) -> list[dict[str, Any]]:
         rows = conn.execute(
             """
             SELECT a.*, ra.required
@@ -892,26 +979,36 @@ class ComponentCatalogService:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def _load_previews_for_assets(self, conn: sqlite3.Connection, asset_ids: list[str]) -> list[dict[str, Any]]:
+    def _load_previews_for_assets(
+        self, conn: sqlite3.Connection, asset_ids: list[str]
+    ) -> list[dict[str, Any]]:
         if not asset_ids:
             return []
         placeholders = ",".join("?" for _ in asset_ids)
         rows = conn.execute(
-            f"SELECT * FROM asset_previews WHERE asset_id IN ({placeholders}) ORDER BY kind, updated_at DESC",
+            f"SELECT * FROM asset_previews WHERE asset_id IN ({placeholders}) ORDER BY kind, updated_at DESC",  # noqa: S608  # nosec B608 â€” placeholders are "?" * len(asset_ids), no user input in SQL structure
             tuple(asset_ids),
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def _availability(self, assets: list[dict[str, Any]], release_status: str, is_active: bool) -> tuple[str, list[str], bool]:
+    def _availability(
+        self, assets: list[dict[str, Any]], release_status: str, is_active: bool
+    ) -> tuple[str, list[str], bool]:
         asset_types = {str(asset["asset_type"]) for asset in assets}
-        missing = [asset_type for asset_type in PLACE_REQUIRED_ASSET_TYPES if asset_type not in asset_types]
+        missing = [
+            asset_type
+            for asset_type in PLACE_REQUIRED_ASSET_TYPES
+            if asset_type not in asset_types
+        ]
         if missing and len(missing) == len(PLACE_REQUIRED_ASSET_TYPES):
             state = STATE_METADATA_ONLY
         elif missing:
             state = STATE_FILES_PARTIAL
         else:
             state = STATE_PLACE_READY
-        place_enabled = is_active and not missing and _release_allows_remote(release_status)
+        place_enabled = (
+            is_active and not missing and _release_allows_remote(release_status)
+        )
         return state, missing, place_enabled
 
     def _component_payload(
@@ -924,14 +1021,26 @@ class ComponentCatalogService:
         preloaded_assets: list[dict[str, Any]] | None = None,
         preloaded_previews: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        assets = preloaded_assets if preloaded_assets is not None else self._load_assets_for_revision(conn, str(revision_row["id"]))
-        previews = preloaded_previews if preloaded_previews is not None else self._load_previews_for_assets(conn, [str(asset["id"]) for asset in assets])
+        assets = (
+            preloaded_assets
+            if preloaded_assets is not None
+            else self._load_assets_for_revision(conn, str(revision_row["id"]))
+        )
+        previews = (
+            preloaded_previews
+            if preloaded_previews is not None
+            else self._load_previews_for_assets(
+                conn, [str(asset["id"]) for asset in assets]
+            )
+        )
         availability_state, missing_assets, place_enabled = self._availability(
             assets,
             str(revision_row["release_status"]),
             bool(component_row["is_active"]),
         )
-        symbol_asset = next((asset for asset in assets if asset["asset_type"] == "symbol"), None)
+        symbol_asset = next(
+            (asset for asset in assets if asset["asset_type"] == "symbol"), None
+        )
         preview_payloads = [
             {
                 "id": str(preview["id"]),
@@ -950,9 +1059,13 @@ class ComponentCatalogService:
             "slug": str(component_row["slug"]),
             "external_source": str(component_row["external_source"]),
             "external_id": str(component_row["external_id"]),
-            "external_workflow_source": str(component_row.get("external_workflow_source", "")),
+            "external_workflow_source": str(
+                component_row.get("external_workflow_source", "")
+            ),
             "external_workflow_id": str(component_row.get("external_workflow_id", "")),
-            "external_workflow_url": str(component_row.get("external_workflow_url", "")),
+            "external_workflow_url": str(
+                component_row.get("external_workflow_url", "")
+            ),
             "source": str(component_row["source"]),
             "name": str(revision_row["name"]),
             "value": str(revision_row["value"]),
@@ -989,8 +1102,12 @@ class ComponentCatalogService:
             "summary": str(revision_row["summary"]),
             "library_name": str(symbol_asset["target_library"]) if symbol_asset else "",
             "symbol_name": str(symbol_asset["target_name"]) if symbol_asset else "",
-            "release_status": _normalize_workflow_stage(str(revision_row["release_status"])),
-            "workflow_stage": _normalize_workflow_stage(str(revision_row["release_status"])),
+            "release_status": _normalize_workflow_stage(
+                str(revision_row["release_status"])
+            ),
+            "workflow_stage": _normalize_workflow_stage(
+                str(revision_row["release_status"])
+            ),
             "released_view": released_view,
             "assets": [
                 {
@@ -1020,7 +1137,9 @@ class ComponentCatalogService:
             str(revision_row["release_status"]),
             bool(component_row["is_active"]),
         )
-        symbol_asset = next((asset for asset in assets if asset["asset_type"] == "symbol"), None)
+        symbol_asset = next(
+            (asset for asset in assets if asset["asset_type"] == "symbol"), None
+        )
         return {
             "id": str(component_row["id"]),
             "slug": str(component_row["slug"]),
@@ -1041,8 +1160,12 @@ class ComponentCatalogService:
             "stock_quantity": float(component_row["stock_quantity"]),
             "stock_uom": str(component_row["stock_uom"]),
             "inventory_status": str(component_row["inventory_status"]),
-            "release_status": _normalize_workflow_stage(str(revision_row["release_status"])),
-            "workflow_stage": _normalize_workflow_stage(str(revision_row["release_status"])),
+            "release_status": _normalize_workflow_stage(
+                str(revision_row["release_status"])
+            ),
+            "workflow_stage": _normalize_workflow_stage(
+                str(revision_row["release_status"])
+            ),
             "released_view": released_view,
             "revision_id": str(revision_row["id"]),
             "assets": [],
@@ -1068,7 +1191,9 @@ class ComponentCatalogService:
         self.initialize()
         offset = (page - 1) * page_size
         revision_ref = "rr" if released_only else "cr"
-        revision_join_column = "released_revision_id" if released_only else "current_revision_id"
+        revision_join_column = (
+            "released_revision_id" if released_only else "current_revision_id"
+        )
         filters: list[str] = []
         params: list[Any] = []
 
@@ -1088,11 +1213,11 @@ class ComponentCatalogService:
             params.append(normalized_workflow_stage)
         if availability_state:
             symbol_exists = (
-                f"EXISTS (SELECT 1 FROM revision_assets ra_symbol "
+                f"EXISTS (SELECT 1 FROM revision_assets ra_symbol "  # noqa: S608  # nosec B608 â€” revision_ref is "rr"/"cr", a hard-coded internal alias
                 f"WHERE ra_symbol.revision_id = {revision_ref}.id AND ra_symbol.asset_type = 'symbol')"
             )
             footprint_exists = (
-                f"EXISTS (SELECT 1 FROM revision_assets ra_footprint "
+                f"EXISTS (SELECT 1 FROM revision_assets ra_footprint "  # noqa: S608  # nosec B608 â€” same
                 f"WHERE ra_footprint.revision_id = {revision_ref}.id AND ra_footprint.asset_type = 'footprint')"
             )
             if availability_state == STATE_PLACE_READY:
@@ -1107,10 +1232,12 @@ class ComponentCatalogService:
             filters.append("c.released_revision_id <> ''")
             filters.append("rr.release_status = 'released'")
         query_text = query.strip()
-        fts_query = self._fts_query(query_text) if query_text and self._fts_available else ""
+        fts_query = (
+            self._fts_query(query_text) if query_text and self._fts_available else ""
+        )
         if fts_query:
             filters.append(
-                f"{revision_ref}.rowid IN ("
+                f"{revision_ref}.rowid IN ("  # noqa: S608  # nosec B608 â€” revision_ref is a hard-coded internal alias; FTS query is parameterised with ?
                 "SELECT rowid FROM component_revisions_fts "
                 "WHERE component_revisions_fts MATCH ?"
                 ")"
@@ -1133,11 +1260,11 @@ class ComponentCatalogService:
         sort_column = sort_columns.get(sort_by)
         if sort_by == "availability_state":
             symbol_exists = (
-                f"EXISTS (SELECT 1 FROM revision_assets ra_symbol_sort "
+                f"EXISTS (SELECT 1 FROM revision_assets ra_symbol_sort "  # noqa: S608  # nosec B608 â€” revision_ref is a hard-coded internal alias
                 f"WHERE ra_symbol_sort.revision_id = {revision_ref}.id AND ra_symbol_sort.asset_type = 'symbol')"
             )
             footprint_exists = (
-                f"EXISTS (SELECT 1 FROM revision_assets ra_footprint_sort "
+                f"EXISTS (SELECT 1 FROM revision_assets ra_footprint_sort "  # noqa: S608  # nosec B608 â€” same
                 f"WHERE ra_footprint_sort.revision_id = {revision_ref}.id AND ra_footprint_sort.asset_type = 'footprint')"
             )
             sort_column = f"CASE WHEN {symbol_exists} AND {footprint_exists} THEN 0 WHEN ({symbol_exists}) <> ({footprint_exists}) THEN 1 ELSE 2 END"
@@ -1159,26 +1286,21 @@ class ComponentCatalogService:
             order_params = []
 
         with self._connect() as conn:
-            total = int(
-                conn.execute(
-                    f"""
-                    SELECT COUNT(1) AS total
-                    FROM components c
-                    JOIN component_revisions {revision_ref} ON {revision_ref}.id = c.{revision_join_column}
-                    {where_sql}
-                    """,
-                    tuple(params),
-                ).fetchone()["total"]
+            # revision_ref/revision_join_column are hard-coded internal aliases ("rr"/"cr");
+            # where_sql/order_sql are built from an allowlisted set of column names with ? params.
+            count_sql = (
+                f"SELECT COUNT(1) AS total FROM components c "  # noqa: S608  # nosec B608 â€” revision_ref/revision_join_column are hard-coded internal aliases; where_sql from allowlisted filters with ? params
+                f"JOIN component_revisions {revision_ref} ON {revision_ref}.id = c.{revision_join_column} "
+                f"{where_sql}"
+            )
+            total = int(conn.execute(count_sql, tuple(params)).fetchone()["total"])
+            select_sql = (
+                f"SELECT c.*, {revision_ref}.id AS revision_id FROM components c "  # noqa: S608  # nosec B608 â€” same
+                f"JOIN component_revisions {revision_ref} ON {revision_ref}.id = c.{revision_join_column} "
+                f"{where_sql} {order_sql} LIMIT ? OFFSET ?"
             )
             rows = conn.execute(
-                f"""
-                SELECT c.*, {revision_ref}.id AS revision_id
-                FROM components c
-                JOIN component_revisions {revision_ref} ON {revision_ref}.id = c.{revision_join_column}
-                {where_sql}
-                {order_sql}
-                LIMIT ? OFFSET ?
-                """,
+                select_sql,
                 tuple(params + order_params + [page_size, offset]),
             ).fetchall()
             row_pairs: list[tuple[dict[str, Any], str]] = []
@@ -1192,10 +1314,12 @@ class ComponentCatalogService:
             if revision_ids:
                 placeholders = ",".join("?" for _ in revision_ids)
                 revision_rows = conn.execute(
-                    f"SELECT * FROM component_revisions WHERE id IN ({placeholders})",
+                    f"SELECT * FROM component_revisions WHERE id IN ({placeholders})",  # noqa: S608  # nosec B608 â€” placeholders are "?" * len(revision_ids)
                     tuple(revision_ids),
                 ).fetchall()
-                revisions_by_id = {str(revision["id"]): dict(revision) for revision in revision_rows}
+                revisions_by_id = {
+                    str(revision["id"]): dict(revision) for revision in revision_rows
+                }
 
             parsed_rows = []
             for component_row, revision_id in row_pairs:
@@ -1208,18 +1332,19 @@ class ComponentCatalogService:
             all_asset_ids: list[str] = []
             if revision_ids:
                 placeholders = ",".join("?" for _ in revision_ids)
+                assets_sql = (
+                    f"SELECT a.*, ra.required, ra.revision_id FROM revision_assets ra "  # noqa: S608  # nosec B608 â€” placeholders are "?" * len(revision_ids)
+                    f"JOIN assets a ON a.id = ra.asset_id "
+                    f"WHERE ra.revision_id IN ({placeholders}) "
+                    "ORDER BY CASE a.asset_type "
+                    "WHEN 'symbol' THEN 1 WHEN 'footprint' THEN 2 "
+                    "WHEN '3dmodel' THEN 3 WHEN 'spice' THEN 4 ELSE 99 "
+                    "END, a.target_library, a.target_name"
+                )
                 all_assets_rows = [
-                    dict(r) for r in conn.execute(
-                        f"""
-                        SELECT a.*, ra.required, ra.revision_id
-                        FROM revision_assets ra
-                        JOIN assets a ON a.id = ra.asset_id
-                        WHERE ra.revision_id IN ({placeholders})
-                        ORDER BY CASE a.asset_type
-                            WHEN 'symbol' THEN 1 WHEN 'footprint' THEN 2
-                            WHEN '3dmodel' THEN 3 WHEN 'spice' THEN 4 ELSE 99
-                        END, a.target_library, a.target_name
-                        """,
+                    dict(r)
+                    for r in conn.execute(
+                        assets_sql,
                         tuple(revision_ids),
                     ).fetchall()
                 ]
@@ -1231,7 +1356,9 @@ class ComponentCatalogService:
             previews_by_asset: dict[str, list[dict[str, Any]]] = {}
             if not lightweight:
                 for preview_row in self._load_previews_for_assets(conn, all_asset_ids):
-                    previews_by_asset.setdefault(str(preview_row["asset_id"]), []).append(preview_row)
+                    previews_by_asset.setdefault(
+                        str(preview_row["asset_id"]), []
+                    ).append(preview_row)
 
             items = []
             for component_row, revision_row in parsed_rows:
@@ -1261,7 +1388,13 @@ class ComponentCatalogService:
                 )
 
         pages = max(1, (total + page_size - 1) // page_size)
-        return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": pages,
+        }
 
     def list_components_flat(self, **kwargs: Any) -> list[dict[str, Any]]:
         return self.list_components(page=1, page_size=10000, **kwargs)["items"]
@@ -1283,9 +1416,16 @@ class ComponentCatalogService:
             stage = _normalize_workflow_stage(str(row["workflow_stage"]))
             if stage in counts:
                 counts[stage] += int(row["count"])
-        return {"stages": [{"workflow_stage": stage, "count": counts[stage]} for stage in WORKFLOW_STAGES]}
+        return {
+            "stages": [
+                {"workflow_stage": stage, "count": counts[stage]}
+                for stage in WORKFLOW_STAGES
+            ]
+        }
 
-    def search_components(self, query: str, *, page: int = 1, page_size: int = 50) -> dict[str, Any]:
+    def search_components(
+        self, query: str, *, page: int = 1, page_size: int = 50
+    ) -> dict[str, Any]:
         return self.list_components(
             query=query,
             include_inactive=False,
@@ -1298,7 +1438,10 @@ class ComponentCatalogService:
     def list_categories(self) -> list[dict[str, Any]]:
         self.initialize()
         now = time.monotonic()
-        if self._category_cache is not None and (now - self._category_cache_ts) < self._CATEGORY_CACHE_TTL:
+        if (
+            self._category_cache is not None
+            and (now - self._category_cache_ts) < self._CATEGORY_CACHE_TTL
+        ):
             return self._category_cache
         with self._connect() as conn:
             rows = conn.execute(
@@ -1311,22 +1454,38 @@ class ComponentCatalogService:
                 ORDER BY rr.category
                 """
             ).fetchall()
-        result = [{"name": str(row["name"] or ""), "count": int(row["count"])} for row in rows]
+        result = [
+            {"name": str(row["name"] or ""), "count": int(row["count"])} for row in rows
+        ]
         self._category_cache = result
         self._category_cache_ts = now
         return result
 
-    def get_component(self, component_id: str, *, include_inactive: bool = True, released_only: bool = False) -> dict[str, Any] | None:
+    def get_component(
+        self,
+        component_id: str,
+        *,
+        include_inactive: bool = True,
+        released_only: bool = False,
+    ) -> dict[str, Any] | None:
         self.initialize()
         with self._connect() as conn:
-            component, revision = self._active_revision_row(conn, component_id, released=released_only)
+            component, revision = self._active_revision_row(
+                conn, component_id, released=released_only
+            )
             if not component or not revision:
                 return None
             if not include_inactive and not component["is_active"]:
                 return None
-            if released_only and _normalize_workflow_stage(str(revision["release_status"])) != "released":
+            if (
+                released_only
+                and _normalize_workflow_stage(str(revision["release_status"]))
+                != "released"
+            ):
                 return None
-            return self._component_payload(conn, component, revision, released_view=released_only)
+            return self._component_payload(
+                conn, component, revision, released_view=released_only
+            )
 
     def create_manual_component(self, **payload: Any) -> dict[str, Any]:
         self.initialize()
@@ -1334,7 +1493,13 @@ class ComponentCatalogService:
         now = _utc_now_iso()
         component_id = str(uuid.uuid4())
         with self._connect() as conn:
-            self._upsert_component_metadata_row(conn, component_id=component_id, metadata=metadata, now=now, existing_component_id=None)
+            self._upsert_component_metadata_row(
+                conn,
+                component_id=component_id,
+                metadata=metadata,
+                now=now,
+                existing_component_id=None,
+            )
             conn.commit()
         return self.get_component(component_id) or {}
 
@@ -1385,7 +1550,10 @@ class ComponentCatalogService:
                     revision["id"],
                 ),
             )
-            conn.execute("UPDATE components SET updated_at = ? WHERE id = ?", (now, existing_component_id))
+            conn.execute(
+                "UPDATE components SET updated_at = ? WHERE id = ?",
+                (now, existing_component_id),
+            )
             return existing_component_id, str(revision["id"])
 
         slug = self._unique_slug(conn, metadata["mpn"] or metadata["value"])
@@ -1444,7 +1612,9 @@ class ComponentCatalogService:
         )
         return component_id, revision_id
 
-    def update_component_metadata(self, component_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+    def update_component_metadata(
+        self, component_id: str, updates: dict[str, Any]
+    ) -> dict[str, Any] | None:
         self.initialize()
         with self._connect() as conn:
             component = self._component_row(conn, component_id)
@@ -1476,15 +1646,26 @@ class ComponentCatalogService:
                     merged[column] = str(updates[key] or "")
             metadata = self._normalize_metadata(merged)
             now = _utc_now_iso()
-            self._upsert_component_metadata_row(conn, component_id=component_id, metadata=metadata, now=now, existing_component_id=component_id)
+            self._upsert_component_metadata_row(
+                conn,
+                component_id=component_id,
+                metadata=metadata,
+                now=now,
+                existing_component_id=component_id,
+            )
             conn.commit()
         return self.get_component(component_id)
 
     def _normalize_csv_row(self, row: dict[str, str], row_index: int) -> dict[str, str]:
-        normalized = {(_slugify(key, key).replace("-", "_")): (value or "").strip() for key, value in row.items()}
+        normalized = {
+            (_slugify(key, key).replace("-", "_")): (value or "").strip()
+            for key, value in row.items()
+        }
         for required in CSV_REQUIRED_COLUMNS:
             if not normalized.get(required, "").strip():
-                raise ValueError(f"Row {row_index}: missing required column '{required}'")
+                raise ValueError(
+                    f"Row {row_index}: missing required column '{required}'"
+                )
         return normalized
 
     def import_metadata_csv(self, file_content: str) -> dict[str, Any]:
@@ -1497,7 +1678,11 @@ class ComponentCatalogService:
         errors: list[str] = []
         for index, row in enumerate(reader, start=2):
             try:
-                rows.append(self._normalize_csv_row({str(k): str(v or "") for k, v in row.items()}, index))
+                rows.append(
+                    self._normalize_csv_row(
+                        {str(k): str(v or "") for k, v in row.items()}, index
+                    )
+                )
             except ValueError as exc:
                 errors.append(str(exc))
         if errors:
@@ -1521,9 +1706,23 @@ class ComponentCatalogService:
                 ).fetchone()
                 asset_links = []
                 if row.get("symbol_file_path"):
-                    asset_links.append(("symbol", row["symbol_file_path"], row.get("symbol_target_library", ""), row.get("symbol_target_name", "")))
+                    asset_links.append(
+                        (
+                            "symbol",
+                            row["symbol_file_path"],
+                            row.get("symbol_target_library", ""),
+                            row.get("symbol_target_name", ""),
+                        )
+                    )
                 if row.get("footprint_file_path"):
-                    asset_links.append(("footprint", row["footprint_file_path"], row.get("footprint_target_library", ""), row.get("footprint_target_name", "")))
+                    asset_links.append(
+                        (
+                            "footprint",
+                            row["footprint_file_path"],
+                            row.get("footprint_target_library", ""),
+                            row.get("footprint_target_name", ""),
+                        )
+                    )
                 if row.get("model_3d_file_path"):
                     asset_links.append(("3dmodel", row["model_3d_file_path"], "", ""))
                 if row.get("spice_file_path"):
@@ -1577,7 +1776,12 @@ class ComponentCatalogService:
                         target_library=target_library,
                         target_name=target_name,
                     )
-                    self._link_asset_to_revision(conn, revision_id, asset, required=asset_type in PLACE_REQUIRED_ASSET_TYPES)
+                    self._link_asset_to_revision(
+                        conn,
+                        revision_id,
+                        asset,
+                        required=asset_type in PLACE_REQUIRED_ASSET_TYPES,
+                    )
             conn.commit()
         return {"created": created, "updated": updated, "errors": []}
 
@@ -1591,7 +1795,9 @@ class ComponentCatalogService:
         errors: list[str] = []
         with self._connect() as conn:
             for index, row in enumerate(reader, start=2):
-                mpn = str(row.get("manufacturer_part_number") or row.get("mpn") or "").strip()
+                mpn = str(
+                    row.get("manufacturer_part_number") or row.get("mpn") or ""
+                ).strip()
                 if not mpn:
                     errors.append(f"Row {index}: missing manufacturer_part_number")
                     continue
@@ -1643,9 +1849,13 @@ class ComponentCatalogService:
             paths = [*root.rglob("*.step"), *root.rglob("*.stp")]
         else:
             paths = root.rglob("*")
-        return sorted(path.relative_to(root).as_posix() for path in paths if path.is_file())
+        return sorted(
+            path.relative_to(root).as_posix() for path in paths if path.is_file()
+        )
 
-    def _resolve_component_for_edit(self, conn: sqlite3.Connection, component_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    def _resolve_component_for_edit(
+        self, conn: sqlite3.Connection, component_id: str
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         component = self._component_row(conn, component_id)
         if not component:
             raise ValueError("Component not found")
@@ -1728,7 +1938,7 @@ class ComponentCatalogService:
         unit_blocks = [b for n, b in blocks if unit_pattern.match(n)]
         all_blocks_text = "\n  ".join([base_block] + unit_blocks)
         version, generator = self._symbol_header(text)
-        return f"(kicad_symbol_lib (version {version}) (generator {generator})\n  {all_blocks_text}\n)\n".encode("utf-8")
+        return f"(kicad_symbol_lib (version {version}) (generator {generator})\n  {all_blocks_text}\n)\n".encode()
 
     def _write_canonical_file(self, destination: Path, payload: bytes) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1748,14 +1958,27 @@ class ComponentCatalogService:
     def _footprint_destination(self, target_library: str, target_name: str) -> Path:
         safe_library = _sanitize_name(target_library, "Prism_Footprints")
         safe_name = _sanitize_name(target_name, "footprint")
-        return self._store_root / "footprints" / f"{safe_library}.pretty" / f"{safe_name}.kicad_mod"
+        return (
+            self._store_root
+            / "footprints"
+            / f"{safe_library}.pretty"
+            / f"{safe_name}.kicad_mod"
+        )
 
-    def _aux_destination(self, asset_type: str, target_library: str, upload_name: str) -> Path:
+    def _aux_destination(
+        self, asset_type: str, target_library: str, upload_name: str
+    ) -> Path:
         safe_library = _sanitize_name(target_library, "Prism_Assets")
         safe_name = _sanitize_name(Path(upload_name).name, f"{asset_type}.bin")
         return self._asset_root(asset_type) / safe_library / safe_name
 
-    def _asset_by_key(self, conn: sqlite3.Connection, asset_type: str, canonical_path: str, target_name: str) -> dict[str, Any] | None:
+    def _asset_by_key(
+        self,
+        conn: sqlite3.Connection,
+        asset_type: str,
+        canonical_path: str,
+        target_name: str,
+    ) -> dict[str, Any] | None:
         row = conn.execute(
             "SELECT * FROM assets WHERE asset_type = ? AND canonical_path = ? AND target_name = ?",
             (asset_type, canonical_path, target_name),
@@ -1791,11 +2014,15 @@ class ComponentCatalogService:
         source_group: str = "",
     ) -> dict[str, Any]:
         canonical_path = canonical_path.resolve()
-        existing = self._asset_by_key(conn, asset_type, str(canonical_path), target_name)
+        existing = self._asset_by_key(
+            conn, asset_type, str(canonical_path), target_name
+        )
         if existing:
             return existing
         sha256 = _sha256_file(canonical_path)
-        same_content = self._asset_by_signature(conn, asset_type, sha256, target_library, target_name)
+        same_content = self._asset_by_signature(
+            conn, asset_type, sha256, target_library, target_name
+        )
         if same_content:
             return same_content
         now = _utc_now_iso()
@@ -1856,13 +2083,31 @@ class ComponentCatalogService:
             INSERT INTO asset_previews (id, asset_id, kind, status, content_type, file_path, generation_error, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'image/svg+xml', ?, ?, ?, ?)
             """,
-            (str(uuid.uuid4()), asset_id, kind, status, file_path, generation_error, now, now),
+            (
+                str(uuid.uuid4()),
+                asset_id,
+                kind,
+                status,
+                file_path,
+                generation_error,
+                now,
+                now,
+            ),
         )
 
     def _generate_symbol_preview(self, asset: dict[str, Any]) -> tuple[str, str]:
         with tempfile.TemporaryDirectory(prefix="prism_symsvg_") as tmp_dir:
             success, error = self._run_kicad_cli(
-                ["sym", "export", "svg", str(asset["canonical_path"]), "--output", tmp_dir, "--symbol", str(asset["target_name"])]
+                [
+                    "sym",
+                    "export",
+                    "svg",
+                    str(asset["canonical_path"]),
+                    "--output",
+                    tmp_dir,
+                    "--symbol",
+                    str(asset["target_name"]),
+                ]
             )
             if not success:
                 return PREVIEW_STATUS_FAILED, error
@@ -1870,9 +2115,14 @@ class ComponentCatalogService:
             if not expected.is_file():
                 candidates = sorted(Path(tmp_dir).glob("*.svg"))
                 if not candidates:
-                    return PREVIEW_STATUS_FAILED, "symbol preview export did not produce an SVG"
+                    return (
+                        PREVIEW_STATUS_FAILED,
+                        "symbol preview export did not produce an SVG",
+                    )
                 expected = candidates[0]
-            destination = self._preview_output_path(str(asset["id"]), PREVIEW_KIND_SYMBOL)
+            destination = self._preview_output_path(
+                str(asset["id"]), PREVIEW_KIND_SYMBOL
+            )
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(expected, destination)
             return PREVIEW_STATUS_READY, str(destination)
@@ -1883,10 +2133,22 @@ class ComponentCatalogService:
             target_name = str(asset["target_name"])
             isolated_library = Path(tmp_dir) / "isolated.pretty"
             isolated_library.mkdir(parents=True, exist_ok=True)
-            isolated_footprint = isolated_library / f"{_sanitize_name(target_name, footprint_source.stem)}.kicad_mod"
+            isolated_footprint = (
+                isolated_library
+                / f"{_sanitize_name(target_name, footprint_source.stem)}.kicad_mod"
+            )
             shutil.copy2(footprint_source, isolated_footprint)
             success, error = self._run_kicad_cli(
-                ["fp", "export", "svg", "--output", tmp_dir, "--footprint", target_name, str(isolated_library)]
+                [
+                    "fp",
+                    "export",
+                    "svg",
+                    "--output",
+                    tmp_dir,
+                    "--footprint",
+                    target_name,
+                    str(isolated_library),
+                ]
             )
             if not success:
                 return PREVIEW_STATUS_FAILED, error
@@ -1894,14 +2156,21 @@ class ComponentCatalogService:
             if not expected.is_file():
                 candidates = sorted(Path(tmp_dir).glob("*.svg"))
                 if not candidates:
-                    return PREVIEW_STATUS_FAILED, "footprint preview export did not produce an SVG"
+                    return (
+                        PREVIEW_STATUS_FAILED,
+                        "footprint preview export did not produce an SVG",
+                    )
                 expected = candidates[0]
-            destination = self._preview_output_path(str(asset["id"]), PREVIEW_KIND_FOOTPRINT)
+            destination = self._preview_output_path(
+                str(asset["id"]), PREVIEW_KIND_FOOTPRINT
+            )
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(expected, destination)
             return PREVIEW_STATUS_READY, str(destination)
 
-    def _ensure_asset_preview(self, conn: sqlite3.Connection, asset: dict[str, Any]) -> None:
+    def _ensure_asset_preview(
+        self, conn: sqlite3.Connection, asset: dict[str, Any]
+    ) -> None:
         asset_type = str(asset["asset_type"])
         if asset_type == "symbol":
             status, result = self._generate_symbol_preview(asset)
@@ -1924,7 +2193,14 @@ class ComponentCatalogService:
                 generation_error="" if status == PREVIEW_STATUS_READY else result,
             )
 
-    def _link_asset_to_revision(self, conn: sqlite3.Connection, revision_id: str, asset: dict[str, Any], *, required: bool) -> None:
+    def _link_asset_to_revision(
+        self,
+        conn: sqlite3.Connection,
+        revision_id: str,
+        asset: dict[str, Any],
+        *,
+        required: bool,
+    ) -> None:
         now = _utc_now_iso()
         conn.execute(
             """
@@ -1933,7 +2209,14 @@ class ComponentCatalogService:
             ON CONFLICT (revision_id, asset_type)
             DO UPDATE SET asset_id = excluded.asset_id, required = excluded.required, updated_at = excluded.updated_at
             """,
-            (revision_id, asset["asset_type"], asset["id"], 1 if required else 0, now, now),
+            (
+                revision_id,
+                asset["asset_type"],
+                asset["id"],
+                1 if required else 0,
+                now,
+                now,
+            ),
         )
 
     def _resolve_existing_asset(
@@ -1952,26 +2235,38 @@ class ComponentCatalogService:
         try:
             path.relative_to(self._store_root)
         except ValueError as exc:
-            raise ValueError("Linked asset must already live inside the Prism canonical store") from exc
+            raise ValueError(
+                "Linked asset must already live inside the Prism canonical store"
+            ) from exc
 
         if asset_type == "symbol":
             text = path.read_text(encoding="utf-8", errors="ignore")
             discovered = _discover_symbol_names_in_text(text)
             if not target_name:
                 if len(discovered) != 1:
-                    raise ValueError("Symbol file contains multiple symbols; target_name is required")
+                    raise ValueError(
+                        "Symbol file contains multiple symbols; target_name is required"
+                    )
                 target_name = discovered[0]
             if not target_library:
                 target_library = path.parent.name
             if len(discovered) != 1 or discovered[0] != target_name:
                 payload = self._single_symbol_payload(text, target_name)
-                canonical = self._write_canonical_file(self._symbol_destination(target_library, target_name), payload)
+                canonical = self._write_canonical_file(
+                    self._symbol_destination(target_library, target_name), payload
+                )
             else:
                 canonical = path
         elif asset_type == "footprint":
             if path.suffix.lower() != ".kicad_mod":
                 raise ValueError("Footprint links must point to a .kicad_mod file")
-            target_name = target_name or _discover_footprint_name_in_text(path.read_text(encoding="utf-8", errors="ignore")) or path.stem
+            target_name = (
+                target_name
+                or _discover_footprint_name_in_text(
+                    path.read_text(encoding="utf-8", errors="ignore")
+                )
+                or path.stem
+            )
             target_library = target_library or path.parent.name.removesuffix(".pretty")
             canonical = path
         elif asset_type == "3dmodel":
@@ -1995,7 +2290,14 @@ class ComponentCatalogService:
         self._ensure_asset_preview(conn, asset)
         return asset
 
-    def link_library_asset(self, component_id: str, asset_type: str, file_path_rel: str, target_library: str, target_name: str) -> dict[str, Any]:
+    def link_library_asset(
+        self,
+        component_id: str,
+        asset_type: str,
+        file_path_rel: str,
+        target_library: str,
+        target_name: str,
+    ) -> dict[str, Any]:
         if asset_type not in SUPPORTED_ASSET_TYPES:
             raise ValueError("Unsupported asset type")
         self.initialize()
@@ -2008,21 +2310,42 @@ class ComponentCatalogService:
                 target_library=target_library,
                 target_name=target_name,
             )
-            self._link_asset_to_revision(conn, revision["id"], asset, required=asset_type in PLACE_REQUIRED_ASSET_TYPES)
+            self._link_asset_to_revision(
+                conn,
+                revision["id"],
+                asset,
+                required=asset_type in PLACE_REQUIRED_ASSET_TYPES,
+            )
             conn.commit()
         return {"component": self.get_component(component_id)}
 
     def _normalize_symbol_upload(self, upload_name: str, payload: bytes) -> bytes:
         with tempfile.TemporaryDirectory(prefix="prism_sym_import_") as tmp_dir:
-            input_path = Path(tmp_dir) / _sanitize_name(upload_name or "uploaded", "uploaded.kicad_sym")
+            input_path = Path(tmp_dir) / _sanitize_name(
+                upload_name or "uploaded", "uploaded.kicad_sym"
+            )
             output_path = Path(tmp_dir) / "normalized.kicad_sym"
             input_path.write_bytes(payload)
-            success, error = self._run_kicad_cli(["sym", "upgrade", "--force", "--output", str(output_path), str(input_path)])
+            success, error = self._run_kicad_cli(
+                [
+                    "sym",
+                    "upgrade",
+                    "--force",
+                    "--output",
+                    str(output_path),
+                    str(input_path),
+                ]
+            )
             if not success:
-                logger.warning("Falling back to uploaded symbol payload without kicad-cli normalization: %s", error)
+                logger.warning(
+                    "Falling back to uploaded symbol payload without kicad-cli normalization: %s",
+                    error,
+                )
                 return payload
             if not output_path.is_file():
-                raise ValueError("kicad-cli sym upgrade did not produce a normalized symbol library")
+                raise ValueError(
+                    "kicad-cli sym upgrade did not produce a normalized symbol library"
+                )
             return output_path.read_bytes()
 
     def import_symbol_library(
@@ -2044,7 +2367,10 @@ class ComponentCatalogService:
             return {"mode": "selection_required", "discovered_symbols": discovered}
         chosen = selected_symbol or discovered[0]
         canonical_payload = self._single_symbol_payload(text, chosen)
-        canonical_path = self._write_canonical_file(self._symbol_destination(target_library or "Prism_Symbols", chosen), canonical_payload)
+        canonical_path = self._write_canonical_file(
+            self._symbol_destination(target_library or "Prism_Symbols", chosen),
+            canonical_payload,
+        )
 
         with self._connect() as conn:
             _, revision = self._resolve_component_for_edit(conn, component_id)
@@ -2065,7 +2391,9 @@ class ComponentCatalogService:
             "component": self.get_component(component_id),
         }
 
-    def _extract_footprints_from_upload(self, upload_name: str, payload: bytes) -> dict[str, bytes]:
+    def _extract_footprints_from_upload(
+        self, upload_name: str, payload: bytes
+    ) -> dict[str, bytes]:
         suffix = Path(upload_name).suffix.lower()
         if suffix == ".kicad_mod":
             text = payload.decode("utf-8", errors="ignore")
@@ -2078,10 +2406,17 @@ class ComponentCatalogService:
                     if not name.lower().endswith(".kicad_mod"):
                         continue
                     content = archive.read(name)
-                    footprint_name = _discover_footprint_name_in_text(content.decode("utf-8", errors="ignore")) or Path(name).stem
+                    footprint_name = (
+                        _discover_footprint_name_in_text(
+                            content.decode("utf-8", errors="ignore")
+                        )
+                        or Path(name).stem
+                    )
                     discovered[footprint_name] = content
             return discovered
-        raise ValueError("Footprint upload must be a .kicad_mod file or a zipped .pretty library")
+        raise ValueError(
+            "Footprint upload must be a .kicad_mod file or a zipped .pretty library"
+        )
 
     def import_footprint(
         self,
@@ -2136,7 +2471,9 @@ class ComponentCatalogService:
             raise ValueError("Unsupported auxiliary asset type")
         self.initialize()
         destination = self._write_canonical_file(
-            self._aux_destination(asset_type, target_library or "Prism_Assets", upload_name),
+            self._aux_destination(
+                asset_type, target_library or "Prism_Assets", upload_name
+            ),
             payload,
         )
         with self._connect() as conn:
@@ -2158,7 +2495,10 @@ class ComponentCatalogService:
         self.initialize()
         with self._connect() as conn:
             _, revision = self._resolve_component_for_edit(conn, component_id)
-            conn.execute("DELETE FROM revision_assets WHERE revision_id = ? AND asset_type = ?", (revision["id"], asset_type))
+            conn.execute(
+                "DELETE FROM revision_assets WHERE revision_id = ? AND asset_type = ?",
+                (revision["id"], asset_type),
+            )
             conn.commit()
         return {"component": self.get_component(component_id)}
 
@@ -2183,7 +2523,9 @@ class ComponentCatalogService:
             conn.commit()
         return self.get_component(component_id) or {}
 
-    def set_release_status(self, component_id: str, release_status: str) -> dict[str, Any]:
+    def set_release_status(
+        self, component_id: str, release_status: str
+    ) -> dict[str, Any]:
         release_status = _normalize_workflow_stage(release_status)
         if release_status not in WORKFLOW_STAGES:
             raise ValueError("Unsupported release status")
@@ -2198,7 +2540,9 @@ class ComponentCatalogService:
             current_status = _normalize_workflow_stage(str(revision["release_status"]))
             if current_status == "released" and release_status == "open":
                 revision = self._clone_revision(conn, component_id)
-                current_status = _normalize_workflow_stage(str(revision["release_status"]))
+                current_status = _normalize_workflow_stage(
+                    str(revision["release_status"])
+                )
 
             allowed = {
                 "open": {"in_progress", "archived"},
@@ -2208,13 +2552,21 @@ class ComponentCatalogService:
                 "released": {"archived", "open"},
                 "archived": {"open"},
             }
-            if release_status != current_status and release_status not in allowed.get(current_status, set()):
-                raise ValueError(f"Cannot transition revision from {current_status} to {release_status}")
+            if release_status != current_status and release_status not in allowed.get(
+                current_status, set()
+            ):
+                raise ValueError(
+                    f"Cannot transition revision from {current_status} to {release_status}"
+                )
 
             assets = self._load_assets_for_revision(conn, revision["id"])
-            availability_state, missing_assets, _ = self._availability(assets, release_status, bool(component["is_active"]))
+            availability_state, missing_assets, _ = self._availability(
+                assets, release_status, bool(component["is_active"])
+            )
             if release_status == "released" and availability_state != STATE_PLACE_READY:
-                raise ValueError(f"Cannot release component while files are incomplete: missing {', '.join(missing_assets)}")
+                raise ValueError(
+                    f"Cannot release component while files are incomplete: missing {', '.join(missing_assets)}"
+                )
 
             now = _utc_now_iso()
             conn.execute(
@@ -2232,7 +2584,10 @@ class ComponentCatalogService:
                     (now, component_id),
                 )
             else:
-                conn.execute("UPDATE components SET updated_at = ? WHERE id = ?", (now, component_id))
+                conn.execute(
+                    "UPDATE components SET updated_at = ? WHERE id = ?",
+                    (now, component_id),
+                )
             conn.commit()
         return self.get_component(component_id) or {}
 
@@ -2249,15 +2604,29 @@ class ComponentCatalogService:
     def delete_component(self, component_id: str) -> bool:
         self.initialize()
         with self._connect() as conn:
-            result = conn.execute("DELETE FROM components WHERE id = ?", (component_id,))
+            result = conn.execute(
+                "DELETE FROM components WHERE id = ?", (component_id,)
+            )
             conn.commit()
             return result.rowcount > 0
 
-    def _materialize_asset(self, asset: dict[str, Any], assets_for_revision: list[dict[str, Any]], component: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _materialize_asset(
+        self,
+        asset: dict[str, Any],
+        assets_for_revision: list[dict[str, Any]],
+        component: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         path = Path(str(asset["canonical_path"]))
         payload = path.read_bytes()
         if asset["asset_type"] == "symbol":
-            footprint_asset = next((candidate for candidate in assets_for_revision if candidate["asset_type"] == "footprint"), None)
+            footprint_asset = next(
+                (
+                    candidate
+                    for candidate in assets_for_revision
+                    if candidate["asset_type"] == "footprint"
+                ),
+                None,
+            )
             footprint_ref = None
             if footprint_asset:
                 footprint_ref = f"{_remote_library_nickname(str(footprint_asset['target_library']))}:{footprint_asset['target_name']}"
@@ -2276,11 +2645,15 @@ class ComponentCatalogService:
 
     def build_manifest(self, component_id: str, base_url: str) -> dict[str, Any] | None:
         self.initialize()
-        component = self.get_component(component_id, include_inactive=False, released_only=True)
+        component = self.get_component(
+            component_id, include_inactive=False, released_only=True
+        )
         if not component:
             return None
         if not component["place_enabled"]:
-            raise ValueError("Component is not placeable because it is not released or required files are missing")
+            raise ValueError(
+                "Component is not placeable because it is not released or required files are missing"
+            )
         with self._connect() as conn:
             assets = self._load_assets_for_revision(conn, component["revision_id"])
         manifest_assets = []
@@ -2296,7 +2669,9 @@ class ComponentCatalogService:
                     "size_bytes": asset["size_bytes"],
                     "sha256": asset["sha256"],
                     "required": bool(raw_asset["required"]),
-                    "download_url": self.build_signed_asset_url(asset["id"], component["revision_id"], base_url),
+                    "download_url": self.build_signed_asset_url(
+                        asset["id"], component["revision_id"], base_url
+                    ),
                 }
             )
         return {
@@ -2311,11 +2686,15 @@ class ComponentCatalogService:
 
     def build_inline_bundle(self, component_id: str) -> dict[str, Any] | None:
         self.initialize()
-        component = self.get_component(component_id, include_inactive=False, released_only=True)
+        component = self.get_component(
+            component_id, include_inactive=False, released_only=True
+        )
         if not component:
             return None
         if not component["place_enabled"]:
-            raise ValueError("Component is not placeable because it is not released or required files are missing")
+            raise ValueError(
+                "Component is not placeable because it is not released or required files are missing"
+            )
         with self._connect() as conn:
             assets = self._load_assets_for_revision(conn, component["revision_id"])
         bundle_entries = []
@@ -2336,34 +2715,53 @@ class ComponentCatalogService:
             "library": component["library_name"],
             "symbol_name": component["symbol_name"],
             "compression": "NONE",
-            "data": base64.b64encode(json.dumps(bundle_entries, separators=(",", ":")).encode("utf-8")).decode("ascii"),
+            "data": base64.b64encode(
+                json.dumps(bundle_entries, separators=(",", ":")).encode("utf-8")
+            ).decode("ascii"),
         }
 
-    def get_asset_by_id(self, asset_id: str, *, revision_id: str = "") -> dict[str, Any] | None:
+    def get_asset_by_id(
+        self, asset_id: str, *, revision_id: str = ""
+    ) -> dict[str, Any] | None:
         self.initialize()
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM assets WHERE id = ?", (asset_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM assets WHERE id = ?", (asset_id,)
+            ).fetchone()
             if not row:
                 return None
             asset = dict(row)
             effective_revision_id = revision_id
             if not effective_revision_id:
-                link = conn.execute("SELECT revision_id FROM revision_assets WHERE asset_id = ? ORDER BY updated_at DESC LIMIT 1", (asset_id,)).fetchone()
+                link = conn.execute(
+                    "SELECT revision_id FROM revision_assets WHERE asset_id = ? ORDER BY updated_at DESC LIMIT 1",
+                    (asset_id,),
+                ).fetchone()
                 effective_revision_id = str(link["revision_id"]) if link else ""
-            assets_for_revision = self._load_assets_for_revision(conn, effective_revision_id) if effective_revision_id else [asset]
+            assets_for_revision = (
+                self._load_assets_for_revision(conn, effective_revision_id)
+                if effective_revision_id
+                else [asset]
+            )
             component = None
             if effective_revision_id:
                 revision = self._revision_row(conn, effective_revision_id)
                 if revision:
-                    component_row = self._component_row(conn, str(revision["component_id"]))
+                    component_row = self._component_row(
+                        conn, str(revision["component_id"])
+                    )
                     if component_row:
-                        component = self._component_payload(conn, component_row, revision)
+                        component = self._component_payload(
+                            conn, component_row, revision
+                        )
         return self._materialize_asset(asset, assets_for_revision, component)
 
     def get_preview(self, preview_id: str) -> CatalogPreview | None:
         self.initialize()
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM asset_previews WHERE id = ?", (preview_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM asset_previews WHERE id = ?", (preview_id,)
+            ).fetchone()
         if not row:
             return None
         return CatalogPreview(
@@ -2380,17 +2778,29 @@ class ComponentCatalogService:
         if not settings.SESSION_SECRET:
             raise RuntimeError("SESSION_SECRET is required to sign catalog asset URLs")
         secret = settings.SESSION_SECRET.encode("utf-8")
-        return base64.urlsafe_b64encode(hmac.new(secret, message.encode("utf-8"), hashlib.sha256).digest()).rstrip(b"=").decode("ascii")
+        return (
+            base64.urlsafe_b64encode(
+                hmac.new(secret, message.encode("utf-8"), hashlib.sha256).digest()
+            )
+            .rstrip(b"=")
+            .decode("ascii")
+        )
 
-    def build_signed_asset_url(self, asset_id: str, revision_id: str, base_url: str, ttl_seconds: int = 300) -> str:
+    def build_signed_asset_url(
+        self, asset_id: str, revision_id: str, base_url: str, ttl_seconds: int = 300
+    ) -> str:
         expires_at = int(time.time()) + ttl_seconds
         signature = self._sign(f"{asset_id}:{revision_id}:{expires_at}")
         return f"{base_url.rstrip('/')}/api/remote-provider/assets/{asset_id}?rev={revision_id}&exp={expires_at}&sig={signature}"
 
-    def validate_asset_signature(self, asset_id: str, revision_id: str, expires_at: int, signature: str) -> bool:
+    def validate_asset_signature(
+        self, asset_id: str, revision_id: str, expires_at: int, signature: str
+    ) -> bool:
         if expires_at <= int(time.time()):
             return False
-        return hmac.compare_digest(self._sign(f"{asset_id}:{revision_id}:{expires_at}"), signature)
+        return hmac.compare_digest(
+            self._sign(f"{asset_id}:{revision_id}:{expires_at}"), signature
+        )
 
     def store_auth_code(self, code: str, grant: dict[str, Any], exp: int) -> None:
         self.initialize()
@@ -2409,7 +2819,9 @@ class ComponentCatalogService:
         self.initialize()
         now = int(time.time())
         with self._connect() as conn:
-            row = conn.execute("SELECT grant_json, exp FROM oauth_auth_codes WHERE code = ?", (code,)).fetchone()
+            row = conn.execute(
+                "SELECT grant_json, exp FROM oauth_auth_codes WHERE code = ?", (code,)
+            ).fetchone()
             conn.execute("DELETE FROM oauth_auth_codes WHERE code = ?", (code,))
             conn.execute("DELETE FROM oauth_auth_codes WHERE exp <= ?", (now,))
             conn.commit()
@@ -2435,26 +2847,44 @@ class ComponentCatalogService:
         now = int(time.time())
         with self._connect() as conn:
             conn.execute("DELETE FROM oauth_revoked_tokens WHERE exp <= ?", (now,))
-            row = conn.execute("SELECT 1 FROM oauth_revoked_tokens WHERE jti = ?", (jti,)).fetchone()
+            row = conn.execute(
+                "SELECT 1 FROM oauth_revoked_tokens WHERE jti = ?", (jti,)
+            ).fetchone()
             conn.commit()
         return bool(row)
 
     def _released_place_ready_components(self) -> list[dict[str, Any]]:
         return [
             component
-            for component in self.list_components_flat(released_only=True, include_inactive=False)
+            for component in self.list_components_flat(
+                released_only=True, include_inactive=False
+            )
             if component["place_enabled"]
         ]
 
-    def _dbl_row_for_component(self, component: dict[str, Any], part_number: str) -> dict[str, str]:
-        symbol_asset = next((asset for asset in component["assets"] if asset["asset_type"] == "symbol"), None)
-        footprint_asset = next((asset for asset in component["assets"] if asset["asset_type"] == "footprint"), None)
+    def _dbl_row_for_component(
+        self, component: dict[str, Any], part_number: str
+    ) -> dict[str, str]:
+        symbol_asset = next(
+            (asset for asset in component["assets"] if asset["asset_type"] == "symbol"),
+            None,
+        )
+        footprint_asset = next(
+            (
+                asset
+                for asset in component["assets"]
+                if asset["asset_type"] == "footprint"
+            ),
+            None,
+        )
         lib_symbol = ""
         lib_footprint = ""
         if symbol_asset:
             lib_symbol = f"{_dbl_symbol_library_name(part_number, symbol_asset)}:{symbol_asset['target_name']}"
         if footprint_asset:
-            lib_footprint = f"{footprint_asset['target_library']}:{footprint_asset['target_name']}"
+            lib_footprint = (
+                f"{footprint_asset['target_library']}:{footprint_asset['target_name']}"
+            )
         return {
             "Part Number": part_number,
             "Part Number Nocolon": part_number,
@@ -2486,11 +2916,23 @@ class ComponentCatalogService:
                 library_name = _dbl_symbol_library_name(part_number, asset)
                 destination = export_root / "SchLib" / f"{library_name}.kicad_sym"
             else:
-                destination = export_root / "PcbLib" / f"{asset['target_library']}.pretty" / f"{asset['target_name']}.kicad_mod"
+                destination = (
+                    export_root
+                    / "PcbLib"
+                    / f"{asset['target_library']}.pretty"
+                    / f"{asset['target_name']}.kicad_mod"
+                )
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(asset["payload"])
 
-    def _write_dbl_config(self, export_root: Path, *, filename: str, connection_string: str, libraries: list[dict[str, Any]]) -> None:
+    def _write_dbl_config(
+        self,
+        export_root: Path,
+        *,
+        filename: str,
+        connection_string: str,
+        libraries: list[dict[str, Any]],
+    ) -> None:
         payload = {
             "meta": {"version": 0},
             "name": "KiCAD Prism Database Library",
@@ -2506,7 +2948,9 @@ class ComponentCatalogService:
             "cache": {"max_age": 28800},
             "libraries": libraries,
         }
-        (export_root / filename).write_text(json.dumps(payload, indent=4) + "\n", encoding="utf-8")
+        (export_root / filename).write_text(
+            json.dumps(payload, indent=4) + "\n", encoding="utf-8"
+        )
 
     def export_kicad_dbl_bundle(self) -> dict[str, Any]:
         self.initialize()
@@ -2516,14 +2960,19 @@ class ComponentCatalogService:
         (export_root / "SchLib").mkdir(parents=True, exist_ok=True)
         (export_root / "PcbLib").mkdir(parents=True, exist_ok=True)
 
-        components = sorted(self._released_place_ready_components(), key=lambda c: (c["category"], c["mpn"], c["id"]))
+        components = sorted(
+            self._released_place_ready_components(),
+            key=lambda c: (c["category"], c["mpn"], c["id"]),
+        )
         db_path = export_root / "Prism.sqlite"
         used_part_numbers: set[str] = set()
         grouped_rows: dict[str, list[dict[str, str]]] = {}
 
         with self._connect() as catalog_conn:
             for component in components:
-                base_part = _part_number_nocolon(component["mpn"] or component["value"] or component["id"])
+                base_part = _part_number_nocolon(
+                    component["mpn"] or component["value"] or component["id"]
+                )
                 part_number = base_part
                 counter = 2
                 while part_number in used_part_numbers:
@@ -2531,19 +2980,28 @@ class ComponentCatalogService:
                     counter += 1
                 used_part_numbers.add(part_number)
                 category = component["category"] or "Uncategorized"
-                grouped_rows.setdefault(category, []).append(self._dbl_row_for_component(component, part_number))
-                self._collect_dbl_assets(component, part_number, export_root, catalog_conn)
+                grouped_rows.setdefault(category, []).append(
+                    self._dbl_row_for_component(component, part_number)
+                )
+                self._collect_dbl_assets(
+                    component, part_number, export_root, catalog_conn
+                )
 
         with sqlite3.connect(db_path) as dbl_conn:
             for category, rows in sorted(grouped_rows.items()):
                 table = _quote_identifier(category)
-                columns_sql = ", ".join(f"{_quote_identifier(column)} TEXT NOT NULL DEFAULT ''" for column in DBL_COMMON_COLUMNS)
+                columns_sql = ", ".join(
+                    f"{_quote_identifier(column)} TEXT NOT NULL DEFAULT ''"
+                    for column in DBL_COMMON_COLUMNS
+                )
                 dbl_conn.execute(f"CREATE TABLE {table} ({columns_sql})")
-                column_names = ", ".join(_quote_identifier(column) for column in DBL_COMMON_COLUMNS)
+                column_names = ", ".join(
+                    _quote_identifier(column) for column in DBL_COMMON_COLUMNS
+                )
                 placeholders = ", ".join("?" for _ in DBL_COMMON_COLUMNS)
                 for row in rows:
                     dbl_conn.execute(
-                        f"INSERT INTO {table} ({column_names}) VALUES ({placeholders})",
+                        f"INSERT INTO {table} ({column_names}) VALUES ({placeholders})",  # noqa: S608  # nosec B608 â€” table/column_names from DBL_COMMON_COLUMNS constant; placeholders are "?" * len
                         tuple(row.get(column, "") for column in DBL_COMMON_COLUMNS),
                     )
 
@@ -2583,10 +3041,19 @@ class ComponentCatalogService:
             libraries=libraries,
         )
 
-        symbol_libraries = sorted(path.stem for path in (export_root / "SchLib").glob("*.kicad_sym"))
-        footprint_libraries = sorted({asset["target_library"] for component in components for asset in component["assets"] if asset["asset_type"] == "footprint"})
+        symbol_libraries = sorted(
+            path.stem for path in (export_root / "SchLib").glob("*.kicad_sym")
+        )
+        footprint_libraries = sorted(
+            {
+                asset["target_library"]
+                for component in components
+                for asset in component["assets"]
+                if asset["asset_type"] == "footprint"
+            }
+        )
         sym_lines = [
-            '(sym_lib_table',
+            "(sym_lib_table",
             '  (lib (name "Prism")(type "Database")(uri "${PRISM_LIB_DIR}/Prism_Linux.kicad_dbl")(options "")(descr ""))',
         ]
         sym_lines.extend(
@@ -2594,7 +3061,9 @@ class ComponentCatalogService:
             for library in symbol_libraries
         )
         sym_lines.append(")")
-        (export_root / "sym-lib-table").write_text("\n".join(sym_lines) + "\n", encoding="utf-8")
+        (export_root / "sym-lib-table").write_text(
+            "\n".join(sym_lines) + "\n", encoding="utf-8"
+        )
 
         fp_lines = ["(fp_lib_table"]
         fp_lines.extend(
@@ -2602,7 +3071,9 @@ class ComponentCatalogService:
             for library in footprint_libraries
         )
         fp_lines.append(")")
-        (export_root / "fp-lib-table").write_text("\n".join(fp_lines) + "\n", encoding="utf-8")
+        (export_root / "fp-lib-table").write_text(
+            "\n".join(fp_lines) + "\n", encoding="utf-8"
+        )
 
         return {
             "export_root": str(export_root),

@@ -638,7 +638,8 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             void loadSchematic();
             return () => controller.abort();
         }
-    }, [activeTab, schematicContentLoaded, projectId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, schematicContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
 
     // Lazy load PCB content when PCB tab is first accessed
     useEffect(() => {
@@ -675,7 +676,8 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             void loadPcb();
             return () => controller.abort();
         }
-    }, [activeTab, pcbContentLoaded, projectId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, pcbContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
 
     // Fetch schematic + PCB diffs when viewing a specific commit; also resets content state
     useEffect(() => {

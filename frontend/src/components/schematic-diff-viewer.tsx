@@ -720,7 +720,7 @@ export function SchematicDiffViewer({
             container?.removeEventListener("pointerdown", release);
             container?.removeEventListener("wheel", release);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [getCamera, safeDraw]);
 
     const [activeSheet, setActiveSheet] = useState<string>("");
@@ -1043,7 +1043,7 @@ export function SchematicDiffViewer({
         if (focusFiredRef.current === fingerprint) return;
         const t = window.setTimeout(() => {
             if (focusFiredRef.current === fingerprint) return;
-            // eslint-disable-next-line no-console
+
             console.warn("[sch-diff] focus stalled — target:", focusTarget,
                 "activeSheet:", activeSheet,
                 "newReady:", newReady, "oldReady:", oldReady);

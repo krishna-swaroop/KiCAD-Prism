@@ -599,7 +599,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
 
     // Stub ref — filled in after updateSvgMembers is defined below. tick calls
     // through this ref so the RAF loop stays stable when svgGroups changes.
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
+
     const updateSvgMembersRef = useRef<() => void>(() => {});
 
     const tick = useCallback(() => {
@@ -1094,7 +1094,7 @@ export function PcbDiffViewer({
             container?.removeEventListener("pointerdown", release);
             container?.removeEventListener("wheel", release);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [getCamera, safeDraw]);
 
     const handleToggle = useCallback((next: "new" | "old") => {
@@ -1338,7 +1338,7 @@ export function PcbDiffViewer({
         if (focusFiredRef.current === focusTarget.uuid) return;
         const t = window.setTimeout(() => {
             if (focusFiredRef.current === focusTarget.uuid) return;
-            // eslint-disable-next-line no-console
+
             console.warn("[pcb-diff] focus stalled — target:", focusTarget,
                 "activeBoard:", activeBoard,
                 "newReady:", newReady, "oldReady:", oldReady,
