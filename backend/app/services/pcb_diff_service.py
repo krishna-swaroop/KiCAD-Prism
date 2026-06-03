@@ -18,6 +18,7 @@ from app.services.sch_diff_service import (
     _parse_sexp,
     _read_file_at_commit,
     _uuid,
+    is_valid_commit_hash,
 )
 from app.services.workspace_service import workspace
 
@@ -567,9 +568,11 @@ def _find_all_pcb_paths(
     When sub_path is set (Type-2 project) only paths inside that subtree are
     returned, so sibling boards in the same monorepo are not included.
     """
+    if not is_valid_commit_hash(commit):
+        return []
     try:
         result = subprocess.run(
-            ["git", "ls-tree", "-r", "--name-only", commit],
+            ["git", "ls-tree", "-r", "--name-only", commit, "--"],
             cwd=repo_root,
             capture_output=True,
             text=True,
@@ -608,6 +611,10 @@ def get_pcb_diff(project_id: str, commit1: str, commit2: str) -> dict | None:
         }
     or None if no PCB files found.
     """
+    # Trust boundary: commit ids come from query parameters.
+    if not is_valid_commit_hash(commit1) or not is_valid_commit_hash(commit2):
+        return None
+
     row = workspace.get_project_by_id(project_id)
     if not row:
         return None

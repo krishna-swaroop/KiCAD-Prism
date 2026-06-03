@@ -6,6 +6,7 @@ both from remote Git URLs and local filesystem paths.
 """
 
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -43,6 +44,44 @@ class AnalysisResult:
 
 # Global job store for import operations
 jobs: dict[str, dict] = {}
+
+# Characters allowed in a repo directory name. Anything else (path separators,
+# '..', leading dashes, etc.) is replaced so a crafted repo URL can't be turned
+# into a path-traversal payload when joined to PROJECTS_ROOT.
+_REPO_NAME_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _repo_name_from_url(repo_url: str) -> str:
+    """Derive a safe single-segment directory name from a repository URL.
+
+    Strips the trailing path component and '.git', then sanitizes it to a
+    single path segment. Rejects names that would still escape (e.g. '..').
+    """
+    raw = repo_url.rstrip("/").split("/")[-1]
+    if raw.endswith(".git"):
+        raw = raw[:-4]
+    name = _REPO_NAME_SAFE_RE.sub("_", raw).strip("._")
+    if not name or name in (".", ".."):
+        raise ValueError(
+            f"Could not derive a safe repository name from URL: {repo_url!r}"
+        )
+    return name
+
+
+def _ensure_within(base: Path, target: Path, *, what: str = "path") -> Path:
+    """Return `target` resolved, asserting it stays inside `base`.
+
+    Defense-in-depth guard before any destructive/clone filesystem op.
+    """
+    base_resolved = base.resolve()
+    target_resolved = target.resolve()
+    try:
+        target_resolved.relative_to(base_resolved)
+    except ValueError as error:
+        raise ValueError(
+            f"Refusing to use {what} outside of {base_resolved}: {target_resolved}"
+        ) from error
+    return target_resolved
 
 
 def has_ssh_key() -> bool:
@@ -209,7 +248,14 @@ def _run_import_local_job(
             job["error"] = f"Path does not exist: {local_path}"
             return
 
-        repo_name = source.name
+        raw_name = source.name
+        repo_name = _REPO_NAME_SAFE_RE.sub("_", raw_name).strip("._")
+        if not repo_name or repo_name in (".", ".."):
+            job["status"] = "failed"
+            job["error"] = (
+                f"Could not derive a safe project name from path: {local_path}"
+            )
+            return
 
         if local_path_mode == "copy":
             # Clone the local repo into data/projects just like a remote import
@@ -218,7 +264,10 @@ def _run_import_local_job(
             else:
                 base_path = Path(project_service.PROJECTS_ROOT) / "type2"
 
-            target_path = base_path / repo_name
+            # Defense-in-depth: assert the destination stays inside PROJECTS_ROOT.
+            target_path = Path(
+                _ensure_within(base_path, base_path / repo_name, what="copy target")
+            )
             if target_path.exists():
                 registry = project_service._load_project_registry()
                 existing = [
@@ -385,7 +434,7 @@ def analyze_repository(repo_url: str) -> AnalysisResult:
             "HTTPS URL provided. Please use the SSH URL (git@github.com:...) when an SSH key is configured."
         )
 
-    repo_name = repo_url.rstrip("/").split("/")[-1].replace(".git", "")
+    repo_name = _repo_name_from_url(repo_url)
 
     # Create temp directory for analysis
     temp_dir = tempfile.mkdtemp(prefix="kicad_analyze_")
@@ -454,7 +503,7 @@ def _run_analyze_job(job_id: str, repo_url: str):
             job["error"] = error_msg
             return
 
-        repo_name = repo_url.rstrip("/").split("/")[-1].replace(".git", "")
+        repo_name = _repo_name_from_url(repo_url)
         temp_dir = tempfile.mkdtemp(prefix="kicad_analyze_")
         clone_path = Path(temp_dir) / repo_name
 
@@ -611,7 +660,7 @@ def _run_import_job(
             return
 
         # Extract repo name
-        repo_name = repo_url.rstrip("/").split("/")[-1].replace(".git", "")
+        repo_name = _repo_name_from_url(repo_url)
 
         # Determine target directory based on type
         if import_type == "type1":
@@ -619,7 +668,11 @@ def _run_import_job(
         else:
             base_path = Path(project_service.PROJECTS_ROOT) / "type2"
 
-        target_path = base_path / repo_name
+        # Defense-in-depth: assert the clone destination stays inside
+        # PROJECTS_ROOT before any rmtree/clone touches the filesystem.
+        target_path = Path(
+            _ensure_within(base_path, base_path / repo_name, what="clone target")
+        )
 
         # Check if already exists via workspace DB
         existing_repo = workspace.get_repository_by_url(repo_url)

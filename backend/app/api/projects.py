@@ -760,10 +760,17 @@ async def get_project_thumbnail(
     row = workspace.get_project_by_id(project_id)
     thumbnail_rel = row.get("thumbnail_rel") if row else None
     if thumbnail_rel:
-        abs_path = os.path.join(project.path, thumbnail_rel)
-        if os.path.isfile(abs_path):
+        # Contain the DB-sourced relative path within the project root so a
+        # tampered thumbnail_rel can't escape via '..' or an absolute path.
+        try:
+            abs_path = resolve_path_within_root(
+                project.path, thumbnail_rel, invalid_detail="Invalid thumbnail path"
+            )
+        except HTTPException:
+            abs_path = None
+        if abs_path and abs_path.is_file():
             return FileResponse(
-                abs_path, headers={"Cache-Control": "public, max-age=300"}
+                str(abs_path), headers={"Cache-Control": "public, max-age=300"}
             )
     # Fallback: live filesystem detection
     path = project_service.get_project_thumbnail_path(project_id)

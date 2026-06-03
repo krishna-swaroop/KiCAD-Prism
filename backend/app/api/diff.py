@@ -14,6 +14,13 @@ from app.services import pcb_diff_service, sch_diff_service
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
 
+def _validate_commits(*commits: str | None) -> None:
+    """Reject any commit identifier that isn't a hex object id (4-40 chars)."""
+    for commit in commits:
+        if commit is not None and not sch_diff_service.is_valid_commit_hash(commit):
+            raise HTTPException(status_code=400, detail="Invalid commit hash")
+
+
 def _resolve_parent_commit(project_id: str, commit1: str) -> str:
     """Resolve the parent commit hash (blocking — run in a thread)."""
     from app.services.workspace_service import workspace
@@ -51,6 +58,7 @@ async def get_schematic_diff(
     Includes both file contents (for ecad-viewer) and a structured change list.
     """
     get_project_for_role_or_404(project_id, user.role)
+    _validate_commits(commit1, commit2)
 
     if commit2 is None:
         commit2 = await asyncio.to_thread(_resolve_parent_commit, project_id, commit1)
@@ -77,6 +85,7 @@ async def get_pcb_diff(
     If commit2 is omitted, diffs commit1 against its parent.
     """
     get_project_for_role_or_404(project_id, user.role)
+    _validate_commits(commit1, commit2)
 
     if commit2 is None:
         commit2 = await asyncio.to_thread(_resolve_parent_commit, project_id, commit1)

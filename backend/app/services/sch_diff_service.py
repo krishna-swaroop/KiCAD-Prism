@@ -454,6 +454,39 @@ def _pair_moved_segments(added: list, removed: list) -> tuple:
 # ---------------------------------------------------------------------------
 
 
+_COMMIT_HASH_RE = re.compile(r"^[0-9a-fA-F]{4,40}$")
+
+
+def is_valid_commit_hash(commit: str) -> bool:
+    """True if `commit` is a plausible git object id (4-40 hex chars)."""
+    return bool(commit) and bool(_COMMIT_HASH_RE.match(commit))
+
+
+def validate_commit_hash(commit: str) -> str:
+    """Return `commit` if it is a valid hex object id, else raise ValueError.
+
+    This is the trust boundary for any commit identifier that reaches
+    `git show`/`git ls-tree`. Rejecting non-hex input prevents ref/option
+    injection (e.g. values starting with '-' or containing rev-syntax) from
+    untrusted query parameters.
+    """
+    if not is_valid_commit_hash(commit):
+        raise ValueError(f"Invalid commit hash: {commit!r}")
+    return commit
+
+
+def _is_safe_rel_path(rel_path: str) -> bool:
+    """True if `rel_path` is a repo-root-relative path with no traversal.
+
+    Rejects absolute paths, '..' escapes, and option-like leading dashes so
+    a crafted path can't escape the tree or be parsed as a git option.
+    """
+    if not rel_path or rel_path.startswith(("/", "-")) or "\\" in rel_path:
+        return False
+    parts = rel_path.split("/")
+    return ".." not in parts and "" not in parts[:-1]
+
+
 def _git_root(project_path: Path) -> Path:
     """Return the git repository root for project_path."""
     try:
@@ -474,6 +507,11 @@ def _git_root(project_path: Path) -> Path:
 
 def _read_file_at_commit(repo_root: Path, commit: str, rel_path: str) -> str | None:
     """Return file content at a given commit using a path relative to the repo root."""
+    # Trust boundary: reject anything that isn't a hex object id or a clean
+    # repo-relative path before it reaches `git show`.
+    if not is_valid_commit_hash(commit) or not _is_safe_rel_path(rel_path):
+        logger.debug("Rejected unsafe commit/path: %s:%s", commit, rel_path)
+        return None
     try:
         result = subprocess.run(
             ["git", "show", f"{commit}:{rel_path}"],
@@ -498,9 +536,12 @@ def _find_all_sch_paths(
     When sub_path is set (Type-2 project) only paths inside that subtree are
     returned, so sibling boards in the same monorepo are not included.
     """
+    if not is_valid_commit_hash(commit):
+        logger.debug("Rejected unsafe commit for ls-tree: %s", commit)
+        return []
     try:
         result = subprocess.run(
-            ["git", "ls-tree", "-r", "--name-only", commit],
+            ["git", "ls-tree", "-r", "--name-only", commit, "--"],
             cwd=repo_root,
             capture_output=True,
             text=True,
@@ -540,6 +581,10 @@ def get_schematic_diff(project_id: str, commit1: str, commit2: str) -> dict | No
         }
     or None if the project or no schematics can be found.
     """
+    # Trust boundary: commit ids come from query parameters.
+    if not is_valid_commit_hash(commit1) or not is_valid_commit_hash(commit2):
+        return None
+
     row = workspace.get_project_by_id(project_id)
     if not row:
         return None
