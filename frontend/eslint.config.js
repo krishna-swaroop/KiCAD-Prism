@@ -21,7 +21,13 @@ export default defineConfig([
       ...(reactHooks.configs.recommended?.rules ?? {}),
       ...(reactRefresh.configs.vite?.rules ?? {}),
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': 'warn',
+      // Honour the `_`-prefix convention the codebase already uses to mark a
+      // binding as intentionally unused (e.g. placeholder `_props`, `_boxHalfExtent`).
+      '@typescript-eslint/no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+      }],
       'react-refresh/only-export-components': 'off',
     },
     languageOptions: {
