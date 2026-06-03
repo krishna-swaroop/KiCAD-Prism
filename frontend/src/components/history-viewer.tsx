@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar, GitCompare, ChevronDown, ChevronRight, FileText, Plus, Minus, RefreshCw, Loader2, X, CircuitBoard, Cpu, List, Settings, FileCode } from "lucide-react";
+import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar, GitCompare, ChevronDown, ChevronRight, FileText, Plus, Minus, RefreshCw, Loader2, X, CircuitBoard, Cpu, Settings, FileCode } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { SchematicDiffViewer } from "./schematic-diff-viewer";
 import { PcbDiffViewer } from "./pcb-diff-viewer";
-import { BomDiffViewer } from "./bom-diff-viewer";
-import { PdfViewer } from "./pdf-viewer";
 import { fetchJson } from "@/lib/api";
 import { categorise, CATEGORY_META, type KindedItem } from "@/lib/diff-grouping";
 
@@ -78,7 +76,7 @@ interface CommitFile {
     pcb_diff?: FileDiffPayload;
 }
 
-type DiffTab = "schematic" | "pcb" | "bom";
+type DiffTab = "schematic" | "pcb";
 
 interface CommitSummary {
     files: CommitFile[];
@@ -137,9 +135,6 @@ function fileTypeIcon(filename: string): { Icon: typeof FileText; color: string;
     if (filename.endsWith(".kicad_pro")) return { Icon: Settings,     color: "text-violet-500",  label: "Project" };
     if (filename.endsWith(".kicad_sym") || filename.endsWith(".kicad_mod")) {
         return { Icon: FileCode, color: "text-cyan-500", label: "Library" };
-    }
-    if (filename.toLowerCase().endsWith(".pdf")) {
-        return { Icon: FileText, color: "text-red-400", label: "PDF" };
     }
     return { Icon: FileText, color: "text-muted-foreground", label: "" };
 }
@@ -255,15 +250,13 @@ interface CommitItemProps {
         in `tab`. `filename` pins the viewer to the exact .kicad_sch/.kicad_pcb
         the change came from so it doesn't have to guess from the uuid. */
     onOpenItemDiff?: (tab: DiffTab, itemId?: string, filename?: string) => void;
-    /** Open the PDF viewer for a file at this commit. */
-    onOpenPdf?: (commitHash: string, path: string, filename: string) => void;
     /** Position in the commit list — used to draw the timeline. */
     isFirst?: boolean;
     isLast?: boolean;
 }
 
 function CommitItem({
-    commit, projectId, onViewCommit, isSelected, onSelect, selectable, onOpenItemDiff, onOpenPdf,
+    commit, projectId, onViewCommit, isSelected, onSelect, selectable, onOpenItemDiff,
     isFirst, isLast,
 }: CommitItemProps) {
     const [copied, setCopied] = useState(false);
@@ -412,8 +405,7 @@ function CommitItem({
                         const fileTab: DiffTab | null =
                             file.filename.endsWith(".kicad_sch") ? "schematic" :
                             file.filename.endsWith(".kicad_pcb") ? "pcb" : null;
-                        const isPdf = file.filename.toLowerCase().endsWith(".pdf");
-                        const fileClickable = (!!fileTab && !!onOpenItemDiff) || (isPdf && !!onOpenPdf && file.status !== "removed");
+                        const fileClickable = !!fileTab && !!onOpenItemDiff;
                         const headerNode = (
                             <div className="flex items-center gap-2 text-xs">
                                 <span className={`flex items-center gap-1 shrink-0 ${STATUS_COLOR[file.status] ?? "text-muted-foreground"}`}>
@@ -436,9 +428,7 @@ function CommitItem({
                                 )}
                             </div>
                         );
-                        const handleFileClick = isPdf
-                            ? () => onOpenPdf!(commit.full_hash, file.path, file.filename)
-                            : () => onOpenItemDiff!(fileTab!, itemDiff ? firstDiffItemId(itemDiff) : undefined, file.filename);
+                        const handleFileClick = () => onOpenItemDiff!(fileTab!, itemDiff ? firstDiffItemId(itemDiff) : undefined, file.filename);
 
                         return (
                             <div key={file.path} className="space-y-0.5">
@@ -447,7 +437,7 @@ function CommitItem({
                                         type="button"
                                         onClick={handleFileClick}
                                         className="w-full text-left rounded hover:bg-muted/60 -mx-1 px-1 py-0.5 transition-colors"
-                                        title={isPdf ? "View PDF" : "Open diff viewer for this file"}
+                                        title="Open diff viewer for this file"
                                     >
                                         {headerNode}
                                     </button>
@@ -493,13 +483,12 @@ interface CommitDiffModalProps {
 function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, focusItemId, focusFilename, singleCommit }: CommitDiffModalProps) {
     const [tab, setTab] = useState<DiffTab>(initialTab ?? "schematic");
     // Last reference selected in each tab — used to navigate the other tab when switching
-    const lastSelected = useRef<{ schematic?: string; pcb?: string; bom?: string }>({});
+    const lastSelected = useRef<{ schematic?: string; pcb?: string }>({});
     // CrossProbe targets carry a seq number so re-delivering the same reference
     // still triggers the effect in the receiving tab (seq changes even if ref doesn't).
     const crossProbeSeq = useRef(0);
     const [schCrossProbeTarget, setSchCrossProbeTarget] = useState<{ ref: string; seq: number } | undefined>(undefined);
     const [pcbCrossProbeTarget, setPcbCrossProbeTarget] = useState<{ ref: string; seq: number } | undefined>(undefined);
-    const [bomCrossProbeTarget, setBomCrossProbeTarget] = useState<{ ref: string; seq: number } | undefined>(undefined);
 
     const handleSchematicCrossProbe = useCallback((reference: string) => {
         lastSelected.current.schematic = reference;
@@ -509,25 +498,15 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
         lastSelected.current.pcb = reference;
     }, []);
 
-    const handleBomCrossProbe = useCallback((reference: string) => {
-        lastSelected.current.bom = reference;
-        const seq = ++crossProbeSeq.current;
-        setPcbCrossProbeTarget({ ref: reference, seq });
-        setSchCrossProbeTarget({ ref: reference, seq });
-    }, []);
-
     const handleTabChange = useCallback((next: DiffTab) => {
         const last = lastSelected.current;
         const seq = ++crossProbeSeq.current;
         if (next === "pcb") {
-            const ref = last.schematic ?? last.bom;
+            const ref = last.schematic;
             if (ref) setPcbCrossProbeTarget({ ref, seq });
         } else if (next === "schematic") {
-            const ref = last.pcb ?? last.bom;
+            const ref = last.pcb;
             if (ref) setSchCrossProbeTarget({ ref, seq });
-        } else if (next === "bom") {
-            const ref = last.schematic ?? last.pcb;
-            if (ref) setBomCrossProbeTarget({ ref, seq });
         }
         setTab(next);
     }, []);
@@ -535,7 +514,6 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
     const tabs: { id: DiffTab; label: string; icon: React.ReactNode }[] = [
         { id: "schematic", label: "Schematic", icon: <CircuitBoard className="h-3.5 w-3.5" /> },
         { id: "pcb",       label: "PCB",       icon: <Cpu          className="h-3.5 w-3.5" /> },
-        { id: "bom",       label: "BOM",       icon: <List         className="h-3.5 w-3.5" /> },
     ];
 
     return (
@@ -596,16 +574,6 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
                         singleCommit={singleCommit}
                     />
                 </div>
-                <div className="absolute inset-0" style={{ display: tab === "bom" ? undefined : "none" }}>
-                    <BomDiffViewer
-                        projectId={projectId}
-                        commit1={commit1}
-                        commit2={commit2}
-                        singleCommit={singleCommit}
-                        onCrossProbe={handleBomCrossProbe}
-                        crossProbeTarget={bomCrossProbeTarget}
-                    />
-                </div>
             </div>
         </div>
     );
@@ -627,18 +595,6 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
         focusItemId?: string;
         focusFilename?: string;
     } | null>(null);
-
-    // PDF viewer: open a PDF file from a specific commit
-    const [pdfViewer, setPdfViewer] = useState<{
-        url: string;
-        downloadUrl: string;
-        filename: string;
-    } | null>(null);
-
-    const handleOpenPdf = useCallback((commitHash: string, path: string, filename: string) => {
-        const url = `/api/projects/${projectId}/commits/${commitHash}/file?path=${encodeURIComponent(path)}`;
-        setPdfViewer({ url, downloadUrl: url, filename });
-    }, [projectId]);
 
     // Filter commits to find selected ones and determining newer/older
     const diffPair = useMemo(() => {
@@ -779,16 +735,6 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                 </div>
             )}
 
-            {/* PDF viewer overlay */}
-            {pdfViewer && (
-                <PdfViewer
-                    url={pdfViewer.url}
-                    downloadUrl={pdfViewer.downloadUrl}
-                    filename={pdfViewer.filename}
-                    onClose={() => setPdfViewer(null)}
-                />
-            )}
-
             {/* Tabbed diff modal — two-commit comparison */}
             {showDiff && diffPair && (
                 <CommitDiffModal
@@ -898,7 +844,6 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                                         focusFilename: filename,
                                     });
                                 }}
-                                onOpenPdf={handleOpenPdf}
                             />
                         ))}
                     </div>

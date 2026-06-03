@@ -1,7 +1,5 @@
 import asyncio
-import io
 import os
-import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -238,7 +236,7 @@ async def list_projects(user: AuthenticatedUser = Depends(require_viewer)):
 async def list_monorepos(user: AuthenticatedUser = Depends(require_viewer)):
     """
     List all monorepos with their metadata.
-    Uses workspace DB — no subprocess calls.
+    Uses workspace DB - no subprocess calls.
     """
     repos = await asyncio.to_thread(workspace.get_repositories, "multi")
     result = []
@@ -344,7 +342,7 @@ async def search_projects(
 ):
     """
     Search across all projects (standalone and monorepo sub-projects).
-    Uses SQL LIKE — no full hydration needed.
+    Uses SQL LIKE - no full hydration needed.
     """
     query = q.strip()
     if not query:
@@ -901,7 +899,7 @@ async def get_project_commits(
 def _build_commit_summary(
     repo_path: str, relative_path: str | None, commit_hash: str
 ) -> dict:
-    """Blocking work for get_commit_summary — run via asyncio.to_thread."""
+    """Blocking work for get_commit_summary - run via asyncio.to_thread."""
     from git import Repo
 
     files = get_commit_file_summary(repo_path, commit_hash, relative_path)
@@ -980,8 +978,6 @@ async def get_commit_file(
     display it inline (PDF viewer, image preview, etc.).
     """
     import mimetypes
-
-    from fastapi.responses import Response
 
     project = get_project_for_role_or_404(project_id, user.role)
     repo_path, sub_path = _repo_context(project)
@@ -1396,127 +1392,3 @@ async def update_project_description(
         "description": next_description,
         "message": "Project description updated successfully",
     }
-
-
-# Hard limits for the Gerber ZIP endpoint
-_GERBER_MAX_FILES = 200  # max number of gerber/drill files per project
-_GERBER_MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB per individual file
-_GERBER_MAX_ZIP_BYTES = 50 * 1024 * 1024  # 50 MB total uncompressed
-
-# Gerber file extensions recognised by gerbers-renderer
-_GERBER_EXTENSIONS = {
-    ".gbr",
-    ".ger",
-    ".art",
-    # layer-specific KiCad extensions
-    ".gtl",
-    ".gbl",
-    ".gts",
-    ".gbs",
-    ".gtp",
-    ".gbp",
-    ".gto",
-    ".gbo",
-    ".gm1",
-    ".gm2",
-    ".gm3",
-    ".gm4",
-    # drill files
-    ".drl",
-    ".xln",
-    ".exc",
-    ".ncd",
-}
-
-# Directory names to skip when walking the project tree
-_SKIP_DIRS = {
-    ".git",
-    "node_modules",
-    "__pycache__",
-    ".venv",
-    "venv",
-    "3d-models",
-    "3dmodels",
-    "packages",
-    "backups",
-    "archive",
-    "archived",
-    "old",
-}
-
-
-def _find_gerber_files(project_path: str) -> list[tuple[str, str]]:
-    """
-    Walk the entire project tree and collect all gerber/drill files.
-    Returns list of (relative_path_from_root, absolute_path) tuples sorted by path.
-    Skips hidden directories and directories in _SKIP_DIRS.
-    """
-    root = Path(project_path)
-    results: list[tuple[str, str]] = []
-    seen: set[str] = set()
-
-    def _walk(directory: Path) -> None:
-        try:
-            for entry in sorted(directory.iterdir()):
-                if entry.name.startswith("."):
-                    continue
-                if entry.is_file():
-                    if entry.suffix.lower() in _GERBER_EXTENSIONS:
-                        key = str(entry.resolve())
-                        if key not in seen:
-                            seen.add(key)
-                            rel = str(entry.relative_to(root))
-                            results.append((rel, str(entry)))
-                elif entry.is_dir() and entry.name.lower() not in _SKIP_DIRS:
-                    _walk(entry)
-        except OSError:
-            pass
-
-    _walk(root)
-    return results
-
-
-@router.get("/{project_id}/gerbers")
-async def get_project_gerbers(
-    project_id: str,
-    user: AuthenticatedUser = Depends(require_viewer),
-):
-    """
-    Return all gerber/drill files for the project as an in-memory ZIP archive.
-    Scans common gerber output folders first, falls back to the project root.
-    """
-    project = get_project_for_role_or_404(project_id, user.role)
-    files = await asyncio.to_thread(_find_gerber_files, project.path)
-
-    if not files:
-        raise HTTPException(status_code=404, detail="No gerber files found")
-
-    if len(files) > _GERBER_MAX_FILES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many gerber files ({len(files)}); limit is {_GERBER_MAX_FILES}",
-        )
-
-    buf = io.BytesIO()
-    total_bytes = 0
-    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for archive_name, abs_path in files:
-            file_size = Path(abs_path).stat().st_size
-            if file_size > _GERBER_MAX_FILE_BYTES:
-                continue  # skip oversized individual files rather than aborting
-            total_bytes += file_size
-            if total_bytes > _GERBER_MAX_ZIP_BYTES:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Gerber output exceeds the maximum allowed size",
-                )
-            zf.write(abs_path, arcname=archive_name.replace("\\", "/"))
-    buf.seek(0)
-
-    return Response(
-        content=buf.read(),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{project_id}-gerbers.zip"',
-        },
-    )
