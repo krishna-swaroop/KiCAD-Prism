@@ -80,7 +80,7 @@ jobs:
         run: npm run build
 
       - name: ESLint
-        run: npx eslint src --max-warnings=0 || true
+        run: npx eslint src --max-warnings=0
 
 # ── Security ───────────────────────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ jobs:
       - run: pip install bandit[sarif]
 
       - name: Run Bandit
-        run: bandit -r backend/app -f sarif -o bandit-results.sarif --severity-level medium || true
+        run: bandit -r backend/app -f sarif -o bandit-results.sarif --severity-level medium
 
       - name: Upload to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4

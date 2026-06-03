@@ -559,7 +559,14 @@ def diff_pcb(old_content: str, new_content: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _find_all_pcb_paths(repo_root: Path, commit: str) -> list:
+def _find_all_pcb_paths(
+    repo_root: Path, commit: str, sub_path: str | None = None
+) -> list:
+    """Return repo-root-relative .kicad_pcb paths in the commit tree.
+
+    When sub_path is set (Type-2 project) only paths inside that subtree are
+    returned, so sibling boards in the same monorepo are not included.
+    """
     try:
         result = subprocess.run(
             ["git", "ls-tree", "-r", "--name-only", commit],
@@ -567,9 +574,11 @@ def _find_all_pcb_paths(repo_root: Path, commit: str) -> list:
             capture_output=True,
             text=True,
         )
-        return [
-            path for path in result.stdout.splitlines() if path.endswith(".kicad_pcb")
-        ]
+        paths = [p for p in result.stdout.splitlines() if p.endswith(".kicad_pcb")]
+        if sub_path:
+            prefix = sub_path.rstrip("/") + "/"
+            paths = [p for p in paths if p == sub_path or p.startswith(prefix)]
+        return paths
     except Exception:
         return []
 
@@ -605,9 +614,10 @@ def get_pcb_diff(project_id: str, commit1: str, commit2: str) -> dict | None:
 
     project_path = Path(row["path"])
     repo_root = _git_root(project_path)
+    sub_path: str | None = row.get("sub_path")
 
-    paths1 = set(_find_all_pcb_paths(repo_root, commit1))
-    paths2 = set(_find_all_pcb_paths(repo_root, commit2))
+    paths1 = set(_find_all_pcb_paths(repo_root, commit1, sub_path))
+    paths2 = set(_find_all_pcb_paths(repo_root, commit2, sub_path))
     all_paths = paths1 | paths2
 
     if not all_paths:

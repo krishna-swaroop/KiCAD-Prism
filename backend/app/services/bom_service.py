@@ -83,13 +83,16 @@ def _extract_bom_symbols(tree: list) -> dict:
     return result
 
 
-def _symbols_from_commit(repo_root: Path, commit: str) -> list[dict]:
+def _symbols_from_commit(
+    repo_root: Path, commit: str, sub_path: str | None = None
+) -> list[dict]:
     """
     Aggregate all BOM-eligible symbols across all .kicad_sch files at a commit.
     - Skips symbols with in_bom=False
     - Deduplicates multi-unit parts: keeps the lowest unit number per reference
+    - sub_path constrains the search to the project subtree (Type-2 projects)
     """
-    paths = sch_diff_service._find_all_sch_paths(repo_root, commit)
+    paths = sch_diff_service._find_all_sch_paths(repo_root, commit, sub_path)
     by_reference: dict[str, dict] = {}
 
     for rel_path in paths:
@@ -241,9 +244,10 @@ def get_bom_diff_response(
 
     project_path = Path(row["path"])
     repo_root = sch_diff_service._git_root(project_path)
+    sub_path: str | None = row.get("sub_path")
 
-    new_symbols = _symbols_from_commit(repo_root, commit1)
-    old_symbols = _symbols_from_commit(repo_root, commit2)
+    new_symbols = _symbols_from_commit(repo_root, commit1, sub_path)
+    old_symbols = _symbols_from_commit(repo_root, commit2, sub_path)
 
     if not new_symbols and not old_symbols:
         return None

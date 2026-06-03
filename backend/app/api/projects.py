@@ -14,6 +14,7 @@ from app.api._helpers import (
     require_output_type,
     resolve_path_within_root,
 )
+from app.core.config import settings
 from app.core.security import AuthenticatedUser, require_designer, require_viewer
 from app.services import (
     file_service,
@@ -383,12 +384,41 @@ class ImportRequest(BaseModel):
     local_path_mode: str | None = None  # "reference" or "copy" for local imports
 
 
-@router.post("/analyze", dependencies=[Depends(require_designer)])
-async def analyze_repository(request: AnalyzeRequest):
+def _check_local_import_permission(url: str, user: AuthenticatedUser) -> None:
+    """Raise 403 if a local-path import is not permitted for this user.
+
+    Local imports are admin-only.  When LOCAL_IMPORT_ALLOWED_ROOTS is set the
+    requested path must also be inside one of the configured roots.
+    """
+    if not project_import_service.is_local_path(url):
+        return
+    from app.core.roles import role_meets_minimum
+
+    if not role_meets_minimum(user.role, "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Local path imports are restricted to admin users",
+        )
+    allowed_roots = settings.LOCAL_IMPORT_ALLOWED_ROOTS
+    if allowed_roots:
+        resolved = str(Path(url).resolve())
+        if not any(resolved.startswith(str(Path(r).resolve())) for r in allowed_roots):
+            raise HTTPException(
+                status_code=403,
+                detail="Path is not within an allowed import root",
+            )
+
+
+@router.post("/analyze")
+async def analyze_repository(
+    request: AnalyzeRequest,
+    user: AuthenticatedUser = Depends(require_designer),
+):
     """
     Analyze a repository (remote URL or local path) to determine import type
     and discover KiCAD projects.
     """
+    _check_local_import_permission(request.url, user)
     try:
         job_id = project_import_service.start_analyze_job(request.url)
         return {"job_id": job_id, "status": "started"}
@@ -397,14 +427,18 @@ async def analyze_repository(request: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}") from e
 
 
-@router.post("/import", dependencies=[Depends(require_designer)])
-async def import_project(request: ImportRequest):
+@router.post("/import")
+async def import_project(
+    request: ImportRequest,
+    user: AuthenticatedUser = Depends(require_designer),
+):
     """
     Start an async project import job.
     For Type-1: imports single project at root.
     For Type-2: imports selected subprojects.
-    For local paths: local_path_mode must be "reference" or "copy".
+    For local paths: admin-only; local_path_mode must be "reference" or "copy".
     """
+    _check_local_import_permission(request.url, user)
     if (
         project_import_service.is_local_path(request.url)
         and not request.local_path_mode
@@ -875,26 +909,16 @@ async def get_project_branches(
     return {"branches": branches, "current": current}
 
 
-@router.get("/{project_id}/commits/{commit_hash}/summary")
-async def get_commit_summary(
-    project_id: str,
-    commit_hash: str,
-    user: AuthenticatedUser = Depends(require_viewer),
-):
-    """
-    Return files changed in a commit vs its parent, with item-level counts for .kicad_sch files.
-    """
-    project = get_project_for_role_or_404(project_id, user.role)
-    repo_path, relative_path = _repo_context(project)
+def _build_commit_summary(
+    repo_path: str, relative_path: str | None, commit_hash: str
+) -> dict:
+    """Blocking work for get_commit_summary — run via asyncio.to_thread."""
+    from git import Repo
 
     files = get_commit_file_summary(repo_path, commit_hash, relative_path)
 
-    # For each .kicad_sch / .kicad_pcb file that changed, run the appropriate
-    # diff service to get item-level added/removed/changed counts.
     parent_hash = None
     try:
-        from git import Repo
-
         repo = Repo(repo_path)
         commit = repo.commit(commit_hash)
         parent_hash = commit.parents[0].hexsha if commit.parents else None
@@ -902,10 +926,7 @@ async def get_commit_summary(
         pass
 
     if parent_hash:
-        from pathlib import Path
-
         repo_root = sch_diff_service._git_root(Path(repo_path))
-
         for f in files:
             name = f["filename"]
             if name.endswith(".kicad_sch"):
@@ -940,6 +961,22 @@ async def get_commit_summary(
     return {"files": files}
 
 
+@router.get("/{project_id}/commits/{commit_hash}/summary")
+async def get_commit_summary(
+    project_id: str,
+    commit_hash: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """
+    Return files changed in a commit vs its parent, with item-level counts for .kicad_sch files.
+    """
+    project = get_project_for_role_or_404(project_id, user.role)
+    repo_path, relative_path = _repo_context(project)
+    return await asyncio.to_thread(
+        _build_commit_summary, repo_path, relative_path, commit_hash
+    )
+
+
 @router.get("/{project_id}/commits/{commit_hash}/file")
 async def get_commit_file(
     project_id: str,
@@ -958,11 +995,21 @@ async def get_commit_file(
     from fastapi.responses import Response
 
     project = get_project_for_role_or_404(project_id, user.role)
-    repo_path, _ = _repo_context(project)
+    repo_path, sub_path = _repo_context(project)
 
-    # Basic path traversal guard — reject anything with ".." segments
+    # Reject path traversal
     if ".." in Path(path).parts:
         raise HTTPException(status_code=400, detail="Invalid path")
+
+    # For Type-2 projects constrain reads to the project subpath so sibling
+    # boards inside the same monorepo cannot be accessed through this endpoint.
+    if sub_path:
+        normalised_sub = sub_path.rstrip("/") + "/"
+        if not (path == sub_path or path.startswith(normalised_sub)):
+            raise HTTPException(
+                status_code=403,
+                detail="Path is outside the project scope",
+            )
 
     try:
         from git import Repo as GitRepo
@@ -1362,6 +1409,11 @@ async def update_project_description(
     }
 
 
+# Hard limits for the Gerber ZIP endpoint
+_GERBER_MAX_FILES = 200  # max number of gerber/drill files per project
+_GERBER_MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB per individual file
+_GERBER_MAX_ZIP_BYTES = 50 * 1024 * 1024  # 50 MB total uncompressed
+
 # Gerber file extensions recognised by gerbers-renderer
 _GERBER_EXTENSIONS = {
     ".gbr",
@@ -1450,9 +1502,25 @@ async def get_project_gerbers(
     if not files:
         raise HTTPException(status_code=404, detail="No gerber files found")
 
+    if len(files) > _GERBER_MAX_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many gerber files ({len(files)}); limit is {_GERBER_MAX_FILES}",
+        )
+
     buf = io.BytesIO()
+    total_bytes = 0
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for archive_name, abs_path in files:
+            file_size = Path(abs_path).stat().st_size
+            if file_size > _GERBER_MAX_FILE_BYTES:
+                continue  # skip oversized individual files rather than aborting
+            total_bytes += file_size
+            if total_bytes > _GERBER_MAX_ZIP_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Gerber output exceeds the maximum allowed size",
+                )
             zf.write(abs_path, arcname=archive_name.replace("\\", "/"))
     buf.seek(0)
 
