@@ -12,6 +12,7 @@ import {
     EcadInfoPanel,
     EcadViewerHost,
     HotkeysLegend,
+    OVERLAY_FRAMES,
     useBoardClickFix,
     useEcadInfoPanel,
     useViewerHotkeys,
@@ -613,7 +614,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
         }
     }, [updatePositions]);
 
-    const kick = useCallback((frames = 30) => {
+    const kick = useCallback((frames = OVERLAY_FRAMES.DEFAULT) => {
         framesLeftRef.current = Math.max(framesLeftRef.current, frames);
         if (rafRef.current === null) {
             rafRef.current = requestAnimationFrame(tick);
@@ -626,9 +627,9 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
     }, [kick, kickRef]);
 
     useEffect(() => {
-        const onDown  = () => kick(180);
-        const onUp    = () => kick(20);
-        const onWheel = () => kick(20);
+        const onDown  = () => kick(OVERLAY_FRAMES.DRAG);
+        const onUp    = () => kick(OVERLAY_FRAMES.SETTLE);
+        const onWheel = () => kick(OVERLAY_FRAMES.SETTLE);
         window.addEventListener("mousedown", onDown);
         window.addEventListener("mouseup",   onUp);
         window.addEventListener("wheel",     onWheel, { passive: true });
@@ -642,7 +643,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
         };
     }, [kick]);
 
-    useEffect(() => { kick(30); }, [groups, kick]);
+    useEffect(() => { kick(OVERLAY_FRAMES.LOAD); }, [groups, kick]);
 
     // Hook into kicanvas's on_viewport_change so the overlay refreshes whenever
     // the camera moves — including the post-load auto-fit, which doesn't emit
@@ -662,7 +663,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
             const orig = inner.on_viewport_change.bind(inner);
             inner.on_viewport_change = function () {
                 orig();
-                kick(2);
+                kick(OVERLAY_FRAMES.VIEWPORT);
             };
             inner.__overlayKickHooked = true;
         };
@@ -792,7 +793,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
     useEffect(() => { updateSvgMembersRef.current = updateSvgMembers; }, [updateSvgMembers]);
     // Kick immediately when groups or the shown version change so visibility
     // and geometry update before the next user interaction.
-    useEffect(() => { kick(5); }, [svgGroups, showing, kick]);
+    useEffect(() => { kick(OVERLAY_FRAMES.GROUP_CHANGE); }, [svgGroups, showing, kick]);
 
     return (
         <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
@@ -1283,7 +1284,7 @@ export function PcbDiffViewer({
                 cy: cam.center.y,
             };
         });
-        overlayKickRef.current?.(40);
+        overlayKickRef.current?.(OVERLAY_FRAMES.ZOOM_TO);
     }, [getCamera, safeDraw]);
 
     const handleGroupClick = useCallback((g: GroupedMarker) => {

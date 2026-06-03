@@ -1639,6 +1639,33 @@ function ensureLayersPanelKeyframes() {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Overlay RAF frame budgets
+// ---------------------------------------------------------------------------
+//
+// The diff overlays reposition their markers on a requestAnimationFrame loop.
+// `kick(n)` arms the loop for `n` frames so the overlay keeps tracking the
+// canvas while it animates, then self-stops. These are the frame counts each
+// interaction needs; they assume ~60fps. Shared by both diff viewers so the
+// two RAF loops stay in lockstep.
+export const OVERLAY_FRAMES = {
+    /** Default budget when no specific interaction is known. */
+    DEFAULT: 30,
+    /** mousedown: generous budget that covers a full drag without re-arming (~3s @ 60fps). */
+    DRAG: 180,
+    /** mouseup / wheel / resize: a few settling frames after the interaction ends. */
+    SETTLE: 20,
+    /** On mount / when the marker set changes: catch the async ecad-viewer load. */
+    LOAD: 30,
+    /** Post-viewport-change (camera moved): just enough to re-sync positions. */
+    VIEWPORT: 2,
+    /** After a programmatic zoom-to-marker: track the camera through the move. */
+    ZOOM_TO: 40,
+    /** PCB only — when the shown version / svg group set changes. */
+    GROUP_CHANGE: 5,
+} as const;
+
+// ---------------------------------------------------------------------------
 // useViewerReadiness — true once the underlying ecad-viewer is safe to drive
 // (camera mounted, document loaded). The caller supplies a `probe` predicate
 // that returns true when the inner element is ready — schematics check

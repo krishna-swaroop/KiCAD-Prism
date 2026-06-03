@@ -12,6 +12,7 @@ import {
     EcadInfoPanel,
     EcadViewerHost,
     HotkeysLegend,
+    OVERLAY_FRAMES,
     useEcadInfoPanel,
     useViewerHotkeys,
     useViewerReadiness,
@@ -392,7 +393,7 @@ function DiffOverlay({ markers, viewerRef, onMarkerClick, activeUuid, showing, k
         }
     }, [updatePositions]);
 
-    const kick = useCallback((frames = 30) => {
+    const kick = useCallback((frames = OVERLAY_FRAMES.DEFAULT) => {
         framesLeftRef.current = Math.max(framesLeftRef.current, frames);
         if (rafRef.current === null) {
             rafRef.current = requestAnimationFrame(tick);
@@ -410,9 +411,9 @@ function DiffOverlay({ markers, viewerRef, onMarkerClick, activeUuid, showing, k
         // mouseup tops it up for a few final settling frames
         // wheel kicks for inertial wheel events
         // No global mousemove listener — that fires too often and wastes work
-        const onDown  = () => kick(180); // ~3s at 60fps; covers most drags without re-arming
-        const onUp    = () => kick(20);
-        const onWheel = () => kick(20);
+        const onDown  = () => kick(OVERLAY_FRAMES.DRAG);
+        const onUp    = () => kick(OVERLAY_FRAMES.SETTLE);
+        const onWheel = () => kick(OVERLAY_FRAMES.SETTLE);
         window.addEventListener("mousedown", onDown);
         window.addEventListener("mouseup",   onUp);
         window.addEventListener("wheel",     onWheel, { passive: true });
@@ -427,7 +428,7 @@ function DiffOverlay({ markers, viewerRef, onMarkerClick, activeUuid, showing, k
     }, [kick]);
 
     // On mount / markers change: run enough frames to catch async ecad-viewer load
-    useEffect(() => { kick(30); }, [markers, kick]);
+    useEffect(() => { kick(OVERLAY_FRAMES.LOAD); }, [markers, kick]);
 
     // Hook into the underlying viewer's on_viewport_change so the overlay
     // refreshes whenever the camera moves — including the post-load auto-fit,
@@ -461,7 +462,7 @@ function DiffOverlay({ markers, viewerRef, onMarkerClick, activeUuid, showing, k
             const orig = (inner.on_viewport_change as () => void).bind(inner);
             inner.on_viewport_change = function () {
                 orig();
-                kick(2);
+                kick(OVERLAY_FRAMES.VIEWPORT);
             };
             inner.__overlayKickHooked = true;
         };
@@ -956,7 +957,7 @@ export function SchematicDiffViewer({
             imposeCamRef.current = null;
             safeDraw(viewer);
         } catch { /* ignore */ }
-        overlayKickRef.current?.(40);
+        overlayKickRef.current?.(OVERLAY_FRAMES.ZOOM_TO);
     }, [getSchEl, safeDraw]);
 
     const handleMarkerClick = useCallback((m: DiffMarker) => {
