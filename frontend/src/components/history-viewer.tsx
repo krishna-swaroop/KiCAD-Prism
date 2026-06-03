@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar, GitCompare, ChevronDown, ChevronRight, FileText, Plus, Minus, RefreshCw, Loader2, X, CircuitBoard, Cpu, List, Settings, FileCode, GitBranch } from "lucide-react";
+import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar, GitCompare, ChevronDown, ChevronRight, FileText, Plus, Minus, RefreshCw, Loader2, X, CircuitBoard, Cpu, List, Settings, FileCode } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import {
-    Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator,
-    SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { SchematicDiffViewer } from "./schematic-diff-viewer";
 import { PcbDiffViewer } from "./pcb-diff-viewer";
 import { BomDiffViewer } from "./bom-diff-viewer";
@@ -38,21 +34,6 @@ interface ReleasesResponse {
 
 interface CommitsResponse {
     commits: Commit[];
-}
-
-interface Branch {
-    name: string;
-    full_name: string;
-    type: "local" | "remote";
-    current: boolean;
-    head_hash: string;
-    full_head_hash: string;
-    upstream: string | null;
-}
-
-interface BranchesResponse {
-    branches: Branch[];
-    current: string | null;
 }
 
 interface DiffItem {
@@ -176,79 +157,6 @@ function KicadChip({ icon: Icon, label, count, color }: {
             <Icon className="h-3 w-3" />
             {count > 1 ? <span className="font-mono">{count}</span> : null}
         </span>
-    );
-}
-
-// Branch selector — shadcn Select wrapping local + remote branches.
-// `currentBranch` is the actual checked-out branch (used for the "current" badge);
-// `selectedBranch` is what the user has chosen to view (may differ).
-function BranchSelector({
-    branches, currentBranch, selectedBranch, onSelect,
-}: {
-    branches: Branch[];
-    currentBranch: string | null;
-    selectedBranch: string | null;
-    onSelect: (name: string | null) => void;
-}) {
-    const local  = branches.filter(b => b.type === "local");
-    const remote = branches.filter(b => b.type === "remote");
-    // Sentinel value for "no specific branch" (defaults to HEAD on the server).
-    const ANY = "__any__";
-    const value = selectedBranch ?? ANY;
-
-    return (
-        <Select
-            value={value}
-            onValueChange={(v) => onSelect(v === ANY ? null : v)}
-        >
-            <SelectTrigger className="h-9 min-w-[180px] gap-2">
-                <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <SelectValue placeholder="Branch" />
-            </SelectTrigger>
-            <SelectContent>
-                <SelectItem value={ANY}>
-                    <span className="text-muted-foreground">All commits (HEAD)</span>
-                </SelectItem>
-                {local.length > 0 && (
-                    <>
-                        <SelectSeparator />
-                        <SelectGroup>
-                            <SelectLabel>Local</SelectLabel>
-                            {local.map(b => (
-                                <SelectItem key={b.full_name} value={b.name}>
-                                    <span className="flex items-center gap-2">
-                                        <span className="font-medium">{b.name}</span>
-                                        {b.name === currentBranch && (
-                                            <span className="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 leading-none">
-                                                current
-                                            </span>
-                                        )}
-                                        {b.upstream && (
-                                            <span className="text-[10px] text-muted-foreground font-mono">
-                                                ↑ {b.upstream}
-                                            </span>
-                                        )}
-                                    </span>
-                                </SelectItem>
-                            ))}
-                        </SelectGroup>
-                    </>
-                )}
-                {remote.length > 0 && (
-                    <>
-                        <SelectSeparator />
-                        <SelectGroup>
-                            <SelectLabel>Remote</SelectLabel>
-                            {remote.map(b => (
-                                <SelectItem key={b.full_name} value={b.name}>
-                                    <span className="font-mono text-[12px]">{b.name}</span>
-                                </SelectItem>
-                            ))}
-                        </SelectGroup>
-                    </>
-                )}
-            </SelectContent>
-        </Select>
     );
 }
 
@@ -710,10 +618,6 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
     const [error, setError] = useState<string | null>(null);
     const [selectedCommits, setSelectedCommits] = useState<string[]>([]);
     const [showDiff, setShowDiff] = useState(false);
-    const [branches, setBranches] = useState<Branch[]>([]);
-    const [currentBranch, setCurrentBranch] = useState<string | null>(null);
-    // null = "default" (HEAD); otherwise a branch name to filter commits to.
-    const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
     // Single-commit diff: opens the modal against the commit's parent and
     // optionally pre-selects an item / tab.
     const [itemDiff, setItemDiff] = useState<{
@@ -784,38 +688,13 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
         setSelectedCommits((previous) => previous.filter((hash) => currentHashes.has(hash)).slice(-2));
     }, [commits]);
 
-    // Branches: fetch once per project, then default the selected branch to
-    // the current HEAD branch if any.
-    useEffect(() => {
-        const controller = new AbortController();
-        fetchJson<BranchesResponse>(
-            `/api/projects/${projectId}/branches`,
-            { signal: controller.signal },
-            "Failed to load branches"
-        ).then((data) => {
-            if (controller.signal.aborted) return;
-            setBranches(data.branches ?? []);
-            setCurrentBranch(data.current ?? null);
-            // Default selection: the current branch, so the initial commit list
-            // matches what the user is checked out on.
-            if (data.current) setSelectedBranch(prev => prev ?? data.current ?? null);
-        }).catch((err: unknown) => {
-            if (err instanceof DOMException && err.name === "AbortError") return;
-            // Non-fatal — branches are an enhancement, the commit list still works.
-            console.warn("Failed to fetch branches", err);
-        });
-        return () => controller.abort();
-    }, [projectId]);
-
-    // Releases + commits. Re-fetches when the selected branch changes.
+    // Releases + commits.
     useEffect(() => {
         const controller = new AbortController();
         setLoading(true);
         setError(null);
 
-        const commitsUrl = selectedBranch
-            ? `/api/projects/${projectId}/commits?branch=${encodeURIComponent(selectedBranch)}`
-            : `/api/projects/${projectId}/commits`;
+        const commitsUrl = `/api/projects/${projectId}/commits`;
 
         const fetchHistory = async () => {
             const [releasesResult, commitsResult] = await Promise.allSettled([
@@ -881,7 +760,7 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
         });
 
         return () => controller.abort();
-    }, [projectId, selectedBranch]);
+    }, [projectId]);
 
     if (loading) {
         return (
@@ -978,14 +857,6 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                         Commits
                     </h3>
                     <div className="flex items-center gap-2">
-                        {branches.length > 0 && (
-                            <BranchSelector
-                                branches={branches}
-                                currentBranch={currentBranch}
-                                selectedBranch={selectedBranch}
-                                onSelect={setSelectedBranch}
-                            />
-                        )}
                         {canCompareDiffs && selectedCommits.length === 2 && (
                             <Button
                                 variant="default"
