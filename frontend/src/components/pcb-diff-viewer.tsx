@@ -614,7 +614,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
         }
     }, [updatePositions]);
 
-    const kick = useCallback((frames = OVERLAY_FRAMES.DEFAULT) => {
+    const kick = useCallback((frames: number = OVERLAY_FRAMES.DEFAULT) => {
         framesLeftRef.current = Math.max(framesLeftRef.current, frames);
         if (rafRef.current === null) {
             rafRef.current = requestAnimationFrame(tick);
