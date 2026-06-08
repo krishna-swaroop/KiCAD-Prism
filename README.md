@@ -65,8 +65,8 @@ KiCAD Prism is a web platform for browsing, reviewing, and operating on KiCad re
 - Storage:
   - imported repositories under `data/projects`
   - SSH material under `data/ssh`
+  - workspace project, folder, background job, catalog, OAuth, and service-client state in SQLite at `data/projects/.kicad-prism/prism.sqlite3`
   - role assignments in `.rbac_roles.json`
-  - folder metadata in `.folders.json`
   - comments in SQLite plus optional `.comments/comments.json` export
 - Runtime split:
   - Docker frontend serves the production bundle on port `8080`

@@ -161,6 +161,18 @@ class WorkspaceService:
                 tags        TEXT NOT NULL DEFAULT '[]',
                 scene_config TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS ws_jobs (
+                id         TEXT PRIMARY KEY,
+                kind       TEXT NOT NULL,
+                status     TEXT NOT NULL,
+                message    TEXT NOT NULL DEFAULT '',
+                percent    REAL NOT NULL DEFAULT 0,
+                payload    TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ws_jobs_kind_status ON ws_jobs(kind, status);
         """)
 
     # ------------------------------------------------------------------

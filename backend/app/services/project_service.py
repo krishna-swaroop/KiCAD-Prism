@@ -567,6 +567,7 @@ def _run_clone_job(job_id: str, repo_url: str, selected_paths: list[str] | None 
 def start_import_job(repo_url: str, selected_paths: list[str] | None = None) -> str:
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
+        "job_id": job_id,
         "status": "running",
         "message": "Starting import...",
         "percent": 0,
@@ -762,6 +763,7 @@ def start_workflow_job(
 ) -> str:
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
+        "job_id": job_id,
         "status": "running",
         "message": "Queued...",
         "percent": 0,

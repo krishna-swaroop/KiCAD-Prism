@@ -3,6 +3,7 @@ import json
 import mimetypes
 import os
 import posixpath
+import shutil
 from pathlib import Path
 from urllib.parse import quote
 
@@ -894,11 +895,50 @@ async def delete_project_endpoint(
     For standalone projects, this also deletes the project files.
     For monorepo sub-projects, only removes the registry entry.
     """
-    _ = get_project_for_role_or_404(project_id, user.role)
+    project = get_project_for_role_or_404(project_id, user.role)
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    repo_id = row.get("repo_id")
+    import_type = row.get("import_type") or "single"
+    clone_path = row.get("parent_repo_path") or project.path
     success = await asyncio.to_thread(workspace.delete_project, project_id)
     if not success:
         raise HTTPException(status_code=404, detail="Project not found")
-    return {"message": "Project deleted successfully"}
+
+    remaining_projects = (
+        await asyncio.to_thread(workspace.get_projects_by_repo, repo_id)
+        if repo_id
+        else []
+    )
+    should_delete_repo = import_type == "single" or not remaining_projects
+    removed_files = False
+    file_warning = None
+
+    if should_delete_repo and repo_id:
+        await asyncio.to_thread(workspace.delete_repository, repo_id)
+        try:
+            projects_root = Path(project_service.PROJECTS_ROOT).resolve()
+            target = Path(clone_path).resolve()
+            if (
+                target != projects_root
+                and projects_root in target.parents
+                and target.exists()
+            ):
+                await asyncio.to_thread(shutil.rmtree, target)
+                removed_files = True
+        except Exception as exc:
+            file_warning = f"Project was removed from the workspace, but files could not be deleted: {exc}"
+
+    response = {
+        "message": "Project deleted successfully",
+        "removed_files": removed_files,
+    }
+    if file_warning:
+        response["warning"] = file_warning
+    response["repository_deleted"] = should_delete_repo
+    return response
 
 
 @router.get("/{project_id}/files", response_model=list[file_service.FileItem])

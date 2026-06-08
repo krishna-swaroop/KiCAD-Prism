@@ -98,14 +98,12 @@ Current Compose mounts:
 - `./data/ssh` -> `/root/.ssh`
 
 Persisted data includes:
-- SQLite component catalog, KiCad OAuth state, and service-client metadata at `data/projects/.kicad-prism/prism.sqlite3`
+- SQLite workspace/project/folder metadata, background job state, component catalog, KiCad OAuth state, and service-client metadata at `data/projects/.kicad-prism/prism.sqlite3`
 - imported repositories
 - canonical KiCad component library files under `data/projects/.kicad-prism/components`
 - generated CERN-style DBL bundles under `data/projects/.kicad-prism/exports/kicad-dbl`
 - generated symbol and footprint previews
-- `.project_registry.json`
 - `.rbac_roles.json`
-- `.folders.json`
 - exported comments JSON inside repos when generated
 - SSH keys and `known_hosts`
 
@@ -388,8 +386,9 @@ concurrent request handling:
 UVICORN_WORKERS=1
 ```
 
-SQLite uses one local database file with WAL enabled and automatic WAL checkpoints. Keep write-heavy
-catalog imports as explicit admin operations rather than background jobs running across many workers.
+SQLite uses one local database file with WAL enabled and automatic WAL checkpoints. Background import,
+workflow, and visual-diff job status is persisted in SQLite so polling remains reliable across
+multiple Uvicorn worker processes. Keep write-heavy catalog imports as explicit admin operations.
 
 Remote-symbol search uses SQLite FTS5 when available. The backend maintains the FTS index with
 SQLite triggers and falls back to `LIKE` search only if the runtime SQLite build does not include
