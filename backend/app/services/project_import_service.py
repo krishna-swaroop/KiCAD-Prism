@@ -5,6 +5,7 @@ Handles Type-1 (single project) and Type-2 (multiple projects) imports,
 both from remote Git URLs and local filesystem paths.
 """
 
+import logging
 import os
 import re
 import shutil
@@ -18,6 +19,8 @@ from git import InvalidGitRepositoryError, RemoteProgress, Repo
 
 from app.services import path_config_service, project_service
 from app.services.workspace_service import workspace
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -877,14 +880,25 @@ def sync_project(project_id: str) -> dict:
     )
 
     if not sync_path or not os.path.exists(sync_path):
-        return {"status": "error", "message": f"Project path not found: {sync_path}"}
+        logger.error(
+            "sync_project: path not found for project %s: %s", project_id, sync_path
+        )
+        return {"status": "error", "message": "Project path not found."}
 
     try:
         repo = Repo(sync_path)
     except InvalidGitRepositoryError:
-        return {"status": "error", "message": f"Not a git repository: {sync_path}"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(
+            "sync_project: not a git repository for project %s: %s",
+            project_id,
+            sync_path,
+        )
+        return {"status": "error", "message": "Project is not a valid git repository."}
+    except Exception:
+        logger.exception(
+            "sync_project: failed to open repository for project %s", project_id
+        )
+        return {"status": "error", "message": "Failed to open project repository."}
 
     try:
         if not repo.remotes:
@@ -893,7 +907,6 @@ def sync_project(project_id: str) -> dict:
             return {
                 "status": "success",
                 "message": "Local repository with no remote; nothing to sync.",
-                "path": sync_path,
             }
 
         origin = repo.remote("origin")
@@ -918,8 +931,8 @@ def sync_project(project_id: str) -> dict:
         return {
             "status": "success",
             "message": f"Synced {len(fetch_info)} ref(s)",
-            "path": sync_path,
         }
 
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    except Exception:
+        logger.exception("sync_project: sync failed for project %s", project_id)
+        return {"status": "error", "message": "Failed to sync project repository."}
