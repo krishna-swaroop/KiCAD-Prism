@@ -576,6 +576,11 @@ export function SchematicDiffViewer({
     const [showing, setShowing] = useState<"new" | "old">("new");
     const [activeMarker, setActiveMarker] = useState<DiffMarker | null>(null);
 
+    // Parsing backend used to compute the diff: in-house ("native") or
+    // kicad_monkey ("monkey"). Changing it refetches the diff. Lets us compare
+    // the two parsers' results side by side on the same commits.
+    const [parser, setParser] = useState<"native" | "monkey">("native");
+
     // Visibility toggles
     const [showOverlay, setShowOverlay] = useState(true);
     const [showAdded, setShowAdded] = useState(true);
@@ -845,7 +850,7 @@ export function SchematicDiffViewer({
     useEffect(() => {
         setLoading(true);
         setError(null);
-        const params = new URLSearchParams({ commit1, commit2 });
+        const params = new URLSearchParams({ commit1, commit2, parser });
         fetch(`/api/projects/${projectId}/schematic-diff?${params}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -869,9 +874,10 @@ export function SchematicDiffViewer({
                 setLoading(false);
             });
     // focusFilename intentionally read at effect-creation time only — we don't
-    // want fetch to re-fire when it changes.
+    // want fetch to re-fire when it changes. `parser` IS a dep: switching the
+    // parsing backend refetches the diff.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectId, commit1, commit2]);
+    }, [projectId, commit1, commit2, parser]);
 
     const activeSheetData = data?.sheets.find(s => s.filename === activeSheet) ?? null;
 
@@ -1158,6 +1164,29 @@ export function SchematicDiffViewer({
                                     onClick={() => handleToggle("new")}
                                 >
                                     NEW<ChevronRight className="inline h-3 w-3 ml-0.5" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Parser backend toggle — compare native vs kicad_monkey */}
+                    {data && (
+                        <div className="px-3 pt-1 pb-2 shrink-0">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 px-1">Parser</p>
+                            <div className="flex rounded-md border overflow-hidden text-xs font-medium w-full">
+                                <button
+                                    className={`flex-1 py-1.5 transition-colors ${parser === "native" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                    onClick={() => setParser("native")}
+                                    title="In-house s-expression parser"
+                                >
+                                    Native
+                                </button>
+                                <button
+                                    className={`flex-1 py-1.5 transition-colors ${parser === "monkey" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                    onClick={() => setParser("monkey")}
+                                    title="kicad_monkey parser"
+                                >
+                                    Monkey
                                 </button>
                             </div>
                         </div>

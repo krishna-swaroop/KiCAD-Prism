@@ -999,6 +999,10 @@ export function PcbDiffViewer({
     const [showing, setShowing] = useState<"new" | "old">("new");
     const [activeGroup, setActiveGroup] = useState<GroupedMarker | null>(null);
 
+    // Parsing backend used to compute the diff: in-house ("native") or
+    // kicad_monkey ("monkey"). Changing it refetches the diff.
+    const [parser, setParser] = useState<"native" | "monkey">("native");
+
     const [showOverlay, setShowOverlay] = useState(true);
     const [showAdded, setShowAdded] = useState(true);
     const [showRemoved, setShowRemoved] = useState(true);
@@ -1128,7 +1132,7 @@ export function PcbDiffViewer({
     useEffect(() => {
         setLoading(true);
         setError(null);
-        const params = new URLSearchParams({ commit1, commit2 });
+        const params = new URLSearchParams({ commit1, commit2, parser });
         fetch(`/api/projects/${projectId}/pcb-diff?${params}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1143,7 +1147,7 @@ export function PcbDiffViewer({
                 setError(e instanceof Error ? e.message : "Failed to load diff");
                 setLoading(false);
             });
-    }, [projectId, commit1, commit2]);
+    }, [projectId, commit1, commit2, parser]);
 
     const activeBoardData = data?.boards.find(b => b.filename === activeBoard) ?? null;
 
@@ -1419,6 +1423,29 @@ export function PcbDiffViewer({
                                     onClick={() => handleToggle("new")}
                                 >
                                     NEW<ChevronRight className="inline h-3 w-3 ml-0.5" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Parser backend toggle — compare native vs kicad_monkey */}
+                    {data && (
+                        <div className="px-3 pt-1 pb-2 shrink-0">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 px-1">Parser</p>
+                            <div className="flex rounded-md border overflow-hidden text-xs font-medium w-full">
+                                <button
+                                    className={`flex-1 py-1.5 transition-colors ${parser === "native" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                    onClick={() => setParser("native")}
+                                    title="In-house s-expression parser"
+                                >
+                                    Native
+                                </button>
+                                <button
+                                    className={`flex-1 py-1.5 transition-colors ${parser === "monkey" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                    onClick={() => setParser("monkey")}
+                                    title="kicad_monkey parser"
+                                >
+                                    Monkey
                                 </button>
                             </div>
                         </div>

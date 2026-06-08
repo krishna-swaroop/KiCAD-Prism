@@ -520,11 +520,24 @@ def _match_segments(removed_segs: list, added_segs: list) -> tuple:
     return changed, still_removed, still_added
 
 
-def diff_pcb(old_content: str, new_content: str) -> dict:
-    old_tree = _parse_sexp(old_content)
-    new_tree = _parse_sexp(new_content)
-    old_items = _extract_all_pcb(old_tree)
-    new_items = _extract_all_pcb(new_tree)
+def _extract_pcb_items(content: str, parser: str) -> dict:
+    """Parse + extract PCB items as {key: item}, selecting the parser.
+
+    'native' uses the in-house s-expression extractor; 'monkey' uses the
+    kicad_monkey adapter. Both return the identical item-dict shape so the
+    diff algorithm downstream is parser-agnostic.
+    """
+    if parser == "monkey":
+        # Imported lazily so the native path has no dependency on kicad_monkey.
+        from app.services import monkey_extract_service
+
+        return monkey_extract_service.extract_all_pcb(content)
+    return _extract_all_pcb(_parse_sexp(content))
+
+
+def diff_pcb(old_content: str, new_content: str, parser: str = "native") -> dict:
+    old_items = _extract_pcb_items(old_content, parser)
+    new_items = _extract_pcb_items(new_content, parser)
 
     old_uuids = set(old_items)
     new_uuids = set(new_items)
@@ -580,7 +593,9 @@ def _find_all_pcb_paths(
 # ---------------------------------------------------------------------------
 
 
-def get_pcb_diff(project_id: str, commit1: str, commit2: str) -> dict | None:
+def get_pcb_diff(
+    project_id: str, commit1: str, commit2: str, parser: str = "native"
+) -> dict | None:
     """
     Return interactive diff data for all PCB files between two commits.
 
@@ -635,14 +650,12 @@ def get_pcb_diff(project_id: str, commit1: str, commit2: str) -> dict | None:
         )
 
         if old_content and new_content:
-            diff = diff_pcb(old_content, new_content)
+            diff = diff_pcb(old_content, new_content, parser=parser)
         elif new_content:
-            tree = _parse_sexp(new_content)
-            items = list(_extract_all_pcb(tree).values())
+            items = list(_extract_pcb_items(new_content, parser).values())
             diff = {"added": items, "removed": [], "changed": []}
         elif old_content:
-            tree = _parse_sexp(old_content)
-            items = list(_extract_all_pcb(tree).values())
+            items = list(_extract_pcb_items(old_content, parser).values())
             diff = {"added": [], "removed": items, "changed": []}
         else:
             continue

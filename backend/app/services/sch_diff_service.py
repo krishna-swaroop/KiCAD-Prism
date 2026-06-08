@@ -343,9 +343,27 @@ def _item_changes(old: dict, new: dict) -> dict:
     return changes
 
 
-def diff_schematics(old_content: str, new_content: str) -> dict:
+def _extract_sch_items(content: str, parser: str) -> dict:
+    """Parse + extract schematic items as {uuid: item}, selecting the parser.
+
+    'native' uses the in-house s-expression extractor; 'monkey' uses the
+    kicad_monkey adapter. Both return the identical item-dict shape so the
+    diff algorithm downstream is parser-agnostic.
+    """
+    if parser == "monkey":
+        # Imported lazily so the native path has no dependency on kicad_monkey.
+        from app.services import monkey_extract_service
+
+        return monkey_extract_service.extract_all_sch(content)
+    return _extract_all(_parse_sexp(content))
+
+
+def diff_schematics(old_content: str, new_content: str, parser: str = "native") -> dict:
     """
     Compare two .kicad_sch file contents and return a structured diff.
+
+    `parser` selects the parsing backend ('native' or 'monkey'); the diff
+    algorithm itself is identical for both.
 
     Returns:
         {
@@ -354,11 +372,8 @@ def diff_schematics(old_content: str, new_content: str) -> dict:
             changed: [{item: item_dict, changes: {field: {old,new}}}, ...],
         }
     """
-    old_tree = _parse_sexp(old_content)
-    new_tree = _parse_sexp(new_content)
-
-    old_items = _extract_all(old_tree)
-    new_items = _extract_all(new_tree)
+    old_items = _extract_sch_items(old_content, parser)
+    new_items = _extract_sch_items(new_content, parser)
 
     old_uuids = set(old_items)
     new_uuids = set(new_items)
@@ -559,7 +574,9 @@ def _find_all_sch_paths(
 # ---------------------------------------------------------------------------
 
 
-def get_schematic_diff(project_id: str, commit1: str, commit2: str) -> dict | None:
+def get_schematic_diff(
+    project_id: str, commit1: str, commit2: str, parser: str = "native"
+) -> dict | None:
     """
     Return interactive diff data for all schematic sheets between two commits.
 
@@ -614,16 +631,14 @@ def get_schematic_diff(project_id: str, commit1: str, commit2: str) -> dict | No
         )
 
         if old_content and new_content:
-            diff = diff_schematics(old_content, new_content)
+            diff = diff_schematics(old_content, new_content, parser=parser)
         elif new_content:
             # Sheet added — all items are "added"
-            tree = _parse_sexp(new_content)
-            items = list(_extract_all(tree).values())
+            items = list(_extract_sch_items(new_content, parser).values())
             diff = {"added": items, "removed": [], "changed": []}
         elif old_content:
             # Sheet removed — all items are "removed"
-            tree = _parse_sexp(old_content)
-            items = list(_extract_all(tree).values())
+            items = list(_extract_sch_items(old_content, parser).values())
             diff = {"added": [], "removed": items, "changed": []}
         else:
             continue
