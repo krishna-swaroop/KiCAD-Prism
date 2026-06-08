@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { VisualDiffViewer } from "./visual-diff-viewer";
+import { ChangeAwareDiffViewer } from "./change-aware-diff-viewer";
 import { fetchJson } from "@/lib/api";
 
 interface Release {
@@ -280,7 +280,7 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
 
             {/* Visual Diff Viewer */}
             {showDiff && diffPair && (
-                <VisualDiffViewer
+                <ChangeAwareDiffViewer
                     projectId={projectId}
                     commit1={diffPair.newer.full_hash}
                     commit2={diffPair.older.full_hash}

@@ -8,3 +8,5 @@ requests
 PyJWT[crypto]
 kiutils
 python-multipart
+kicad-monkey==2026.6.3
+kicad-cruncher==2026.6.6

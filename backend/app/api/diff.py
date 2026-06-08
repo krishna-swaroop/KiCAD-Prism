@@ -2,12 +2,14 @@
 Diff API Routes (Native)
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from app.api._helpers import get_project_for_role_or_404
 from app.core.security import AuthenticatedUser, require_designer, require_viewer
-from app.services import diff_service
+from app.services import diff_service, kicad_analysis_service
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
@@ -46,6 +48,27 @@ async def get_manifest(project_id: str, job_id: str, user: AuthenticatedUser = D
     if not manifest:
         raise HTTPException(status_code=404, detail="Manifest not found or job not complete")
     return manifest
+
+@router.get("/{project_id}/change-aware-diff")
+async def get_change_aware_diff(
+    project_id: str,
+    commit1: str,
+    commit2: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Return a kicad-monkey-backed semantic diff for schematic/PCB viewers."""
+    get_project_for_role_or_404(project_id, user.role)
+    try:
+        return await asyncio.to_thread(
+            kicad_analysis_service.get_change_aware_diff,
+            project_id,
+            commit1,
+            commit2,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{project_id}/diff/{job_id}/assets/{path:path}")
 async def get_asset(project_id: str, job_id: str, path: str, user: AuthenticatedUser = Depends(require_viewer)):
