@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -21,6 +22,16 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 SSH_DIR = (Path.home() / ".ssh").resolve()
 PRIVATE_KEY = SSH_DIR / "id_ed25519"
 PUBLIC_KEY = SSH_DIR / "id_ed25519.pub"
+
+# Strict allowlist: only characters valid in RFC 5321 email addresses.
+# Excludes whitespace and shell-significant characters entirely.
+_EMAIL_RE = re.compile(
+    r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}"
+    r"@"
+    r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*"
+    r"\.[a-zA-Z]{2,}$"
+)
 
 
 class SSHKeyResponse(BaseModel):
@@ -67,33 +78,7 @@ async def generate_ssh_key(request: GenerateSSHKeyRequest):
     """Generate a new Ed25519 SSH key."""
     logger.info(f"Starting SSH key generation for email: {request.email}")
     safe_email = request.email.strip()
-    if not safe_email or len(safe_email) > 254:
-        raise HTTPException(status_code=400, detail="Invalid email format.")
-
-    if any(char in safe_email for char in ("\n", "\r", " ", "\t")):
-        raise HTTPException(status_code=400, detail="Invalid email format.")
-
-    if safe_email.count("@") != 1:
-        raise HTTPException(status_code=400, detail="Invalid email format.")
-
-    local_part, domain_part = safe_email.split("@", 1)
-    if not local_part or not domain_part:
-        raise HTTPException(status_code=400, detail="Invalid email format.")
-
-    if (
-        "." not in domain_part
-        or domain_part.startswith(".")
-        or domain_part.endswith(".")
-    ):
-        raise HTTPException(status_code=400, detail="Invalid email format.")
-
-    if any(
-        not label or label.startswith("-") or label.endswith("-")
-        for label in domain_part.split(".")
-    ):
-        raise HTTPException(status_code=400, detail="Invalid email format.")
-
-    if not all(char.isalnum() or char in ".!#$%&'*+/=?^_`{|}~-" for char in local_part):
+    if not safe_email or len(safe_email) > 254 or not _EMAIL_RE.match(safe_email):
         raise HTTPException(status_code=400, detail="Invalid email format.")
     logger.info(f"SSH Directory: {SSH_DIR}")
     logger.info(f"Private Key Path: {PRIVATE_KEY}")
@@ -127,13 +112,14 @@ async def generate_ssh_key(request: GenerateSSHKeyRequest):
         ) from e
 
     try:
-        # Generate key without passphrase (-N "")
+        # Generate key without passphrase (-N "") and with a fixed comment so
+        # no user-controlled data is passed to the subprocess.
         command = [
             "ssh-keygen",
             "-t",
             "ed25519",
             "-C",
-            safe_email,
+            "kicad-prism",
             "-N",
             "",
             "-f",
@@ -145,20 +131,29 @@ async def generate_ssh_key(request: GenerateSSHKeyRequest):
         logger.info("ssh-keygen command completed successfully.")
 
         # Ensure private key has correct permissions
-        if PRIVATE_KEY.exists():
-            logger.info(f"Setting permissions 0o600 on {PRIVATE_KEY}")
-            os.chmod(PRIVATE_KEY, 0o600)
-        else:
+        if not PRIVATE_KEY.exists():
             logger.error("Private key file not found after generation!")
             raise HTTPException(
                 status_code=500,
                 detail="Key generation appeared to succeed but file is missing.",
             )
 
-        with open(PUBLIC_KEY) as f:
-            content = f.read().strip()
-            logger.info("Public key read successfully returning result.")
-            return {"success": True, "public_key": content}
+        logger.info(f"Setting permissions 0o600 on {PRIVATE_KEY}")
+        os.chmod(PRIVATE_KEY, 0o600)
+
+        # Replace the fixed comment in the public key with the validated email.
+        # This is pure Python string manipulation — safe_email never touches a
+        # subprocess or filesystem path.
+        pub_key_text = PUBLIC_KEY.read_text().strip()
+        key_parts = pub_key_text.split(
+            " ", 2
+        )  # ["ssh-ed25519", "<base64>", "<comment>"]
+        key_parts[2] = safe_email
+        PUBLIC_KEY.write_text(" ".join(key_parts) + "\n")
+
+        content = PUBLIC_KEY.read_text().strip()
+        logger.info("Public key read successfully returning result.")
+        return {"success": True, "public_key": content}
 
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.decode() if e.stderr else "Unknown error"
