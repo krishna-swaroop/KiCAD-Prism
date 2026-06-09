@@ -96,6 +96,7 @@ async def get_pcb_diff(
     commit1: str,
     commit2: str = None,
     parser: str = "native",
+    track_net_names: bool = False,
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
@@ -103,6 +104,8 @@ async def get_pcb_diff(
     If commit2 is omitted, diffs commit1 against its parent.
 
     `parser` selects the parsing backend: 'native' or 'monkey'.
+    `track_net_names` — when true, net name changes on routing items are
+    treated as real diffs; otherwise only geometry is compared.
     """
     get_project_for_role_or_404(project_id, user.role)
     _validate_commits(commit1, commit2)
@@ -112,7 +115,12 @@ async def get_pcb_diff(
         commit2 = await asyncio.to_thread(_resolve_parent_commit, project_id, commit1)
 
     result = await asyncio.to_thread(
-        pcb_diff_service.get_pcb_diff, project_id, commit1, commit2, parser
+        pcb_diff_service.get_pcb_diff,
+        project_id,
+        commit1,
+        commit2,
+        parser,
+        track_net_names,
     )
     if result is None:
         raise HTTPException(

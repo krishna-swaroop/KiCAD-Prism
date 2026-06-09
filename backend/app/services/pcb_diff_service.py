@@ -49,7 +49,12 @@ def _at_with_rot(lst: list) -> tuple:
 
 
 def _pad_sig(pad: list) -> str:
-    """Stable signature for a single pad: number, type, shape, layers, net, size, drill, position."""
+    """Stable signature for a single pad: number, type, shape, layers, size, drill, position.
+
+    Net is intentionally excluded: net indices are renumbered by KiCad whenever
+    any footprint is added/removed, so including them would flag every pad on
+    every component as changed even when nothing moved.
+    """
     number = pad[1] if len(pad) > 1 and isinstance(pad[1], str) else ""
     pad_type = pad[2] if len(pad) > 2 and isinstance(pad[2], str) else ""
     shape = pad[3] if len(pad) > 3 and isinstance(pad[3], str) else ""
@@ -61,13 +66,11 @@ def _pad_sig(pad: list) -> str:
     sh = float(size_node[2]) if size_node and len(size_node) > 2 else 0.0
     drill_node = _get(pad, "drill")
     dr = float(drill_node[1]) if drill_node and len(drill_node) > 1 else 0.0
-    net_node = _get(pad, "net")
-    net = str(net_node[1]) if net_node and len(net_node) > 1 else ""
     layers_node = _get(pad, "layers")
     layers = ",".join(
         str(layer_name) for layer_name in (layers_node[1:] if layers_node else [])
     )
-    return f"{number}:{pad_type}:{shape}:{px:.4f},{py:.4f}:{sw:.4f},{sh:.4f}:{dr:.4f}:{net}:{layers}"
+    return f"{number}:{pad_type}:{shape}:{px:.4f},{py:.4f}:{sw:.4f},{sh:.4f}:{dr:.4f}:{layers}"
 
 
 def _extract_footprints(tree: list) -> dict:
@@ -384,7 +387,16 @@ def _extract_fp_graphics(tree: list) -> dict:
     return result
 
 
-def _extract_segments(tree: list) -> dict:
+def _build_net_names(tree: list) -> dict:
+    """Return {net_index_str → net_name} from top-level (net N "name") nodes."""
+    names: dict = {}
+    for node in _get_all(tree, "net"):
+        if len(node) >= 3:
+            names[str(node[1])] = str(node[2])
+    return names
+
+
+def _extract_segments(tree: list, net_names: dict | None = None) -> dict:
     result = {}
     for item in _get_all(tree, "segment"):
         start = _get(item, "start")
@@ -399,11 +411,14 @@ def _extract_segments(tree: list) -> dict:
         layer_node = _get(item, "layer")
         layer = layer_node[1] if layer_node and len(layer_node) > 1 else ""
         net_node = _get(item, "net")
-        net = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_idx = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_name = (net_names or {}).get(net_idx, net_idx)
         width_node = _get(item, "width")
         width = float(width_node[1]) if width_node and len(width_node) > 1 else 0.0
-        # Key by geometry — KiCAD regenerates UUIDs on every save so they are not stable
-        geo_key = f"seg:{sx:.4f},{sy:.4f}-{ex:.4f},{ey:.4f}:{layer}:{net}:{width:.4f}"
+        # Key by geometry only — net is a property, not identity.
+        # Dropping net from the key means index renumbering (which KiCad does on
+        # every footprint add/remove) and net renames don't create ghost adds/removes.
+        geo_key = f"seg:{sx:.4f},{sy:.4f}-{ex:.4f},{ey:.4f}:{layer}:{width:.4f}"
         result[geo_key] = {
             "type": "segment",
             "uuid": geo_key,
@@ -414,13 +429,14 @@ def _extract_segments(tree: list) -> dict:
             "end_x": ex,
             "end_y": ey,
             "layer": layer,
-            "net": net,
+            "net": net_idx,
+            "net_name": net_name,
             "width": width,
         }
     return result
 
 
-def _extract_vias(tree: list) -> dict:
+def _extract_vias(tree: list, net_names: dict | None = None) -> dict:
     result = {}
     for item in _get_all(tree, "via"):
         x, y = _at(item)
@@ -429,18 +445,17 @@ def _extract_vias(tree: list) -> dict:
         drill_node = _get(item, "drill")
         drill = float(drill_node[1]) if drill_node and len(drill_node) > 1 else 0.0
         net_node = _get(item, "net")
-        net = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_idx = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_name = (net_names or {}).get(net_idx, net_idx)
         layers_node = _get(item, "layers")
         start_layer = layers_node[1] if layers_node and len(layers_node) > 1 else ""
         end_layer = layers_node[2] if layers_node and len(layers_node) > 2 else ""
-        # via type: 'blind', 'micro', or default 'through'
         via_type = "through"
         for atom in item:
             if atom in ("blind", "micro"):
                 via_type = atom
                 break
-        # Key by geometry for same reason as segments
-        geo_key = f"via:{x:.4f},{y:.4f}:{size:.4f}:{drill:.4f}:{net}"
+        geo_key = f"via:{x:.4f},{y:.4f}:{size:.4f}:{drill:.4f}"
         result[geo_key] = {
             "type": "via",
             "uuid": geo_key,
@@ -448,7 +463,8 @@ def _extract_vias(tree: list) -> dict:
             "y": y,
             "size": size,
             "drill": drill,
-            "net": net,
+            "net": net_idx,
+            "net_name": net_name,
             "start_layer": start_layer,
             "end_layer": end_layer,
             "via_type": via_type,
@@ -651,7 +667,7 @@ def _extract_gr_items(tree: list) -> dict:
     return result
 
 
-def _extract_arcs(tree: list) -> dict:
+def _extract_arcs(tree: list, net_names: dict | None = None) -> dict:
     """Curved track arcs (type='arc' in PCB routing layer)."""
     result = {}
     for item in _get_all(tree, "arc"):
@@ -669,10 +685,11 @@ def _extract_arcs(tree: list) -> dict:
         layer_node = _get(item, "layer")
         layer = layer_node[1] if layer_node and len(layer_node) > 1 else ""
         net_node = _get(item, "net")
-        net = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_idx = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_name = (net_names or {}).get(net_idx, net_idx)
         width_node = _get(item, "width")
         width = float(width_node[1]) if width_node and len(width_node) > 1 else 0.0
-        geo_key = f"arc:{sx:.4f},{sy:.4f}-{mx:.4f},{my:.4f}-{ex:.4f},{ey:.4f}:{layer}:{net}:{width:.4f}"
+        geo_key = f"arc:{sx:.4f},{sy:.4f}-{mx:.4f},{my:.4f}-{ex:.4f},{ey:.4f}:{layer}:{width:.4f}"
         result[geo_key] = {
             "type": "arc",
             "uuid": geo_key,
@@ -685,18 +702,20 @@ def _extract_arcs(tree: list) -> dict:
             "end_x": ex,
             "end_y": ey,
             "layer": layer,
-            "net": net,
+            "net": net_idx,
+            "net_name": net_name,
             "width": width,
         }
     return result
 
 
 def _extract_all_pcb(tree: list) -> dict:
+    net_names = _build_net_names(tree)
     items = {}
     items.update(_extract_footprints(tree))
-    items.update(_extract_segments(tree))
-    items.update(_extract_arcs(tree))
-    items.update(_extract_vias(tree))
+    items.update(_extract_segments(tree, net_names))
+    items.update(_extract_arcs(tree, net_names))
+    items.update(_extract_vias(tree, net_names))
     items.update(_extract_zones(tree))
     items.update(_extract_gr_items(tree))
     items.update(_extract_fp_graphics(tree))
@@ -718,7 +737,7 @@ _PCB_COMPARABLE_KEYS = {
         "rotation",
         "pad_sig",
     ],
-    "segment": ["start_x", "start_y", "end_x", "end_y", "layer", "net", "width"],
+    "segment": ["start_x", "start_y", "end_x", "end_y", "layer", "width"],
     "arc": [
         "start_x",
         "start_y",
@@ -727,10 +746,9 @@ _PCB_COMPARABLE_KEYS = {
         "end_x",
         "end_y",
         "layer",
-        "net",
         "width",
     ],
-    "via": ["x", "y", "size", "drill", "net", "start_layer", "end_layer", "via_type"],
+    "via": ["x", "y", "size", "drill", "start_layer", "end_layer", "via_type"],
     "zone": [
         "net",
         "net_name",
@@ -766,9 +784,14 @@ _PCB_COMPARABLE_KEYS = {
 }
 
 
-def _item_changes(old: dict, new: dict) -> dict:
+_NET_NAME_TYPES = {"segment", "arc", "via"}
+
+
+def _item_changes(old: dict, new: dict, track_net_names: bool = False) -> dict:
     changes = {}
-    keys = _PCB_COMPARABLE_KEYS.get(old["type"], [])
+    keys = list(_PCB_COMPARABLE_KEYS.get(old["type"], []))
+    if track_net_names and old["type"] in _NET_NAME_TYPES:
+        keys = keys + ["net_name"]
     for k in keys:
         ov, nv = old.get(k), new.get(k)
         if ov != nv:
@@ -808,16 +831,17 @@ def _match_segments(removed_segs: list, added_segs: list) -> tuple:
     used_removed = set()
     used_added = set()
 
-    # Index added segments by (layer, net, width) for fast lookup
+    # Index added segments by (layer, width) for fast lookup.
+    # Net is excluded — a rerouted segment may have a new net assignment.
     from collections import defaultdict
 
     added_by_key = defaultdict(list)
     for i, seg in enumerate(added_segs):
-        k = (seg["layer"], seg["net"], seg["width"])
+        k = (seg["layer"], seg["width"])
         added_by_key[k].append(i)
 
     for ri, old_seg in enumerate(removed_segs):
-        k = (old_seg["layer"], old_seg["net"], old_seg["width"])
+        k = (old_seg["layer"], old_seg["width"])
         for ai in added_by_key.get(k, []):
             if ai in used_added:
                 continue
@@ -852,7 +876,12 @@ def _extract_pcb_items(content: str, parser: str) -> dict:
     return _extract_all_pcb(_parse_sexp(content))
 
 
-def diff_pcb(old_content: str, new_content: str, parser: str = "native") -> dict:
+def diff_pcb(
+    old_content: str,
+    new_content: str,
+    parser: str = "native",
+    track_net_names: bool = False,
+) -> dict:
     old_items = _extract_pcb_items(old_content, parser)
     new_items = _extract_pcb_items(new_content, parser)
 
@@ -863,7 +892,7 @@ def diff_pcb(old_content: str, new_content: str, parser: str = "native") -> dict
     removed_all = [old_items[u] for u in (old_uuids - new_uuids)]
     changed = []
     for u in old_uuids & new_uuids:
-        chg = _item_changes(old_items[u], new_items[u])
+        chg = _item_changes(old_items[u], new_items[u], track_net_names=track_net_names)
         if chg:
             changed.append(
                 {"item": new_items[u], "old_item": old_items[u], "changes": chg}
@@ -911,7 +940,11 @@ def _find_all_pcb_paths(
 
 
 def get_pcb_diff(
-    project_id: str, commit1: str, commit2: str, parser: str = "native"
+    project_id: str,
+    commit1: str,
+    commit2: str,
+    parser: str = "native",
+    track_net_names: bool = False,
 ) -> dict | None:
     """
     Return interactive diff data for all PCB files between two commits.
@@ -967,7 +1000,9 @@ def get_pcb_diff(
         )
 
         if old_content and new_content:
-            diff = diff_pcb(old_content, new_content, parser=parser)
+            diff = diff_pcb(
+                old_content, new_content, parser=parser, track_net_names=track_net_names
+            )
         elif new_content:
             items = list(_extract_pcb_items(new_content, parser).values())
             diff = {"added": items, "removed": [], "changed": []}

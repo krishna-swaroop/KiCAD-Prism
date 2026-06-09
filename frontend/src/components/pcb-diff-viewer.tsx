@@ -133,6 +133,9 @@ interface GroupedMarker {
     oldPolygonPoints?: [number, number][];
     // fp_* items on structural layers (courtyard/fab/cmts) absorbed into this component
     childGroups?: ChildGroup[];
+    // Per-member overlay groups (nets only): one tight bbox per segment/via instead
+    // of one big merged bbox. Used for rendering only — sidebar still shows the parent.
+    overlayGroups?: GroupedMarker[];
 }
 
 interface PcbDiffViewerProps {
@@ -351,11 +354,24 @@ function groupMarkers(raw: DiffMarker[]): GroupedMarker[] {
         const label = parts.length > 0 ? `${netLabel} — ${parts.join(", ")}` : netLabel;
         const oldMembers = members.filter(m => m.kind === "changed" && m.old_item).map(oldMarker);
         const oldBbox = oldMembers.length > 0 ? _bboxFromMembers(oldMembers) : null;
+        // Build one tight overlay box per segment/via so only the actually-changed
+        // traces are highlighted, not a merged rect spanning the whole net.
+        const overlayGroups: GroupedMarker[] = members.map(m => {
+            const b = _bboxFromMembers([m]);
+            const ob = m.kind === "changed" && m.old_item ? _bboxFromMembers([oldMarker(m)]) : null;
+            return {
+                id: nextId(), category: "nets", kind: m.kind,
+                label, members: [m],
+                bboxMinX: b.minX, bboxMinY: b.minY, bboxMaxX: b.maxX, bboxMaxY: b.maxY,
+                ...(ob && { oldBboxMinX: ob.minX, oldBboxMinY: ob.minY, oldBboxMaxX: ob.maxX, oldBboxMaxY: ob.maxY }),
+            };
+        });
         result.push({
             id: nextId(), category: "nets", kind,
             label,
             members, bboxMinX: minX, bboxMinY: minY, bboxMaxX: maxX, bboxMaxY: maxY,
             ...(oldBbox && { oldBboxMinX: oldBbox.minX, oldBboxMinY: oldBbox.minY, oldBboxMaxX: oldBbox.maxX, oldBboxMaxY: oldBbox.maxY }),
+            overlayGroups,
         });
     }
 
@@ -403,8 +419,9 @@ function groupMarkers(raw: DiffMarker[]): GroupedMarker[] {
     // Reference/value fp_text (${REFERENCE} / ${VALUE}) are also absorbed.
     // Everything else (SilkS strokes, gr_* board graphics) stays in graphics.
     const COMPONENT_LAYERS = new Set([
-        "F.Courtyard", "B.Courtyard",
+        "F.CrtYd", "B.CrtYd",
         "F.Fab", "B.Fab",
+        "F.Adhes", "B.Adhes",
         "Cmts.User",
     ]);
     const FP_TEXT_TYPES = new Set(["fp_text"]);
@@ -541,7 +558,7 @@ interface OverlayProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
     getBoardEl: (host: ECadViewerElement) => BoardEl | null;
     onGroupClick: (group: GroupedMarker) => void;
-    activeId: string | null;
+    activeIds: Set<string>;
     showing: "new" | "old";
     kickRef?: React.MutableRefObject<((frames?: number) => void) | null>;
 }
@@ -549,7 +566,7 @@ interface OverlayProps {
 // Per-kind stripe rotation so stacked changes remain distinguishable.
 const stripeRotation = { added: 45, removed: -45, changed: 45 } as const;
 
-function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick, activeId, showing, kickRef }: OverlayProps) {
+function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick, activeIds, showing, kickRef }: OverlayProps) {
     const boxRefs  = useRef<Map<string, HTMLDivElement>>(new Map());
     const polyRefs = useRef<Map<string, SVGPolygonElement>>(new Map());
     const patternRefs = useRef<Map<string, SVGPatternElement>>(new Map());
@@ -958,7 +975,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                 {/* Zone polygons — striped fill with screen blend so items inside remain visible */}
                 {polygonGroups.map((g) => {
                     const color = KIND_COLOR[g.kind];
-                    const isActive = g.id === activeId;
+                    const isActive = activeIds.has(g.id);
                     return (
                         <polygon
                             key={g.id}
@@ -986,7 +1003,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                 {/* Text items (gr_text / fp_text) — tight rotated border, no fill pattern */}
                 {textPolyGroups.map((g) => {
                     const color = KIND_COLOR[g.kind];
-                    const isActive = g.id === activeId;
+                    const isActive = activeIds.has(g.id);
                     return (
                         <polygon
                             key={g.id}
@@ -1010,7 +1027,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                    translucent colored dash on top. Vias render as bounding boxes. */}
                 {svgGroups.map((g) => {
                     const color = KIND_COLOR[g.kind];
-                    const isActive = g.id === activeId;
+                    const isActive = activeIds.has(g.id);
                     const filter = isActive ? `drop-shadow(0 0 3px ${color})` : undefined;
                     return g.members.map((dm, mi) => {
                         const key     = `${g.id}:${mi}`;
@@ -1077,7 +1094,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
             {/* Div boxes for footprints and graphics — bbox is accurate for these */}
             {boxGroups.map((g) => {
                 const color = KIND_COLOR[g.kind];
-                const isActive = g.id === activeId;
+                const isActive = activeIds.has(g.id);
                 const HIT = 6;
                 return (
                     <div
@@ -1339,6 +1356,11 @@ export function PcbDiffViewer({
         setLoading(true);
         setError(null);
         const params = new URLSearchParams({ commit1, commit2, parser });
+        try {
+            if (localStorage.getItem("kicad-prism:diff:track-net-names") === "true") {
+                params.set("track_net_names", "true");
+            }
+        } catch { /* ignore */ }
         fetch(`/api/projects/${projectId}/pcb-diff?${params}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1383,21 +1405,31 @@ export function PcbDiffViewer({
             rawMarkers.push({ kind: "changed", item, old_item, changes });
     }
     const allGroups = groupMarkers(rawMarkers);
-    console.log("[PCB diff] allGroups", allGroups.map(g => ({ cat: g.category, label: g.label, kind: g.kind, members: g.members.map(m => ({ type: m.item.type, ref: m.item.reference, parent_ref: (m.item as any).parent_ref, layer: m.item.layer, text: m.item.text })), children: g.childGroups?.map(c => ({ label: c.label, kind: c.kind, count: c.members.length })) })));
 
-    const visibleGroups = !showOverlay ? [] : allGroups.filter((g) => {
-        if (hiddenCategories.has(g.category as GroupCategory)) return false;
-        if (g.kind === "added"   && !showAdded)   return false;
-        if (g.kind === "removed" && !showRemoved)  return false;
-        if (g.kind === "changed" && !showChanged)  return false;
-        // In single-commit mode the old board is not shown, so show all
-        // change kinds against the new board (removed items existed before,
-        // added items exist now, changed items exist in both).
+    const visibleGroups = !showOverlay ? [] : allGroups.flatMap((g) => {
+        if (hiddenCategories.has(g.category as GroupCategory)) return [];
+        if (g.kind === "added"   && !showAdded)   return [];
+        if (g.kind === "removed" && !showRemoved)  return [];
+        if (g.kind === "changed" && !showChanged)  return [];
         if (!singleCommit) {
-            if (g.kind === "added"   && showing !== "new") return false;
-            if (g.kind === "removed" && showing !== "old") return false;
+            if (g.kind === "added"   && showing !== "new") return [];
+            if (g.kind === "removed" && showing !== "old") return [];
         }
-        return true;
+        // Net groups: expand to per-segment overlay groups so each segment gets
+        // its own tight bbox instead of one merged rect covering the whole net.
+        if (g.overlayGroups) {
+            return g.overlayGroups.filter(og => {
+                if (og.kind === "added"   && !showAdded)   return false;
+                if (og.kind === "removed" && !showRemoved)  return false;
+                if (og.kind === "changed" && !showChanged)  return false;
+                if (!singleCommit) {
+                    if (og.kind === "added"   && showing !== "new") return false;
+                    if (og.kind === "removed" && showing !== "old") return false;
+                }
+                return true;
+            });
+        }
+        return [g];
     });
 
     const totalChanges = allGroups.length;
@@ -1500,7 +1532,9 @@ export function PcbDiffViewer({
     }, [getCamera, safeDraw]);
 
     const handleGroupClick = useCallback((g: GroupedMarker) => {
-        setActiveGroup(prev => prev?.id === g.id ? null : g);
+        // If this is a per-segment overlay sub-group, resolve to the parent net group.
+        const resolved = allGroups.find(p => p.overlayGroups?.some(og => og.id === g.id)) ?? g;
+        setActiveGroup(prev => prev?.id === resolved.id ? null : resolved);
         // In single-commit mode always stay on "new" — the old board isn't
         // shown so there's nowhere to toggle to.
         const targetSide: "new" | "old" = singleCommit
@@ -1880,7 +1914,9 @@ export function PcbDiffViewer({
                                 containerRef={viewerContainerRef}
                                 getBoardEl={getBoardEl}
                                 onGroupClick={handleGroupClick}
-                                activeId={activeGroup?.id ?? null}
+                                activeIds={activeGroup
+                                    ? new Set([activeGroup.id, ...(activeGroup.overlayGroups?.map(og => og.id) ?? [])])
+                                    : new Set<string>()}
                                 showing={showing}
                                 kickRef={overlayKickRef}
                             />

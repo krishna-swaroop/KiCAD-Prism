@@ -1353,6 +1353,7 @@ def _summarise_item(item: dict) -> dict:
         "sheet_name",
         "lib_id",
         "layer",
+        "parent_ref",
     ):
         v = item.get(k)
         if v not in (None, ""):

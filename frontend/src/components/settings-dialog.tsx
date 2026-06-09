@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { GitBranch, Copy, FileCode, Shield, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, Sliders } from "lucide-react";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
 
@@ -15,7 +15,7 @@ interface SettingsDialogProps {
     user: User | null;
 }
 
-type SettingsTab = "git" | "access" | "general";
+type SettingsTab = "git" | "access" | "general" | "diff";
 
 interface RoleAssignment {
     email: string;
@@ -66,6 +66,15 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                         <FileCode className="mr-2 h-4 w-4" />
                         General
                     </Button>
+
+                    <Button
+                        variant={activeTab === "diff" ? "secondary" : "ghost"}
+                        className="justify-start"
+                        onClick={() => setActiveTab("diff")}
+                    >
+                        <Sliders className="mr-2 h-4 w-4" />
+                        Diff
+                    </Button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6">
@@ -76,6 +85,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                             General settings coming soon.
                         </div>
                     )}
+                    {activeTab === "diff" && <DiffSettings />}
                 </div>
             </DialogContent>
         </Dialog>
@@ -197,6 +207,59 @@ function GitSettings({ user }: { user: User | null }) {
                         No SSH key found. Click "Generate New Key" to create one.
                     </div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+const DIFF_TRACK_NET_NAMES_KEY = "kicad-prism:diff:track-net-names";
+
+function DiffSettings() {
+    const [trackNetNames, setTrackNetNames] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(DIFF_TRACK_NET_NAMES_KEY) === "true";
+        } catch {
+            return false;
+        }
+    });
+
+    const toggle = (checked: boolean) => {
+        setTrackNetNames(checked);
+        try {
+            if (checked) {
+                localStorage.setItem(DIFF_TRACK_NET_NAMES_KEY, "true");
+            } else {
+                localStorage.removeItem(DIFF_TRACK_NET_NAMES_KEY);
+            }
+        } catch {
+            // ignore storage errors
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <h3 className="text-lg font-medium">Diff Settings</h3>
+                <p className="text-sm text-muted-foreground">
+                    Configure how differences between PCB revisions are detected and displayed.
+                </p>
+            </div>
+
+            <div className="space-y-4 border rounded-lg p-4 bg-card">
+                <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={trackNetNames}
+                        onChange={(e) => toggle(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
+                    />
+                    <div className="space-y-0.5">
+                        <div className="text-sm font-medium">Track net name changes</div>
+                        <p className="text-sm text-muted-foreground">
+                            Flag traces as changed when their net assignment is renamed, even if the copper geometry is identical. Disabled by default.
+                        </p>
+                    </div>
+                </label>
             </div>
         </div>
     );

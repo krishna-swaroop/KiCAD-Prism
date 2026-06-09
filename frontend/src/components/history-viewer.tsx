@@ -48,6 +48,7 @@ interface DiffItem {
     sheet_file?: string;
     sheet_name?: string;
     lib_id?: string;
+    parent_ref?: string;
     x?: number;
     y?: number;
 }
@@ -173,26 +174,153 @@ interface ItemDiffListProps {
     onOpenItemDiff?: (tab: DiffTab, itemId?: string, filename?: string) => void;
 }
 
+// Layers where fp_* graphics are absorbed into the parent component group,
+// matching the PCB diff viewer's COMPONENT_LAYERS set exactly.
+const PCB_COMPONENT_LAYERS = new Set([
+    "F.CrtYd", "B.CrtYd",
+    "F.Fab", "B.Fab",
+    "F.Adhes", "B.Adhes",
+    "Cmts.User",
+]);
+
+function isAbsorbedFpItem(item: DiffItem): boolean {
+    if (!item.parent_ref) return false;
+    if (PCB_COMPONENT_LAYERS.has(item.layer ?? "")) return true;
+    if (item.type === "fp_text") {
+        const t = (item.text ?? "").trim();
+        if (t === "${REFERENCE}" || t === "${VALUE}") return true;
+    }
+    return false;
+}
+
+type SummaryGroup = {
+    id: string;
+    kind: "added" | "removed" | "changed";
+    label: string;
+    category: string;
+    firstItemId: string;
+    childLabels?: string[];
+};
+
+function mergeKinds(kinds: ("added" | "removed" | "changed")[]): "added" | "removed" | "changed" {
+    const s = new Set(kinds);
+    if (s.size === 1) return s.values().next().value as "added" | "removed" | "changed";
+    return "changed";
+}
+
+function buildSummaryGroups(diff: FileDiffPayload, tab: DiffTab): SummaryGroup[] {
+    const input: KindedItem<ChangedDiffItem>[] = [];
+    for (const it of (diff.added_items ?? []))   input.push({ kind: "added",   item: it as ChangedDiffItem });
+    for (const it of (diff.removed_items ?? [])) input.push({ kind: "removed", item: it as ChangedDiffItem });
+    for (const it of (diff.changed_items ?? [])) input.push({ kind: "changed", item: it });
+
+    const baseGroups = categorise(input);
+
+    if (tab !== "pcb") {
+        return baseGroups.map(g => ({
+            id: g.id,
+            kind: g.kind,
+            label: g.label,
+            category: CATEGORY_META[g.category].label,
+            firstItemId: g.members[0]?.item.id ?? "",
+        }));
+    }
+
+    // PCB: apply component absorption — fp_* items on structural layers are
+    // merged into their parent footprint group rather than shown under Graphics.
+    const result: SummaryGroup[] = [];
+    const compGroupByRef = new Map<string, SummaryGroup>();
+
+    // First pass: emit all non-graphics groups and index component groups by ref.
+    for (const g of baseGroups) {
+        if (g.category === "graphics") continue; // handled separately below
+        const sg: SummaryGroup = {
+            id: g.id,
+            kind: g.kind,
+            label: g.label,
+            category: CATEGORY_META[g.category].label,
+            firstItemId: g.members[0]?.item.id ?? "",
+        };
+        result.push(sg);
+        if (g.category === "components") {
+            const ref = g.members[0]?.item.reference;
+            if (ref) compGroupByRef.set(ref, sg);
+        }
+    }
+
+    // Second pass: split graphics items into absorbed (→ component) vs. remainder.
+    const remainingGraphics: KindedItem<ChangedDiffItem>[] = [];
+    const absorbedByRef = new Map<string, { kind: "added" | "removed" | "changed"; label: string; firstItemId: string }[]>();
+
+    for (const g of baseGroups) {
+        if (g.category !== "graphics") continue;
+        for (const ki of g.members) {
+            if (isAbsorbedFpItem(ki.item)) {
+                const ref = ki.item.parent_ref!;
+                const role = ki.item.type === "fp_text"
+                    ? (ki.item.text ?? "text").replace(/\$\{([^}]+)\}/, "$1").toLowerCase()
+                    : (ki.item.layer ?? "unknown");
+                const arr = absorbedByRef.get(ref) ?? [];
+                arr.push({ kind: ki.kind, label: role, firstItemId: ki.item.id });
+                absorbedByRef.set(ref, arr);
+            } else {
+                remainingGraphics.push(ki);
+            }
+        }
+    }
+
+    // Attach absorbed items to their parent component group (or create synthetic).
+    let synthId = 9000;
+    for (const [ref, absorbed] of absorbedByRef) {
+        let compGroup = compGroupByRef.get(ref);
+        if (!compGroup) {
+            compGroup = {
+                id: `synth-${synthId++}`,
+                kind: mergeKinds(absorbed.map(a => a.kind)),
+                label: ref,
+                category: "Components",
+                firstItemId: absorbed[0]?.firstItemId ?? "",
+                childLabels: [],
+            };
+            compGroupByRef.set(ref, compGroup);
+            result.push(compGroup);
+        }
+        compGroup.childLabels ??= [];
+        const uniqueLabels = new Set(absorbed.map(a => a.label));
+        for (const lbl of uniqueLabels) compGroup.childLabels.push(lbl);
+        // Upgrade kind if needed.
+        const allKinds: ("added" | "removed" | "changed")[] = [compGroup.kind, ...absorbed.map(a => a.kind)];
+        compGroup.kind = mergeKinds(allKinds);
+    }
+
+    // Emit remaining (non-absorbed) graphics as individual rows.
+    const remainingCategorised = categorise(remainingGraphics);
+    for (const g of remainingCategorised) {
+        result.push({
+            id: g.id,
+            kind: g.kind,
+            label: g.label,
+            category: CATEGORY_META[g.category].label,
+            firstItemId: g.members[0]?.item.id ?? "",
+        });
+    }
+
+    // Re-sort: components first, then nets, zones, graphics, other.
+    const ORDER: Record<string, number> = { Components: 0, Nets: 1, Zones: 2, Graphics: 5, Other: 9 };
+    result.sort((a, b) => (ORDER[a.category] ?? 4) - (ORDER[b.category] ?? 4) || a.label.localeCompare(b.label));
+
+    return result;
+}
+
 function ItemDiffList({ diff, tab, filename, onOpenItemDiff }: ItemDiffListProps) {
     const [expanded, setExpanded] = useState(false);
 
-    // Build the unified category groups using the same logic as the diff
-    // sidebars. We feed every item through with its original kind; categorise()
-    // reconciles mixed kinds (e.g. added+removed on same net → "changed").
-    const groups = useMemo(() => {
-        const input: KindedItem<ChangedDiffItem>[] = [];
-        for (const it of (diff.added_items ?? []))   input.push({ kind: "added",   item: it as ChangedDiffItem });
-        for (const it of (diff.removed_items ?? [])) input.push({ kind: "removed", item: it as ChangedDiffItem });
-        for (const it of (diff.changed_items ?? [])) input.push({ kind: "changed", item: it });
-        return categorise(input);
-    }, [diff]);
+    const groups = useMemo(() => buildSummaryGroups(diff, tab), [diff, tab]);
 
     if (groups.length === 0) return null;
 
     return (
         <div className="ml-9 flex flex-col text-[11px] pb-1">
-            {/* Master toggle: collapsed shows just per-category summaries;
-                expanded reveals per-item clickable rows under each. */}
             <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
@@ -210,7 +338,7 @@ function ItemDiffList({ diff, tab, filename, onOpenItemDiff }: ItemDiffListProps
                     <button
                         key={group.id}
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); onOpenItemDiff?.(tab, group.members[0]?.item.id, filename); }}
+                        onClick={(e) => { e.stopPropagation(); onOpenItemDiff?.(tab, group.firstItemId, filename); }}
                         className="flex items-baseline gap-2 text-left rounded hover:bg-muted/60 -mx-1 px-1 py-0.5 transition-colors"
                         title="Open diff viewer at this change"
                     >
@@ -219,9 +347,14 @@ function ItemDiffList({ diff, tab, filename, onOpenItemDiff }: ItemDiffListProps
                         </span>
                         <span className="text-foreground/90 font-medium truncate">
                             {group.label}
+                            {group.childLabels && group.childLabels.length > 0 && (
+                                <span className="text-muted-foreground/60 font-normal ml-1">
+                                    +{group.childLabels.join(", ")}
+                                </span>
+                            )}
                         </span>
                         <span className="text-muted-foreground/70 text-[10px] uppercase tracking-wider shrink-0">
-                            {CATEGORY_META[group.category].label}
+                            {group.category}
                         </span>
                     </button>
                 ))}

@@ -49,16 +49,28 @@ def _f(v) -> float:
         return 0.0
 
 
-def _net_name(obj) -> str:
-    """Net number-as-string for parity with the native extractor's `net` field.
+def _net_idx(obj) -> str:
+    """Raw net ordinal string — stored in item['net'] for reference only."""
+    net = getattr(obj, "net", None)
+    if net is None:
+        return ""
+    ordinal = getattr(net, "ordinal", None)
+    return str(ordinal) if ordinal is not None else ""
 
-    The native PCB extractor stores `net` as the *ordinal* rendered as a string
-    (from the `(net N "name")` token). kicad_monkey exposes `obj.net` as a
-    NetRef(ordinal, name); we mirror the native value (ordinal string).
+
+def _net_name(obj) -> str:
+    """Resolved net name — used in geo_keys and comparable fields.
+
+    kicad_monkey exposes obj.net as NetRef(ordinal, name). We use the name so
+    that KiCad's index renumbering (which happens on every footprint add/remove)
+    is invisible to the diff.
     """
     net = getattr(obj, "net", None)
     if net is None:
         return ""
+    name = getattr(net, "name", None)
+    if name is not None:
+        return str(name)
     ordinal = getattr(net, "ordinal", None)
     return str(ordinal) if ordinal is not None else ""
 
@@ -221,7 +233,9 @@ def extract_all_sch(content: str) -> dict:
 
 def _pad_sig(pad) -> str:
     """Stable per-pad signature mirroring the native pcb extractor's format:
-    number:type:shape:px,py:sw,sh:drill:net:layers
+    number:type:shape:px,py:sw,sh:drill:layers
+
+    Net is intentionally excluded — same reason as in the native extractor.
     """
     number = getattr(pad, "number", "") or ""
     pad_type = (
@@ -240,9 +254,8 @@ def _pad_sig(pad) -> str:
         if getattr(pad, "drill", None) is not None
         else 0.0
     )
-    net = _net_name(pad)
     layers = ",".join(getattr(pad, "layers", None) or [])
-    return f"{number}:{pad_type}:{shape}:{px:.4f},{py:.4f}:{sw:.4f},{sh:.4f}:{dr:.4f}:{net}:{layers}"
+    return f"{number}:{pad_type}:{shape}:{px:.4f},{py:.4f}:{sw:.4f},{sh:.4f}:{dr:.4f}:{layers}"
 
 
 def _pcb_footprints(pcb) -> dict:
@@ -444,9 +457,10 @@ def _pcb_segments(pcb) -> dict:
         if (sx, sy) > (ex, ey):
             sx, sy, ex, ey = ex, ey, sx, sy
         layer = getattr(seg, "layer", "") or ""
-        net = _net_name(seg)
+        net = _net_idx(seg)
+        net_name = _net_name(seg)
         width = float(getattr(seg, "width", 0.0) or 0.0)
-        geo_key = f"seg:{sx:.4f},{sy:.4f}-{ex:.4f},{ey:.4f}:{layer}:{net}:{width:.4f}"
+        geo_key = f"seg:{sx:.4f},{sy:.4f}-{ex:.4f},{ey:.4f}:{layer}:{width:.4f}"
         result[geo_key] = {
             "type": "segment",
             "uuid": geo_key,
@@ -458,6 +472,7 @@ def _pcb_segments(pcb) -> dict:
             "end_y": ey,
             "layer": layer,
             "net": net,
+            "net_name": net_name,
             "width": width,
         }
     return result
@@ -470,12 +485,13 @@ def _pcb_vias(pcb) -> dict:
         y = float(getattr(via, "at_y", 0.0) or 0.0)
         size = float(getattr(via, "size", 0.0) or 0.0)
         drill = float(getattr(via, "drill", 0.0) or 0.0)
-        net = _net_name(via)
+        net = _net_idx(via)
+        net_name = _net_name(via)
         layers = getattr(via, "layers", None) or []
         start_layer = layers[0] if layers else ""
         end_layer = layers[1] if len(layers) > 1 else ""
         via_type = getattr(via, "via_type", None) or "through"
-        geo_key = f"via:{x:.4f},{y:.4f}:{size:.4f}:{drill:.4f}:{net}"
+        geo_key = f"via:{x:.4f},{y:.4f}:{size:.4f}:{drill:.4f}"
         result[geo_key] = {
             "type": "via",
             "uuid": geo_key,
@@ -484,6 +500,7 @@ def _pcb_vias(pcb) -> dict:
             "size": size,
             "drill": drill,
             "net": net,
+            "net_name": net_name,
             "start_layer": start_layer,
             "end_layer": end_layer,
             "via_type": via_type,
@@ -558,9 +575,10 @@ def _pcb_arcs(pcb) -> dict:
         mx, my = _f(getattr(arc, "mid_x", 0)), _f(getattr(arc, "mid_y", 0))
         ex, ey = _f(getattr(arc, "end_x", 0)), _f(getattr(arc, "end_y", 0))
         layer = getattr(arc, "layer", "") or ""
-        net = _net_name(arc)
+        net = _net_idx(arc)
+        net_name = _net_name(arc)
         width = _f(getattr(arc, "width", 0))
-        geo_key = f"arc:{sx:.4f},{sy:.4f}-{mx:.4f},{my:.4f}-{ex:.4f},{ey:.4f}:{layer}:{net}:{width:.4f}"
+        geo_key = f"arc:{sx:.4f},{sy:.4f}-{mx:.4f},{my:.4f}-{ex:.4f},{ey:.4f}:{layer}:{width:.4f}"
         result[geo_key] = {
             "type": "arc",
             "uuid": geo_key,
@@ -574,6 +592,7 @@ def _pcb_arcs(pcb) -> dict:
             "end_y": ey,
             "layer": layer,
             "net": net,
+            "net_name": net_name,
             "width": width,
         }
     return result
