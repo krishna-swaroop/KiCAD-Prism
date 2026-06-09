@@ -913,16 +913,31 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                         // colored top. Dash size scales with on-screen track width.
                         const swTop  = sw + 3;
                         const swBase = sw + 6;
-                        const dashLen = Math.max(10, sw * 3.5);
-                        const dashGap = Math.max(8,  sw * 2.5);
+                        // Fit a whole number of dashes so one lands exactly on each
+                        // end of the line. With dasharray [dashLen, dashGap] the
+                        // pattern is dash,gap,dash,…; to end on a dash the line must
+                        // hold n dashes and (n-1) gaps:
+                        //   lineLen = n*dashLen + (n-1)*dashGap
+                        // We keep the desired dash:gap ratio and solve for the
+                        // scale that makes this exact.
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const lineLen = Math.hypot(dx, dy) || 1;
+                        const wantLen = Math.max(10, sw * 3.5);
+                        const wantGap = Math.max(8,  sw * 2.5);
+                        // n = number of dashes; pick the count closest to the
+                        // desired density, at least 1.
+                        const n = Math.max(1, Math.round((lineLen + wantGap) / (wantLen + wantGap)));
+                        // lineLen = n*dashLen + (n-1)*dashGap, holding dashGap/dashLen = wantGap/wantLen.
+                        const gapRatio = wantGap / wantLen;
+                        const dashLen = lineLen / (n + (n - 1) * gapRatio);
+                        const dashGap = dashLen * gapRatio;
                         if (baseEl) {
                             baseEl.setAttribute("x1", String(p1.x));
                             baseEl.setAttribute("y1", String(p1.y));
                             baseEl.setAttribute("x2", String(p2.x));
                             baseEl.setAttribute("y2", String(p2.y));
                             baseEl.setAttribute("stroke-width", String(swBase));
-                            // Base stays solid so rounded caps appear only at the
-                            // line's terminations, not at every dash boundary.
                             baseEl.removeAttribute("stroke-dasharray");
                             baseEl.removeAttribute("display");
                         }
@@ -932,6 +947,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                         el.setAttribute("y2", String(p2.y));
                         el.setAttribute("stroke-width", String(swTop));
                         el.setAttribute("stroke-dasharray", `${dashLen} ${dashGap}`);
+                        el.removeAttribute("stroke-dashoffset");
                         el.removeAttribute("display");
                     }
                 }
@@ -1023,8 +1039,11 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                     );
                 })}
 
-                {/* Net groups: solid black outline around each trace + softer
-                   translucent colored dash on top. Vias render as bounding boxes. */}
+                {/* Net groups wrapped in one translucent layer: members render
+                    OPAQUE, then a single group-opacity flattens + fades the whole
+                    layer once. This stops overlapping/touching traces from
+                    compounding into darker patches. */}
+                <g opacity={0.78}>
                 {svgGroups.map((g) => {
                     const color = KIND_COLOR[g.kind];
                     const isActive = activeIds.has(g.id);
@@ -1081,7 +1100,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                                     x1="0" y1="0" x2="0" y2="0"
                                     data-active={isActive ? "1" : "0"}
                                     stroke={color}
-                                    strokeOpacity={isActive ? 1 : 0.78}
+                                    strokeOpacity={1}
                                     strokeLinecap="round"
                                     filter={isActive ? `drop-shadow(0 0 3px ${color})` : undefined}
                                 />
@@ -1089,6 +1108,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                         );
                     });
                 })}
+                </g>
             </svg>
 
             {/* Div boxes for footprints and graphics — bbox is accurate for these */}
