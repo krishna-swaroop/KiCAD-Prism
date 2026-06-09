@@ -41,6 +41,14 @@ def _prop(obj, name: str) -> str:
     return ""
 
 
+def _f(v) -> float:
+    """Coerce to float, defaulting to 0.0 on None/non-numeric (parity helper)."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _net_name(obj) -> str:
     """Net number-as-string for parity with the native extractor's `net` field.
 
@@ -260,6 +268,172 @@ def _pcb_footprints(pcb) -> dict:
     return result
 
 
+def _fp_transform(lx: float, ly: float, ox: float, oy: float, rot_deg: float) -> tuple:
+    """Footprint-local point -> board space. Mirrors native _apply_fp_transform."""
+    import math
+
+    a = math.radians(-rot_deg)
+    ca, sa = math.cos(a), math.sin(a)
+    return ox + lx * ca - ly * sa, oy + lx * sa + ly * ca
+
+
+def _fp_graphic_geo_sig(kind: str, g) -> str:
+    """Local-geometry signature for one footprint graphic, matching native's
+    _fp_graphic_geo_sig formats exactly so the two parsers compare equal."""
+    if kind == "fp_text":
+        return f"t:{getattr(g, 'text', '') or ''}"
+    if kind in ("fp_line", "fp_rect"):
+        return (
+            f"{_f(getattr(g, 'start_x', 0)):.4f},{_f(getattr(g, 'start_y', 0)):.4f}-"
+            f"{_f(getattr(g, 'end_x', 0)):.4f},{_f(getattr(g, 'end_y', 0)):.4f}"
+        )
+    if kind == "fp_circle":
+        return (
+            f"c:{_f(getattr(g, 'center_x', 0)):.4f},{_f(getattr(g, 'center_y', 0)):.4f} "
+            f"e:{_f(getattr(g, 'end_x', 0)):.4f},{_f(getattr(g, 'end_y', 0)):.4f}"
+        )
+    if kind == "fp_arc":
+        return (
+            f"s:{_f(getattr(g, 'start_x', 0)):.4f},{_f(getattr(g, 'start_y', 0)):.4f} "
+            f"m:{_f(getattr(g, 'mid_x', 0)):.4f},{_f(getattr(g, 'mid_y', 0)):.4f} "
+            f"e:{_f(getattr(g, 'end_x', 0)):.4f},{_f(getattr(g, 'end_y', 0)):.4f}"
+        )
+    if kind == "fp_poly":
+        pts = getattr(g, "points", None) or []
+        return ";".join(f"{_f(p[0]):.4f},{_f(p[1]):.4f}" for p in pts)
+    return ""
+
+
+# (collection attribute on Footprint, item kind, geo_sig kind)
+_FP_GRAPHIC_COLLECTIONS = (
+    ("fp_lines", "fp_line"),
+    ("fp_texts", "fp_text"),
+    ("fp_arcs", "fp_arc"),
+    ("fp_circles", "fp_circle"),
+    ("fp_rects", "fp_rect"),
+    ("fp_polys", "fp_poly"),
+)
+
+
+def _fp_graphic_board_points(
+    kind: str,
+    g,
+    ox: float,
+    oy: float,
+    rot: float,
+    *,
+    reference: str = "",
+    value: str = "",
+) -> list:
+    """Board-space points describing the graphic's extent (for the overlay bbox).
+    Mirrors native _fp_graphic_board_points."""
+
+    def tf(lx, ly):
+        return _fp_transform(lx, ly, ox, oy, rot)
+
+    if kind == "fp_line":
+        return [
+            tf(_f(getattr(g, "start_x", 0)), _f(getattr(g, "start_y", 0))),
+            tf(_f(getattr(g, "end_x", 0)), _f(getattr(g, "end_y", 0))),
+        ]
+    if kind == "fp_rect":
+        sx, sy = _f(getattr(g, "start_x", 0)), _f(getattr(g, "start_y", 0))
+        ex, ey = _f(getattr(g, "end_x", 0)), _f(getattr(g, "end_y", 0))
+        return [tf(sx, sy), tf(ex, sy), tf(ex, ey), tf(sx, ey)]
+    if kind == "fp_circle":
+        cx, cy = _f(getattr(g, "center_x", 0)), _f(getattr(g, "center_y", 0))
+        ex, ey = _f(getattr(g, "end_x", 0)), _f(getattr(g, "end_y", 0))
+        r = ((ex - cx) ** 2 + (ey - cy) ** 2) ** 0.5
+        return [
+            tf(cx - r, cy - r),
+            tf(cx + r, cy - r),
+            tf(cx + r, cy + r),
+            tf(cx - r, cy + r),
+        ]
+    if kind == "fp_arc":
+        return [
+            tf(_f(getattr(g, "start_x", 0)), _f(getattr(g, "start_y", 0))),
+            tf(_f(getattr(g, "mid_x", 0)), _f(getattr(g, "mid_y", 0))),
+            tf(_f(getattr(g, "end_x", 0)), _f(getattr(g, "end_y", 0))),
+        ]
+    if kind == "fp_poly":
+        return [tf(_f(p[0]), _f(p[1])) for p in (getattr(g, "points", None) or [])]
+    if kind == "fp_text":
+        # fp_text angle is stored in board-space (pre-rotated). Convert the
+        # footprint-local anchor to board space, then build the glyph box using
+        # the board-space angle — same logic as the native extractor.
+        from app.services.pcb_diff_service import text_local_corners
+
+        ax, ay = _f(getattr(g, "at_x", 0)), _f(getattr(g, "at_y", 0))
+        t_angle = _f(getattr(g, "at_angle", 0))
+        text = getattr(g, "text", "") or ""
+        font = getattr(g, "effects", None)
+        font = getattr(font, "font", None) if font else None
+        size_x = _f(getattr(font, "size_x", 1.0)) if font else 1.0
+        size_y = _f(getattr(font, "size_y", size_x)) if font else size_x
+        h_align = getattr(g, "h_align", "") or ""
+        bx, by = tf(ax, ay)
+        return text_local_corners(
+            text,
+            bx,
+            by,
+            t_angle,
+            size_x,
+            size_y,
+            h_align,
+            reference=reference,
+            value=value,
+        )
+    return []
+
+
+def _pcb_fp_graphics(pcb) -> dict:
+    """Itemise each footprint graphic (silkscreen/fab/courtyard/…) as a
+    standalone diff item, mirroring native _extract_fp_graphics: keyed by
+    `<footprint-uuid>:<graphic-uuid>`, board-space geometry, footprint-local
+    geo_sig.
+    """
+    result = {}
+    for fp in pcb.objects.where("Footprint"):
+        fp_uid = getattr(fp, "uuid", None)
+        if not fp_uid:
+            continue
+        ox = _f(getattr(fp, "at_x", 0))
+        oy = _f(getattr(fp, "at_y", 0))
+        rot = _f(getattr(fp, "at_angle", 0))
+        ref = _prop(fp, "Reference")
+        val = _prop(fp, "Value")
+        for coll, kind in _FP_GRAPHIC_COLLECTIONS:
+            for g in getattr(fp, coll, None) or []:
+                g_uid = getattr(g, "uuid", None)
+                if not g_uid:
+                    continue
+                board_pts = _fp_graphic_board_points(
+                    kind, g, ox, oy, rot, reference=ref, value=val
+                )
+                if board_pts:
+                    bx = sum(p[0] for p in board_pts) / len(board_pts)
+                    by = sum(p[1] for p in board_pts) / len(board_pts)
+                else:
+                    bx, by = ox, oy
+                item = {
+                    "type": kind,
+                    "uuid": f"{fp_uid}:{g_uid}",
+                    "x": bx,
+                    "y": by,
+                    "layer": getattr(g, "layer", "") or "",
+                    "text": getattr(g, "text", "") or "" if kind == "fp_text" else "",
+                    "geo_sig": _fp_graphic_geo_sig(kind, g),
+                    "parent_ref": ref,
+                    "polygon_points": [[p[0], p[1]] for p in board_pts],
+                }
+                if kind == "fp_line" and len(board_pts) >= 2:
+                    item["start_x"], item["start_y"] = board_pts[0]
+                    item["end_x"], item["end_y"] = board_pts[1]
+                result[item["uuid"]] = item
+    return result
+
+
 def _pcb_segments(pcb) -> dict:
     result = {}
     for seg in pcb.objects.where("Segment"):
@@ -376,13 +550,6 @@ def _pcb_zones(pcb) -> dict:
     return result
 
 
-def _f(v) -> float:
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
-
-
 def _pcb_arcs(pcb) -> dict:
     """Curved track arcs (type='arc'). Mirrors native _extract_arcs."""
     result = {}
@@ -439,9 +606,22 @@ def _pcb_gr_items(pcb) -> dict:
             # x/y: native uses the (at ...) node — only gr_text/gr_circle carry
             # a meaningful anchor; the rest default to 0,0 to match native.
             x = y = 0.0
+            polygon_points: list = []
             if kind == "gr_text":
                 text = getattr(it, "text", "") or ""
                 x, y = _f(getattr(it, "at_x", 0)), _f(getattr(it, "at_y", 0))
+                t_angle = _f(getattr(it, "at_angle", 0))
+                font = getattr(it, "font", None)
+                size_x = _f(getattr(font, "size_x", 1.0)) if font else 1.0
+                size_y = _f(getattr(font, "size_y", size_x)) if font else size_x
+                h_align = getattr(it, "h_align", "") or ""
+                from app.services.pcb_diff_service import text_local_corners
+
+                corners = text_local_corners(
+                    text, x, y, t_angle, size_x, size_y, h_align
+                )
+                polygon_points = [[p[0], p[1]] for p in corners]
+                geo_sig = f"t:{text}"
             elif kind == "gr_line":
                 geo_sig = (
                     f"{_f(it.start_x):.4f},{_f(it.start_y):.4f}-"
@@ -474,6 +654,7 @@ def _pcb_gr_items(pcb) -> dict:
                 "layer": layer,
                 "text": text,
                 "geo_sig": geo_sig,
+                "polygon_points": polygon_points,
             }
     return result
 
@@ -488,4 +669,5 @@ def extract_all_pcb(content: str) -> dict:
     items.update(_pcb_vias(pcb))
     items.update(_pcb_zones(pcb))
     items.update(_pcb_gr_items(pcb))
+    items.update(_pcb_fp_graphics(pcb))
     return items
