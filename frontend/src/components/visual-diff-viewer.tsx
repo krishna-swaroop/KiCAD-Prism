@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { X, Loader2, AlertCircle, Eye, ZoomIn, ZoomOut, RotateCcw, CircuitBoard, Cpu, ClipboardList } from "lucide-react";
+import { X, Loader2, AlertCircle, Eye, ZoomIn, ZoomOut, RotateCcw, CircuitBoard, Cpu, ClipboardList, ChevronDown, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
@@ -28,6 +29,7 @@ interface DiffManifest {
     pcb: boolean;
     sheets: string[]; // filenames
     layers: string[]; // layer names like F.Cu
+    pours?: boolean; // pour-free PCB variant available under pcb_nopours/
     bom: {
         summary: { added: number; removed: number; changed: number };
         changes: Array<{
@@ -41,6 +43,17 @@ interface DiffManifest {
     } | null;
 }
 
+// Physical stacking order: copper at the bottom, decoration and board
+// outline on top, so multi-layer views read like the real board.
+const layerRank = (l: string) =>
+    l.endsWith(".Cu") ? 0
+    : l.endsWith(".Mask") ? 1
+    : l.endsWith(".Paste") ? 2
+    : l.endsWith(".SilkS") ? 3
+    : l.endsWith(".Fab") ? 4
+    : l === "Edge.Cuts" ? 6
+    : 5;
+
 export function VisualDiffViewer({ projectId, commit1, commit2, onClose }: VisualDiffViewerProps) {
     const [jobId, setJobId] = useState<string | null>(null);
     const [status, setStatus] = useState<DiffJobStatus | null>(null);
@@ -50,7 +63,8 @@ export function VisualDiffViewer({ projectId, commit1, commit2, onClose }: Visua
     // View State
     const [viewMode, setViewMode] = useState<"schematic" | "pcb" | "bom">("schematic");
     const [selectedSheet, setSelectedSheet] = useState<string>("");
-    const [selectedLayer, setSelectedLayer] = useState<string>("");
+    const [selectedLayers, setSelectedLayers] = useState<string[]>([]);
+    const [showPours, setShowPours] = useState(true);
     const [opacity, setOpacity] = useState([50]); // 0-100, 50 = mix
 
     // BoM Filtering
@@ -116,7 +130,7 @@ setManifest(mData);
 
 // Set defaults
 if (mData.sheets.length > 0) setSelectedSheet(mData.sheets[0]);
-if (mData.layers.length > 0) setSelectedLayer(mData.layers[0]);
+if (mData.layers.length > 0) setSelectedLayers([mData.layers[0]]);
 if (!mData.schematic && mData.pcb) setViewMode("pcb");
 }
 }
@@ -144,11 +158,11 @@ logsEndRef.current.scrollIntoView({ behavior: "smooth" });
 
 
 // Asset URLs
-const getAssetUrl = (commit: string, type: "sch" | "pcb", item: string) => {
+const getAssetUrl = (commit: string, type: "sch" | "pcb" | "pcb_nopours", item: string) => {
 if (!jobId) return "";
 // item is filename for sch, layer name for pcb
 let filename = item;
-if (type === "pcb") {
+if (type !== "sch") {
 filename = item.replace(/\./g, "_") + ".svg";
 }
 return `/api/projects/${projectId}/diff/${jobId}/assets/${commit}/${type}/${encodeURIComponent(filename)}`;
@@ -268,13 +282,31 @@ No entries match the selected filters
 }
 
 const isSch = viewMode === "schematic";
-const currentItem = isSch ? selectedSheet : selectedLayer;
 
-if (!currentItem) return <div className="flex items-center justify-center h-full text-muted-foreground">No assets found</div>;
+if (isSch && !selectedSheet) return <div className="flex items-center justify-center h-full text-muted-foreground">No assets found</div>;
+if (!isSch && selectedLayers.length === 0) return <div className="flex items-center justify-center h-full text-muted-foreground">No layers selected</div>;
 
+const oldImg = getAssetUrl(commit2, "sch", selectedSheet);
+const newImg = getAssetUrl(commit1, "sch", selectedSheet);
 
-const oldImg = getAssetUrl(commit2, isSch ? "sch" : "pcb", currentItem);
-const newImg = getAssetUrl(commit1, isSch ? "sch" : "pcb", currentItem);
+// PCB: stack the selected layers in physical order; the SVG exports have
+// transparent backgrounds, so per-commit groups composite cleanly.
+const pcbDir = manifest.pours && !showPours ? "pcb_nopours" : "pcb";
+const orderedLayers = [...selectedLayers].sort((a, b) => layerRank(a) - layerRank(b));
+// Slight per-layer darkening so simultaneous layers are distinguishable
+// while keeping the red/green old/new semantics.
+const layerFilter = (idx: number) => `brightness(${Math.max(0.5, 1 - idx * 0.12)})`;
+const renderLayerStack = (commit: string) =>
+    orderedLayers.map((l, idx) => (
+        <img
+            key={`${l}-${pcbDir}-${commit}`}
+            src={getAssetUrl(commit, pcbDir, l)}
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+            style={{ filter: layerFilter(idx) }}
+            onError={e => { e.currentTarget.style.visibility = "hidden"; }}
+            alt={l}
+        />
+    ));
 
 return (
 <TransformWrapper
@@ -300,6 +332,8 @@ centerOnInit
 
 <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
 <div className="relative shadow-2xl border bg-white" style={{ minWidth: "1200px", minHeight: "800px" }}>
+{isSch ? (
+<>
 {/* Old Commit (Bottom) */}
 <img
 src={oldImg}
@@ -314,6 +348,24 @@ className="absolute inset-0 w-full h-full object-contain bg-white transition-opa
 style={{ opacity: opacity[0] / 100 }}
 alt="New Version"
 />
+</>
+) : (
+<>
+{/* Old Commit layers (Bottom) */}
+<div className="absolute inset-0">
+{renderLayerStack(commit2)}
+</div>
+
+{/* New Commit layers (Top) - one white backdrop on the group so the
+    cross-fade covers the old group without occluding stacked layers */}
+<div
+className="absolute inset-0 bg-white transition-opacity duration-150"
+style={{ opacity: opacity[0] / 100 }}
+>
+{renderLayerStack(commit1)}
+</div>
+</>
+)}
 </div>
 </TransformComponent>
 </>
@@ -383,16 +435,48 @@ disabled={!manifest.bom}
 </SelectContent>
 </Select>
 ) : viewMode === "pcb" ? (
-<Select value={selectedLayer} onValueChange={setSelectedLayer}>
-<SelectTrigger className="h-8">
-<SelectValue placeholder="Select Layer" />
-</SelectTrigger>
-<SelectContent>
-{manifest.layers.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-</SelectContent>
-</Select>
+<DropdownMenu>
+<DropdownMenuTrigger asChild>
+<Button variant="outline" size="sm" className="h-8 w-full justify-between font-normal">
+{selectedLayers.length === 0
+? "Select Layers"
+: selectedLayers.length === 1
+? selectedLayers[0]
+: `${selectedLayers.length} layers`}
+<ChevronDown className="h-4 w-4 opacity-50" />
+</Button>
+</DropdownMenuTrigger>
+<DropdownMenuContent className="w-64 max-h-80 overflow-y-auto">
+{manifest.layers.map(l => (
+<DropdownMenuCheckboxItem
+key={l}
+checked={selectedLayers.includes(l)}
+onCheckedChange={(checked) =>
+setSelectedLayers(prev => checked ? [...prev, l] : prev.filter(x => x !== l))
+}
+onSelect={e => e.preventDefault()}
+>
+{l}
+</DropdownMenuCheckboxItem>
+))}
+</DropdownMenuContent>
+</DropdownMenu>
 ) : null}
 </div>
+
+{/* Pour Toggle */}
+{viewMode === "pcb" && (
+<Button
+variant={showPours ? "secondary" : "outline"}
+size="sm"
+className="h-8"
+disabled={!manifest.pours}
+title={manifest.pours ? "Toggle copper pours" : "Pour-free export unavailable"}
+onClick={() => setShowPours(p => !p)}
+>
+<Layers className="h-4 w-4 mr-2" /> Pours
+</Button>
+)}
 
 <div className="flex-1" />
 

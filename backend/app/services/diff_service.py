@@ -14,10 +14,11 @@ import time
 import json
 import re
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Callable, Optional, List, Dict
 from app.services.project_service import find_schematic_file
 from app.services.workspace_service import workspace
 from app.services import bom_diff_service
+from app.services.pcb_sexpr_service import strip_zone_fills
 
 # Global job store
 # Structure: { job_id: { ... } }
@@ -257,6 +258,65 @@ def _colorize_svg(svg_path: Path, color: str):
         
     svg_path.write_text(content, encoding="utf-8")
 
+def _export_pcb_svgs(pcb_file: Path, out_dir: Path, all_layers: List[str],
+                     color: str, log: Callable[[str], None]) -> List[str]:
+    """
+    Run kicad-cli pcb export svg --mode-multi into out_dir, normalize
+    filenames to {Layer_Name}.svg, colorize, and return the matched
+    layer names. Returns [] on export failure.
+    """
+    out_dir.mkdir(exist_ok=True)
+
+    cmd = [
+        CLI_CMD, "pcb", "export", "svg",
+        "--mode-multi",
+        "--layers", ",".join(all_layers),
+        "--black-and-white",
+        "--exclude-drawing-sheet",
+        "--page-size-mode", "2",
+        "--output", str(out_dir),
+        str(pcb_file)
+    ]
+    log(f"PCB CMD: {' '.join(cmd)}")
+    res = subprocess.run(cmd, capture_output=True, text=True)
+
+    if res.returncode != 0:
+        log(f"PCB Export FAILED (Code {res.returncode})")
+        log(f"STDERR: {res.stderr}")
+        return []
+
+    # KiCad names these {project}-{layer}.svg or just {layer}.svg
+    # We normalize them to {layer_name}.svg for the frontend
+    found_layers = []
+    log(f"PCB Export success. Dir content: {list(out_dir.glob('*.svg'))}")
+
+    for svg in list(out_dir.glob("*.svg")):
+        leaf = svg.name
+        layer_part = leaf
+        if leaf.startswith(pcb_file.stem + "-"):
+            layer_part = leaf[len(pcb_file.stem)+1:]
+
+        # Match back to the original layer name to ensure F.Cu vs F_Cu consistency
+        matched_layer = None
+        for l in all_layers:
+            if l.replace(".", "_") == layer_part.replace(".svg", ""):
+                matched_layer = l
+                break
+
+        if matched_layer:
+            target_svg = out_dir / (matched_layer.replace(".", "_") + ".svg")
+            log(f"Matched {leaf} -> {matched_layer} (Target: {target_svg.name})")
+            if svg.resolve() != target_svg.resolve():
+                if target_svg.exists(): target_svg.unlink()
+                svg.rename(target_svg)
+
+            _colorize_svg(target_svg, color)
+            found_layers.append(matched_layer)
+        else:
+            log(f"Could not match PCB SVG: {leaf}")
+
+    return found_layers
+
 def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: str):
     """Execute diff generation in background."""
     job = diff_jobs[job_id]
@@ -282,6 +342,9 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
             "commit2": commit2,
             "schematic": True,
             "pcb": True,
+            "layers": [],
+            "sheets": [],
+            "pours": False,
             "bom": None,
         }
         
@@ -320,6 +383,10 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
         
         # Per-commit sch output dirs, captured for the post-loop union.
         sch_dirs: Dict[str, Path] = {}
+
+        # PCB layers found across both commits, so layers added/removed
+        # between commits still appear in the manifest.
+        pcb_layer_union: set = set()
 
         for commit, directory, color in [(commit1, c1_dir, COLOR_NEW), (commit2, c2_dir, COLOR_OLD)]:
             # 1. Locate design files
@@ -365,67 +432,37 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
             
             # 3. Export PCB Layers
             if pcb_file:
-                pcb_out_dir = directory / "pcb"
-                pcb_out_dir.mkdir(exist_ok=True)
                 job['logs'].append(f"Exporting PCB Layers for {commit} from {pcb_file}...")
                 _persist_job(job_id)
-                
+
+                def log(msg, _job=job, _id=job_id):
+                    _job['logs'].append(msg)
+                    _persist_job(_id)
+
                 # We export standard layers in one shot using --mode-multi
                 all_layers = _get_pcb_layers(pcb_file)
-                cmd = [
-                    CLI_CMD, "pcb", "export", "svg",
-                    "--mode-multi",
-                    "--layers", ",".join(all_layers),
-                    "--black-and-white",
-                    "--exclude-drawing-sheet",
-                    "--page-size-mode", "2",
-                    "--output", str(pcb_out_dir),
-                    str(pcb_file)
-                ]
-                job['logs'].append(f"PCB CMD: {' '.join(cmd)}")
-                _persist_job(job_id)
-                res = subprocess.run(cmd, capture_output=True, text=True)
-                
-                if res.returncode == 0:
-                    # KiCad names these {project}-{layer}.svg or just {layer}.svg
-                    # We normalize them to {layer_name}.svg for the frontend
-                    found_layers = []
-                    job['logs'].append(f"PCB Export success. Dir content: {list(pcb_out_dir.glob('*.svg'))}")
-                    _persist_job(job_id)
-                    
-                    for svg in list(pcb_out_dir.glob("*.svg")):
-                        leaf = svg.name
-                        layer_part = leaf
-                        if leaf.startswith(pcb_file.stem + "-"):
-                            layer_part = leaf[len(pcb_file.stem)+1:]
-                        
-                        # Match back to the original layer name to ensure F.Cu vs F_Cu consistency
-                        matched_layer = None
-                        for l in all_layers:
-                            if l.replace(".", "_") == layer_part.replace(".svg", ""):
-                                matched_layer = l
-                                break
-                        
-                        if matched_layer:
-                            target_svg = pcb_out_dir / (matched_layer.replace(".", "_") + ".svg")
-                            job['logs'].append(f"Matched {leaf} -> {matched_layer} (Target: {target_svg.name})")
-                            if svg.resolve() != target_svg.resolve():
-                                if target_svg.exists(): target_svg.unlink()
-                                svg.rename(target_svg)
-                            
-                            _colorize_svg(target_svg, color)
-                            found_layers.append(matched_layer)
-                        else:
-                            job['logs'].append(f"Could not match PCB SVG: {leaf}")
-                    
-                    if commit == commit1:
-                        manifest["layers"] = sorted(list(set(found_layers)))
-                        job['logs'].append(f"Populated manifest with {len(manifest['layers'])} layers")
-                        _persist_job(job_id)
-                else:
-                    job['logs'].append(f"PCB Export FAILED (Code {res.returncode})")
-                    job['logs'].append(f"STDERR: {res.stderr}")
-                    _persist_job(job_id)
+                found_layers = _export_pcb_svgs(pcb_file, directory / "pcb", all_layers, color, log)
+                pcb_layer_union.update(found_layers)
+
+                # Pour-free variant: export a copy with zone fills stripped.
+                # Failure here must never break the main export.
+                if found_layers:
+                    try:
+                        log(f"Exporting no-pour PCB variant for {commit}...")
+                        nopours_src = directory / "_nopours_src"
+                        nopours_src.mkdir(exist_ok=True)
+                        stripped_pcb = nopours_src / pcb_file.name
+                        stripped_pcb.write_text(
+                            strip_zone_fills(pcb_file.read_text(encoding="utf-8", errors="ignore")),
+                            encoding="utf-8"
+                        )
+                        nopour_layers = _export_pcb_svgs(
+                            stripped_pcb, directory / "pcb_nopours", all_layers, color, log
+                        )
+                        if commit == commit1:
+                            manifest["pours"] = bool(nopour_layers)
+                    except Exception as e:
+                        log(f"No-pour variant failed for {commit}: {e}")
             else:
                 job['logs'].append(f"No .kicad_pcb found for {commit}")
                 _persist_job(job_id)
@@ -437,6 +474,10 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
             sheet_union.update(p.name for p in d.glob("*.svg"))
         if sheet_union:
             manifest["sheets"] = sorted(sheet_union)
+
+        manifest["layers"] = sorted(pcb_layer_union)
+        job['logs'].append(f"Populated manifest with {len(manifest['layers'])} layers")
+        _persist_job(job_id)
 
         # 4. BoM Diff
         job['logs'].append("Generating BoM Diff...")
