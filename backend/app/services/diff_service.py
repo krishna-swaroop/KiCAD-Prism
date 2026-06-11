@@ -14,11 +14,11 @@ import time
 import json
 import re
 from pathlib import Path
-from typing import Callable, Optional, List, Dict
+from typing import Callable, Optional, List, Dict, Tuple
 from app.services.project_service import find_schematic_file
 from app.services.workspace_service import workspace
 from app.services import bom_diff_service
-from app.services.pcb_sexpr_service import strip_zone_fills
+from app.services.pcb_sexpr_service import strip_zone_fills, edge_cuts_bbox
 
 # Global job store
 # Structure: { job_id: { ... } }
@@ -258,12 +258,37 @@ def _colorize_svg(svg_path: Path, color: str):
         
     svg_path.write_text(content, encoding="utf-8")
 
+def _set_svg_viewbox(svg_path: Path, viewbox: Tuple[float, float, float, float]):
+    """
+    Rewrite the root <svg> width/height/viewBox to the given window
+    (min_x, min_y, w, h) in mm. Page-size-mode 1 exports use absolute
+    page coordinates in mm, so this crops both commits to the same
+    board-anchored window.
+    """
+    min_x, min_y, w, h = viewbox
+    content = svg_path.read_text(encoding="utf-8")
+    content = re.sub(r'width="[^"]*"', f'width="{w:.4f}mm"', content, count=1)
+    content = re.sub(r'height="[^"]*"', f'height="{h:.4f}mm"', content, count=1)
+    content = re.sub(
+        r'viewBox="[^"]*"',
+        f'viewBox="{min_x:.4f} {min_y:.4f} {w:.4f} {h:.4f}"',
+        content, count=1
+    )
+    svg_path.write_text(content, encoding="utf-8")
+
 def _export_pcb_svgs(pcb_file: Path, out_dir: Path, all_layers: List[str],
-                     color: str, log: Callable[[str], None]) -> List[str]:
+                     color: str, log: Callable[[str], None],
+                     viewbox: Optional[Tuple[float, float, float, float]] = None) -> List[str]:
     """
     Run kicad-cli pcb export svg --mode-multi into out_dir, normalize
     filenames to {Layer_Name}.svg, colorize, and return the matched
     layer names. Returns [] on export failure.
+
+    With viewbox set, exports in absolute page coordinates
+    (--page-size-mode 1) and crops every SVG to that window so both
+    commits share a board-anchored frame regardless of where the design
+    sits on the page. Without it, falls back to board-area cropping
+    (--page-size-mode 2).
     """
     out_dir.mkdir(exist_ok=True)
 
@@ -273,7 +298,7 @@ def _export_pcb_svgs(pcb_file: Path, out_dir: Path, all_layers: List[str],
         "--layers", ",".join(all_layers),
         "--black-and-white",
         "--exclude-drawing-sheet",
-        "--page-size-mode", "2",
+        "--page-size-mode", "1" if viewbox else "2",
         "--output", str(out_dir),
         str(pcb_file)
     ]
@@ -311,6 +336,8 @@ def _export_pcb_svgs(pcb_file: Path, out_dir: Path, all_layers: List[str],
                 svg.rename(target_svg)
 
             _colorize_svg(target_svg, color)
+            if viewbox:
+                _set_svg_viewbox(target_svg, viewbox)
             found_layers.append(matched_layer)
         else:
             log(f"Could not match PCB SVG: {leaf}")
@@ -388,6 +415,34 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
         # between commits still appear in the manifest.
         pcb_layer_union: set = set()
 
+        # Anchor each commit's PCB export window to its own board outline,
+        # with a shared window size, so a design moved on the page (or a
+        # changed bounding box) doesn't render the whole board as shifted.
+        ALIGN_MARGIN_MM = 2.0
+        pcb_viewboxes: Dict[str, Tuple[float, float, float, float]] = {}
+        try:
+            outline_bboxes = {}
+            for commit, directory in [(commit1, c1_dir), (commit2, c2_dir)]:
+                pf = next(directory.rglob("*.kicad_pcb"), None)
+                if pf:
+                    outline_bboxes[commit] = edge_cuts_bbox(
+                        pf.read_text(encoding="utf-8", errors="ignore")
+                    )
+            if len(outline_bboxes) == 2 and all(outline_bboxes.values()):
+                w = max(b[2] - b[0] for b in outline_bboxes.values()) + 2 * ALIGN_MARGIN_MM
+                h = max(b[3] - b[1] for b in outline_bboxes.values()) + 2 * ALIGN_MARGIN_MM
+                pcb_viewboxes = {
+                    c: (b[0] - ALIGN_MARGIN_MM, b[1] - ALIGN_MARGIN_MM, w, h)
+                    for c, b in outline_bboxes.items()
+                }
+                job['logs'].append(f"Anchoring PCB exports to board outline (window {w:.1f}x{h:.1f}mm)")
+            else:
+                job['logs'].append("Board outline not found in both commits; using board-area export")
+            _persist_job(job_id)
+        except Exception as e:
+            job['logs'].append(f"Outline alignment skipped: {e}")
+            _persist_job(job_id)
+
         for commit, directory, color in [(commit1, c1_dir, COLOR_NEW), (commit2, c2_dir, COLOR_OLD)]:
             # 1. Locate design files
             # Use the path-config-resolved root so kicad-cli walks the full
@@ -441,7 +496,10 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
 
                 # We export standard layers in one shot using --mode-multi
                 all_layers = _get_pcb_layers(pcb_file)
-                found_layers = _export_pcb_svgs(pcb_file, directory / "pcb", all_layers, color, log)
+                found_layers = _export_pcb_svgs(
+                    pcb_file, directory / "pcb", all_layers, color, log,
+                    viewbox=pcb_viewboxes.get(commit)
+                )
                 pcb_layer_union.update(found_layers)
 
                 # Pour-free variant: export a copy with zone fills stripped.
@@ -457,7 +515,8 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
                             encoding="utf-8"
                         )
                         nopour_layers = _export_pcb_svgs(
-                            stripped_pcb, directory / "pcb_nopours", all_layers, color, log
+                            stripped_pcb, directory / "pcb_nopours", all_layers, color, log,
+                            viewbox=pcb_viewboxes.get(commit)
                         )
                         if commit == commit1:
                             manifest["pours"] = bool(nopour_layers)

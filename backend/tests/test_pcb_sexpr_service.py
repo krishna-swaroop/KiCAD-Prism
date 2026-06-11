@@ -1,4 +1,4 @@
-from app.services.pcb_sexpr_service import strip_zone_fills
+from app.services.pcb_sexpr_service import strip_zone_fills, edge_cuts_bbox
 
 SAMPLE_PCB = '''(kicad_pcb
   (version 20240108)
@@ -91,3 +91,41 @@ def test_unbalanced_input_returned_safely():
     # Truncated file: stripper must not crash or drop the remainder
     text = '(kicad_pcb (zone (filled_polygon (pts (xy 0 0)'
     assert strip_zone_fills(text) == text
+
+
+OUTLINE_PCB = '''(kicad_pcb
+  (gr_line (start 10 20) (end 110 20) (layer "Edge.Cuts") (width 0.1))
+  (gr_line (start 110 20) (end 110 80) (layer "Edge.Cuts") (width 0.1))
+  (gr_arc (start 110 80) (mid 60 95) (end 10 80) (layer "Edge.Cuts") (width 0.1))
+  (gr_line (start 10 80) (end 10 20) (layer "Edge.Cuts") (width 0.1))
+  (gr_line (start 0 0) (end 300 0) (layer "Dwgs.User") (width 0.1))
+  (segment (start -5 -5) (end 400 400) (layer "F.Cu"))
+)
+'''
+
+
+def test_edge_cuts_bbox_basic():
+    bbox = edge_cuts_bbox(OUTLINE_PCB)
+    assert bbox is not None
+    min_x, min_y, max_x, max_y = bbox
+    # Arc mid (60, 95) extends the bbox below the straight edges;
+    # non-Edge.Cuts geometry (Dwgs.User drawing, F.Cu segment) is ignored
+    assert (min_x, min_y) == (10.0, 20.0)
+    assert (max_x, max_y) == (110.0, 95.0)
+
+
+def test_edge_cuts_bbox_circle():
+    text = '(kicad_pcb (gr_circle (center 50 50) (end 70 50) (layer "Edge.Cuts")))'
+    assert edge_cuts_bbox(text) == (30.0, 30.0, 70.0, 70.0)
+
+
+def test_edge_cuts_bbox_none_without_outline():
+    text = '(kicad_pcb (gr_line (start 0 0) (end 10 10) (layer "F.SilkS")))'
+    assert edge_cuts_bbox(text) is None
+    assert edge_cuts_bbox("(kicad_pcb)") is None
+
+
+def test_edge_cuts_bbox_ignores_footprint_graphics():
+    # fp_line on Edge.Cuts would need the footprint transform; it is ignored
+    text = '(kicad_pcb (footprint "X" (at 100 100) (fp_line (start 0 0) (end 5 5) (layer "Edge.Cuts"))))'
+    assert edge_cuts_bbox(text) is None

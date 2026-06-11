@@ -5,7 +5,9 @@ Stdlib-only on purpose: keeps this importable from tests without pulling
 in the workspace/database stack.
 """
 
-from typing import Optional
+import math
+import re
+from typing import List, Optional, Tuple
 
 # Tokens that hold a zone's computed fill geometry. kicad-cli plots the
 # stored fills without refilling, so removing these blocks yields
@@ -107,3 +109,67 @@ def strip_zone_fills(pcb_text: str) -> str:
             pos += 1
 
     return "".join(out_parts)
+
+
+# Board-level graphic elements that can form the board outline. Footprint
+# graphics (fp_line etc.) on Edge.Cuts are intentionally ignored — they
+# would need the footprint's position/rotation applied.
+_OUTLINE_TOKENS = ("(gr_line", "(gr_arc", "(gr_rect", "(gr_circle", "(gr_poly", "(gr_curve")
+
+_COORD_RE = re.compile(r'\((?:start|end|mid|center|xy)\s+(-?[\d.]+)\s+(-?[\d.]+)')
+_CENTER_RE = re.compile(r'\(center\s+(-?[\d.]+)\s+(-?[\d.]+)')
+_END_RE = re.compile(r'\(end\s+(-?[\d.]+)\s+(-?[\d.]+)')
+# Layer names are quoted in modern files, bare in legacy (pre-v6) ones.
+_EDGE_LAYER_RE = re.compile(r'\(layer\s+"?Edge\.Cuts"?\s*\)')
+
+
+def edge_cuts_bbox(pcb_text: str) -> Optional[Tuple[float, float, float, float]]:
+    """
+    Bounding box (min_x, min_y, max_x, max_y) in mm of the board-level
+    Edge.Cuts graphics, or None if no outline geometry is found.
+
+    Arcs are approximated by their start/mid/end points and bezier curves
+    by their control hull; both can only be off by a fraction of the
+    plot margin, which is fine for anchoring diff exports.
+    """
+    points: List[Tuple[float, float]] = []
+    pos = 0
+    n = len(pcb_text)
+    while pos < n:
+        next_idx = None
+        token_hit = None
+        for token in _OUTLINE_TOKENS:
+            idx = pcb_text.find(token, pos)
+            if idx != -1 and (next_idx is None or idx < next_idx):
+                if _is_token_boundary(pcb_text, idx, token):
+                    next_idx = idx
+                    token_hit = token
+        if next_idx is None:
+            break
+
+        close_idx = _find_matching_paren(pcb_text, next_idx)
+        if close_idx is None:
+            break
+        block = pcb_text[next_idx:close_idx + 1]
+        pos = close_idx + 1
+
+        if not _EDGE_LAYER_RE.search(block):
+            continue
+
+        if token_hit == "(gr_circle":
+            center = _CENTER_RE.search(block)
+            end = _END_RE.search(block)
+            if center and end:
+                cx, cy = float(center.group(1)), float(center.group(2))
+                r = math.dist((cx, cy), (float(end.group(1)), float(end.group(2))))
+                points.extend([(cx - r, cy - r), (cx + r, cy + r)])
+            continue
+
+        for m in _COORD_RE.finditer(block):
+            points.append((float(m.group(1)), float(m.group(2))))
+
+    if not points:
+        return None
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return (min(xs), min(ys), max(xs), max(ys))
