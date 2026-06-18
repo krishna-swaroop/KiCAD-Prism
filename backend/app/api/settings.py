@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.core.roles import Role, normalize_role
+from app.core.roles import ROLE_LABELS, Role, normalize_role
 from app.core.security import AuthenticatedUser, require_admin
 from app.services import access_service
 
@@ -184,8 +184,11 @@ async def upsert_access_user(
 ):
     normalized_role = normalize_role(request.role)
     if normalized_role is None:
+        valid_roles = ", ".join(
+            f"{role} ({label})" for role, label in ROLE_LABELS.items()
+        )
         raise HTTPException(
-            status_code=400, detail="Invalid role. Must be admin, designer, or viewer."
+            status_code=400, detail=f"Invalid role. Must be one of: {valid_roles}."
         )
 
     try:

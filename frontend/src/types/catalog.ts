@@ -2,6 +2,7 @@ export type ComponentSource = "manual" | "external";
 export type AvailabilityState = "metadata_only" | "files_partial" | "place_ready";
 export type WorkflowStage = "open" | "in_progress" | "qa_review" | "done" | "released" | "archived";
 export type ReleaseStatus = WorkflowStage;
+export type CatalogValidationStatus = "passed" | "warning" | "failed" | "skipped" | "not_run";
 
 export interface CatalogAsset {
   id: string;
@@ -21,6 +22,48 @@ export interface CatalogPreview {
   file_path: string;
   generation_error: string;
   updated_at?: string;
+}
+
+export interface CatalogValidationRun {
+  id: string;
+  asset_id: string;
+  asset_type: "symbol" | "footprint";
+  checker_type: string;
+  status: CatalogValidationStatus;
+  error_count: number;
+  warning_count: number;
+  exit_code: number | null;
+  tool_version: string;
+  created_at: string;
+  finished_at: string;
+  reports: {
+    summary: string;
+    json: string;
+    junit: string;
+    stdout: string;
+    stderr: string;
+  };
+}
+
+export interface CatalogAssetValidation {
+  asset_id: string;
+  asset_type: "symbol" | "footprint";
+  asset_name: string;
+  target_library: string;
+  target_name: string;
+  status: CatalogValidationStatus;
+  latest_run: CatalogValidationRun | null;
+}
+
+export interface CatalogValidationSummary {
+  status: CatalogValidationStatus;
+  enabled: boolean;
+  release_gate: "off" | "warn" | "block";
+  revision_id: string;
+  error_count: number;
+  warning_count: number;
+  missing_required_assets: string[];
+  assets: CatalogAssetValidation[];
 }
 
 export interface CatalogComponent {
@@ -71,6 +114,7 @@ export interface CatalogComponent {
   workflow_stage: WorkflowStage;
   assets: CatalogAsset[];
   previews: CatalogPreview[];
+  validation: CatalogValidationSummary;
 }
 
 export interface PaginatedComponents {

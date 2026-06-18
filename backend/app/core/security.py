@@ -2,9 +2,20 @@ from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.config import settings
-from app.core.roles import Role, normalize_role, role_meets_minimum
+from app.core.roles import (
+    CATALOG_READ_ROLES,
+    CATALOG_WRITE_ROLES,
+    Role,
+    normalize_role,
+    role_meets_minimum,
+)
 from app.core.session import SESSION_COOKIE_NAME, decode_session_token
-from app.services import access_service, auth_service, provider_auth_service, service_client_service
+from app.services import (
+    access_service,
+    auth_service,
+    provider_auth_service,
+    service_client_service,
+)
 
 
 class AuthenticatedUser(BaseModel):
@@ -18,7 +29,9 @@ class AuthenticatedUser(BaseModel):
 
 
 def guest_user() -> AuthenticatedUser:
-    return AuthenticatedUser(email="guest@local", name="Guest User", picture="", role="admin")
+    return AuthenticatedUser(
+        email="guest@local", name="Guest User", picture="", role="admin"
+    )
 
 
 def _resolve_allowed_user_role(email: str) -> Role | None:
@@ -37,7 +50,10 @@ async def get_current_user(request: Request) -> AuthenticatedUser:
     if payload:
         role = _resolve_allowed_user_role(payload["email"])
         if not role:
-            raise HTTPException(status_code=403, detail="Access denied. No role assignment found for your account.")
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied. No role assignment found for your account.",
+            )
 
         return AuthenticatedUser(
             email=payload["email"],
@@ -96,27 +112,74 @@ def _has_scope(user: AuthenticatedUser, *required_scopes: str) -> bool:
     return "*" in scopes or any(scope in scopes for scope in required_scopes)
 
 
-async def require_viewer(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+async def require_viewer(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
     return user
 
 
-async def require_designer(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+async def require_designer(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
     if user.auth_type == "kicad_provider":
-        raise HTTPException(status_code=403, detail="KiCad remote-provider tokens cannot modify Prism resources")
+        raise HTTPException(
+            status_code=403,
+            detail="KiCad remote-provider tokens cannot modify Prism resources",
+        )
     if not role_meets_minimum(user.role, "designer"):
         raise HTTPException(status_code=403, detail="Designer role required")
     return user
 
 
-async def require_admin(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+async def require_admin(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
     if user.auth_type == "kicad_provider":
-        raise HTTPException(status_code=403, detail="KiCad remote-provider tokens cannot access admin APIs")
+        raise HTTPException(
+            status_code=403,
+            detail="KiCad remote-provider tokens cannot access admin APIs",
+        )
     if not role_meets_minimum(user.role, "admin"):
         raise HTTPException(status_code=403, detail="Admin role required")
     return user
 
 
-async def require_remote_symbol_reader(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+def _require_bearer_scope(user: AuthenticatedUser, *required_scopes: str) -> None:
+    if user.auth_type == "session":
+        return
+    if _has_scope(user, *required_scopes):
+        return
+    raise HTTPException(
+        status_code=403, detail=f"{' or '.join(required_scopes)} scope required"
+    )
+
+
+async def require_catalog_reader(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    _require_bearer_scope(user, "api:read")
+    if user.role not in CATALOG_READ_ROLES:
+        raise HTTPException(status_code=403, detail="Catalog read access required")
+    return user
+
+
+async def require_catalog_writer(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    if user.auth_type == "kicad_provider":
+        raise HTTPException(
+            status_code=403,
+            detail="KiCad remote-provider tokens cannot modify catalog resources",
+        )
+    _require_bearer_scope(user, "api:write")
+    if user.role not in CATALOG_WRITE_ROLES:
+        raise HTTPException(status_code=403, detail="Catalog write access required")
+    return user
+
+
+async def require_remote_symbol_reader(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
     if user.auth_type == "session":
         return user
     if _has_scope(user, "remote_symbols.read", "api:read"):

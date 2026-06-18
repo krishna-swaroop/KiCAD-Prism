@@ -31,5 +31,7 @@ dist/
 # (The project database is currently outside the repo, but just in case)
 project-database/
 data/
-.claude/settings.json
-.claude/settings.json
+
+# Deploy Data
+deploy/
+*.crt

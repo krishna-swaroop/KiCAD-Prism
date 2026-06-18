@@ -268,6 +268,53 @@ class Settings(BaseSettings):
         ),
     )
 
+    CATALOG_KLC_ENABLED: bool = Field(
+        default=False,
+        description="Enable optional KiCad Library Convention validation for catalog assets.",
+    )
+
+    CATALOG_KLC_UTILS_PATH: str = Field(
+        default="/opt/kicad-library-utils",
+        description="Path to a kicad-library-utils checkout containing klc-check scripts.",
+    )
+
+    CATALOG_KLC_RELEASE_GATE: str = Field(
+        default="warn",
+        description="KLC release gate policy: off, warn, or block.",
+    )
+
+    CATALOG_KLC_TIMEOUT_SECONDS: int = Field(
+        default=30,
+        ge=5,
+        le=600,
+        description="Timeout for one KLC checker invocation.",
+    )
+
+    CATALOG_KLC_SYMBOL_RULES: str = Field(
+        default="",
+        description="Optional comma-separated symbol KLC rules to run.",
+    )
+
+    CATALOG_KLC_SYMBOL_EXCLUDE_RULES: str = Field(
+        default="",
+        description="Optional comma-separated symbol KLC rules to exclude.",
+    )
+
+    CATALOG_KLC_FOOTPRINT_RULES: str = Field(
+        default="",
+        description="Optional comma-separated footprint KLC rules to run.",
+    )
+
+    CATALOG_KLC_FOOTPRINT_EXCLUDE_RULES: str = Field(
+        default="",
+        description="Optional comma-separated footprint KLC rules to exclude.",
+    )
+
+    CATALOG_KLC_FOOTPRINT_LIB_DIR: str = Field(
+        default="",
+        description="Optional footprint library root passed to symbol KLC checks.",
+    )
+
     GIT_SCAN_KNOWN_HOSTS_ON_STARTUP: bool = Field(
         default=False,
         description="Run ssh-keyscan for common Git hosts during backend startup.",

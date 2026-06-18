@@ -18,12 +18,13 @@ import threading
 import time
 import uuid
 import zipfile
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 from app.core.config import settings
 
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_STORE_DIRNAME = ".kicad-prism"
 CATALOG_DB_FILENAME = "prism.sqlite3"
 DBL_EXPORT_DIRNAME = "kicad-dbl"
+KLC_VALIDATION_DIRNAME = "klc"
 
 PREVIEW_KIND_SYMBOL = "symbol"
 PREVIEW_KIND_FOOTPRINT = "footprint"
@@ -55,6 +57,16 @@ RELEASE_STATES = WORKFLOW_STAGES
 STATE_METADATA_ONLY = "metadata_only"
 STATE_FILES_PARTIAL = "files_partial"
 STATE_PLACE_READY = "place_ready"
+
+VALIDATION_STATUS_PASSED = "passed"
+VALIDATION_STATUS_WARNING = "warning"
+VALIDATION_STATUS_FAILED = "failed"
+VALIDATION_STATUS_SKIPPED = "skipped"
+VALIDATION_STATUS_NOT_RUN = "not_run"
+VALIDATION_SEVERITY_ERROR = "error"
+VALIDATION_SEVERITY_WARNING = "warning"
+VALIDATION_SEVERITY_INFO = "info"
+KLC_RELEASE_GATE_VALUES = {"off", "warn", "block"}
 
 SYMBOL_METADATA_FIELD_ORDER: tuple[str, ...] = (
     "Value",
@@ -415,6 +427,9 @@ class ComponentCatalogService:
         self._export_root = Path(
             settings.CATALOG_DBL_EXPORT_DIR or default_export_root
         ).resolve()
+        self._validation_root = (
+            self._store_root.parent / "validation" / KLC_VALIDATION_DIRNAME
+        ).resolve()
         self._lock = threading.Lock()
         self._initialized = False
         self._kicad_cli: str | None = None
@@ -447,6 +462,10 @@ class ComponentCatalogService:
     def export_root(self) -> Path:
         return self._export_root
 
+    @property
+    def validation_root(self) -> Path:
+        return self._validation_root
+
     def initialize(self) -> None:
         with self._lock:
             if self._initialized:
@@ -474,6 +493,7 @@ class ComponentCatalogService:
             self._store_root / "previews" / "footprints",
             self._store_root / "revisions",
             self._export_root,
+            self._validation_root,
         ):
             path.mkdir(parents=True, exist_ok=True)
 
@@ -589,6 +609,40 @@ class ComponentCatalogService:
                 UNIQUE(asset_id, kind)
             );
 
+            CREATE TABLE IF NOT EXISTS asset_validation_runs (
+                id TEXT PRIMARY KEY,
+                component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+                revision_id TEXT NOT NULL REFERENCES component_revisions(id) ON DELETE CASCADE,
+                asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+                asset_type TEXT NOT NULL,
+                checker_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error_count INTEGER NOT NULL DEFAULT 0,
+                warning_count INTEGER NOT NULL DEFAULT 0,
+                exit_code INTEGER,
+                tool_version TEXT NOT NULL DEFAULT '',
+                report_dir TEXT NOT NULL DEFAULT '',
+                stdout_path TEXT NOT NULL DEFAULT '',
+                stderr_path TEXT NOT NULL DEFAULT '',
+                junit_path TEXT NOT NULL DEFAULT '',
+                json_path TEXT NOT NULL DEFAULT '',
+                raw_output TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS asset_validation_findings (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES asset_validation_runs(id) ON DELETE CASCADE,
+                severity TEXT NOT NULL,
+                rule_code TEXT NOT NULL DEFAULT '',
+                rule_url TEXT NOT NULL DEFAULT '',
+                message TEXT NOT NULL,
+                details_json TEXT NOT NULL DEFAULT '[]',
+                object_name TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS oauth_auth_codes (
                 code TEXT PRIMARY KEY,
                 grant_json TEXT NOT NULL,
@@ -623,6 +677,9 @@ class ComponentCatalogService:
             CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(asset_type, target_library, target_name);
             CREATE INDEX IF NOT EXISTS idx_revision_assets_revision ON revision_assets(revision_id);
             CREATE INDEX IF NOT EXISTS idx_asset_previews_asset ON asset_previews(asset_id, kind);
+            CREATE INDEX IF NOT EXISTS idx_asset_validation_runs_asset ON asset_validation_runs(asset_id, finished_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_asset_validation_runs_component ON asset_validation_runs(component_id, revision_id);
+            CREATE INDEX IF NOT EXISTS idx_asset_validation_findings_run ON asset_validation_findings(run_id);
             CREATE INDEX IF NOT EXISTS idx_oauth_service_clients_enabled ON oauth_service_clients(enabled);
 
             CREATE TABLE IF NOT EXISTS catalog_meta (
@@ -986,10 +1043,163 @@ class ComponentCatalogService:
             return []
         placeholders = ",".join("?" for _ in asset_ids)
         rows = conn.execute(
-            f"SELECT * FROM asset_previews WHERE asset_id IN ({placeholders}) ORDER BY kind, updated_at DESC",  # noqa: S608  # nosec B608 â€” placeholders are "?" * len(asset_ids), no user input in SQL structure
+            f"SELECT * FROM asset_previews WHERE asset_id IN ({placeholders}) ORDER BY kind, updated_at DESC",  # noqa: S608
             tuple(asset_ids),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def _latest_validation_runs_for_assets(
+        self, conn: sqlite3.Connection, asset_ids: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        if not asset_ids:
+            return {}
+        placeholders = ",".join("?" for _ in asset_ids)
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM asset_validation_runs
+            WHERE asset_id IN ({placeholders})
+            ORDER BY asset_id, finished_at DESC, created_at DESC
+            """,  # noqa: S608
+            tuple(asset_ids),
+        ).fetchall()
+        latest: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            asset_id = str(row["asset_id"])
+            if asset_id not in latest:
+                latest[asset_id] = dict(row)
+        return latest
+
+    def _validation_run_payload(
+        self,
+        row: dict[str, Any],
+        *,
+        include_findings: bool = False,
+        conn: sqlite3.Connection | None = None,
+    ) -> dict[str, Any]:
+        run_id = str(row["id"])
+        payload = {
+            "id": run_id,
+            "component_id": str(row["component_id"]),
+            "revision_id": str(row["revision_id"]),
+            "asset_id": str(row["asset_id"]),
+            "asset_type": str(row["asset_type"]),
+            "checker_type": str(row["checker_type"]),
+            "status": str(row["status"]),
+            "error_count": int(row["error_count"] or 0),
+            "warning_count": int(row["warning_count"] or 0),
+            "exit_code": row["exit_code"],
+            "tool_version": str(row["tool_version"] or ""),
+            "created_at": str(row["created_at"] or ""),
+            "finished_at": str(row["finished_at"] or ""),
+            "reports": {
+                "summary": f"/api/catalog/validation/runs/{run_id}",
+                "json": f"/api/catalog/validation/runs/{run_id}/report.json",
+                "junit": f"/api/catalog/validation/runs/{run_id}/report.junit.xml",
+                "stdout": f"/api/catalog/validation/runs/{run_id}/stdout",
+                "stderr": f"/api/catalog/validation/runs/{run_id}/stderr",
+            },
+        }
+        if include_findings and conn is not None:
+            payload["findings"] = self._validation_findings_payload(conn, run_id)
+        return payload
+
+    def _validation_findings_payload(
+        self, conn: sqlite3.Connection, run_id: str
+    ) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM asset_validation_findings
+            WHERE run_id = ?
+            ORDER BY CASE severity WHEN 'error' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, rule_code, message
+            """,
+            (run_id,),
+        ).fetchall()
+        return [
+            {
+                "id": str(row["id"]),
+                "run_id": str(row["run_id"]),
+                "severity": str(row["severity"]),
+                "rule_code": str(row["rule_code"]),
+                "rule_url": str(row["rule_url"]),
+                "message": str(row["message"]),
+                "details": _json_loads(row["details_json"], []),
+                "object_name": str(row["object_name"] or ""),
+                "created_at": str(row["created_at"]),
+            }
+            for row in rows
+        ]
+
+    def _component_validation_summary(
+        self,
+        conn: sqlite3.Connection,
+        revision_id: str,
+        assets: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        relevant_assets = [
+            asset
+            for asset in assets
+            if str(asset["asset_type"]) in {"symbol", "footprint"}
+        ]
+        latest = self._latest_validation_runs_for_assets(
+            conn, [str(asset["id"]) for asset in relevant_assets]
+        )
+        asset_payloads: list[dict[str, Any]] = []
+        error_count = 0
+        warning_count = 0
+        statuses: list[str] = []
+        for asset in relevant_assets:
+            asset_id = str(asset["id"])
+            run = latest.get(asset_id)
+            validation = self._validation_run_payload(run) if run else None
+            status = str(run["status"]) if run else VALIDATION_STATUS_NOT_RUN
+            statuses.append(status)
+            if run:
+                error_count += int(run["error_count"] or 0)
+                warning_count += int(run["warning_count"] or 0)
+            asset_payloads.append(
+                {
+                    "asset_id": asset_id,
+                    "asset_type": str(asset["asset_type"]),
+                    "asset_name": str(asset["name"]),
+                    "target_library": str(asset["target_library"]),
+                    "target_name": str(asset["target_name"]),
+                    "status": status,
+                    "latest_run": validation,
+                }
+            )
+
+        if not relevant_assets:
+            status = VALIDATION_STATUS_NOT_RUN
+        elif VALIDATION_STATUS_FAILED in statuses:
+            status = VALIDATION_STATUS_FAILED
+        elif VALIDATION_STATUS_WARNING in statuses:
+            status = VALIDATION_STATUS_WARNING
+        elif VALIDATION_STATUS_SKIPPED in statuses:
+            status = VALIDATION_STATUS_SKIPPED
+        elif VALIDATION_STATUS_NOT_RUN in statuses:
+            status = VALIDATION_STATUS_NOT_RUN
+        else:
+            status = VALIDATION_STATUS_PASSED
+
+        required = set(PLACE_REQUIRED_ASSET_TYPES)
+        present_required = {
+            str(asset["asset_type"])
+            for asset in relevant_assets
+            if bool(asset.get("required", True))
+        }
+        missing_required = sorted(required - present_required)
+        return {
+            "status": status,
+            "enabled": bool(settings.CATALOG_KLC_ENABLED),
+            "release_gate": self._klc_release_gate(),
+            "revision_id": revision_id,
+            "error_count": error_count,
+            "warning_count": warning_count,
+            "missing_required_assets": missing_required,
+            "assets": asset_payloads,
+        }
 
     def _availability(
         self, assets: list[dict[str, Any]], release_status: str, is_active: bool
@@ -1040,6 +1250,9 @@ class ComponentCatalogService:
         )
         symbol_asset = next(
             (asset for asset in assets if asset["asset_type"] == "symbol"), None
+        )
+        validation_summary = self._component_validation_summary(
+            conn, str(revision_row["id"]), assets
         )
         preview_payloads = [
             {
@@ -1122,6 +1335,7 @@ class ComponentCatalogService:
                 for asset in assets
             ],
             "previews": preview_payloads,
+            "validation": validation_summary,
         }
 
     def _component_summary_payload(
@@ -1140,6 +1354,17 @@ class ComponentCatalogService:
         symbol_asset = next(
             (asset for asset in assets if asset["asset_type"] == "symbol"), None
         )
+        # Lightweight payloads are used by the KiCad remote panel; avoid validation lookups on search paths.
+        validation_summary = {
+            "status": VALIDATION_STATUS_NOT_RUN,
+            "enabled": bool(settings.CATALOG_KLC_ENABLED),
+            "release_gate": self._klc_release_gate(),
+            "revision_id": str(revision_row["id"]),
+            "error_count": 0,
+            "warning_count": 0,
+            "missing_required_assets": [],
+            "assets": [],
+        }
         return {
             "id": str(component_row["id"]),
             "slug": str(component_row["slug"]),
@@ -1170,6 +1395,7 @@ class ComponentCatalogService:
             "revision_id": str(revision_row["id"]),
             "assets": [],
             "previews": [],
+            "validation": validation_summary,
         }
 
     def list_components(
@@ -1179,6 +1405,7 @@ class ComponentCatalogService:
         source: str | None = None,
         availability_state: str | None = None,
         workflow_stage: str | None = None,
+        validation_status: str | None = None,
         category: str | None = None,
         include_inactive: bool = False,
         page: int = 1,
@@ -1213,11 +1440,11 @@ class ComponentCatalogService:
             params.append(normalized_workflow_stage)
         if availability_state:
             symbol_exists = (
-                f"EXISTS (SELECT 1 FROM revision_assets ra_symbol "  # noqa: S608  # nosec B608 â€” revision_ref is "rr"/"cr", a hard-coded internal alias
+                f"EXISTS (SELECT 1 FROM revision_assets ra_symbol "  # noqa: S608
                 f"WHERE ra_symbol.revision_id = {revision_ref}.id AND ra_symbol.asset_type = 'symbol')"
             )
             footprint_exists = (
-                f"EXISTS (SELECT 1 FROM revision_assets ra_footprint "  # noqa: S608  # nosec B608 â€” same
+                f"EXISTS (SELECT 1 FROM revision_assets ra_footprint "  # noqa: S608
                 f"WHERE ra_footprint.revision_id = {revision_ref}.id AND ra_footprint.asset_type = 'footprint')"
             )
             if availability_state == STATE_PLACE_READY:
@@ -1228,6 +1455,62 @@ class ComponentCatalogService:
                 filters.append(f"(({symbol_exists}) <> ({footprint_exists}))")
             else:
                 raise ValueError("Unsupported availability state")
+        if validation_status:
+            supported_validation_statuses = {
+                VALIDATION_STATUS_PASSED,
+                VALIDATION_STATUS_WARNING,
+                VALIDATION_STATUS_FAILED,
+                VALIDATION_STATUS_SKIPPED,
+                VALIDATION_STATUS_NOT_RUN,
+            }
+            if validation_status not in supported_validation_statuses:
+                raise ValueError("Unsupported validation status")
+
+            relevant_assets_exist = (
+                f"EXISTS (SELECT 1 FROM revision_assets ra_validation_any "  # noqa: S608
+                f"JOIN assets asset_validation_any ON asset_validation_any.id = ra_validation_any.asset_id "
+                f"WHERE ra_validation_any.revision_id = {revision_ref}.id "
+                f"AND asset_validation_any.asset_type IN ('symbol', 'footprint'))"
+            )
+
+            def latest_status_exists(status: str, suffix: str) -> str:
+                return (
+                    f"EXISTS (SELECT 1 FROM revision_assets ra_validation_{suffix} "  # noqa: S608
+                    f"JOIN assets asset_validation_{suffix} ON asset_validation_{suffix}.id = ra_validation_{suffix}.asset_id "
+                    f"WHERE ra_validation_{suffix}.revision_id = {revision_ref}.id "
+                    f"AND asset_validation_{suffix}.asset_type IN ('symbol', 'footprint') "
+                    f"AND COALESCE(("
+                    f"SELECT avr_validation_{suffix}.status "
+                    f"FROM asset_validation_runs avr_validation_{suffix} "
+                    f"WHERE avr_validation_{suffix}.asset_id = asset_validation_{suffix}.id "
+                    f"ORDER BY avr_validation_{suffix}.finished_at DESC, avr_validation_{suffix}.created_at DESC "
+                    f"LIMIT 1"
+                    f"), '{VALIDATION_STATUS_NOT_RUN}') = '{status}')"
+                )
+
+            failed_exists = latest_status_exists(VALIDATION_STATUS_FAILED, "failed")
+            warning_exists = latest_status_exists(VALIDATION_STATUS_WARNING, "warning")
+            skipped_exists = latest_status_exists(VALIDATION_STATUS_SKIPPED, "skipped")
+            not_run_exists = latest_status_exists(VALIDATION_STATUS_NOT_RUN, "not_run")
+
+            if validation_status == VALIDATION_STATUS_FAILED:
+                filters.append(failed_exists)
+            elif validation_status == VALIDATION_STATUS_WARNING:
+                filters.append(f"NOT {failed_exists} AND {warning_exists}")
+            elif validation_status == VALIDATION_STATUS_SKIPPED:
+                filters.append(
+                    f"NOT {failed_exists} AND NOT {warning_exists} AND {skipped_exists}"
+                )
+            elif validation_status == VALIDATION_STATUS_NOT_RUN:
+                filters.append(
+                    f"(NOT {relevant_assets_exist} OR "
+                    f"(NOT {failed_exists} AND NOT {warning_exists} AND NOT {skipped_exists} AND {not_run_exists}))"
+                )
+            elif validation_status == VALIDATION_STATUS_PASSED:
+                filters.append(
+                    f"{relevant_assets_exist} AND NOT {failed_exists} AND NOT {warning_exists} "
+                    f"AND NOT {skipped_exists} AND NOT {not_run_exists}"
+                )
         if released_only:
             filters.append("c.released_revision_id <> ''")
             filters.append("rr.release_status = 'released'")
@@ -1237,7 +1520,7 @@ class ComponentCatalogService:
         )
         if fts_query:
             filters.append(
-                f"{revision_ref}.rowid IN ("  # noqa: S608  # nosec B608 â€” revision_ref is a hard-coded internal alias; FTS query is parameterised with ?
+                f"{revision_ref}.rowid IN ("  # noqa: S608
                 "SELECT rowid FROM component_revisions_fts "
                 "WHERE component_revisions_fts MATCH ?"
                 ")"
@@ -1260,11 +1543,11 @@ class ComponentCatalogService:
         sort_column = sort_columns.get(sort_by)
         if sort_by == "availability_state":
             symbol_exists = (
-                f"EXISTS (SELECT 1 FROM revision_assets ra_symbol_sort "  # noqa: S608  # nosec B608 â€” revision_ref is a hard-coded internal alias
+                f"EXISTS (SELECT 1 FROM revision_assets ra_symbol_sort "  # noqa: S608
                 f"WHERE ra_symbol_sort.revision_id = {revision_ref}.id AND ra_symbol_sort.asset_type = 'symbol')"
             )
             footprint_exists = (
-                f"EXISTS (SELECT 1 FROM revision_assets ra_footprint_sort "  # noqa: S608  # nosec B608 â€” same
+                f"EXISTS (SELECT 1 FROM revision_assets ra_footprint_sort "  # noqa: S608
                 f"WHERE ra_footprint_sort.revision_id = {revision_ref}.id AND ra_footprint_sort.asset_type = 'footprint')"
             )
             sort_column = f"CASE WHEN {symbol_exists} AND {footprint_exists} THEN 0 WHEN ({symbol_exists}) <> ({footprint_exists}) THEN 1 ELSE 2 END"
@@ -1286,21 +1569,26 @@ class ComponentCatalogService:
             order_params = []
 
         with self._connect() as conn:
-            # revision_ref/revision_join_column are hard-coded internal aliases ("rr"/"cr");
-            # where_sql/order_sql are built from an allowlisted set of column names with ? params.
-            count_sql = (
-                f"SELECT COUNT(1) AS total FROM components c "  # noqa: S608  # nosec B608 â€” revision_ref/revision_join_column are hard-coded internal aliases; where_sql from allowlisted filters with ? params
-                f"JOIN component_revisions {revision_ref} ON {revision_ref}.id = c.{revision_join_column} "
-                f"{where_sql}"
-            )
-            total = int(conn.execute(count_sql, tuple(params)).fetchone()["total"])
-            select_sql = (
-                f"SELECT c.*, {revision_ref}.id AS revision_id FROM components c "  # noqa: S608  # nosec B608 â€” same
-                f"JOIN component_revisions {revision_ref} ON {revision_ref}.id = c.{revision_join_column} "
-                f"{where_sql} {order_sql} LIMIT ? OFFSET ?"
+            total = int(
+                conn.execute(
+                    f"""
+                    SELECT COUNT(1) AS total
+                    FROM components c
+                    JOIN component_revisions {revision_ref} ON {revision_ref}.id = c.{revision_join_column}
+                    {where_sql}
+                    """,  # noqa: S608
+                    tuple(params),
+                ).fetchone()["total"]
             )
             rows = conn.execute(
-                select_sql,
+                f"""
+                SELECT c.*, {revision_ref}.id AS revision_id
+                FROM components c
+                JOIN component_revisions {revision_ref} ON {revision_ref}.id = c.{revision_join_column}
+                {where_sql}
+                {order_sql}
+                LIMIT ? OFFSET ?
+                """,  # noqa: S608
                 tuple(params + order_params + [page_size, offset]),
             ).fetchall()
             row_pairs: list[tuple[dict[str, Any], str]] = []
@@ -1314,7 +1602,7 @@ class ComponentCatalogService:
             if revision_ids:
                 placeholders = ",".join("?" for _ in revision_ids)
                 revision_rows = conn.execute(
-                    f"SELECT * FROM component_revisions WHERE id IN ({placeholders})",  # noqa: S608  # nosec B608 â€” placeholders are "?" * len(revision_ids)
+                    f"SELECT * FROM component_revisions WHERE id IN ({placeholders})",  # noqa: S608
                     tuple(revision_ids),
                 ).fetchall()
                 revisions_by_id = {
@@ -1332,19 +1620,19 @@ class ComponentCatalogService:
             all_asset_ids: list[str] = []
             if revision_ids:
                 placeholders = ",".join("?" for _ in revision_ids)
-                assets_sql = (
-                    f"SELECT a.*, ra.required, ra.revision_id FROM revision_assets ra "  # noqa: S608  # nosec B608 â€” placeholders are "?" * len(revision_ids)
-                    f"JOIN assets a ON a.id = ra.asset_id "
-                    f"WHERE ra.revision_id IN ({placeholders}) "
-                    "ORDER BY CASE a.asset_type "
-                    "WHEN 'symbol' THEN 1 WHEN 'footprint' THEN 2 "
-                    "WHEN '3dmodel' THEN 3 WHEN 'spice' THEN 4 ELSE 99 "
-                    "END, a.target_library, a.target_name"
-                )
                 all_assets_rows = [
                     dict(r)
                     for r in conn.execute(
-                        assets_sql,
+                        f"""
+                        SELECT a.*, ra.required, ra.revision_id
+                        FROM revision_assets ra
+                        JOIN assets a ON a.id = ra.asset_id
+                        WHERE ra.revision_id IN ({placeholders})
+                        ORDER BY CASE a.asset_type
+                            WHEN 'symbol' THEN 1 WHEN 'footprint' THEN 2
+                            WHEN '3dmodel' THEN 3 WHEN 'spice' THEN 4 ELSE 99
+                        END, a.target_library, a.target_name
+                        """,  # noqa: S608
                         tuple(revision_ids),
                     ).fetchall()
                 ]
@@ -2193,6 +2481,112 @@ class ComponentCatalogService:
                 generation_error="" if status == PREVIEW_STATUS_READY else result,
             )
 
+    def _has_ready_preview(
+        self, conn: sqlite3.Connection, asset_id: str, kind: str
+    ) -> bool:
+        row = conn.execute(
+            """
+            SELECT file_path
+            FROM asset_previews
+            WHERE asset_id = ? AND kind = ? AND status = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (asset_id, kind, PREVIEW_STATUS_READY),
+        ).fetchone()
+        if not row:
+            return False
+        file_path = str(row["file_path"] or "")
+        return bool(file_path and Path(file_path).is_file())
+
+    def generate_missing_component_previews(
+        self,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        self.initialize()
+        counts: dict[str, Any] = {
+            "scanned_assets": 0,
+            "generated": 0,
+            "skipped_ready": 0,
+            "failed": 0,
+            "errors": [],
+        }
+        with self._connect() as conn:
+            rows = [
+                dict(row)
+                for row in conn.execute(
+                    """
+                    SELECT c.id AS component_id, a.*, ra.required
+                    FROM components c
+                    JOIN component_revisions cr ON cr.id = c.current_revision_id
+                    JOIN revision_assets ra ON ra.revision_id = cr.id
+                    JOIN assets a ON a.id = ra.asset_id
+                    WHERE c.is_active = 1 AND a.asset_type IN ('symbol', 'footprint')
+                    ORDER BY c.updated_at DESC, a.asset_type, a.target_library, a.target_name
+                    """
+                ).fetchall()
+            ]
+            counts["total_assets"] = len(rows)
+            if progress_callback:
+                progress_callback(counts.copy())
+
+            for row in rows:
+                asset = dict(row)
+                component_id = str(asset.pop("component_id"))
+                asset_id = str(asset["id"])
+                kind = (
+                    PREVIEW_KIND_SYMBOL
+                    if asset["asset_type"] == "symbol"
+                    else PREVIEW_KIND_FOOTPRINT
+                )
+                counts["scanned_assets"] += 1
+                try:
+                    if self._has_ready_preview(conn, asset_id, kind):
+                        counts["skipped_ready"] += 1
+                    else:
+                        self._ensure_asset_preview(conn, asset)
+                        preview = conn.execute(
+                            """
+                            SELECT status, generation_error
+                            FROM asset_previews
+                            WHERE asset_id = ? AND kind = ?
+                            ORDER BY updated_at DESC
+                            LIMIT 1
+                            """,
+                            (asset_id, kind),
+                        ).fetchone()
+                        if preview and str(preview["status"]) == PREVIEW_STATUS_READY:
+                            counts["generated"] += 1
+                        else:
+                            counts["failed"] += 1
+                            counts["errors"].append(
+                                {
+                                    "component_id": component_id,
+                                    "asset_id": asset_id,
+                                    "asset_type": str(asset["asset_type"]),
+                                    "error": str(
+                                        preview["generation_error"]
+                                        if preview
+                                        else "Preview generation failed"
+                                    ),
+                                }
+                            )
+                    conn.commit()
+                except Exception as exc:
+                    conn.rollback()
+                    counts["failed"] += 1
+                    counts["errors"].append(
+                        {
+                            "component_id": component_id,
+                            "asset_id": asset_id,
+                            "asset_type": str(asset["asset_type"]),
+                            "error": str(exc),
+                        }
+                    )
+                if progress_callback:
+                    progress_callback(counts.copy())
+        return counts
+
     def _link_asset_to_revision(
         self,
         conn: sqlite3.Connection,
@@ -2502,6 +2896,539 @@ class ComponentCatalogService:
             conn.commit()
         return {"component": self.get_component(component_id)}
 
+    def _klc_release_gate(self) -> str:
+        gate = settings.CATALOG_KLC_RELEASE_GATE.strip().lower()
+        return gate if gate in KLC_RELEASE_GATE_VALUES else "warn"
+
+    def _klc_utils_root(self) -> Path:
+        return Path(settings.CATALOG_KLC_UTILS_PATH).expanduser().resolve()
+
+    def _klc_checker_path(self, asset_type: str) -> Path | None:
+        script = (
+            "check_symbol.py"
+            if asset_type == "symbol"
+            else "check_footprint.py"
+            if asset_type == "footprint"
+            else ""
+        )
+        if not script:
+            return None
+        path = self._klc_utils_root() / "klc-check" / script
+        return path if path.is_file() else None
+
+    def _klc_tool_version(self) -> str:
+        root = self._klc_utils_root()
+        if not root.exists():
+            return ""
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return ""
+
+    def _klc_rule_args(self, asset_type: str) -> list[str]:
+        if asset_type == "symbol":
+            rules = settings.CATALOG_KLC_SYMBOL_RULES.strip()
+            excludes = settings.CATALOG_KLC_SYMBOL_EXCLUDE_RULES.strip()
+        else:
+            rules = settings.CATALOG_KLC_FOOTPRINT_RULES.strip()
+            excludes = settings.CATALOG_KLC_FOOTPRINT_EXCLUDE_RULES.strip()
+        args: list[str] = []
+        if rules:
+            args.extend(["--rule", rules])
+        if excludes:
+            args.extend(["--exclude", excludes])
+        return args
+
+    def _parse_klc_junit(self, junit_path: Path) -> list[dict[str, Any]]:
+        if not junit_path.is_file():
+            return []
+        root = ElementTree.parse(junit_path).getroot()  # noqa: S314
+        findings: list[dict[str, Any]] = []
+        for testcase in root.iter("testcase"):
+            object_name = (
+                str(testcase.attrib.get("name", ""))
+                .removesuffix(" - Errors")
+                .removesuffix(" - Warnings")
+            )
+            testcase_type = str(testcase.attrib.get("type", ""))
+            for failure in testcase.findall("failure"):
+                raw_type = str(failure.attrib.get("type", testcase_type)).upper()
+                if raw_type == "WARNING" or testcase_type == "Warnings":
+                    severity = VALIDATION_SEVERITY_WARNING
+                elif raw_type == "INFO" or testcase_type == "Info":
+                    severity = VALIDATION_SEVERITY_INFO
+                else:
+                    severity = VALIDATION_SEVERITY_ERROR
+                message = str(failure.attrib.get("message") or "").strip()
+                rule_code = message.split(":", 1)[0].strip() if ":" in message else ""
+                text = (failure.text or "").strip()
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                rule_url = next(
+                    (
+                        line
+                        for line in lines
+                        if line.startswith("http://") or line.startswith("https://")
+                    ),
+                    "",
+                )
+                details = [
+                    line for line in lines if line != message and line != rule_url
+                ]
+                findings.append(
+                    {
+                        "severity": severity,
+                        "rule_code": rule_code,
+                        "rule_url": rule_url,
+                        "message": message or text or "KLC finding",
+                        "details": details,
+                        "object_name": object_name,
+                    }
+                )
+        return findings
+
+    def _write_validation_report_json(
+        self,
+        path: Path,
+        *,
+        run_id: str,
+        asset: dict[str, Any],
+        status: str,
+        exit_code: int | None,
+        findings: list[dict[str, Any]],
+        stdout: str,
+        stderr: str,
+        tool_version: str,
+        created_at: str,
+        finished_at: str,
+    ) -> None:
+        payload = {
+            "run_id": run_id,
+            "asset_id": str(asset["id"]),
+            "asset_type": str(asset["asset_type"]),
+            "asset_name": str(asset["name"]),
+            "target_library": str(asset["target_library"]),
+            "target_name": str(asset["target_name"]),
+            "status": status,
+            "exit_code": exit_code,
+            "error_count": sum(
+                1
+                for finding in findings
+                if finding["severity"] == VALIDATION_SEVERITY_ERROR
+            ),
+            "warning_count": sum(
+                1
+                for finding in findings
+                if finding["severity"] == VALIDATION_SEVERITY_WARNING
+            ),
+            "tool_version": tool_version,
+            "created_at": created_at,
+            "finished_at": finished_at,
+            "stdout": stdout,
+            "stderr": stderr,
+            "findings": findings,
+        }
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def _store_validation_run(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        run_id: str,
+        component_id: str,
+        revision_id: str,
+        asset: dict[str, Any],
+        status: str,
+        exit_code: int | None,
+        findings: list[dict[str, Any]],
+        report_dir: Path,
+        stdout_path: Path,
+        stderr_path: Path,
+        junit_path: Path,
+        json_path: Path,
+        raw_output: str,
+        tool_version: str,
+        created_at: str,
+        finished_at: str,
+    ) -> dict[str, Any]:
+        error_count = sum(
+            1
+            for finding in findings
+            if finding["severity"] == VALIDATION_SEVERITY_ERROR
+        )
+        warning_count = sum(
+            1
+            for finding in findings
+            if finding["severity"] == VALIDATION_SEVERITY_WARNING
+        )
+        conn.execute(
+            "DELETE FROM asset_validation_findings WHERE run_id = ?", (run_id,)
+        )
+        conn.execute(
+            """
+            INSERT INTO asset_validation_runs (
+                id, component_id, revision_id, asset_id, asset_type, checker_type, status,
+                error_count, warning_count, exit_code, tool_version, report_dir, stdout_path,
+                stderr_path, junit_path, json_path, raw_output, created_at, finished_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                component_id,
+                revision_id,
+                asset["id"],
+                asset["asset_type"],
+                f"klc_{asset['asset_type']}",
+                status,
+                error_count,
+                warning_count,
+                exit_code,
+                tool_version,
+                str(report_dir),
+                str(stdout_path),
+                str(stderr_path),
+                str(junit_path),
+                str(json_path),
+                raw_output[-20000:],
+                created_at,
+                finished_at,
+            ),
+        )
+        for finding in findings:
+            conn.execute(
+                """
+                INSERT INTO asset_validation_findings (
+                    id, run_id, severity, rule_code, rule_url, message, details_json, object_name, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    run_id,
+                    finding["severity"],
+                    finding.get("rule_code", ""),
+                    finding.get("rule_url", ""),
+                    finding["message"],
+                    json.dumps(finding.get("details", [])),
+                    finding.get("object_name", ""),
+                    finished_at,
+                ),
+            )
+        row = conn.execute(
+            "SELECT * FROM asset_validation_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        return (
+            self._validation_run_payload(dict(row), include_findings=True, conn=conn)
+            if row
+            else {}
+        )
+
+    def _run_klc_for_asset(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        component_id: str,
+        revision_id: str,
+        asset: dict[str, Any],
+    ) -> dict[str, Any]:
+        asset_type = str(asset["asset_type"])
+        if asset_type not in {"symbol", "footprint"}:
+            raise ValueError("KLC validation only supports symbol and footprint assets")
+        run_id = str(uuid.uuid4())
+        created_at = _utc_now_iso()
+        report_dir = self._validation_root / run_id
+        report_dir.mkdir(parents=True, exist_ok=True)
+        stdout_path = report_dir / "stdout.txt"
+        stderr_path = report_dir / "stderr.txt"
+        junit_path = report_dir / "report.junit.xml"
+        json_path = report_dir / "report.json"
+        checker = self._klc_checker_path(asset_type)
+        tool_version = self._klc_tool_version()
+        findings: list[dict[str, Any]] = []
+        stdout = ""
+        stderr = ""
+        exit_code: int | None = None
+
+        if checker is None:
+            status = VALIDATION_STATUS_SKIPPED
+            stderr = f"KLC checker unavailable under {self._klc_utils_root()}"
+        else:
+            cmd = [
+                "python3",
+                str(checker),
+                str(asset["canonical_path"]),
+                "-vv",
+                "--nocolor",
+                "--junit",
+                str(junit_path),
+            ]
+            cmd.extend(self._klc_rule_args(asset_type))
+            if (
+                asset_type == "symbol"
+                and settings.CATALOG_KLC_FOOTPRINT_LIB_DIR.strip()
+            ):
+                cmd.extend(
+                    ["--footprints", settings.CATALOG_KLC_FOOTPRINT_LIB_DIR.strip()]
+                )
+            try:
+                result = subprocess.run(
+                    cmd,
+                    cwd=str(checker.parent),
+                    capture_output=True,
+                    text=True,
+                    timeout=settings.CATALOG_KLC_TIMEOUT_SECONDS,
+                    check=False,
+                )
+                stdout = result.stdout or ""
+                stderr = result.stderr or ""
+                exit_code = result.returncode
+                try:
+                    findings = self._parse_klc_junit(junit_path)
+                except ElementTree.ParseError as exc:
+                    findings = [
+                        {
+                            "severity": VALIDATION_SEVERITY_ERROR,
+                            "rule_code": "",
+                            "rule_url": "",
+                            "message": f"Could not parse KLC JUnit report: {exc}",
+                            "details": [],
+                            "object_name": str(asset["target_name"] or asset["name"]),
+                        }
+                    ]
+                if any(
+                    finding["severity"] == VALIDATION_SEVERITY_ERROR
+                    for finding in findings
+                ) or result.returncode not in {0, 2, 3}:
+                    status = VALIDATION_STATUS_FAILED
+                elif (
+                    any(
+                        finding["severity"] == VALIDATION_SEVERITY_WARNING
+                        for finding in findings
+                    )
+                    or result.returncode == 2
+                ):
+                    status = VALIDATION_STATUS_WARNING
+                else:
+                    status = VALIDATION_STATUS_PASSED
+            except subprocess.TimeoutExpired as exc:
+                status = VALIDATION_STATUS_FAILED
+                stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+                stderr = f"KLC validation timed out after {settings.CATALOG_KLC_TIMEOUT_SECONDS}s"
+                exit_code = None
+            except OSError as exc:
+                status = VALIDATION_STATUS_FAILED
+                stderr = str(exc)
+                exit_code = None
+
+        finished_at = _utc_now_iso()
+        stdout_path.write_text(stdout, encoding="utf-8")
+        stderr_path.write_text(stderr, encoding="utf-8")
+        if not junit_path.exists():
+            junit_path.write_text("<testsuites />\n", encoding="utf-8")
+        self._write_validation_report_json(
+            json_path,
+            run_id=run_id,
+            asset=asset,
+            status=status,
+            exit_code=exit_code,
+            findings=findings,
+            stdout=stdout,
+            stderr=stderr,
+            tool_version=tool_version,
+            created_at=created_at,
+            finished_at=finished_at,
+        )
+        return self._store_validation_run(
+            conn,
+            run_id=run_id,
+            component_id=component_id,
+            revision_id=revision_id,
+            asset=asset,
+            status=status,
+            exit_code=exit_code,
+            findings=findings,
+            report_dir=report_dir,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            junit_path=junit_path,
+            json_path=json_path,
+            raw_output=f"{stdout}\n{stderr}",
+            tool_version=tool_version,
+            created_at=created_at,
+            finished_at=finished_at,
+        )
+
+    def validate_component_klc(self, component_id: str) -> dict[str, Any]:
+        self.initialize()
+        if not settings.CATALOG_KLC_ENABLED:
+            raise ValueError("KLC validation is disabled")
+        with self._connect() as conn:
+            component = self._component_row(conn, component_id)
+            if not component:
+                raise ValueError("Component not found")
+            revision = self._revision_row(conn, str(component["current_revision_id"]))
+            if not revision:
+                raise ValueError("Component revision not found")
+            assets = [
+                asset
+                for asset in self._load_assets_for_revision(conn, str(revision["id"]))
+                if str(asset["asset_type"]) in {"symbol", "footprint"}
+            ]
+            if not assets:
+                raise ValueError("No symbol or footprint assets are attached")
+            runs = [
+                self._run_klc_for_asset(
+                    conn,
+                    component_id=component_id,
+                    revision_id=str(revision["id"]),
+                    asset=asset,
+                )
+                for asset in assets
+            ]
+            conn.commit()
+            component_payload = self._component_payload(conn, component, revision)
+        return {"component": component_payload, "runs": runs}
+
+    def get_component_validation(self, component_id: str) -> dict[str, Any]:
+        self.initialize()
+        with self._connect() as conn:
+            component = self._component_row(conn, component_id)
+            if not component:
+                raise ValueError("Component not found")
+            revision = self._revision_row(conn, str(component["current_revision_id"]))
+            if not revision:
+                raise ValueError("Component revision not found")
+            assets = self._load_assets_for_revision(conn, str(revision["id"]))
+            summary = self._component_validation_summary(
+                conn, str(revision["id"]), assets
+            )
+            run_ids = [
+                str(asset["latest_run"]["id"])
+                for asset in summary["assets"]
+                if asset.get("latest_run")
+            ]
+            runs = []
+            if run_ids:
+                placeholders = ",".join("?" for _ in run_ids)
+                rows = conn.execute(
+                    f"SELECT * FROM asset_validation_runs WHERE id IN ({placeholders})",  # noqa: S608
+                    tuple(run_ids),
+                ).fetchall()
+                runs = [
+                    self._validation_run_payload(
+                        dict(row), include_findings=True, conn=conn
+                    )
+                    for row in rows
+                ]
+        return {"summary": summary, "runs": runs}
+
+    def get_validation_run(self, run_id: str) -> dict[str, Any] | None:
+        self.initialize()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM asset_validation_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if not row:
+                return None
+            return self._validation_run_payload(
+                dict(row), include_findings=True, conn=conn
+            )
+
+    def validation_report_path(self, run_id: str, report_name: str) -> Path | None:
+        allowed = {
+            "report.json": "json_path",
+            "report.junit.xml": "junit_path",
+            "stdout": "stdout_path",
+            "stderr": "stderr_path",
+        }
+        column = allowed.get(report_name)
+        if not column:
+            return None
+        self.initialize()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM asset_validation_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if not row:
+                return None
+            path = Path(str(row[column])).resolve()
+        try:
+            path.relative_to(self._validation_root)
+        except ValueError:
+            return None
+        return path if path.is_file() else None
+
+    def catalog_health(self) -> dict[str, Any]:
+        self.initialize()
+        validation_counts = {
+            status: 0
+            for status in (
+                VALIDATION_STATUS_PASSED,
+                VALIDATION_STATUS_WARNING,
+                VALIDATION_STATUS_FAILED,
+                VALIDATION_STATUS_SKIPPED,
+                VALIDATION_STATUS_NOT_RUN,
+            )
+        }
+        preview_failed = 0
+        place_ready = 0
+        released = 0
+        missing_files = 0
+        total_components = 0
+        page = 1
+        page_size = 10000
+        while True:
+            result = self.list_components(
+                include_inactive=False,
+                page=page,
+                page_size=page_size,
+                lightweight=False,
+            )
+            components = result["items"]
+            total_components = int(result["total"])
+            for component in components:
+                validation_counts[component["validation"]["status"]] = (
+                    validation_counts.get(component["validation"]["status"], 0) + 1
+                )
+                if component["availability_state"] == STATE_PLACE_READY:
+                    place_ready += 1
+                else:
+                    missing_files += 1
+                if component["release_status"] == "released":
+                    released += 1
+                if any(
+                    preview["status"] == PREVIEW_STATUS_FAILED
+                    for preview in component.get("previews", [])
+                ):
+                    preview_failed += 1
+            if page >= int(result["pages"]):
+                break
+            page += 1
+        checker_available = bool(
+            self._klc_checker_path("symbol") and self._klc_checker_path("footprint")
+        )
+        return {
+            "enabled": bool(settings.CATALOG_KLC_ENABLED),
+            "checker_available": checker_available,
+            "checker_path": str(self._klc_utils_root()),
+            "release_gate": self._klc_release_gate(),
+            "total_components": total_components,
+            "released": released,
+            "place_ready": place_ready,
+            "missing_files": missing_files,
+            "preview_failed": preview_failed,
+            "validation": validation_counts,
+        }
+
     def regenerate_component_previews(self, component_id: str) -> dict[str, Any]:
         self.initialize()
         with self._connect() as conn:
@@ -2567,6 +3494,18 @@ class ComponentCatalogService:
                 raise ValueError(
                     f"Cannot release component while files are incomplete: missing {', '.join(missing_assets)}"
                 )
+            if release_status == "released" and self._klc_release_gate() == "block":
+                validation = self._component_validation_summary(
+                    conn, str(revision["id"]), assets
+                )
+                if validation["status"] in {
+                    VALIDATION_STATUS_FAILED,
+                    VALIDATION_STATUS_SKIPPED,
+                    VALIDATION_STATUS_NOT_RUN,
+                }:
+                    raise ValueError(
+                        "Cannot release component until required symbol and footprint assets pass KLC validation"
+                    )
 
             now = _utc_now_iso()
             conn.execute(
@@ -3001,7 +3940,7 @@ class ComponentCatalogService:
                 placeholders = ", ".join("?" for _ in DBL_COMMON_COLUMNS)
                 for row in rows:
                     dbl_conn.execute(
-                        f"INSERT INTO {table} ({column_names}) VALUES ({placeholders})",  # noqa: S608  # nosec B608 â€” table/column_names from DBL_COMMON_COLUMNS constant; placeholders are "?" * len
+                        f"INSERT INTO {table} ({column_names}) VALUES ({placeholders})",  # noqa: S608
                         tuple(row.get(column, "") for column in DBL_COMMON_COLUMNS),
                     )
 

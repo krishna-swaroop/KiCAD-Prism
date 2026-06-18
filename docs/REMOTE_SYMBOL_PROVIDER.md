@@ -6,6 +6,7 @@ What is included:
 - a SQLite-backed component catalog managed through the Library Manager
 - canonical KiCad-style asset storage under `.kicad-prism/components/`
 - CERN-style KiCad DBL export under `.kicad-prism/exports/kicad-dbl/`
+- optional KiCad Library Convention validation reports under `.kicad-prism/validation/klc/`
 - provider discovery at `/.well-known/kicad-remote-provider`
 - a same-origin provider webview page at `/remote-provider/panel`
 - KiCad-compatible OAuth endpoints for `REMOTE_LOGIN`
@@ -23,9 +24,15 @@ Prism stores catalog metadata, release workflow state, OAuth state, and local se
 - `previews/symbols/*.svg`
 - `previews/footprints/*.svg`
 - `revisions/<revision-id>/...`
+- `validation/klc/<run-id>/{stdout.txt,stderr.txt,report.junit.xml,report.json}`
 
 The SQLite catalog indexes those canonical files and tracks active revisions, preview status, and
 remote-provider metadata.
+
+KLC validation is optional and controlled with `CATALOG_KLC_ENABLED`. It is a Library Manager
+health signal only; the remote provider still exposes only released/place-ready components. If
+`CATALOG_KLC_RELEASE_GATE=block`, Library Manager release transitions require current symbol and
+footprint assets to have non-failing KLC validation reports before release.
 
 Search is backed by SQLite FTS5 when the runtime SQLite build supports it. FTS is maintained with
 database triggers on component revisions. If FTS5 is unavailable, Prism logs a warning and falls

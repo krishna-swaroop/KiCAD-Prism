@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { GitBranch, Copy, FileCode, Shield, Plus, Trash2 } from "lucide-react";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
+import { ROLE_OPTIONS, roleLabel } from "@/lib/roles";
 
 interface SettingsDialogProps {
     open: boolean;
@@ -308,9 +309,9 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
                         value={newRole}
                         onChange={(event) => setNewRole(event.target.value as UserRole)}
                     >
-                        <option value="viewer">viewer</option>
-                        <option value="designer">designer</option>
-                        <option value="admin">admin</option>
+                        {ROLE_OPTIONS.map((role) => (
+                            <option key={role} value={role}>{roleLabel(role)}</option>
+                        ))}
                     </select>
                     <Button onClick={() => void upsertRole(newEmail, newRole)}>
                         <Plus className="h-4 w-4 mr-2" />
@@ -347,9 +348,9 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
                                         void upsertRole(assignment.email, event.target.value as UserRole)
                                     }
                                 >
-                                    <option value="viewer">viewer</option>
-                                    <option value="designer">designer</option>
-                                    <option value="admin">admin</option>
+                                    {ROLE_OPTIONS.map((role) => (
+                                        <option key={role} value={role}>{roleLabel(role)}</option>
+                                    ))}
                                 </select>
                                 <div className="text-sm text-muted-foreground">{assignment.source}</div>
                                 <div className="flex justify-end">

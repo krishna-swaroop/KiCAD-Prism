@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { ApiHttpError, fetchApi } from '@/lib/api';
 import { fetchAuthConfig, fetchCurrentUser, isAuthCallbackPath } from '@/lib/auth';
+import { roleLabel } from '@/lib/roles';
 import prismLogoMark from './assets/branding/kicad-prism/kicad-prism-icon.svg';
 
 const LoginPage = lazy(() =>
@@ -197,7 +198,7 @@ function App() {
                                     {user && user.email !== 'guest@local' && (
                                         <>
                                             <span className="text-sm text-muted-foreground">
-                                                Welcome, {user.name} ({user.role})
+                                                Welcome, {user.name} ({roleLabel(user.role)})
                                             </span>
                                             <Button variant="ghost" size="sm" onClick={handleLogout}>Logout</Button>
                                         </>

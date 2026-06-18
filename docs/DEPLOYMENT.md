@@ -57,6 +57,8 @@ GITHUB_TOKEN=
 DEV_MODE=false
 CATALOG_SQLITE_PATH=
 CATALOG_DBL_EXPORT_DIR=
+CATALOG_KLC_ENABLED=false
+CATALOG_KLC_RELEASE_GATE=warn
 ```
 
 Generate a session secret with:
@@ -73,6 +75,8 @@ Important:
 - `DEFAULT_VIEWER_DOMAINS_STR` can stay empty. Set it only if every user from one or more trusted email domains should get implicit viewer access.
 - `CATALOG_SQLITE_PATH` can stay empty for the bundled Compose stack. Docker defaults to `/app/projects/.kicad-prism/prism.sqlite3`.
 - `CATALOG_DBL_EXPORT_DIR` can stay empty for the bundled Compose stack. Docker defaults to `/app/projects/.kicad-prism/exports/kicad-dbl`.
+- `CATALOG_KLC_ENABLED=false` keeps KiCad Library Convention checks optional. Set it to `true` to enable Library Manager health validation.
+- `CATALOG_KLC_RELEASE_GATE=warn` surfaces validation issues without blocking release. Use `block` only if your team wants KLC errors or missing KLC reports to prevent release.
 - `SESSION_COOKIE_SECURE=true` should be used only behind HTTPS.
 - `DEV_MODE` should stay `false` in Docker hosting.
 
@@ -347,6 +351,7 @@ The component catalog has two storage layers:
 - SQLite stores component metadata, revisions, reusable asset rows, release workflow state, OAuth state, service-client metadata, and preview status.
 - Disk storage under `data/projects/.kicad-prism/components` stores canonical KiCad files.
 - Disk storage under `data/projects/.kicad-prism/exports/kicad-dbl` stores generated KiCad DBL compatibility bundles.
+- Disk storage under `data/projects/.kicad-prism/validation/klc` stores durable KLC report artifacts.
 
 Canonical disk layout:
 
@@ -356,10 +361,42 @@ Canonical disk layout:
 - `spice/`
 - `previews/`
 - `revisions/`
+- `validation/klc/`
 
 Back up the full `data/projects/.kicad-prism` directory. A database backup without the canonical asset directory is not enough to restore placeable components.
 
 Only components in the `Released` workflow stage and with both symbol and footprint assets attached are visible/placeable through the KiCad Remote Symbols panel.
+
+### Optional KLC Validation
+
+The backend image includes a pinned checkout of KiCad's `kicad-library-utils` under `/opt/kicad-library-utils`. When `CATALOG_KLC_ENABLED=true`, Library Manager admins can run KLC checks against a component's attached symbol and footprint assets.
+
+Prism stores every run as:
+
+- SQLite summary and normalized findings for fast dashboard queries.
+- `stdout.txt`, `stderr.txt`, `report.junit.xml`, and `report.json` under `data/projects/.kicad-prism/validation/klc/{run_id}/`.
+
+Useful settings:
+
+```env
+CATALOG_KLC_ENABLED=true
+CATALOG_KLC_UTILS_PATH=/opt/kicad-library-utils
+CATALOG_KLC_RELEASE_GATE=warn
+CATALOG_KLC_TIMEOUT_SECONDS=30
+CATALOG_KLC_SYMBOL_RULES=
+CATALOG_KLC_SYMBOL_EXCLUDE_RULES=
+CATALOG_KLC_FOOTPRINT_RULES=
+CATALOG_KLC_FOOTPRINT_EXCLUDE_RULES=
+CATALOG_KLC_FOOTPRINT_LIB_DIR=
+```
+
+The release gate modes are:
+
+- `off`: validation is available but never affects release.
+- `warn`: validation issues are shown in Library Manager but release remains allowed.
+- `block`: release requires current required symbol and footprint assets to have non-failing KLC runs.
+
+Prism never invokes KLC `--fix` or `--fixmore`; validation is read-only.
 
 To generate a CERN-style KiCad DBL bundle from released/place-ready parts, call the admin API:
 

@@ -13,10 +13,13 @@ import {
   ChevronUp,
   ChevronsUpDown,
   CircleDashed,
+  Download,
   Edit2,
   ExternalLink,
   FileText,
+  Filter,
   Loader2,
+  MoreHorizontal,
   Package,
   PackageCheck,
   PackageSearch,
@@ -30,6 +33,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,9 +43,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -53,12 +68,15 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchApi, fetchJson } from "@/lib/api";
+import { allowedWorkflowTransitions, canWriteCatalog, workflowStage } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types/auth";
 import type {
   AvailabilityState,
   CatalogAsset,
+  CatalogAssetValidation,
   CatalogComponent,
+  CatalogValidationStatus,
   ImportCompletedResponse,
   PaginatedComponents,
   ReleaseStatus,
@@ -91,6 +109,72 @@ type CatalogCategory = {
   name: string;
   count: number;
 };
+
+type CatalogHealth = {
+  enabled: boolean;
+  checker_available: boolean;
+  checker_path: string;
+  release_gate: "off" | "warn" | "block";
+  total_components: number;
+  released: number;
+  place_ready: number;
+  missing_files: number;
+  preview_failed: number;
+  validation: Record<CatalogValidationStatus, number>;
+};
+
+type ValidationJob = {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  message?: string;
+  percent?: number;
+  validated?: number;
+  total?: number;
+  errors?: Array<{ component_id: string; error: string }>;
+  component?: CatalogComponent | null;
+  error?: string;
+};
+
+type PreviewJob = {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  message?: string;
+  percent?: number;
+  scanned_assets?: number;
+  total_assets?: number;
+  generated?: number;
+  skipped_ready?: number;
+  failed?: number;
+  errors?: Array<{ component_id: string; asset_id: string; asset_type: string; error: string }>;
+  error?: string;
+};
+
+type ValidationFinding = {
+  severity: "error" | "warning" | "info";
+  rule_code: string;
+  rule_url: string;
+  message: string;
+  details: string[];
+  object_name: string;
+};
+
+type ValidationRunDetail = {
+  id: string;
+  asset_type: "symbol" | "footprint";
+  status: CatalogValidationStatus;
+  error_count: number;
+  warning_count: number;
+  reports: {
+    summary: string;
+    json: string;
+    junit: string;
+    stdout: string;
+    stderr: string;
+  };
+  findings: ValidationFinding[];
+};
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 type NewComponentFormState = {
   value: string;
@@ -187,18 +271,6 @@ const WORKFLOW_META: Record<
 
 const WORKFLOW_ORDER: WorkflowStage[] = ["open", "in_progress", "qa_review", "done", "released", "archived"];
 
-const WORKFLOW_TRANSITIONS: Record<WorkflowStage, WorkflowStage[]> = {
-  open: ["in_progress", "archived"],
-  in_progress: ["qa_review", "open", "archived"],
-  qa_review: ["done", "in_progress", "archived"],
-  done: ["released", "qa_review", "archived"],
-  released: ["archived"],
-  archived: ["open"],
-};
-
-const workflowStage = (component: CatalogComponent): WorkflowStage =>
-  component.workflow_stage ?? component.release_status;
-
 function AvailabilityBadge({ state }: { state: AvailabilityState }) {
   const meta = STATE_META[state] ?? STATE_META.metadata_only;
   return (
@@ -212,10 +284,41 @@ function AvailabilityBadge({ state }: { state: AvailabilityState }) {
 function ReleaseBadge({ status }: { status: ReleaseStatus }) {
   const meta = WORKFLOW_META[status];
   return (
-    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium", meta.className)}>
+    <Badge variant="outline" className={cn("rounded-full text-[10px]", meta.className)}>
       {meta.label}
+    </Badge>
+  );
+}
+
+function ValidationBadge({ status }: { status: CatalogValidationStatus }) {
+  const meta: Record<CatalogValidationStatus, { label: string; className: string }> = {
+    passed: { label: "KLC Passed", className: "border-emerald-500/30 text-emerald-400" },
+    warning: { label: "KLC Warnings", className: "border-amber-500/30 text-amber-400" },
+    failed: { label: "KLC Failed", className: "border-red-500/30 text-red-400" },
+    skipped: { label: "KLC Skipped", className: "border-zinc-500/30 text-zinc-400" },
+    not_run: { label: "KLC Not Run", className: "border-border text-muted-foreground" },
+  };
+  const item = meta[status] ?? meta.not_run;
+  return (
+    <Badge variant="outline" className={cn("rounded-full text-[10px]", item.className)}>
+      {item.label}
+    </Badge>
+  );
+}
+
+function CompactStat({ label, value, className }: { label: string; value: number; className?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] text-muted-foreground">
+      <span>{label}</span>
+      <span className={cn("font-semibold text-foreground", className)}>{value}</span>
     </span>
   );
+}
+
+function findingSeverityClass(severity: ValidationFinding["severity"]) {
+  if (severity === "error") return "border-red-500/30 text-red-400";
+  if (severity === "warning") return "border-amber-500/30 text-amber-400";
+  return "border-border text-muted-foreground";
 }
 
 // ─── Asset row ──────────────────────────────────────────────────────────────
@@ -293,6 +396,89 @@ function AssetRow({
   );
 }
 
+function ValidationReportsMenu({
+  run,
+}: {
+  run: ValidationRunDetail | NonNullable<CatalogAssetValidation["latest_run"]>;
+}) {
+  const reports = [
+    ["JSON", run.reports.json],
+    ["JUnit", run.reports.junit],
+    ["stdout", run.reports.stdout],
+    ["stderr", run.reports.stderr],
+  ] as const;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]">
+          <Download className="mr-1 h-3 w-3" />
+          Reports
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-36">
+        {reports.map(([label, href]) => (
+          <DropdownMenuItem key={label} asChild>
+            <a href={href} target="_blank" rel="noopener noreferrer">
+              {label}
+            </a>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function KlcAssetValidationRow({
+  asset,
+  loading,
+  onViewFindings,
+}: {
+  asset: CatalogAssetValidation;
+  loading: boolean;
+  onViewFindings: (asset: CatalogAssetValidation) => void;
+}) {
+  const label = ASSET_LABELS[asset.asset_type] ?? asset.asset_type;
+  const target = asset.target_name || asset.asset_name;
+  const hasRun = Boolean(asset.latest_run);
+  const showFindings = hasRun && (asset.status === "failed" || asset.status === "warning");
+
+  return (
+    <div className="rounded-md border border-border/50 bg-background/50 px-3 py-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-foreground">
+            {label} · {target}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {asset.latest_run
+              ? `${asset.latest_run.error_count} errors · ${asset.latest_run.warning_count} warnings`
+              : "No validation report stored yet"}
+          </p>
+        </div>
+        <ValidationBadge status={asset.status} />
+      </div>
+      {asset.latest_run && (
+        <div className="mt-2 flex items-center justify-end gap-1">
+          {showFindings && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-[11px]"
+              disabled={loading}
+              onClick={() => onViewFindings(asset)}
+            >
+              {loading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+              View Findings
+            </Button>
+          )}
+          <ValidationReportsMenu run={asset.latest_run} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Field row in detail panel ──────────────────────────────────────────────
 
 function FieldRow({ label, value }: { label: string; value: string }) {
@@ -302,6 +488,26 @@ function FieldRow({ label, value }: { label: string; value: string }) {
       <dt className="text-[11px] font-medium text-muted-foreground truncate">{label}</dt>
       <dd className="text-[11px] text-foreground break-words">{value}</dd>
     </div>
+  );
+}
+
+function DetailSection({
+  title,
+  actions,
+  children,
+}: {
+  title: string;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border-t border-border/60 py-4 first:border-t-0">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h4 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">{title}</h4>
+        {actions}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -408,11 +614,13 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [health, setHealth] = useState<CatalogHealth | null>(null);
 
   // ── filter / sort ──
   const [query, setQuery] = useState("");
   const [filterState, setFilterState] = useState<AvailabilityState | "">("");
   const [filterWorkflow, setFilterWorkflow] = useState<WorkflowStage | "">("");
+  const [filterValidation, setFilterValidation] = useState<CatalogValidationStatus | "">("");
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<LibraryView>("table");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -434,6 +642,11 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
   } | null>(null);
   const [attachTab, setAttachTab] = useState<"upload" | "link">("upload");
   const [showDetachConfirm, setShowDetachConfirm] = useState<string | null>(null);
+  const [validationRunDialog, setValidationRunDialog] = useState<{
+    assetLabel: string;
+    run: ValidationRunDetail;
+  } | null>(null);
+  const [validationRunLoading, setValidationRunLoading] = useState<string | null>(null);
 
   // ── forms ──
   const [newForm, setNewForm] = useState<NewComponentFormState>(EMPTY_FORM);
@@ -442,6 +655,9 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
   const [editForm, setEditForm] = useState<Partial<NewComponentFormState>>({});
   const [submitting, setSubmitting] = useState(false);
   const [releaseSubmitting, setReleaseSubmitting] = useState(false);
+  const [validationSubmitting, setValidationSubmitting] = useState(false);
+  const [validationBulkSubmitting, setValidationBulkSubmitting] = useState(false);
+  const [previewBulkSubmitting, setPreviewBulkSubmitting] = useState(false);
   const [importSelection, setImportSelection] = useState<ImportSelection | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachTargetLibrary, setAttachTargetLibrary] = useState("");
@@ -452,17 +668,21 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [deferredQuery, filterCategory, filterState, filterWorkflow, sortKey, sortDir, viewMode]);
+  }, [deferredQuery, filterCategory, filterState, filterWorkflow, filterValidation, sortKey, sortDir, viewMode]);
 
   useEffect(() => {
     let cancelled = false;
-    fetchJson<{ categories: CatalogCategory[] }>("/api/catalog/categories")
-      .then((res) => {
-        if (!cancelled) setCategories(res.categories);
+    Promise.allSettled([
+      fetchJson<{ categories: CatalogCategory[] }>("/api/catalog/categories"),
+      fetchJson<CatalogHealth>("/api/catalog/health"),
+    ])
+      .then(([categoriesResult, healthResult]) => {
+        if (cancelled) return;
+        if (categoriesResult.status === "fulfilled") setCategories(categoriesResult.value.categories);
+        else console.error("Failed to load catalog categories", categoriesResult.reason);
+        if (healthResult.status === "fulfilled") setHealth(healthResult.value);
+        else console.error("Failed to load catalog health", healthResult.reason);
       })
-      .catch((err) => {
-        if (!cancelled) console.error("Failed to load catalog categories", err);
-      });
     return () => {
       cancelled = true;
     };
@@ -484,6 +704,7 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
       if (filterCategory !== null) params.set("category", filterCategory);
       if (viewMode === "workflow" && filterState) params.set("availability_state", filterState);
       if (viewMode === "table" && filterWorkflow) params.set("workflow_stage", filterWorkflow);
+      if (filterValidation) params.set("validation_status", filterValidation);
 
       const res = await fetchJson<PaginatedComponents>(`/api/catalog/components?${params.toString()}`);
       if (!cancelled) {
@@ -505,12 +726,11 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, currentPage, deferredQuery, filterCategory, filterState, filterWorkflow, viewMode, sortKey, sortDir]);
+  }, [refreshKey, currentPage, deferredQuery, filterCategory, filterState, filterWorkflow, filterValidation, viewMode, sortKey, sortDir]);
 
   // ── filtered + sorted list ──
   const filtered = useMemo(() => {
-    const list = components;
-    return [...list].sort((a, b) => {
+    return [...components].sort((a, b) => {
       const av = String(a[sortKey] ?? "").toLowerCase();
       const bv = String(b[sortKey] ?? "").toLowerCase();
       return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
@@ -837,6 +1057,126 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
     }
   };
 
+  const handleValidateComponent = async () => {
+    if (!selected) return;
+    setValidationSubmitting(true);
+    try {
+      const queued = await fetchJson<{ job_id: string }>(`/api/catalog/components/${selected.id}/validate`, {
+        method: "POST",
+      });
+      toast.message("KLC validation started");
+      let job: ValidationJob | null = null;
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        await sleep(1000);
+        job = await fetchJson<ValidationJob>(`/api/catalog/validation/jobs/${queued.job_id}`);
+        if (job.status === "completed" || job.status === "failed") break;
+      }
+      if (!job || job.status === "running" || job.status === "queued") {
+        throw new Error("KLC validation is still running. Refresh the catalog to check status.");
+      }
+      if (job.status === "failed") {
+        throw new Error(job.error || job.message || "KLC validation failed");
+      }
+      if (!job.component) {
+        throw new Error(job.errors?.[0]?.error || "KLC validation did not return an updated component");
+      }
+      setSelected(job.component);
+      setComponents((current) => current.map((component) => (component.id === job.component?.id ? job.component : component)));
+      const status = job.component.validation.status;
+      if (status === "failed") toast.error("KLC validation failed");
+      else if (status === "warning") toast.warning("KLC validation completed with warnings");
+      else toast.success("KLC validation completed");
+      setRefreshKey((key) => key + 1);
+    } catch (err) {
+      toast.error(getErrorMsg(err));
+    } finally {
+      setValidationSubmitting(false);
+    }
+  };
+
+  const handleValidateCatalog = async () => {
+    setValidationBulkSubmitting(true);
+    try {
+      const queued = await fetchJson<{ job_id: string }>("/api/catalog/validation/run", {
+        method: "POST",
+      });
+      toast.message("Catalog KLC validation started");
+      let job: ValidationJob | null = null;
+      for (let attempt = 0; attempt < 3600; attempt += 1) {
+        await sleep(2000);
+        job = await fetchJson<ValidationJob>(`/api/catalog/validation/jobs/${queued.job_id}`);
+        if (job.status === "completed" || job.status === "failed") break;
+      }
+      if (!job || job.status === "running" || job.status === "queued") {
+        throw new Error("Catalog KLC validation is still running. Refresh the catalog to check status.");
+      }
+      if (job.status === "failed") {
+        throw new Error(job.error || job.message || "Catalog KLC validation failed");
+      }
+      const errors = job.errors ?? [];
+      const validated = job.validated ?? 0;
+      if (errors.length > 0) {
+        toast.warning(`KLC validation finished for ${validated} components; ${errors.length} skipped or failed to start`);
+      } else {
+        toast.success(`KLC validation finished for ${validated} components`);
+      }
+      setRefreshKey((key) => key + 1);
+    } catch (err) {
+      toast.error(getErrorMsg(err));
+    } finally {
+      setValidationBulkSubmitting(false);
+    }
+  };
+
+  const handleGenerateMissingPreviews = async () => {
+    setPreviewBulkSubmitting(true);
+    try {
+      const queued = await fetchJson<{ job_id: string }>("/api/catalog/previews/generate-missing", {
+        method: "POST",
+      });
+      toast.message("Preview generation started");
+      let job: PreviewJob | null = null;
+      for (let attempt = 0; attempt < 3600; attempt += 1) {
+        await sleep(2000);
+        job = await fetchJson<PreviewJob>(`/api/catalog/previews/jobs/${queued.job_id}`);
+        if (job.status === "completed" || job.status === "failed") break;
+      }
+      if (!job || job.status === "running" || job.status === "queued") {
+        throw new Error("Preview generation is still running. Refresh the catalog to check status.");
+      }
+      if (job.status === "failed") {
+        throw new Error(job.error || job.message || "Preview generation failed");
+      }
+      const generated = job.generated ?? 0;
+      const failedCount = job.failed ?? 0;
+      const skipped = job.skipped_ready ?? 0;
+      if (failedCount > 0) {
+        toast.warning(`Generated ${generated} previews; ${failedCount} failed; ${skipped} already ready`);
+      } else {
+        toast.success(`Generated ${generated} previews; ${skipped} already ready`);
+      }
+      setRefreshKey((key) => key + 1);
+    } catch (err) {
+      toast.error(getErrorMsg(err));
+    } finally {
+      setPreviewBulkSubmitting(false);
+    }
+  };
+
+  const openValidationFindings = async (asset: CatalogAssetValidation) => {
+    if (!asset.latest_run) return;
+    const assetLabel = `${ASSET_LABELS[asset.asset_type] ?? asset.asset_type} · ${asset.target_name || asset.asset_name}`;
+    setValidationRunLoading(asset.asset_id);
+    try {
+      const run = await fetchJson<ValidationRunDetail>(asset.latest_run.reports.summary);
+      setValidationRunDialog({ assetLabel, run });
+    } catch (err) {
+      toast.error(getErrorMsg(err));
+    } finally {
+      setValidationRunLoading(null);
+    }
+  };
+
   const transitionComponent = async (component: CatalogComponent, stage: WorkflowStage) => {
     setReleaseSubmitting(true);
     try {
@@ -897,7 +1237,16 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
     }
   };
 
-  const isAdmin = user?.role === "admin";
+  const canMutateCatalog = canWriteCatalog(user?.role);
+  const activeFilterCount =
+    (viewMode === "workflow" && filterState ? 1 : 0) +
+    (viewMode === "table" && filterWorkflow ? 1 : 0) +
+    (filterValidation ? 1 : 0);
+  const clearToolbarFilters = () => {
+    setFilterState("");
+    setFilterWorkflow("");
+    setFilterValidation("");
+  };
 
   // ─── Render ───────────────────────────────────────────────────────────
   return (
@@ -947,7 +1296,7 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
           })}
         </ScrollArea>
 
-        {isAdmin && (
+        {canMutateCatalog && (
           <div className="p-2 border-t border-border/50">
             <Button
               size="sm"
@@ -987,51 +1336,62 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
 
               <div className="h-4 w-px shrink-0 bg-border mx-2" />
 
-              <div className="min-w-0">
-                {viewMode === "workflow" ? (
-                  <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/50 bg-secondary/20 p-0.5">
-                    {(["", "place_ready", "files_partial", "metadata_only"] as const).map((s) => {
-                      const labels: Record<string, string> = {
-                        "": "All",
-                        place_ready: "Ready",
-                        files_partial: "Partial",
-                        metadata_only: "Metadata",
-                      };
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => setFilterState(s as AvailabilityState | "")}
-                          className={cn(
-                            "whitespace-nowrap rounded px-2.5 py-1 text-[11px] font-medium transition-colors",
-                            filterState === s
-                              ? "bg-primary text-primary-foreground shadow-sm"
-                              : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                          )}
-                        >
-                          {labels[s]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/50 bg-secondary/20 p-0.5">
-                    {(["", ...WORKFLOW_ORDER] as const).map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setFilterWorkflow(s as WorkflowStage | "")}
-                        className={cn(
-                          "whitespace-nowrap rounded px-2.5 py-1 text-[11px] font-medium transition-colors",
-                          filterWorkflow === s
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                        )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs">
+                    <Filter className="mr-1.5 h-3.5 w-3.5" />
+                    Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64">
+                  {viewMode === "workflow" ? (
+                    <>
+                      <DropdownMenuLabel>Availability</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={filterState}
+                        onValueChange={(value) => setFilterState(value as AvailabilityState | "")}
                       >
-                        {s ? WORKFLOW_META[s].label : "All"}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                        <DropdownMenuRadioItem value="">All availability states</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="place_ready">Place Ready</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="files_partial">Partial</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="metadata_only">Metadata Only</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuLabel>Workflow Stage</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={filterWorkflow}
+                        onValueChange={(value) => setFilterWorkflow(value as WorkflowStage | "")}
+                      >
+                        <DropdownMenuRadioItem value="">All workflow stages</DropdownMenuRadioItem>
+                        {WORKFLOW_ORDER.map((stage) => (
+                          <DropdownMenuRadioItem key={stage} value={stage}>
+                            {WORKFLOW_META[stage].label}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>KLC Status</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={filterValidation}
+                    onValueChange={(value) => setFilterValidation(value as CatalogValidationStatus | "")}
+                  >
+                    <DropdownMenuRadioItem value="">All validation states</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="passed">Passed</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="warning">Warnings</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="failed">Failed</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="skipped">Skipped</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="not_run">Not Run</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem disabled={activeFilterCount === 0} onSelect={clearToolbarFilters}>
+                    Clear filters
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
@@ -1062,6 +1422,61 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
             </div>
           </div>
         </div>
+
+        {health && (
+          <div className="border-b border-border/50 bg-background/40 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <CompactStat label="Total" value={health.total_components} />
+                <CompactStat label="Place Ready" value={health.place_ready} className="text-emerald-400" />
+                <CompactStat label="Missing Files" value={health.missing_files} className="text-amber-400" />
+                <CompactStat label="Preview Issues" value={health.preview_failed} className="text-red-400" />
+                <CompactStat label="KLC Failed" value={health.validation.failed ?? 0} className="text-red-400" />
+                <CompactStat label="KLC Warnings" value={health.validation.warning ?? 0} className="text-amber-400" />
+              </div>
+              {canMutateCatalog && (
+                <div className="flex items-center gap-2">
+                  {validationBulkSubmitting && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Validating catalog…
+                    </span>
+                  )}
+                  {previewBulkSubmitting && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Generating previews…
+                    </span>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]">
+                        <MoreHorizontal className="mr-1 h-3.5 w-3.5" />
+                        Actions
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem
+                        disabled={validationBulkSubmitting || !health.enabled}
+                        onSelect={() => void handleValidateCatalog()}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Validate All
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={previewBulkSubmitting}
+                        onSelect={() => void handleGenerateMissingPreviews()}
+                      >
+                        <PackageCheck className="h-3.5 w-3.5" />
+                        Generate Missing Previews
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between border-b border-border/50 bg-background/60 px-3 py-2">
           <p className="text-[11px] text-muted-foreground">
@@ -1111,13 +1526,14 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
         <div className="flex-1 overflow-hidden flex flex-col">
           {viewMode === "table" ? (
             <>
-              <div className="grid grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-x-3 px-3 py-2 border-b border-border/50 bg-card/10 text-[10px]">
+              <div className="grid grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr_1fr] gap-x-3 px-3 py-2 border-b border-border/50 bg-card/10 text-[10px]">
                 <SortButton col="name" current={sortKey} dir={sortDir} onClick={() => toggleSort("name")}>Part Name / MPN</SortButton>
                 <SortButton col="manufacturer" current={sortKey} dir={sortDir} onClick={() => toggleSort("manufacturer")}>Manufacturer</SortButton>
                 <SortButton col="category" current={sortKey} dir={sortDir} onClick={() => toggleSort("category")}>Category</SortButton>
                 <SortButton col="package_name" current={sortKey} dir={sortDir} onClick={() => toggleSort("package_name")}>Package</SortButton>
                 <SortButton col="availability_state" current={sortKey} dir={sortDir} onClick={() => toggleSort("availability_state")}>Availability</SortButton>
                 <SortButton col="workflow_stage" current={sortKey} dir={sortDir} onClick={() => toggleSort("workflow_stage")}>Workflow</SortButton>
+                <span className="text-muted-foreground">Validation</span>
               </div>
 
               <ScrollArea className="flex-1">
@@ -1140,7 +1556,7 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                         key={comp.id}
                         onClick={() => setSelected(isSelected ? null : comp)}
                         className={cn(
-                          "w-full grid grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr] gap-x-3 px-3 py-2.5 text-left border-b border-border/30 transition-colors",
+                          "w-full grid grid-cols-[2fr_1.2fr_1fr_1fr_1fr_1fr_1fr] gap-x-3 px-3 py-2.5 text-left border-b border-border/30 transition-colors",
                           isSelected
                             ? "bg-primary/8 border-l-2 border-l-primary"
                             : "hover:bg-secondary/30"
@@ -1160,6 +1576,9 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                         </div>
                         <div className="self-center">
                           <ReleaseBadge status={workflowStage(comp)} />
+                        </div>
+                        <div className="self-center">
+                          <ValidationBadge status={comp.validation.status} />
                         </div>
                       </button>
                     );
@@ -1192,7 +1611,7 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                           ) : (
                             stageItems.map((comp) => {
                               const isSelected = selected?.id === comp.id;
-                              const nextStages = WORKFLOW_TRANSITIONS[workflowStage(comp)];
+                              const nextStages = allowedWorkflowTransitions(user?.role, comp);
                               return (
                                 <div
                                   key={comp.id}
@@ -1206,6 +1625,7 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                                     <p className="truncate text-[10px] text-muted-foreground">{comp.mpn || comp.manufacturer || "No MPN"}</p>
                                     <div className="mt-2 flex items-center justify-between gap-2">
                                       <AvailabilityBadge state={comp.availability_state} />
+                                      <ValidationBadge status={comp.validation.status} />
                                       {comp.previews.some((p) => p.status === "failed") && (
                                         <span className="text-[10px] text-amber-400">Preview issue</span>
                                       )}
@@ -1216,7 +1636,7 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                                       </p>
                                     )}
                                   </button>
-                                  {isAdmin && nextStages.length > 0 && (
+                                  {nextStages.length > 0 && (
                                     <div className="mt-2 flex flex-wrap gap-1">
                                       {nextStages.map((next) => (
                                         <Button
@@ -1249,7 +1669,7 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
 
       {/* ── RIGHT DETAIL PANEL ────────────────────────────────────────── */}
       {selected ? (
-        <aside className="w-80 shrink-0 flex flex-col bg-card/20">
+        <aside className="w-[360px] shrink-0 flex flex-col border-l border-border bg-card/40 shadow-xl">
           {/* Header */}
           <div className="px-4 pt-4 pb-3 border-b border-border/50">
             <div className="flex items-start justify-between gap-2 mb-2">
@@ -1258,7 +1678,7 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                 <p className="text-[11px] text-muted-foreground truncate">{selected.manufacturer} · {selected.mpn}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                {isAdmin && (
+                {canMutateCatalog && (
                   <>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Edit" onClick={openEdit}>
                       <Edit2 className="h-3.5 w-3.5" />
@@ -1282,16 +1702,45 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
             <div className="flex items-center gap-2">
               <AvailabilityBadge state={selected.availability_state} />
               <ReleaseBadge status={workflowStage(selected)} />
+              <ValidationBadge status={selected.validation.status} />
             </div>
           </div>
 
           <ScrollArea className="flex-1">
-            <div className="px-4 py-3 space-y-5">
-              {/* SVG Previews */}
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Previews</p>
-                  {isAdmin && (
+            <div className="px-4">
+              <DetailSection title="Details">
+                <div className="space-y-3">
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {selected.description || selected.summary || "No component description available."}
+                  </p>
+                  <Separator />
+                  <dl>
+                    <FieldRow label="Value" value={selected.value} />
+                    <FieldRow label="Category" value={selected.category} />
+                    <FieldRow label="Package" value={selected.package_name} />
+                    {selected.datasheet_url && (
+                      <div className="grid grid-cols-[120px_1fr] gap-x-3 py-1">
+                        <dt className="text-[11px] font-medium text-muted-foreground">Datasheet</dt>
+                        <dd>
+                          <a
+                            href={selected.datasheet_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                          >
+                            Open <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
+              </DetailSection>
+
+              <DetailSection
+                title="Previews"
+                actions={
+                  canMutateCatalog ? (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1302,15 +1751,16 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                       {submitting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
                       Regenerate
                     </Button>
-                  )}
-                </div>
+                  ) : null
+                }
+              >
                 {selected.previews.some((p) => p.status === "ready") ? (
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {(["symbol", "footprint"] as const).map((kind) => {
                       const has = selected.previews.some((p) => p.kind === kind && p.status === "ready");
                       if (!has) return null;
                       return (
-                        <div key={kind} className="h-24 flex-1 overflow-hidden rounded-md border border-border/50 bg-secondary/20">
+                        <div key={kind} className="h-24 overflow-hidden rounded-md border border-border/50 bg-secondary/20">
                           <SvgPreview component={selected} kind={kind} />
                         </div>
                       );
@@ -1332,89 +1782,31 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                     ) : null}
                   </div>
                 )}
-              </div>
+              </DetailSection>
 
-              {/* Core metadata */}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">Metadata</p>
-                <dl className="space-y-0">
-                  <FieldRow label="Value" value={selected.value} />
-                  <FieldRow label="Description" value={selected.description} />
-                  <FieldRow label="Category" value={selected.category} />
-                  <FieldRow label="Package" value={selected.package_name} />
-                  {selected.datasheet_url && (
-                    <div className="grid grid-cols-[120px_1fr] gap-x-3 py-1">
-                      <dt className="text-[11px] font-medium text-muted-foreground">Datasheet</dt>
-                      <dd>
-                        <a
-                          href={selected.datasheet_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
-                        >
-                          Open <ExternalLink className="h-2.5 w-2.5" />
-                        </a>
-                      </dd>
-                    </div>
-                  )}
+              <DetailSection title="Metadata">
+                <dl>
+                  <FieldRow label="Manufacturer" value={selected.manufacturer} />
+                  <FieldRow label="MPN" value={selected.mpn} />
                   <FieldRow label="Vendor" value={selected.vendor} />
                   <FieldRow label="Vendor P/N" value={selected.vendor_part_number} />
                   <FieldRow label="SAP Code" value={selected.sap_code} />
+                  <FieldRow label="Mass" value={selected.mass_g ? `${selected.mass_g} g` : ""} />
+                  <FieldRow label="θJC" value={selected.rqjc_c_w ? `${selected.rqjc_c_w} °C/W` : ""} />
+                  <FieldRow label="θJC Top" value={selected.rqjc_top_c_w ? `${selected.rqjc_top_c_w} °C/W` : ""} />
+                  <FieldRow label="Temp Max" value={selected.temp_max_c ? `${selected.temp_max_c} °C` : ""} />
+                  <FieldRow label="Temp Min" value={selected.temp_min_c ? `${selected.temp_min_c} °C` : ""} />
+                  <FieldRow label="Power Diss." value={selected.power_dissipation_w ? `${selected.power_dissipation_w} W` : ""} />
+                  <FieldRow label="Rate" value={selected.rate} />
+                  <FieldRow label="Version" value={selected.version} />
+                  <FieldRow label="Library" value={selected.library_name} />
+                  <FieldRow label="Symbol" value={selected.symbol_name} />
+                  <FieldRow label="Stock" value={selected.stock_quantity ? `${selected.stock_quantity} ${selected.stock_uom}` : "N/A - PLM sync not configured"} />
                 </dl>
-              </div>
+              </DetailSection>
 
-              {/* Thermal/electrical */}
-              {(selected.mass_g || selected.temp_max_c || selected.power_dissipation_w) && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">
-                    Thermal / Electrical
-                  </p>
-                  <dl className="space-y-0">
-                    <FieldRow label="Mass" value={selected.mass_g ? `${selected.mass_g} g` : ""} />
-                    <FieldRow label="θJC" value={selected.rqjc_c_w ? `${selected.rqjc_c_w} °C/W` : ""} />
-                    <FieldRow label="Temp Max" value={selected.temp_max_c ? `${selected.temp_max_c} °C` : ""} />
-                    <FieldRow label="Temp Min" value={selected.temp_min_c ? `${selected.temp_min_c} °C` : ""} />
-                    <FieldRow label="Power Diss." value={selected.power_dissipation_w ? `${selected.power_dissipation_w} W` : ""} />
-                  </dl>
-                </div>
-              )}
-
-              {/* Stock */}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">Stock</p>
-                <p className="text-[11px] text-muted-foreground italic">N/A — PLM sync not configured</p>
-              </div>
-
-              {isAdmin && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">
-                    Release Workflow
-                  </p>
-                  <div className="space-y-2">
-                    <div className="rounded-md border border-border/50 bg-secondary/20 p-3 text-[11px] text-muted-foreground">
-                      Current revision is in <span className="font-medium text-foreground">{WORKFLOW_META[workflowStage(selected)].label}</span>.
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {WORKFLOW_TRANSITIONS[workflowStage(selected)].map((next) => (
-                        <Button
-                          key={next}
-                          size="sm"
-                          variant={next === "archived" ? "destructive" : "outline"}
-                          disabled={releaseSubmitting}
-                          onClick={() => handleReleaseTransition(next)}
-                        >
-                          Move to {WORKFLOW_META[next].label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* KiCAD Files */}
-              {isAdmin && (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">KiCAD Files</p>
+              <DetailSection title="Assets">
+                {canMutateCatalog ? (
                   <div className="space-y-1.5">
                     {(["symbol", "footprint", "3dmodel", "spice"] as const).map((type) => {
                       const asset = selected.assets.find((a) => a.asset_type === type);
@@ -1429,18 +1821,92 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                       );
                     })}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">Asset management requires catalog write access.</p>
+                )}
+              </DetailSection>
 
-              {/* Version info */}
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">Version</p>
-                <dl>
-                  <FieldRow label="Version" value={selected.version} />
-                  <FieldRow label="Library" value={selected.library_name} />
-                  <FieldRow label="Symbol" value={selected.symbol_name} />
-                </dl>
-              </div>
+              <DetailSection title="Workflow">
+                {allowedWorkflowTransitions(user?.role, selected).length > 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-[11px] text-muted-foreground">
+                      Current revision is in{" "}
+                      <span className="font-medium text-foreground">{WORKFLOW_META[workflowStage(selected)].label}</span>.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {allowedWorkflowTransitions(user?.role, selected).map((next) => (
+                        <Button
+                          key={next}
+                          size="sm"
+                          variant={next === "archived" ? "destructive" : "outline"}
+                          disabled={releaseSubmitting}
+                          onClick={() => handleReleaseTransition(next)}
+                        >
+                          Move to {WORKFLOW_META[next].label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">No workflow transitions are available for your role from this state.</p>
+                )}
+              </DetailSection>
+
+              <DetailSection
+                title="KLC Validation"
+                actions={
+                  canMutateCatalog ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-[11px]"
+                      disabled={validationSubmitting || !selected.validation.enabled}
+                      onClick={handleValidateComponent}
+                      title={selected.validation.enabled ? "Run KiCad Library Convention validation" : "KLC validation is disabled"}
+                    >
+                      {validationSubmitting ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
+                      Validate
+                    </Button>
+                  ) : null
+                }
+              >
+                <div className="space-y-3">
+                  <div>
+                    <ValidationBadge status={selected.validation.status} />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {selected.validation.error_count} errors · {selected.validation.warning_count} warnings ·{" "}
+                      {selected.validation.release_gate === "block" ? "Blocking gate" : selected.validation.release_gate === "warn" ? "Warn-only gate" : "Gate off"}
+                    </p>
+                  </div>
+                  {validationSubmitting && (
+                    <p className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Running KLC validation…
+                    </p>
+                  )}
+                  {selected.validation.missing_required_assets.length > 0 && (
+                    <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+                      Missing required assets: {selected.validation.missing_required_assets.join(", ")}
+                    </p>
+                  )}
+                  <div className="space-y-2">
+                    {selected.validation.assets.length === 0 ? (
+                      <p className="rounded-md border border-dashed border-border/50 p-3 text-[11px] text-muted-foreground">
+                        Attach symbol and footprint assets to run KLC checks.
+                      </p>
+                    ) : (
+                      selected.validation.assets.map((asset) => (
+                        <KlcAssetValidationRow
+                          key={asset.asset_id}
+                          asset={asset}
+                          loading={validationRunLoading === asset.asset_id}
+                          onViewFindings={openValidationFindings}
+                        />
+                      ))
+                    )}
+                  </div>
+                </div>
+              </DetailSection>
             </div>
           </ScrollArea>
         </aside>
@@ -1456,6 +1922,73 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
       {/* ═══════════════════════════════════════════════════════════════
           DIALOGS
       ═══════════════════════════════════════════════════════════════ */}
+
+      <Dialog open={Boolean(validationRunDialog)} onOpenChange={(open) => !open && setValidationRunDialog(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>KLC Findings</DialogTitle>
+            <DialogDescription>
+              {validationRunDialog?.assetLabel}
+            </DialogDescription>
+          </DialogHeader>
+          {validationRunDialog && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <ValidationBadge status={validationRunDialog.run.status} />
+                <span className="text-xs text-muted-foreground">
+                  {validationRunDialog.run.error_count} errors · {validationRunDialog.run.warning_count} warnings
+                </span>
+                <ValidationReportsMenu run={validationRunDialog.run} />
+              </div>
+              {validationRunDialog.run.findings.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border/50 p-3 text-sm text-muted-foreground">
+                  No normalized findings were stored for this run.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {validationRunDialog.run.findings.map((finding, index) => (
+                    <div key={`${finding.severity}-${finding.rule_code}-${index}`} className="rounded-md border border-border/50 bg-card/40 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className={cn("rounded-full text-[10px]", findingSeverityClass(finding.severity))}>
+                              {finding.severity}
+                            </Badge>
+                            {finding.rule_code && (
+                              <span className="text-xs font-medium text-foreground">{finding.rule_code}</span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-sm text-foreground">{finding.message}</p>
+                          {finding.object_name && (
+                            <p className="mt-1 text-xs text-muted-foreground">{finding.object_name}</p>
+                          )}
+                        </div>
+                        {finding.rule_url && (
+                          <a
+                            href={finding.rule_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 text-xs text-primary hover:underline"
+                          >
+                            Rule
+                          </a>
+                        )}
+                      </div>
+                      {finding.details.length > 0 && (
+                        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                          {finding.details.map((detail, detailIndex) => (
+                            <li key={detailIndex}>{detail}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ── Create dialog ─────────────────────────────────────────────── */}
       <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>

@@ -10,6 +10,7 @@ COPY frontend/ .
 RUN npm run build:panel
 
 FROM --platform=${KICAD_BASE_PLATFORM} kicad/kicad:10.0.0
+ARG KICAD_LIBRARY_UTILS_REF=7124a92887b2280f85cfe2d5abb216062978d5e1
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -27,6 +28,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Optional KiCad Library Convention checker used by the component catalog health view.
+RUN git clone --depth 1 https://gitlab.com/kicad/libraries/kicad-library-utils.git /opt/kicad-library-utils \
+    && cd /opt/kicad-library-utils \
+    && git fetch --depth 1 origin ${KICAD_LIBRARY_UTILS_REF} \
+    && git checkout FETCH_HEAD
+
 # ─── Backend setup ───────────────────────────────────────────────────
 WORKDIR /app
 
@@ -41,4 +48,4 @@ COPY --from=remote-provider-panel /panel/dist/remote_provider/ /app/app/static/r
 EXPOSE 8000
 
 # Run the application. Keep workers configurable because each worker runs startup hooks.
-CMD ["sh", "-c", "python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"]
+CMD ["sh", "-c", "python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-4}"]

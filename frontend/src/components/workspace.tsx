@@ -8,6 +8,7 @@ import type { FolderTreeItem, Project } from "@/types/project";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceData } from "@/hooks/use-workspace-data";
 import { useWorkspaceSearch } from "@/hooks/use-workspace-search";
+import { canManageProjects as roleCanManageProjects, canOpenLibraryManager } from "@/lib/roles";
 import { WorkspaceBreadcrumbs } from "./workspace/workspace-breadcrumbs";
 import { WorkspaceGalleryView } from "./workspace/workspace-gallery-view";
 import { WorkspaceListView } from "./workspace/workspace-list-view";
@@ -79,8 +80,9 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const canManageProjects = user?.role === "admin" || user?.role === "designer";
+  const canManageProjects = roleCanManageProjects(user?.role);
   const canOpenSettings = user?.role === "admin";
+  const canOpenLibrary = canOpenLibraryManager(user?.role);
 
   const getProjectDisplayName = (project: Project) => project.display_name || project.name;
   const folderFromUrl = searchParams.get("folder");
@@ -339,9 +341,9 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
               <WorkspaceLoadingState />
             ) : section === "apps" ? (
               activeApp === "library-manager" ? (
-                <LibraryManagerPanel user={user} />
+                canOpenLibrary ? <LibraryManagerPanel user={user} /> : <WorkspaceAppsPlaceholder canOpenLibraryManager={canOpenLibrary} onOpenLibraryManager={() => setActiveApp("library-manager")} />
               ) : (
-                <WorkspaceAppsPlaceholder onOpenLibraryManager={() => setActiveApp("library-manager")} />
+                <WorkspaceAppsPlaceholder canOpenLibraryManager={canOpenLibrary} onOpenLibraryManager={() => setActiveApp("library-manager")} />
               )
             ) : (
               <div className="flex h-full min-h-0 flex-col p-6">

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
-from app.core.roles import Role
+from app.core.roles import Role, role_matches_allowed_role
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,7 @@ class WorkspaceService:
         allowed = json.loads(row.get("allowed_roles") or "[]")
         if not allowed:
             return True
-        return user_role in allowed
+        return role_matches_allowed_role(user_role, allowed)
 
     # ------------------------------------------------------------------
     # Repository CRUD
