@@ -1,5 +1,4 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { Box, CalendarDays, FolderTree, GitBranch, GitCommit, PanelRightOpen, Tag, X } from "lucide-react";
 
 import { fetchJson } from "@/lib/api";
@@ -160,13 +159,15 @@ function MetadataSection({
   title,
   icon: Icon,
   children,
+  noBorderTop,
 }: {
   title: string;
   icon: typeof Box;
   children: ReactNode;
+  noBorderTop?: boolean;
 }) {
   return (
-    <section className="space-y-3 border-t pt-5">
+    <section className={`space-y-3 pt-5 ${noBorderTop ? "" : "border-t"}`}>
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         <Icon className="h-3.5 w-3.5" />
         <span>{title}</span>
@@ -179,11 +180,6 @@ function MetadataSection({
 function PropertiesSkeleton() {
   return (
     <div className="space-y-5">
-      <Skeleton className="aspect-[4/3] w-full rounded-none" />
-      <div className="space-y-2">
-        <Skeleton className="h-7 w-3/4 rounded-none" />
-        <Skeleton className="h-5 w-1/2 rounded-none" />
-      </div>
       <div className="space-y-3 border-t pt-5">
         <Skeleton className="h-4 w-24 rounded-none" />
         <Skeleton className="h-4 w-full rounded-none" />
@@ -209,7 +205,6 @@ export function WorkspaceProjectPropertiesSheet({
   const [data, setData] = useState<ProjectPropertiesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState(false);
 
   useEffect(() => {
     if (!open || !project) {
@@ -305,44 +300,7 @@ export function WorkspaceProjectPropertiesSheet({
 
           {!loading && !error && panelProject ? (
             <>
-              <section className="space-y-4">
-                <div className="aspect-[4/3] overflow-hidden rounded-none border bg-muted/30">
-                  {activeProject?.thumbnail_url ? (
-                    <button
-                      className="h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      onClick={() => setLightbox(true)}
-                      title="Click to expand"
-                    >
-                      <img
-                        src={activeProject.thumbnail_url}
-                        alt={displayName}
-                        className="h-full w-full object-cover hover:scale-105 transition-transform duration-300 cursor-zoom-in"
-                      />
-                    </button>
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-muted-foreground">
-                      <Box className="h-12 w-12 opacity-30" />
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              {lightbox && activeProject?.thumbnail_url && createPortal(
-                <div
-                  style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.85)" }}
-                  onClick={() => setLightbox(false)}
-                >
-                  <img
-                    src={activeProject.thumbnail_url}
-                    alt={displayName}
-                    style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain", borderRadius: "6px", boxShadow: "0 25px 60px rgba(0,0,0,0.8)" }}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>,
-                document.body
-              )}
-
-              <MetadataSection title="Project Details" icon={FolderTree}>
+              <MetadataSection title="Project Details" icon={FolderTree} noBorderTop>
                 <MetadataRow label="Description" value={panelProject.description} />
                 <MetadataRow label="Folder" value={folderPath} />
                 <MetadataRow

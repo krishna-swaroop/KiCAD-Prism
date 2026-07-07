@@ -410,7 +410,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                         visibleFolders={visibleFolders}
                         visibleProjects={listProjects}
                         getProjectDisplayName={getProjectDisplayName}
-                        onSelectProject={selectProject}
+                        onShowDetails={selectProject}
                         onOpenProject={openProject}
                         onOpenFolder={(folderId) => setFolderInUrl(folderId)}
                         onRenameFolder={setFolderToRename}
@@ -428,7 +428,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                         listFolders={listFolders}
                         listProjects={listProjects}
                         getProjectDisplayName={getProjectDisplayName}
-                        onSelectProject={selectProject}
+                        onShowDetails={selectProject}
                         onOpenProject={openProject}
                         onOpenFolder={(folderId) => setFolderInUrl(folderId)}
                         onRenameFolder={setFolderToRename}

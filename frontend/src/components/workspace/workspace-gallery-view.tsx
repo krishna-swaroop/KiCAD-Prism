@@ -15,8 +15,8 @@ interface WorkspaceGalleryViewProps {
   visibleFolders: FolderTreeItem[];
   visibleProjects: Project[];
   getProjectDisplayName: (project: Project) => string;
-  onSelectProject: (project: Project) => void;
   onOpenProject: (project: Project) => void;
+  onShowDetails: (project: Project) => void;
   onOpenFolder: (folderId: string) => void;
   onRenameFolder: (folder: FolderTreeItem) => void;
   onDeleteFolder: (folder: FolderTreeItem) => void;
@@ -34,8 +34,8 @@ export function WorkspaceGalleryView({
   visibleFolders,
   visibleProjects,
   getProjectDisplayName,
-  onSelectProject,
   onOpenProject,
+  onShowDetails,
   onOpenFolder,
   onRenameFolder,
   onDeleteFolder,
@@ -60,8 +60,9 @@ export function WorkspaceGalleryView({
                   project={project}
                   selected={selectedProjectId === project.id}
                   searchQuery={searchQuery}
-                  onClick={() => onSelectProject(project)}
+                  onClick={() => onShowDetails(project)}
                   onDoubleClick={() => onOpenProject(project)}
+                  onOpen={() => onOpenProject(project)}
                   actions={
                     <ProjectActionMenu
                       project={project}
@@ -135,8 +136,9 @@ export function WorkspaceGalleryView({
                     key={project.id}
                     project={project}
                     selected={selectedProjectId === project.id}
-                    onClick={() => onSelectProject(project)}
+                    onClick={() => onShowDetails(project)}
                     onDoubleClick={() => onOpenProject(project)}
+                    onOpen={() => onOpenProject(project)}
                     actions={
                       <ProjectActionMenu
                         project={project}

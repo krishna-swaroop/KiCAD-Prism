@@ -2,7 +2,7 @@ import { Project } from "@/types/project";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Box, Trash2 } from "lucide-react";
+import { CalendarDays, Box, Trash2, PanelRightOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import React from "react";
 
@@ -12,6 +12,7 @@ interface ProjectCardProps {
     selected?: boolean;
     onClick?: () => void;
     onDoubleClick?: () => void;
+    onOpen?: () => void;
     onDelete?: () => void;
     showDelete?: boolean;
     searchQuery?: string;
@@ -45,6 +46,7 @@ export function ProjectCard({
     selected,
     onClick,
     onDoubleClick,
+    onOpen,
     onDelete,
     showDelete,
     searchQuery = "",
@@ -69,7 +71,6 @@ export function ProjectCard({
 
     const displayName = getDisplayName(project);
     const description = project.description || "No description available.";
-    const parentRepo = project.parent_repo;
 
     if (compact) {
         return (
@@ -116,11 +117,6 @@ export function ProjectCard({
                     </div>
                 )}
                 <div className="absolute top-2 right-2 flex gap-1">
-                    {parentRepo && (
-                        <Badge variant="secondary" className="backdrop-blur-sm bg-background/80 border text-[10px]">
-                            {highlightMatch(parentRepo, searchQuery)}
-                        </Badge>
-                    )}
                     <Badge variant="secondary" className="backdrop-blur-sm bg-background/80 border text-[10px]">
                         Git
                     </Badge>
@@ -132,19 +128,6 @@ export function ProjectCard({
                             {actions}
                         </div>
                     ) : null}
-                    {showDelete && onDelete && (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-destructive hover:text-destructive-foreground"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onDelete();
-                            }}
-                        >
-                            <Trash2 className="h-3 w-3" />
-                        </Button>
-                    )}
                 </div>
             </div>
 
@@ -158,8 +141,30 @@ export function ProjectCard({
             </CardContent>
 
             <CardFooter className="p-4 pt-0 border-t-0 text-[11px] text-muted-foreground flex items-center gap-2">
-                <CalendarDays className="h-3.5 w-3.5" />
-                <span>Updated {project.last_modified}</span>
+                <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate">Updated {project.last_modified}</span>
+                {onOpen && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px] shrink-0"
+                        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                    >
+                        <PanelRightOpen className="h-3 w-3 mr-1" />
+                        Open
+                    </Button>
+                )}
+                {showDelete && onDelete && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 hover:bg-destructive hover:text-destructive-foreground shrink-0"
+                        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                    >
+                        <Trash2 className="h-3 w-3" />
+                    </Button>
+                )}
             </CardFooter>
         </Card>
     );

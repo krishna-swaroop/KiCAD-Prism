@@ -1,4 +1,6 @@
-import { Folder } from "lucide-react";
+import { Folder, PanelRightOpen } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 
 import { SearchProject } from "@/hooks/use-workspace-search";
 import { FolderTreeItem, Project } from "@/types/project";
@@ -13,7 +15,7 @@ interface WorkspaceListViewProps {
   listFolders: FolderTreeItem[];
   listProjects: Project[];
   getProjectDisplayName: (project: Project) => string;
-  onSelectProject: (project: Project) => void;
+  onShowDetails: (project: Project) => void;
   onOpenProject: (project: Project) => void;
   onOpenFolder: (folderId: string) => void;
   onRenameFolder: (folder: FolderTreeItem) => void;
@@ -48,7 +50,7 @@ export function WorkspaceListView({
   listFolders,
   listProjects,
   getProjectDisplayName,
-  onSelectProject,
+  onShowDetails,
   onOpenProject,
   onOpenFolder,
   onRenameFolder,
@@ -64,7 +66,7 @@ export function WorkspaceListView({
         <div>Description</div>
         <div>Location</div>
         <div>Updated</div>
-        <div className="w-8" />
+        <div className="w-24" />
       </div>
 
       {listFolders.length === 0 && listProjects.length === 0 ? (
@@ -102,13 +104,13 @@ export function WorkspaceListView({
             <div
               key={project.id}
               className={`grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center border-b px-4 py-2 transition-colors ${selectedProjectId === project.id ? "bg-primary/5" : "hover:bg-muted/30"}`}
-              onClick={() => onSelectProject(project)}
+              onClick={() => onShowDetails(project)}
               onDoubleClick={() => onOpenProject(project)}
             >
               <button
                 type="button"
                 className="truncate text-left text-sm font-medium hover:text-primary"
-                onClick={() => onSelectProject(project)}
+                onClick={() => onShowDetails(project)}
                 onDoubleClick={() => onOpenProject(project)}
               >
                 {getProjectDisplayName(project)}
@@ -119,10 +121,19 @@ export function WorkspaceListView({
               </p>
               <p className="truncate text-sm text-muted-foreground">{project.last_modified}</p>
               <div
-                className="flex justify-end"
+                className="flex items-center justify-end gap-1"
                 onClick={(event) => event.stopPropagation()}
                 onDoubleClick={(event) => event.stopPropagation()}
               >
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => onOpenProject(project)}
+                >
+                  <PanelRightOpen className="h-3 w-3 mr-1" />
+                  Open
+                </Button>
                 <ProjectActionMenu
                   project={project}
                   projectName={getProjectDisplayName(project)}

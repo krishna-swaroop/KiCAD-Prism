@@ -174,8 +174,8 @@ function App() {
             <Toaster richColors position="top-right" />
             <Routes>
                 <Route path="/" element={
-                    <div className="min-h-screen bg-background text-foreground">
-                        <header className="border-b sticky top-0 bg-background/95 backdrop-blur z-10">
+                    <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden">
+                        <header className="border-b shrink-0 bg-background/95 backdrop-blur z-10">
                             <div className="grid h-16 grid-cols-[auto_1fr_auto] items-center gap-4 px-3 md:px-4">
                                 <div className="flex items-center gap-2 text-primary">
                                     <img src={prismLogoMark} alt="KiCAD Prism Logo" className="h-7 w-7 object-contain" />
@@ -210,7 +210,7 @@ function App() {
                             </div>
                         </header>
 
-                        <main className="h-[calc(100vh-4rem)]">
+                        <main className="min-h-0 flex-1 overflow-hidden">
                             <Suspense fallback={<RouteFallback />}>
                                 <Workspace
                                     searchQuery={deferredWorkspaceSearchQuery}
