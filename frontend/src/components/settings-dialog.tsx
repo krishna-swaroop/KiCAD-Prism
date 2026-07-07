@@ -61,8 +61,8 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
 
                     <Button
                         variant={activeTab === "general" ? "secondary" : "ghost"}
-                        className="justify-start opacity-50 cursor-not-allowed"
-                        title="Coming soon"
+                        className="justify-start"
+                        onClick={() => setActiveTab("general")}
                     >
                         <FileCode className="mr-2 h-4 w-4" />
                         General
@@ -81,11 +81,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                 <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === "git" && <GitSettings user={user} />}
                     {activeTab === "access" && <AccessControlSettings isAdmin={isAdmin} />}
-                    {activeTab === "general" && (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                            General settings coming soon.
-                        </div>
-                    )}
+                    {activeTab === "general" && <GeneralSettings />}
                     {activeTab === "diff" && <DiffSettings />}
                 </div>
             </DialogContent>
@@ -208,6 +204,59 @@ function GitSettings({ user }: { user: User | null }) {
                         No SSH key found. Click "Generate New Key" to create one.
                     </div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+export const IBOM_ENABLED_KEY = "kicad-prism:general:ibom-enabled";
+
+function GeneralSettings() {
+    const [ibomEnabled, setIbomEnabled] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem(IBOM_ENABLED_KEY) === "true";
+        } catch {
+            return false;
+        }
+    });
+
+    const toggle = (checked: boolean) => {
+        setIbomEnabled(checked);
+        try {
+            if (checked) {
+                localStorage.setItem(IBOM_ENABLED_KEY, "true");
+            } else {
+                localStorage.removeItem(IBOM_ENABLED_KEY);
+            }
+        } catch {
+            // ignore storage errors
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <h3 className="text-lg font-medium">General</h3>
+                <p className="text-sm text-muted-foreground">
+                    Configure global interface options.
+                </p>
+            </div>
+
+            <div className="space-y-4 border rounded-lg p-4 bg-card">
+                <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={ibomEnabled}
+                        onChange={(e) => toggle(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
+                    />
+                    <div className="space-y-0.5">
+                        <div className="text-sm font-medium">Enable Interactive BOM (iBoM)</div>
+                        <p className="text-sm text-muted-foreground">
+                            Show the iBoM tab in the project viewer. Requires an <code>ibom.html</code> file in the project output folders. Disabled by default.
+                        </p>
+                    </div>
+                </label>
             </div>
         </div>
     );

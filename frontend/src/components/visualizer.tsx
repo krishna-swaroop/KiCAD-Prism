@@ -8,6 +8,7 @@ import { CommentOverlay } from "./comment-overlay";
 import { CommentForm } from "./comment-form";
 import { CommentPanel } from "./comment-panel";
 import { fetchApi } from "@/lib/api";
+import { IBOM_ENABLED_KEY } from "./settings-dialog";
 import type { User } from "@/types/auth";
 import type { Comment, CommentContext } from "@/types/comments";
 import type {
@@ -1099,12 +1100,13 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
     }, [pcbDiffData, showDiffOverlay]);
 
     // Tab Config
+    const ibomEnabled = (() => { try { return localStorage.getItem(IBOM_ENABLED_KEY) === "true"; } catch { return false; } })();
     const tabs: { id: VisualizerTab; label: string; icon: any }[] = [
         { id: "sch", label: "Schematic", icon: Cpu },
         { id: "pcb", label: "PCB Layout", icon: CircuitBoard },
         { id: "3d", label: "3D View", icon: Box },
         { id: "bom", label: "BOM", icon: List },
-        { id: "ibom", label: "iBoM", icon: FileText },
+        ...(ibomEnabled ? [{ id: "ibom" as VisualizerTab, label: "iBoM", icon: FileText }] : []),
         { id: "gerber", label: "Gerber", icon: Layers },
     ];
 
