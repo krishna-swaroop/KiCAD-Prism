@@ -1254,7 +1254,23 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
       {/* ── LEFT SIDEBAR ──────────────────────────────────────────────── */}
       <aside className="w-56 shrink-0 flex flex-col border-r border-border/50 bg-card/30">
         <div className="px-4 py-3 border-b border-border/50">
-          <h2 className="text-sm font-semibold text-foreground">Library Manager</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">Library Manager</h2>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+              title="Download KiCAD datasource package"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = "/api/settings/datasource-zip";
+                a.download = "kicad-prism-remote-symbols.zip";
+                a.click();
+              }}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <p className="text-[11px] text-muted-foreground mt-0.5">{total} components</p>
         </div>
 

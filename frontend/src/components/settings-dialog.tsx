@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, Sliders } from "lucide-react";
+import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, Sliders, Puzzle, Download } from "lucide-react";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
 import { ROLE_OPTIONS, roleLabel } from "@/lib/roles";
@@ -16,7 +16,7 @@ interface SettingsDialogProps {
     user: User | null;
 }
 
-type SettingsTab = "git" | "access" | "general" | "diff";
+type SettingsTab = "git" | "access" | "general" | "diff" | "integrations";
 
 interface RoleAssignment {
     email: string;

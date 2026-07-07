@@ -1,10 +1,14 @@
+import io
+import json
 import logging
 import os
 import re
 import subprocess
+import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.roles import ROLE_LABELS, Role, normalize_role
@@ -199,6 +203,65 @@ async def upsert_access_user(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     return RoleAssignmentResponse(**assignment)
+
+
+@router.get("/datasource-zip")
+async def download_datasource_zip(request: Request):
+    """Build and stream the KiCAD PCM datasource ZIP for this Prism instance."""
+    base_url = str(request.base_url).rstrip("/")
+
+    metadata = {
+        "name": "KiCAD Prism Remote Symbols",
+        "description": "Datasource package for the KiCAD Prism remote symbol provider.",
+        "description_full": (
+            "Installs a datasource descriptor for KiCAD Prism. After installing the ZIP in "
+            "PCM, add the metadata URL to Remote Symbol Settings if KiCad does not auto-register it."
+        ),
+        "identifier": "org.kicad-prism.remote-symbols",
+        "type": "plugin",
+        "author": {
+            "name": "KiCAD Prism",
+            "contact": {"url": "https://github.com/krishna-swaroop/KiCAD-Prism"},
+        },
+        "license": "Apache-2.0",
+        "resources": {
+            "server": base_url,
+            "instructions": (
+                "Install from file, then use the KiCad Remote Symbol Settings dialog to add "
+                f"{base_url} as a provider if it is not auto-registered."
+            ),
+        },
+        "versions": [
+            {
+                "kicad_version": "8.0.0",
+                "version": "0.1.0",
+                "status": "stable",
+                "platforms": ["windows", "macos", "linux"],
+            }
+        ],
+    }
+
+    resource = {
+        "metadata_url": base_url,
+        "description": (
+            f"Add {base_url} as a Remote Symbol provider in KiCad eeschema settings. "
+            f"KiCad discovers the provider at {base_url}/.well-known/kicad-remote-provider automatically."
+        ),
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("metadata.json", json.dumps(metadata, indent=2))
+        zf.writestr("resources/remote_symbol.json", json.dumps(resource, indent=2))
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="kicad-prism-remote-symbols.zip"'
+        },
+    )
 
 
 @router.delete("/access/users/{email}")

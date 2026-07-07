@@ -21,12 +21,10 @@ def build_metadata(base_url: str, kicad_version: str = "8.0.0") -> dict:
             "PCM, add the metadata URL to Remote Symbol Settings if KiCad does not auto-register it."
         ),
         "identifier": "org.kicad-prism.remote-symbols",
-        "type": "datasource",
+        "type": "plugin",
         "author": {
             "name": "KiCAD Prism",
-            "contact": {
-                "url": "https://github.com/krishna-swaroop/KiCAD-Prism"
-            }
+            "contact": {"url": "https://github.com/krishna-swaroop/KiCAD-Prism"},
         },
         "license": "Apache-2.0",
         "resources": {
@@ -34,16 +32,16 @@ def build_metadata(base_url: str, kicad_version: str = "8.0.0") -> dict:
             "instructions": (
                 "Install from file, then use the KiCad Remote Symbol Settings dialog to add "
                 f"{base_url} as a provider if it is not auto-registered."
-            )
+            ),
         },
         "versions": [
             {
                 "kicad_version": kicad_version,
                 "version": "0.1.0",
                 "status": "stable",
-                "platforms": ["windows", "macos", "linux"]
+                "platforms": ["windows", "macos", "linux"],
             }
-        ]
+        ],
     }
 
 
@@ -58,14 +56,28 @@ def build_resource(base_url: str) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build the KiCAD Prism datasource ZIP package.")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000", help="Base URL for the Prism provider")
+    parser = argparse.ArgumentParser(
+        description="Build the KiCAD Prism datasource ZIP package."
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://127.0.0.1:8000",
+        help="Base URL for the Prism provider",
+    )
     parser.add_argument("--output", default="", help="Optional output ZIP path")
-    parser.add_argument("--kicad-version", default="8.0.0", help="Minimum KiCad version for the datasource")
+    parser.add_argument(
+        "--kicad-version",
+        default="8.0.0",
+        help="Minimum KiCad version for the datasource",
+    )
     args = parser.parse_args()
 
     base_url = args.base_url.rstrip("/")
-    output_path = Path(args.output) if args.output else OUTPUT_DIR / "kicad-prism-remote-symbols.zip"
+    output_path = (
+        Path(args.output)
+        if args.output
+        else OUTPUT_DIR / "kicad-prism-remote-symbols.zip"
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     metadata = build_metadata(base_url, args.kicad_version)
