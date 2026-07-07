@@ -1,9 +1,11 @@
 import asyncio
+import io
 import json
 import mimetypes
 import os
 import posixpath
 import shutil
+import zipfile
 from pathlib import Path
 from urllib.parse import quote
 
@@ -1777,3 +1779,113 @@ async def update_project_description(
         "description": next_description,
         "message": "Project description updated successfully",
     }
+
+
+_GERBER_MAX_FILES = 200
+_GERBER_MAX_FILE_BYTES = 5 * 1024 * 1024
+_GERBER_MAX_ZIP_BYTES = 50 * 1024 * 1024
+
+_GERBER_EXTENSIONS = {
+    ".gbr",
+    ".ger",
+    ".art",
+    ".gtl",
+    ".gbl",
+    ".gts",
+    ".gbs",
+    ".gtp",
+    ".gbp",
+    ".gto",
+    ".gbo",
+    ".gm1",
+    ".gm2",
+    ".gm3",
+    ".gm4",
+    ".drl",
+    ".xln",
+    ".exc",
+    ".ncd",
+}
+
+_SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "3d-models",
+    "3dmodels",
+    "packages",
+    "backups",
+    "archive",
+    "archived",
+    "old",
+}
+
+
+def _find_gerber_files(project_path: str) -> list[tuple[str, str]]:
+    root = Path(project_path)
+    results: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def _walk(directory: Path) -> None:
+        try:
+            for entry in sorted(directory.iterdir()):
+                if entry.name.startswith("."):
+                    continue
+                if entry.is_file():
+                    if entry.suffix.lower() in _GERBER_EXTENSIONS:
+                        key = str(entry.resolve())
+                        if key not in seen:
+                            seen.add(key)
+                            rel = str(entry.relative_to(root))
+                            results.append((rel, str(entry)))
+                elif entry.is_dir() and entry.name.lower() not in _SKIP_DIRS:
+                    _walk(entry)
+        except OSError:
+            pass
+
+    _walk(root)
+    return results
+
+
+@router.get("/{project_id}/gerbers")
+async def get_project_gerbers(
+    project_id: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Return all gerber/drill files for the project as an in-memory ZIP archive."""
+    project = get_project_for_role_or_404(project_id, user.role)
+    files = await asyncio.to_thread(_find_gerber_files, project.path)
+
+    if not files:
+        raise HTTPException(status_code=404, detail="No gerber files found")
+    if len(files) > _GERBER_MAX_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many gerber files ({len(files)}); limit is {_GERBER_MAX_FILES}",
+        )
+
+    buf = io.BytesIO()
+    total_bytes = 0
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for archive_name, abs_path in files:
+            file_size = Path(abs_path).stat().st_size
+            if file_size > _GERBER_MAX_FILE_BYTES:
+                continue
+            total_bytes += file_size
+            if total_bytes > _GERBER_MAX_ZIP_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Gerber output exceeds the maximum allowed size",
+                )
+            zf.write(abs_path, arcname=archive_name.replace("\\", "/"))
+    buf.seek(0)
+
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{project_id}-gerbers.zip"',
+        },
+    )
