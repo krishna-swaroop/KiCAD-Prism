@@ -1,6 +1,9 @@
-import { FolderPlus, Grid3X3, List, Plus, RefreshCw, Settings } from "lucide-react";
+import { useState } from "react";
+import { FolderPlus, Grid3X3, Image, List, Plus, RefreshCw, Settings } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { fetchApi } from "@/lib/api";
 
 import { ViewMode } from "./workspace-types";
 
@@ -15,6 +18,19 @@ interface WorkspaceProjectToolbarProps {
   canOpenSettings: boolean;
 }
 
+async function pollJob(jobId: string): Promise<void> {
+  const maxAttempts = 120;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetchApi(`/api/projects/thumbnail/jobs/${jobId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.status === "done") return;
+    if (data.status === "error") throw new Error(data.error || "Thumbnail generation failed");
+  }
+  throw new Error("Timed out waiting for thumbnail generation");
+}
+
 export function WorkspaceProjectToolbar({
   viewMode,
   onViewModeChange,
@@ -25,6 +41,28 @@ export function WorkspaceProjectToolbar({
   canManageProjects,
   canOpenSettings,
 }: WorkspaceProjectToolbarProps) {
+  const [generating, setGenerating] = useState(false);
+
+  const handleGenerateThumbnails = async () => {
+    setGenerating(true);
+    const toastId = toast.loading("Generating thumbnails…");
+    try {
+      const res = await fetchApi("/api/projects/thumbnail/generate-missing", { method: "POST" });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to start thumbnail generation");
+      }
+      const { job_id } = await res.json();
+      await pollJob(job_id);
+      toast.success("Thumbnails generated", { id: toastId });
+      onRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Thumbnail generation failed", { id: toastId });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-3 md:h-14 md:flex-nowrap md:py-0">
       <div className="inline-flex rounded-md border p-1">
@@ -55,6 +93,16 @@ export function WorkspaceProjectToolbar({
             </Button>
             <Button variant="outline" size="icon" onClick={onCreateFolder} aria-label="Create new folder">
               <FolderPlus className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => void handleGenerateThumbnails()}
+              disabled={generating}
+              aria-label="Generate missing thumbnails"
+              title="Generate missing thumbnails"
+            >
+              <Image className={`h-4 w-4 ${generating ? "animate-pulse" : ""}`} />
             </Button>
           </>
         )}

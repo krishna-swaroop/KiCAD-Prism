@@ -9,3 +9,4 @@ PyJWT[crypto]
 kiutils
 kicad-monkey>=2026.6.3
 python-multipart
+Pillow>=10.0.0

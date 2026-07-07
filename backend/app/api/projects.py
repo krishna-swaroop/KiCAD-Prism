@@ -5,6 +5,8 @@ import mimetypes
 import os
 import posixpath
 import shutil
+import threading
+import uuid
 import zipfile
 from pathlib import Path
 from urllib.parse import quote
@@ -1889,3 +1891,90 @@ async def get_project_gerbers(
             "Content-Disposition": f'attachment; filename="{project_id}-gerbers.zip"',
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Thumbnail generation
+# ---------------------------------------------------------------------------
+
+_thumbnail_jobs: dict[str, dict] = {}
+
+
+# Static-prefix routes must come before /{project_id} routes to avoid
+# FastAPI matching "thumbnail" as a project_id.
+@router.post("/thumbnail/generate-missing")
+async def generate_missing_thumbnails(
+    user: AuthenticatedUser = Depends(require_designer),
+):
+    """Generate thumbnails for all projects that don't have one."""
+    job_id = str(uuid.uuid4())
+    job: dict = {
+        "job_id": job_id,
+        "status": "running",
+        "message": "Starting...",
+        "percent": 0,
+        "logs": [],
+        "error": None,
+    }
+    _thumbnail_jobs[job_id] = job
+
+    def _run() -> None:
+        from app.services import thumbnail_service
+
+        try:
+            thumbnail_service.generate_missing(job)
+        except Exception as exc:
+            job["status"] = "error"
+            job["error"] = str(exc)
+            job["message"] = str(exc)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return {"job_id": job_id}
+
+
+@router.get("/thumbnail/jobs/{job_id}")
+async def get_thumbnail_job(
+    job_id: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    job = _thumbnail_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.post("/{project_id}/thumbnail/generate")
+async def generate_project_thumbnail(
+    project_id: str,
+    user: AuthenticatedUser = Depends(require_designer),
+):
+    """Generate a PCB thumbnail for a single project."""
+    get_project_for_role_or_404(project_id, user.role)
+
+    job_id = str(uuid.uuid4())
+    job: dict = {
+        "job_id": job_id,
+        "status": "running",
+        "message": "Starting...",
+        "percent": 0,
+        "error": None,
+    }
+    _thumbnail_jobs[job_id] = job
+
+    def _run() -> None:
+        from app.services import thumbnail_service
+
+        try:
+            out = thumbnail_service.generate_for_project(project_id)
+            job["status"] = "done"
+            job["message"] = f"Saved to {out}"
+            job["percent"] = 100
+        except Exception as exc:
+            job["status"] = "error"
+            job["error"] = str(exc)
+            job["message"] = str(exc)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return {"job_id": job_id}
