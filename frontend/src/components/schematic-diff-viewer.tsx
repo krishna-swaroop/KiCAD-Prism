@@ -579,7 +579,7 @@ export function SchematicDiffViewer({
     // Parsing backend used to compute the diff: in-house ("native") or
     // kicad_monkey ("monkey"). Changing it refetches the diff. Lets us compare
     // the two parsers' results side by side on the same commits.
-    const [parser, setParser] = useState<"native" | "monkey">("native");
+    const parser = (() => { try { return localStorage.getItem("kicad-prism:diff:parser") === "monkey" ? "monkey" : "native"; } catch { return "native"; } })() as "native" | "monkey";
 
     // Visibility toggles
     const [showOverlay, setShowOverlay] = useState(true);
@@ -1179,28 +1179,6 @@ export function SchematicDiffViewer({
                         </div>
                     )}
 
-                    {/* Parser backend toggle — compare native vs kicad_monkey */}
-                    {data && (
-                        <div className="px-3 pt-1 pb-2 shrink-0">
-                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 px-1">Parser</p>
-                            <div className="flex rounded-md border overflow-hidden text-xs font-medium w-full">
-                                <button
-                                    className={`flex-1 py-1.5 transition-colors ${parser === "native" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                                    onClick={() => setParser("native")}
-                                    title="In-house s-expression parser"
-                                >
-                                    Native
-                                </button>
-                                <button
-                                    className={`flex-1 py-1.5 transition-colors ${parser === "monkey" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                                    onClick={() => setParser("monkey")}
-                                    title="kicad_monkey parser"
-                                >
-                                    Monkey
-                                </button>
-                            </div>
-                        </div>
-                    )}
 
                     {/* Filter toggles */}
                     {data && (

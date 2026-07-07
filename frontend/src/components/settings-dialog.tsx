@@ -263,6 +263,7 @@ function GeneralSettings() {
 }
 
 const DIFF_TRACK_NET_NAMES_KEY = "kicad-prism:diff:track-net-names";
+export const DIFF_PARSER_KEY = "kicad-prism:diff:parser";
 
 function DiffSettings() {
     const [trackNetNames, setTrackNetNames] = useState<boolean>(() => {
@@ -273,17 +274,26 @@ function DiffSettings() {
         }
     });
 
-    const toggle = (checked: boolean) => {
+    const [parser, setParserState] = useState<"native" | "monkey">(() => {
+        try {
+            return localStorage.getItem(DIFF_PARSER_KEY) === "monkey" ? "monkey" : "native";
+        } catch {
+            return "native";
+        }
+    });
+
+    const toggleNetNames = (checked: boolean) => {
         setTrackNetNames(checked);
         try {
-            if (checked) {
-                localStorage.setItem(DIFF_TRACK_NET_NAMES_KEY, "true");
-            } else {
-                localStorage.removeItem(DIFF_TRACK_NET_NAMES_KEY);
-            }
-        } catch {
-            // ignore storage errors
-        }
+            if (checked) localStorage.setItem(DIFF_TRACK_NET_NAMES_KEY, "true");
+            else localStorage.removeItem(DIFF_TRACK_NET_NAMES_KEY);
+        } catch { /* ignore */ }
+    };
+
+    const toggleParser = (value: "native" | "monkey") => {
+        setParserState(value);
+        try { localStorage.setItem(DIFF_PARSER_KEY, value); }
+        catch { /* ignore */ }
     };
 
     return (
@@ -300,7 +310,7 @@ function DiffSettings() {
                     <input
                         type="checkbox"
                         checked={trackNetNames}
-                        onChange={(e) => toggle(e.target.checked)}
+                        onChange={(e) => toggleNetNames(e.target.checked)}
                         className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
                     />
                     <div className="space-y-0.5">
@@ -310,6 +320,27 @@ function DiffSettings() {
                         </p>
                     </div>
                 </label>
+
+                <div className="space-y-1.5">
+                    <div className="text-sm font-medium">Diff parser</div>
+                    <p className="text-sm text-muted-foreground">
+                        Choose which backend parser is used to compute schematic and PCB diffs. Native is the default in-house parser; Monkey uses kicad_monkey.
+                    </p>
+                    <div className="flex rounded-md border overflow-hidden text-xs font-medium w-48 mt-2">
+                        <button
+                            className={`flex-1 py-1.5 transition-colors ${parser === "native" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                            onClick={() => toggleParser("native")}
+                        >
+                            Native
+                        </button>
+                        <button
+                            className={`flex-1 py-1.5 transition-colors ${parser === "monkey" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                            onClick={() => toggleParser("monkey")}
+                        >
+                            Monkey
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );
