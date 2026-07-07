@@ -3,8 +3,8 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.core.roles import Role
-from app.services.workspace_service import workspace
 from app.services import project_service
+from app.services.workspace_service import workspace
 
 VALID_OUTPUT_TYPES = {"design", "manufacturing"}
 
@@ -27,6 +27,11 @@ def get_project_for_role_or_404(project_id: str, role: Role) -> project_service.
 
 def _row_to_project(row: dict) -> project_service.Project:
     """Convert a workspace DB row dict into the Project Pydantic model."""
+    has_thumbnail = bool(row.get("thumbnail_rel"))
+    if not has_thumbnail and row.get("path"):
+        # Fall back to filesystem scan so projects with committed thumbnails
+        # show up even before thumbnail_rel is populated in the DB.
+        has_thumbnail = bool(project_service._resolve_thumbnail_from_path(row["path"]))
     return project_service.Project(
         id=row["id"],
         name=row["name"],
@@ -35,7 +40,7 @@ def _row_to_project(row: dict) -> project_service.Project:
         path=row.get("path", ""),
         last_modified=row.get("last_modified", ""),
         registered_at=row.get("registered_at"),
-        thumbnail_url=f"/api/projects/{row['id']}/thumbnail" if row.get("thumbnail_rel") else None,
+        thumbnail_url=f"/api/projects/{row['id']}/thumbnail" if has_thumbnail else None,
         sub_path=row.get("relative_path") if row.get("relative_path") != "." else None,
         parent_repo=row.get("parent_repo"),
         repo_url=row.get("repo_url"),
@@ -66,4 +71,3 @@ def resolve_path_within_root(
         raise HTTPException(status_code=400, detail=invalid_detail) from error
 
     return target_path
-
