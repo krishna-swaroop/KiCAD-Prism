@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar, GitCompare, ChevronDown, ChevronRight, FileText, Plus, Minus, RefreshCw, Loader2, X, CircuitBoard, Cpu, List, Settings, FileCode } from "lucide-react";
+import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar, GitCompare, ChevronDown, ChevronRight, FileText, Plus, Minus, RefreshCw, Loader2, X, CircuitBoard, Cpu, List, Settings, FileCode, LayoutList } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { SchematicDiffViewer } from "./schematic-diff-viewer";
 import { PcbDiffViewer } from "./pcb-diff-viewer";
 import { BomDiffViewer } from "./bom-diff-viewer";
 import { PdfViewer } from "./pdf-viewer";
+import { StackupDiffPanel } from "./stackup-diff-panel";
 import { fetchJson } from "@/lib/api";
 import { categorise, CATEGORY_META, type KindedItem } from "@/lib/diff-grouping";
 
@@ -78,7 +79,7 @@ interface CommitFile {
     pcb_diff?: FileDiffPayload;
 }
 
-type DiffTab = "schematic" | "pcb" | "bom";
+type DiffTab = "schematic" | "pcb" | "bom" | "stackup";
 
 interface CommitSummary {
     files: CommitFile[];
@@ -536,6 +537,7 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
         { id: "schematic", label: "Schematic", icon: <CircuitBoard className="h-3.5 w-3.5" /> },
         { id: "pcb",       label: "PCB",       icon: <Cpu          className="h-3.5 w-3.5" /> },
         { id: "bom",       label: "BOM",       icon: <List         className="h-3.5 w-3.5" /> },
+        { id: "stackup",   label: "Stackup",   icon: <LayoutList   className="h-3.5 w-3.5" /> },
     ];
 
     return (
@@ -606,6 +608,11 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
                         crossProbeTarget={bomCrossProbeTarget}
                     />
                 </div>
+                {tab === "stackup" && (
+                    <div className="absolute inset-0 overflow-y-auto bg-background">
+                        <StackupDiffPanel projectId={projectId} commit1={commit1} commit2={commit2} />
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -851,23 +858,21 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
 
             {/* Commits Section */}
             <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
                     <h3 className="text-xl font-semibold flex items-center gap-2">
                         <GitCommit className="h-5 w-5" />
                         Commits
                     </h3>
-                    <div className="flex items-center gap-2">
-                        {canCompareDiffs && selectedCommits.length === 2 && (
-                            <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => setShowDiff(true)}
-                            >
-                                <GitCompare className="h-4 w-4 mr-2" />
-                                Compare Changes
-                            </Button>
-                        )}
-                    </div>
+                    {canCompareDiffs && selectedCommits.length === 2 && (
+                        <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => setShowDiff(true)}
+                        >
+                            <GitCompare className="h-4 w-4 mr-2" />
+                            Compare Changes
+                        </Button>
+                    )}
                 </div>
 
                 {commits.length === 0 ? (

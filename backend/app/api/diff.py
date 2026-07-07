@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api._helpers import get_project_for_role_or_404
 from app.core.security import AuthenticatedUser, require_viewer
-from app.services import bom_service, pcb_diff_service, sch_diff_service
+from app.services import (
+    bom_service,
+    pcb_diff_service,
+    sch_diff_service,
+    stackup_service,
+)
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
@@ -144,6 +149,33 @@ def _resolve_head_commit(project_id: str) -> str:
         return repo.head.commit.hexsha
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Git error: {str(e)}") from e
+
+
+@router.get("/{project_id}/stackup-diff")
+async def get_stackup_diff(
+    project_id: str,
+    commit1: str,
+    commit2: str = None,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """
+    Return stackup diff between two commits.
+    If commit2 is omitted, diffs commit1 against its parent.
+    """
+    get_project_for_role_or_404(project_id, user.role)
+    _validate_commits(commit1, commit2)
+
+    if commit2 is None:
+        commit2 = await asyncio.to_thread(_resolve_parent_commit, project_id, commit1)
+
+    result = await asyncio.to_thread(
+        stackup_service.get_stackup_diff, project_id, commit1, commit2
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=404, detail="No PCB found for this project/commits"
+        )
+    return result
 
 
 @router.get("/{project_id}/bom-diff")
