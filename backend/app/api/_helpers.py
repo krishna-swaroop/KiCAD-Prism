@@ -29,9 +29,37 @@ def _row_to_project(row: dict) -> project_service.Project:
     """Convert a workspace DB row dict into the Project Pydantic model."""
     has_thumbnail = bool(row.get("thumbnail_rel"))
     if not has_thumbnail and row.get("path"):
-        # Fall back to filesystem scan so projects with committed thumbnails
-        # show up even before thumbnail_rel is populated in the DB.
         has_thumbnail = bool(project_service._resolve_thumbnail_from_path(row["path"]))
+    thumb_mtime: int | None = None
+    if not has_thumbnail:
+        # Check central thumbnail store (used for external projects outside the Docker volume)
+        from app.core.config import settings as _settings
+
+        central = (
+            Path(_settings.KICAD_PROJECTS_ROOT)
+            / ".kicad-prism"
+            / "thumbnails"
+            / f"{row['id']}.png"
+        )
+        if central.is_file():
+            has_thumbnail = True
+            thumb_mtime = int(central.stat().st_mtime)
+    if has_thumbnail and thumb_mtime is None:
+        # Try to get mtime from project path thumbnail for cache-busting
+        from app.core.config import settings as _settings
+
+        central = (
+            Path(_settings.KICAD_PROJECTS_ROOT)
+            / ".kicad-prism"
+            / "thumbnails"
+            / f"{row['id']}.png"
+        )
+        if central.is_file():
+            thumb_mtime = int(central.stat().st_mtime)
+    thumb_url = None
+    if has_thumbnail:
+        base = f"/api/projects/{row['id']}/thumbnail"
+        thumb_url = f"{base}?v={thumb_mtime}" if thumb_mtime else base
     return project_service.Project(
         id=row["id"],
         name=row["name"],
@@ -40,7 +68,7 @@ def _row_to_project(row: dict) -> project_service.Project:
         path=row.get("path", ""),
         last_modified=row.get("last_modified", ""),
         registered_at=row.get("registered_at"),
-        thumbnail_url=f"/api/projects/{row['id']}/thumbnail" if has_thumbnail else None,
+        thumbnail_url=thumb_url,
         sub_path=row.get("relative_path") if row.get("relative_path") != "." else None,
         parent_repo=row.get("parent_repo"),
         repo_url=row.get("repo_url"),

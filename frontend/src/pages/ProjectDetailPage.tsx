@@ -35,6 +35,7 @@ interface Project {
     path: string;
     folder_id?: string | null;
     last_modified: string;
+    thumbnail_url?: string | null;
 }
 
 interface CommitDistanceResponse {
@@ -68,6 +69,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const [activeSection, setActiveSection] = useState<Section>("overview");
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [sidebarHovered, setSidebarHovered] = useState(false);
+    const [thumbnailLightbox, setThumbnailLightbox] = useState(false);
     const [searchParams, setSearchParams] = useSearchParams();
     const [commitsBehind, setCommitsBehind] = useState<number>(0);
     const [syncing, setSyncing] = useState(false);
@@ -393,7 +395,22 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         </Button>
                     </div>
 
-                    <nav className="space-y-1 mt-8">
+                    {/* Thumbnail above nav — only when sidebar is expanded */}
+                    {(!sidebarCollapsed || sidebarHovered) && project.thumbnail_url && (
+                        <button
+                            className="mt-8 mb-3 w-full overflow-hidden rounded-md border bg-muted/30 aspect-video focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            onClick={() => setThumbnailLightbox(true)}
+                            title="Click to expand thumbnail"
+                        >
+                            <img
+                                src={project.thumbnail_url}
+                                alt={getDisplayName(project)}
+                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                            />
+                        </button>
+                    )}
+
+                    <nav className={cn("space-y-1", (!sidebarCollapsed || sidebarHovered) && project.thumbnail_url ? "" : "mt-8")}>
                         {navItems.map((item) => {
                             const Icon = item.icon;
                             const isExpanded = !sidebarCollapsed || sidebarHovered;
@@ -419,6 +436,21 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         })}
                     </nav>
                 </aside>
+
+                {/* Thumbnail lightbox */}
+                {thumbnailLightbox && project.thumbnail_url && (
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                        onClick={() => setThumbnailLightbox(false)}
+                    >
+                        <img
+                            src={project.thumbnail_url}
+                            alt={getDisplayName(project)}
+                            className="max-w-[90vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </div>
+                )}
 
                 <main className="flex-1 overflow-auto p-6">
                     {activeSection === "overview" && (

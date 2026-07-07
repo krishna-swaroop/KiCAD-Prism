@@ -761,12 +761,11 @@ async def get_project_thumbnail(
     project_id: str, user: AuthenticatedUser = Depends(require_viewer)
 ):
     project = get_project_for_role_or_404(project_id, user.role)
-    # Use cached thumbnail path from DB, fallback to filesystem detection
     row = workspace.get_project_by_id(project_id)
     thumbnail_rel = row.get("thumbnail_rel") if row else None
+
+    # 1. Try thumbnail_rel relative to project path (works for in-volume projects)
     if thumbnail_rel:
-        # Contain the DB-sourced relative path within the project root so a
-        # tampered thumbnail_rel can't escape via '..' or an absolute path.
         try:
             abs_path = resolve_path_within_root(
                 project.path, thumbnail_rel, invalid_detail="Invalid thumbnail path"
@@ -774,14 +773,26 @@ async def get_project_thumbnail(
         except HTTPException:
             abs_path = None
         if abs_path and abs_path.is_file():
-            return FileResponse(
-                str(abs_path), headers={"Cache-Control": "public, max-age=300"}
-            )
-    # Fallback: live filesystem detection
+            return FileResponse(str(abs_path), headers={"Cache-Control": "no-cache"})
+
+    # 2. Central thumbnail store: {PROJECTS_ROOT}/.kicad-prism/thumbnails/{project_id}.png
+    #    Used for external projects whose path isn't inside the Docker volume.
+    from app.core.config import settings as _settings
+
+    central_thumb = (
+        Path(_settings.KICAD_PROJECTS_ROOT)
+        / ".kicad-prism"
+        / "thumbnails"
+        / f"{project_id}.png"
+    )
+    if central_thumb.is_file():
+        return FileResponse(str(central_thumb), headers={"Cache-Control": "no-cache"})
+
+    # 3. Fallback: live filesystem detection
     path = project_service.get_project_thumbnail_path(project_id)
     if not path:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
-    return FileResponse(path, headers={"Cache-Control": "public, max-age=300"})
+    return FileResponse(path, headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/{project_id}", response_model=project_service.Project)
@@ -1566,13 +1577,13 @@ async def get_project_3d_model(
         return _commit_file_response(
             commit_file,
             inline=True,
-            headers={"Cache-Control": "public, max-age=300"},
+            headers={"Cache-Control": "no-cache"},
         )
 
     path = project_service.find_3d_model(project.path)
     if not path:
         raise HTTPException(status_code=404, detail="3D model not found")
-    return FileResponse(path, headers={"Cache-Control": "public, max-age=300"})
+    return FileResponse(path, headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/{project_id}/ibom")
@@ -1942,6 +1953,31 @@ async def get_thumbnail_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@router.post("/{project_id}/thumbnail/set-rel")
+async def set_project_thumbnail_rel(
+    project_id: str,
+    body: dict,
+    user: AuthenticatedUser = Depends(require_designer),
+):
+    """Set thumbnail_rel for a project (used by local generation scripts)."""
+    from app.api._helpers import resolve_path_within_root
+    from app.services.workspace_service import workspace
+
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    rel = body.get("thumbnail_rel", "")
+    if not rel:
+        raise HTTPException(status_code=400, detail="thumbnail_rel is required")
+
+    # Validate path doesn't escape project root
+    resolve_path_within_root(row["path"], rel, invalid_detail="Invalid thumbnail path")
+
+    workspace.update_project(project_id, thumbnail_rel=rel)
+    return {"ok": True}
 
 
 @router.post("/{project_id}/thumbnail/generate")

@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Box, CalendarDays, FolderTree, GitBranch, GitCommit, PanelRightOpen, Tag, X } from "lucide-react";
 
 import { fetchJson } from "@/lib/api";
@@ -209,6 +210,7 @@ export function WorkspaceProjectPropertiesSheet({
   const [data, setData] = useState<ProjectPropertiesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState(false);
 
   useEffect(() => {
     if (!open || !project) {
@@ -307,11 +309,17 @@ export function WorkspaceProjectPropertiesSheet({
               <section className="space-y-4">
                 <div className="aspect-[4/3] overflow-hidden rounded-none border bg-muted/30">
                   {activeProject?.thumbnail_url ? (
-                    <img
-                      src={activeProject.thumbnail_url}
-                      alt={displayName}
-                      className="h-full w-full object-cover"
-                    />
+                    <button
+                      className="h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      onClick={() => setLightbox(true)}
+                      title="Click to expand"
+                    >
+                      <img
+                        src={activeProject.thumbnail_url}
+                        alt={displayName}
+                        className="h-full w-full object-cover hover:scale-105 transition-transform duration-300 cursor-zoom-in"
+                      />
+                    </button>
                   ) : (
                     <div className="flex h-full items-center justify-center text-muted-foreground">
                       <Box className="h-12 w-12 opacity-30" />
@@ -319,6 +327,21 @@ export function WorkspaceProjectPropertiesSheet({
                   )}
                 </div>
               </section>
+
+              {lightbox && activeProject?.thumbnail_url && createPortal(
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.85)" }}
+                  onClick={() => setLightbox(false)}
+                >
+                  <img
+                    src={activeProject.thumbnail_url}
+                    alt={displayName}
+                    style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain", borderRadius: "6px", boxShadow: "0 25px 60px rgba(0,0,0,0.8)" }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>,
+                document.body
+              )}
 
               <MetadataSection title="Project Details" icon={FolderTree}>
                 <MetadataRow label="Description" value={panelProject.description} />

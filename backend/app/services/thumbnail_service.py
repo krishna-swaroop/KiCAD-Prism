@@ -29,8 +29,9 @@ COLOR_COPPER_BURIED = (45, 110, 60, 255)  # copper under soldermask (darker gree
 COLOR_COPPER_EXPOSED = (180, 160, 100, 255)  # bare copper / pad (gold-ish grey)
 COLOR_SILKSCREEN = (240, 240, 240, 255)  # white silkscreen
 
-# Output size (longest edge in pixels)
-THUMBNAIL_SIZE = 512
+# Output size in pixels (16:9 to match the project card aspect-video container)
+THUMBNAIL_W = 640
+THUMBNAIL_H = 360
 # Margin as fraction of board dimension
 MARGIN = 0.05
 
@@ -38,6 +39,26 @@ MARGIN = 0.05
 # ---------------------------------------------------------------------------
 # S-expression helpers (reuse from sch_diff_service via pcb_diff_service pattern)
 # ---------------------------------------------------------------------------
+
+
+def _stroke_width(node: list, default: float = 0.12) -> float:
+    """Extract line width from a node, handling both KiCad 6 (width ...) and
+    KiCad 7+ (stroke (width ...)) formats."""
+    stroke = _get(node, "stroke")
+    if stroke:
+        wn = _get(stroke, "width")
+        if wn and len(wn) > 1:
+            try:
+                return float(wn[1])
+            except (ValueError, TypeError):
+                pass
+    wn = _get(node, "width")
+    if wn and len(wn) > 1:
+        try:
+            return float(wn[1])
+        except (ValueError, TypeError):
+            pass
+    return default
 
 
 def _xy(node: list) -> tuple[float, float]:
@@ -67,6 +88,15 @@ def _rotate(
     a = math.radians(-deg)
     ca, sa = math.cos(a), math.sin(a)
     lx, ly = px - ox, py - oy
+    return ox + lx * ca - ly * sa, oy + lx * sa + ly * ca
+
+
+def _local_to_board(
+    lx: float, ly: float, ox: float, oy: float, deg: float
+) -> tuple[float, float]:
+    """Transform a footprint-local point to board coordinates."""
+    a = math.radians(-deg)
+    ca, sa = math.cos(a), math.sin(a)
     return ox + lx * ca - ly * sa, oy + lx * sa + ly * ca
 
 
@@ -127,15 +157,13 @@ def _segments_and_arcs(tree: list, layer: str) -> list[dict]:
     for node in _get_all(tree, "segment"):
         ln = _get(node, "layer")
         if ln and len(ln) > 1 and ln[1] == layer:
-            wn = _get(node, "width")
-            w = float(wn[1]) if wn and len(wn) > 1 else 0.1
-            out.append({"kind": "segment", "node": node, "width": w})
+            out.append(
+                {"kind": "segment", "node": node, "width": _stroke_width(node, 0.1)}
+            )
     for node in _get_all(tree, "arc"):
         ln = _get(node, "layer")
         if ln and len(ln) > 1 and ln[1] == layer:
-            wn = _get(node, "width")
-            w = float(wn[1]) if wn and len(wn) > 1 else 0.1
-            out.append({"kind": "arc", "node": node, "width": w})
+            out.append({"kind": "arc", "node": node, "width": _stroke_width(node, 0.1)})
     return out
 
 
@@ -172,14 +200,17 @@ def _fp_silkscreen_lines(tree: list) -> list[dict]:
                 layer = ln[1] if ln and len(ln) > 1 else ""
                 if layer != "F.SilkS":
                     continue
-                wn = _get(node, "width")
-                w = float(wn[1]) if wn and len(wn) > 1 else 0.12
+                w = _stroke_width(node, 0.12)
                 if kind == "fp_circle":
                     cn = _get(node, "center")
                     en = _get(node, "end")
                     if cn and en:
-                        cx, cy = _rotate(float(cn[1]), float(cn[2]), ox, oy, rot)
-                        ex, ey = _rotate(float(en[1]), float(en[2]), ox, oy, rot)
+                        cx, cy = _local_to_board(
+                            float(cn[1]), float(cn[2]), ox, oy, rot
+                        )
+                        ex, ey = _local_to_board(
+                            float(en[1]), float(en[2]), ox, oy, rot
+                        )
                         out.append(
                             {
                                 "kind": "circle",
@@ -194,8 +225,12 @@ def _fp_silkscreen_lines(tree: list) -> list[dict]:
                     sn = _get(node, "start")
                     en = _get(node, "end")
                     if sn and en:
-                        sx, sy = _rotate(float(sn[1]), float(sn[2]), ox, oy, rot)
-                        ex, ey = _rotate(float(en[1]), float(en[2]), ox, oy, rot)
+                        sx, sy = _local_to_board(
+                            float(sn[1]), float(sn[2]), ox, oy, rot
+                        )
+                        ex, ey = _local_to_board(
+                            float(en[1]), float(en[2]), ox, oy, rot
+                        )
                         out.append(
                             {
                                 "kind": "line",
@@ -212,8 +247,6 @@ def _fp_silkscreen_lines(tree: list) -> list[dict]:
             ln = _get(node, "layer")
             if not (ln and len(ln) > 1 and ln[1] == "F.SilkS"):
                 continue
-            wn = _get(node, "width")
-            w = float(wn[1]) if wn and len(wn) > 1 else 0.12
             sn = _get(node, "start")
             en = _get(node, "end")
             if sn and en:
@@ -224,7 +257,7 @@ def _fp_silkscreen_lines(tree: list) -> list[dict]:
                         "sy": float(sn[2]),
                         "ex": float(en[1]),
                         "ey": float(en[2]),
-                        "width": w,
+                        "width": _stroke_width(node, 0.12),
                     }
                 )
     return out
@@ -313,7 +346,12 @@ def _w_px(w_mm: float, scale: float) -> int:
     return max(1, int(w_mm * scale))
 
 
-def render_thumbnail(pcb_path: str, out_path: str, size: int = THUMBNAIL_SIZE) -> None:
+def render_thumbnail(
+    pcb_path: str,
+    out_path: str,
+    img_w: int = THUMBNAIL_W,
+    img_h: int = THUMBNAIL_H,
+) -> None:
     from PIL import Image, ImageDraw
 
     text = Path(pcb_path).read_text(encoding="utf-8", errors="replace")
@@ -325,14 +363,6 @@ def render_thumbnail(pcb_path: str, out_path: str, size: int = THUMBNAIL_SIZE) -
         raise ValueError("No Edge.Cuts geometry found — cannot determine board outline")
 
     min_x, min_y, max_x, max_y = bbox
-    bw, bh = max_x - min_x, max_y - min_y
-    aspect = bw / bh if bh else 1.0
-
-    if aspect >= 1.0:
-        img_w, img_h = size, max(1, int(size / aspect))
-    else:
-        img_w, img_h = max(1, int(size * aspect)), size
-
     scale, tx, ty = _make_transform(bbox, img_w, img_h, MARGIN)
 
     img = Image.new("RGBA", (img_w, img_h), COLOR_BACKGROUND)
