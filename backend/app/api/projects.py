@@ -31,6 +31,7 @@ from app.services import (
     project_properties_service,
     project_service,
     sch_diff_service,
+    stackup_service,
 )
 from app.services.comments_url_service import (
     build_comments_source_urls,
@@ -853,6 +854,19 @@ def _build_project_properties(
             pcb=(ProjectPropertiesPcbFile(**pcb_metadata) if pcb_metadata else None),
         ),
     )
+
+
+@router.get("/{project_id}/stackup")
+async def get_project_stackup(
+    project_id: str, user: AuthenticatedUser = Depends(require_viewer)
+):
+    project = get_project_for_role_or_404(project_id, user.role)
+    pcb_path = project_service.find_pcb_file(project.path)
+    if not pcb_path:
+        raise HTTPException(
+            status_code=404, detail="No PCB file found for this project"
+        )
+    return await asyncio.to_thread(stackup_service.parse_stackup, pcb_path)
 
 
 @router.get("/{project_id}/overview")

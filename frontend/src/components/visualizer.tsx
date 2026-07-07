@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { Cpu, Box, FileText, List, MessageSquarePlus, MessageSquare, GitBranch, CircuitBoard, Link2, Copy, Check, RefreshCw, Layers } from "lucide-react";
+import { Cpu, Box, FileText, List, MessageSquarePlus, MessageSquare, GitBranch, CircuitBoard, Link2, Copy, Check, RefreshCw, Layers, LayoutList } from "lucide-react";
 import { BomDiffViewer } from "./bom-diff-viewer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -164,7 +164,7 @@ function CommitDiffOverlay({ markers, viewerRef }: {
     );
 }
 
-type VisualizerTab = "sch" | "pcb" | "3d" | "ibom" | "bom" | "gerber";
+type VisualizerTab = "sch" | "pcb" | "3d" | "ibom" | "bom" | "gerber" | "stackup";
 
 interface CommentsSourceUrls {
     project_id: string;
@@ -178,6 +178,26 @@ interface CommentsSourceUrls {
 
 const isAbortError = (error: unknown): boolean =>
     error instanceof DOMException && error.name === "AbortError";
+
+interface StackupLayer {
+    name: string;
+    type: string;
+    thickness: number | null;
+    material: string | null;
+    epsilon_r: number | null;
+    loss_tangent: number | null;
+    color: string | null;
+}
+
+interface StackupData {
+    has_stackup: boolean;
+    board_thickness: number | null;
+    copper_finish: string | null;
+    edge_connector: string | null;
+    castellated_pads: boolean;
+    edge_plating: boolean;
+    layers: StackupLayer[];
+}
 
 const CROSS_PROBE_MAX_RETRIES = 12;
 const CROSS_PROBE_RETRY_DELAY_MS = 120;
@@ -199,6 +219,167 @@ const buildViewerKey = (
     return `${kind}:${projectId}:${commit ?? "latest"}:${signature}`;
 };
 
+
+function layerVisualColor(layerType: string): string {
+    const t = layerType.toLowerCase();
+    if (t === "copper") return "#c8a84b";
+    if (t.includes("silk")) return "#f0f0f0";
+    if (t.includes("mask")) return "#2d7040";
+    if (t.includes("paste")) return "#888";
+    if (t === "core") return "#d4b896";
+    if (t === "prepreg") return "#c9a87a";
+    return "#a0c8a0";
+}
+
+function layerDisplayType(layerType: string): string {
+    const t = layerType.toLowerCase();
+    if (t === "copper") return "Copper";
+    if (t === "core") return "Core";
+    if (t === "prepreg") return "Prepreg";
+    if (t.includes("silk")) return "Silk Screen";
+    if (t.includes("mask")) return "Solder Mask";
+    if (t.includes("paste")) return "Solder Paste";
+    return layerType;
+}
+
+function StackupPanel({ data, error, loaded }: { data: StackupData | null; error: string | null; loaded: boolean }) {
+    if (!loaded) {
+        return (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+                <p>Loading stackup...</p>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+                <p>{error}</p>
+            </div>
+        );
+    }
+
+    if (!data) {
+        return (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+                <p>No stackup data available.</p>
+            </div>
+        );
+    }
+
+    const totalThickness = data.layers.reduce((sum, l) => sum + (l.thickness ?? 0), 0);
+    const displayThickness = data.board_thickness ?? (totalThickness > 0 ? totalThickness : null);
+
+    type PropRow = { label: string; value: string };
+    const extraProps: PropRow[] = [];
+    if (data.copper_finish)  extraProps.push({ label: "Copper finish", value: data.copper_finish });
+    extraProps.push({ label: "Edge connector",    value: data.edge_connector && data.edge_connector !== "no" ? data.edge_connector : "No" });
+    extraProps.push({ label: "Castellated pads",  value: data.castellated_pads ? "Yes" : "No" });
+    extraProps.push({ label: "Plated board edge", value: data.edge_plating ? "Yes" : "No" });
+
+    return (
+        <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
+            {/* Thickness + warning */}
+            <div>
+                {!data.has_stackup && (
+                    <p className="text-xs text-amber-500">
+                        No explicit stackup in PCB file — showing estimated layer structure.
+                    </p>
+                )}
+                {displayThickness != null && (
+                    <p className="text-xs text-muted-foreground">
+                        Total thickness: <span className="font-medium text-foreground">{displayThickness.toFixed(3)} mm</span>
+                    </p>
+                )}
+            </div>
+
+            {/* Cross-section diagram */}
+            {data.layers.length > 0 && (
+                <div className="flex">
+                    <div className="flex-1 border rounded overflow-hidden">
+                        {data.layers.map((layer, i) => {
+                            const color = layerVisualColor(layer.type);
+                            const t = layer.type.toLowerCase();
+                            const isThin = t.includes("silk") || t.includes("paste");
+                            const isMask = t.includes("mask");
+                            const isCopper = t === "copper";
+                            const heightPx = isThin ? 10 : isMask ? 18 : isCopper ? 30 : 56;
+                            return (
+                                <div
+                                    key={i}
+                                    className="flex items-center px-4"
+                                    style={{ backgroundColor: color, height: heightPx }}
+                                    title={`${layer.name} — ${layer.type}${layer.thickness ? ` — ${layer.thickness} mm` : ""}`}
+                                >
+                                    <span className="text-[11px] font-medium select-none truncate leading-none" style={{ color: "rgba(0,0,0,0.65)" }}>
+                                        {layer.name}{layer.thickness ? ` — ${layer.thickness} mm` : ""}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                </div>
+            )}
+
+            {/* Detail Table */}
+            {data.layers.length > 0 && (
+                <div className="rounded border overflow-x-auto">
+                    <table className="w-full text-xs">
+                        <thead>
+                            <tr className="border-b bg-muted/30 text-muted-foreground uppercase tracking-wider">
+                                <th className="text-left px-3 py-2 font-medium">Layer</th>
+                                <th className="text-left px-3 py-2 font-medium">Type</th>
+                                <th className="text-right px-3 py-2 font-medium">mm</th>
+                                <th className="text-left px-3 py-2 font-medium">Material</th>
+                                <th className="text-right px-3 py-2 font-medium">εr</th>
+                                <th className="text-right px-3 py-2 font-medium">tan δ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {data.layers.map((layer, i) => (
+                                <tr key={i} className="border-b last:border-0 hover:bg-muted/20">
+                                    <td className="px-3 py-1.5 font-mono">
+                                        <span
+                                            className="inline-block w-2 h-2 rounded-sm mr-1.5 align-middle shrink-0"
+                                            style={{ backgroundColor: layerVisualColor(layer.type) }}
+                                        />
+                                        {layer.name}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-muted-foreground">{layerDisplayType(layer.type)}</td>
+                                    <td className="px-3 py-1.5 text-right tabular-nums">
+                                        {layer.thickness != null ? layer.thickness.toFixed(4) : "—"}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-muted-foreground">{layer.material ?? "—"}</td>
+                                    <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
+                                        {layer.epsilon_r != null ? layer.epsilon_r : "—"}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
+                                        {layer.loss_tangent != null ? layer.loss_tangent : "—"}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Board properties — single compact column */}
+            <div className="space-y-1 text-xs">
+                {extraProps.map(({ label, value }) => (
+                    <div key={label} className="flex gap-2">
+                        <span className="text-muted-foreground whitespace-nowrap">{label}</span>
+                        <span className="font-medium">{value}</span>
+                    </div>
+                ))}
+            </div>
+
+            {data.layers.length === 0 && (
+                <p className="text-xs text-muted-foreground">No layer data found in the PCB file.</p>
+            )}
+        </div>
+    );
+}
 
 export function Visualizer({ projectId, user, commit }: VisualizerProps) {
     const [schematicViewerElement, setSchematicViewerElement] = useState<ECadViewerElement | null>(null);
@@ -252,6 +433,9 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
     const [schematicContentLoaded, setSchematicContentLoaded] = useState(false);
     const [pcbContentLoaded, setPcbContentLoaded] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [stackupData, setStackupData] = useState<StackupData | null>(null);
+    const [stackupError, setStackupError] = useState<string | null>(null);
+    const [stackupLoaded, setStackupLoaded] = useState(false);
 
     const [comments, setComments] = useState<Comment[]>([]);
     const [activePage, setActivePage] = useState<string>("root.kicad_sch");
@@ -721,6 +905,18 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         return () => controller.abort();
     }, [projectId, commit]);
 
+    // Lazy load stackup when stackup tab is first accessed
+    useEffect(() => {
+        if (activeTab !== "stackup" || stackupLoaded) return;
+        const controller = new AbortController();
+        fetch(`/api/projects/${projectId}/stackup`, { signal: controller.signal })
+            .then(r => r.ok ? r.json() as Promise<StackupData> : Promise.reject(new Error("Not found")))
+            .then(d => { setStackupData(d); setStackupError(null); })
+            .catch(e => { if (!(e instanceof DOMException && e.name === "AbortError")) setStackupError("Failed to load stackup data"); })
+            .finally(() => { if (!controller.signal.aborted) setStackupLoaded(true); });
+        return () => controller.abort();
+    }, [activeTab, stackupLoaded, projectId]);
+
     // Reset lazy loading flags when project changes
     useEffect(() => {
         setSchematicContentLoaded(false);
@@ -732,6 +928,9 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         setIbomUrl(null);
         setComments([]);
         setCommentsSourceUrls(null);
+        setStackupData(null);
+        setStackupError(null);
+        setStackupLoaded(false);
         setActivePage("root.kicad_sch");
         setCommentMode(false);
         setShowCommentForm(false);
@@ -1108,6 +1307,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         { id: "bom", label: "BOM", icon: List },
         ...(ibomEnabled ? [{ id: "ibom" as VisualizerTab, label: "iBoM", icon: FileText }] : []),
         { id: "gerber", label: "Gerber", icon: Layers },
+        { id: "stackup", label: "Stackup", icon: LayoutList },
     ];
 
     if (loading) return <div className="flex justify-center items-center h-full">Loading Visualizer...</div>;
@@ -1425,6 +1625,13 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                 {activeTab === "ibom" && (
                     <div className="absolute inset-0 z-20 bg-white">
                         {ibomUrl ? <iframe src={ibomUrl} className="w-full h-full border-0" /> : <div className="p-10">No iBoM Found</div>}
+                    </div>
+                )}
+
+                {/* Stackup View */}
+                {activeTab === "stackup" && (
+                    <div className="absolute inset-0 z-20 bg-background overflow-y-auto">
+                        <StackupPanel data={stackupData} error={stackupError} loaded={stackupLoaded} />
                     </div>
                 )}
 
