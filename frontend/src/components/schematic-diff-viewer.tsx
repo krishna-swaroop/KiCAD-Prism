@@ -3,7 +3,7 @@ import {
 } from "react";
 import {
     X, Loader2, AlertCircle, ChevronLeft, ChevronRight,
-    Plus, Minus, RefreshCw, MapPin,
+    Plus, Minus, RefreshCw, MapPin, Eye, EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ECadViewerElement } from "@/types/ecad-viewer";
@@ -17,7 +17,7 @@ import {
     useViewerHotkeys,
     useViewerReadiness,
 } from "@/components/ecad-viewer-shared";
-import { categorise, CATEGORY_META } from "@/lib/diff-grouping";
+import { categorise, CATEGORY_META, categoryFor, type Category } from "@/lib/diff-grouping";
 import { useCrossProbeRunner } from "@/lib/cross-probe-retry";
 
 // ---------------------------------------------------------------------------
@@ -576,11 +576,25 @@ export function SchematicDiffViewer({
     const [showing, setShowing] = useState<"new" | "old">("new");
     const [activeMarker, setActiveMarker] = useState<DiffMarker | null>(null);
 
+    // Parsing backend used to compute the diff: in-house ("native") or
+    // kicad_monkey ("monkey"). Changing it refetches the diff. Lets us compare
+    // the two parsers' results side by side on the same commits.
+    const [parser, setParser] = useState<"native" | "monkey">("native");
+
     // Visibility toggles
     const [showOverlay, setShowOverlay] = useState(true);
     const [showAdded, setShowAdded] = useState(true);
     const [showRemoved, setShowRemoved] = useState(true);
     const [showChanged, setShowChanged] = useState(true);
+    const [hiddenCategories, setHiddenCategories] = useState<Set<Category>>(new Set());
+
+    const toggleCategory = useCallback((cat: Category) => {
+        setHiddenCategories(prev => {
+            const next = new Set(prev);
+            if (next.has(cat)) next.delete(cat); else next.add(cat);
+            return next;
+        });
+    }, []);
 
     // Two always-mounted viewers — swapping visibility preserves pan/zoom state
     const newViewerRef = useRef<ECadViewerElement | null>(null);
@@ -845,7 +859,7 @@ export function SchematicDiffViewer({
     useEffect(() => {
         setLoading(true);
         setError(null);
-        const params = new URLSearchParams({ commit1, commit2 });
+        const params = new URLSearchParams({ commit1, commit2, parser });
         fetch(`/api/projects/${projectId}/schematic-diff?${params}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -869,9 +883,10 @@ export function SchematicDiffViewer({
                 setLoading(false);
             });
     // focusFilename intentionally read at effect-creation time only — we don't
-    // want fetch to re-fire when it changes.
+    // want fetch to re-fire when it changes. `parser` IS a dep: switching the
+    // parsing backend refetches the diff.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectId, commit1, commit2]);
+    }, [projectId, commit1, commit2, parser]);
 
     const activeSheetData = data?.sheets.find(s => s.filename === activeSheet) ?? null;
 
@@ -901,6 +916,7 @@ export function SchematicDiffViewer({
 
     // Filtered markers shown on the overlay
     const visibleMarkers = !showOverlay ? [] : allMarkers.filter((m) => {
+        if (hiddenCategories.has(categoryFor(m.item.type))) return false;
         if (m.kind === "added"   && !showAdded)   return false;
         if (m.kind === "removed" && !showRemoved)  return false;
         if (m.kind === "changed" && !showChanged)  return false;
@@ -1163,6 +1179,29 @@ export function SchematicDiffViewer({
                         </div>
                     )}
 
+                    {/* Parser backend toggle — compare native vs kicad_monkey */}
+                    {data && (
+                        <div className="px-3 pt-1 pb-2 shrink-0">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 px-1">Parser</p>
+                            <div className="flex rounded-md border overflow-hidden text-xs font-medium w-full">
+                                <button
+                                    className={`flex-1 py-1.5 transition-colors ${parser === "native" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                    onClick={() => setParser("native")}
+                                    title="In-house s-expression parser"
+                                >
+                                    Native
+                                </button>
+                                <button
+                                    className={`flex-1 py-1.5 transition-colors ${parser === "monkey" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                    onClick={() => setParser("monkey")}
+                                    title="kicad_monkey parser"
+                                >
+                                    Monkey
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Filter toggles */}
                     {data && (
                         <div className="px-3 pt-2 pb-2 shrink-0 space-y-1">
@@ -1259,9 +1298,9 @@ export function SchematicDiffViewer({
                             <p className="text-xs text-muted-foreground px-4 py-4 text-center">No changes detected</p>
                         )}
                         {data && (() => {
-                            // Build categorised groups from the visible markers list.
-                            // SchItem matches the GroupableItem shape (type + identity fields) so we pass through directly.
-                            const groups = categorise(visibleMarkers.map(m => ({ kind: m.kind, item: m.item })));
+                            // Sidebar always shows ALL markers (hidden categories stay
+                            // listed but their overlay highlights are suppressed).
+                            const groups = categorise(allMarkers.map(m => ({ kind: m.kind, item: m.item })));
                             // Reverse-lookup so a clicked sub-row routes back to its DiffMarker.
                             const markerByUuid = new Map(allMarkers.map(m => [m.item.uuid, m] as const));
                             // Group the buckets by category so we render a single
@@ -1273,14 +1312,20 @@ export function SchematicDiffViewer({
                                 const catGroups = groups.filter(g => g.category === catKey);
                                 const catLabel = CATEGORY_META[catKey].label;
                                 const total = catGroups.reduce((s, g) => s + g.members.length, 0);
+                                const hidden = hiddenCategories.has(catKey);
                                 return (
                                     <div key={catKey} className="mb-1">
-                                        <p
-                                            className="text-[10px] uppercase tracking-wider px-3 py-1 sticky top-0 bg-background font-medium flex items-center gap-2"
-                                        >
+                                        <div className="text-[10px] uppercase tracking-wider px-3 py-1 sticky top-0 bg-background font-medium flex items-center gap-2">
                                             <span>{catLabel}</span>
-                                            <span className="ml-auto font-mono text-[10px] opacity-70">{total}</span>
-                                        </p>
+                                            <span className="font-mono text-[10px] opacity-70">{total}</span>
+                                            <button
+                                                onClick={() => toggleCategory(catKey)}
+                                                className="ml-auto opacity-50 hover:opacity-100 transition-opacity"
+                                                title={hidden ? "Show highlights" : "Hide highlights"}
+                                            >
+                                                {hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                            </button>
+                                        </div>
                                         {catGroups.map((group) => (
                                             <div key={group.id}>
                                                 {group.members.map((member) => {

@@ -49,7 +49,12 @@ def _at_with_rot(lst: list) -> tuple:
 
 
 def _pad_sig(pad: list) -> str:
-    """Stable signature for a single pad: number, type, shape, layers, net, size, drill, position."""
+    """Stable signature for a single pad: number, type, shape, layers, size, drill, position.
+
+    Net is intentionally excluded: net indices are renumbered by KiCad whenever
+    any footprint is added/removed, so including them would flag every pad on
+    every component as changed even when nothing moved.
+    """
     number = pad[1] if len(pad) > 1 and isinstance(pad[1], str) else ""
     pad_type = pad[2] if len(pad) > 2 and isinstance(pad[2], str) else ""
     shape = pad[3] if len(pad) > 3 and isinstance(pad[3], str) else ""
@@ -61,13 +66,11 @@ def _pad_sig(pad: list) -> str:
     sh = float(size_node[2]) if size_node and len(size_node) > 2 else 0.0
     drill_node = _get(pad, "drill")
     dr = float(drill_node[1]) if drill_node and len(drill_node) > 1 else 0.0
-    net_node = _get(pad, "net")
-    net = str(net_node[1]) if net_node and len(net_node) > 1 else ""
     layers_node = _get(pad, "layers")
     layers = ",".join(
         str(layer_name) for layer_name in (layers_node[1:] if layers_node else [])
     )
-    return f"{number}:{pad_type}:{shape}:{px:.4f},{py:.4f}:{sw:.4f},{sh:.4f}:{dr:.4f}:{net}:{layers}"
+    return f"{number}:{pad_type}:{shape}:{px:.4f},{py:.4f}:{sw:.4f},{sh:.4f}:{dr:.4f}:{layers}"
 
 
 def _extract_footprints(tree: list) -> dict:
@@ -97,7 +100,303 @@ def _extract_footprints(tree: list) -> dict:
     return result
 
 
-def _extract_segments(tree: list) -> dict:
+# Footprint graphic child node kinds we itemise as standalone diff items.
+_FP_GRAPHIC_KINDS = (
+    "fp_line",
+    "fp_text",
+    "fp_arc",
+    "fp_circle",
+    "fp_rect",
+    "fp_poly",
+)
+
+
+def _xy(node: list) -> tuple:
+    """Return (x, y) floats from a 2-coord node like (start x y) / (center x y)."""
+    if node and len(node) >= 3:
+        try:
+            return float(node[1]), float(node[2])
+        except (ValueError, TypeError):
+            pass
+    return 0.0, 0.0
+
+
+def _apply_fp_transform(
+    lx: float, ly: float, ox: float, oy: float, rot_deg: float
+) -> tuple:
+    """Transform a footprint-local point to board space.
+
+    KiCad footprint graphics are stored in the footprint's local frame; the
+    footprint's (at x y rot) places and rotates them on the board. We rotate by
+    -rot (KiCad's positive rotation is counter-clockwise on a y-down board) and
+    translate by the footprint origin so overlay positions land on the board.
+    """
+    import math
+
+    a = math.radians(-rot_deg)
+    ca, sa = math.cos(a), math.sin(a)
+    return ox + lx * ca - ly * sa, oy + lx * sa + ly * ca
+
+
+def _fp_graphic_geo_sig(kind: str, node: list) -> str:
+    """Local-geometry signature for one footprint graphic.
+
+    Uses footprint-LOCAL coordinates so the signature is invariant to the
+    parent footprint moving/rotating — only an actual edit of the graphic
+    changes it. Identity (the dict key) is the graphic's own uuid, so a single
+    silk element can be pinpointed instead of the whole footprint flagging.
+    """
+    if kind == "fp_text":
+        text = node[2] if len(node) > 2 and isinstance(node[2], str) else ""
+        return f"t:{text}"
+    if kind in ("fp_line", "fp_rect"):
+        sx, sy = _xy(_get(node, "start"))
+        ex, ey = _xy(_get(node, "end"))
+        return f"{sx:.4f},{sy:.4f}-{ex:.4f},{ey:.4f}"
+    if kind == "fp_circle":
+        cx, cy = _xy(_get(node, "center"))
+        ex, ey = _xy(_get(node, "end"))
+        return f"c:{cx:.4f},{cy:.4f} e:{ex:.4f},{ey:.4f}"
+    if kind == "fp_arc":
+        sx, sy = _xy(_get(node, "start"))
+        mx, my = _xy(_get(node, "mid"))
+        ex, ey = _xy(_get(node, "end"))
+        return f"s:{sx:.4f},{sy:.4f} m:{mx:.4f},{my:.4f} e:{ex:.4f},{ey:.4f}"
+    if kind == "fp_poly":
+        pts = _get(node, "pts")
+        xys = _get_all(pts, "xy") if pts else []
+        return ";".join(
+            f"{float(p[1]):.4f},{float(p[2]):.4f}" for p in xys if len(p) > 2
+        )
+    return ""
+
+
+# Padding added to every edge of the text bounding box (mm). Gives a small
+# visible gap between the border and the ink.
+_TEXT_BOX_PAD_MM = 0.25
+
+
+def _resolved_text(text: str, reference: str = "", value: str = "") -> str:
+    """Resolve KiCad text variables (${REFERENCE}, ${VALUE}, …)."""
+    import re
+
+    t = text or ""
+    t = t.replace("${REFERENCE}", reference or "REF")
+    t = t.replace("${VALUE}", value or "VAL")
+    return re.sub(r"\$\{[^}]*\}", "REF", t)
+
+
+def text_local_corners(
+    text: str,
+    ax: float,
+    ay: float,
+    t_angle: float,
+    size_x: float,
+    size_y: float,
+    justify: str,
+    *,
+    reference: str = "",
+    value: str = "",
+) -> list:
+    """Exact bounding box of a rendered text item, as 4 world-space corners.
+
+    Uses kicad_monkey's stroke font renderer (same glyph data as KiCad) to
+    render the text to polylines at the given anchor/angle/size/justify, then
+    takes the axis-aligned bbox of all stroke points and adds a small padding.
+    Returns 4 corners in the same coordinate frame as (ax, ay).
+    """
+    from kicad_monkey.kicad_stroke_font import get_renderer
+
+    resolved = _resolved_text(text, reference, value)
+    h_align = (
+        "right" if "right" in justify else "center" if "left" not in justify else "left"
+    )
+    v_align = (
+        "top" if "top" in justify else "center" if "bottom" not in justify else "bottom"
+    )
+
+    polylines = get_renderer().render_text_polylines(
+        resolved,
+        ax,
+        ay,
+        size_x,
+        size_y,
+        angle=t_angle,
+        h_align=h_align,
+        v_align=v_align,
+    )
+
+    all_pts = [pt for pl in polylines for pt in pl]
+    if not all_pts:
+        # Empty string or all spaces — return a tiny box at the anchor.
+        p = _TEXT_BOX_PAD_MM
+        return [(ax - p, ay - p), (ax + p, ay - p), (ax + p, ay + p), (ax - p, ay + p)]
+
+    p = _TEXT_BOX_PAD_MM
+    min_x = min(pt[0] for pt in all_pts) - p
+    max_x = max(pt[0] for pt in all_pts) + p
+    min_y = min(pt[1] for pt in all_pts) - p
+    max_y = max(pt[1] for pt in all_pts) + p
+    return [(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)]
+
+
+def _fp_graphic_board_points(
+    kind: str,
+    node: list,
+    ox: float,
+    oy: float,
+    rot: float,
+    *,
+    reference: str = "",
+    value: str = "",
+) -> list:
+    """Board-space points describing the graphic's extent, for the overlay bbox.
+
+    Returns transformed (x, y) tuples in board coordinates. The frontend builds
+    a bounding box from these, so the box hugs the actual graphic wherever the
+    footprint sits/rotates. Separate from geo_sig (which stays local for diffing).
+    """
+
+    def tf(lx, ly):
+        return _apply_fp_transform(lx, ly, ox, oy, rot)
+
+    if kind in ("fp_line",):
+        return [tf(*_xy(_get(node, "start"))), tf(*_xy(_get(node, "end")))]
+    if kind == "fp_rect":
+        sx, sy = _xy(_get(node, "start"))
+        ex, ey = _xy(_get(node, "end"))
+        # All four corners so rotation produces a correct enclosing box.
+        return [tf(sx, sy), tf(ex, sy), tf(ex, ey), tf(sx, ey)]
+    if kind == "fp_circle":
+        cx, cy = _xy(_get(node, "center"))
+        ex, ey = _xy(_get(node, "end"))
+        r = ((ex - cx) ** 2 + (ey - cy) ** 2) ** 0.5
+        # Bounding square of the circle in local space, then transformed.
+        return [
+            tf(cx - r, cy - r),
+            tf(cx + r, cy - r),
+            tf(cx + r, cy + r),
+            tf(cx - r, cy + r),
+        ]
+    if kind == "fp_arc":
+        return [
+            tf(*_xy(_get(node, "start"))),
+            tf(*_xy(_get(node, "mid"))),
+            tf(*_xy(_get(node, "end"))),
+        ]
+    if kind == "fp_poly":
+        pts = _get(node, "pts")
+        xys = _get_all(pts, "xy") if pts else []
+        return [tf(float(p[1]), float(p[2])) for p in xys if len(p) > 2]
+    if kind == "fp_text":
+        # fp_text (at lx ly angle): lx/ly is footprint-local; angle is BOARD-SPACE
+        # (KiCad stores it pre-rotated so the text reads correctly regardless of
+        # footprint orientation). We therefore:
+        #   1. Convert the footprint-local anchor to board space via tf().
+        #   2. Rotate the glyph corners by the board-space text angle about that
+        #      board-space anchor — no extra footprint rotation applied to the angle.
+        at = _get(node, "at")
+        ax, ay = _xy(at)
+        t_angle = float(at[3]) if at and len(at) > 3 else 0.0
+        text = node[2] if len(node) > 2 and isinstance(node[2], str) else ""
+        eff = _get(node, "effects")
+        font = _get(eff, "font") if eff else None
+        size = _get(font, "size") if font else None
+        size_x = float(size[1]) if size and len(size) > 1 else 1.0
+        size_y = float(size[2]) if size and len(size) > 2 else size_x
+        just_node = _get(eff, "justify") if eff else None
+        justify = " ".join(str(a) for a in just_node[1:]) if just_node else ""
+        # Board-space anchor position.
+        bx, by = tf(ax, ay)
+        # text_local_corners with anchor=(bx,by) and board-space t_angle gives
+        # corners already in board space — no further transform needed.
+        return text_local_corners(
+            text,
+            bx,
+            by,
+            t_angle,
+            size_x,
+            size_y,
+            justify,
+            reference=reference,
+            value=value,
+        )
+    return []
+
+
+def _extract_fp_graphics(tree: list) -> dict:
+    """Itemise each footprint graphic (silkscreen, fab, courtyard, …).
+
+    Each fp_line / fp_text / fp_arc / fp_circle / fp_rect / fp_poly becomes its
+    own diff item keyed by `<footprint-uuid>:<graphic-uuid>` so a single changed
+    silk element is pinpointed rather than the whole footprint flagging.
+
+    Geometry is emitted in BOARD space (`polygon_points`, plus start/end for
+    lines) so the overlay box hugs the real graphic. The comparison signature
+    (`geo_sig`) stays footprint-LOCAL so moving the footprint does not spuriously
+    flag its silk as edited.
+    """
+    result = {}
+    for fp in _get_all(tree, "footprint"):
+        fp_uid = _uuid(fp)
+        if not fp_uid:
+            continue
+        ox, oy, rot = _at_with_rot(fp)
+        ref = _property(fp, "Reference") or ""
+        val = _property(fp, "Value") or ""
+        for kind in _FP_GRAPHIC_KINDS:
+            for node in _get_all(fp, kind):
+                g_uid = _uuid(node)
+                if not g_uid:
+                    continue
+                layer_node = _get(node, "layer")
+                layer = layer_node[1] if layer_node and len(layer_node) > 1 else ""
+                board_pts = _fp_graphic_board_points(
+                    kind, node, ox, oy, rot, reference=ref, value=val
+                )
+                # Anchor (x/y) = centroid of the board-space points, so the
+                # overlay falls on the graphic even when there's no bbox path.
+                if board_pts:
+                    bx = sum(p[0] for p in board_pts) / len(board_pts)
+                    by = sum(p[1] for p in board_pts) / len(board_pts)
+                else:
+                    bx, by = ox, oy
+                text = (
+                    node[2]
+                    if kind == "fp_text" and len(node) > 2 and isinstance(node[2], str)
+                    else ""
+                )
+                item = {
+                    "type": kind,
+                    "uuid": f"{fp_uid}:{g_uid}",
+                    "x": bx,
+                    "y": by,
+                    "layer": layer,
+                    "text": text,
+                    "geo_sig": _fp_graphic_geo_sig(kind, node),
+                    "parent_ref": ref,
+                    # Board-space outline for the overlay bbox.
+                    "polygon_points": [[p[0], p[1]] for p in board_pts],
+                }
+                # Lines also expose start/end so the frontend's segment-style
+                # bbox path applies (with stroke-width padding).
+                if kind == "fp_line" and len(board_pts) >= 2:
+                    item["start_x"], item["start_y"] = board_pts[0]
+                    item["end_x"], item["end_y"] = board_pts[1]
+                result[item["uuid"]] = item
+    return result
+
+
+def _build_net_names(tree: list) -> dict:
+    """Return {net_index_str → net_name} from top-level (net N "name") nodes."""
+    names: dict = {}
+    for node in _get_all(tree, "net"):
+        if len(node) >= 3:
+            names[str(node[1])] = str(node[2])
+    return names
+
+
+def _extract_segments(tree: list, net_names: dict | None = None) -> dict:
     result = {}
     for item in _get_all(tree, "segment"):
         start = _get(item, "start")
@@ -112,11 +411,14 @@ def _extract_segments(tree: list) -> dict:
         layer_node = _get(item, "layer")
         layer = layer_node[1] if layer_node and len(layer_node) > 1 else ""
         net_node = _get(item, "net")
-        net = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_idx = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_name = (net_names or {}).get(net_idx, net_idx)
         width_node = _get(item, "width")
         width = float(width_node[1]) if width_node and len(width_node) > 1 else 0.0
-        # Key by geometry — KiCAD regenerates UUIDs on every save so they are not stable
-        geo_key = f"seg:{sx:.4f},{sy:.4f}-{ex:.4f},{ey:.4f}:{layer}:{net}:{width:.4f}"
+        # Key by geometry only — net is a property, not identity.
+        # Dropping net from the key means index renumbering (which KiCad does on
+        # every footprint add/remove) and net renames don't create ghost adds/removes.
+        geo_key = f"seg:{sx:.4f},{sy:.4f}-{ex:.4f},{ey:.4f}:{layer}:{width:.4f}"
         result[geo_key] = {
             "type": "segment",
             "uuid": geo_key,
@@ -127,13 +429,14 @@ def _extract_segments(tree: list) -> dict:
             "end_x": ex,
             "end_y": ey,
             "layer": layer,
-            "net": net,
+            "net": net_idx,
+            "net_name": net_name,
             "width": width,
         }
     return result
 
 
-def _extract_vias(tree: list) -> dict:
+def _extract_vias(tree: list, net_names: dict | None = None) -> dict:
     result = {}
     for item in _get_all(tree, "via"):
         x, y = _at(item)
@@ -142,18 +445,17 @@ def _extract_vias(tree: list) -> dict:
         drill_node = _get(item, "drill")
         drill = float(drill_node[1]) if drill_node and len(drill_node) > 1 else 0.0
         net_node = _get(item, "net")
-        net = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_idx = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_name = (net_names or {}).get(net_idx, net_idx)
         layers_node = _get(item, "layers")
         start_layer = layers_node[1] if layers_node and len(layers_node) > 1 else ""
         end_layer = layers_node[2] if layers_node and len(layers_node) > 2 else ""
-        # via type: 'blind', 'micro', or default 'through'
         via_type = "through"
         for atom in item:
             if atom in ("blind", "micro"):
                 via_type = atom
                 break
-        # Key by geometry for same reason as segments
-        geo_key = f"via:{x:.4f},{y:.4f}:{size:.4f}:{drill:.4f}:{net}"
+        geo_key = f"via:{x:.4f},{y:.4f}:{size:.4f}:{drill:.4f}"
         result[geo_key] = {
             "type": "via",
             "uuid": geo_key,
@@ -161,7 +463,8 @@ def _extract_vias(tree: list) -> dict:
             "y": y,
             "size": size,
             "drill": drill,
-            "net": net,
+            "net": net_idx,
+            "net_name": net_name,
             "start_layer": start_layer,
             "end_layer": end_layer,
             "via_type": via_type,
@@ -289,8 +592,27 @@ def _extract_gr_items(tree: list) -> dict:
             layer = layer_node[1] if layer_node and len(layer_node) > 1 else ""
             text = ""
             geo_sig = ""
+            polygon_points: list = []
             if kind == "gr_text" and len(item) > 1 and isinstance(item[1], str):
                 text = item[1]
+                # Compute exact text corners from font metrics so the overlay
+                # polygon wraps the actual glyphs (no fixed-size guess).
+                at_node = _get(item, "at")
+                ax = float(at_node[1]) if at_node and len(at_node) > 1 else x
+                ay = float(at_node[2]) if at_node and len(at_node) > 2 else y
+                t_angle = float(at_node[3]) if at_node and len(at_node) > 3 else 0.0
+                eff = _get(item, "effects")
+                font = _get(eff, "font") if eff else None
+                size = _get(font, "size") if font else None
+                size_x = float(size[1]) if size and len(size) > 1 else 1.0
+                size_y = float(size[2]) if size and len(size) > 2 else size_x
+                just_node = _get(eff, "justify") if eff else None
+                justify = " ".join(str(a) for a in just_node[1:]) if just_node else ""
+                corners = text_local_corners(
+                    text, ax, ay, t_angle, size_x, size_y, justify
+                )
+                polygon_points = [[p[0], p[1]] for p in corners]
+                geo_sig = f"t:{text}"
             elif kind == "gr_line":
                 start = _get(item, "start")
                 end = _get(item, "end")
@@ -340,11 +662,12 @@ def _extract_gr_items(tree: list) -> dict:
                 "layer": layer,
                 "text": text,
                 "geo_sig": geo_sig,
+                "polygon_points": polygon_points,
             }
     return result
 
 
-def _extract_arcs(tree: list) -> dict:
+def _extract_arcs(tree: list, net_names: dict | None = None) -> dict:
     """Curved track arcs (type='arc' in PCB routing layer)."""
     result = {}
     for item in _get_all(tree, "arc"):
@@ -362,10 +685,11 @@ def _extract_arcs(tree: list) -> dict:
         layer_node = _get(item, "layer")
         layer = layer_node[1] if layer_node and len(layer_node) > 1 else ""
         net_node = _get(item, "net")
-        net = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_idx = str(net_node[1]) if net_node and len(net_node) > 1 else ""
+        net_name = (net_names or {}).get(net_idx, net_idx)
         width_node = _get(item, "width")
         width = float(width_node[1]) if width_node and len(width_node) > 1 else 0.0
-        geo_key = f"arc:{sx:.4f},{sy:.4f}-{mx:.4f},{my:.4f}-{ex:.4f},{ey:.4f}:{layer}:{net}:{width:.4f}"
+        geo_key = f"arc:{sx:.4f},{sy:.4f}-{mx:.4f},{my:.4f}-{ex:.4f},{ey:.4f}:{layer}:{width:.4f}"
         result[geo_key] = {
             "type": "arc",
             "uuid": geo_key,
@@ -378,20 +702,23 @@ def _extract_arcs(tree: list) -> dict:
             "end_x": ex,
             "end_y": ey,
             "layer": layer,
-            "net": net,
+            "net": net_idx,
+            "net_name": net_name,
             "width": width,
         }
     return result
 
 
 def _extract_all_pcb(tree: list) -> dict:
+    net_names = _build_net_names(tree)
     items = {}
     items.update(_extract_footprints(tree))
-    items.update(_extract_segments(tree))
-    items.update(_extract_arcs(tree))
-    items.update(_extract_vias(tree))
+    items.update(_extract_segments(tree, net_names))
+    items.update(_extract_arcs(tree, net_names))
+    items.update(_extract_vias(tree, net_names))
     items.update(_extract_zones(tree))
     items.update(_extract_gr_items(tree))
+    items.update(_extract_fp_graphics(tree))
     return items
 
 
@@ -410,7 +737,7 @@ _PCB_COMPARABLE_KEYS = {
         "rotation",
         "pad_sig",
     ],
-    "segment": ["start_x", "start_y", "end_x", "end_y", "layer", "net", "width"],
+    "segment": ["start_x", "start_y", "end_x", "end_y", "layer", "width"],
     "arc": [
         "start_x",
         "start_y",
@@ -419,10 +746,9 @@ _PCB_COMPARABLE_KEYS = {
         "end_x",
         "end_y",
         "layer",
-        "net",
         "width",
     ],
-    "via": ["x", "y", "size", "drill", "net", "start_layer", "end_layer", "via_type"],
+    "via": ["x", "y", "size", "drill", "start_layer", "end_layer", "via_type"],
     "zone": [
         "net",
         "net_name",
@@ -440,18 +766,32 @@ _PCB_COMPARABLE_KEYS = {
         "connect_pads_clearance",
         "keepout_sig",
     ],
-    "gr_text": ["text", "layer", "x", "y", "geo_sig"],
+    "gr_text": ["text", "layer", "x", "y"],
     "gr_line": ["layer", "geo_sig"],
     "gr_circle": ["layer", "geo_sig"],
     "gr_rect": ["layer", "geo_sig"],
     "gr_arc": ["layer", "geo_sig"],
     "gr_poly": ["layer", "geo_sig"],
+    # Footprint graphics compare on LOCAL geometry (geo_sig) + layer + text only.
+    # x/y (board space) are intentionally excluded so moving the parent
+    # footprint doesn't flag every silk element — only a real silk edit does.
+    "fp_text": ["text", "layer", "geo_sig"],
+    "fp_line": ["layer", "geo_sig"],
+    "fp_circle": ["layer", "geo_sig"],
+    "fp_rect": ["layer", "geo_sig"],
+    "fp_arc": ["layer", "geo_sig"],
+    "fp_poly": ["layer", "geo_sig"],
 }
 
 
-def _item_changes(old: dict, new: dict) -> dict:
+_NET_NAME_TYPES = {"segment", "arc", "via"}
+
+
+def _item_changes(old: dict, new: dict, track_net_names: bool = False) -> dict:
     changes = {}
-    keys = _PCB_COMPARABLE_KEYS.get(old["type"], [])
+    keys = list(_PCB_COMPARABLE_KEYS.get(old["type"], []))
+    if track_net_names and old["type"] in _NET_NAME_TYPES:
+        keys = keys + ["net_name"]
     for k in keys:
         ov, nv = old.get(k), new.get(k)
         if ov != nv:
@@ -491,16 +831,17 @@ def _match_segments(removed_segs: list, added_segs: list) -> tuple:
     used_removed = set()
     used_added = set()
 
-    # Index added segments by (layer, net, width) for fast lookup
+    # Index added segments by (layer, width) for fast lookup.
+    # Net is excluded — a rerouted segment may have a new net assignment.
     from collections import defaultdict
 
     added_by_key = defaultdict(list)
     for i, seg in enumerate(added_segs):
-        k = (seg["layer"], seg["net"], seg["width"])
+        k = (seg["layer"], seg["width"])
         added_by_key[k].append(i)
 
     for ri, old_seg in enumerate(removed_segs):
-        k = (old_seg["layer"], old_seg["net"], old_seg["width"])
+        k = (old_seg["layer"], old_seg["width"])
         for ai in added_by_key.get(k, []):
             if ai in used_added:
                 continue
@@ -520,11 +861,29 @@ def _match_segments(removed_segs: list, added_segs: list) -> tuple:
     return changed, still_removed, still_added
 
 
-def diff_pcb(old_content: str, new_content: str) -> dict:
-    old_tree = _parse_sexp(old_content)
-    new_tree = _parse_sexp(new_content)
-    old_items = _extract_all_pcb(old_tree)
-    new_items = _extract_all_pcb(new_tree)
+def _extract_pcb_items(content: str, parser: str) -> dict:
+    """Parse + extract PCB items as {key: item}, selecting the parser.
+
+    'native' uses the in-house s-expression extractor; 'monkey' uses the
+    kicad_monkey adapter. Both return the identical item-dict shape so the
+    diff algorithm downstream is parser-agnostic.
+    """
+    if parser == "monkey":
+        # Imported lazily so the native path has no dependency on kicad_monkey.
+        from app.services import monkey_extract_service
+
+        return monkey_extract_service.extract_all_pcb(content)
+    return _extract_all_pcb(_parse_sexp(content))
+
+
+def diff_pcb(
+    old_content: str,
+    new_content: str,
+    parser: str = "native",
+    track_net_names: bool = False,
+) -> dict:
+    old_items = _extract_pcb_items(old_content, parser)
+    new_items = _extract_pcb_items(new_content, parser)
 
     old_uuids = set(old_items)
     new_uuids = set(new_items)
@@ -533,7 +892,7 @@ def diff_pcb(old_content: str, new_content: str) -> dict:
     removed_all = [old_items[u] for u in (old_uuids - new_uuids)]
     changed = []
     for u in old_uuids & new_uuids:
-        chg = _item_changes(old_items[u], new_items[u])
+        chg = _item_changes(old_items[u], new_items[u], track_net_names=track_net_names)
         if chg:
             changed.append(
                 {"item": new_items[u], "old_item": old_items[u], "changes": chg}
@@ -580,7 +939,13 @@ def _find_all_pcb_paths(
 # ---------------------------------------------------------------------------
 
 
-def get_pcb_diff(project_id: str, commit1: str, commit2: str) -> dict | None:
+def get_pcb_diff(
+    project_id: str,
+    commit1: str,
+    commit2: str,
+    parser: str = "native",
+    track_net_names: bool = False,
+) -> dict | None:
     """
     Return interactive diff data for all PCB files between two commits.
 
@@ -635,14 +1000,14 @@ def get_pcb_diff(project_id: str, commit1: str, commit2: str) -> dict | None:
         )
 
         if old_content and new_content:
-            diff = diff_pcb(old_content, new_content)
+            diff = diff_pcb(
+                old_content, new_content, parser=parser, track_net_names=track_net_names
+            )
         elif new_content:
-            tree = _parse_sexp(new_content)
-            items = list(_extract_all_pcb(tree).values())
+            items = list(_extract_pcb_items(new_content, parser).values())
             diff = {"added": items, "removed": [], "changed": []}
         elif old_content:
-            tree = _parse_sexp(old_content)
-            items = list(_extract_all_pcb(tree).values())
+            items = list(_extract_pcb_items(old_content, parser).values())
             diff = {"added": [], "removed": items, "changed": []}
         else:
             continue

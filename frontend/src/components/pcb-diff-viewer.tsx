@@ -2,8 +2,8 @@ import {
     useState, useEffect, useRef, useCallback, useMemo,
 } from "react";
 import {
-    X, Loader2, AlertCircle, ChevronLeft, ChevronRight,
-    Plus, Minus, RefreshCw,
+    X, Loader2, AlertCircle, ChevronLeft, ChevronRight, ChevronDown,
+    Plus, Minus, RefreshCw, Eye, EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ECadViewerElement } from "@/types/ecad-viewer";
@@ -61,6 +61,8 @@ interface PcbItem {
     connect_pads_mode?: string;
     connect_pads_clearance?: number;
     keepout_sig?: string;
+    // footprint-graphics extra: reference of the parent footprint
+    parent_ref?: string;
 }
 
 interface FieldChange {
@@ -103,6 +105,13 @@ interface DiffMarker {
 // Use the shared Category union — PCB only ever produces these four.
 type GroupCategory = Extract<Category, "components" | "nets" | "zones" | "graphics">;
 
+/** A sub-item collapsed into a component group (courtyard, fab, ref text, etc.) */
+interface ChildGroup {
+    label: string;
+    kind: "added" | "removed" | "changed";
+    members: DiffMarker[];
+}
+
 interface GroupedMarker {
     id: string;
     category: GroupCategory;
@@ -122,6 +131,11 @@ interface GroupedMarker {
     // zone polygon in world coords (only set for zone groups)
     polygonPoints?: [number, number][];
     oldPolygonPoints?: [number, number][];
+    // fp_* items on structural layers (courtyard/fab/cmts) absorbed into this component
+    childGroups?: ChildGroup[];
+    // Per-member overlay groups (nets only): one tight bbox per segment/via instead
+    // of one big merged bbox. Used for rendering only — sidebar still shows the parent.
+    overlayGroups?: GroupedMarker[];
 }
 
 interface PcbDiffViewerProps {
@@ -269,7 +283,7 @@ function _bboxFromMembers(members: DiffMarker[]): { minX: number; minY: number; 
         const x = Number(item.x);
         const y = Number(item.y);
         const hw = item.type === "footprint" ? 3 : item.type === "zone" ? 5 : item.type === "via" ? 0.5 : 2;
-        const hh = item.type === "gr_text" ? 1.5 : hw;
+        const hh = hw;
         if (Number.isFinite(x) && Number.isFinite(y)) {
             minX = Math.min(minX, x - hw);
             minY = Math.min(minY, y - hh);
@@ -289,7 +303,11 @@ function _bboxFromMembers(members: DiffMarker[]): { minX: number; minY: number; 
     return { minX, minY, maxX, maxY };
 }
 
-const GRAPHIC_TYPES = new Set(["gr_text", "gr_line", "gr_circle", "gr_rect", "gr_arc", "gr_poly"]);
+const GRAPHIC_TYPES = new Set([
+    "gr_text", "gr_line", "gr_circle", "gr_rect", "gr_arc", "gr_poly",
+    // Footprint graphics (silkscreen / fab / courtyard) — itemised per element.
+    "fp_text", "fp_line", "fp_circle", "fp_rect", "fp_arc", "fp_poly",
+]);
 const TRACK_TYPES   = new Set(["segment", "arc"]);
 
 function groupMarkers(raw: DiffMarker[]): GroupedMarker[] {
@@ -336,11 +354,24 @@ function groupMarkers(raw: DiffMarker[]): GroupedMarker[] {
         const label = parts.length > 0 ? `${netLabel} — ${parts.join(", ")}` : netLabel;
         const oldMembers = members.filter(m => m.kind === "changed" && m.old_item).map(oldMarker);
         const oldBbox = oldMembers.length > 0 ? _bboxFromMembers(oldMembers) : null;
+        // Build one tight overlay box per segment/via so only the actually-changed
+        // traces are highlighted, not a merged rect spanning the whole net.
+        const overlayGroups: GroupedMarker[] = members.map(m => {
+            const b = _bboxFromMembers([m]);
+            const ob = m.kind === "changed" && m.old_item ? _bboxFromMembers([oldMarker(m)]) : null;
+            return {
+                id: nextId(), category: "nets", kind: m.kind,
+                label, members: [m],
+                bboxMinX: b.minX, bboxMinY: b.minY, bboxMaxX: b.maxX, bboxMaxY: b.maxY,
+                ...(ob && { oldBboxMinX: ob.minX, oldBboxMinY: ob.minY, oldBboxMaxX: ob.maxX, oldBboxMaxY: ob.maxY }),
+            };
+        });
         result.push({
             id: nextId(), category: "nets", kind,
             label,
             members, bboxMinX: minX, bboxMinY: minY, bboxMaxX: maxX, bboxMaxY: maxY,
             ...(oldBbox && { oldBboxMinX: oldBbox.minX, oldBboxMinY: oldBbox.minY, oldBboxMaxX: oldBbox.maxX, oldBboxMaxY: oldBbox.maxY }),
+            overlayGroups,
         });
     }
 
@@ -381,23 +412,138 @@ function groupMarkers(raw: DiffMarker[]): GroupedMarker[] {
         });
     }
 
-    // ── Graphics — group by layer ──
+    // ── Graphics ──
+    // fp_* items on structural layers (courtyard, fab, Cmts.User) are absorbed
+    // into their parent footprint's component group — they clutter the view and
+    // almost always change in lockstep with the footprint.
+    // Reference/value fp_text (${REFERENCE} / ${VALUE}) are also absorbed.
+    // Everything else (SilkS strokes, gr_* board graphics) stays in graphics.
+    const COMPONENT_LAYERS = new Set([
+        "F.CrtYd", "B.CrtYd",
+        "F.Fab", "B.Fab",
+        "F.Adhes", "B.Adhes",
+        "Cmts.User",
+    ]);
+    const FP_TEXT_TYPES = new Set(["fp_text"]);
+    const isAbsorbedIntoComponent = (m: DiffMarker): boolean => {
+        if (!m.item.parent_ref) return false;
+        if (COMPONENT_LAYERS.has(m.item.layer ?? "")) return true;
+        if (FP_TEXT_TYPES.has(m.item.type)) {
+            const t = (m.item.text ?? "").trim();
+            if (t === "${REFERENCE}" || t === "${VALUE}") return true;
+        }
+        return false;
+    };
+
+    // Build a map from reference → component GroupedMarker so absorbed items
+    // can expand the component's bbox and attach as child groups.
+    const compGroupByRef = new Map<string, GroupedMarker>();
+    for (const g of result) {
+        if (g.category !== "components") continue;
+        const ref = g.members[0]?.item.reference;
+        if (ref) compGroupByRef.set(ref, g);
+    }
+
+    // Collect absorbed items per (ref, layer/role) key so we can label them.
+    const absorbedMap = new Map<string, DiffMarker[]>();
+    for (const m of raw) {
+        if (!GRAPHIC_TYPES.has(m.item.type)) continue;
+        if (!isAbsorbedIntoComponent(m)) continue;
+        const ref = m.item.parent_ref!;
+        const role = FP_TEXT_TYPES.has(m.item.type)
+            ? (m.item.text ?? "text").replace(/\$\{([^}]+)\}/, "$1").toLowerCase()
+            : (m.item.layer ?? "unknown");
+        const key = `${ref}::${role}`;
+        const arr = absorbedMap.get(key) ?? [];
+        arr.push(m);
+        absorbedMap.set(key, arr);
+    }
+
+    // Attach absorbed child groups to their parent component group.
+    // If the footprint itself isn't in the diff, create a synthetic component
+    // group so these items still appear under Components, not Graphics.
+    for (const [key, members] of absorbedMap) {
+        const ref = key.split("::")[0];
+        const role = key.split("::").slice(1).join("::");
+        let compGroup = compGroupByRef.get(ref);
+        if (!compGroup) {
+            // Footprint not in diff — synthesise a group for it.
+            const extra = _bboxFromMembers(members);
+            compGroup = {
+                id: nextId(), category: "components", kind: _mergedKind(members),
+                label: ref,
+                members: [],
+                bboxMinX: extra.minX, bboxMinY: extra.minY,
+                bboxMaxX: extra.maxX, bboxMaxY: extra.maxY,
+                childGroups: [],
+            };
+            compGroupByRef.set(ref, compGroup);
+            result.push(compGroup);
+        }
+
+        // Expand the component's bbox to include these items.
+        const extra = _bboxFromMembers(members);
+        compGroup.bboxMinX = Math.min(compGroup.bboxMinX, extra.minX);
+        compGroup.bboxMinY = Math.min(compGroup.bboxMinY, extra.minY);
+        compGroup.bboxMaxX = Math.max(compGroup.bboxMaxX, extra.maxX);
+        compGroup.bboxMaxY = Math.max(compGroup.bboxMaxY, extra.maxY);
+
+        const childKind = _mergedKind(members);
+        const kinds = new Set([compGroup.kind, childKind]);
+        compGroup.kind = kinds.size > 1 ? "changed" : compGroup.kind;
+
+        compGroup.childGroups ??= [];
+        compGroup.childGroups.push({ label: role, kind: childKind, members });
+    }
+
+    // Remaining gr_* and non-absorbed fp_* items go to graphics.
+    const TEXT_GFX = new Set(["gr_text", "fp_text"]);
     const gfxMap = new Map<string, DiffMarker[]>();
     for (const m of raw) {
         if (!GRAPHIC_TYPES.has(m.item.type)) continue;
-        const key = m.item.layer ?? "(no layer)";
+        if (isAbsorbedIntoComponent(m)) continue; // all absorbed items handled above
+        const layer = m.item.layer ?? "(no layer)";
+        const ref = m.item.parent_ref;
+        let key: string;
+        if (TEXT_GFX.has(m.item.type)) {
+            key = `text:${m.item.uuid}`;
+        } else if (ref) {
+            // Stroke graphics of a footprint not yet handled (e.g. SilkS): one box per (fp, layer).
+            key = `fp:${ref}:${layer}`;
+        } else {
+            key = `board:${m.item.uuid}`;
+        }
         const arr = gfxMap.get(key) ?? [];
         arr.push(m);
         gfxMap.set(key, arr);
     }
-    for (const [layer, members] of gfxMap) {
+    for (const [key, members] of gfxMap) {
         const { minX, minY, maxX, maxY } = _bboxFromMembers(members);
         const kind = _mergedKind(members);
-        const n = members.length;
+        const first = members[0].item;
+        const layer = first.layer ?? "(no layer)";
+        let label: string;
+        if (key.startsWith("text:")) {
+            const t = (first.text ?? "").trim();
+            const shown = t.length > 24 ? `${t.slice(0, 23)}…` : t || "Text";
+            label = first.parent_ref ? `${first.parent_ref} — ${shown}` : shown;
+        } else if (key.startsWith("fp:")) {
+            label = `${first.parent_ref} — ${layer}`;
+        } else {
+            label = `${itemLabel(first)}`;
+        }
+        const textPoly = key.startsWith("text:") && members.length === 1
+            ? (members[0].item.polygon_points ?? undefined)
+            : undefined;
+        const oldTextPoly = key.startsWith("text:") && members.length === 1 && members[0].old_item
+            ? (members[0].old_item.polygon_points ?? undefined)
+            : undefined;
         result.push({
             id: nextId(), category: "graphics", kind,
-            label: `${layer} — ${n} item${n > 1 ? "s" : ""}`,
+            label,
             members, bboxMinX: minX, bboxMinY: minY, bboxMaxX: maxX, bboxMaxY: maxY,
+            ...(textPoly && textPoly.length > 0 && { polygonPoints: textPoly }),
+            ...(oldTextPoly && oldTextPoly.length > 0 && { oldPolygonPoints: oldTextPoly }),
         });
     }
 
@@ -412,7 +558,7 @@ interface OverlayProps {
     containerRef: React.RefObject<HTMLDivElement | null>;
     getBoardEl: (host: ECadViewerElement) => BoardEl | null;
     onGroupClick: (group: GroupedMarker) => void;
-    activeId: string | null;
+    activeIds: Set<string>;
     showing: "new" | "old";
     kickRef?: React.MutableRefObject<((frames?: number) => void) | null>;
 }
@@ -420,7 +566,7 @@ interface OverlayProps {
 // Per-kind stripe rotation so stacked changes remain distinguishable.
 const stripeRotation = { added: 45, removed: -45, changed: 45 } as const;
 
-function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick, activeId, showing, kickRef }: OverlayProps) {
+function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick, activeIds, showing, kickRef }: OverlayProps) {
     const boxRefs  = useRef<Map<string, HTMLDivElement>>(new Map());
     const polyRefs = useRef<Map<string, SVGPolygonElement>>(new Map());
     const patternRefs = useRef<Map<string, SVGPatternElement>>(new Map());
@@ -673,9 +819,12 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
 
     // Groups rendered as individual SVG geometries (net tracks + vias)
     // vs. groups still using a bbox div (footprints, gr_* graphics)
-    const svgGroups    = groups.filter(g => !g.polygonPoints && g.category === "nets");
-    const boxGroups    = groups.filter(g => !g.polygonPoints && g.category !== "nets");
-    const polygonGroups = groups.filter(g => g.polygonPoints);
+    const svgGroups     = groups.filter(g => !g.polygonPoints && g.category === "nets");
+    const boxGroups     = groups.filter(g => !g.polygonPoints && g.category !== "nets");
+    // Zones use a striped fill polygon. Text items use a plain border polygon
+    // (no fill pattern — the text is readable through it).
+    const polygonGroups = groups.filter(g => g.polygonPoints && g.category === "zones");
+    const textPolyGroups = groups.filter(g => g.polygonPoints && g.category !== "zones");
 
     const memberSvgRefs = useRef<Map<string, SVGElement>>(new Map());
 
@@ -764,16 +913,31 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                         // colored top. Dash size scales with on-screen track width.
                         const swTop  = sw + 3;
                         const swBase = sw + 6;
-                        const dashLen = Math.max(10, sw * 3.5);
-                        const dashGap = Math.max(8,  sw * 2.5);
+                        // Fit a whole number of dashes so one lands exactly on each
+                        // end of the line. With dasharray [dashLen, dashGap] the
+                        // pattern is dash,gap,dash,…; to end on a dash the line must
+                        // hold n dashes and (n-1) gaps:
+                        //   lineLen = n*dashLen + (n-1)*dashGap
+                        // We keep the desired dash:gap ratio and solve for the
+                        // scale that makes this exact.
+                        const dx = p2.x - p1.x;
+                        const dy = p2.y - p1.y;
+                        const lineLen = Math.hypot(dx, dy) || 1;
+                        const wantLen = Math.max(10, sw * 3.5);
+                        const wantGap = Math.max(8,  sw * 2.5);
+                        // n = number of dashes; pick the count closest to the
+                        // desired density, at least 1.
+                        const n = Math.max(1, Math.round((lineLen + wantGap) / (wantLen + wantGap)));
+                        // lineLen = n*dashLen + (n-1)*dashGap, holding dashGap/dashLen = wantGap/wantLen.
+                        const gapRatio = wantGap / wantLen;
+                        const dashLen = lineLen / (n + (n - 1) * gapRatio);
+                        const dashGap = dashLen * gapRatio;
                         if (baseEl) {
                             baseEl.setAttribute("x1", String(p1.x));
                             baseEl.setAttribute("y1", String(p1.y));
                             baseEl.setAttribute("x2", String(p2.x));
                             baseEl.setAttribute("y2", String(p2.y));
                             baseEl.setAttribute("stroke-width", String(swBase));
-                            // Base stays solid so rounded caps appear only at the
-                            // line's terminations, not at every dash boundary.
                             baseEl.removeAttribute("stroke-dasharray");
                             baseEl.removeAttribute("display");
                         }
@@ -783,6 +947,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                         el.setAttribute("y2", String(p2.y));
                         el.setAttribute("stroke-width", String(swTop));
                         el.setAttribute("stroke-dasharray", `${dashLen} ${dashGap}`);
+                        el.removeAttribute("stroke-dashoffset");
                         el.removeAttribute("display");
                     }
                 }
@@ -826,7 +991,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                 {/* Zone polygons — striped fill with screen blend so items inside remain visible */}
                 {polygonGroups.map((g) => {
                     const color = KIND_COLOR[g.kind];
-                    const isActive = g.id === activeId;
+                    const isActive = activeIds.has(g.id);
                     return (
                         <polygon
                             key={g.id}
@@ -851,11 +1016,37 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                     );
                 })}
 
-                {/* Net groups: solid black outline around each trace + softer
-                   translucent colored dash on top. Vias render as bounding boxes. */}
+                {/* Text items (gr_text / fp_text) — tight rotated border, no fill pattern */}
+                {textPolyGroups.map((g) => {
+                    const color = KIND_COLOR[g.kind];
+                    const isActive = activeIds.has(g.id);
+                    return (
+                        <polygon
+                            key={g.id}
+                            ref={(node) => {
+                                if (node) polyRefs.current.set(g.id, node as SVGPolygonElement);
+                                else polyRefs.current.delete(g.id);
+                            }}
+                            style={{ display: "none", cursor: "pointer", pointerEvents: "stroke" }}
+                            fill={`${color}22`}
+                            stroke={color}
+                            strokeWidth={isActive ? 3 : 2}
+                            strokeOpacity={isActive ? 1 : 0.9}
+                            filter={isActive ? `drop-shadow(0 0 4px ${color})` : undefined}
+                            onClick={() => onGroupClick(g)}
+                            onWheel={forwardWheel}
+                        />
+                    );
+                })}
+
+                {/* Net groups wrapped in one translucent layer: members render
+                    OPAQUE, then a single group-opacity flattens + fades the whole
+                    layer once. This stops overlapping/touching traces from
+                    compounding into darker patches. */}
+                <g opacity={0.78}>
                 {svgGroups.map((g) => {
                     const color = KIND_COLOR[g.kind];
-                    const isActive = g.id === activeId;
+                    const isActive = activeIds.has(g.id);
                     const filter = isActive ? `drop-shadow(0 0 3px ${color})` : undefined;
                     return g.members.map((dm, mi) => {
                         const key     = `${g.id}:${mi}`;
@@ -909,7 +1100,7 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                                     x1="0" y1="0" x2="0" y2="0"
                                     data-active={isActive ? "1" : "0"}
                                     stroke={color}
-                                    strokeOpacity={isActive ? 1 : 0.78}
+                                    strokeOpacity={1}
                                     strokeLinecap="round"
                                     filter={isActive ? `drop-shadow(0 0 3px ${color})` : undefined}
                                 />
@@ -917,12 +1108,13 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                         );
                     });
                 })}
+                </g>
             </svg>
 
             {/* Div boxes for footprints and graphics — bbox is accurate for these */}
             {boxGroups.map((g) => {
                 const color = KIND_COLOR[g.kind];
-                const isActive = g.id === activeId;
+                const isActive = activeIds.has(g.id);
                 const HIT = 6;
                 return (
                     <div
@@ -980,6 +1172,48 @@ type InnerViewer = {
 };
 type BoardEl = HTMLElement & { viewer?: InnerViewer };
 
+function GroupRow({ g, isActive, onClick }: {
+    g: GroupedMarker;
+    isActive: boolean;
+    onClick: (g: GroupedMarker) => void;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const hasChildren = !!g.childGroups?.length;
+    return (
+        <div>
+            <div className={`flex items-center text-xs transition-colors hover:bg-muted/60 ${isActive ? "bg-muted" : ""}`}>
+                <button
+                    onClick={() => onClick(g)}
+                    className="flex-1 text-left flex items-center gap-2 px-3 py-1.5 min-w-0"
+                >
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: KIND_COLOR[g.kind] }} />
+                    <span className="text-white font-medium truncate">{g.label}</span>
+                </button>
+                {hasChildren && (
+                    <button
+                        onClick={() => setExpanded(v => !v)}
+                        className="px-2 py-1.5 shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+                        title={expanded ? "Collapse" : "Show structural items"}
+                    >
+                        <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    </button>
+                )}
+            </div>
+            {hasChildren && expanded && (
+                <div className="ml-5 border-l border-border/50 pl-2 mb-0.5">
+                    {g.childGroups!.map((child, ci) => (
+                        <div key={ci} className="flex items-center gap-2 px-2 py-0.5 text-[11px] text-muted-foreground">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: KIND_COLOR[child.kind] }} />
+                            <span className="truncate">{child.label}</span>
+                            <span className="ml-auto shrink-0 font-mono text-[10px] opacity-60">{child.members.length}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export function PcbDiffViewer({
     projectId,
     commit1,
@@ -999,10 +1233,23 @@ export function PcbDiffViewer({
     const [showing, setShowing] = useState<"new" | "old">("new");
     const [activeGroup, setActiveGroup] = useState<GroupedMarker | null>(null);
 
+    // Parsing backend used to compute the diff: in-house ("native") or
+    // kicad_monkey ("monkey"). Changing it refetches the diff.
+    const [parser, setParser] = useState<"native" | "monkey">("native");
+
     const [showOverlay, setShowOverlay] = useState(true);
     const [showAdded, setShowAdded] = useState(true);
     const [showRemoved, setShowRemoved] = useState(true);
     const [showChanged, setShowChanged] = useState(true);
+    const [hiddenCategories, setHiddenCategories] = useState<Set<GroupCategory>>(new Set());
+
+    const toggleCategory = useCallback((cat: GroupCategory) => {
+        setHiddenCategories(prev => {
+            const next = new Set(prev);
+            if (next.has(cat)) next.delete(cat); else next.add(cat);
+            return next;
+        });
+    }, []);
 
     const newViewerRef = useRef<ECadViewerElement | null>(null);
     const oldViewerRef = useRef<ECadViewerElement | null>(null);
@@ -1128,7 +1375,12 @@ export function PcbDiffViewer({
     useEffect(() => {
         setLoading(true);
         setError(null);
-        const params = new URLSearchParams({ commit1, commit2 });
+        const params = new URLSearchParams({ commit1, commit2, parser });
+        try {
+            if (localStorage.getItem("kicad-prism:diff:track-net-names") === "true") {
+                params.set("track_net_names", "true");
+            }
+        } catch { /* ignore */ }
         fetch(`/api/projects/${projectId}/pcb-diff?${params}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1143,7 +1395,7 @@ export function PcbDiffViewer({
                 setError(e instanceof Error ? e.message : "Failed to load diff");
                 setLoading(false);
             });
-    }, [projectId, commit1, commit2]);
+    }, [projectId, commit1, commit2, parser]);
 
     const activeBoardData = data?.boards.find(b => b.filename === activeBoard) ?? null;
 
@@ -1174,18 +1426,30 @@ export function PcbDiffViewer({
     }
     const allGroups = groupMarkers(rawMarkers);
 
-    const visibleGroups = !showOverlay ? [] : allGroups.filter((g) => {
-        if (g.kind === "added"   && !showAdded)   return false;
-        if (g.kind === "removed" && !showRemoved)  return false;
-        if (g.kind === "changed" && !showChanged)  return false;
-        // In single-commit mode the old board is not shown, so show all
-        // change kinds against the new board (removed items existed before,
-        // added items exist now, changed items exist in both).
+    const visibleGroups = !showOverlay ? [] : allGroups.flatMap((g) => {
+        if (hiddenCategories.has(g.category as GroupCategory)) return [];
+        if (g.kind === "added"   && !showAdded)   return [];
+        if (g.kind === "removed" && !showRemoved)  return [];
+        if (g.kind === "changed" && !showChanged)  return [];
         if (!singleCommit) {
-            if (g.kind === "added"   && showing !== "new") return false;
-            if (g.kind === "removed" && showing !== "old") return false;
+            if (g.kind === "added"   && showing !== "new") return [];
+            if (g.kind === "removed" && showing !== "old") return [];
         }
-        return true;
+        // Net groups: expand to per-segment overlay groups so each segment gets
+        // its own tight bbox instead of one merged rect covering the whole net.
+        if (g.overlayGroups) {
+            return g.overlayGroups.filter(og => {
+                if (og.kind === "added"   && !showAdded)   return false;
+                if (og.kind === "removed" && !showRemoved)  return false;
+                if (og.kind === "changed" && !showChanged)  return false;
+                if (!singleCommit) {
+                    if (og.kind === "added"   && showing !== "new") return false;
+                    if (og.kind === "removed" && showing !== "old") return false;
+                }
+                return true;
+            });
+        }
+        return [g];
     });
 
     const totalChanges = allGroups.length;
@@ -1288,7 +1552,9 @@ export function PcbDiffViewer({
     }, [getCamera, safeDraw]);
 
     const handleGroupClick = useCallback((g: GroupedMarker) => {
-        setActiveGroup(prev => prev?.id === g.id ? null : g);
+        // If this is a per-segment overlay sub-group, resolve to the parent net group.
+        const resolved = allGroups.find(p => p.overlayGroups?.some(og => og.id === g.id)) ?? g;
+        setActiveGroup(prev => prev?.id === resolved.id ? null : resolved);
         // In single-commit mode always stay on "new" — the old board isn't
         // shown so there's nowhere to toggle to.
         const targetSide: "new" | "old" = singleCommit
@@ -1424,6 +1690,29 @@ export function PcbDiffViewer({
                         </div>
                     )}
 
+                    {/* Parser backend toggle — compare native vs kicad_monkey */}
+                    {data && (
+                        <div className="px-3 pt-1 pb-2 shrink-0">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 px-1">Parser</p>
+                            <div className="flex rounded-md border overflow-hidden text-xs font-medium w-full">
+                                <button
+                                    className={`flex-1 py-1.5 transition-colors ${parser === "native" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                    onClick={() => setParser("native")}
+                                    title="In-house s-expression parser"
+                                >
+                                    Native
+                                </button>
+                                <button
+                                    className={`flex-1 py-1.5 transition-colors ${parser === "monkey" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                                    onClick={() => setParser("monkey")}
+                                    title="kicad_monkey parser"
+                                >
+                                    Monkey
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {data && (
                         <div className="px-3 pt-2 pb-2 shrink-0 space-y-1">
                             <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 px-1">Show</p>
@@ -1515,30 +1804,28 @@ export function PcbDiffViewer({
                                 const groups = allGroups.filter(g => g.category === cat);
                                 if (groups.length === 0) return null;
                                 const total = groups.reduce((sum, group) => sum + group.members.length, 0);
+                                const hidden = hiddenCategories.has(cat);
                                 return (
                                     <div key={cat} className="mb-2">
-                                        <p className="text-[10px] uppercase tracking-wider px-3 py-1 sticky top-0 bg-background font-medium flex items-center gap-2 text-white">
+                                        <div className="text-[10px] uppercase tracking-wider px-3 py-1 sticky top-0 bg-background font-medium flex items-center gap-2 text-white">
                                             <span>{CATEGORY_META[cat].label}</span>
-                                            <span className="ml-auto font-mono text-[10px] opacity-70">{total}</span>
-                                        </p>
-                                        {groups.map((g) => {
-                                            const isActive = activeGroup?.id === g.id;
-                                            return (
-                                                <button
-                                                    key={g.id}
-                                                    onClick={() => handleGroupClick(g)}
-                                                    className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs transition-colors hover:bg-muted/60 ${isActive ? "bg-muted" : ""}`}
-                                                >
-                                                    <span
-                                                        className="w-2 h-2 rounded-full shrink-0"
-                                                        style={{ backgroundColor: KIND_COLOR[g.kind] }}
-                                                    />
-                                                    <span className="text-white font-medium truncate">
-                                                        {g.label}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })}
+                                            <span className="font-mono text-[10px] opacity-70">{total}</span>
+                                            <button
+                                                onClick={() => toggleCategory(cat)}
+                                                className="ml-auto opacity-50 hover:opacity-100 transition-opacity"
+                                                title={hidden ? "Show highlights" : "Hide highlights"}
+                                            >
+                                                {hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                            </button>
+                                        </div>
+                                        {groups.map((g) => (
+                                            <GroupRow
+                                                key={g.id}
+                                                g={g}
+                                                isActive={activeGroup?.id === g.id}
+                                                onClick={handleGroupClick}
+                                            />
+                                        ))}
                                     </div>
                                 );
                             })
@@ -1577,6 +1864,20 @@ export function PcbDiffViewer({
                                         ))}
                                     </div>
                                 ))}
+                                {activeGroup.childGroups && activeGroup.childGroups.length > 0 && (
+                                    <div className="pt-1 border-t border-border/50 space-y-0.5">
+                                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground pb-0.5">Structural</p>
+                                        {activeGroup.childGroups.map((child, ci) => (
+                                            <div key={ci} className="flex items-center gap-1.5">
+                                                <span className="font-medium shrink-0" style={{ color: KIND_COLOR[child.kind] }}>
+                                                    {KIND_PREFIX[child.kind]}
+                                                </span>
+                                                <span className="text-muted-foreground truncate">{child.label}</span>
+                                                <span className="ml-auto font-mono text-[10px] opacity-60">{child.members.length}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -1633,7 +1934,9 @@ export function PcbDiffViewer({
                                 containerRef={viewerContainerRef}
                                 getBoardEl={getBoardEl}
                                 onGroupClick={handleGroupClick}
-                                activeId={activeGroup?.id ?? null}
+                                activeIds={activeGroup
+                                    ? new Set([activeGroup.id, ...(activeGroup.overlayGroups?.map(og => og.id) ?? [])])
+                                    : new Set<string>()}
                                 showing={showing}
                                 kickRef={overlayKickRef}
                             />

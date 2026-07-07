@@ -55,12 +55,20 @@ export function categoryFor(type: string | undefined): Category {
         case "arc":
         case "via":       return "nets";
         case "zone":      return "zones";
+        // Board graphics (gr_*) and footprint graphics (fp_*: silkscreen, fab,
+        // courtyard) both group under "graphics", itemised per element.
         case "gr_text":
         case "gr_line":
         case "gr_circle":
         case "gr_rect":
         case "gr_arc":
-        case "gr_poly":   return "graphics";
+        case "gr_poly":
+        case "fp_text":
+        case "fp_line":
+        case "fp_circle":
+        case "fp_rect":
+        case "fp_arc":
+        case "fp_poly":   return "graphics";
         // Schematic
         case "symbol":              return "symbols";
         case "label":
