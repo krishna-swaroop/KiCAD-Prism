@@ -474,24 +474,27 @@ def render_thumbnail(pcb_path: str, out_path: str, size: int = THUMBNAIL_SIZE) -
 
 def generate_for_project(project_id: str) -> str:
     """Generate thumbnail for a single project. Returns output path."""
-    from app.services import project_service
+    from app.services import path_config_service
     from app.services.workspace_service import workspace
 
-    project = project_service.get_project_by_id(project_id)
-    if not project:
+    row = workspace.get_project_by_id(project_id)
+    if not row:
         raise ValueError(f"Project {project_id} not found")
 
-    pcb_path = project_service.find_pcb_file(project.path)
+    project_path = row["path"]
+    project_name = row["name"]
+
+    resolved = path_config_service.resolve_paths(project_path)
+    pcb_path = resolved.pcb
     if not pcb_path or not os.path.exists(pcb_path):
         raise FileNotFoundError(f"No .kicad_pcb file found for project {project_id}")
 
-    thumb_dir = os.path.join(project.path, "assets", "thumbnail")
-    out_path = os.path.join(thumb_dir, f"{project.name}.png")
+    thumb_dir = os.path.join(project_path, "assets", "thumbnail")
+    out_path = os.path.join(thumb_dir, f"{project_name}.png")
 
     render_thumbnail(pcb_path, out_path)
 
-    # Register in workspace DB so the existing thumbnail endpoint picks it up
-    rel = os.path.relpath(out_path, project.path).replace("\\", "/")
+    rel = os.path.relpath(out_path, project_path).replace("\\", "/")
     workspace.update_project(project_id, thumbnail_rel=rel)
 
     return out_path
@@ -511,11 +514,15 @@ def generate_missing(job: dict) -> None:
     succeeded, failed = 0, 0
     for i, row in enumerate(without_thumb):
         pid = row["id"]
+        name = row.get("name", pid)
+        print(f"[thumbnail] Processing {name} ({pid}) path={row.get('path')}")
         try:
-            generate_for_project(pid)
+            out = generate_for_project(pid)
+            print(f"[thumbnail] OK: {out}")
             succeeded += 1
         except Exception as exc:
-            job["logs"].append(f"[SKIP] {row.get('name', pid)}: {exc}")
+            print(f"[thumbnail] SKIP {name}: {exc}")
+            job["logs"].append(f"[SKIP] {name}: {exc}")
             failed += 1
         job["percent"] = int((i + 1) / total * 100)
         job["message"] = f"Processed {i + 1}/{total} — {succeeded} ok, {failed} skipped"
@@ -523,3 +530,4 @@ def generate_missing(job: dict) -> None:
     job["status"] = "done"
     job["message"] = f"Done — {succeeded} generated, {failed} skipped"
     job["percent"] = 100
+    print(f"[thumbnail] Finished: {succeeded} generated, {failed} skipped")
