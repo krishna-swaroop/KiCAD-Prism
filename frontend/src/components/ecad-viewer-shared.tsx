@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { X, Check, X as XIcon, ChevronRight, Layers, FileText, Boxes, Network, Cpu, Eye, EyeOff, Search, Keyboard } from "lucide-react";
+import { X, Check, X as XIcon, ChevronRight, Layers, FileText, Boxes, Network, Cpu, Eye, EyeOff, Search, Keyboard, Library, ExternalLink, Loader2, Maximize2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { ECadViewerElement } from "@/types/ecad-viewer";
+import { fetchJson } from "@/lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 // ---------------------------------------------------------------------------
 // Theme kicanvas viewer chrome
@@ -268,6 +271,14 @@ export interface ItemDetail {
     fields: { label: string; value: string }[];
     /** Nested key/value groups rendered as collapsible dropdowns. */
     groups?: { label: string; entries: { label: string; value: string }[] }[];
+    /** Parsed library link for crosslinking to the catalog (e.g. "EasyEDA:C0603"). */
+    libraryLink?: string;
+    /** Asset type for crosslinking. */
+    assetType?: "symbol" | "footprint";
+    /** Footprint lib:name from the symbol's Footprint property (SCH viewer only). */
+    footprintLink?: string;
+    /** Project ID — used by the backend to locate PCB/SCH files for extraction. */
+    projectId?: string;
 }
 
 type Anyish = Record<string, unknown> & {
@@ -353,7 +364,6 @@ function extractFootprint(t: Anyish): ItemDetail {
         field("Value",       t.value),
         field("Type",        attr?.through_hole ? "through hole" : attr?.smd ? "smd" : "unspecified"),
         field("Pads",        Array.isArray(t.pads) ? String((t.pads as unknown[]).length) : null),
-        field("Library link",t.library_link),
         field("Description", t.descr),
         field("Keywords",    t.tags),
     );
@@ -383,11 +393,14 @@ function extractFootprint(t: Anyish): ItemDetail {
     if (fabFields.length)      groups.push({ label: "Fabrication attributes", entries: fabFields });
     if (overrideFields.length) groups.push({ label: "Overrides",              entries: overrideFields });
 
+    const libraryLinkRaw = s(t.library_link);
     return {
         title:    String(t.reference ?? "Footprint"),
         subtitle: String(t.value ?? ""),
         fields:   [...fpFields],
         groups:   groups.length > 0 ? groups : undefined,
+        libraryLink: libraryLinkRaw || undefined,
+        assetType: "footprint",
     };
 }
 
@@ -521,7 +534,6 @@ function extractSchSymbol(t: Anyish): ItemDetail {
     const instanceGroup: Group = {
         label: "Instance properties",
         entries: fields(
-            field("Library link", t.lib_name ?? t.lib_id),
             field("Unit",         t.unit != null ? String.fromCharCode(65 + (t.unit as number) - 1) : null),
             field("In BOM",       boolField(t.in_bom)),
             field("On board",     boolField(t.on_board)),
@@ -549,16 +561,23 @@ function extractSchSymbol(t: Anyish): ItemDetail {
     if (pinEntries.length)             groups.push({ label: "Pins",             entries: pinEntries });
 
     // Hoist Reference, Value, Footprint to top-level fields (shown above dropdowns).
-    const TOP_PROPS = ["Reference", "Value", "Footprint"];
+    const TOP_PROPS = ["Reference", "Value"];
     const topFields = TOP_PROPS.map(k => propsEntries.find(e => e.label === k)).filter(Boolean) as Field[];
     const refEntry  = topFields.find(e => e.label === "Reference");
     const valEntry  = topFields.find(e => e.label === "Value");
 
+    const libLinkRaw = s(t.lib_name ?? t.lib_id);
+    // The "Footprint" property on a schematic symbol gives us the linked footprint lib:name
+    const footprintProp = propsEntries.find(e => e.label === "Footprint");
+    const footprintLink = footprintProp?.value?.includes(":") ? footprintProp.value : undefined;
     return {
         title:    refEntry?.value ?? String(t.lib_id ?? t.lib_name ?? "Symbol"),
         subtitle: valEntry?.value,
         fields:   topFields,
         groups:   groups.length > 0 ? groups : undefined,
+        libraryLink: libLinkRaw || undefined,
+        assetType: "symbol",
+        footprintLink,
     };
 }
 
@@ -761,10 +780,14 @@ interface UseEcadInfoPanelOpts {
     containerRef: React.RefObject<HTMLElement | null>;
     /** Refs to viewer hosts whose shadow DOM should have the built-in panel hidden. */
     viewerRefs: React.RefObject<ECadViewerElement | null>[];
+    /** Project ID — passed to backend so it can locate both PCB and SCH files for extraction. */
+    projectId?: string | null;
 }
 
-export function useEcadInfoPanel({ containerRef, viewerRefs }: UseEcadInfoPanelOpts) {
+export function useEcadInfoPanel({ containerRef, viewerRefs, projectId }: UseEcadInfoPanelOpts) {
     const [detail, setDetail] = useState<ItemDetail | null>(null);
+    const projectIdRef = useRef(projectId);
+    useEffect(() => { projectIdRef.current = projectId; }, [projectId]);
 
     // Inject hide-css repeatedly (shadow DOM may not exist yet on mount).
     useEffect(() => {
@@ -796,7 +819,9 @@ export function useEcadInfoPanel({ containerRef, viewerRefs }: UseEcadInfoPanelO
         const handler = (e: Event) => {
             const item = (e as CustomEvent<{ item: unknown }>).detail?.item;
             if (!item) { setDetail(null); return; }
-            setDetail(extractItemDetail(item));
+            const d = extractItemDetail(item);
+            if (d && projectIdRef.current) d.projectId = projectIdRef.current;
+            setDetail(d);
         };
         const targets = [
             containerRef.current,
@@ -854,12 +879,248 @@ function FieldRow({ label, value }: { label: string; value: string }) {
     );
 }
 
+// ---------------------------------------------------------------------------
+// CatalogCrosslink — collapsible panel linking a selected item to the catalog
+// ---------------------------------------------------------------------------
+
+interface CatalogCrosslinkEntry {
+    id: string;
+    value: string;
+    description: string;
+    manufacturer: string;
+    mpn: string;
+    category: string;
+    package_name: string;
+    previews: { id: string; kind: string; status: string; content_type: string }[];
+}
+
+function CatalogCrosslink({ libraryLink, assetType, footprintLink, projectId }: { libraryLink: string; assetType: "symbol" | "footprint"; footprintLink?: string; projectId?: string }) {
+    const navigate = useNavigate();
+    const [entry, setEntry] = useState<CatalogCrosslinkEntry | null | "not-found" | "loading">("loading");
+    const [previewFailed, setPreviewFailed] = useState(false);
+    const [inlineSvg, setInlineSvg] = useState<string | null>(null);
+    const [inlineLoading, setInlineLoading] = useState(false);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [scale, setScale] = useState(1);
+    const [offset, setOffset] = useState({ x: 0, y: 0 });
+    const [dragging, setDragging] = useState(false);
+    const dragStart = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+    const inlineFetchedRef = useRef(false);
+
+    useEffect(() => {
+        const colon = libraryLink.indexOf(":");
+        if (colon === -1) { setEntry("not-found"); return; }
+        const library = libraryLink.slice(0, colon);
+        const name = libraryLink.slice(colon + 1);
+        let cancelled = false;
+        setEntry("loading");
+        setPreviewFailed(false);
+        setInlineSvg(null);
+        setInlineLoading(false);
+        inlineFetchedRef.current = false;
+        fetchJson<CatalogCrosslinkEntry>(
+            `/api/catalog/components/by-asset?type=${encodeURIComponent(assetType)}&library=${encodeURIComponent(library)}&name=${encodeURIComponent(name)}`
+        ).then((data) => {
+            if (!cancelled) setEntry(data);
+        }).catch(() => {
+            if (!cancelled) setEntry("not-found");
+        });
+        return () => { cancelled = true; };
+    }, [libraryLink, assetType]);
+
+    useEffect(() => {
+        if (previewOpen) { setScale(1); setOffset({ x: 0, y: 0 }); }
+    }, [previewOpen]);
+
+    // When the asset-store preview also fails, extract from the project files via the backend.
+    // Deps intentionally omit inlineSvg/inlineLoading to avoid cancelling the in-flight fetch.
+    useEffect(() => {
+        if (!previewFailed || !projectId || entry !== "not-found") return;
+        if (inlineFetchedRef.current) return;
+        inlineFetchedRef.current = true;
+        const colon = libraryLink.indexOf(":");
+        const name = colon !== -1 ? libraryLink.slice(colon + 1) : libraryLink;
+        setInlineLoading(true);
+        fetch("/api/catalog/assets/inline-preview-svg", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ asset_type: assetType, name, project_id: projectId }),
+        }).then(async (res) => {
+            if (!res.ok) { setInlineLoading(false); return; }
+            const blob = await res.blob();
+            setInlineSvg(URL.createObjectURL(blob));
+            setInlineLoading(false);
+        }).catch(() => {
+            setInlineLoading(false);
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [previewFailed, projectId, entry]);
+
+    const colon = libraryLink.indexOf(":");
+    const assetLibrary = colon !== -1 ? libraryLink.slice(0, colon) : "";
+    const assetName = colon !== -1 ? libraryLink.slice(colon + 1) : "";
+    const fallbackPreviewUrl = assetLibrary && assetName
+        ? `/api/catalog/assets/preview-svg?type=${encodeURIComponent(assetType)}&library=${encodeURIComponent(assetLibrary)}&name=${encodeURIComponent(assetName)}`
+        : null;
+
+    const catalogPreview = entry && entry !== "loading" && entry !== "not-found"
+        ? entry.previews.find((p) => p.kind === (assetType === "symbol" ? "symbol" : "footprint"))
+          ?? entry.previews.find((p) => p.status === "ready")
+        : null;
+    const previewUrl = catalogPreview
+        ? `/api/remote-provider/previews/${catalogPreview.id}`
+        : entry === "not-found" ? fallbackPreviewUrl : null;
+    const displayUrl = inlineSvg ?? (previewFailed ? null : previewUrl);
+
+    const handleJump = () => {
+        if (!entry || entry === "loading" || entry === "not-found") return;
+        navigate(`/?section=library&highlight=${entry.id}`);
+    };
+
+    function onWheel(e: React.WheelEvent) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        setScale((s) => Math.min(20, Math.max(0.1, s * delta)));
+    }
+    function onMouseDown(e: React.MouseEvent) {
+        setDragging(true);
+        dragStart.current = { mx: e.clientX, my: e.clientY, ox: offset.x, oy: offset.y };
+    }
+    function onMouseMove(e: React.MouseEvent) {
+        if (!dragging || !dragStart.current) return;
+        setOffset({ x: dragStart.current.ox + (e.clientX - dragStart.current.mx), y: dragStart.current.oy + (e.clientY - dragStart.current.my) });
+    }
+    function onMouseUp() { setDragging(false); dragStart.current = null; }
+
+    return (
+        <>
+            <div className="rounded border bg-primary/5 border-primary/20 mt-2 overflow-hidden">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 text-[10px] uppercase tracking-wider text-primary/80">
+                    <Library className="h-3 w-3 shrink-0" />
+                    <span>Library Manager</span>
+                    {entry === "loading" && <Loader2 className="h-3 w-3 animate-spin ml-auto" />}
+                </div>
+                {entry !== "loading" && (
+                    <div className="px-2 pb-2 space-y-2">
+                        {displayUrl && (
+                            <div className="relative group/preview rounded bg-background/60 border border-border/30 overflow-hidden h-28">
+                                <img
+                                    src={displayUrl}
+                                    alt="Component preview"
+                                    className="object-contain h-full w-full"
+                                    onError={() => { if (!inlineSvg) setPreviewFailed(true); }}
+                                />
+                                <button
+                                    onClick={() => setPreviewOpen(true)}
+                                    className="absolute inset-0 flex items-center justify-center bg-background/0 hover:bg-background/40 transition-colors opacity-0 group-hover/preview:opacity-100"
+                                    title="Expand preview"
+                                >
+                                    <Maximize2 className="h-4 w-4 text-foreground drop-shadow" />
+                                </button>
+                            </div>
+                        )}
+                        {inlineLoading && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground py-1">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                <span>Extracting preview from file…</span>
+                            </div>
+                        )}
+                        {entry === "not-found" && previewFailed && !inlineSvg && !inlineLoading && (
+                            <p className="text-[11px] text-muted-foreground italic py-1">
+                                Not in catalog — <span className="font-mono">{libraryLink}</span>
+                            </p>
+                        )}
+                        {entry === "not-found" && inlineSvg && (
+                            <>
+                                <p className="text-[11px] text-muted-foreground italic py-0.5">
+                                    Extracted from file — <span className="font-mono">{libraryLink}</span>
+                                </p>
+                                {projectId && (
+                                    <button
+                                        onClick={() => {
+                                            const colon = libraryLink.indexOf(":");
+                                            const name = colon !== -1 ? libraryLink.slice(colon + 1) : libraryLink;
+                                            sessionStorage.setItem("prism_inline_prefill", JSON.stringify({
+                                                assetType,
+                                                name,
+                                                libraryLink,
+                                                footprintLink: footprintLink ?? null,
+                                                projectId,
+                                            }));
+                                            navigate("/?section=library&from_inline=1");
+                                        }}
+                                        className="flex w-full items-center justify-center gap-1.5 rounded border border-primary/30 bg-primary/10 px-2 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                                    >
+                                        <ExternalLink className="h-3 w-3" />
+                                        Add to Library Manager
+                                    </button>
+                                )}
+                            </>
+                        )}
+                        {entry && entry !== "not-found" && (
+                            <div className="space-y-1">
+                                {entry.manufacturer && <FieldRow label="Manufacturer" value={entry.manufacturer} />}
+                                {entry.mpn && <FieldRow label="MPN" value={entry.mpn} />}
+                                {entry.category && <FieldRow label="Category" value={entry.category} />}
+                                {entry.package_name && <FieldRow label="Package" value={entry.package_name} />}
+                                {entry.description && <FieldRow label="Description" value={entry.description} />}
+                            </div>
+                        )}
+                        {entry && entry !== "not-found" && (
+                            <button
+                                onClick={handleJump}
+                                className="flex w-full items-center justify-center gap-1.5 rounded border border-primary/30 bg-primary/10 px-2 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
+                            >
+                                <ExternalLink className="h-3 w-3" />
+                                Open in Library Manager
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {displayUrl && (
+                <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+                    <DialogContent className="max-w-4xl h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
+                        <DialogHeader className="px-4 py-2.5 border-b border-border/50 shrink-0 flex-row items-center justify-between">
+                            <DialogTitle className="text-sm">{libraryLink}</DialogTitle>
+                            <span className="text-[10px] text-muted-foreground pr-6">Scroll to zoom · Drag to pan</span>
+                        </DialogHeader>
+                        <div
+                            className="flex-1 min-h-0 overflow-hidden bg-secondary/10 cursor-grab active:cursor-grabbing select-none"
+                            onWheel={onWheel}
+                            onMouseDown={onMouseDown}
+                            onMouseMove={onMouseMove}
+                            onMouseUp={onMouseUp}
+                            onMouseLeave={onMouseUp}
+                        >
+                            <div
+                                className="w-full h-full flex items-center justify-center"
+                                style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: "center center", transition: dragging ? "none" : "transform 0.05s" }}
+                            >
+                                <img
+                                    src={displayUrl}
+                                    alt={libraryLink}
+                                    className="max-w-none"
+                                    style={{ width: "80%", height: "auto", pointerEvents: "none" }}
+                                    draggable={false}
+                                />
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            )}
+        </>
+    );
+}
+
 export function EcadInfoPanel({ detail, onClose, position = "top-right" }: EcadInfoPanelProps) {
     const wasOpen = useRef(false);
     useEffect(() => { wasOpen.current = !!detail; }, [detail]);
     if (!detail) return null;
     return (
-        <div className={`absolute ${POSITION_CLASSES[position]} z-30 w-80 max-w-[calc(100%-1.5rem)] max-h-[70%] flex flex-col rounded-xl border bg-background/90 shadow-xl backdrop-blur-md overflow-hidden`}>
+        <div className={`absolute ${POSITION_CLASSES[position]} z-30 w-80 max-w-[calc(100%-1.5rem)] flex flex-col rounded-xl border bg-background/90 shadow-xl backdrop-blur-md overflow-hidden`}>
             <div className="flex items-center gap-2 px-3 py-2.5 border-b bg-muted/30 shrink-0">
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold truncate leading-tight">{detail.title}</p>
@@ -874,11 +1135,14 @@ export function EcadInfoPanel({ detail, onClose, position = "top-right" }: EcadI
                     <X className="h-3.5 w-3.5" />
                 </button>
             </div>
-            <div className="overflow-y-auto px-3 py-1.5 text-xs">
+            <div className="overflow-y-auto max-h-[80vh] px-3 py-1.5 text-xs">
                 {detail.fields.length === 0 && !detail.groups?.length ? (
                     <p className="text-muted-foreground italic py-1">No additional properties</p>
                 ) : (
                     <>
+                        {detail.libraryLink && detail.assetType && (
+                            <CatalogCrosslink libraryLink={detail.libraryLink} assetType={detail.assetType} footprintLink={detail.footprintLink} projectId={detail.projectId} />
+                        )}
                         {detail.fields.map((f, i) => (
                             <FieldRow key={i} label={f.label} value={f.value} />
                         ))}

@@ -750,6 +750,64 @@ class WorkspaceService:
             "folders": self.get_folder_tree(user_role),
         }
 
+    # ------------------------------------------------------------------
+    # Background jobs (ws_jobs)
+    # ------------------------------------------------------------------
+
+    def create_job(self, job_id: str, kind: str, **payload: Any) -> None:
+        now = datetime.now(UTC).isoformat()
+        status = payload.pop("status", "running")
+        message = payload.pop("message", "")
+        percent = payload.pop("percent", 0.0)
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO ws_jobs (id, kind, status, message, percent, payload, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (job_id, kind, status, message, percent, json.dumps(payload), now, now),
+            )
+            conn.commit()
+
+    def update_job(self, job_id: str, **fields: Any) -> None:
+        now = datetime.now(UTC).isoformat()
+        status = fields.pop("status", None)
+        message = fields.pop("message", None)
+        percent = fields.pop("percent", None)
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM ws_jobs WHERE id=?", (job_id,)).fetchone()
+            if not row:
+                return
+            cur = dict(row)
+            cur_payload = json.loads(cur["payload"] or "{}")
+            cur_payload.update(fields)
+            new_status = status if status is not None else cur["status"]
+            new_message = message if message is not None else cur["message"]
+            new_percent = percent if percent is not None else cur["percent"]
+            conn.execute(
+                """UPDATE ws_jobs SET status=?, message=?, percent=?, payload=?, updated_at=?
+                   WHERE id=?""",
+                (
+                    new_status,
+                    new_message,
+                    new_percent,
+                    json.dumps(cur_payload),
+                    now,
+                    job_id,
+                ),
+            )
+            conn.commit()
+
+    def get_job(self, job_id: str, kind: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM ws_jobs WHERE id=? AND kind=?", (job_id, kind)
+            ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        payload = json.loads(d.pop("payload", "{}") or "{}")
+        d.update(payload)
+        return d
+
 
 # Module-level singleton
 workspace = WorkspaceService()

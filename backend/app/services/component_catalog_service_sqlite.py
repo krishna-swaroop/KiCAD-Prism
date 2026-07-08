@@ -8,11 +8,11 @@ import io
 import json
 import logging
 import mimetypes
-import os
 import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -800,20 +800,12 @@ class ComponentCatalogService:
     def _resolve_kicad_cli(self) -> str | None:
         if self._kicad_cli and Path(self._kicad_cli).exists():
             return self._kicad_cli
-        candidates = (
-            shutil.which("kicad-cli"),
-            "/usr/bin/kicad-cli",
-            "/usr/local/bin/kicad-cli",
-            "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli",
-            os.path.expanduser(
-                "~/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
-            ),
-        )
-        for candidate in candidates:
-            if candidate and Path(candidate).exists():
-                self._kicad_cli = str(candidate)
-                return self._kicad_cli
-        return None
+        from app.services import kicad_cli as kicad_cli_resolver  # noqa: PLC0415
+
+        resolved = kicad_cli_resolver.resolve_optional()
+        if resolved:
+            self._kicad_cli = resolved
+        return resolved
 
     def _run_kicad_cli(self, args: list[str]) -> tuple[bool, str]:
         cli = self._resolve_kicad_cli()
@@ -3163,7 +3155,7 @@ class ComponentCatalogService:
             stderr = f"KLC checker unavailable under {self._klc_utils_root()}"
         else:
             cmd = [
-                "python3",
+                sys.executable,
                 str(checker),
                 str(asset["canonical_path"]),
                 "-vv",
@@ -4024,6 +4016,126 @@ class ComponentCatalogService:
             "sym_lib_table": str(export_root / "sym-lib-table"),
             "fp_lib_table": str(export_root / "fp-lib-table"),
         }
+
+    def find_asset_by_library_name(
+        self,
+        asset_type: str,
+        target_library: str,
+        target_name: str,
+    ) -> dict[str, Any] | None:
+        self.initialize()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM assets WHERE asset_type = ? AND target_library = ? AND target_name = ? LIMIT 1",
+                (asset_type, target_library, target_name),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_or_generate_preview_svg_path(
+        self,
+        asset_type: str,
+        target_library: str,
+        target_name: str,
+    ) -> Path | None:
+        """Return path to a ready SVG preview, generating it on demand if needed."""
+        self.initialize()
+        if asset_type not in {"symbol", "footprint"}:
+            return None
+        kind = PREVIEW_KIND_SYMBOL if asset_type == "symbol" else PREVIEW_KIND_FOOTPRINT
+        with self._connect() as conn:
+            asset_row = conn.execute(
+                "SELECT * FROM assets WHERE asset_type = ? AND target_library = ? AND target_name = ? LIMIT 1",
+                (asset_type, target_library, target_name),
+            ).fetchone()
+            if not asset_row:
+                return None
+            asset = dict(asset_row)
+            # Return cached preview if it exists
+            preview_row = conn.execute(
+                "SELECT file_path FROM asset_previews WHERE asset_id = ? AND kind = ? AND status = ? ORDER BY updated_at DESC LIMIT 1",
+                (str(asset["id"]), kind, PREVIEW_STATUS_READY),
+            ).fetchone()
+            if preview_row:
+                p = Path(str(preview_row["file_path"] or ""))
+                if p.is_file():
+                    return p
+            # Generate on demand
+            if asset_type == "symbol":
+                status, result = self._generate_symbol_preview(asset)
+            else:
+                status, result = self._generate_footprint_preview(asset)
+            self._upsert_asset_preview(
+                conn,
+                asset_id=str(asset["id"]),
+                kind=kind,
+                status=status,
+                file_path=result if status == PREVIEW_STATUS_READY else "",
+                generation_error="" if status == PREVIEW_STATUS_READY else result,
+            )
+            if status == PREVIEW_STATUS_READY:
+                return Path(result)
+            return None
+
+    def find_component_by_asset(
+        self,
+        asset_type: str,
+        target_library: str,
+        target_name: str,
+    ) -> dict[str, Any] | None:
+        """Return a lightweight component payload for the component that owns the given asset."""
+        self.initialize()
+        if asset_type not in {"symbol", "footprint"}:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT c.id, c.is_active, r.id AS revision_id,
+                       r.value, r.description, r.manufacturer, r.mpn,
+                       r.category, r.package_name, r.release_status
+                FROM assets a
+                JOIN revision_assets ra ON ra.asset_id = a.id
+                JOIN component_revisions r ON r.id = ra.revision_id
+                JOIN components c ON c.current_revision_id = r.id
+                WHERE a.asset_type = ? AND a.target_library = ? AND a.target_name = ?
+                  AND c.is_active = 1
+                LIMIT 1
+                """,
+                (asset_type, target_library, target_name),
+            ).fetchone()
+            if not row:
+                return None
+            row = dict(row)
+            revision_id = str(row["revision_id"])
+            assets = self._load_assets_for_revision(conn, revision_id)
+            previews = self._load_previews_for_assets(
+                conn, [str(a["id"]) for a in assets]
+            )
+            preview_payloads = [
+                {
+                    "id": str(p["id"]),
+                    "kind": str(p["kind"]),
+                    "status": str(p["status"]),
+                    "content_type": str(p["content_type"]),
+                }
+                for p in previews
+                if str(p["status"]) == "ready"
+            ]
+            return {
+                "id": str(row["id"]),
+                "value": str(row["value"] or ""),
+                "description": str(row["description"] or ""),
+                "manufacturer": str(row["manufacturer"] or ""),
+                "mpn": str(row["mpn"] or ""),
+                "category": str(row["category"] or ""),
+                "package_name": str(row["package_name"] or ""),
+                "release_status": _normalize_workflow_stage(
+                    str(row["release_status"] or "")
+                ),
+                "workflow_stage": _normalize_workflow_stage(
+                    str(row["release_status"] or "")
+                ),
+                "previews": preview_payloads,
+            }
 
 
 catalog_service = ComponentCatalogService()

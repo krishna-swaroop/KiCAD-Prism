@@ -27,8 +27,19 @@ _discover_symbol_names_in_text: Callable[[str], list[str]]
 _sanitize_name: Callable[[str, str], str]
 
 
-STEP_EXTENSIONS = {".step", ".stp"}
+STEP_EXTENSIONS = {".step", ".stp", ".wrl"}
 SPICE_EXTENSIONS = {".lib", ".mod", ".mdl", ".cir", ".sub", ".subckt", ".spice"}
+
+# KiCad environment variable placeholders used in 3D model paths
+_KICAD_3D_VARS = {
+    "${KICAD6_3DMODEL_DIR}",
+    "${KICAD7_3DMODEL_DIR}",
+    "${KICAD8_3DMODEL_DIR}",
+    "${KICAD9_3DMODEL_DIR}",
+    "${KISYS3DMOD}",
+    "${KICAD_3RD_PARTY}",
+    "${KICAD3DLIBS}",
+}
 
 
 def _load_catalog_runtime() -> None:
@@ -81,7 +92,9 @@ def _merge_stats(target: ImportStats, source: ImportStats) -> None:
     target.models_written += source.models_written
     target.spice_written += source.spice_written
     target.component_csv_rows += source.component_csv_rows
-    target.component_csv_required_placeholders += source.component_csv_required_placeholders
+    target.component_csv_required_placeholders += (
+        source.component_csv_required_placeholders
+    )
     target.assets_indexed += source.assets_indexed
     target.previews_attempted += source.previews_attempted
     target.reused_existing_files += source.reused_existing_files
@@ -216,8 +229,12 @@ def _library_from_footprint_file(footprint_file: Path, footprints_root: Path) ->
         if parent == footprints_root.parent:
             break
         if parent.suffix.lower() == ".pretty":
-            return _sanitize_name(parent.name.removesuffix(".pretty"), "Prism_Footprints")
-    return _sanitize_name(footprint_file.parent.name.removesuffix(".pretty"), "Prism_Footprints")
+            return _sanitize_name(
+                parent.name.removesuffix(".pretty"), "Prism_Footprints"
+            )
+    return _sanitize_name(
+        footprint_file.parent.name.removesuffix(".pretty"), "Prism_Footprints"
+    )
 
 
 def _relative_library_name(file_path: Path, root: Path, default: str) -> str:
@@ -245,11 +262,15 @@ def re_finditer_property(symbol_block: str) -> list[tuple[str, str]]:
     import re
 
     pattern = re.compile(r'\(property\s+"((?:\\.|[^"])*)"\s+"((?:\\.|[^"])*)"')
-    return [(match.group(1), match.group(2)) for match in pattern.finditer(symbol_block)]
+    return [
+        (match.group(1), match.group(2)) for match in pattern.finditer(symbol_block)
+    ]
 
 
 def _property_first(properties: dict[str, str], names: tuple[str, ...]) -> str:
-    lowered = {key.lower().replace(" ", "_"): value for key, value in properties.items()}
+    lowered = {
+        key.lower().replace(" ", "_"): value for key, value in properties.items()
+    }
     for name in names:
         if name in properties and properties[name].strip():
             return properties[name].strip()
@@ -267,7 +288,9 @@ def _infer_category(library: str) -> str:
     return category.replace("_", " ").strip() or library
 
 
-def _csv_path(path: Path, *, csv_store_root: Path | None, service_store_root: Path) -> str:
+def _csv_path(
+    path: Path, *, csv_store_root: Path | None, service_store_root: Path
+) -> str:
     if not csv_store_root:
         return str(path.resolve())
     relative = path.resolve().relative_to(service_store_root.resolve())
@@ -294,7 +317,9 @@ def _component_row_from_symbol(
     properties = _symbol_properties(symbol_block)
     value = _property_first(properties, ("Value",)) or symbol_name
     footprint_ref = _property_first(properties, ("Footprint", "ki_fp_filters"))
-    manufacturer = _property_first(properties, ("Manufacturer", "Manufacturer_Name", "Manufacturer Name"))
+    manufacturer = _property_first(
+        properties, ("Manufacturer", "Manufacturer_Name", "Manufacturer Name")
+    )
     mpn = _property_first(
         properties,
         (
@@ -305,19 +330,33 @@ def _component_row_from_symbol(
             "Part Number",
         ),
     )
-    vendor_part = _property_first(properties, ("Mouser Part Number", "Arrow Part Number", "Vendor Part Number"))
-    vendor = "Mouser" if properties.get("Mouser Part Number") else ("Arrow" if properties.get("Arrow Part Number") else "")
+    vendor_part = _property_first(
+        properties, ("Mouser Part Number", "Arrow Part Number", "Vendor Part Number")
+    )
+    vendor = (
+        "Mouser"
+        if properties.get("Mouser Part Number")
+        else ("Arrow" if properties.get("Arrow Part Number") else "")
+    )
     row = ComponentCsvRow(
         value=_fill_required(value, symbol_name, stats),
-        datasheet=_fill_required(_property_first(properties, ("Datasheet",)), "TBD", stats),
-        description=_fill_required(_property_first(properties, ("Description",)), value or symbol_name, stats),
+        datasheet=_fill_required(
+            _property_first(properties, ("Datasheet",)), "TBD", stats
+        ),
+        description=_fill_required(
+            _property_first(properties, ("Description",)), value or symbol_name, stats
+        ),
         manufacturer=_fill_required(manufacturer, "TBD", stats),
         manufacturer_part_number=_fill_required(mpn, f"{library}:{symbol_name}", stats),
         category=_infer_category(library),
         package_name="",
         vendor=vendor,
         vendor_part_number=vendor_part,
-        symbol_file_path=_csv_path(symbol_path, csv_store_root=csv_store_root, service_store_root=service_store_root),
+        symbol_file_path=_csv_path(
+            symbol_path,
+            csv_store_root=csv_store_root,
+            service_store_root=service_store_root,
+        ),
         symbol_target_library=library,
         symbol_target_name=symbol_name,
     )
@@ -340,7 +379,9 @@ def _single_symbol_payload_from_parsed_blocks(
     unit_blocks = [block for name, block in blocks if unit_pattern.match(name)]
     version, generator = service._symbol_header(text)  # type: ignore[attr-defined]
     all_blocks_text = "\n  ".join([base_block] + unit_blocks)
-    return f"(kicad_symbol_lib (version {version}) (generator {generator})\n  {all_blocks_text}\n)\n".encode("utf-8")
+    return f"(kicad_symbol_lib (version {version}) (generator {generator})\n  {all_blocks_text}\n)\n".encode(
+        "utf-8"
+    )
 
 
 def _register_asset(
@@ -391,7 +432,9 @@ def _import_symbols(
 
     symbol_files = sorted(symbols_root.rglob("*.kicad_sym"))
 
-    def process_symbol_file(symbol_file: Path, worker_conn: Any | None) -> tuple[ImportStats, list[tuple[ComponentCsvRow, str]]]:
+    def process_symbol_file(
+        symbol_file: Path, worker_conn: Any | None
+    ) -> tuple[ImportStats, list[tuple[ComponentCsvRow, str]]]:
         local_stats = ImportStats(symbol_libraries_seen=1)
         local_rows: list[tuple[ComponentCsvRow, str]] = []
         library = _library_from_symbol_file(symbol_file)
@@ -414,9 +457,15 @@ def _import_symbols(
             for symbol_name in symbols:
                 try:
                     print(f"  -> Extracting symbol: {symbol_name}")
-                    canonical_payload = _single_symbol_payload_from_parsed_blocks(service, text, parsed_blocks, symbol_name)
+                    canonical_payload = _single_symbol_payload_from_parsed_blocks(
+                        service, text, parsed_blocks, symbol_name
+                    )
                     destination = service._symbol_destination(library, symbol_name)  # type: ignore[attr-defined]
-                    if destination.exists() and not _same_bytes(destination, canonical_payload) and not overwrite:
+                    if (
+                        destination.exists()
+                        and not _same_bytes(destination, canonical_payload)
+                        and not overwrite
+                    ):
                         destination = _unique_destination(destination)
                     canonical = _write_canonical_file(
                         destination,
@@ -457,12 +506,21 @@ def _import_symbols(
 
     if jobs > 1 and conn is None:
         with ThreadPoolExecutor(max_workers=jobs) as executor:
-            futures = [executor.submit(process_symbol_file, symbol_file, None) for symbol_file in symbol_files]
+            futures = [
+                executor.submit(process_symbol_file, symbol_file, None)
+                for symbol_file in symbol_files
+            ]
             for future in as_completed(futures):
                 local_stats, local_rows = future.result()
                 _merge_stats(stats, local_stats)
                 component_rows.extend(local_rows)
-        component_rows.sort(key=lambda item: (item[0].category, item[0].manufacturer_part_number, item[0].symbol_target_name))
+        component_rows.sort(
+            key=lambda item: (
+                item[0].category,
+                item[0].manufacturer_part_number,
+                item[0].symbol_target_name,
+            )
+        )
         return
 
     for symbol_file in symbol_files:
@@ -489,15 +547,23 @@ def _import_footprints(
 
     footprint_files = sorted(footprints_root.rglob("*.kicad_mod"))
 
-    def process_footprint_file(footprint_file: Path, worker_conn: Any | None) -> tuple[ImportStats, tuple[str, tuple[Path, str, str]] | None]:
+    def process_footprint_file(
+        footprint_file: Path, worker_conn: Any | None
+    ) -> tuple[ImportStats, tuple[str, tuple[Path, str, str]] | None]:
         local_stats = ImportStats()
         try:
             print(f"Processing footprint: {footprint_file.name} ...")
             library = _library_from_footprint_file(footprint_file, footprints_root)
             text = _read_text(footprint_file)
-            footprint_name = _discover_footprint_name_in_text(text) or footprint_file.stem
+            footprint_name = (
+                _discover_footprint_name_in_text(text) or footprint_file.stem
+            )
             destination = service._footprint_destination(library, footprint_name)  # type: ignore[attr-defined]
-            if destination.exists() and footprint_file.read_bytes() != destination.read_bytes() and not overwrite:
+            if (
+                destination.exists()
+                and footprint_file.read_bytes() != destination.read_bytes()
+                and not overwrite
+            ):
                 destination = _unique_destination(destination)
             canonical = _copy_canonical_file(
                 footprint_file,
@@ -524,7 +590,10 @@ def _import_footprints(
 
     if jobs > 1 and conn is None:
         with ThreadPoolExecutor(max_workers=jobs) as executor:
-            futures = [executor.submit(process_footprint_file, footprint_file, None) for footprint_file in footprint_files]
+            futures = [
+                executor.submit(process_footprint_file, footprint_file, None)
+                for footprint_file in footprint_files
+            ]
             for future in as_completed(futures):
                 local_stats, indexed = future.result()
                 _merge_stats(stats, local_stats)
@@ -587,6 +656,76 @@ def _write_component_csv(
             stats.component_csv_rows += 1
 
 
+def _discover_3d_search_dirs(source_root: Path) -> list[Path]:
+    """Return all directories under source_root that may contain 3D model files.
+
+    Looks for:
+    - A ``3D/`` or ``3d/`` subdirectory at the root (standard Prism layout)
+    - Any ``*.3dshapes`` directory anywhere in the tree (EasyEDA / Snapeda exports)
+    - Any directory whose name starts with ``3rd`` (e.g. "3rd Party Libraries")
+    """
+    found: list[Path] = []
+    # Standard layout
+    for name in ("3D", "3d"):
+        candidate = source_root / name
+        if candidate.is_dir():
+            found.append(candidate)
+    # Walk the whole tree looking for .3dshapes and 3rd* directories
+    try:
+        for dirpath in source_root.rglob("*"):
+            if not dirpath.is_dir():
+                continue
+            n = dirpath.name
+            if n.endswith(".3dshapes") or n.lower().startswith("3rd"):
+                found.append(dirpath)
+    except PermissionError:
+        pass
+    return found
+
+
+def _build_3d_model_index(search_dirs: list[Path]) -> dict[str, Path]:
+    """Return a filename → absolute Path mapping for all 3D model files found."""
+    index: dict[str, Path] = {}
+    for d in search_dirs:
+        try:
+            for f in d.rglob("*"):
+                if f.is_file() and f.suffix.lower() in STEP_EXTENSIONS:
+                    # Index by bare filename; last writer wins (prefer first found)
+                    if f.name not in index:
+                        index[f.name] = f
+        except PermissionError:
+            pass
+    return index
+
+
+def _extract_3d_refs_from_footprint(footprint_text: str) -> list[str]:
+    """Return the raw model path strings referenced in a .kicad_mod file."""
+    import re as _re
+
+    return _re.findall(r'\(model\s+"([^"]+)"', footprint_text) + _re.findall(
+        r'\(model\s+([^\s")\n]+)', footprint_text
+    )
+
+
+def _resolve_3d_ref(ref: str, model_index: dict[str, Path]) -> Path | None:
+    """Try to resolve a KiCad 3D model reference to a real file.
+
+    Strips any ``${VAR}`` prefix and resolves the remaining relative path
+    against the filename index built from the source tree.
+    """
+    ref = ref.strip().replace("\\", "/")
+    # Strip leading ${VAR}/ placeholder
+    for var in _KICAD_3D_VARS:
+        if ref.startswith(var):
+            ref = ref[len(var) :].lstrip("/")
+            break
+    if not ref:
+        return None
+    # Try the exact relative path stem by basename
+    basename = ref.split("/")[-1]
+    return model_index.get(basename)
+
+
 def _import_auxiliary_files(
     source_root: Path,
     service: ComponentCatalogService,
@@ -596,45 +735,92 @@ def _import_auxiliary_files(
     overwrite: bool,
     stats: ImportStats,
 ) -> None:
-    models_root = source_root / "3D"
-    if models_root.is_dir():
-        for model_file in sorted(models_root.rglob("*")):
-            if not model_file.is_file() or model_file.suffix.lower() not in STEP_EXTENSIONS:
-                continue
+    # ── 3D models ──────────────────────────────────────────────────────────
+    search_dirs = _discover_3d_search_dirs(source_root)
+    model_index = _build_3d_model_index(search_dirs)
+    print(f"3D model search dirs: {[str(d) for d in search_dirs]}")
+    print(f"3D model index: {len(model_index)} file(s) found")
+
+    # Collect which models are actually referenced by the imported footprints
+    referenced_models: dict[str, Path] = {}  # filename -> source path
+    footprints_root = source_root / "footprints"
+    if footprints_root.is_dir():
+        for fp_file in footprints_root.rglob("*.kicad_mod"):
             try:
-                print(f"Processing 3D model: {model_file.name} ...")
-                library = _relative_library_name(model_file, models_root, "Prism_Models")
-                destination = service._asset_root("3dmodel") / library / _sanitize_name(model_file.name, "model.step")  # type: ignore[attr-defined]
-                canonical = _copy_canonical_file(
-                    model_file,
-                    destination,
-                    dry_run=dry_run,
-                    overwrite=overwrite,
-                    stats=stats,
-                )
-                stats.models_written += 1
-                _register_asset(
-                    service,
-                    conn,
-                    asset_type="3dmodel",
-                    canonical_path=canonical,
-                    target_library=library,
-                    target_name=canonical.name,
-                    generate_previews=False,
-                    stats=stats,
-                )
-            except Exception as exc:  # noqa: BLE001
-                stats.errors.append(f"{model_file}: {exc}")
+                text = _read_text(fp_file)
+                for ref in _extract_3d_refs_from_footprint(text):
+                    resolved = _resolve_3d_ref(ref, model_index)
+                    if resolved and resolved.name not in referenced_models:
+                        referenced_models[resolved.name] = resolved
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Also import everything found in a conventional 3D/ dir even if not referenced
+    for d in search_dirs:
+        if d.name in ("3D", "3d"):
+            for f in d.rglob("*"):
+                if (
+                    f.is_file()
+                    and f.suffix.lower() in STEP_EXTENSIONS
+                    and f.name not in referenced_models
+                ):
+                    referenced_models[f.name] = f
+
+    if referenced_models:
+        print(
+            f"Importing {len(referenced_models)} 3D model(s) referenced by footprints ..."
+        )
+    else:
+        print("No 3D models found or referenced.")
+
+    for model_name, model_file in sorted(referenced_models.items()):
+        try:
+            print(f"Processing 3D model: {model_name} ...")
+            # Group by parent directory name (e.g. "EasyEDA.3dshapes" → library name)
+            parent_name = model_file.parent.name.removesuffix(".3dshapes") or "Models"
+            library = _sanitize_name(parent_name, "Prism_Models")
+            destination = (
+                service._asset_root("3dmodel")
+                / library
+                / _sanitize_name(model_name, "model.step")
+            )  # type: ignore[attr-defined]
+            canonical = _copy_canonical_file(
+                model_file,
+                destination,
+                dry_run=dry_run,
+                overwrite=overwrite,
+                stats=stats,
+            )
+            stats.models_written += 1
+            _register_asset(
+                service,
+                conn,
+                asset_type="3dmodel",
+                canonical_path=canonical,
+                target_library=library,
+                target_name=canonical.name,
+                generate_previews=False,
+                stats=stats,
+            )
+        except Exception as exc:  # noqa: BLE001
+            stats.errors.append(f"{model_file}: {exc}")
 
     spice_root = source_root / "spice"
     if spice_root.is_dir():
         for spice_file in sorted(spice_root.rglob("*")):
-            if not spice_file.is_file() or spice_file.suffix.lower() not in SPICE_EXTENSIONS:
+            if (
+                not spice_file.is_file()
+                or spice_file.suffix.lower() not in SPICE_EXTENSIONS
+            ):
                 continue
             try:
                 print(f"Processing SPICE file: {spice_file.name} ...")
                 library = _relative_library_name(spice_file, spice_root, "Prism_SPICE")
-                destination = service._asset_root("spice") / library / _sanitize_name(spice_file.name, "model.lib")  # type: ignore[attr-defined]
+                destination = (
+                    service._asset_root("spice")
+                    / library
+                    / _sanitize_name(spice_file.name, "model.lib")
+                )  # type: ignore[attr-defined]
                 canonical = _copy_canonical_file(
                     spice_file,
                     destination,
@@ -664,7 +850,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "Packed symbol libraries are split into one .kicad_sym file per symbol."
         )
     )
-    parser.add_argument("source_root", type=Path, help="Existing library root containing symbols/, footprints/, and 3D/")
+    parser.add_argument(
+        "source_root",
+        type=Path,
+        help="Existing library root containing symbols/, footprints/, and 3D/",
+    )
     parser.add_argument(
         "--store-root",
         type=Path,
@@ -676,12 +866,36 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("CATALOG_SQLITE_PATH", ""),
         help="SQLite catalog path used to index reusable asset rows. Defaults to CATALOG_SQLITE_PATH.",
     )
-    parser.add_argument("--no-index-db", action="store_true", help="Only write files; do not create/update SQLite catalog asset rows.")
-    parser.add_argument("--no-previews", action="store_true", help="Skip symbol/footprint preview generation.")
-    parser.add_argument("--skip-symbol-upgrade", action="store_true", help="Do not run kicad-cli sym upgrade before splitting symbols.")
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite conflicting canonical files instead of writing suffixed names.")
-    parser.add_argument("--dry-run", action="store_true", help="Report what would be imported without writing files or DB rows.")
-    parser.add_argument("--strict", action="store_true", help="Exit non-zero when any asset fails to import.")
+    parser.add_argument(
+        "--no-index-db",
+        action="store_true",
+        help="Only write files; do not create/update SQLite catalog asset rows.",
+    )
+    parser.add_argument(
+        "--no-previews",
+        action="store_true",
+        help="Skip symbol/footprint preview generation.",
+    )
+    parser.add_argument(
+        "--skip-symbol-upgrade",
+        action="store_true",
+        help="Do not run kicad-cli sym upgrade before splitting symbols.",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite conflicting canonical files instead of writing suffixed names.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be imported without writing files or DB rows.",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero when any asset fails to import.",
+    )
     parser.add_argument(
         "--jobs",
         type=int,
@@ -691,7 +905,12 @@ def _build_parser() -> argparse.ArgumentParser:
             "Parallelism is used only when --no-index-db or --dry-run keeps DB writes disabled."
         ),
     )
-    parser.add_argument("--report-json", type=Path, default=None, help="Optional path for a JSON import report.")
+    parser.add_argument(
+        "--report-json",
+        type=Path,
+        default=None,
+        help="Optional path for a JSON import report.",
+    )
     parser.add_argument(
         "--component-csv",
         type=Path,
@@ -723,7 +942,9 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    service = ComponentCatalogService(store_root=args.store_root, database_url=args.database_url or None)
+    service = ComponentCatalogService(
+        store_root=args.store_root, database_url=args.database_url or None
+    )
     stats = ImportStats()
     component_rows: list[tuple[ComponentCsvRow, str]] = []
     jobs = max(1, int(args.jobs or 1))
@@ -741,7 +962,10 @@ def main() -> int:
             conn_context = service._connect()  # type: ignore[attr-defined]
             conn = conn_context.__enter__()
             if jobs > 1:
-                print("--jobs is ignored while indexing DB rows directly; use --no-index-db for parallel file import.", file=sys.stderr)
+                print(
+                    "--jobs is ignored while indexing DB rows directly; use --no-index-db for parallel file import.",
+                    file=sys.stderr,
+                )
                 jobs = 1
 
         _import_symbols(

@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 interface Model3DViewerProps {
     modelUrl: string;
     sceneKey?: string;
+    modelFileName?: string;
+    /** When true, positions camera at isometric corner (Z-up, looking from front-right-above). */
+    isometricCamera?: boolean;
 }
 
 type BackgroundMode = "solid" | "gradient";
@@ -27,8 +30,8 @@ interface SceneState {
 }
 
 const DEFAULT_SCENE_STATE: SceneState = {
-    brightness: 1.0, // 100%
-    directionality: 0.6,
+    brightness: 1.6,
+    directionality: 0.5,
     backgroundMode: "solid",
     backgroundColor: "#1E1E1E",
     gradientStart: "#1E1E1E",
@@ -43,10 +46,10 @@ const LIGHTING_PRESETS: Array<{
     brightness: number;
     directionality: number;
 }> = [
-    { id: "default", label: "Default", brightness: 1.0, directionality: 0.6 },
-    { id: "inspection", label: "Inspection", brightness: 0.9, directionality: 0.78 },
-    { id: "high-contrast", label: "High Contrast", brightness: 0.8, directionality: 0.9 },
-    { id: "soft", label: "Soft", brightness: 1.15, directionality: 0.35 },
+    { id: "default", label: "Default", brightness: 1.6, directionality: 0.5 },
+    { id: "inspection", label: "Inspection", brightness: 1.8, directionality: 0.65 },
+    { id: "high-contrast", label: "High Contrast", brightness: 1.4, directionality: 0.85 },
+    { id: "soft", label: "Soft", brightness: 2.0, directionality: 0.25 },
 ];
 
 const INITIAL_SCENE_APPLY_RETRIES = 24;
@@ -130,7 +133,7 @@ const sanitizeSceneState = (raw: unknown): SceneState => {
     };
 };
 
-export function Model3DViewer({ modelUrl, sceneKey }: Model3DViewerProps) {
+export function Model3DViewer({ modelUrl, sceneKey, modelFileName, isometricCamera }: Model3DViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewerRef = useRef<OV.EmbeddedViewer | null>(null);
     const sceneRef = useRef<SceneState>(DEFAULT_SCENE_STATE);
@@ -276,9 +279,37 @@ export function Model3DViewer({ modelUrl, sceneKey }: Model3DViewerProps) {
         const viewer = new OV.EmbeddedViewer(container, {
             backgroundColor: initialBackgroundColor,
             defaultColor: new OV.RGBColor(200, 200, 200),
+            onModelLoaded: isometricCamera ? () => {
+                // Reposition to isometric corner: camera above and to the front-right,
+                // Z-up so the board top faces up on screen.
+                const internalViewer = (viewer as unknown as { GetViewer?: () => any }).GetViewer?.();
+                if (!internalViewer) return;
+                const bs = internalViewer.GetBoundingSphere(() => true);
+                if (!bs) return;
+                const cx = bs.center.x as number;
+                const cy = bs.center.y as number;
+                const cz = bs.center.z as number;
+                const r = bs.radius as number;
+                // Direction: front-right corner (X+, Y-, Z+) normalised
+                const d = 1 / Math.sqrt(3);
+                const dist = r * 2.5;
+                const cam = new OV.Camera(
+                    new OV.Coord3D(cx + d * dist, cy - d * dist, cz + d * dist),
+                    new OV.Coord3D(cx, cy, cz),
+                    new OV.Coord3D(0, 0, 1),
+                    45,
+                );
+                internalViewer.SetCamera(cam);
+                internalViewer.Render();
+            } : undefined,
         });
 
-        viewer.LoadModelFromUrlList([modelUrl]);
+        if (modelFileName) {
+            const inputFile = new OV.InputFile(modelFileName, OV.FileSource.Url, modelUrl);
+            viewer.LoadModelFromInputFiles([inputFile]);
+        } else {
+            viewer.LoadModelFromUrlList([modelUrl]);
+        }
         viewerRef.current = viewer;
 
         let remainingAttempts = INITIAL_SCENE_APPLY_RETRIES;

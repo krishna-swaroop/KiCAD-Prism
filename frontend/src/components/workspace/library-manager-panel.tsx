@@ -67,7 +67,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { fetchApi, fetchJson } from "@/lib/api";
+import { Model3DViewer } from "@/components/model-3d-viewer";
+import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { allowedWorkflowTransitions, canWriteCatalog, workflowStage } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types/auth";
@@ -92,6 +93,7 @@ const CATALOG_PAGE_SIZE = 100;
 
 interface LibraryManagerPanelProps {
   user: User | null;
+  highlightComponentId?: string | null;
 }
 
 type SortKey = "name" | "manufacturer" | "category" | "package_name" | "availability_state" | "workflow_stage";
@@ -194,6 +196,14 @@ type NewComponentFormState = {
   powerDissipationW: string;
   rate: string;
   sapCode: string;
+};
+
+type InlinePrefill = {
+  assetType: "symbol" | "footprint";
+  name: string;              // bare name of the primary asset
+  libraryLink: string;
+  footprintLink?: string | null;  // full "lib:name" of linked footprint (from SCH symbol Footprint property)
+  projectId: string;         // project the backend should read files from
 };
 
 const EMPTY_FORM: NewComponentFormState = {
@@ -526,6 +536,83 @@ function SvgPreview({ component, kind }: { component: CatalogComponent; kind: "s
   );
 }
 
+// ─── Interactive asset preview dialog ────────────────────────────────────────
+
+function AssetPreviewDialog({
+  previewUrl,
+  label,
+  open,
+  onOpenChange,
+}: {
+  previewUrl: string;
+  label: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null);
+
+  // Reset transform when dialog opens
+  useEffect(() => {
+    if (open) { setScale(1); setOffset({ x: 0, y: 0 }); }
+  }, [open]);
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    setScale((s) => Math.min(20, Math.max(0.1, s * delta)));
+  }
+
+  function onMouseDown(e: React.MouseEvent) {
+    setDragging(true);
+    dragStart.current = { mx: e.clientX, my: e.clientY, ox: offset.x, oy: offset.y };
+  }
+
+  function onMouseMove(e: React.MouseEvent) {
+    if (!dragging || !dragStart.current) return;
+    setOffset({
+      x: dragStart.current.ox + (e.clientX - dragStart.current.mx),
+      y: dragStart.current.oy + (e.clientY - dragStart.current.my),
+    });
+  }
+
+  function onMouseUp() { setDragging(false); dragStart.current = null; }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogHeader className="px-4 py-2.5 border-b border-border/50 shrink-0 flex-row items-center justify-between">
+          <DialogTitle className="text-sm">{label}</DialogTitle>
+          <span className="text-[10px] text-muted-foreground pr-6">Scroll to zoom · Drag to pan</span>
+        </DialogHeader>
+        <div
+          className="flex-1 min-h-0 overflow-hidden bg-secondary/10 cursor-grab active:cursor-grabbing select-none"
+          onWheel={onWheel}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseUp}
+        >
+          <div
+            className="w-full h-full flex items-center justify-center"
+            style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: "center center", transition: dragging ? "none" : "transform 0.05s" }}
+          >
+            <img
+              src={previewUrl}
+              alt={label}
+              className="max-w-none"
+              style={{ width: "80%", height: "auto", pointerEvents: "none" }}
+              draggable={false}
+            />
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Sort button ─────────────────────────────────────────────────────────────
 
 function SortButton({
@@ -605,7 +692,7 @@ function FilePicker({
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
+export function LibraryManagerPanel({ user, highlightComponentId }: LibraryManagerPanelProps) {
   // ── data state ──
   const [components, setComponents] = useState<CatalogComponent[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
@@ -648,6 +735,9 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
   } | null>(null);
   const [validationRunLoading, setValidationRunLoading] = useState<string | null>(null);
 
+  // ── inline prefill (from viewer crosslink) ──
+  const [inlinePrefill, setInlinePrefill] = useState<InlinePrefill | null>(null);
+
   // ── forms ──
   const [newForm, setNewForm] = useState<NewComponentFormState>(EMPTY_FORM);
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -658,6 +748,18 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
   const [validationSubmitting, setValidationSubmitting] = useState(false);
   const [validationBulkSubmitting, setValidationBulkSubmitting] = useState(false);
   const [previewBulkSubmitting, setPreviewBulkSubmitting] = useState(false);
+  const [previewDialog, setPreviewDialog] = useState<{ url: string; label: string } | null>(null);
+  const [model3dDialog, setModel3dDialog] = useState<{
+    componentId: string;
+    label: string;
+    hasFootprint: boolean;
+    hasModel: boolean;
+    modelAssetUrl: string;
+    modelAssetFileName: string;
+  } | null>(null);
+  const [model3dViewMode, setModel3dViewMode] = useState<"board+part" | "part" | "board">("board+part");
+  const [model3dLoading, setModel3dLoading] = useState(false);
+  const [model3dBlobUrl, setModel3dBlobUrl] = useState<string | null>(null);
   const [importSelection, setImportSelection] = useState<ImportSelection | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
   const [attachTargetLibrary, setAttachTargetLibrary] = useState("");
@@ -728,6 +830,34 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
     };
   }, [refreshKey, currentPage, deferredQuery, filterCategory, filterState, filterWorkflow, filterValidation, viewMode, sortKey, sortDir]);
 
+  // Read inline prefill from sessionStorage (set by viewer crosslink "Add to Library")
+  useEffect(() => {
+    const raw = sessionStorage.getItem("prism_inline_prefill");
+    if (!raw) return;
+    sessionStorage.removeItem("prism_inline_prefill");
+    try {
+      const prefill = JSON.parse(raw) as InlinePrefill;
+      setInlinePrefill(prefill);
+      setNewForm((f) => ({ ...f, value: prefill.name }));
+      setNewDialogTab("manual");
+      setShowNewDialog(true);
+    } catch {
+      // ignore malformed data
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-select a component when navigated here via crosslink
+  const highlightAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!highlightComponentId || highlightAppliedRef.current || loading || components.length === 0) return;
+    const match = components.find((c) => c.id === highlightComponentId);
+    if (match) {
+      setSelected(match);
+      highlightAppliedRef.current = true;
+    }
+  }, [highlightComponentId, loading, components]);
+
   // ── filtered + sorted list ──
   const filtered = useMemo(() => {
     return [...components].sort((a, b) => {
@@ -780,8 +910,64 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
         rate: newForm.rate,
         sap_code: newForm.sapCode,
       };
-      await fetchJson("/api/catalog/components", { method: "POST", body: JSON.stringify(body) });
-      toast.success("Component created");
+      const created = await fetchJson<{ id: string }>("/api/catalog/components", { method: "POST", body: JSON.stringify(body) });
+
+      // Auto-attach extracted asset(s) when coming from the viewer crosslink
+      if (inlinePrefill && created.id) {
+        const { assetType, name, footprintLink, projectId } = inlinePrefill;
+
+        // Symbol name comes from the libraryLink bare name; footprint name may differ
+        const symbolName    = assetType === "symbol"    ? name
+          : null; // PCB→symbol not supported without SCH
+        const footprintName = assetType === "footprint" ? name
+          : footprintLink ? footprintLink.slice(footprintLink.indexOf(":") + 1) : null;
+
+        const attachAsset = async (type: "symbol" | "footprint", assetName: string): Promise<boolean> => {
+          const ext = type === "symbol" ? "kicad_sym" : "kicad_mod";
+          const blockRes = await fetchApi("/api/catalog/assets/extract-block", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ asset_type: type, name: assetName, project_id: projectId }),
+          });
+          if (!blockRes.ok) {
+            toast.warning(`${type} extraction failed: ${await readApiError(blockRes, "unknown error")}`);
+            return false;
+          }
+          const blockText = await blockRes.text();
+          const assetFile = new File([blockText], `${assetName}.${ext}`, { type: "text/plain" });
+          const fd = new FormData();
+          fd.append("file", assetFile);
+          if (type === "symbol") fd.append("selected_symbol", assetName);
+          else fd.append("selected_footprint", assetName);
+          const endpoint = type === "symbol"
+            ? `/api/catalog/components/${created.id}/symbol-import`
+            : `/api/catalog/components/${created.id}/footprint-import`;
+          const attachRes = await fetchApi(endpoint, { method: "POST", body: fd });
+          if (!attachRes.ok) {
+            toast.warning(`${type} attach failed: ${await readApiError(attachRes, "unknown error")}`);
+            return false;
+          }
+          return true;
+        };
+
+        const attached: string[] = [];
+        if (symbolName)    if (await attachAsset("symbol",    symbolName))    attached.push("symbol");
+        if (footprintName) if (await attachAsset("footprint", footprintName)) attached.push("footprint");
+
+        if (attached.length > 0) toast.success(`Component created — attached: ${attached.join(", ")}`);
+        else toast.success("Component created (no assets could be extracted)");
+
+        setInlinePrefill(null);
+        setShowNewDialog(false);
+        setNewForm(EMPTY_FORM);
+        await refresh();
+        const fresh = await fetchJson<CatalogComponent>(`/api/catalog/components/${created.id}`);
+        setSelected(fresh);
+        return;
+      } else {
+        toast.success("Component created");
+      }
+
       setShowNewDialog(false);
       setNewForm(EMPTY_FORM);
       refresh();
@@ -846,6 +1032,91 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
     }
   };
 
+
+  // ─── Library import ──────────────────────────────────────────────────
+  const [showLibImportDialog, setShowLibImportDialog] = useState(false);
+  const [libImportTab, setLibImportTab] = useState<"zip" | "path">("zip");
+  const [libImportZip, setLibImportZip] = useState<File | null>(null);
+  const [libImportPath, setLibImportPath] = useState("");
+  const [libImportOverwrite, setLibImportOverwrite] = useState(false);
+  const [libImportPreviews, setLibImportPreviews] = useState(true);
+  const [libImportCreateStubs, setLibImportCreateStubs] = useState(true);
+  const [libImportJobId, setLibImportJobId] = useState<string | null>(null);
+  const [libImportLogs, setLibImportLogs] = useState<string[]>([]);
+  const [libImportStatus, setLibImportStatus] = useState<string>("idle");
+  const [libImportPercent, setLibImportPercent] = useState(0);
+  const [libImportSubmitting, setLibImportSubmitting] = useState(false);
+  const libImportLogsRef = useRef<HTMLDivElement>(null);
+
+  const handleLibImportStart = async () => {
+    setLibImportSubmitting(true);
+    setLibImportLogs([]);
+    setLibImportJobId(null);
+    setLibImportStatus("running");
+    setLibImportPercent(0);
+    try {
+      const form = new FormData();
+      if (libImportTab === "zip" && libImportZip) {
+        form.append("file", libImportZip);
+      } else if (libImportTab === "path" && libImportPath.trim()) {
+        form.append("source_path", libImportPath.trim());
+      } else {
+        toast.error("Provide a ZIP file or a server path");
+        return;
+      }
+      form.append("overwrite", String(libImportOverwrite));
+      form.append("generate_previews", String(libImportPreviews));
+      form.append("create_stubs", String(libImportCreateStubs));
+
+      const resp = await fetchJson<{ job_id: string; status: string }>("/api/catalog/library-import", {
+        method: "POST",
+        body: form,
+      });
+      setLibImportJobId(resp.job_id);
+    } catch (err) {
+      toast.error(getErrorMsg(err));
+      setLibImportStatus("failed");
+    } finally {
+      setLibImportSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!libImportJobId) return;
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled) {
+        await sleep(1200);
+        if (cancelled) break;
+        try {
+          const job = await fetchJson<{
+            status: string;
+            message: string;
+            percent: number;
+            logs: string[];
+          }>(`/api/catalog/library-import/${libImportJobId}`);
+          if (cancelled) break;
+          setLibImportLogs(job.logs ?? []);
+          setLibImportStatus(job.status);
+          setLibImportPercent(job.percent ?? 0);
+          if (libImportLogsRef.current) {
+            libImportLogsRef.current.scrollTop = libImportLogsRef.current.scrollHeight;
+          }
+          if (job.status === "completed" || job.status === "completed_with_errors" || job.status === "failed") {
+            if (job.status === "completed") toast.success("Library import complete");
+            else if (job.status === "completed_with_errors") toast.warning("Library import done with errors");
+            else toast.error("Library import failed");
+            refresh();
+            break;
+          }
+        } catch {
+          break;
+        }
+      }
+    };
+    void poll();
+    return () => { cancelled = true; };
+  }, [libImportJobId, refresh]);
 
   // ─── Edit component ──────────────────────────────────────────────────
   const openEdit = () => {
@@ -1472,6 +1743,13 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
+                      {canMutateCatalog && (
+                        <DropdownMenuItem onSelect={() => setShowLibImportDialog(true)}>
+                          <Upload className="h-3.5 w-3.5" />
+                          Import Library…
+                        </DropdownMenuItem>
+                      )}
+                      {canMutateCatalog && <DropdownMenuSeparator />}
                       <DropdownMenuItem
                         disabled={validationBulkSubmitting || !health.enabled}
                         onSelect={() => void handleValidateCatalog()}
@@ -1771,16 +2049,75 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
                 }
               >
                 {selected.previews.some((p) => p.status === "ready") ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["symbol", "footprint"] as const).map((kind) => {
-                      const has = selected.previews.some((p) => p.kind === kind && p.status === "ready");
-                      if (!has) return null;
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["symbol", "footprint"] as const).map((kind) => {
+                        const preview = selected.previews.find((p) => p.kind === kind && p.status === "ready");
+                        if (!preview) return null;
+                        const cacheKey = encodeURIComponent(preview.updated_at || preview.id);
+                        const url = `/api/remote-provider/previews/${preview.id}?v=${cacheKey}`;
+                        return (
+                          <button
+                            key={kind}
+                            className="h-24 overflow-hidden rounded-md border border-border/50 bg-secondary/20 cursor-pointer hover:border-primary/50 hover:ring-1 hover:ring-primary/30 transition-all relative group"
+                            onClick={() => setPreviewDialog({ url, label: `${selected.name} — ${kind}` })}
+                            title={`Open interactive ${kind} viewer`}
+                          >
+                            <SvgPreview component={selected} kind={kind} />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="text-[10px] text-white font-medium">Open viewer</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(() => {
+                      const modelAsset = selected.assets.find((a) => a.asset_type === "3dmodel");
+                      const footprintAsset = selected.assets.find((a) => a.asset_type === "footprint");
+                      if (!modelAsset) return null;
+                      const filename = modelAsset?.name || "model.wrl";
                       return (
-                        <div key={kind} className="h-24 overflow-hidden rounded-md border border-border/50 bg-secondary/20">
-                          <SvgPreview component={selected} kind={kind} />
-                        </div>
+                        <button
+                          className="w-full h-10 flex items-center justify-center gap-2 rounded-md border border-border/50 bg-secondary/20 text-[11px] text-muted-foreground hover:border-primary/50 hover:text-foreground hover:ring-1 hover:ring-primary/30 transition-all"
+                          onClick={async () => {
+                            const hasBoth = !!footprintAsset && !!modelAsset;
+                            const dialogInfo = {
+                              componentId: selected.id,
+                              label: `${selected.name} — 3D Model`,
+                              hasFootprint: !!footprintAsset,
+                              hasModel: !!modelAsset,
+                              modelAssetUrl: `/api/catalog/components/${selected.id}/assets/3dmodel/content/${encodeURIComponent(filename)}`,
+                              modelAssetFileName: filename,
+                            };
+                            setModel3dBlobUrl(null);
+                            setModel3dViewMode(hasBoth ? "board+part" : "part");
+                            setModel3dDialog(dialogInfo);
+                            if (hasBoth) {
+                              setModel3dLoading(true);
+                              try {
+                                const resp = await fetchApi(`/api/catalog/components/${selected.id}/assets/footprint/export-step`);
+                                if (!resp.ok) {
+                                  const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                                  toast.error(`Export failed: ${err.detail ?? resp.statusText}`);
+                                  setModel3dViewMode("part");
+                                  return;
+                                }
+                                const blob = await resp.blob();
+                                setModel3dBlobUrl(URL.createObjectURL(blob));
+                              } catch (e) {
+                                toast.error(`Export error: ${getErrorMsg(e)}`);
+                                setModel3dViewMode("part");
+                              } finally {
+                                setModel3dLoading(false);
+                              }
+                            }
+                          }}
+                        >
+                          <Package className="h-3.5 w-3.5" />
+                          View 3D Model
+                        </button>
                       );
-                    })}
+                    })()}
                   </div>
                 ) : (
                   <div className="rounded-md border border-dashed border-border/50 p-3 text-[11px] text-muted-foreground">
@@ -2006,13 +2343,96 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
         </DialogContent>
       </Dialog>
 
+      {/* ── Interactive asset preview dialog ──────────────────────────── */}
+      {previewDialog && (
+        <AssetPreviewDialog
+          previewUrl={previewDialog.url}
+          label={previewDialog.label}
+          open={!!previewDialog}
+          onOpenChange={(v) => { if (!v) setPreviewDialog(null); }}
+        />
+      )}
+
+      {/* ── 3D model viewer dialog ────────────────────────────────────── */}
+      {model3dDialog && (
+        <Dialog open={!!model3dDialog} onOpenChange={(v) => {
+          if (!v) {
+            setModel3dDialog(null);
+            if (model3dBlobUrl) { URL.revokeObjectURL(model3dBlobUrl); setModel3dBlobUrl(null); }
+          }
+        }}>
+          <DialogContent className="max-w-4xl h-[80vh] flex flex-col gap-0 p-0 overflow-hidden">
+            <DialogHeader className="px-4 py-2.5 border-b border-border/50 shrink-0 flex-row items-center justify-between">
+              <DialogTitle className="text-sm">{model3dDialog.label}</DialogTitle>
+              {model3dDialog.hasFootprint && model3dDialog.hasModel && (
+                <div className="flex items-center gap-1 mr-8">
+                  {(["board+part", "board", "part"] as const).map((m) => (
+                    <button
+                      key={m}
+                      className={`px-2.5 py-1 text-[11px] rounded-md border transition-all ${model3dViewMode === m ? "border-primary bg-primary/10 text-primary" : "border-border/50 text-muted-foreground hover:border-primary/40 hover:text-foreground"}`}
+                      disabled={model3dLoading}
+                      onClick={async () => {
+                        if (model3dViewMode === m) return;
+                        setModel3dViewMode(m);
+                        if (m === "part") {
+                          if (model3dBlobUrl) { URL.revokeObjectURL(model3dBlobUrl); setModel3dBlobUrl(null); }
+                          return;
+                        }
+                        // board+part or board: fetch VRML export
+                        setModel3dLoading(true);
+                        try {
+                          const hidePart = m === "board";
+                          const resp = await fetchApi(`/api/catalog/components/${model3dDialog.componentId}/assets/footprint/export-step${hidePart ? "?hide_part=true" : ""}`);
+                          if (!resp.ok) {
+                            const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                            toast.error(`Export failed: ${err.detail ?? resp.statusText}`);
+                            setModel3dViewMode("part");
+                            return;
+                          }
+                          const blob = await resp.blob();
+                          if (model3dBlobUrl) URL.revokeObjectURL(model3dBlobUrl);
+                          setModel3dBlobUrl(URL.createObjectURL(blob));
+                        } catch (e) {
+                          toast.error(`Export error: ${getErrorMsg(e)}`);
+                          setModel3dViewMode("part");
+                        } finally {
+                          setModel3dLoading(false);
+                        }
+                      }}
+                    >
+                      {m === "board+part" ? "Board + Part" : m === "board" ? "Board only" : "Part only"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </DialogHeader>
+            <div className="flex-1 min-h-0 relative">
+              {model3dLoading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              )}
+              {(model3dViewMode === "board+part" || model3dViewMode === "board") && model3dBlobUrl
+                ? <Model3DViewer modelUrl={model3dBlobUrl} sceneKey={model3dBlobUrl} modelFileName="board.wrl" isometricCamera />
+                : model3dViewMode === "part"
+                  ? <Model3DViewer modelUrl={model3dDialog.modelAssetUrl} sceneKey={model3dDialog.modelAssetUrl} modelFileName={model3dDialog.modelAssetFileName} />
+                  : null
+              }
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* ── Create dialog ─────────────────────────────────────────────── */}
-      <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
+      <Dialog open={showNewDialog} onOpenChange={(open) => { setShowNewDialog(open); if (!open) setInlinePrefill(null); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Component</DialogTitle>
             <DialogDescription>
-              Create a new component manually or bulk import metadata from CSV.
+              {inlinePrefill
+                ? <>From viewer — <span className="font-mono">{inlinePrefill.libraryLink}</span>. The {inlinePrefill.assetType} file will be attached automatically on create.</>
+                : "Create a new component manually or bulk import metadata from CSV."
+              }
             </DialogDescription>
           </DialogHeader>
 
@@ -2359,6 +2779,198 @@ export function LibraryManagerPanel({ user }: LibraryManagerPanelProps) {
               Detach
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Library Import ───────────────────────────────────────────── */}
+      <Dialog open={showLibImportDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowLibImportDialog(false);
+          if (libImportStatus === "completed" || libImportStatus === "completed_with_errors" || libImportStatus === "failed") {
+            setLibImportJobId(null);
+            setLibImportLogs([]);
+            setLibImportStatus("idle");
+            setLibImportPercent(0);
+            setLibImportZip(null);
+            setLibImportPath("");
+          }
+        }
+      }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Import Library</DialogTitle>
+            <DialogDescription>
+              Import a KiCad library folder (symbols/, footprints/, 3D/) or a CERN-style database library as raw assets into the catalog store.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!libImportJobId ? (
+            <div className="space-y-4 pt-1">
+              {/* Tab selector */}
+              <div className="flex gap-1 rounded-md border border-border/60 bg-muted/40 p-0.5 w-fit">
+                <button
+                  onClick={() => setLibImportTab("zip")}
+                  className={cn(
+                    "rounded px-3 py-1 text-xs font-medium transition-colors",
+                    libImportTab === "zip" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Upload ZIP
+                </button>
+                <button
+                  onClick={() => setLibImportTab("path")}
+                  className={cn(
+                    "rounded px-3 py-1 text-xs font-medium transition-colors",
+                    libImportTab === "path" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Server Path
+                </button>
+              </div>
+
+              {libImportTab === "zip" ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">Library ZIP</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Zip your library folder so it contains <code className="font-mono bg-muted rounded px-1">symbols/</code>, <code className="font-mono bg-muted rounded px-1">footprints/</code> and/or <code className="font-mono bg-muted rounded px-1">3D/</code> at the top level (or one folder deep). CERN-style archives with <code className="font-mono bg-muted rounded px-1">SchLib/</code> and a <code className="font-mono bg-muted rounded px-1">.db</code> file are also supported.
+                  </p>
+                  <FilePicker
+                    id="lib-import-zip"
+                    label=""
+                    accept=".zip"
+                    file={libImportZip}
+                    placeholder="Choose ZIP…"
+                    onChange={setLibImportZip}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Label className="text-xs">Absolute path on the server</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Path to a folder on the machine running Prism. Useful for large libraries already on disk.
+                  </p>
+                  <Input
+                    value={libImportPath}
+                    onChange={(e) => setLibImportPath(e.target.value)}
+                    placeholder="C:\KiCad\library or /home/user/kicad-library"
+                    className="h-8 text-xs font-mono"
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={libImportCreateStubs}
+                    onChange={(e) => setLibImportCreateStubs(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span>Create components <span className="text-muted-foreground">(one per symbol)</span></span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={libImportPreviews}
+                    onChange={(e) => setLibImportPreviews(e.target.checked)}
+                    className="rounded"
+                  />
+                  Generate previews
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={libImportOverwrite}
+                    onChange={(e) => setLibImportOverwrite(e.target.checked)}
+                    className="rounded"
+                  />
+                  Overwrite existing assets
+                </label>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowLibImportDialog(false)}>Cancel</Button>
+                <Button
+                  onClick={() => void handleLibImportStart()}
+                  disabled={libImportSubmitting || (libImportTab === "zip" ? !libImportZip : !libImportPath.trim())}
+                >
+                  {libImportSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Start Import
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-1">
+              {/* Progress bar */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className={cn(
+                    "font-medium",
+                    libImportStatus === "completed" ? "text-emerald-400" :
+                    libImportStatus === "completed_with_errors" ? "text-amber-400" :
+                    libImportStatus === "failed" ? "text-red-400" :
+                    "text-muted-foreground"
+                  )}>
+                    {libImportStatus === "running" ? "Importing…" :
+                     libImportStatus === "completed" ? "Complete" :
+                     libImportStatus === "completed_with_errors" ? "Done with errors" :
+                     libImportStatus === "failed" ? "Failed" : libImportStatus}
+                  </span>
+                  <span className="text-muted-foreground">{Math.round(libImportPercent)}%</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-300",
+                      libImportStatus === "failed" ? "bg-red-500" :
+                      libImportStatus === "completed_with_errors" ? "bg-amber-500" :
+                      "bg-primary"
+                    )}
+                    style={{ width: `${libImportPercent}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Log tail */}
+              <div
+                ref={libImportLogsRef}
+                className="h-56 overflow-y-auto rounded-md border border-border/50 bg-black/60 p-2 font-mono text-[11px] text-emerald-300/90 space-y-0.5"
+              >
+                {libImportLogs.length === 0 ? (
+                  <p className="text-muted-foreground italic">Starting…</p>
+                ) : libImportLogs.map((line, i) => (
+                  <p key={i} className={cn(
+                    "leading-relaxed break-all whitespace-pre-wrap",
+                    line.toLowerCase().includes("error") ? "text-red-400" :
+                    line.toLowerCase().includes("warn") ? "text-amber-400" :
+                    "text-emerald-300/90"
+                  )}>{line}</p>
+                ))}
+              </div>
+
+              <DialogFooter>
+                {(libImportStatus === "completed" || libImportStatus === "completed_with_errors" || libImportStatus === "failed") ? (
+                  <Button onClick={() => {
+                    setShowLibImportDialog(false);
+                    setLibImportJobId(null);
+                    setLibImportLogs([]);
+                    setLibImportStatus("idle");
+                    setLibImportPercent(0);
+                    setLibImportZip(null);
+                    setLibImportPath("");
+                    setLibImportCreateStubs(true);
+                  }}>
+                    Close
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Import running in background…
+                  </span>
+                )}
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

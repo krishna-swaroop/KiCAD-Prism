@@ -1,4 +1,4 @@
-import { AppWindow, Folder, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { AppWindow, Blocks, Folder, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ interface WorkspaceSidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
   onSectionChange: (section: WorkspaceSection) => void;
+  canOpenLibrary: boolean;
 }
 
 export function WorkspaceSidebar({
@@ -17,6 +18,7 @@ export function WorkspaceSidebar({
   isCollapsed,
   onToggle,
   onSectionChange,
+  canOpenLibrary,
 }: WorkspaceSidebarProps) {
   return (
     <aside
@@ -48,6 +50,18 @@ export function WorkspaceSidebar({
           <Folder className="h-4 w-4" />
           {!isCollapsed && <span>Projects</span>}
         </Button>
+
+        {canOpenLibrary && (
+          <Button
+            variant={section === "library" ? "secondary" : "ghost"}
+            className={cn("w-full justify-start gap-2", isCollapsed && "justify-center px-2")}
+            onClick={() => onSectionChange("library")}
+            aria-label="Library Manager"
+          >
+            <Blocks className="h-4 w-4" />
+            {!isCollapsed && <span>Library Manager</span>}
+          </Button>
+        )}
 
         <Button
           variant={section === "apps" ? "secondary" : "ghost"}

@@ -56,10 +56,11 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
   const { projects, folders, loading, error, folderById, refresh, createFolder, renameFolder, deleteFolder, moveProject, deleteProject } =
     useWorkspaceData();
 
-  const [section, setSection] = useState<WorkspaceSection>("projects");
+  const initialSection = (searchParams.get("section") as WorkspaceSection | null) ?? "projects";
+  const [section, setSection] = useState<WorkspaceSection>(initialSection);
+  const [highlightComponentId] = useState<string | null>(searchParams.get("highlight"));
   const [viewMode, setViewMode] = useState<ViewMode>("gallery");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [activeApp, setActiveApp] = useState<"index" | "library-manager">("index");
 
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -181,12 +182,6 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
     }
   }, [projects, selectedProjectId]);
 
-  useEffect(() => {
-    if (section !== "apps") {
-      setActiveApp("index");
-    }
-  }, [section]);
-
   const handleCreateFolder = async (name: string) => {
     if (!canManageProjects) {
       toast.error("You do not have permission to create folders");
@@ -307,6 +302,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
           isCollapsed={isSidebarCollapsed}
           onToggle={() => setIsSidebarCollapsed((previous) => !previous)}
           onSectionChange={setSection}
+          canOpenLibrary={canOpenLibrary}
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -339,12 +335,10 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
           <main className="min-h-0 flex-1 overflow-hidden">
             {loading ? (
               <WorkspaceLoadingState />
+            ) : section === "library" ? (
+              <LibraryManagerPanel user={user} highlightComponentId={highlightComponentId} />
             ) : section === "apps" ? (
-              activeApp === "library-manager" ? (
-                canOpenLibrary ? <LibraryManagerPanel user={user} /> : <WorkspaceAppsPlaceholder canOpenLibraryManager={canOpenLibrary} onOpenLibraryManager={() => setActiveApp("library-manager")} />
-              ) : (
-                <WorkspaceAppsPlaceholder canOpenLibraryManager={canOpenLibrary} onOpenLibraryManager={() => setActiveApp("library-manager")} />
-              )
+              <WorkspaceAppsPlaceholder canOpenLibraryManager={canOpenLibrary} onOpenLibraryManager={() => setSection("library")} />
             ) : (
               <div className="flex h-full min-h-0 flex-col p-6">
                 <WorkspaceBreadcrumbs

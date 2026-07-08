@@ -558,6 +558,11 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         setPcbViewerElement(node);
     }, []);
 
+    const [activeTab, setActiveTab] = useState<VisualizerTab>("sch");
+    const [schematicContent, setSchematicContent] = useState<string | null>(null);
+    const [subsheets, setSubsheets] = useState<{ filename: string, content: string }[]>([]);
+    const [pcbContent, setPcbContent] = useState<string | null>(null);
+
     // Refs to the wrapper divs that contain each ecad-viewer — needed by the
     // shared info-panel hook so it can listen for kicanvas:select events.
     const schematicWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -566,10 +571,12 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
     const { detail: schSelectedDetail, clear: clearSchSelectedDetail } = useEcadInfoPanel({
         containerRef: schematicWrapperRef,
         viewerRefs: useRef([schematicViewerRef]).current,
+        projectId,
     });
     const { detail: pcbSelectedDetail, clear: clearPcbSelectedDetail } = useEcadInfoPanel({
         containerRef: pcbWrapperRef,
         viewerRefs: useRef([pcbViewerRef]).current,
+        projectId,
     });
 
     // PCB-only: layer-visibility map fix + pad-priority click reordering.
@@ -583,11 +590,6 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         containerRef: visualizerContentRef,
         viewerRefs: visualizerViewerRefs,
     });
-
-    const [activeTab, setActiveTab] = useState<VisualizerTab>("sch");
-    const [schematicContent, setSchematicContent] = useState<string | null>(null);
-    const [subsheets, setSubsheets] = useState<{ filename: string, content: string }[]>([]);
-    const [pcbContent, setPcbContent] = useState<string | null>(null);
     const [modelUrl, setModelUrl] = useState<string | null>(null);
     const [ibomUrl, setIbomUrl] = useState<string | null>(null);
     const [schematicContentLoaded, setSchematicContentLoaded] = useState(false);
