@@ -65,7 +65,7 @@ def _parse_drills(pcb_path: str) -> list[dict]:
             fp_y = fp.position.Y
             fp_angle = (fp.position.angle or 0) * _math.pi / 180
             for pad in fp.pads:
-                if pad.type != "thru_hole" or pad.drill is None:
+                if pad.type not in ("thru_hole", "np_thru_hole") or pad.drill is None:
                     continue
                 # Rotate pad-local position by footprint angle
                 px, py = pad.position.X, pad.position.Y
