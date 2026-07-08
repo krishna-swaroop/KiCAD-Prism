@@ -774,15 +774,15 @@ async def get_project_thumbnail(
         except HTTPException:
             abs_path = None
         if abs_path and abs_path.is_file():
-            return FileResponse(
-                str(abs_path), headers={"Cache-Control": "public, max-age=300"}
-            )
+            return FileResponse(str(abs_path), headers={"Cache-Control": "no-cache"})
+        # File is gone — clear the stale DB entry
+        workspace.update_project(project_id, thumbnail_rel=None)
 
     # Fallback: live filesystem detection (e.g. thumbnail_rel not yet persisted)
     path = project_service.get_project_thumbnail_path(project_id)
     if not path:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
-    return FileResponse(path, headers={"Cache-Control": "public, max-age=300"})
+    return FileResponse(path, headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/{project_id}", response_model=project_service.Project)
