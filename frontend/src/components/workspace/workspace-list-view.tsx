@@ -1,6 +1,7 @@
 import { Folder, PanelRightOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/utils";
 
 import { SearchProject } from "@/hooks/use-workspace-search";
 import { FolderTreeItem, Project } from "@/types/project";
@@ -119,7 +120,7 @@ export function WorkspaceListView({
               <p className="truncate text-sm text-muted-foreground">
                 {resolveProjectLocation(project, isSearching, currentFolderId, breadcrumbs)}
               </p>
-              <p className="truncate text-sm text-muted-foreground">{project.last_modified}</p>
+              <p className="truncate text-sm text-muted-foreground">{formatDate(project.last_modified)}</p>
               <div
                 className="flex items-center justify-end gap-1"
                 onClick={(event) => event.stopPropagation()}

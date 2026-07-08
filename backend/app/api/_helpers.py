@@ -75,6 +75,7 @@ def _row_to_project(row: dict) -> project_service.Project:
         import_type=row.get("import_type"),
         parent_repo_path=row.get("parent_repo_path"),
         folder_id=row.get("folder_id"),
+        kicad_version=row.get("kicad_version"),
     )
 
 

@@ -588,7 +588,8 @@ def generate_project_id(base_id: str, registry: dict) -> str:
 def _resolve_cached_paths(project_path: str) -> dict:
     """Resolve and return cached path info for a project directory."""
     try:
-        resolved = path_config_service.resolve_paths(project_path)
+        config = path_config_service.get_path_config(project_path)
+        resolved = path_config_service.resolve_paths(project_path, config)
         sch = resolved.schematic
         pcb = resolved.pcb
         thumb = resolved.thumbnail_dir
@@ -628,14 +629,30 @@ def _resolve_cached_paths(project_path: str) -> dict:
                 for f in os.listdir(model_dir):
                     if f.lower().endswith((".glb", ".step", ".stp")):
                         has_3d = True
-        return {
+        kicad_version = None
+        if pcb and os.path.isfile(pcb):
+            try:
+                with open(pcb, encoding="utf-8", errors="ignore") as _f:
+                    _head = _f.read(512)
+                _m = re.search(r'\(generator_version\s+"([^"]+)"', _head)
+                if _m:
+                    kicad_version = _m.group(1)
+            except Exception:  # noqa: BLE001 S110
+                pass
+        result: dict = {
             "schematic_rel": _rel(sch),
             "pcb_rel": _rel(pcb),
             "thumbnail_rel": thumb_rel,
             "jobset_rel": _rel(jobset),
             "has_3d_model": has_3d,
             "has_ibom": has_ibom,
+            "kicad_version": kicad_version,
         }
+        if config.description:
+            result["description"] = config.description
+        if config.project_name:
+            result["display_name"] = config.project_name
+        return result
     except Exception:
         return {}
 

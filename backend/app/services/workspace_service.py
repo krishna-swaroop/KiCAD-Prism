@@ -174,6 +174,56 @@ class WorkspaceService:
             );
             CREATE INDEX IF NOT EXISTS idx_ws_jobs_kind_status ON ws_jobs(kind, status);
         """)
+        # Incremental migrations for columns added after initial schema
+        for stmt in [
+            "ALTER TABLE ws_projects ADD COLUMN kicad_version TEXT",
+        ]:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
+        conn.commit()
+        self._backfill_kicad_version(conn)
+
+    def _backfill_kicad_version(self, conn: sqlite3.Connection) -> None:
+        """Populate kicad_version for existing projects that have a NULL value."""
+        import re as _re
+
+        rows = conn.execute(
+            """SELECT p.id, p.pcb_rel, r.clone_path, p.relative_path
+               FROM ws_projects p
+               JOIN ws_repositories r ON r.id = p.repo_id
+               WHERE p.kicad_version IS NULL AND p.pcb_rel IS NOT NULL"""
+        ).fetchall()
+        if not rows:
+            return
+
+        updated = 0
+        for row in rows:
+            clone_path = self._abs_clone_path(row["clone_path"] or "")
+            rel_path = row["relative_path"] or "."
+            project_dir = (
+                os.path.join(clone_path, rel_path) if rel_path != "." else clone_path
+            )
+            pcb_path = os.path.join(project_dir, row["pcb_rel"])
+            if not os.path.isfile(pcb_path):
+                continue
+            try:
+                with open(pcb_path, encoding="utf-8", errors="ignore") as f:
+                    head = f.read(512)
+                m = _re.search(r'\(generator_version\s+"([^"]+)"', head)
+                if m:
+                    conn.execute(
+                        "UPDATE ws_projects SET kicad_version=? WHERE id=?",
+                        (m.group(1), row["id"]),
+                    )
+                    updated += 1
+            except Exception:  # noqa: BLE001 S110
+                pass
+
+        if updated:
+            conn.commit()
+            logger.info("Backfilled kicad_version for %d project(s)", updated)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -296,6 +346,7 @@ class WorkspaceService:
         has_3d_model: bool = False,
         has_ibom: bool = False,
         prism_json_hash: str | None = None,
+        kicad_version: str | None = None,
     ) -> str:
         project_id = _new_id("prj_")
         now = _utc_now_iso()
@@ -304,8 +355,9 @@ class WorkspaceService:
                 """INSERT INTO ws_projects
                    (id,repo_id,name,display_name,description,relative_path,folder_id,
                     schematic_rel,pcb_rel,thumbnail_rel,jobset_rel,
-                    has_3d_model,has_ibom,registered_at,last_modified,prism_json_hash)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    has_3d_model,has_ibom,registered_at,last_modified,prism_json_hash,
+                    kicad_version)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     project_id,
                     repo_id,
@@ -323,6 +375,7 @@ class WorkspaceService:
                     now,
                     now,
                     prism_json_hash,
+                    kicad_version,
                 ),
             )
             conn.commit()
@@ -401,6 +454,7 @@ class WorkspaceService:
             "has_ibom",
             "last_modified",
             "prism_json_hash",
+            "kicad_version",
         }
         fields = {k: v for k, v in kwargs.items() if k in allowed}
         if not fields:

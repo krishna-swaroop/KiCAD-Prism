@@ -37,6 +37,7 @@ class Project(BaseModel):
     )
     portfolio: dict[str, Any] | None = None  # Portfolio scene/detail metadata
     local_path_mode: str | None = None  # "reference" or "copy" for local-path imports
+    kicad_version: str | None = None
 
 
 class RegisteredProjectRecord(BaseModel):
@@ -955,6 +956,11 @@ def update_project_description(project_id: str, description: str) -> bool:
     config = path_config_service.get_path_config(project.path)
     config.description = description
     path_config_service.save_path_config(project.path, config)
+
+    # Keep workspace DB in sync.
+    from app.services.workspace_service import workspace as _workspace
+
+    _workspace.update_project(project_id, description=description)
 
     # Keep registry mirrored for legacy fallback/search compatibility on older code paths.
     registry = _load_project_registry()

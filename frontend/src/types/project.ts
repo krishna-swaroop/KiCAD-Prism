@@ -11,6 +11,7 @@ export interface Project {
     parent_repo?: string;
     repo_url?: string;
     folder_id?: string | null;
+    kicad_version?: string;
 }
 
 export interface Folder {

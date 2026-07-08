@@ -1,10 +1,41 @@
 import { Project } from "@/types/project";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, Box, Trash2, PanelRightOpen } from "lucide-react";
+import { CalendarDays, Box, Trash2, PanelRightOpen, GitBranch, Folder } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import React, { useState } from "react";
+import { formatDate } from "@/lib/utils";
+
+const KICAD_VERSION_COLORS: Record<number, { bg: string; text: string }> = {
+    1:  { bg: "#6366f1", text: "#fff" },
+    2:  { bg: "#8b5cf6", text: "#fff" },
+    3:  { bg: "#ec4899", text: "#fff" },
+    4:  { bg: "#f43f5e", text: "#fff" },
+    5:  { bg: "#f97316", text: "#fff" },
+    6:  { bg: "#eab308", text: "#000" },
+    7:  { bg: "#22c55e", text: "#fff" },
+    8:  { bg: "#06b6d4", text: "#fff" },
+    9:  { bg: "#3b82f6", text: "#fff" },
+    10: { bg: "#14b8a6", text: "#fff" },
+};
+
+
+function KiCadVersionBadge({ version }: { version: string }) {
+    const parts = version.split(".");
+    const major = parseInt(parts[0], 10);
+    const minor = parts[1] ?? "0";
+    const label = `${major}.${minor}`;
+    const colors = KICAD_VERSION_COLORS[major] ?? { bg: "#64748b", text: "#fff" };
+    return (
+        <span
+            title={`KiCad ${version}`}
+            style={{ backgroundColor: colors.bg, color: colors.text }}
+            className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none select-none"
+        >
+            {label}
+        </span>
+    );
+}
 
 interface ProjectCardProps {
     project: Project;
@@ -96,7 +127,7 @@ export function ProjectCard({
                         <h3 className="font-medium text-sm truncate">
                             {highlightMatch(displayName, searchQuery)}
                         </h3>
-                        <p className="text-xs text-muted-foreground">{project.last_modified}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(project.last_modified)}</p>
                     </div>
                 </div>
             </Card>
@@ -139,10 +170,19 @@ export function ProjectCard({
                             <Box className="h-10 w-10 opacity-20" />
                         </div>
                     )}
-                    <div className="absolute top-2 right-2 flex gap-1">
-                        <Badge variant="secondary" className="backdrop-blur-sm bg-background/80 border text-[10px]">
-                            Git
-                        </Badge>
+                    <div className="absolute top-2 right-2 flex items-center gap-1">
+                        {project.kicad_version && (
+                            <KiCadVersionBadge version={project.kicad_version} />
+                        )}
+                        <span
+                            className="inline-flex items-center justify-center rounded bg-background/80 backdrop-blur-sm border p-0.5"
+                            title={project.repo_url ? `Git: ${project.repo_url}` : "Local project"}
+                        >
+                            {project.repo_url
+                                ? <GitBranch className="h-3 w-3 text-foreground/70" />
+                                : <Folder className="h-3 w-3 text-foreground/70" />
+                            }
+                        </span>
                         {actions ? (
                             <div
                                 onClick={(event) => event.stopPropagation()}
@@ -165,7 +205,7 @@ export function ProjectCard({
 
                 <CardFooter className="p-4 pt-0 border-t-0 text-[11px] text-muted-foreground flex items-center gap-2">
                     <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                    <span className="flex-1 truncate">Updated {project.last_modified}</span>
+                    <span className="flex-1 truncate">Updated {formatDate(project.last_modified)}</span>
                     {onOpen && (
                         <Button
                             size="sm"
