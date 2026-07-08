@@ -16,6 +16,7 @@ from __future__ import annotations
 import glob
 import io
 import logging
+import math as _math
 import os
 import shutil
 import subprocess
@@ -24,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import numpy
     from PIL.Image import Image
 
 logger = logging.getLogger(__name__)
@@ -39,6 +41,92 @@ THUMBNAIL_H = 600
 # Remaining entries: (kicad_layer_name, (R, G, B, alpha_0_255))
 # ---------------------------------------------------------------------------
 _EXPORT_LAYERS = ["Edge.Cuts", "F.Cu", "F.Mask", "F.Silkscreen"]
+
+# ---------------------------------------------------------------------------
+# Drill geometry parsed from the .kicad_pcb file
+# ---------------------------------------------------------------------------
+
+
+def _parse_drills(pcb_path: str) -> list[dict]:
+    """Return a list of drill descriptors from a .kicad_pcb file.
+
+    Each entry: {"x": float, "y": float, "r": float} in board mm coords.
+    Covers through-hole pads and vias.  Returns [] on any error.
+    """
+    try:
+        from kiutils.board import Board  # noqa: PLC0415
+
+        board = Board.from_file(pcb_path)
+        drills: list[dict] = []
+
+        # Through-hole pads
+        for fp in board.footprints:
+            fp_x = fp.position.X
+            fp_y = fp.position.Y
+            fp_angle = (fp.position.angle or 0) * _math.pi / 180
+            for pad in fp.pads:
+                if pad.type != "thru_hole" or pad.drill is None:
+                    continue
+                # Rotate pad-local position by footprint angle
+                px, py = pad.position.X, pad.position.Y
+                rx = px * _math.cos(fp_angle) - py * _math.sin(fp_angle)
+                ry = px * _math.sin(fp_angle) + py * _math.cos(fp_angle)
+                drills.append(
+                    {"x": fp_x + rx, "y": fp_y + ry, "r": pad.drill.diameter / 2}
+                )
+
+        # Vias
+        for item in board.traceItems:
+            if item.__class__.__name__ == "Via":
+                drills.append(
+                    {
+                        "x": item.position.X,
+                        "y": item.position.Y,
+                        "r": item.drill / 2,
+                    }
+                )
+
+        return drills
+    except Exception:
+        logger.exception("drill parse failed for %s", pcb_path)
+        return []
+
+
+def _drills_to_mask(
+    drills: list[dict],
+    board_origin_mm: tuple[float, float],
+    board_size_mm: tuple[float, float],
+    img_w: int,
+    img_h: int,
+) -> numpy.ndarray:
+    """Rasterise drill positions into a boolean (H, W) numpy mask.
+
+    board_origin_mm: (min_x, min_y) world mm of the board bbox top-left.
+    board_size_mm:   (width, height) of the board in mm.
+    cairosvg scales the SVG viewBox to output dimensions preserving aspect ratio.
+    """
+    import numpy as np  # noqa: PLC0415
+    from PIL import Image, ImageDraw  # noqa: PLC0415
+
+    ox, oy = board_origin_mm
+    bw, bh = board_size_mm
+
+    # cairosvg letterboxes: scale to fit, centred
+    scale = min(img_w / bw, img_h / bh)
+    off_x = (img_w - bw * scale) / 2
+    off_y = (img_h - bh * scale) / 2
+
+    def world_to_px(wx: float, wy: float) -> tuple[float, float]:
+        return (wx - ox) * scale + off_x, (wy - oy) * scale + off_y
+
+    img = Image.new("L", (img_w, img_h), 0)
+    draw = ImageDraw.Draw(img)
+    for d in drills:
+        cx, cy = world_to_px(d["x"], d["y"])
+        r_px = d["r"] * scale
+        draw.ellipse([cx - r_px, cy - r_px, cx + r_px, cy + r_px], fill=255)
+    return np.array(img) > 127
+
 
 _KICAD_CLI_CANDIDATES = [
     r"C:\Program Files\KiCad\10.0\bin\kicad-cli.exe",
@@ -105,37 +193,16 @@ def _collect_svgs(
     return layer_map
 
 
-def _export_layer_svgs(
-    pcb_path: str, tmp_dir: str
-) -> tuple[dict[str, str], str | None]:
-    """Export per-layer SVGs.
-
-    Returns (layer_map, fcu_no_drill_path) where fcu_no_drill_path is the
-    F.Cu SVG exported without drill markers (drill-shape-opt 0), used to
-    detect drill hole positions by diffing against the default export.
-    """
+def _export_layer_svgs(pcb_path: str, tmp_dir: str) -> dict[str, str]:
+    """Export per-layer SVGs. Returns a mapping of layer_name -> SVG path."""
     kicad_cli = _find_kicad_cli()
     if not kicad_cli:
         raise RuntimeError(
             "kicad-cli not found — install KiCad 8+ to generate thumbnails"
         )
-
     board_stem = Path(pcb_path).stem
-
-    # Main export: all layers with drill markers (default drill-shape-opt 2)
-    main_dir = os.path.join(tmp_dir, "main")
-    os.makedirs(main_dir)
-    _run_kicad_cli(kicad_cli, pcb_path, main_dir, _EXPORT_LAYERS, drill_shape_opt=2)
-    layer_map = _collect_svgs(main_dir, board_stem, _EXPORT_LAYERS)
-
-    # Second F.Cu export without drill markers — diff gives us drill hole positions
-    drill_dir = os.path.join(tmp_dir, "nodrill")
-    os.makedirs(drill_dir)
-    _run_kicad_cli(kicad_cli, pcb_path, drill_dir, ["F.Cu"], drill_shape_opt=0)
-    no_drill_map = _collect_svgs(drill_dir, board_stem, ["F.Cu"])
-    fcu_no_drill = no_drill_map.get("F.Cu")
-
-    return layer_map, fcu_no_drill
+    _run_kicad_cli(kicad_cli, pcb_path, tmp_dir, _EXPORT_LAYERS, drill_shape_opt=0)
+    return _collect_svgs(tmp_dir, board_stem, _EXPORT_LAYERS)
 
 
 def _rasterize(svg_path: str, img_w: int, img_h: int) -> Image:
@@ -211,29 +278,26 @@ def render_thumbnail(
     C_BG = np.array([18, 18, 18, 255], dtype=np.uint8)  # image background
 
     with tempfile.TemporaryDirectory(prefix="prism_thumb_") as tmp:
-        layer_map, fcu_no_drill_svg = _export_layer_svgs(pcb_path, tmp)
+        layer_map = _export_layer_svgs(pcb_path, tmp)
 
         if not layer_map:
             raise RuntimeError(f"kicad-cli produced no SVG layers for {pcb_path}")
 
         # --- Rasterize all needed layers ------------------------------------
-        def ras(path: str) -> np.ndarray | None:
-            try:
-                img = _rasterize(path, img_w, img_h)
-                return np.array(img)
-            except Exception:
-                logger.exception("cairosvg failed rasterizing %s", path)
-                return None
-
         def ras_layer(name: str) -> np.ndarray | None:
             svg = layer_map.get(name)
-            return ras(svg) if svg else None
+            if not svg:
+                return None
+            try:
+                return np.array(_rasterize(svg, img_w, img_h))
+            except Exception:
+                logger.exception("cairosvg failed for layer %s", name)
+                return None
 
         edge_arr = ras_layer("Edge.Cuts")
-        fcu_arr = ras_layer("F.Cu")  # includes drill markers (opt 2)
+        fcu_arr = ras_layer("F.Cu")
         mask_arr = ras_layer("F.Mask")
         silk_arr = ras_layer("F.Silkscreen")
-        fcu_nd = ras(fcu_no_drill_svg) if fcu_no_drill_svg else None  # no drill markers
 
         if edge_arr is None:
             raise RuntimeError(f"Edge.Cuts SVG not found for {pcb_path}")
@@ -250,23 +314,54 @@ def render_thumbnail(
         # --- Boolean masks --------------------------------------------------
         _zero = np.zeros((img_h, img_w), dtype=bool)
 
-        # Copper without drill markers (clean annular rings and fills)
-        copper = (
-            (fcu_nd[:, :, 3] > 10)
-            if fcu_nd is not None
-            else ((fcu_arr[:, :, 3] > 10) if fcu_arr is not None else _zero)
-        )
-
-        # F.Mask openings = exposed pads / bare copper areas
+        copper = (fcu_arr[:, :, 3] > 10) if fcu_arr is not None else _zero
         exposed = (mask_arr[:, :, 3] > 10) if mask_arr is not None else _zero
 
-        # Drill holes: pixels present in F.Cu(opt2) but absent in F.Cu(opt0).
-        # These are the drill marker shapes kicad-cli draws on top of the copper.
-        if fcu_arr is not None and fcu_nd is not None:
-            hole = (fcu_arr[:, :, 3] > 10) & ~(fcu_nd[:, :, 3] > 10)
-        else:
-            # Fallback: zero in F.Cu inside an exposed pad region
-            hole = board_inside & ~copper & exposed
+        # --- Drill holes from PCB file (TH pads + vias) --------------------
+        # Parse board bbox from the Edge.Cuts SVG viewBox (board extents in mm,
+        # relative to the kicad world origin stored in the PCB file).
+        import re as _re  # noqa: PLC0415
+
+        edge_svg_path = layer_map["Edge.Cuts"]
+        with open(edge_svg_path, encoding="utf-8") as _f:
+            _head = _f.read(1024)
+        _vb = _re.search(r'viewBox="([0-9. ]+)"', _head)
+        hole: np.ndarray = _zero
+        if _vb:
+            _parts = list(map(float, _vb.group(1).split()))
+            if len(_parts) == 4:
+                # kicad-cli sets viewBox origin to the board bbox min in world coords
+                # We need the actual world origin; kiutils gives us pad world coords.
+                # The PCB edge items tell us the world bbox min directly.
+                try:
+                    from kiutils.board import Board as _Board  # noqa: PLC0415
+
+                    _b = _Board.from_file(pcb_path)
+                    _edge = [
+                        s
+                        for s in _b.graphicItems
+                        if hasattr(s, "layer") and s.layer == "Edge.Cuts"
+                    ]
+                    _xs = [
+                        c
+                        for s in _edge
+                        for c in ([s.start.X, s.end.X] if hasattr(s, "start") else [])
+                    ]
+                    _ys = [
+                        c
+                        for s in _edge
+                        for c in ([s.start.Y, s.end.Y] if hasattr(s, "start") else [])
+                    ]
+                    if _xs and _ys:
+                        _origin = (min(_xs), min(_ys))
+                        _size = (max(_xs) - min(_xs), max(_ys) - min(_ys))
+                        _drills = _parse_drills(pcb_path)
+                        if _drills:
+                            hole = _drills_to_mask(
+                                _drills, _origin, _size, img_w, img_h
+                            )
+                except Exception:
+                    logger.exception("drill mask failed; holes will be omitted")
 
         # --- Per-pixel composition -----------------------------------------
         # Paint order (bottom to top):

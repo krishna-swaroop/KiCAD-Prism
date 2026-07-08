@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, Box, Trash2, PanelRightOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import React from "react";
+import React, { useState } from "react";
 
 interface ProjectCardProps {
     project: Project;
@@ -55,6 +55,7 @@ export function ProjectCard({
     thumbnailBust,
 }: ProjectCardProps) {
     const navigate = useNavigate();
+    const [lightbox, setLightbox] = useState(false);
 
     const thumbnailUrl = project.thumbnail_url
         ? `${project.thumbnail_url}${thumbnailBust ? `?t=${thumbnailBust}` : ""}`
@@ -103,73 +104,92 @@ export function ProjectCard({
     }
 
     return (
-        <Card
-            className={`overflow-hidden transition-all cursor-pointer group bg-card border shadow-sm ${selected ? "border-primary shadow-md" : "hover:border-primary/50 hover:shadow-md"}`}
-            onClick={handleClick}
-            onDoubleClick={onDoubleClick}
-        >
-            <div className="aspect-video w-full overflow-hidden bg-muted relative border-b">
-                {thumbnailUrl ? (
+        <>
+            {lightbox && thumbnailUrl && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                    onClick={() => setLightbox(false)}
+                >
                     <img
                         src={thumbnailUrl}
                         alt={displayName}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="max-w-[90vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
                     />
-                ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground bg-muted/30">
-                        <Box className="h-10 w-10 opacity-20" />
-                    </div>
-                )}
-                <div className="absolute top-2 right-2 flex gap-1">
-                    <Badge variant="secondary" className="backdrop-blur-sm bg-background/80 border text-[10px]">
-                        Git
-                    </Badge>
-                    {actions ? (
-                        <div
-                            onClick={(event) => event.stopPropagation()}
-                            onPointerDown={(event) => event.stopPropagation()}
-                        >
-                            {actions}
-                        </div>
-                    ) : null}
                 </div>
-            </div>
+            )}
 
-            <CardContent className="p-4">
-                <h3 className="font-semibold text-lg tracking-tight mb-1 group-hover:text-primary transition-colors truncate">
-                    {highlightMatch(displayName, searchQuery)}
-                </h3>
-                <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">
-                    {highlightMatch(description, searchQuery)}
-                </p>
-            </CardContent>
+            <Card
+                className={`overflow-hidden transition-all cursor-pointer group bg-card border shadow-sm ${selected ? "border-primary shadow-md" : "hover:border-primary/50 hover:shadow-md"}`}
+                onClick={handleClick}
+                onDoubleClick={onDoubleClick}
+            >
+                <div
+                    className="aspect-video w-full overflow-hidden bg-muted relative border-b"
+                    onClick={thumbnailUrl ? (e) => { e.stopPropagation(); setLightbox(true); } : undefined}
+                >
+                    {thumbnailUrl ? (
+                        <img
+                            src={thumbnailUrl}
+                            alt={displayName}
+                            className="w-full h-full object-contain hover:scale-105 transition-transform duration-300 cursor-zoom-in"
+                        />
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-muted-foreground bg-muted/30">
+                            <Box className="h-10 w-10 opacity-20" />
+                        </div>
+                    )}
+                    <div className="absolute top-2 right-2 flex gap-1">
+                        <Badge variant="secondary" className="backdrop-blur-sm bg-background/80 border text-[10px]">
+                            Git
+                        </Badge>
+                        {actions ? (
+                            <div
+                                onClick={(event) => event.stopPropagation()}
+                                onPointerDown={(event) => event.stopPropagation()}
+                            >
+                                {actions}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
 
-            <CardFooter className="p-4 pt-0 border-t-0 text-[11px] text-muted-foreground flex items-center gap-2">
-                <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                <span className="flex-1 truncate">Updated {project.last_modified}</span>
-                {onOpen && (
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2 text-[11px] shrink-0"
-                        onClick={(e) => { e.stopPropagation(); onOpen(); }}
-                        onDoubleClick={(e) => e.stopPropagation()}
-                    >
-                        <PanelRightOpen className="h-3 w-3 mr-1" />
-                        Open
-                    </Button>
-                )}
-                {showDelete && onDelete && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 hover:bg-destructive hover:text-destructive-foreground shrink-0"
-                        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                    >
-                        <Trash2 className="h-3 w-3" />
-                    </Button>
-                )}
-            </CardFooter>
-        </Card>
+                <CardContent className="p-4">
+                    <h3 className="font-semibold text-lg tracking-tight mb-1 group-hover:text-primary transition-colors truncate">
+                        {highlightMatch(displayName, searchQuery)}
+                    </h3>
+                    <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">
+                        {highlightMatch(description, searchQuery)}
+                    </p>
+                </CardContent>
+
+                <CardFooter className="p-4 pt-0 border-t-0 text-[11px] text-muted-foreground flex items-center gap-2">
+                    <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                    <span className="flex-1 truncate">Updated {project.last_modified}</span>
+                    {onOpen && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px] shrink-0"
+                            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                        >
+                            <PanelRightOpen className="h-3 w-3 mr-1" />
+                            Open
+                        </Button>
+                    )}
+                    {showDelete && onDelete && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 hover:bg-destructive hover:text-destructive-foreground shrink-0"
+                            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                        >
+                            <Trash2 className="h-3 w-3" />
+                        </Button>
+                    )}
+                </CardFooter>
+            </Card>
+        </>
     );
 }

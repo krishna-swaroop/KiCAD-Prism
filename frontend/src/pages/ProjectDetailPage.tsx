@@ -447,7 +447,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                     <img
                                         src={`${project.thumbnail_url}${thumbnailBust ? `?t=${thumbnailBust}` : ""}`}
                                         alt={getDisplayName(project)}
-                                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                                        className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
                                     />
                                 </button>
                             ) : (
