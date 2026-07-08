@@ -348,6 +348,8 @@ def _run_import_local_job(
         job["message"] = f"Imported {len(imported_ids)} project(s)"
         job["logs"].append("Import completed successfully.")
 
+        _schedule_thumbnail_generation(imported_ids)
+
     except Exception as e:
         job["status"] = "failed"
         job["error"] = str(e)
@@ -767,6 +769,8 @@ def _run_import_job(
         job["message"] = f"Imported {len(imported_ids)} project(s)"
         job["logs"].append("Import completed successfully.")
 
+        _schedule_thumbnail_generation(imported_ids)
+
     except Exception as e:
         job["status"] = "failed"
         job["error"] = str(e)
@@ -864,6 +868,22 @@ def get_job_status(job_id: str) -> dict | None:
     return project_service.jobs.get(job_id)
 
 
+def _schedule_thumbnail_generation(project_ids: list[str]) -> None:
+    """Fire-and-forget: generate thumbnails for a list of project IDs in a daemon thread."""
+
+    def _run() -> None:
+        from app.services import thumbnail_service  # noqa: PLC0415
+
+        for pid in project_ids:
+            try:
+                thumbnail_service.generate_for_project(pid)
+                logger.info("thumbnail: generated for %s", pid)
+            except Exception:
+                logger.exception("thumbnail: failed for %s", pid)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def sync_project(project_id: str) -> dict:
     """
     Sync a project with its remote repository.
@@ -915,8 +935,10 @@ def sync_project(project_id: str) -> dict:
         env["GIT_TERMINAL_PROMPT"] = "0"
         env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=accept-new"
 
+        head_before = repo.head.commit.hexsha if repo.head.is_valid() else None
         fetch_info = origin.fetch(env=env)
         origin.pull(env=env)
+        head_after = repo.head.commit.hexsha if repo.head.is_valid() else None
 
         # Refresh cached paths after sync
         path_config_service.clear_config_cache()
@@ -927,6 +949,10 @@ def sync_project(project_id: str) -> dict:
 
         # Update repo last_synced_at
         workspace.update_repository_synced(row.get("repo_id", ""))
+
+        # Regenerate thumbnail when new commits arrived
+        if head_before != head_after:
+            _schedule_thumbnail_generation([project_id])
 
         return {
             "status": "success",

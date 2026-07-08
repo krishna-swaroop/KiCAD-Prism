@@ -16,6 +16,7 @@ interface WorkspaceProjectToolbarProps {
   onOpenSettings: () => void;
   canManageProjects: boolean;
   canOpenSettings: boolean;
+  onThumbnailsGenerated?: () => void;
 }
 
 async function pollJob(jobId: string): Promise<void> {
@@ -40,6 +41,7 @@ export function WorkspaceProjectToolbar({
   onOpenSettings,
   canManageProjects,
   canOpenSettings,
+  onThumbnailsGenerated,
 }: WorkspaceProjectToolbarProps) {
   const [generating, setGenerating] = useState(false);
 
@@ -55,6 +57,7 @@ export function WorkspaceProjectToolbar({
       const { job_id } = await res.json();
       await pollJob(job_id);
       toast.success("Thumbnails generated", { id: toastId });
+      onThumbnailsGenerated?.();
       onRefresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Thumbnail generation failed", { id: toastId });

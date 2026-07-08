@@ -23,6 +23,7 @@ interface WorkspaceGalleryViewProps {
   onMoveProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
   canManageProjects: boolean;
+  thumbnailBust?: number;
 }
 
 export function WorkspaceGalleryView({
@@ -42,6 +43,7 @@ export function WorkspaceGalleryView({
   onMoveProject,
   onDeleteProject,
   canManageProjects,
+  thumbnailBust,
 }: WorkspaceGalleryViewProps) {
   return (
     <div className="space-y-6">
@@ -63,6 +65,7 @@ export function WorkspaceGalleryView({
                   onClick={() => onShowDetails(project)}
                   onDoubleClick={() => onOpenProject(project)}
                   onOpen={() => onOpenProject(project)}
+                  thumbnailBust={thumbnailBust}
                   actions={
                     <ProjectActionMenu
                       project={project}

@@ -17,6 +17,7 @@ interface ProjectCardProps {
     showDelete?: boolean;
     searchQuery?: string;
     actions?: React.ReactNode;
+    thumbnailBust?: number;
 }
 
 // Highlight matched text in search results
@@ -51,10 +52,13 @@ export function ProjectCard({
     showDelete,
     searchQuery = "",
     actions,
+    thumbnailBust,
 }: ProjectCardProps) {
     const navigate = useNavigate();
 
-    const thumbnailUrl = project.thumbnail_url ? project.thumbnail_url : null;
+    const thumbnailUrl = project.thumbnail_url
+        ? `${project.thumbnail_url}${thumbnailBust ? `?t=${thumbnailBust}` : ""}`
+        : null;
 
     // Helper function to get display name
     const getDisplayName = (project: Project) => {

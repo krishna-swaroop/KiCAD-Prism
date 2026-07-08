@@ -81,6 +81,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [thumbnailBust, setThumbnailBust] = useState(0);
   const canManageProjects = roleCanManageProjects(user?.role);
   const canOpenSettings = user?.role === "admin";
   const canOpenLibrary = canOpenLibraryManager(user?.role);
@@ -328,6 +329,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                 onOpenSettings={() => canOpenSettings && setIsSettingsOpen(true)}
                 canManageProjects={canManageProjects}
                 canOpenSettings={canOpenSettings}
+                onThumbnailsGenerated={() => setThumbnailBust(Date.now())}
               />
             )}
           </header>
@@ -412,6 +414,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                         onMoveProject={setProjectToMove}
                         onDeleteProject={setProjectToDelete}
                         canManageProjects={canManageProjects}
+                        thumbnailBust={thumbnailBust}
                       />
                     ) : (
                       <WorkspaceListView
@@ -430,6 +433,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                         onMoveProject={setProjectToMove}
                         onDeleteProject={setProjectToDelete}
                         canManageProjects={canManageProjects}
+                        thumbnailBust={thumbnailBust}
                       />
                     )}
                   </div>

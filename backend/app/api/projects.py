@@ -765,7 +765,7 @@ async def get_project_thumbnail(
     row = workspace.get_project_by_id(project_id)
     thumbnail_rel = row.get("thumbnail_rel") if row else None
 
-    # 1. Try thumbnail_rel relative to project path (works for in-volume projects)
+    # Try thumbnail_rel from DB, validated to stay within the project root
     if thumbnail_rel:
         try:
             abs_path = resolve_path_within_root(
@@ -774,26 +774,15 @@ async def get_project_thumbnail(
         except HTTPException:
             abs_path = None
         if abs_path and abs_path.is_file():
-            return FileResponse(str(abs_path), headers={"Cache-Control": "no-cache"})
+            return FileResponse(
+                str(abs_path), headers={"Cache-Control": "public, max-age=300"}
+            )
 
-    # 2. Central thumbnail store: {PROJECTS_ROOT}/.kicad-prism/thumbnails/{project_id}.png
-    #    Used for external projects whose path isn't inside the Docker volume.
-    from app.core.config import settings as _settings
-
-    central_thumb = (
-        Path(_settings.KICAD_PROJECTS_ROOT)
-        / ".kicad-prism"
-        / "thumbnails"
-        / f"{project_id}.png"
-    )
-    if central_thumb.is_file():
-        return FileResponse(str(central_thumb), headers={"Cache-Control": "no-cache"})
-
-    # 3. Fallback: live filesystem detection
+    # Fallback: live filesystem detection (e.g. thumbnail_rel not yet persisted)
     path = project_service.get_project_thumbnail_path(project_id)
     if not path:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
-    return FileResponse(path, headers={"Cache-Control": "no-cache"})
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=300"})
 
 
 @router.get("/{project_id}", response_model=project_service.Project)

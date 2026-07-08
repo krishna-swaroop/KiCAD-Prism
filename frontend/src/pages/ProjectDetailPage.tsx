@@ -1,7 +1,8 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings } from "lucide-react";
+import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, Image } from "lucide-react";
+import { toast } from "sonner";
 import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { User } from "@/types/auth";
@@ -77,7 +78,35 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const [visualizerLoaded, setVisualizerLoaded] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [pathConfigOpen, setPathConfigOpen] = useState(false);
+    const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
+    const [thumbnailBust, setThumbnailBust] = useState(0);
     const canMutateProject = user?.role === "admin" || user?.role === "designer";
+
+    const handleGenerateThumbnail = async () => {
+        if (!projectId || thumbnailGenerating) return;
+        setThumbnailGenerating(true);
+        const toastId = toast.loading("Generating thumbnail…");
+        try {
+            const res = await fetchApi(`/api/projects/${projectId}/thumbnail/generate`, { method: "POST" });
+            if (!res.ok) throw new Error(await readApiError(res));
+            const { job_id } = await res.json() as { job_id: string };
+            for (let i = 0; i < 60; i++) {
+                await new Promise((r) => setTimeout(r, 2000));
+                const poll = await fetchApi(`/api/projects/thumbnail/jobs/${job_id}`);
+                if (!poll.ok) break;
+                const job = await poll.json() as { status: string; error?: string };
+                if (job.status === "done") break;
+                if (job.status === "error") throw new Error(job.error || "Generation failed");
+            }
+            toast.success("Thumbnail updated", { id: toastId });
+            // Bust browser image cache so the updated PNG is fetched immediately
+            setThumbnailBust(Date.now());
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Thumbnail generation failed", { id: toastId });
+        } finally {
+            setThumbnailGenerating(false);
+        }
+    };
 
     // Helper function to get display name
     const getDisplayName = (project: Project) => {
@@ -396,21 +425,41 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     </div>
 
                     {/* Thumbnail above nav — only when sidebar is expanded */}
-                    {(!sidebarCollapsed || sidebarHovered) && project.thumbnail_url && (
-                        <button
-                            className="mt-8 mb-3 w-full overflow-hidden rounded-md border bg-muted/30 aspect-video focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                            onClick={() => setThumbnailLightbox(true)}
-                            title="Click to expand thumbnail"
-                        >
-                            <img
-                                src={project.thumbnail_url}
-                                alt={getDisplayName(project)}
-                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                            />
-                        </button>
+                    {(!sidebarCollapsed || sidebarHovered) && (
+                        <div className="mt-8 mb-3 space-y-1">
+                            {project.thumbnail_url ? (
+                                <button
+                                    className="w-full overflow-hidden rounded-md border bg-muted/30 aspect-video focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                    onClick={() => setThumbnailLightbox(true)}
+                                    title="Click to expand thumbnail"
+                                >
+                                    <img
+                                        src={`${project.thumbnail_url}${thumbnailBust ? `?t=${thumbnailBust}` : ""}`}
+                                        alt={getDisplayName(project)}
+                                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                                    />
+                                </button>
+                            ) : (
+                                <div className="w-full rounded-md border bg-muted/20 aspect-video flex items-center justify-center">
+                                    <Image className="h-6 w-6 text-muted-foreground/40" />
+                                </div>
+                            )}
+                            {canMutateProject && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full text-xs text-muted-foreground h-7"
+                                    onClick={() => void handleGenerateThumbnail()}
+                                    disabled={thumbnailGenerating}
+                                >
+                                    <Image className={`h-3 w-3 mr-1.5 ${thumbnailGenerating ? "animate-pulse" : ""}`} />
+                                    {thumbnailGenerating ? "Generating…" : "Regenerate thumbnail"}
+                                </Button>
+                            )}
+                        </div>
                     )}
 
-                    <nav className={cn("space-y-1", (!sidebarCollapsed || sidebarHovered) && project.thumbnail_url ? "" : "mt-8")}>
+                    <nav className={cn("space-y-1", !sidebarCollapsed || sidebarHovered ? "" : "mt-8")}>
                         {navItems.map((item) => {
                             const Icon = item.icon;
                             const isExpanded = !sidebarCollapsed || sidebarHovered;
@@ -444,7 +493,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         onClick={() => setThumbnailLightbox(false)}
                     >
                         <img
-                            src={project.thumbnail_url}
+                            src={`${project.thumbnail_url}${thumbnailBust ? `?t=${thumbnailBust}` : ""}`}
                             alt={getDisplayName(project)}
                             className="max-w-[90vw] max-h-[90vh] object-contain rounded-md shadow-2xl"
                             onClick={(e) => e.stopPropagation()}
