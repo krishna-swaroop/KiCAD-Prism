@@ -1,349 +1,145 @@
 """
 PCB Thumbnail Generator
 
-Parses a .kicad_pcb file and renders a PNG thumbnail of the front side using
-Pillow. Four visual layers are composited in order:
+Uses kicad-cli to export per-layer SVGs, then composites them into a PNG
+thumbnail using cairosvg (for SVG rasterisation) and Pillow (for compositing).
 
-  1. Board outline (edge cuts) — used to clip/fill the board shape
-  2. F.Cu traces and zones — buried copper under soldermask
-  3. Pads (SMD + TH) — exposed copper (soldermask openings)
-  4. F.SilkS — silkscreen markings
-
-Colors are placeholders; replace the COLOR_* constants to taste.
+Layer stack (bottom → top):
+  Edge.Cuts    — board outline clipping / fill
+  B.Cu         — back copper (blue tint)
+  F.Cu         — front copper (gold tint)
+  B.Silkscreen — back silkscreen (light grey, low alpha)
+  F.Silkscreen — front silkscreen (white)
+  F.Fab        — front fab layer (optional, faint green)
 """
 
 from __future__ import annotations
 
-import math
+import glob
+import io
+import logging
 import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from app.services.sch_diff_service import _get, _get_all, _parse_sexp
+if TYPE_CHECKING:
+    from PIL.Image import Image
 
-# ---------------------------------------------------------------------------
-# Placeholder colors  (R, G, B, A)
-# ---------------------------------------------------------------------------
-COLOR_BACKGROUND = (30, 30, 30, 255)  # dark background outside board
-COLOR_BOARD = (35, 95, 50, 255)  # soldermask green
-COLOR_COPPER_BURIED = (45, 110, 60, 255)  # copper under soldermask (darker green)
-COLOR_COPPER_EXPOSED = (180, 160, 100, 255)  # bare copper / pad (gold-ish grey)
-COLOR_SILKSCREEN = (240, 240, 240, 255)  # white silkscreen
-
-# Output size in pixels (16:9 to match the project card aspect-video container)
-THUMBNAIL_W = 640
-THUMBNAIL_H = 360
-# Margin as fraction of board dimension
-MARGIN = 0.05
-
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# S-expression helpers (reuse from sch_diff_service via pcb_diff_service pattern)
+# Output dimensions (16:9 matches the project card aspect-video container)
 # ---------------------------------------------------------------------------
-
-
-def _stroke_width(node: list, default: float = 0.12) -> float:
-    """Extract line width from a node, handling both KiCad 6 (width ...) and
-    KiCad 7+ (stroke (width ...)) formats."""
-    stroke = _get(node, "stroke")
-    if stroke:
-        wn = _get(stroke, "width")
-        if wn and len(wn) > 1:
-            try:
-                return float(wn[1])
-            except (ValueError, TypeError):
-                pass
-    wn = _get(node, "width")
-    if wn and len(wn) > 1:
-        try:
-            return float(wn[1])
-        except (ValueError, TypeError):
-            pass
-    return default
-
-
-def _xy(node: list) -> tuple[float, float]:
-    if node and len(node) >= 3:
-        try:
-            return float(node[1]), float(node[2])
-        except (ValueError, TypeError):
-            pass
-    return 0.0, 0.0
-
-
-def _at(node: list) -> tuple[float, float, float]:
-    at = _get(node, "at")
-    if at and len(at) >= 3:
-        try:
-            x, y = float(at[1]), float(at[2])
-            rot = float(at[3]) if len(at) > 3 else 0.0
-            return x, y, rot
-        except (ValueError, TypeError):
-            pass
-    return 0.0, 0.0, 0.0
-
-
-def _rotate(
-    px: float, py: float, ox: float, oy: float, deg: float
-) -> tuple[float, float]:
-    a = math.radians(-deg)
-    ca, sa = math.cos(a), math.sin(a)
-    lx, ly = px - ox, py - oy
-    return ox + lx * ca - ly * sa, oy + lx * sa + ly * ca
-
-
-def _local_to_board(
-    lx: float, ly: float, ox: float, oy: float, deg: float
-) -> tuple[float, float]:
-    """Transform a footprint-local point to board coordinates."""
-    a = math.radians(-deg)
-    ca, sa = math.cos(a), math.sin(a)
-    return ox + lx * ca - ly * sa, oy + lx * sa + ly * ca
-
+THUMBNAIL_W = 800
+THUMBNAIL_H = 600
 
 # ---------------------------------------------------------------------------
-# Geometry extraction from parsed s-expression tree
+# Layer stack: (kicad_layer_name, (R, G, B, alpha_0_255) | None)
+# None means "use as board fill / no tint — take SVG colors as-is"
 # ---------------------------------------------------------------------------
+_LAYER_STACK: list[tuple[str, tuple[int, int, int, int] | None]] = [
+    # Board base fill is drawn separately (COLOR_BOARD below)
+    ("Edge.Cuts", None),  # outline; not composited, used only for board shape
+    ("B.Cu", (80, 130, 210, 200)),  # back copper — blue
+    ("F.Cu", (180, 130, 50, 220)),  # front copper — gold
+    ("B.Silkscreen", (200, 200, 200, 100)),  # back silk — grey, faint
+    ("F.Silkscreen", (245, 245, 245, 210)),  # front silk — white
+    ("F.Fab", (80, 180, 80, 60)),  # fab layer — very faint green
+]
+
+COLOR_BOARD = (35, 95, 50, 255)  # PCB soldermask green
+
+_KICAD_CLI_CANDIDATES = [
+    r"C:\Program Files\KiCad\10.0\bin\kicad-cli.exe",
+    r"C:\Program Files\KiCad\9.0\bin\kicad-cli.exe",
+    r"C:\Program Files\KiCad\8.0\bin\kicad-cli.exe",
+    "kicad-cli",
+]
 
 
-def _edge_cuts(tree: list) -> list[dict]:
-    """All graphical items on Edge.Cuts."""
-    items = []
-    for kind in ("gr_line", "gr_arc", "gr_rect", "gr_circle", "gr_poly"):
-        for node in _get_all(tree, kind):
-            layer_node = _get(node, "layer")
-            layer = layer_node[1] if layer_node and len(layer_node) > 1 else ""
-            if layer != "Edge.Cuts":
-                continue
-            items.append({"kind": kind, "node": node})
-    return items
+def _find_kicad_cli() -> str | None:
+    for candidate in _KICAD_CLI_CANDIDATES:
+        found = shutil.which(candidate) or (Path(candidate).is_file() and candidate)
+        if found:
+            return str(found)
+    return None
 
 
-def _board_bbox(edge_items: list[dict]) -> tuple[float, float, float, float] | None:
-    """Compute bounding box of edge cuts geometry (mm)."""
-    xs, ys = [], []
-    for item in edge_items:
-        kind, node = item["kind"], item["node"]
-        if kind in ("gr_line", "gr_rect"):
-            sx, sy = _xy(_get(node, "start"))
-            ex, ey = _xy(_get(node, "end"))
-            xs += [sx, ex]
-            ys += [sy, ey]
-        elif kind == "gr_arc":
-            sx, sy = _xy(_get(node, "start"))
-            mx, my = _xy(_get(node, "mid"))
-            ex, ey = _xy(_get(node, "end"))
-            xs += [sx, mx, ex]
-            ys += [sy, my, ey]
-        elif kind == "gr_circle":
-            cx, cy = _xy(_get(node, "center"))
-            ex, ey = _xy(_get(node, "end"))
-            r = math.hypot(ex - cx, ey - cy)
-            xs += [cx - r, cx + r]
-            ys += [cy - r, cy + r]
-        elif kind == "gr_poly":
-            pts = _get(node, "pts")
-            if pts:
-                for xy in _get_all(pts, "xy"):
-                    if len(xy) > 2:
-                        xs.append(float(xy[1]))
-                        ys.append(float(xy[2]))
-    if not xs:
-        return None
-    return min(xs), min(ys), max(xs), max(ys)
+def _export_layer_svgs(pcb_path: str, tmp_dir: str) -> dict[str, str]:
+    """Run kicad-cli to export all thumbnail layers as SVGs into tmp_dir.
+
+    Returns a mapping of layer_name → absolute SVG path.
+    """
+    kicad_cli = _find_kicad_cli()
+    if not kicad_cli:
+        raise RuntimeError(
+            "kicad-cli not found — install KiCad 8+ to generate thumbnails"
+        )
+
+    layer_names = [layer for layer, _ in _LAYER_STACK]
+    layer_arg = ",".join(layer_names)
+
+    cmd = [
+        kicad_cli,
+        "pcb",
+        "export",
+        "svg",
+        "--output",
+        tmp_dir,
+        "--layers",
+        layer_arg,
+        "--page-size-mode",
+        "2",  # board area only
+        "--exclude-drawing-sheet",
+        "--mode-multi",  # one file per layer
+        pcb_path,
+    ]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=60, check=False
+    )
+    if result.returncode != 0:
+        logger.warning("kicad-cli pcb export svg stderr: %s", result.stderr[:400])
+
+    # kicad-cli names files: <board_stem>-<Layer_Name_with_dots_as_underscores>.svg
+    board_stem = Path(pcb_path).stem
+    layer_map: dict[str, str] = {}
+    for layer_name, _ in _LAYER_STACK:
+        slug = layer_name.replace(".", "_")
+        candidate = os.path.join(tmp_dir, f"{board_stem}-{slug}.svg")
+        if os.path.isfile(candidate):
+            layer_map[layer_name] = candidate
+        else:
+            # Fallback: search for any file matching the slug
+            matches = glob.glob(os.path.join(tmp_dir, f"*{slug}*.svg"))
+            if matches:
+                layer_map[layer_name] = matches[0]
+            else:
+                logger.debug("No SVG found for layer %s", layer_name)
+
+    return layer_map
 
 
-def _segments_and_arcs(tree: list, layer: str) -> list[dict]:
-    out = []
-    for node in _get_all(tree, "segment"):
-        ln = _get(node, "layer")
-        if ln and len(ln) > 1 and ln[1] == layer:
-            out.append(
-                {"kind": "segment", "node": node, "width": _stroke_width(node, 0.1)}
-            )
-    for node in _get_all(tree, "arc"):
-        ln = _get(node, "layer")
-        if ln and len(ln) > 1 and ln[1] == layer:
-            out.append({"kind": "arc", "node": node, "width": _stroke_width(node, 0.1)})
-    return out
+def _recolor_layer(layer_img: Image, tint: tuple[int, int, int, int]) -> Image:
+    """Replace all non-transparent pixels with tint color, preserving alpha shape."""
+    import numpy as np  # noqa: PLC0415
 
+    arr = np.array(layer_img, dtype=np.uint16)  # shape (H, W, 4)
+    alpha = arr[:, :, 3]  # original alpha channel
+    r, g, b, a_target = tint
 
-def _zones(tree: list, layer: str) -> list[list[tuple[float, float]]]:
-    polys = []
-    for node in _get_all(tree, "zone"):
-        ln = _get(node, "layer")
-        if not (ln and len(ln) > 1 and ln[1] == layer):
-            continue
-        polygon = _get(node, "polygon")
-        if not polygon:
-            continue
-        pts_node = _get(polygon, "pts")
-        if not pts_node:
-            continue
-        pts = [
-            (float(xy[1]), float(xy[2]))
-            for xy in _get_all(pts_node, "xy")
-            if len(xy) > 2
-        ]
-        if pts:
-            polys.append(pts)
-    return polys
+    out = np.zeros_like(arr)
+    out[:, :, 0] = r
+    out[:, :, 1] = g
+    out[:, :, 2] = b
+    # Scale original alpha by target alpha
+    out[:, :, 3] = (alpha * a_target // 255).astype(np.uint16)
 
+    from PIL import Image  # noqa: PLC0415
 
-def _fp_silkscreen_lines(tree: list) -> list[dict]:
-    """fp_line / fp_rect on F.SilkS, transformed to board space."""
-    out = []
-    for fp in _get_all(tree, "footprint"):
-        ox, oy, rot = _at(fp)
-        for kind in ("fp_line", "fp_rect", "fp_circle"):
-            for node in _get_all(fp, kind):
-                ln = _get(node, "layer")
-                layer = ln[1] if ln and len(ln) > 1 else ""
-                if layer != "F.SilkS":
-                    continue
-                w = _stroke_width(node, 0.12)
-                if kind == "fp_circle":
-                    cn = _get(node, "center")
-                    en = _get(node, "end")
-                    if cn and en:
-                        cx, cy = _local_to_board(
-                            float(cn[1]), float(cn[2]), ox, oy, rot
-                        )
-                        ex, ey = _local_to_board(
-                            float(en[1]), float(en[2]), ox, oy, rot
-                        )
-                        out.append(
-                            {
-                                "kind": "circle",
-                                "cx": cx,
-                                "cy": cy,
-                                "ex": ex,
-                                "ey": ey,
-                                "width": w,
-                            }
-                        )
-                else:
-                    sn = _get(node, "start")
-                    en = _get(node, "end")
-                    if sn and en:
-                        sx, sy = _local_to_board(
-                            float(sn[1]), float(sn[2]), ox, oy, rot
-                        )
-                        ex, ey = _local_to_board(
-                            float(en[1]), float(en[2]), ox, oy, rot
-                        )
-                        out.append(
-                            {
-                                "kind": "line",
-                                "sx": sx,
-                                "sy": sy,
-                                "ex": ex,
-                                "ey": ey,
-                                "width": w,
-                            }
-                        )
-    # Also board-level gr_line / gr_rect on F.SilkS
-    for kind in ("gr_line", "gr_rect"):
-        for node in _get_all(tree, kind):
-            ln = _get(node, "layer")
-            if not (ln and len(ln) > 1 and ln[1] == "F.SilkS"):
-                continue
-            sn = _get(node, "start")
-            en = _get(node, "end")
-            if sn and en:
-                out.append(
-                    {
-                        "kind": "line",
-                        "sx": float(sn[1]),
-                        "sy": float(sn[2]),
-                        "ex": float(en[1]),
-                        "ey": float(en[2]),
-                        "width": _stroke_width(node, 0.12),
-                    }
-                )
-    return out
-
-
-def _pads(tree: list) -> list[dict]:
-    """All pads on F.Cu (SMD or TH) — these are soldermask openings."""
-    out = []
-    for fp in _get_all(tree, "footprint"):
-        ox, oy, rot = _at(fp)
-        for pad in _get_all(fp, "pad"):
-            # Check pad layers include F.Cu
-            layers_node = _get(pad, "layers")
-            if not layers_node:
-                continue
-            pad_layers = [
-                str(layer) for layer in layers_node[1:] if isinstance(layer, str)
-            ]
-            if "F.Cu" not in pad_layers and "*.Cu" not in pad_layers:
-                continue
-            at_node = _get(pad, "at")
-            if not at_node or len(at_node) < 3:
-                continue
-            px, py = float(at_node[1]), float(at_node[2])
-            pad_rot = float(at_node[3]) if len(at_node) > 3 else 0.0
-            total_rot = rot + pad_rot
-            bx, by = _rotate(px, py, 0.0, 0.0, rot)
-            bx += ox
-            by += oy
-
-            size_node = _get(pad, "size")
-            if not size_node or len(size_node) < 3:
-                continue
-            sw, sh = float(size_node[1]), float(size_node[2])
-
-            shape_node = pad[2] if len(pad) > 2 and isinstance(pad[2], str) else None
-            pad_type = pad[1] if len(pad) > 1 and isinstance(pad[1], str) else ""
-
-            # roundrect corner ratio
-            rr_node = _get(pad, "roundrect_rratio")
-            rr = float(rr_node[1]) if rr_node and len(rr_node) > 1 else 0.0
-
-            out.append(
-                {
-                    "x": bx,
-                    "y": by,
-                    "w": sw,
-                    "h": sh,
-                    "rot": total_rot,
-                    "shape": shape_node,
-                    "type": pad_type,
-                    "rr": rr,
-                }
-            )
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Rendering
-# ---------------------------------------------------------------------------
-
-
-def _make_transform(
-    bbox: tuple[float, float, float, float],
-    img_w: int,
-    img_h: int,
-    margin: float,
-) -> tuple[float, float, float]:
-    """Return (scale, tx, ty) mapping mm board coords → pixel coords."""
-    min_x, min_y, max_x, max_y = bbox
-    bw = max_x - min_x or 1.0
-    bh = max_y - min_y or 1.0
-    scale = min(img_w / (bw * (1 + 2 * margin)), img_h / (bh * (1 + 2 * margin)))
-    tx = (img_w - bw * scale) / 2 - min_x * scale
-    ty = (img_h - bh * scale) / 2 - min_y * scale
-    return scale, tx, ty
-
-
-def _mm_to_px(
-    x: float, y: float, scale: float, tx: float, ty: float
-) -> tuple[int, int]:
-    return int(x * scale + tx), int(y * scale + ty)
-
-
-def _w_px(w_mm: float, scale: float) -> int:
-    return max(1, int(w_mm * scale))
+    return Image.fromarray(out.astype(np.uint8), "RGBA")
 
 
 def render_thumbnail(
@@ -352,149 +148,53 @@ def render_thumbnail(
     img_w: int = THUMBNAIL_W,
     img_h: int = THUMBNAIL_H,
 ) -> None:
-    from PIL import Image, ImageDraw
+    """Generate a PCB thumbnail PNG at out_path by compositing per-layer SVGs."""
+    import cairosvg  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
 
-    text = Path(pcb_path).read_text(encoding="utf-8", errors="replace")
-    tree = _parse_sexp(text)
+    with tempfile.TemporaryDirectory(prefix="prism_thumb_") as tmp:
+        layer_map = _export_layer_svgs(pcb_path, tmp)
 
-    edge_items = _edge_cuts(tree)
-    bbox = _board_bbox(edge_items)
-    if not bbox:
-        raise ValueError("No Edge.Cuts geometry found — cannot determine board outline")
+        if not layer_map:
+            raise RuntimeError(f"kicad-cli produced no SVG layers for {pcb_path}")
 
-    min_x, min_y, max_x, max_y = bbox
-    scale, tx, ty = _make_transform(bbox, img_w, img_h, MARGIN)
+        # Board background fill
+        composite = Image.new("RGBA", (img_w, img_h), COLOR_BOARD)
 
-    img = Image.new("RGBA", (img_w, img_h), COLOR_BACKGROUND)
-    draw = ImageDraw.Draw(img)
+        for layer_name, tint in _LAYER_STACK:
+            if layer_name == "Edge.Cuts":
+                # Edge cuts SVG contains the board outline in the KiCad theme color.
+                # We skip compositing it — the board shape comes from the background fill.
+                # If we wanted to draw the edge outline we could, but the fill already
+                # gives a clean board silhouette.
+                continue
 
-    # --- 1. Board fill (soldermask) ---
-    # Draw a filled board shape from edge cuts
-    board_poly: list[tuple[int, int]] = []
-    # Collect outline polygon from gr_poly or approximate rect from bbox
-    for item in edge_items:
-        if item["kind"] == "gr_poly":
-            pts_node = _get(item["node"], "pts")
-            if pts_node:
-                pts = [
-                    _mm_to_px(float(xy[1]), float(xy[2]), scale, tx, ty)
-                    for xy in _get_all(pts_node, "xy")
-                    if len(xy) > 2
-                ]
-                if pts:
-                    board_poly = pts
-                    break
+            svg_path = layer_map.get(layer_name)
+            if not svg_path:
+                continue
 
-    if board_poly:
-        draw.polygon(board_poly, fill=COLOR_BOARD)
-    else:
-        # Fallback: filled rectangle from bbox
-        x0, y0 = _mm_to_px(min_x, min_y, scale, tx, ty)
-        x1, y1 = _mm_to_px(max_x, max_y, scale, tx, ty)
-        draw.rectangle([x0, y0, x1, y1], fill=COLOR_BOARD)
-        # Draw edge cut lines on top of fill
-        for item in edge_items:
-            node = item["node"]
-            if item["kind"] == "gr_line":
-                sx, sy = _xy(_get(node, "start"))
-                ex, ey = _xy(_get(node, "end"))
-                draw.line(
-                    [
-                        _mm_to_px(sx, sy, scale, tx, ty),
-                        _mm_to_px(ex, ey, scale, tx, ty),
-                    ],
-                    fill=COLOR_BOARD,
-                    width=max(1, _w_px(0.1, scale)),
+            try:
+                png_bytes = cairosvg.svg2png(
+                    url=svg_path,
+                    output_width=img_w,
+                    output_height=img_h,
                 )
-            elif item["kind"] == "gr_arc":
-                # approximate arc as line to start/end
-                sx, sy = _xy(_get(node, "start"))
-                ex, ey = _xy(_get(node, "end"))
-                draw.line(
-                    [
-                        _mm_to_px(sx, sy, scale, tx, ty),
-                        _mm_to_px(ex, ey, scale, tx, ty),
-                    ],
-                    fill=COLOR_BOARD,
-                    width=max(1, _w_px(0.1, scale)),
-                )
+            except Exception:
+                logger.exception("cairosvg failed for layer %s", layer_name)
+                continue
 
-    # --- 2. F.Cu zones (buried copper) ---
-    for poly_pts in _zones(tree, "F.Cu"):
-        px_pts = [_mm_to_px(x, y, scale, tx, ty) for x, y in poly_pts]
-        if len(px_pts) >= 3:
-            draw.polygon(px_pts, fill=COLOR_COPPER_BURIED)
+            layer_img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
 
-    # --- 3. F.Cu segments and arcs (traces) ---
-    for item in _segments_and_arcs(tree, "F.Cu"):
-        node, w = item["node"], item["width"]
-        lw = max(1, _w_px(w, scale))
-        if item["kind"] == "segment":
-            sx, sy = _xy(_get(node, "start"))
-            ex, ey = _xy(_get(node, "end"))
-            draw.line(
-                [_mm_to_px(sx, sy, scale, tx, ty), _mm_to_px(ex, ey, scale, tx, ty)],
-                fill=COLOR_COPPER_BURIED,
-                width=lw,
-            )
-        elif item["kind"] == "arc":
-            sx, sy = _xy(_get(node, "start"))
-            ex, ey = _xy(_get(node, "end"))
-            draw.line(
-                [_mm_to_px(sx, sy, scale, tx, ty), _mm_to_px(ex, ey, scale, tx, ty)],
-                fill=COLOR_COPPER_BURIED,
-                width=lw,
-            )
+            if tint is not None:
+                layer_img = _recolor_layer(layer_img, tint)
 
-    # --- 4. Pads (exposed copper / soldermask openings) ---
-    for pad in _pads(tree):
-        bx, by = pad["x"], pad["y"]
-        sw, sh = pad["w"] * scale, pad["h"] * scale
-        cx, cy = bx * scale + tx, by * scale + ty
-        shape = pad.get("shape") or "rect"
-        rot = pad.get("rot", 0.0)
+            composite = Image.alpha_composite(composite, layer_img)
 
-        if shape in ("circle", "oval") and abs(sw - sh) < 0.5:
-            r = sw / 2
-            draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=COLOR_COPPER_EXPOSED)
-        else:
-            # Rotated rectangle approximation via polygon
-            hw, hh = sw / 2, sh / 2
-            corners_local = [(-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)]
-            a = math.radians(-rot)
-            ca, sa = math.cos(a), math.sin(a)
-            corners = [
-                (cx + lx * ca - ly * sa, cy + lx * sa + ly * ca)
-                for lx, ly in corners_local
-            ]
-            draw.polygon(corners, fill=COLOR_COPPER_EXPOSED)
-
-    # --- 5. F.SilkS ---
-    for item in _fp_silkscreen_lines(tree):
-        if item["kind"] == "line":
-            lw = max(1, _w_px(item["width"], scale))
-            draw.line(
-                [
-                    _mm_to_px(item["sx"], item["sy"], scale, tx, ty),
-                    _mm_to_px(item["ex"], item["ey"], scale, tx, ty),
-                ],
-                fill=COLOR_SILKSCREEN,
-                width=lw,
-            )
-        elif item["kind"] == "circle":
-            lw = max(1, _w_px(item["width"], scale))
-            cx, cy = item["cx"] * scale + tx, item["cy"] * scale + ty
-            ex, ey = item["ex"] * scale + tx, item["ey"] * scale + ty
-            r = math.hypot(ex - cx, ey - cy)
-            draw.ellipse(
-                [cx - r, cy - r, cx + r, cy + r], outline=COLOR_SILKSCREEN, width=lw
-            )
-
-    # Save as RGB PNG (drop alpha for smaller file)
-    out_dir = os.path.dirname(out_path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-    img.convert("RGB").save(out_path, "PNG", optimize=True)
+        out_dir = os.path.dirname(out_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        composite.convert("RGB").save(out_path, "PNG", optimize=True)
+        logger.info("thumbnail saved: %s (%dx%d)", out_path, img_w, img_h)
 
 
 # ---------------------------------------------------------------------------
@@ -504,8 +204,8 @@ def render_thumbnail(
 
 def generate_for_project(project_id: str) -> str:
     """Generate thumbnail for a single project. Returns output path."""
-    from app.services import path_config_service
-    from app.services.workspace_service import workspace
+    from app.services import path_config_service  # noqa: PLC0415
+    from app.services.workspace_service import workspace  # noqa: PLC0415
 
     row = workspace.get_project_by_id(project_id)
     if not row:
@@ -532,7 +232,7 @@ def generate_for_project(project_id: str) -> str:
 
 def generate_missing(job: dict) -> None:
     """Background worker: generate thumbnails for all projects without one."""
-    from app.services.workspace_service import workspace
+    from app.services.workspace_service import workspace  # noqa: PLC0415
 
     all_projects = workspace.get_all_projects()
     without_thumb = [p for p in all_projects if not p.get("thumbnail_rel")]
@@ -545,13 +245,13 @@ def generate_missing(job: dict) -> None:
     for i, row in enumerate(without_thumb):
         pid = row["id"]
         name = row.get("name", pid)
-        print(f"[thumbnail] Processing {name} ({pid}) path={row.get('path')}")
+        logger.info("thumbnail batch: processing %s (%s)", name, pid)
         try:
             out = generate_for_project(pid)
-            print(f"[thumbnail] OK: {out}")
+            logger.info("thumbnail batch: OK %s", out)
             succeeded += 1
         except Exception as exc:
-            print(f"[thumbnail] SKIP {name}: {exc}")
+            logger.warning("thumbnail batch: skip %s — %s", name, exc)
             job["logs"].append(f"[SKIP] {name}: {exc}")
             failed += 1
         job["percent"] = int((i + 1) / total * 100)
@@ -560,4 +260,4 @@ def generate_missing(job: dict) -> None:
     job["status"] = "done"
     job["message"] = f"Done — {succeeded} generated, {failed} skipped"
     job["percent"] = 100
-    print(f"[thumbnail] Finished: {succeeded} generated, {failed} skipped")
+    logger.info("thumbnail batch finished: %d generated, %d skipped", succeeded, failed)
