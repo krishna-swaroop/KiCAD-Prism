@@ -99,7 +99,18 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 if (job.status === "error") throw new Error(job.error || "Generation failed");
             }
             toast.success("Thumbnail updated", { id: toastId });
-            // Bust browser image cache so the updated PNG is fetched immediately
+            // Re-fetch project to pick up the new thumbnail_url (it may have been
+            // null if the file was deleted before regeneration), then bust cache.
+            try {
+                const overview = await fetchJson<ProjectOverviewResponse>(
+                    `/api/projects/${projectId}/overview`,
+                    {},
+                    "Failed to refresh project"
+                );
+                setProject(overview.project);
+            } catch {
+                // best-effort
+            }
             setThumbnailBust(Date.now());
         } catch (err) {
             toast.error(err instanceof Error ? err.message : "Thumbnail generation failed", { id: toastId });
