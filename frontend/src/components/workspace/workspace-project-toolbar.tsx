@@ -102,8 +102,8 @@ export function WorkspaceProjectToolbar({
               size="icon"
               onClick={() => void handleGenerateThumbnails()}
               disabled={generating}
-              aria-label="Generate missing thumbnails"
-              title="Generate missing thumbnails"
+              aria-label="Regenerate all thumbnails"
+              title="Regenerate all thumbnails"
             >
               <Image className={`h-4 w-4 ${generating ? "animate-pulse" : ""}`} />
             </Button>

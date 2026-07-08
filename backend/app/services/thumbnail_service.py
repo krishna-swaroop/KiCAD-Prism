@@ -231,18 +231,17 @@ def generate_for_project(project_id: str) -> str:
 
 
 def generate_missing(job: dict) -> None:
-    """Background worker: generate thumbnails for all projects without one."""
+    """Background worker: generate (or regenerate) thumbnails for all projects."""
     from app.services.workspace_service import workspace  # noqa: PLC0415
 
     all_projects = workspace.get_all_projects()
-    without_thumb = [p for p in all_projects if not p.get("thumbnail_rel")]
 
-    total = len(without_thumb)
-    job["message"] = f"Found {total} projects without thumbnails"
+    total = len(all_projects)
+    job["message"] = f"Found {total} projects"
     job["percent"] = 0
 
     succeeded, failed = 0, 0
-    for i, row in enumerate(without_thumb):
+    for i, row in enumerate(all_projects):
         pid = row["id"]
         name = row.get("name", pid)
         logger.info("thumbnail batch: processing %s (%s)", name, pid)
