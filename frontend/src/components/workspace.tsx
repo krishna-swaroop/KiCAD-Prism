@@ -13,7 +13,6 @@ import { WorkspaceBreadcrumbs } from "./workspace/workspace-breadcrumbs";
 import { WorkspaceGalleryView } from "./workspace/workspace-gallery-view";
 import { WorkspaceListView } from "./workspace/workspace-list-view";
 import { LibraryManagerPanel } from "./workspace/library-manager-panel";
-import { WorkspaceAppsPlaceholder } from "./workspace/workspace-apps-placeholder";
 import { WorkspaceLoadingState } from "./workspace/workspace-loading-state";
 import { WorkspaceProjectPropertiesSheet } from "./workspace/workspace-project-properties-sheet";
 import { WorkspaceProjectToolbar } from "./workspace/workspace-project-toolbar";
@@ -339,8 +338,6 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
               <WorkspaceLoadingState />
             ) : section === "library" ? (
               <LibraryManagerPanel user={user} highlightComponentId={highlightComponentId} />
-            ) : section === "apps" ? (
-              <WorkspaceAppsPlaceholder canOpenLibraryManager={canOpenLibrary} onOpenLibraryManager={() => setSection("library")} />
             ) : (
               <div className="flex h-full min-h-0 flex-col p-6">
                 <WorkspaceBreadcrumbs
