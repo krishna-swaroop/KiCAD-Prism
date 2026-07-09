@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as OV from "online-3d-viewer";
+import { useCallback, useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Sun, Settings2, Moon, RotateCcw, BoxSelect, Zap, Palette } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
@@ -10,392 +12,242 @@ interface Model3DViewerProps {
     modelUrl: string;
     sceneKey?: string;
     modelFileName?: string;
-    /** When true, positions camera at isometric corner (Z-up, looking from front-right-above). */
     isometricCamera?: boolean;
 }
 
-type BackgroundMode = "solid" | "gradient";
-type GradientDirection = "vertical" | "horizontal" | "diagonal-down" | "diagonal-up";
-type ScenePreset = "default" | "inspection" | "high-contrast" | "soft" | "custom";
-
 interface SceneState {
-    brightness: number;
-    directionality: number;
-    backgroundMode: BackgroundMode;
+    ambientIntensity: number;
+    directionalIntensity: number;
     backgroundColor: string;
-    gradientStart: string;
-    gradientEnd: string;
-    gradientDirection: GradientDirection;
-    preset: ScenePreset;
 }
 
-const DEFAULT_SCENE_STATE: SceneState = {
-    brightness: 1.6,
-    directionality: 0.5,
-    backgroundMode: "solid",
-    backgroundColor: "#1E1E1E",
-    gradientStart: "#1E1E1E",
-    gradientEnd: "#101010",
-    gradientDirection: "vertical",
-    preset: "default",
+const DEFAULT_SCENE: SceneState = {
+    ambientIntensity: 2.5,
+    directionalIntensity: 3.0,
+    backgroundColor: "#1e1e1e",
 };
 
-const LIGHTING_PRESETS: Array<{
-    id: Exclude<ScenePreset, "custom">;
-    label: string;
-    brightness: number;
-    directionality: number;
-}> = [
-    { id: "default", label: "Default", brightness: 1.6, directionality: 0.5 },
-    { id: "inspection", label: "Inspection", brightness: 1.8, directionality: 0.65 },
-    { id: "high-contrast", label: "High Contrast", brightness: 1.4, directionality: 0.85 },
-    { id: "soft", label: "Soft", brightness: 2.0, directionality: 0.25 },
-];
+const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+const sanitizeHex = (v: unknown, fallback: string): string =>
+    typeof v === "string" && HEX_RE.test(v.trim()) ? v.trim() : fallback;
 
-const INITIAL_SCENE_APPLY_RETRIES = 24;
-const INITIAL_SCENE_APPLY_INTERVAL_MS = 125;
-const SESSION_SAVE_DEBOUNCE_MS = 120;
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
-
-const clamp = (value: number, min: number, max: number): number =>
-    Math.min(max, Math.max(min, value));
-
-const sanitizeHexColor = (value: unknown, fallback: string): string => {
-    if (typeof value !== "string") return fallback;
-    const normalized = value.trim().toUpperCase();
-    return HEX_COLOR_PATTERN.test(normalized) ? normalized : fallback;
-};
-
-const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
-    const sanitized = sanitizeHexColor(hex, "#000000");
-    return {
-        r: parseInt(sanitized.slice(1, 3), 16),
-        g: parseInt(sanitized.slice(3, 5), 16),
-        b: parseInt(sanitized.slice(5, 7), 16),
-    };
-};
-
-const gradientDirectionToCss = (direction: GradientDirection): string => {
-    switch (direction) {
-        case "horizontal":
-            return "90deg";
-        case "diagonal-down":
-            return "135deg";
-        case "diagonal-up":
-            return "45deg";
-        case "vertical":
-        default:
-            return "180deg";
+function loadScene(storageKey: string): SceneState {
+    try {
+        const raw = sessionStorage.getItem(storageKey);
+        if (!raw) return DEFAULT_SCENE;
+        const p = JSON.parse(raw) as Partial<SceneState>;
+        return {
+            ambientIntensity: typeof p.ambientIntensity === "number" ? clamp(p.ambientIntensity, 0, 6) : DEFAULT_SCENE.ambientIntensity,
+            directionalIntensity: typeof p.directionalIntensity === "number" ? clamp(p.directionalIntensity, 0, 6) : DEFAULT_SCENE.directionalIntensity,
+            backgroundColor: sanitizeHex(p.backgroundColor, DEFAULT_SCENE.backgroundColor),
+        };
+    } catch {
+        return DEFAULT_SCENE;
     }
-};
+}
 
-const sanitizeSceneState = (raw: unknown): SceneState => {
-    if (!raw || typeof raw !== "object") return DEFAULT_SCENE_STATE;
+export function Model3DViewer({ modelUrl, sceneKey, isometricCamera }: Model3DViewerProps) {
+    const mountRef = useRef<HTMLDivElement>(null);
+    const storageKey = `kicad-prism:3d-v2:${encodeURIComponent(sceneKey || modelUrl)}`;
 
-    const payload = raw as Partial<SceneState>;
+    const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+    const controlsRef = useRef<OrbitControls | null>(null);
+    const ambientRef = useRef<THREE.AmbientLight | null>(null);
+    const directionalRef = useRef<THREE.DirectionalLight | null>(null);
+    const sceneObjRef = useRef<THREE.Scene | null>(null);
+    const rafRef = useRef<number | null>(null);
+    const mountedRef = useRef(false);
 
-    const preset: ScenePreset =
-        payload.preset === "default" ||
-        payload.preset === "inspection" ||
-        payload.preset === "high-contrast" ||
-        payload.preset === "soft" ||
-        payload.preset === "custom"
-            ? payload.preset
-            : DEFAULT_SCENE_STATE.preset;
-
-    const backgroundMode: BackgroundMode =
-        payload.backgroundMode === "gradient" ? "gradient" : "solid";
-
-    const gradientDirection: GradientDirection =
-        payload.gradientDirection === "horizontal" ||
-        payload.gradientDirection === "diagonal-down" ||
-        payload.gradientDirection === "diagonal-up" ||
-        payload.gradientDirection === "vertical"
-            ? payload.gradientDirection
-            : DEFAULT_SCENE_STATE.gradientDirection;
-
-    return {
-        brightness:
-            typeof payload.brightness === "number"
-                ? clamp(payload.brightness, 0, 3)
-                : DEFAULT_SCENE_STATE.brightness,
-        directionality:
-            typeof payload.directionality === "number"
-                ? clamp(payload.directionality, 0, 1)
-                : DEFAULT_SCENE_STATE.directionality,
-        backgroundMode,
-        backgroundColor: sanitizeHexColor(payload.backgroundColor, DEFAULT_SCENE_STATE.backgroundColor),
-        gradientStart: sanitizeHexColor(payload.gradientStart, DEFAULT_SCENE_STATE.gradientStart),
-        gradientEnd: sanitizeHexColor(payload.gradientEnd, DEFAULT_SCENE_STATE.gradientEnd),
-        gradientDirection,
-        preset,
-    };
-};
-
-export function Model3DViewer({ modelUrl, sceneKey, modelFileName, isometricCamera }: Model3DViewerProps) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const viewerRef = useRef<OV.EmbeddedViewer | null>(null);
-    const sceneRef = useRef<SceneState>(DEFAULT_SCENE_STATE);
-    const sceneApplyRafRef = useRef<number | null>(null);
-
-    const [scene, setScene] = useState<SceneState>(DEFAULT_SCENE_STATE);
+    const [scene, setScene] = useState<SceneState>(() => loadScene(storageKey));
+    const sceneRef = useRef(scene);
     const [showSettings, setShowSettings] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
-    const [solidHexInput, setSolidHexInput] = useState(DEFAULT_SCENE_STATE.backgroundColor);
-    const [gradientStartInput, setGradientStartInput] = useState(DEFAULT_SCENE_STATE.gradientStart);
-    const [gradientEndInput, setGradientEndInput] = useState(DEFAULT_SCENE_STATE.gradientEnd);
+    const [hexInput, setHexInput] = useState(scene.backgroundColor);
 
-    const storageKey = useMemo(() => {
-        const resolved = sceneKey || modelUrl;
-        return `kicad-prism:3d-scene:${encodeURIComponent(resolved)}`;
-    }, [modelUrl, sceneKey]);
+    useEffect(() => { sceneRef.current = scene; }, [scene]);
+    useEffect(() => { setHexInput(scene.backgroundColor); }, [scene.backgroundColor]);
 
+    // Persist
     useEffect(() => {
-        sceneRef.current = scene;
-    }, [scene]);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-
-        try {
-            const persisted = window.sessionStorage.getItem(storageKey);
-            if (!persisted) {
-                setScene(DEFAULT_SCENE_STATE);
-                return;
-            }
-            const parsed = JSON.parse(persisted) as unknown;
-            setScene(sanitizeSceneState(parsed));
-        } catch (error) {
-            console.warn("Failed to load 3D scene settings from sessionStorage", error);
-            setScene(DEFAULT_SCENE_STATE);
-        }
-    }, [storageKey]);
-
-    useEffect(() => {
-        setSolidHexInput(scene.backgroundColor);
-    }, [scene.backgroundColor]);
-
-    useEffect(() => {
-        setGradientStartInput(scene.gradientStart);
-    }, [scene.gradientStart]);
-
-    useEffect(() => {
-        setGradientEndInput(scene.gradientEnd);
-    }, [scene.gradientEnd]);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-
-        const timer = window.setTimeout(() => {
-            try {
-                window.sessionStorage.setItem(storageKey, JSON.stringify(scene));
-            } catch (error) {
-                console.warn("Failed to persist 3D scene settings", error);
-            }
-        }, SESSION_SAVE_DEBOUNCE_MS);
-
-        return () => window.clearTimeout(timer);
+        const t = setTimeout(() => {
+            try { sessionStorage.setItem(storageKey, JSON.stringify(scene)); } catch { /* */ }
+        }, 150);
+        return () => clearTimeout(t);
     }, [scene, storageKey]);
 
-    const applyLighting = useCallback((): boolean => {
-        const embeddedViewer = viewerRef.current as unknown as { GetViewer?: () => any } | null;
-        const internalViewer = embeddedViewer?.GetViewer?.();
-        if (!internalViewer || !internalViewer.shadingModel) {
-            return false;
-        }
-
-        const ambient = internalViewer.shadingModel.ambientLight;
-        const directional = internalViewer.shadingModel.directionalLight;
-        const current = sceneRef.current;
-
-        if (ambient) {
-            ambient.color.set(0xffffff);
-            ambient.intensity = current.brightness * (1 - current.directionality) * Math.PI;
-        }
-
-        if (directional) {
-            directional.color.set(0xffffff);
-            directional.intensity = current.brightness * current.directionality * 2.0 * Math.PI;
-        }
-
-        if (typeof internalViewer.Render === "function") {
-            internalViewer.Render();
-        }
-
-        return true;
-    }, []);
-
-    const applyBackground = useCallback((): boolean => {
-        const container = containerRef.current;
-        const embeddedViewer = viewerRef.current as unknown as { GetViewer?: () => any } | null;
-        const internalViewer = embeddedViewer?.GetViewer?.();
-        if (!container || !internalViewer || typeof internalViewer.SetBackgroundColor !== "function") {
-            return false;
-        }
-
-        const current = sceneRef.current;
-
-        if (current.backgroundMode === "solid") {
-            const rgb = hexToRgb(current.backgroundColor);
-            container.style.backgroundImage = "none";
-            container.style.backgroundColor = current.backgroundColor;
-            internalViewer.SetBackgroundColor(new OV.RGBAColor(rgb.r, rgb.g, rgb.b, 255));
-        } else {
-            const direction = gradientDirectionToCss(current.gradientDirection);
-            container.style.backgroundColor = current.gradientStart;
-            container.style.backgroundImage = `linear-gradient(${direction}, ${current.gradientStart}, ${current.gradientEnd})`;
-            // Transparent clear color allows CSS gradient to remain visible behind the model canvas.
-            internalViewer.SetBackgroundColor(new OV.RGBAColor(0, 0, 0, 0));
-        }
-
-        if (typeof internalViewer.Render === "function") {
-            internalViewer.Render();
-        }
-
-        return true;
-    }, []);
-
-    const applyScene = useCallback((): boolean => {
-        const lightingReady = applyLighting();
-        const backgroundReady = applyBackground();
-        return lightingReady && backgroundReady;
-    }, [applyLighting, applyBackground]);
-
-    // Initial load effect (must depend only on model identity, not scene settings).
+    // Live-update lighting and background without rebuilding scene
     useEffect(() => {
-        const container = containerRef.current;
-        if (!container || !modelUrl) return;
+        if (ambientRef.current) ambientRef.current.intensity = scene.ambientIntensity;
+        if (directionalRef.current) directionalRef.current.intensity = scene.directionalIntensity;
+        if (sceneObjRef.current) sceneObjRef.current.background = new THREE.Color(scene.backgroundColor);
+        if (rendererRef.current) rendererRef.current.setClearColor(scene.backgroundColor);
+    }, [scene]);
 
-        container.innerHTML = "";
+    const handleReset = useCallback(() => setScene(DEFAULT_SCENE), []);
 
-        const current = sceneRef.current;
-        const initialRgb = hexToRgb(current.backgroundColor);
-        const initialBackgroundColor =
-            current.backgroundMode === "solid"
-                ? new OV.RGBAColor(initialRgb.r, initialRgb.g, initialRgb.b, 255)
-                : new OV.RGBAColor(0, 0, 0, 0);
+    // Build Three.js scene once per modelUrl
+    useEffect(() => {
+        const mount = mountRef.current;
+        if (!mount) return;
+        mountedRef.current = true;
 
-        const viewer = new OV.EmbeddedViewer(container, {
-            backgroundColor: initialBackgroundColor,
-            defaultColor: new OV.RGBColor(200, 200, 200),
-            onModelLoaded: isometricCamera ? () => {
-                // Reposition to isometric corner: camera above and to the front-right,
-                // Z-up so the board top faces up on screen.
-                const internalViewer = (viewer as unknown as { GetViewer?: () => any }).GetViewer?.();
-                if (!internalViewer) return;
-                const bs = internalViewer.GetBoundingSphere(() => true);
-                if (!bs) return;
-                const cx = bs.center.x as number;
-                const cy = bs.center.y as number;
-                const cz = bs.center.z as number;
-                const r = bs.radius as number;
-                // Direction: front-right corner (X+, Y-, Z+) normalised
-                const d = 1 / Math.sqrt(3);
-                const dist = r * 2.5;
-                const cam = new OV.Camera(
-                    new OV.Coord3D(cx + d * dist, cy - d * dist, cz + d * dist),
-                    new OV.Coord3D(cx, cy, cz),
-                    new OV.Coord3D(0, 0, 1),
-                    45,
-                );
-                internalViewer.SetCamera(cam);
-                internalViewer.Render();
-            } : undefined,
-        });
+        const w = mount.clientWidth;
+        const h = mount.clientHeight;
 
-        if (modelFileName) {
-            const inputFile = new OV.InputFile(modelFileName, OV.FileSource.Url, modelUrl);
-            viewer.LoadModelFromInputFiles([inputFile]);
-        } else {
-            viewer.LoadModelFromUrlList([modelUrl]);
-        }
-        viewerRef.current = viewer;
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(w, h);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        renderer.shadowMap.enabled = false;
+        mount.appendChild(renderer.domElement);
+        rendererRef.current = renderer;
 
-        let remainingAttempts = INITIAL_SCENE_APPLY_RETRIES;
-        const initInterval = window.setInterval(() => {
-            const applied = applyScene();
-            remainingAttempts -= 1;
-            if (applied || remainingAttempts <= 0) {
-                window.clearInterval(initInterval);
+        // Scene
+        const threeScene = new THREE.Scene();
+        const bg = sceneRef.current.backgroundColor;
+        threeScene.background = new THREE.Color(bg);
+        renderer.setClearColor(bg);
+        sceneObjRef.current = threeScene;
+
+        // Lights
+        const ambient = new THREE.AmbientLight(0xffffff, sceneRef.current.ambientIntensity);
+        threeScene.add(ambient);
+        ambientRef.current = ambient;
+
+        const dir = new THREE.DirectionalLight(0xffffff, sceneRef.current.directionalIntensity);
+        dir.position.set(1.5, 2, 2);
+        threeScene.add(dir);
+        directionalRef.current = dir;
+
+        // Secondary fill light (softer, from opposite side)
+        const fill = new THREE.DirectionalLight(0xffffff, 1.2);
+        fill.position.set(-1, -1, 1);
+        threeScene.add(fill);
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(45, w / h, 0.001, 10000);
+        camera.position.set(0, -1, 0.5);
+        cameraRef.current = camera;
+
+        // Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controlsRef.current = controls;
+
+        // Render loop
+        const animate = () => {
+            if (!mountedRef.current) return;
+            rafRef.current = requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(threeScene, camera);
+        };
+
+        // Resize observer
+        const ro = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                const { width, height } = entry.contentRect;
+                if (width === 0 || height === 0) continue;
+                renderer.setSize(width, height);
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
             }
-        }, INITIAL_SCENE_APPLY_INTERVAL_MS);
+        });
+        ro.observe(mount);
+
+        // Load GLB
+        const loader = new GLTFLoader();
+        loader.load(
+            modelUrl,
+            (gltf) => {
+                if (!mountedRef.current) return;
+
+                const model = gltf.scene;
+
+                // Fix up materials: ensure PBR is rendered correctly
+                model.traverse((child) => {
+                    if ((child as THREE.Mesh).isMesh) {
+                        const mesh = child as THREE.Mesh;
+                        mesh.castShadow = false;
+                        mesh.receiveShadow = false;
+
+                        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                        for (const mat of mats) {
+                            if (mat instanceof THREE.MeshStandardMaterial) {
+                                // KiCad GLBs embed colors in baseColor — trust them
+                                mat.needsUpdate = true;
+                            }
+                        }
+                    }
+                });
+
+                threeScene.add(model);
+
+                // Fit camera to model
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                const dist = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 2.2;
+
+                controls.target.copy(center);
+
+                if (isometricCamera) {
+                    const d = dist / Math.sqrt(3);
+                    camera.position.set(center.x + d, center.y - d, center.z + d);
+                } else {
+                    camera.position.set(center.x, center.y - dist, center.z + maxDim * 0.4);
+                }
+
+                camera.near = dist * 0.001;
+                camera.far = dist * 50;
+                camera.updateProjectionMatrix();
+                controls.update();
+
+                animate();
+            },
+            undefined,
+            (err) => {
+                console.error("GLB load error", err);
+                animate(); // still start loop so controls work
+            }
+        );
 
         return () => {
-            window.clearInterval(initInterval);
-            container.innerHTML = "";
-            if (viewerRef.current === viewer) {
-                viewerRef.current = null;
-            }
+            mountedRef.current = false;
+            if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+            ro.disconnect();
+            controls.dispose();
+            renderer.dispose();
+            if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
+            rendererRef.current = null;
+            cameraRef.current = null;
+            controlsRef.current = null;
+            ambientRef.current = null;
+            directionalRef.current = null;
+            sceneObjRef.current = null;
         };
-    }, [modelUrl, applyScene]);
-
-    // Incremental scene updates, no model reload.
-    useEffect(() => {
-        if (typeof window === "undefined") {
-            applyScene();
-            return;
-        }
-
-        if (sceneApplyRafRef.current !== null) {
-            window.cancelAnimationFrame(sceneApplyRafRef.current);
-        }
-
-        sceneApplyRafRef.current = window.requestAnimationFrame(() => {
-            sceneApplyRafRef.current = null;
-            applyScene();
-        });
-
-        return () => {
-            if (sceneApplyRafRef.current !== null) {
-                window.cancelAnimationFrame(sceneApplyRafRef.current);
-                sceneApplyRafRef.current = null;
-            }
-        };
-    }, [scene, applyScene]);
-
-    const applyPreset = (presetId: Exclude<ScenePreset, "custom">) => {
-        const preset = LIGHTING_PRESETS.find((item) => item.id === presetId);
-        if (!preset) return;
-
-        setScene((prev) => ({
-            ...prev,
-            brightness: preset.brightness,
-            directionality: preset.directionality,
-            preset: preset.id,
-        }));
-    };
-
-    const handleReset = () => {
-        setScene(DEFAULT_SCENE_STATE);
-    };
-
-    const commitHexValue = (
-        field: "backgroundColor" | "gradientStart" | "gradientEnd",
-        rawValue: string
-    ) => {
-        setScene((prev) => ({
-            ...prev,
-            [field]: sanitizeHexColor(rawValue, prev[field]),
-        }));
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [modelUrl]);
 
     return (
         <div className="relative w-full h-full min-h-[600px] overflow-hidden bg-[#1e1e1e]">
-            {/* 3D Container */}
-            <div ref={containerRef} className="w-full h-full z-0" />
+            <div ref={mountRef} className="w-full h-full" />
 
-            {/* Scene Toggle Button */}
+            {/* Scene toggle */}
             <div className="absolute top-4 right-4 z-[100]">
                 <Button
                     variant="outline"
                     size="sm"
-                    className={`shadow-xl border-border backdrop-blur-md transition-all ${showSettings ? "bg-primary text-primary-foreground border-primary" : "bg-background/80"
-                        }`}
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        setShowSettings((prev) => !prev);
-                    }}
+                    className={`shadow-xl border-border backdrop-blur-md transition-all ${showSettings ? "bg-primary text-primary-foreground border-primary" : "bg-background/80"}`}
+                    onClick={e => { e.stopPropagation(); setShowSettings(v => !v); }}
                 >
                     <Sun className="w-4 h-4 mr-2" />
                     Scene
@@ -404,8 +256,8 @@ export function Model3DViewer({ modelUrl, sceneKey, modelFileName, isometricCame
 
             {showSettings && (
                 <div
-                    className="absolute top-14 right-4 z-[100] w-[360px] max-w-[calc(100vw-2rem)] p-4 shadow-2xl bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl animate-in fade-in zoom-in slide-in-from-top-2 duration-200"
-                    onClick={(event) => event.stopPropagation()}
+                    className="absolute top-14 right-4 z-[100] w-[320px] max-w-[calc(100vw-2rem)] p-4 shadow-2xl bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl animate-in fade-in zoom-in slide-in-from-top-2 duration-200"
+                    onClick={e => e.stopPropagation()}
                 >
                     <div className="space-y-4">
                         <div className="flex justify-between items-center border-b border-border/50 pb-2">
@@ -414,258 +266,71 @@ export function Model3DViewer({ modelUrl, sceneKey, modelFileName, isometricCame
                                 Scene Controls
                             </h4>
                             <div className="flex gap-1">
-                                <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    className="h-7 w-7 text-muted-foreground hover:text-foreground outline-none"
-                                    onClick={handleReset}
-                                    title="Reset to defaults"
-                                >
+                                <Button variant="ghost" size="icon-xs" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={handleReset} title="Reset">
                                     <RotateCcw className="w-3 h-3" />
                                 </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    className="h-7 w-7 text-muted-foreground hover:text-foreground outline-none"
-                                    onClick={() => setShowSettings(false)}
-                                >
+                                <Button variant="ghost" size="icon-xs" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setShowSettings(false)}>
                                     ×
                                 </Button>
                             </div>
                         </div>
 
-                        {/* Basic Controls */}
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Lighting Presets</Label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {LIGHTING_PRESETS.map((preset) => (
-                                        <Button
-                                            key={preset.id}
-                                            type="button"
-                                            size="sm"
-                                            variant={scene.preset === preset.id ? "secondary" : "outline"}
-                                            className="h-8"
-                                            onClick={() => applyPreset(preset.id)}
-                                        >
-                                            {preset.label}
-                                        </Button>
-                                    ))}
-                                </div>
+                        {/* Ambient */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                                <Label className="text-sm font-medium">Ambient Light</Label>
+                                <span className="text-[11px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
+                                    {(scene.ambientIntensity * 100 / 6).toFixed(0)}%
+                                </span>
                             </div>
-
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-center">
-                                    <Label className="text-sm font-medium">Scene Brightness</Label>
-                                    <span className="text-[11px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
-                                        {(scene.brightness * 100).toFixed(0)}%
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <Moon className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                                    <Slider
-                                        value={[scene.brightness]}
-                                        min={0}
-                                        max={3}
-                                        step={0.05}
-                                        onValueChange={([value]) => {
-                                            setScene((prev) => ({
-                                                ...prev,
-                                                brightness: value,
-                                                preset: "custom",
-                                            }));
-                                        }}
-                                        className="py-2"
-                                    />
-                                    <Sun className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium flex items-center gap-2">
-                                    <Palette className="w-4 h-4" />
-                                    Background
-                                </Label>
-                                <div className="flex gap-2">
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant={scene.backgroundMode === "solid" ? "secondary" : "outline"}
-                                        className="h-8"
-                                        onClick={() =>
-                                            setScene((prev) => ({
-                                                ...prev,
-                                                backgroundMode: "solid",
-                                            }))
-                                        }
-                                    >
-                                        Solid
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant={scene.backgroundMode === "gradient" ? "secondary" : "outline"}
-                                        className="h-8"
-                                        onClick={() =>
-                                            setScene((prev) => ({
-                                                ...prev,
-                                                backgroundMode: "gradient",
-                                            }))
-                                        }
-                                    >
-                                        Gradient
-                                    </Button>
-                                </div>
-
-                                {scene.backgroundMode === "solid" ? (
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="color"
-                                            aria-label="Background color"
-                                            value={scene.backgroundColor}
-                                            onChange={(event) =>
-                                                setScene((prev) => ({
-                                                    ...prev,
-                                                    backgroundColor: sanitizeHexColor(event.target.value, prev.backgroundColor),
-                                                }))
-                                            }
-                                            className="h-9 w-10 rounded border border-border bg-transparent p-0"
-                                        />
-                                        <Input
-                                            value={solidHexInput}
-                                            onChange={(event) => setSolidHexInput(event.target.value)}
-                                            onBlur={() => commitHexValue("backgroundColor", solidHexInput)}
-                                            onKeyDown={(event) => {
-                                                if (event.key === "Enter") {
-                                                    event.preventDefault();
-                                                    commitHexValue("backgroundColor", solidHexInput);
-                                                }
-                                            }}
-                                            className="h-9 font-mono text-xs uppercase"
-                                            placeholder="#1E1E1E"
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="color"
-                                                aria-label="Gradient start"
-                                                value={scene.gradientStart}
-                                                onChange={(event) =>
-                                                    setScene((prev) => ({
-                                                        ...prev,
-                                                        gradientStart: sanitizeHexColor(event.target.value, prev.gradientStart),
-                                                    }))
-                                                }
-                                                className="h-9 w-10 rounded border border-border bg-transparent p-0"
-                                            />
-                                            <Input
-                                                value={gradientStartInput}
-                                                onChange={(event) => setGradientStartInput(event.target.value)}
-                                                onBlur={() => commitHexValue("gradientStart", gradientStartInput)}
-                                                onKeyDown={(event) => {
-                                                    if (event.key === "Enter") {
-                                                        event.preventDefault();
-                                                        commitHexValue("gradientStart", gradientStartInput);
-                                                    }
-                                                }}
-                                                className="h-9 font-mono text-xs uppercase"
-                                                placeholder="#1E1E1E"
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="color"
-                                                aria-label="Gradient end"
-                                                value={scene.gradientEnd}
-                                                onChange={(event) =>
-                                                    setScene((prev) => ({
-                                                        ...prev,
-                                                        gradientEnd: sanitizeHexColor(event.target.value, prev.gradientEnd),
-                                                    }))
-                                                }
-                                                className="h-9 w-10 rounded border border-border bg-transparent p-0"
-                                            />
-                                            <Input
-                                                value={gradientEndInput}
-                                                onChange={(event) => setGradientEndInput(event.target.value)}
-                                                onBlur={() => commitHexValue("gradientEnd", gradientEndInput)}
-                                                onKeyDown={(event) => {
-                                                    if (event.key === "Enter") {
-                                                        event.preventDefault();
-                                                        commitHexValue("gradientEnd", gradientEndInput);
-                                                    }
-                                                }}
-                                                className="h-9 font-mono text-xs uppercase"
-                                                placeholder="#101010"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
+                            <div className="flex items-center gap-3">
+                                <Moon className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+                                <Slider value={[scene.ambientIntensity]} min={0} max={6} step={0.1}
+                                    onValueChange={([v]) => setScene(p => ({ ...p, ambientIntensity: v }))} className="py-2" />
+                                <Sun className="w-4 h-4 text-muted-foreground/50 shrink-0" />
                             </div>
                         </div>
 
-                        {/* Advanced Controls */}
+                        {/* Background */}
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium flex items-center gap-2">
+                                <Palette className="w-4 h-4" />
+                                Background
+                            </Label>
+                            <div className="flex items-center gap-2">
+                                <input type="color" aria-label="Background color" value={scene.backgroundColor}
+                                    onChange={e => setScene(p => ({ ...p, backgroundColor: e.target.value }))}
+                                    className="h-9 w-10 rounded border border-border bg-transparent p-0" />
+                                <Input value={hexInput}
+                                    onChange={e => setHexInput(e.target.value)}
+                                    onBlur={() => setScene(p => ({ ...p, backgroundColor: sanitizeHex(hexInput, p.backgroundColor) }))}
+                                    onKeyDown={e => { if (e.key === "Enter") setScene(p => ({ ...p, backgroundColor: sanitizeHex(hexInput, p.backgroundColor) })); }}
+                                    className="h-9 font-mono text-xs uppercase" placeholder="#1E1E1E" />
+                            </div>
+                        </div>
+
+                        {/* Advanced */}
                         <div className="border-t border-border/40 pt-3">
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                className="h-8 w-full justify-start px-2"
-                                onClick={() => setShowAdvanced((prev) => !prev)}
-                            >
+                            <Button type="button" variant="ghost" className="h-8 w-full justify-start px-2"
+                                onClick={() => setShowAdvanced(v => !v)}>
                                 {showAdvanced ? "Hide Advanced" : "Show Advanced"}
                             </Button>
-
                             {showAdvanced && (
                                 <div className="space-y-3 mt-3">
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
-                                            <Label className="text-sm font-medium">Directionality</Label>
+                                            <Label className="text-sm font-medium">Directional Light</Label>
                                             <span className="text-[11px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full border border-primary/20">
-                                                {(scene.directionality * 100).toFixed(0)}%
+                                                {(scene.directionalIntensity * 100 / 6).toFixed(0)}%
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <BoxSelect className="w-4 h-4 text-muted-foreground/50 shrink-0" />
-                                            <Slider
-                                                value={[scene.directionality]}
-                                                min={0}
-                                                max={1}
-                                                step={0.01}
-                                                onValueChange={([value]) => {
-                                                    setScene((prev) => ({
-                                                        ...prev,
-                                                        directionality: value,
-                                                        preset: "custom",
-                                                    }));
-                                                }}
-                                                className="py-2"
-                                            />
+                                            <Slider value={[scene.directionalIntensity]} min={0} max={6} step={0.1}
+                                                onValueChange={([v]) => setScene(p => ({ ...p, directionalIntensity: v }))} className="py-2" />
                                             <Zap className="w-4 h-4 text-primary/50 shrink-0" />
                                         </div>
                                     </div>
-
-                                    {scene.backgroundMode === "gradient" && (
-                                        <div className="space-y-2">
-                                            <Label className="text-sm font-medium">Gradient Direction</Label>
-                                            <select
-                                                value={scene.gradientDirection}
-                                                onChange={(event) =>
-                                                    setScene((prev) => ({
-                                                        ...prev,
-                                                        gradientDirection: event.target.value as GradientDirection,
-                                                    }))
-                                                }
-                                                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                                            >
-                                                <option value="vertical">Vertical</option>
-                                                <option value="horizontal">Horizontal</option>
-                                                <option value="diagonal-down">Diagonal Down</option>
-                                                <option value="diagonal-up">Diagonal Up</option>
-                                            </select>
-                                        </div>
-                                    )}
                                 </div>
                             )}
                         </div>

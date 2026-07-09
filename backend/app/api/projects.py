@@ -1589,6 +1589,119 @@ async def get_project_3d_model(
     return FileResponse(path, headers={"Cache-Control": "no-cache"})
 
 
+_glb_locks: dict[str, threading.Lock] = {}
+_glb_locks_mutex = threading.Lock()
+
+
+def _glb_lock_for(project_id: str) -> threading.Lock:
+    with _glb_locks_mutex:
+        if project_id not in _glb_locks:
+            _glb_locks[project_id] = threading.Lock()
+        return _glb_locks[project_id]
+
+
+@router.get("/{project_id}/3d-model/on-demand")
+async def get_project_3d_model_on_demand(
+    project_id: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Generate a GLB from the PCB file on-demand using kicad-cli, cache it, and return it."""
+    import subprocess
+    import tempfile
+
+    from app.services.thumbnail_service import _find_kicad_cli  # reuse discovery
+
+    project = get_project_for_role_or_404(project_id, user.role)
+
+    # Prefer a pre-existing design-output GLB
+    existing = project_service.find_3d_model(project.path)
+    if existing:
+        return Response(
+            content=Path(existing).read_bytes(),
+            media_type="model/gltf-binary",
+            headers={"Cache-Control": "no-cache"},
+        )
+
+    pcb_path = project_service.find_pcb_file(project.path)
+    if not pcb_path:
+        raise HTTPException(
+            status_code=404, detail="No PCB file found for this project"
+        )
+
+    cache_dir = Path(settings.KICAD_PROJECTS_ROOT) / ".kicad-prism" / "3d-models"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cached_glb = cache_dir / f"{project_id}.glb"
+
+    # Per-project lock so concurrent requests don't double-generate
+    lock = _glb_lock_for(project_id)
+    await asyncio.get_event_loop().run_in_executor(None, lock.acquire)
+    try:
+        if cached_glb.is_file():
+            return Response(
+                content=cached_glb.read_bytes(),
+                media_type="model/gltf-binary",
+                headers={"Cache-Control": "no-cache"},
+            )
+
+        kicad_cli = _find_kicad_cli()
+        if not kicad_cli:
+            raise HTTPException(
+                status_code=503, detail="kicad-cli not found; cannot generate 3D model"
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_glb = str(Path(tmp_dir) / "model.glb")
+            try:
+                result = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: subprocess.run(  # noqa: S603
+                        [
+                            kicad_cli,
+                            "pcb",
+                            "export",
+                            "glb",
+                            "--output",
+                            tmp_glb,
+                            "--force",
+                            "--subst-models",
+                            "--include-tracks",
+                            "--include-pads",
+                            "--include-zones",
+                            "--include-silkscreen",
+                            "--include-soldermask",
+                            "--include-inner-copper",
+                            pcb_path,
+                        ],
+                        capture_output=True,
+                        timeout=120,
+                    ),
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise HTTPException(
+                    status_code=504, detail="3D model generation timed out"
+                ) from exc
+
+            if result.returncode != 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"kicad-cli GLB export failed: {result.stderr.decode(errors='replace')[:400]}",
+                )
+            if not Path(tmp_glb).is_file():
+                raise HTTPException(
+                    status_code=500, detail="kicad-cli did not produce a GLB file"
+                )
+            shutil.move(tmp_glb, str(cached_glb))
+
+    finally:
+        lock.release()
+
+    return Response(
+        content=cached_glb.read_bytes(),
+        media_type="model/gltf-binary",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @router.get("/{project_id}/ibom")
 async def get_project_ibom(
     project_id: str,

@@ -591,6 +591,8 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         viewerRefs: visualizerViewerRefs,
     });
     const [modelUrl, setModelUrl] = useState<string | null>(null);
+    const [modelIsBlob, setModelIsBlob] = useState(false);
+    const [modelGenerating, setModelGenerating] = useState(false);
     const [ibomUrl, setIbomUrl] = useState<string | null>(null);
     const [schematicContentLoaded, setSchematicContentLoaded] = useState(false);
     const [pcbContentLoaded, setPcbContentLoaded] = useState(false);
@@ -804,6 +806,8 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
 
     useEffect(() => {
         setModelUrl(null);
+        setModelIsBlob(false);
+        setModelGenerating(false);
         setIbomUrl(null);
         setSchematicContent(null);
         setPcbContent(null);
@@ -1074,6 +1078,27 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         return () => controller.abort();
     }, [projectId, commit]);
 
+    // On-demand GLB generation: triggered when 3D tab is opened and no model exists yet
+    useEffect(() => {
+        if (activeTab !== "3d" || modelUrl || modelGenerating || commit) return;
+        const controller = new AbortController();
+        setModelGenerating(true);
+        fetch(`/api/projects/${projectId}/3d-model/on-demand`, { signal: controller.signal })
+            .then(r => {
+                if (!r.ok) throw new Error("generation failed");
+                return r.blob();
+            })
+            .then(blob => {
+                const url = URL.createObjectURL(blob);
+                setModelUrl(url);
+                setModelIsBlob(true);
+            })
+            .catch(e => { if (!(e instanceof DOMException && e.name === "AbortError")) setModelUrl(null); })
+            .finally(() => { if (!controller.signal.aborted) setModelGenerating(false); });
+        return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, projectId]);
+
     // Lazy load stackup when stackup tab is first accessed (skipped in commit view — diff provides the data)
     useEffect(() => {
         if (activeTab !== "stackup" || stackupLoaded || commit) return;
@@ -1094,6 +1119,8 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         setSubsheets([]);
         setPcbContent(null);
         setModelUrl(null);
+        setModelIsBlob(false);
+        setModelGenerating(false);
         setIbomUrl(null);
         setComments([]);
         setCommentsSourceUrls(null);
@@ -1772,11 +1799,22 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                 {activeTab === "3d" && (
                     <div className="absolute inset-0 z-20 bg-background">
                         {modelUrl ? (
-                            <Suspense fallback={<div className="p-10">Loading 3D Viewer...</div>}>
-                                <Model3DViewer modelUrl={modelUrl} sceneKey={`project:${projectId}:tab:3d`} />
+                            <Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground">Loading 3D Viewer...</div>}>
+                                <Model3DViewer
+                                    modelUrl={modelUrl}
+                                    sceneKey={`project:${projectId}:tab:3d`}
+                                    modelFileName={modelIsBlob ? "model.glb" : undefined}
+                                />
                             </Suspense>
+                        ) : modelGenerating ? (
+                            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                                <p className="text-sm">Generating 3D model…</p>
+                            </div>
                         ) : (
-                            <div className="p-10">No 3D Model</div>
+                            <div className="flex items-center justify-center h-full text-muted-foreground">
+                                <p className="text-sm">No 3D model available.</p>
+                            </div>
                         )}
                     </div>
                 )}
