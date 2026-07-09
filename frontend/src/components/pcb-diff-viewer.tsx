@@ -84,6 +84,11 @@ interface PcbDiff {
 
 interface BoardData {
     filename: string;
+    rel_path: string;
+    has_old: boolean;
+    has_new: boolean;
+    // Content is lazy-fetched from the cacheable per-commit file endpoint
+    // (diff requested with include_content=false), so these stay null.
     old_content: string | null;
     new_content: string | null;
     diff: PcbDiff;
@@ -1381,6 +1386,10 @@ export function PcbDiffViewer({
                 params.set("track_net_names", "true");
             }
         } catch { /* ignore */ }
+        // include_content=false: the diff payload carries only the change list
+        // + rel_path; board files are lazy-fetched separately from the
+        // cacheable per-commit file endpoint (see the board-content effect).
+        params.set("include_content", "false");
         fetch(`/api/projects/${projectId}/pcb-diff?${params}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1396,6 +1405,33 @@ export function PcbDiffViewer({
                 setLoading(false);
             });
     }, [projectId, commit1, commit2, parser]);
+
+    // Lazy-fetched board file contents, keyed `${side}:${filename}`. Populated
+    // from the cacheable /commits/{hash}/file endpoint so each board file is
+    // downloaded (gzipped) at most once per commit and cached by the browser.
+    const [boardContent, setBoardContent] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        setBoardContent({});
+    }, [commit1, commit2]);
+
+    useEffect(() => {
+        if (!data) return;
+        const controller = new AbortController();
+        const fetchSide = async (side: "new" | "old", commit: string, board: BoardData) => {
+            const key = `${side}:${board.filename}`;
+            const url = `/api/projects/${projectId}/commits/${commit}/file?path=${encodeURIComponent(board.rel_path)}`;
+            const r = await fetch(url, { signal: controller.signal });
+            if (!r.ok) return;
+            const text = await r.text();
+            setBoardContent(prev => (prev[key] !== undefined ? prev : { ...prev, [key]: text }));
+        };
+        for (const board of data.boards) {
+            if (board.has_new) void fetchSide("new", data.commit1, board).catch(() => {});
+            if (board.has_old) void fetchSide("old", data.commit2, board).catch(() => {});
+        }
+        return () => controller.abort();
+    }, [data, projectId]);
 
     const activeBoardData = data?.boards.find(b => b.filename === activeBoard) ?? null;
 
@@ -1738,7 +1774,7 @@ export function PcbDiffViewer({
                                 {data.boards.map((board) => {
                                     const count = boardChangeCounts[board.filename] ?? 0;
                                     const isActive = board.filename === activeBoard;
-                                    const boardStatus = !board.old_content ? "added" : !board.new_content ? "removed" : null;
+                                    const boardStatus = !board.has_old ? "added" : !board.has_new ? "removed" : null;
                                     return (
                                         <button
                                             key={board.filename}
@@ -1889,8 +1925,8 @@ export function PcbDiffViewer({
                                 <EcadViewerHost
                                     viewerKey={`pcb-diff-new-${data.commit1}-${data.commit2}`}
                                     files={data.boards
-                                        .filter(b => b.new_content)
-                                        .map(b => ({ filename: b.filename, content: b.new_content! }))}
+                                        .filter(b => boardContent[`new:${b.filename}`] !== undefined)
+                                        .map(b => ({ filename: b.filename, content: boardContent[`new:${b.filename}`] }))}
                                     viewerRef={newViewerRef}
                                 />
                             </div>
@@ -1901,8 +1937,8 @@ export function PcbDiffViewer({
                                 <EcadViewerHost
                                     viewerKey={`pcb-diff-old-${data.commit1}-${data.commit2}`}
                                     files={data.boards
-                                        .filter(b => b.old_content)
-                                        .map(b => ({ filename: b.filename, content: b.old_content! }))}
+                                        .filter(b => boardContent[`old:${b.filename}`] !== undefined)
+                                        .map(b => ({ filename: b.filename, content: boardContent[`old:${b.filename}`] }))}
                                     viewerRef={oldViewerRef}
                                 />
                             </div>
@@ -1919,8 +1955,8 @@ export function PcbDiffViewer({
                                 kickRef={overlayKickRef}
                             />
                             {activeBoardData && (
-                                (showing === "new" && !activeBoardData.new_content) ||
-                                (showing === "old" && !activeBoardData.old_content)
+                                (showing === "new" && !activeBoardData.has_new) ||
+                                (showing === "old" && !activeBoardData.has_old)
                             ) && (
                                 <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-30 pointer-events-none">
                                     <div className="flex flex-col items-center gap-2 text-center">

@@ -68,12 +68,15 @@ async def get_schematic_diff(
     commit1: str,
     commit2: str = None,
     parser: str = "native",
+    include_content: bool = True,
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
     Return interactive schematic diff data between two commits.
     If commit2 is omitted, diffs commit1 against its parent.
-    Includes both file contents (for ecad-viewer) and a structured change list.
+    Includes a structured change list, plus file contents unless
+    `include_content=false` (in which case the client lazy-fetches each sheet
+    from the cacheable per-commit file endpoint, keeping this payload small).
 
     `parser` selects the parsing backend: 'native' (in-house s-expr) or
     'monkey' (kicad_monkey). The diff algorithm is identical for both.
@@ -86,7 +89,12 @@ async def get_schematic_diff(
         commit2 = await asyncio.to_thread(_resolve_parent_commit, project_id, commit1)
 
     result = await asyncio.to_thread(
-        sch_diff_service.get_schematic_diff, project_id, commit1, commit2, parser
+        sch_diff_service.get_schematic_diff,
+        project_id,
+        commit1,
+        commit2,
+        parser,
+        include_content,
     )
     if result is None:
         raise HTTPException(
@@ -102,6 +110,7 @@ async def get_pcb_diff(
     commit2: str = None,
     parser: str = "native",
     track_net_names: bool = False,
+    include_content: bool = True,
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
@@ -111,6 +120,9 @@ async def get_pcb_diff(
     `parser` selects the parsing backend: 'native' or 'monkey'.
     `track_net_names` — when true, net name changes on routing items are
     treated as real diffs; otherwise only geometry is compared.
+    `include_content=false` omits the raw board text (the client lazy-fetches
+    each board from the cacheable per-commit file endpoint), shrinking this
+    payload from ~20 MB to a few KB on large boards.
     """
     get_project_for_role_or_404(project_id, user.role)
     _validate_commits(commit1, commit2)
@@ -126,6 +138,7 @@ async def get_pcb_diff(
         commit2,
         parser,
         track_net_names,
+        include_content,
     )
     if result is None:
         raise HTTPException(

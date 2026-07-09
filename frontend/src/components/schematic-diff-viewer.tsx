@@ -71,6 +71,11 @@ interface SchDiff {
 
 interface SheetData {
     filename: string;
+    rel_path: string;
+    has_old: boolean;
+    has_new: boolean;
+    // Content is lazy-fetched from the cacheable per-commit file endpoint
+    // (diff requested with include_content=false), so these stay null.
     old_content: string | null;
     new_content: string | null;
     diff: SchDiff;
@@ -860,6 +865,9 @@ export function SchematicDiffViewer({
         setLoading(true);
         setError(null);
         const params = new URLSearchParams({ commit1, commit2, parser });
+        // include_content=false: sheet files are lazy-fetched separately from
+        // the cacheable per-commit file endpoint (see the sheet-content effect).
+        params.set("include_content", "false");
         fetch(`/api/projects/${projectId}/schematic-diff?${params}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -889,6 +897,33 @@ export function SchematicDiffViewer({
     }, [projectId, commit1, commit2, parser]);
 
     const activeSheetData = data?.sheets.find(s => s.filename === activeSheet) ?? null;
+
+    // Lazy-fetched sheet file contents, keyed `${side}:${filename}`. Populated
+    // from the cacheable /commits/{hash}/file endpoint so each sheet file is
+    // downloaded (gzipped) at most once per commit and cached by the browser.
+    const [sheetContent, setSheetContent] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        setSheetContent({});
+    }, [commit1, commit2]);
+
+    useEffect(() => {
+        if (!data) return;
+        const controller = new AbortController();
+        const fetchSide = async (side: "new" | "old", commit: string, sheet: SheetData) => {
+            const key = `${side}:${sheet.filename}`;
+            const url = `/api/projects/${projectId}/commits/${commit}/file?path=${encodeURIComponent(sheet.rel_path)}`;
+            const r = await fetch(url, { signal: controller.signal });
+            if (!r.ok) return;
+            const text = await r.text();
+            setSheetContent(prev => (prev[key] !== undefined ? prev : { ...prev, [key]: text }));
+        };
+        for (const sheet of data.sheets) {
+            if (sheet.has_new) void fetchSide("new", data.commit1, sheet).catch(() => {});
+            if (sheet.has_old) void fetchSide("old", data.commit2, sheet).catch(() => {});
+        }
+        return () => controller.abort();
+    }, [data, projectId]);
 
     // KiCad-style hotkeys: zoom, fit, redraw, sheet nav, close.
     const cycleSheet = useCallback((delta: 1 | -1) => {
@@ -1112,7 +1147,7 @@ export function SchematicDiffViewer({
         const refEscaped = ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const refRe = new RegExp(`\\(property\\s+"Reference"\\s+"${refEscaped}"`);
         const containingSheet = data.sheets.find(s => {
-            const content = showing === "new" ? s.new_content : s.old_content;
+            const content = sheetContent[`${showing}:${s.filename}`];
             return content ? refRe.test(content) : false;
         });
         if (containingSheet && containingSheet.filename !== activeSheet) {
@@ -1133,7 +1168,7 @@ export function SchematicDiffViewer({
         crossProbeFiredSeqRef.current = crossProbeTarget.seq;
         crossProbeRunner.run(host, "PCB", "SCH", ref);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [crossProbeTarget, data, activeSheet, newReady, oldReady, showing, sheetLoadTick]);
+    }, [crossProbeTarget, data, activeSheet, newReady, oldReady, showing, sheetLoadTick, sheetContent]);
 
     return (
         <div className={embedded ? "h-full bg-background flex flex-col" : "fixed inset-0 z-50 bg-background flex flex-col"}>
@@ -1229,7 +1264,7 @@ export function SchematicDiffViewer({
                                 {data.sheets.map((sheet) => {
                                     const count = sheetChangeCounts[sheet.filename] ?? 0;
                                     const isActive = sheet.filename === activeSheet;
-                                    const sheetStatus = !sheet.old_content ? "added" : !sheet.new_content ? "removed" : null;
+                                    const sheetStatus = !sheet.has_old ? "added" : !sheet.has_new ? "removed" : null;
                                     return (
                                         <button
                                             key={sheet.filename}
@@ -1411,8 +1446,8 @@ export function SchematicDiffViewer({
                                 <EcadViewerHost
                                     viewerKey={`sch-diff-new-${data.commit1}-${data.commit2}`}
                                     files={data.sheets
-                                        .filter(s => s.new_content)
-                                        .map(s => ({ filename: s.filename, content: s.new_content! }))}
+                                        .filter(s => sheetContent[`new:${s.filename}`] !== undefined)
+                                        .map(s => ({ filename: s.filename, content: sheetContent[`new:${s.filename}`] }))}
                                     viewerRef={newViewerRef}
                                     showLayersButton={false}
                                 />
@@ -1424,8 +1459,8 @@ export function SchematicDiffViewer({
                                 <EcadViewerHost
                                     viewerKey={`sch-diff-old-${data.commit1}-${data.commit2}`}
                                     files={data.sheets
-                                        .filter(s => s.old_content)
-                                        .map(s => ({ filename: s.filename, content: s.old_content! }))}
+                                        .filter(s => sheetContent[`old:${s.filename}`] !== undefined)
+                                        .map(s => ({ filename: s.filename, content: sheetContent[`old:${s.filename}`] }))}
                                     viewerRef={oldViewerRef}
                                     showLayersButton={false}
                                 />
@@ -1440,8 +1475,8 @@ export function SchematicDiffViewer({
                             />
                             {/* Sheet not present in the currently-showing version */}
                             {activeSheetData && (
-                                (showing === "new" && !activeSheetData.new_content) ||
-                                (showing === "old" && !activeSheetData.old_content)
+                                (showing === "new" && !activeSheetData.has_new) ||
+                                (showing === "old" && !activeSheetData.has_old)
                             ) && (
                                 <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-30 pointer-events-none">
                                     <div className="flex flex-col items-center gap-2 text-center">

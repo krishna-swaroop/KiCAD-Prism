@@ -945,9 +945,16 @@ def get_pcb_diff(
     commit2: str,
     parser: str = "native",
     track_net_names: bool = False,
+    include_content: bool = True,
 ) -> dict | None:
     """
     Return interactive diff data for all PCB files between two commits.
+
+    When ``include_content`` is False the raw board text is omitted from the
+    response (``old_content``/``new_content`` are None) and only ``rel_path`` +
+    presence flags are sent, so the client can lazy-fetch each board file it
+    actually needs from the cacheable per-commit file endpoint. This turns a
+    ~20 MB diff payload (mostly duplicated raw board text) into a few KB.
 
     Returns:
         {
@@ -956,8 +963,11 @@ def get_pcb_diff(
             boards: [
                 {
                     filename: str,
-                    old_content: str|None,
-                    new_content: str|None,
+                    rel_path: str,
+                    has_old: bool,
+                    has_new: bool,
+                    old_content: str|None,   # None when include_content=False
+                    new_content: str|None,   # None when include_content=False
                     diff: { added, removed, changed },
                 },
                 ...
@@ -1015,8 +1025,11 @@ def get_pcb_diff(
         boards.append(
             {
                 "filename": filename,
-                "old_content": old_content,
-                "new_content": new_content,
+                "rel_path": rel_path,
+                "has_old": old_content is not None,
+                "has_new": new_content is not None,
+                "old_content": old_content if include_content else None,
+                "new_content": new_content if include_content else None,
                 "diff": diff,
             }
         )

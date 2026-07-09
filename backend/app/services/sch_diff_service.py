@@ -575,10 +575,19 @@ def _find_all_sch_paths(
 
 
 def get_schematic_diff(
-    project_id: str, commit1: str, commit2: str, parser: str = "native"
+    project_id: str,
+    commit1: str,
+    commit2: str,
+    parser: str = "native",
+    include_content: bool = True,
 ) -> dict | None:
     """
     Return interactive diff data for all schematic sheets between two commits.
+
+    When ``include_content`` is False the raw sheet text is omitted and only
+    ``rel_path`` + presence flags are sent, so the client can lazy-fetch each
+    sheet from the cacheable per-commit file endpoint instead of receiving the
+    full (often multi-MB) content inline.
 
     Returns:
         {
@@ -587,8 +596,11 @@ def get_schematic_diff(
             sheets: [
                 {
                     filename: str,          # bare filename, e.g. "top.kicad_sch"
-                    old_content: str|None,
-                    new_content: str|None,
+                    rel_path: str,          # repo-relative path for lazy fetch
+                    has_old: bool,
+                    has_new: bool,
+                    old_content: str|None,  # None when include_content=False
+                    new_content: str|None,  # None when include_content=False
                     diff: { added, removed, changed },  # empty lists if one side missing
                 },
                 ...
@@ -646,8 +658,11 @@ def get_schematic_diff(
         sheets.append(
             {
                 "filename": filename,
-                "old_content": old_content,
-                "new_content": new_content,
+                "rel_path": rel_path,
+                "has_old": old_content is not None,
+                "has_new": new_content is not None,
+                "old_content": old_content if include_content else None,
+                "new_content": new_content if include_content else None,
                 "diff": diff,
             }
         )
