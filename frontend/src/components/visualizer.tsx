@@ -197,14 +197,24 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         if (typeof value !== "string") return null;
         const trimmed = value.trim();
         if (!trimmed) return null;
-        return /^[A-Za-z]+\d+/.test(trimmed) ? trimmed : null;
+        return /^[A-Za-z]+\d+[A-Za-z]*$/.test(trimmed) ? trimmed : null;
     }, []);
 
-    const extractDesignatorFromSelection = useCallback((item: unknown): string | null => {
-        const findDesignator = (value: unknown, depth = 0): string | null => {
-            if (!value || typeof value !== "object" || depth > 3) return null;
-            const entry = value as Record<string, unknown>;
+    const extractDesignatorFromSelection = useCallback((item: unknown, sourceContext?: CrossProbeContext): string | null => {
+        const isFootprintLike = (value: Record<string, unknown>): boolean => {
+            const typeName = String(value.constructor?.name ?? "").toLowerCase();
+            const itemType = String(value.type ?? value.kind ?? value.itemType ?? "").toLowerCase();
+            return (
+                typeName.includes("footprint") ||
+                typeName.includes("module") ||
+                itemType.includes("footprint") ||
+                itemType.includes("module") ||
+                typeof value.fp_texts !== "undefined" ||
+                typeof value.pads !== "undefined"
+            );
+        };
 
+        const readDesignator = (entry: Record<string, unknown>): string | null => {
             const direct = [
                 entry.reference,
                 entry.Reference,
@@ -248,6 +258,40 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                 );
                 if (fromDefault) return fromDefault;
             }
+
+            return null;
+        };
+
+        const collectObjectPath = (value: unknown, depth = 0): Record<string, unknown>[] => {
+            if (!value || typeof value !== "object" || depth > 5) return [];
+            const entry = value as Record<string, unknown>;
+            return [
+                entry,
+                ...collectObjectPath(entry.parent, depth + 1),
+                ...collectObjectPath(entry.item, depth + 1),
+                ...collectObjectPath(entry.context, depth + 1),
+            ];
+        };
+
+        const path = collectObjectPath(item);
+        if (sourceContext === "PCB") {
+            for (const entry of path) {
+                if (!isFootprintLike(entry)) continue;
+                const designator = readDesignator(entry);
+                if (designator) return designator;
+            }
+        }
+
+        for (const entry of path) {
+            const designator = readDesignator(entry);
+            if (designator) return designator;
+        }
+
+        const findDesignator = (value: unknown, depth = 0): string | null => {
+            if (!value || typeof value !== "object" || depth > 3) return null;
+            const entry = value as Record<string, unknown>;
+            const designator = readDesignator(entry);
+            if (designator) return designator;
 
             return (
                 findDesignator(entry.parent, depth + 1) ||
@@ -693,7 +737,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         ) => {
             const detail = (event as CustomEvent<KiCanvasSelectDetail>).detail;
             const sourceContext = detail?.sourceContext ?? fallbackSourceContext;
-            const designator = extractDesignatorFromSelection(detail?.item);
+            const designator = extractDesignatorFromSelection(detail?.item, sourceContext);
             if (!designator) return;
             lastCrossProbeRef.current[sourceContext] = designator;
             runCrossProbe(targetViewer, sourceContext, designator);
@@ -703,15 +747,35 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             handleCrossProbeSelection("SCH", pcbViewerRef.current, event);
         const onPcbSelect = (event: Event) =>
             handleCrossProbeSelection("PCB", schematicViewerRef.current, event);
+        const onPcbFitterSelection = (event: Event) => {
+            const detail = (event as CustomEvent<{ items?: unknown[] }>).detail;
+            const items = Array.isArray(detail?.items) ? detail.items : [];
+            const designators = Array.from(new Set(
+                items
+                    .map((entry) => extractDesignatorFromSelection(entry, "PCB"))
+                    .filter((designator): designator is string => Boolean(designator))
+            ));
+            const designator = designators[0] ?? null;
+            if (!designator) return;
+            lastCrossProbeRef.current.PCB = designator;
+            runCrossProbe(schematicViewerRef.current, "PCB", designator);
+        };
 
         schematicViewer?.addEventListener("kicanvas:select", onSchematicSelect as EventListener);
         pcbViewer?.addEventListener("kicanvas:select", onPcbSelect as EventListener);
+        pcbViewer?.addEventListener("kicanvas:fitter-selection", onPcbFitterSelection as EventListener);
 
         return () => {
             schematicViewer?.removeEventListener("kicanvas:select", onSchematicSelect as EventListener);
             pcbViewer?.removeEventListener("kicanvas:select", onPcbSelect as EventListener);
+            pcbViewer?.removeEventListener("kicanvas:fitter-selection", onPcbFitterSelection as EventListener);
         };
-    }, [schematicViewerElement, pcbViewerElement, extractDesignatorFromSelection, runCrossProbe]);
+    }, [
+        schematicViewerElement,
+        pcbViewerElement,
+        extractDesignatorFromSelection,
+        runCrossProbe,
+    ]);
 
     useEffect(() => {
         if (activeTab === "pcb" && lastCrossProbeRef.current.SCH) {
