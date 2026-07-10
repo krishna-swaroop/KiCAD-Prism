@@ -27,9 +27,49 @@ def _parse_sexp(text: str) -> list:
     """
     Parse an s-expression string into nested Python lists.
     Atoms become strings; lists become Python lists.
+
+    Iterative (explicit-stack) parser. The previous version recursed once per
+    token — 2.35M calls on a 9 MB board, each allocating a (pos, value) tuple —
+    which dominated the diff cost. This single pass builds the same nested-list
+    output with no recursion and no per-token tuple churn: '(' pushes a new list
+    onto a stack, ')' pops, atoms/strings append to the current top. Returns the
+    FIRST complete top-level expression (matching the old _read_expr(tokens, 0)),
+    or None if the input has none.
     """
     tokens = _tokenize(text)
-    pos, result = _read_expr(tokens, 0)
+    stack: list = []
+    top: list | None = None
+    result = None
+    have_result = False
+
+    for tok in tokens:
+        if tok == "(":
+            new: list = []
+            if top is not None:
+                top.append(new)
+            stack.append(new)
+            top = new
+        elif tok == ")":
+            if stack:
+                finished = stack.pop()
+                top = stack[-1] if stack else None
+                # The first fully-closed top-level list is the root result.
+                if top is None and not have_result:
+                    result = finished
+                    have_result = True
+                    break
+        else:
+            # Atom / quoted string — strip surrounding quotes if present.
+            if len(tok) >= 2 and tok[0] == '"' and tok[-1] == '"':
+                tok = tok[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+            if top is not None:
+                top.append(tok)
+            elif not have_result:
+                # A bare atom at top level is itself the first expression.
+                result = tok
+                have_result = True
+                break
+
     return result
 
 
@@ -40,28 +80,6 @@ def _tokenize(text: str):
         r'|[^\s()"]+'  # atom
     )
     return token_re.findall(text)
-
-
-def _read_expr(tokens: list, pos: int):
-    if pos >= len(tokens):
-        return pos, None
-    tok = tokens[pos]
-    if tok == "(":
-        pos += 1  # consume '('
-        lst = []
-        while pos < len(tokens) and tokens[pos] != ")":
-            pos, child = _read_expr(tokens, pos)
-            if child is not None:
-                lst.append(child)
-        pos += 1  # consume ')'
-        return pos, lst
-    elif tok == ")":
-        return pos, None
-    else:
-        # Strip surrounding quotes if present
-        if tok.startswith('"') and tok.endswith('"'):
-            tok = tok[1:-1].replace('\\"', '"').replace("\\\\", "\\")
-        return pos + 1, tok
 
 
 # ---------------------------------------------------------------------------
