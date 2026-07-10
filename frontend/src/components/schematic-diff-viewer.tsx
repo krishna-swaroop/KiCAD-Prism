@@ -18,7 +18,6 @@ import {
     useViewerReadiness,
 } from "@/components/ecad-viewer-shared";
 import { categorise, CATEGORY_META, categoryFor, type Category } from "@/lib/diff-grouping";
-import { useCrossProbeRunner } from "@/lib/cross-probe-retry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -670,12 +669,6 @@ export function SchematicDiffViewer({
         return result;
     }, []);
 
-    // Safe draw: only call draw() when the renderer's ctx2d is initialized.
-    // ctx2d is set in setup() — if it's missing, the canvas isn't ready and draw() would crash.
-    const safeDraw = useCallback((host: ECadViewerElement) => {
-        const inner = getSchEl(host)?.viewer as (InnerViewer & { renderer?: { ctx2d?: unknown } }) | undefined;
-        if (inner?.renderer?.ctx2d) inner.draw?.();
-    }, [getSchEl]);
 
     // Camera we want to impose on the active viewer after a toggle or item click.
     // Released when the viewer fires a "panzoom" event (user panned/zoomed interactively).
@@ -1082,46 +1075,35 @@ export function SchematicDiffViewer({
           ]))
         : {};
 
-    // Navigate to a marker without triggering the viewer's selection highlight.
-    // zoom_fit_item internally calls paint_selected which draws a blue box on the entity —
-    // instead we replicate just the camera move and clear any existing selection.
+    // Navigate the named side's viewer to a marker via the viewer's focusItem
+    // API (resolves the item's bbox + fits the camera). We pass select:false so
+    // it doesn't draw the built-in selection box — the diff overlay owns the
+    // highlight. Falls back to centering on the item's world position when the
+    // uuid isn't in the renderer's bbox index.
     const zoomToMarkerOn = useCallback((marker: DiffMarker, target: "new" | "old") => {
         const ref = target === "new" ? newViewerRef : oldViewerRef;
         const viewer = ref.current;
         if (!viewer) return;
-        try {
-            const schEl = getSchEl(viewer);
-            const inner = schEl?.viewer as (InnerViewer & {
-                schematic_renderer?: { get_item_bbox?: (uuid: string) => unknown };
-                paint_selected?: (bbox?: unknown) => void;
-            }) | undefined;
-            const camera = inner?.viewport?.camera;
-            if (!inner || !camera) return;
-
-            // Try to get the item's bbox from the renderer map
-            const bbox = inner.schematic_renderer?.get_item_bbox?.(marker.item.uuid) as
-                ({ grow?: (n: number) => unknown } | undefined);
-
-            if (bbox) {
-                // Replicate zoom_fit_item but skip paint_selected
-                const grown = bbox.grow?.(20) ?? bbox;
-                const cameraWithBBox = camera as typeof camera & { bbox?: unknown };
-                cameraWithBBox.bbox = grown;
-            } else {
-                // UUID not indexed — manually center on item position
-                camera.zoom = 20;
-                camera.center.set(marker.item.x, marker.item.y);
+        // Clear any prior impose so the fit is allowed to settle.
+        imposeCamRef.current = null;
+        const done = (cam: { zoom: number; x: number; y: number } | null) => {
+            if (cam) {
+                imposeCamRef.current = { zoom: cam.zoom, cx: cam.x, cy: cam.y };
+                startImposeLoopRef.current?.();
             }
-
-            // Clear any existing selection highlight
-            inner.paint_selected?.();
-
-            // Clear any prior impose so the bbox fit is allowed to settle.
-            imposeCamRef.current = null;
-            safeDraw(viewer);
-        } catch { /* ignore */ }
-        overlayKickRef.current?.(OVERLAY_FRAMES.ZOOM_TO);
-    }, [getSchEl, safeDraw]);
+            overlayKickRef.current?.(OVERLAY_FRAMES.ZOOM_TO);
+        };
+        if (viewer.focusItem) {
+            void viewer.focusItem(marker.item.uuid, { select: false })
+                .then((cam) => {
+                    if (cam) { done(cam); return; }
+                    // uuid not indexed — center on the item's world position.
+                    if (viewer.focusBBox) {
+                        void viewer.focusBBox(marker.item.x - 5, marker.item.y - 5, 10, 10).then(done);
+                    }
+                });
+        }
+    }, []);
 
     const handleMarkerClick = useCallback((m: DiffMarker) => {
         setActiveMarker(prev => prev?.item.uuid === m.item.uuid ? null : m);
@@ -1198,23 +1180,6 @@ export function SchematicDiffViewer({
         if (focusTarget.marker) handleMarkerClick(focusTarget.marker);
     }, [focusTarget, activeSheet, newReady, oldReady, showing, getSchEl, handleMarkerClick, sheetLoadTick]);
 
-    // Diagnostic safety net: if everything fails to converge after 8s, log
-    // which signal is missing. No best-effort fire — we don't want to drive
-    // a half-mounted viewer.
-    useEffect(() => {
-        if (!focusTarget) return;
-        const fingerprint = `${focusTarget.sheet}::${focusTarget.marker?.item.uuid ?? ""}`;
-        if (focusFiredRef.current === fingerprint) return;
-        const t = window.setTimeout(() => {
-            if (focusFiredRef.current === fingerprint) return;
-
-            console.warn("[sch-diff] focus stalled — target:", focusTarget,
-                "activeSheet:", activeSheet,
-                "newReady:", newReady, "oldReady:", oldReady);
-        }, 8000);
-        return () => window.clearTimeout(t);
-    }, [focusTarget, activeSheet, newReady, oldReady]);
-
     // Fire onCrossProbe when the user selects an item.
     // kicanvas:select bubbles+composed so it reaches the container div.
     const onCrossProbeRef = useRef(onCrossProbe);
@@ -1240,7 +1205,6 @@ export function SchematicDiffViewer({
     // differs from activeSheet, we drive setActiveSheet — the existing rAF
     // watcher / readiness machinery then re-runs this effect once the viewer's
     // document.filename catches up, and we fire the probe.
-    const crossProbeRunner = useCrossProbeRunner();
     // Tracks which seq has already been dispatched so re-renders caused by
     // navigation (sheetLoadTick, readiness changes) don't re-fire the probe and
     // lock the viewer back onto a stale component.
@@ -1271,15 +1235,19 @@ export function SchematicDiffViewer({
         const sideReady = showing === "new" ? newReady : oldReady;
         if (!sideReady) return;
 
-        // Verify the visible viewer actually shows the sheet we want before
-        // firing — same precondition the focus flow uses.
         const host = (showing === "new" ? newViewerRef : oldViewerRef).current;
-        const innerDoc = host ? (getSchEl(host)?.viewer as (InnerViewer & { document?: { filename?: string } }) | undefined) : undefined;
-        if (containingSheet && innerDoc?.document?.filename !== containingSheet.filename) return;
-
-        crossProbeFiredSeqRef.current = crossProbeTarget.seq;
-        crossProbeRunner.run(host, "PCB", "SCH", ref);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (!host?.crossProbe) return;
+        // crossProbe resolves the ref on the active sheet and focuses+outlines
+        // it; if the ref isn't there (e.g. sheet still loading) it returns null
+        // and we retry on the next readiness/sheet tick without marking fired.
+        void host.crossProbe(ref).then((cam) => {
+            if (cam) {
+                crossProbeFiredSeqRef.current = crossProbeTarget.seq;
+                // Match old/new sides so the outline lands identically.
+                imposeCamRef.current = { zoom: cam.zoom, cx: cam.x, cy: cam.y };
+                startImposeLoopRef.current?.();
+            }
+        });
     }, [crossProbeTarget, data, activeSheet, newReady, oldReady, showing, sheetLoadTick, sheetContent]);
 
     return (

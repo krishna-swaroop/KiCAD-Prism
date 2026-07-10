@@ -20,7 +20,6 @@ import {
     useViewerReadiness,
 } from "@/components/ecad-viewer-shared";
 import { CATEGORY_META, type Category } from "@/lib/diff-grouping";
-import { useCrossProbeRunner } from "@/lib/cross-probe-retry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1322,15 +1321,6 @@ export function PcbDiffViewer({
         return result;
     }, []);
 
-    const getCamera = useCallback((host: ECadViewerElement): Camera | null => {
-        return getBoardEl(host)?.viewer?.viewport?.camera ?? null;
-    }, [getBoardEl]);
-
-    const safeDraw = useCallback((host: ECadViewerElement) => {
-        const inner = getBoardEl(host)?.viewer;
-        if (inner?.renderer?.gl) inner.draw?.();
-    }, [getBoardEl]);
-
     // PCB-only click hit-testing fixes (layer-visibility map + pad-priority).
     // Re-applies whenever the diff payload changes (new viewer instances).
     useBoardClickFix({ viewerRefs: [newViewerRef, oldViewerRef], rebindKey: data });
@@ -1699,35 +1689,23 @@ export function PcbDiffViewer({
     const zoomToGroupOn = useCallback((g: GroupedMarker, target: "new" | "old") => {
         const ref = target === "new" ? newViewerRef : oldViewerRef;
         const viewer = ref.current;
-        if (!viewer) return;
-        const camera = getCamera(viewer);
-        if (!camera) return;
+        if (!viewer?.focusBBox) return;
         const pad = 10;
-        // Drop any existing impose so the bbox math runs against the camera's
-        // own settle. Re-engage after the viewer has recomputed zoom/center.
+        // Drop any existing impose so the fit runs against the camera's own
+        // settle; re-engage with the SETTLED camera the API resolves for us.
         imposeCamRef.current = null;
-        camera.bbox = {
-            x: g.bboxMinX - pad, y: g.bboxMinY - pad,
-            w: (g.bboxMaxX - g.bboxMinX) + pad * 2,
-            h: (g.bboxMaxY - g.bboxMinY) + pad * 2,
-        };
-        safeDraw(viewer);
-        // The bbox setter schedules the zoom/center resolution for the next
-        // paint — reading camera.zoom/center *now* gives stale values (often
-        // zoom=1, which is what made the toggle look "miniscule"). Wait one
-        // rAF, then sample the resolved camera and lock it.
-        requestAnimationFrame(() => {
-            const cam = getCamera(viewer);
+        void viewer.focusBBox(
+            g.bboxMinX - pad,
+            g.bboxMinY - pad,
+            (g.bboxMaxX - g.bboxMinX) + pad * 2,
+            (g.bboxMaxY - g.bboxMinY) + pad * 2,
+        ).then((cam) => {
             if (!cam) return;
-            imposeCamRef.current = {
-                zoom: cam.zoom,
-                cx: cam.center.x,
-                cy: cam.center.y,
-            };
+            imposeCamRef.current = { zoom: cam.zoom, cx: cam.x, cy: cam.y };
             startImposeLoopRef.current?.();
         });
         overlayKickRef.current?.(OVERLAY_FRAMES.ZOOM_TO);
-    }, [getCamera, safeDraw]);
+    }, []);
 
     const handleGroupClick = useCallback((g: GroupedMarker) => {
         // If this is a per-segment overlay sub-group, resolve to the parent net group.
@@ -1775,23 +1753,6 @@ export function PcbDiffViewer({
         handleGroupClick(group);
     }, [focusTarget, activeBoard, newReady, oldReady, allGroups, handleGroupClick]);
 
-    // Diagnostic safety net (option C): if everything except readiness is in
-    // place after 8s of waiting, log which signal is missing. No best-effort
-    // click — we don't want to fire against a viewer that genuinely isn't ready.
-    useEffect(() => {
-        if (!focusTarget) return;
-        if (focusFiredRef.current === focusTarget.uuid) return;
-        const t = window.setTimeout(() => {
-            if (focusFiredRef.current === focusTarget.uuid) return;
-
-            console.warn("[pcb-diff] focus stalled — target:", focusTarget,
-                "activeBoard:", activeBoard,
-                "newReady:", newReady, "oldReady:", oldReady,
-                "groupFound:", allGroups.some(g => g.members.some(m => m.item.uuid === focusTarget.uuid)));
-        }, 8000);
-        return () => window.clearTimeout(t);
-    }, [focusTarget, activeBoard, newReady, oldReady, allGroups]);
-
     // Fire onCrossProbe when the user selects an item.
     // kicanvas:select bubbles+composed so it reaches the container div.
     const onCrossProbeRef = useRef(onCrossProbe);
@@ -1810,11 +1771,9 @@ export function PcbDiffViewer({
     }, []);
 
     // Navigate to a reference when cross-probed from the schematic / BOM viewer.
-    // Gated on (a) the tab being active (canvas visible & sized) and
-    // (b) the side-of-interest being ready (camera + GL context live).
-    // The shared runner retries up to ~1.4s, cancelling stale retries when
-    // a newer probe arrives.
-    const crossProbeRunner = useCrossProbeRunner();
+    // Gated on the tab being active and the side-of-interest being ready. Uses
+    // the viewer's crossProbe() API (resolve footprint by ref -> focus + outline)
+    // instead of the old requestCrossProbe the Huaqiu fork never implemented.
     const crossProbeFiredSeqRef = useRef<number>(-1);
     useEffect(() => {
         if (!crossProbeTarget || !active) return;
@@ -1822,9 +1781,14 @@ export function PcbDiffViewer({
         const sideReady = showing === "new" ? newReady : oldReady;
         if (!sideReady) return;
         const viewer = (showing === "new" ? newViewerRef : oldViewerRef).current;
-        crossProbeFiredSeqRef.current = crossProbeTarget.seq;
-        crossProbeRunner.run(viewer, "SCH", "PCB", crossProbeTarget.ref);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (!viewer?.crossProbe) return;
+        void viewer.crossProbe(crossProbeTarget.ref).then((cam) => {
+            if (cam) {
+                crossProbeFiredSeqRef.current = crossProbeTarget.seq;
+                imposeCamRef.current = { zoom: cam.zoom, cx: cam.x, cy: cam.y };
+                startImposeLoopRef.current?.();
+            }
+        });
     }, [crossProbeTarget, active, newReady, oldReady, showing]);
 
     return (

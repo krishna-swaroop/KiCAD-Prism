@@ -72,6 +72,14 @@ export interface ECadViewerElement extends HTMLElement {
     requestCrossProbe?(request: CrossProbeRequest): CrossProbeResult;
     /** Active tab's camera as a plain value, or null before load. Settable. */
     camera: CameraState | null;
+    /** Fit the active viewer to a world-space bbox; resolves the settled camera. */
+    focusBBox(x: number, y: number, w: number, h: number): Promise<CameraState | null>;
+    /** Focus an item by uuid (resolve bbox + fit, optional select); resolves the
+        settled camera or null if the item can't be resolved. */
+    focusItem(uuid: string, opts?: { select?: boolean; pad?: number }): Promise<CameraState | null>;
+    /** Cross-probe: focus + outline the component with this reference/uuid in the
+        active viewer; resolves the settled camera, or null if not on this view. */
+    crossProbe(reference: string): Promise<CameraState | null>;
 }
 
 declare global {
