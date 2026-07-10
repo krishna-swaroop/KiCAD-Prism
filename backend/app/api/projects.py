@@ -8,6 +8,7 @@ import shutil
 import threading
 import uuid
 import zipfile
+from collections import OrderedDict
 from pathlib import Path
 from urllib.parse import quote
 
@@ -1215,10 +1216,44 @@ async def get_project_commits(
     return {"commits": commits}
 
 
+# Bounded in-memory cache of expanded-commit summaries. A commit is immutable,
+# so its summary (changed files + per-item board/schematic diffs) never changes
+# — the first expand pays the parse+diff cost, every re-expand (and re-open of
+# History) is a dict lookup. Keyed by (repo_path, commit, sub_path). Capped, no
+# disk.
+_COMMIT_SUMMARY_CACHE: "OrderedDict[tuple[str, str, str | None], dict]" = OrderedDict()
+_COMMIT_SUMMARY_CACHE_MAX = 128
+_COMMIT_SUMMARY_LOCK = threading.Lock()
+
+
 def _build_commit_summary(
     repo_path: str, relative_path: str | None, commit_hash: str
 ) -> dict:
-    """Blocking work for get_commit_summary - run via asyncio.to_thread."""
+    """Blocking work for get_commit_summary - run via asyncio.to_thread.
+
+    Result is cached per immutable commit (see _COMMIT_SUMMARY_CACHE).
+    """
+    cache_key = (repo_path, commit_hash, relative_path)
+    with _COMMIT_SUMMARY_LOCK:
+        cached = _COMMIT_SUMMARY_CACHE.get(cache_key)
+        if cached is not None:
+            _COMMIT_SUMMARY_CACHE.move_to_end(cache_key)
+            return cached
+
+    result = _build_commit_summary_uncached(repo_path, relative_path, commit_hash)
+
+    with _COMMIT_SUMMARY_LOCK:
+        _COMMIT_SUMMARY_CACHE[cache_key] = result
+        _COMMIT_SUMMARY_CACHE.move_to_end(cache_key)
+        while len(_COMMIT_SUMMARY_CACHE) > _COMMIT_SUMMARY_CACHE_MAX:
+            _COMMIT_SUMMARY_CACHE.popitem(last=False)
+    return result
+
+
+def _build_commit_summary_uncached(
+    repo_path: str, relative_path: str | None, commit_hash: str
+) -> dict:
+    """Parse + diff every changed board/schematic in the commit (the slow work)."""
     from git import Repo
 
     files = get_commit_file_summary(repo_path, commit_hash, relative_path)
