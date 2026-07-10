@@ -438,44 +438,16 @@ function DiffOverlay({ markers, viewerRef, onMarkerClick, activeUuid, showing, k
     // On mount / markers change: run enough frames to catch async ecad-viewer load
     useEffect(() => { kick(OVERLAY_FRAMES.LOAD); }, [markers, kick]);
 
-    // Hook into the underlying viewer's on_viewport_change so the overlay
-    // refreshes whenever the camera moves — including the post-load auto-fit,
-    // which doesn't emit a DOM panzoom event and would otherwise leave boxes
-    // stranded at stale coordinates until the user interacts.
+    // Refresh the overlay whenever the camera moves. The viewer emits a composed
+    // `camerachange` event on the host for every camera move (incl. the post-load
+    // auto-fit), so we listen for it instead of recursively walking the shadow
+    // DOM to monkey-patch the inner viewer's on_viewport_change (+ a 200ms poll).
     useEffect(() => {
-        let stopped = false;
-        const findInner = (host: HTMLElement): (Record<string, unknown> & { on_viewport_change?: () => void; __overlayKickHooked?: boolean }) | null => {
-            const sr = host.shadowRoot;
-            const root: ShadowRoot | HTMLElement = sr ?? host;
-            const candidate = (root as ShadowRoot).querySelector?.("kc-schematic-app, kc-schematic-viewer") as (HTMLElement & { viewer?: Record<string, unknown> }) | null;
-            const inner = candidate?.viewer;
-            if (inner && typeof inner.on_viewport_change === "function") return inner as Record<string, unknown> & { on_viewport_change: () => void };
-            for (const child of (root as ShadowRoot).querySelectorAll?.("*") ?? []) {
-                if ((child as HTMLElement).shadowRoot) {
-                    const f = findInner(child as HTMLElement);
-                    if (f) return f;
-                }
-            }
-            return null;
-        };
-        const tryHook = () => {
-            if (stopped) return;
-            const host = viewerRef.current;
-            const inner = host ? findInner(host as unknown as HTMLElement) : null;
-            if (!inner) {
-                window.setTimeout(tryHook, 200);
-                return;
-            }
-            if (inner.__overlayKickHooked) return;
-            const orig = (inner.on_viewport_change as () => void).bind(inner);
-            inner.on_viewport_change = function () {
-                orig();
-                kick(OVERLAY_FRAMES.VIEWPORT);
-            };
-            inner.__overlayKickHooked = true;
-        };
-        tryHook();
-        return () => { stopped = true; };
+        const host = viewerRef.current;
+        if (!host) return;
+        const onCam = () => kick(OVERLAY_FRAMES.VIEWPORT);
+        host.addEventListener("camerachange", onCam);
+        return () => host.removeEventListener("camerachange", onCam);
     }, [viewerRef, kick]);
 
     return (

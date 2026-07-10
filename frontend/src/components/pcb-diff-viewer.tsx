@@ -811,31 +811,18 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
 
     useEffect(() => { kick(OVERLAY_FRAMES.LOAD); }, [groups, kick]);
 
-    // Hook into kicanvas's on_viewport_change so the overlay refreshes whenever
-    // the camera moves — including the post-load auto-fit, which doesn't emit
-    // a DOM panzoom event and would otherwise leave boxes stranded at stale
-    // coordinates until the user interacts.
+    // Refresh the overlay whenever the camera moves. The viewer emits a
+    // `camerachange` event on the host (composed) for every camera move —
+    // including the post-load auto-fit — so we listen for that instead of
+    // monkey-patching the inner viewer's on_viewport_change through the shadow
+    // DOM (which also needed a 200ms retry poll to find it).
     useEffect(() => {
-        let stopped = false;
-        const tryHook = () => {
-            if (stopped) return;
-            const host = viewerRef.current;
-            const inner = host ? (getBoardEl(host) as (BoardEl & { viewer?: { on_viewport_change?: () => void; __overlayKickHooked?: boolean } }) | null)?.viewer : null;
-            if (!inner || typeof inner.on_viewport_change !== "function") {
-                window.setTimeout(tryHook, 200);
-                return;
-            }
-            if (inner.__overlayKickHooked) return;
-            const orig = inner.on_viewport_change.bind(inner);
-            inner.on_viewport_change = function () {
-                orig();
-                kick(OVERLAY_FRAMES.VIEWPORT);
-            };
-            inner.__overlayKickHooked = true;
-        };
-        tryHook();
-        return () => { stopped = true; };
-    }, [viewerRef, getBoardEl, kick]);
+        const host = viewerRef.current;
+        if (!host) return;
+        const onCam = () => kick(OVERLAY_FRAMES.VIEWPORT);
+        host.addEventListener("camerachange", onCam);
+        return () => host.removeEventListener("camerachange", onCam);
+    }, [viewerRef, kick]);
 
     // Groups rendered as individual SVG geometries (net tracks + vias)
     // vs. groups still using a bbox div (footprints, gr_* graphics)
