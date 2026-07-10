@@ -57,6 +57,12 @@ export interface CameraState {
 export interface ECadViewerElement extends HTMLElement {
     setCommentMode(enabled: boolean): void;
     zoomToLocation(x: number, y: number): void;
+    /** Resolves once the project has loaded (parse + first paint). */
+    readonly ready: Promise<void>;
+    /** Switch schematic page and resolve once it's actually loaded. Awaits
+        readiness first, and reconciles against any post-load auto-load. */
+    showPage(pageId: string): Promise<void>;
+    /** Back-compat fire-and-forget page switch. Prefer showPage(). */
     switchPage(pageId: string): void;
     getScreenLocation(x: number, y: number): { x: number; y: number } | null;
     // Cross-probe API is OPTIONAL — the Huaqiu base fork does not implement it.

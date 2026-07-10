@@ -810,64 +810,57 @@ export function SchematicDiffViewer({
         };
     }, []);
 
-    // Pin both viewer hosts to whatever sheet React thinks is active. Naively
-    // this would be a one-shot switchPage call when activeSheet changes, but
-    // the underlying ecad-viewer fights us:
-    //   - EcadViewerHost's mount (whenDefined → append blobs → load_src) is
-    //     async; switchPage calls before load_src completes are dropped, and
-    //     load_src itself always loads files[0] (the root) by default.
-    //   - The viewer's project fires a "change" event after init that triggers
-    //     another auto-load of get_first_page — a second hijack that arrives
-    //     AFTER any one-shot switchPage has already returned.
-    // So we run a rAF watcher that reads each host's current document filename
-    // and re-pushes switchPage whenever it drifts from desiredSheetRef. The
-    // PUSH_COOLDOWN_MS throttle prevents hammering a load that's still in
-    // flight (sch_name doesn't update until it resolves).
-    const desiredSheetRef = useRef<string>("");
+    // Per-sheet camera memory: each sheet remembers its own last zoom/position
+    // (shared across the new+old sides, which stay matched). First view of a
+    // sheet fits to content; returning to it restores where you left off.
+    const sheetCamRef = useRef<Map<string, { zoom: number; cx: number; cy: number }>>(new Map());
+    const prevSheetRef = useRef<string>("");
 
+    // Pin both viewer hosts to whatever sheet React thinks is active. The fork's
+    // showPage() awaits readiness + reconciles against the viewer's own post-load
+    // auto-load, so the page sticks without host-side rAF policing.
     useEffect(() => {
-        desiredSheetRef.current = activeSheet;
         if (!activeSheet) return;
+        // Save the camera of the sheet we're leaving, keyed by its name.
+        const prev = prevSheetRef.current;
+        if (prev && prev !== activeSheet) {
+            const from = (showingRef.current === "new" ? newViewerRef : oldViewerRef).current;
+            const cam = from?.camera;
+            if (cam) sheetCamRef.current.set(prev, { zoom: cam.zoom, cx: cam.x, cy: cam.y });
+        }
+        prevSheetRef.current = activeSheet;
+
         // Changing sheet invalidates any selected item — close the property card.
         clearSelectedDetail();
-        newViewerRef.current?.switchPage?.(activeSheet);
-        oldViewerRef.current?.switchPage?.(activeSheet);
+
+        const saved = sheetCamRef.current.get(activeSheet);
+        const applyBoth = () => {
+            const cam = saved
+                ? { x: saved.cx, y: saved.cy, zoom: saved.zoom, rotation: 0 }
+                : null;
+            for (const ref of [newViewerRef, oldViewerRef]) {
+                const host = ref.current;
+                if (host && cam) host.camera = cam;
+            }
+        };
+
+        // Switch the page on both sides; once loaded, restore the remembered
+        // camera (if any). We impose it briefly so the viewer's own post-load
+        // zoom-fit can't override the restore. If there's no saved camera, we
+        // leave the viewer's fit in place (first view of this sheet).
+        const doSide = async (ref: React.RefObject<ECadViewerElement | null>) => {
+            const host = ref.current;
+            if (!host?.showPage) return;
+            await host.showPage(activeSheet);
+        };
+        void Promise.all([doSide(newViewerRef), doSide(oldViewerRef)]).then(() => {
+            if (!saved) return;
+            imposeCamRef.current = { zoom: saved.zoom, cx: saved.cx, cy: saved.cy };
+            startImposeLoopRef.current?.();
+            applyBoth();
+        });
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSheet]);
-
-    useEffect(() => {
-        let raf = 0;
-        const PUSH_COOLDOWN_MS = 200;
-        const lastPushAt = new Map<ECadViewerElement, number>();
-
-        const reconcileHost = (host: ECadViewerElement | null) => {
-            if (!host) return;
-            const want = desiredSheetRef.current;
-            if (!want) return;
-            const schEl = getSchEl(host) as (SchEl & { viewer?: { document?: { filename?: string } } }) | null;
-            // viewer.document.filename is the live current page on kc-schematic-app
-            // (the sch_name getter is undefined in this build).
-            const current = schEl?.viewer?.document?.filename ?? "";
-            if (current === want) {
-                if (lastPushAt.has(host)) lastPushAt.delete(host);
-                return;
-            }
-            const now = performance.now();
-            const last = lastPushAt.get(host) ?? 0;
-            if (now - last < PUSH_COOLDOWN_MS) return;
-            lastPushAt.set(host, now);
-            host.switchPage?.(want);
-        };
-
-        const tick = () => {
-            reconcileHost(newViewerRef.current);
-            reconcileHost(oldViewerRef.current);
-            raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
-        return () => { if (raf) cancelAnimationFrame(raf); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
     // Cancel pending rAFs on unmount
     useEffect(() => () => {
