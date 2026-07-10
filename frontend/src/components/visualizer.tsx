@@ -758,6 +758,13 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                 return;
             }
 
+            // Optional API — the Huaqiu base fork lacks requestCrossProbe; guard
+            // so a viewer without it no-ops instead of throwing (a throw in this
+            // effect blanks the page).
+            if (typeof targetViewer.requestCrossProbe !== "function") {
+                clearCrossProbeRetry(targetContext);
+                return;
+            }
             const result = targetViewer.requestCrossProbe({
                 sourceContext,
                 targetContext,

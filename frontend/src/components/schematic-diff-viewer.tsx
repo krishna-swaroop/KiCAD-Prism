@@ -110,6 +110,10 @@ interface SchematicDiffViewerProps {
     focusFilename?: string;
     /** When true, hide the OLD/NEW toggle for single-commit history views. */
     singleCommit?: boolean;
+    /** When false, defer loading (fetch + parse) until the tab becomes active.
+        Defaults true. The History viewer keeps both diff tabs mounted, so this
+        stops the hidden tab from parsing its schematics on the main thread. */
+    active?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -572,9 +576,13 @@ export function SchematicDiffViewer({
     focusItemId,
     focusFilename,
     singleCommit = false,
+    active = true,
 }: SchematicDiffViewerProps) {
     const [data, setData] = useState<SchematicDiffData | null>(null);
     const [loading, setLoading] = useState(true);
+    // True while the full diff (change markers / sidebar list) computes after
+    // the manifest has mounted the sheets. See PcbDiffViewer.
+    const [changesLoading, setChangesLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     // "new" = commit1 (newer), "old" = commit2 (older)
@@ -607,6 +615,8 @@ export function SchematicDiffViewer({
     const viewerRef = showing === "new" ? newViewerRef : oldViewerRef;
     const syncRafRef = useRef<number | null>(null);
     const overlayKickRef = useRef<((frames?: number) => void) | null>(null);
+    // Starts the camera-impose rAF loop on demand (only while imposing).
+    const startImposeLoopRef = useRef<(() => void) | null>(null);
 
     // Camera shape we touch directly — avoids the bbox setter's viewport-dependent math
     type Vec2 = { x: number; y: number; set: (x: number, y: number) => void };
@@ -660,10 +670,6 @@ export function SchematicDiffViewer({
         return result;
     }, []);
 
-    const getCamera = useCallback((host: ECadViewerElement): Camera | null => {
-        return getSchEl(host)?.viewer?.viewport?.camera ?? null;
-    }, [getSchEl]);
-
     // Safe draw: only call draw() when the renderer's ctx2d is initialized.
     // ctx2d is set in setup() — if it's missing, the canvas isn't ready and draw() would crash.
     const safeDraw = useCallback((host: ECadViewerElement) => {
@@ -679,22 +685,17 @@ export function SchematicDiffViewer({
         if (next === showing) return;
         const fromRef = showing === "new" ? newViewerRef : oldViewerRef;
         const toRef   = showing === "new" ? oldViewerRef : newViewerRef;
-        const cam = fromRef.current ? getCamera(fromRef.current) : null;
+        // Copy the visible camera onto the target via the value-based camera API
+        // (no shadow walk / manual Camera2 poke). Pre-writing before the
+        // visibility flip keeps our impose ahead of the viewer's own auto-fit.
+        const cam = fromRef.current?.camera ?? null;
         if (cam) {
-            const state = { zoom: cam.zoom, cx: cam.center.x, cy: cam.center.y };
-            imposeCamRef.current = state;
-            // Pre-write camera into target viewer and queue a repaint BEFORE the visibility
-            // flip, so our rAF is ahead of the viewer's own ResizeObserver-triggered draw().
-            const toHost = toRef.current;
-            const toCam  = toHost ? getCamera(toHost) : null;
-            if (toCam && toHost) {
-                toCam.zoom = state.zoom;
-                toCam.center.set(state.cx, state.cy);
-                safeDraw(toHost);
-            }
+            imposeCamRef.current = { zoom: cam.zoom, cx: cam.x, cy: cam.y };
+            startImposeLoopRef.current?.();
+            if (toRef.current) toRef.current.camera = cam;
         }
         setShowing(next);
-    }, [showing, getCamera, safeDraw]);
+    }, [showing]);
 
     const showingRef = useRef(showing);
     useEffect(() => { showingRef.current = showing; }, [showing]);
@@ -708,25 +709,33 @@ export function SchematicDiffViewer({
         viewerRefs: viewerRefsArr,
     });
 
-    // Continuous loop: whenever imposeCamRef is set, keep writing it to the active viewer.
-    // Released when the user interacts with the viewer area (pointerdown or wheel).
+    // Camera-impose loop. The rAF only spins while an impose is actually active
+    // (set on toggle / focus), and stops itself when nothing is being imposed —
+    // previously it ran a permanent 60fps getCamera() shadow-DOM walk for the
+    // whole lifetime of the always-mounted viewer, competing with parse/paint
+    // during load (on BOTH the sch and pcb viewers).
     useEffect(() => {
         let raf = 0;
+        // Time-capped impose loop (see PcbDiffViewer for the full rationale): it
+        // only defeats the post-flip auto-fit for a short window, so it can't
+        // fight a later user pan/zoom (the cause of the scroll jitter).
+        const IMPOSE_MS = 600;
+        let deadline = 0;
         const tick = () => {
             const impose = imposeCamRef.current;
-            if (impose) {
-                const activeRef = showingRef.current === "new" ? newViewerRef : oldViewerRef;
-                const host = activeRef.current;
-                const cam = host ? getCamera(host) : null;
-                if (cam && host) {
-                    cam.zoom = impose.zoom;
-                    cam.center.set(impose.cx, impose.cy);
-                    safeDraw(host);
-                }
+            if (!impose || performance.now() > deadline) { imposeCamRef.current = null; raf = 0; return; }
+            const activeRef = showingRef.current === "new" ? newViewerRef : oldViewerRef;
+            const host = activeRef.current;
+            const cur = host?.camera;
+            if (host && cur) {
+                host.camera = { x: impose.cx, y: impose.cy, zoom: impose.zoom, rotation: cur.rotation };
             }
             raf = requestAnimationFrame(tick);
         };
-        raf = requestAnimationFrame(tick);
+        startImposeLoopRef.current = () => {
+            deadline = performance.now() + IMPOSE_MS;
+            if (raf === 0 && imposeCamRef.current) raf = requestAnimationFrame(tick);
+        };
 
         // pointerdown and wheel on the viewer container release the impose lock.
         // These events compose through shadow DOM so they reach the host container.
@@ -737,11 +746,12 @@ export function SchematicDiffViewer({
 
         return () => {
             if (raf) cancelAnimationFrame(raf);
+            startImposeLoopRef.current = null;
             container?.removeEventListener("pointerdown", release);
             container?.removeEventListener("wheel", release);
         };
-
-    }, [getCamera, safeDraw]);
+        // Uses only refs + the camera API now — no reactive deps.
+    }, []);
 
     const [activeSheet, setActiveSheet] = useState<string>("");
 
@@ -761,6 +771,7 @@ export function SchematicDiffViewer({
     );
     const { ready: newReady } = useViewerReadiness({ host: newViewerRef, viewerKey: newViewerKey, probe: schReadyProbe });
     const { ready: oldReady } = useViewerReadiness({ host: oldViewerRef, viewerKey: oldViewerKey, probe: schReadyProbe });
+
 
     // Counter that bumps every time the viewer finishes loading a sheet. Used
     // as a focus-gate dep so the effect re-evaluates after the rAF watcher
@@ -817,8 +828,11 @@ export function SchematicDiffViewer({
     useEffect(() => {
         desiredSheetRef.current = activeSheet;
         if (!activeSheet) return;
+        // Changing sheet invalidates any selected item — close the property card.
+        clearSelectedDetail();
         newViewerRef.current?.switchPage?.(activeSheet);
         oldViewerRef.current?.switchPage?.(activeSheet);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSheet]);
 
     useEffect(() => {
@@ -860,36 +874,87 @@ export function SchematicDiffViewer({
         if (syncRafRef.current !== null) cancelAnimationFrame(syncRafRef.current);
     }, []);
 
-    // Fetch diff data
+    // Fetch diff data in TWO phases so the viewer starts fetching + parsing the
+    // (multi-MB) sheet files immediately, in parallel with the structural diff:
+    //   1. manifest_only=true → sheet LIST only (paths + presence flags, empty
+    //      diffs, no parse) near-instantly. Unblocks the sheet-content effect,
+    //      which begins fetching + worker-parsing the sheets right away.
+    //   2. the full diff (markers) is fetched in parallel; when it lands we MERGE
+    //      its per-sheet `diff` into the existing sheet objects (keyed by
+    //      rel_path) without changing the sheet-list SIGNATURE, so the in-flight
+    //      fetch/parse isn't restarted. Overlay markers just appear a beat later.
     useEffect(() => {
         setLoading(true);
+        setChangesLoading(true);
         setError(null);
-        const params = new URLSearchParams({ commit1, commit2, parser });
-        // include_content=false: sheet files are lazy-fetched separately from
-        // the cacheable per-commit file endpoint (see the sheet-content effect).
-        params.set("include_content", "false");
-        fetch(`/api/projects/${projectId}/schematic-diff?${params}`)
+        let cancelled = false;
+
+        const baseParams = () => {
+            const p = new URLSearchParams({ commit1, commit2, parser });
+            // include_content=false: sheet files lazy-fetched separately (below).
+            p.set("include_content", "false");
+            return p;
+        };
+
+        // Phase 1 — manifest (fast): mounts the viewer.
+        const manifestParams = baseParams();
+        manifestParams.set("manifest_only", "true");
+        const manifestP = fetch(`/api/projects/${projectId}/schematic-diff?${manifestParams}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
                 return r.json() as Promise<SchematicDiffData>;
             })
             .then((d) => {
+                if (cancelled) return;
                 setData(d);
                 if (d.sheets.length > 0) {
-                    // Prefer focusFilename when it points at a real sheet, so
-                    // a re-firing fetch (StrictMode, parent re-render) doesn't
-                    // clobber the focus path's sheet choice with the root sheet.
                     const preferred = focusFilename && d.sheets.some(s => s.filename === focusFilename)
                         ? focusFilename
                         : d.sheets[0].filename;
                     setActiveSheet(preferred);
                 }
                 setLoading(false);
-            })
-            .catch((e: unknown) => {
-                setError(e instanceof Error ? e.message : "Failed to load diff");
-                setLoading(false);
             });
+
+        // Phase 2 — full structural diff (parses server-side): merge markers in.
+        // Deferred until AFTER the manifest resolves so this slow request never
+        // holds an HTTP/1.1 connection that would queue the fast manifest (and
+        // sheet-file fetches) behind it. Markers are fine to arrive a beat later.
+        const fullP = manifestP
+            .then(() => (cancelled ? null : fetch(`/api/projects/${projectId}/schematic-diff?${baseParams()}`)))
+            .then((r) => {
+                if (!r) return null;
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json() as Promise<SchematicDiffData>;
+            })
+            .then((full) => {
+                if (!full) return;
+                if (cancelled) return;
+                const byPath = new Map(full.sheets.map(s => [s.rel_path, s]));
+                setData(prev => {
+                    if (!prev) return full;
+                    return {
+                        ...prev,
+                        sheets: prev.sheets.map(s => {
+                            const f = byPath.get(s.rel_path);
+                            return f ? { ...s, diff: f.diff, has_old: f.has_old, has_new: f.has_new } : s;
+                        }),
+                    };
+                });
+                setChangesLoading(false);
+            });
+
+        // The manifest is what mounts the viewer — its failure is fatal. A late
+        // full-diff failure just leaves the overlay empty (viewer still usable).
+        manifestP.catch((e: unknown) => {
+            if (cancelled) return;
+            void fullP.catch(() => {});
+            setError(e instanceof Error ? e.message : "Failed to load diff");
+            setLoading(false);
+        });
+        fullP.catch(() => { if (!cancelled) setChangesLoading(false); /* non-fatal: overlay stays empty */ });
+
+        return () => { cancelled = true; };
     // focusFilename intentionally read at effect-creation time only — we don't
     // want fetch to re-fire when it changes. `parser` IS a dep: switching the
     // parsing backend refetches the diff.
@@ -897,6 +962,18 @@ export function SchematicDiffViewer({
     }, [projectId, commit1, commit2, parser]);
 
     const activeSheetData = data?.sheets.find(s => s.filename === activeSheet) ?? null;
+
+    // Stable signature of the sheet LIST (paths + presence), independent of the
+    // diff markers. The sheet-content fetch/parse effect keys on this so merging
+    // the late full-diff (which changes `diff` but not the list) does NOT restart
+    // the in-flight fetch/parse.
+    const sheetManifestSig = useMemo(
+        () =>
+            (data?.sheets ?? [])
+                .map(s => `${s.rel_path}:${s.has_new ? 1 : 0}${s.has_old ? 1 : 0}`)
+                .join("|"),
+        [data],
+    );
 
     // Lazy-fetched sheet file contents, keyed `${side}:${filename}`. Populated
     // from the cacheable /commits/{hash}/file endpoint so each sheet file is
@@ -907,23 +984,65 @@ export function SchematicDiffViewer({
         setSheetContent({});
     }, [commit1, commit2]);
 
+    // Load (fetch + worker-parse) the sheets in the BACKGROUND even while this
+    // tab is hidden — see the matching change in PcbDiffViewer for the full
+    // rationale. Parsing runs in the worker pool; only the final zoom-fit + draw
+    // waits for the tab to be visible (viewport.ready needs a non-zero canvas
+    // size). So switching to this tab is near-instant instead of paying the
+    // parse after the click. When hidden we arm after a short yield so the
+    // visible tab claims the worker pool first.
+    const [bgLoadArmed, setBgLoadArmed] = useState(false);
+    useEffect(() => { setBgLoadArmed(false); }, [sheetManifestSig]);
     useEffect(() => {
         if (!data) return;
+        // Start the background load promptly (one macrotask yield) so the hidden
+        // side parses concurrently with the visible one rather than waiting.
+        if (!active) {
+            const t = window.setTimeout(() => setBgLoadArmed(true), 0);
+            return () => window.clearTimeout(t);
+        }
+        setBgLoadArmed(true);
+        return;
+    }, [data, active]);
+
+    useEffect(() => {
+        if (!data || !bgLoadArmed) return;
         const controller = new AbortController();
-        const fetchSide = async (side: "new" | "old", commit: string, sheet: SheetData) => {
+        const fetchSide = async (side: "new" | "old", commit: string, sheet: SheetData): Promise<[string, string] | null> => {
             const key = `${side}:${sheet.filename}`;
             const url = `/api/projects/${projectId}/commits/${commit}/file?path=${encodeURIComponent(sheet.rel_path)}`;
             const r = await fetch(url, { signal: controller.signal });
-            if (!r.ok) return;
-            const text = await r.text();
-            setSheetContent(prev => (prev[key] !== undefined ? prev : { ...prev, [key]: text }));
+            if (!r.ok) return null;
+            return [key, await r.text()];
         };
-        for (const sheet of data.sheets) {
-            if (sheet.has_new) void fetchSide("new", data.commit1, sheet).catch(() => {});
-            if (sheet.has_old) void fetchSide("old", data.commit2, sheet).catch(() => {});
-        }
+        // Fetch every sheet in parallel, but commit content for each SIDE in one
+        // atomic setState once all its sheets have arrived. This avoids the
+        // viewer re-running the expensive load_src on an incrementally-growing
+        // file set (which parsed the sheets several times over).
+        const loadSide = async (side: "new" | "old", commit: string) => {
+            const results = await Promise.all(
+                data.sheets
+                    .filter(s => (side === "new" ? s.has_new : s.has_old))
+                    .map(s => fetchSide(side, commit, s).catch(() => null)),
+            );
+            if (controller.signal.aborted) return;
+            const entries = results.filter((e): e is [string, string] => e !== null);
+            if (entries.length === 0) return;
+            setSheetContent(prev => {
+                const next = { ...prev };
+                for (const [k, v] of entries) if (next[k] === undefined) next[k] = v;
+                return next;
+            });
+        };
+        void loadSide("new", data.commit1).catch(() => {});
+        void loadSide("old", data.commit2).catch(() => {});
         return () => controller.abort();
-    }, [data, projectId]);
+    // Keyed on the sheet-list SIGNATURE + bgLoadArmed (NOT `active`): sheets now
+    // load in the background so they're ready before the tab is shown. Merging
+    // the late full-diff changes `diff` but not the list, so the in-flight parse
+    // is not restarted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sheetManifestSig, projectId, bgLoadArmed]);
 
     // KiCad-style hotkeys: zoom, fit, redraw, sheet nav, close.
     const cycleSheet = useCallback((delta: 1 | -1) => {
@@ -1307,7 +1426,15 @@ export function SchematicDiffViewer({
                         {!data && !loading && (
                             <p className="text-xs text-muted-foreground px-4 py-2">No data</p>
                         )}
-                        {data && totalChanges === 0 && (
+                        {/* Sheets mount from the fast manifest; the change list
+                            arrives with the full diff a beat later. */}
+                        {data && totalChanges === 0 && changesLoading && (
+                            <p className="text-xs text-muted-foreground px-4 py-4 text-center flex items-center justify-center gap-2">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Loading changes…
+                            </p>
+                        )}
+                        {data && totalChanges === 0 && !changesLoading && (
                             <p className="text-xs text-muted-foreground px-4 py-4 text-center">No changes detected</p>
                         )}
                         {data && (() => {
@@ -1465,14 +1592,20 @@ export function SchematicDiffViewer({
                                     showLayersButton={false}
                                 />
                             </div>
-                            <DiffOverlay
-                                markers={visibleMarkers}
-                                viewerRef={viewerRef}
-                                onMarkerClick={handleMarkerClick}
-                                activeUuid={activeMarker?.item.uuid ?? null}
-                                showing={showing}
-                                kickRef={overlayKickRef}
-                            />
+                            {/* Only mount the overlay once the active side is
+                                interactive — mounting during parse/paint runs
+                                its rAF + per-marker getScreenLocation on the
+                                main thread and steals load time. */}
+                            {((showing === "new" ? newReady : oldReady)) && (
+                                <DiffOverlay
+                                    markers={visibleMarkers}
+                                    viewerRef={viewerRef}
+                                    onMarkerClick={handleMarkerClick}
+                                    activeUuid={activeMarker?.item.uuid ?? null}
+                                    showing={showing}
+                                    kickRef={overlayKickRef}
+                                />
+                            )}
                             {/* Sheet not present in the currently-showing version */}
                             {activeSheetData && (
                                 (showing === "new" && !activeSheetData.has_new) ||

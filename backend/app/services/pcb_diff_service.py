@@ -6,11 +6,15 @@ a structured change set suitable for the interactive PCB diff viewer.
 
 """
 
+from collections import OrderedDict
 from pathlib import Path
+
+from git import Repo
 
 # Reuse the s-expression parser and git helpers from sch_diff_service
 from app.services.sch_diff_service import (
     _at,
+    _blob_sha_at_commit,
     _get,
     _get_all,
     _git_root,
@@ -21,6 +25,31 @@ from app.services.sch_diff_service import (
     list_tree_paths,
 )
 from app.services.workspace_service import workspace
+
+# Bounded in-memory cache of parsed PCB item-sets keyed by (blob_sha, parser,
+# track_net_names). Git blobs are immutable so a board's parse never changes.
+# Capped so it never grows unbounded / touches disk. Boards are large, so keep
+# the cap small.
+_PCB_AST_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
+_PCB_AST_CACHE_MAX = 16
+
+
+def _extract_pcb_items_cached(blob_sha: str | None, content: str, parser: str) -> dict:
+    """Parse+extract board items, caching by blob SHA (immutable git content)."""
+    if blob_sha is None:
+        return _extract_pcb_items(content, parser)
+    key = (blob_sha, parser)
+    hit = _PCB_AST_CACHE.get(key)
+    if hit is not None:
+        _PCB_AST_CACHE.move_to_end(key)
+        return hit
+    items = _extract_pcb_items(content, parser)
+    _PCB_AST_CACHE[key] = items
+    _PCB_AST_CACHE.move_to_end(key)
+    while len(_PCB_AST_CACHE) > _PCB_AST_CACHE_MAX:
+        _PCB_AST_CACHE.popitem(last=False)
+    return items
+
 
 # ---------------------------------------------------------------------------
 # PCB element extraction
@@ -884,7 +913,17 @@ def diff_pcb(
 ) -> dict:
     old_items = _extract_pcb_items(old_content, parser)
     new_items = _extract_pcb_items(new_content, parser)
+    return _diff_pcb_items(old_items, new_items, track_net_names=track_net_names)
 
+
+def _diff_pcb_items(
+    old_items: dict, new_items: dict, track_net_names: bool = False
+) -> dict:
+    """Diff two already-extracted PCB item-sets (keyed by uuid).
+
+    Split out from ``diff_pcb`` so the AST-cached path can diff without
+    re-parsing the (large) board content.
+    """
     old_uuids = set(old_items)
     new_uuids = set(new_items)
 
@@ -946,9 +985,15 @@ def get_pcb_diff(
     parser: str = "native",
     track_net_names: bool = False,
     include_content: bool = True,
+    manifest_only: bool = False,
 ) -> dict | None:
     """
     Return interactive diff data for all PCB files between two commits.
+
+    When ``manifest_only`` is True the boards are enumerated (cheap tree walk)
+    but nothing is parsed and every ``diff`` is empty — lets the client start
+    fetching + parsing the (multi-MB) board file in the viewer immediately, in
+    parallel with the full diff request whose markers arrive a beat later.
 
     When ``include_content`` is False the raw board text is omitted from the
     response (``old_content``/``new_content`` are None) and only ``rel_path`` +
@@ -994,30 +1039,99 @@ def get_pcb_diff(
     if not all_paths:
         return None
 
+    # Manifest fast path: file list + presence flags only, no parse, empty
+    # diffs. Lets the client kick off the viewer's fetch+parse immediately.
+    if manifest_only:
+        manifest_boards = []
+        for rel_path in sorted(all_paths):
+            in1 = rel_path in paths1
+            in2 = rel_path in paths2
+            manifest_boards.append(
+                {
+                    "filename": rel_path.split("/")[-1],
+                    "rel_path": rel_path,
+                    "has_old": in2,
+                    "has_new": in1,
+                    "old_content": None,
+                    "new_content": None,
+                    "diff": {"added": [], "removed": [], "changed": []},
+                }
+            )
+        return {"commit1": commit1, "commit2": commit2, "boards": manifest_boards}
+
+    # Open the repo once (Repo() is expensive).
+    try:
+        repo = Repo(repo_root)
+    except Exception:
+        return None
+
     boards = []
     for rel_path in sorted(all_paths):
         filename = rel_path.split("/")[-1]
+        in1 = rel_path in paths1
+        in2 = rel_path in paths2
+
+        # Fast path: identical blob SHA at both commits ⇒ the board is
+        # byte-for-byte unchanged ⇒ skip reading + parsing the (multi-MB) file
+        # entirely and emit an empty diff. This is the dominant win for PCB
+        # diffs, where parsing a 9 MB board is by far the costliest step.
+        if in1 and in2:
+            sha1 = _blob_sha_at_commit(repo, commit1, rel_path)
+            sha2 = _blob_sha_at_commit(repo, commit2, rel_path)
+            if sha1 is not None and sha1 == sha2:
+                content = (
+                    _read_file_at_commit(repo_root, commit1, rel_path)
+                    if include_content
+                    else None
+                )
+                boards.append(
+                    {
+                        "filename": filename,
+                        "rel_path": rel_path,
+                        "has_old": True,
+                        "has_new": True,
+                        "old_content": content,
+                        "new_content": content,
+                        "diff": {"added": [], "removed": [], "changed": []},
+                    }
+                )
+                continue
+
         # commit1 = newer, commit2 = older (parent)
         new_content = (
-            _read_file_at_commit(repo_root, commit1, rel_path)
-            if rel_path in paths1
-            else None
+            _read_file_at_commit(repo_root, commit1, rel_path) if in1 else None
         )
         old_content = (
-            _read_file_at_commit(repo_root, commit2, rel_path)
-            if rel_path in paths2
-            else None
+            _read_file_at_commit(repo_root, commit2, rel_path) if in2 else None
         )
 
         if old_content and new_content:
-            diff = diff_pcb(
-                old_content, new_content, parser=parser, track_net_names=track_net_names
+            new_items = _extract_pcb_items_cached(
+                _blob_sha_at_commit(repo, commit1, rel_path), new_content, parser
+            )
+            old_items = _extract_pcb_items_cached(
+                _blob_sha_at_commit(repo, commit2, rel_path), old_content, parser
+            )
+            diff = _diff_pcb_items(
+                old_items, new_items, track_net_names=track_net_names
             )
         elif new_content:
-            items = list(_extract_pcb_items(new_content, parser).values())
+            items = list(
+                _extract_pcb_items_cached(
+                    _blob_sha_at_commit(repo, commit1, rel_path),
+                    new_content,
+                    parser,
+                ).values()
+            )
             diff = {"added": items, "removed": [], "changed": []}
         elif old_content:
-            items = list(_extract_pcb_items(old_content, parser).values())
+            items = list(
+                _extract_pcb_items_cached(
+                    _blob_sha_at_commit(repo, commit2, rel_path),
+                    old_content,
+                    parser,
+                ).values()
+            )
             diff = {"added": [], "removed": items, "changed": []}
         else:
             continue

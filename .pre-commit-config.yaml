@@ -36,9 +36,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^(static/|gcode_viewer/)
+        exclude: ^(static/|gcode_viewer/|frontend/public/(ecad-viewer|parser\.worker)\.js)
       - id: end-of-file-fixer
-        exclude: ^(static/|gcode_viewer/)
+        exclude: ^(static/|gcode_viewer/|frontend/public/(ecad-viewer|parser\.worker)\.js)
       - id: check-yaml
       - id: check-json
         exclude: ^(static/|frontend/tsconfig\.)

@@ -18,7 +18,9 @@ const VIEWER_BASE_CSS = `
     kc-board-properties-panel,
     kc-schematic-properties-panel,
     tab-view,
-    .bottom-left-badge {
+    tab-header,
+    .bottom-left-badge,
+    .bottom-left-icon {
         display: none !important;
     }
 
@@ -828,7 +830,14 @@ export function useEcadInfoPanel({ containerRef, viewerRefs, projectId }: UseEca
             ...viewerRefs.map(r => r.current as HTMLElement | null),
         ].filter(Boolean) as HTMLElement[];
         for (const t of targets) t.addEventListener("kicanvas:select", handler);
-        return () => { for (const t of targets) t.removeEventListener("kicanvas:select", handler); };
+        // Note: the fork re-emits selection as a composed+bubbling event on the
+        // <ecad-viewer> host, so it reaches both the host (viewerRefs) and the
+        // container. We intentionally do NOT listen on `document` — that would
+        // pick up selections from OTHER mounted viewers (new/old diff sides,
+        // sch+pcb tabs) and cross-populate this viewer's card.
+        return () => {
+            for (const t of targets) t.removeEventListener("kicanvas:select", handler);
+        };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [containerRef, ...viewerRefs.map(r => r.current)]);
 
@@ -1928,6 +1937,43 @@ export const OVERLAY_FRAMES = {
     /** PCB only — when the shown version / svg group set changes. */
     GROUP_CHANGE: 5,
 } as const;
+
+// ---------------------------------------------------------------------------
+// FpsMeter — TEMP diagnostic. Renders a small live FPS readout in the corner
+// of the viewer. Measures the browser's actual frame cadence (a proxy for
+// main-thread health during pan/zoom). Enable by setting
+// localStorage["kicad-prism:fps"] = "1". Remove after diagnosing the FPS drop.
+// ---------------------------------------------------------------------------
+export function FpsMeter() {
+    const enabled = (() => {
+        try { return localStorage.getItem("kicad-prism:fps") === "1"; } catch { return false; }
+    })();
+    const [fps, setFps] = useState(0);
+    useEffect(() => {
+        if (!enabled) return;
+        let raf = 0;
+        let last = performance.now();
+        let frames = 0;
+        let acc = 0;
+        const tick = (now: number) => {
+            const dt = now - last; last = now; acc += dt; frames++;
+            if (acc >= 500) { setFps(Math.round((frames * 1000) / acc)); frames = 0; acc = 0; }
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [enabled]);
+    if (!enabled) return null;
+    const color = fps >= 50 ? "#22c55e" : fps >= 30 ? "#f59e0b" : "#ef4444";
+    return (
+        <div style={{
+            position: "absolute", top: 6, left: 6, zIndex: 50,
+            font: "600 12px ui-monospace, monospace", color,
+            background: "rgba(0,0,0,0.6)", padding: "2px 6px", borderRadius: 4,
+            pointerEvents: "none",
+        }}>{fps} fps</div>
+    );
+}
 
 // ---------------------------------------------------------------------------
 // useViewerReadiness — true once the underlying ecad-viewer is safe to drive

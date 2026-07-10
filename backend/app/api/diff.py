@@ -69,6 +69,7 @@ async def get_schematic_diff(
     commit2: str = None,
     parser: str = "native",
     include_content: bool = True,
+    manifest_only: bool = False,
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
@@ -77,6 +78,10 @@ async def get_schematic_diff(
     Includes a structured change list, plus file contents unless
     `include_content=false` (in which case the client lazy-fetches each sheet
     from the cacheable per-commit file endpoint, keeping this payload small).
+
+    `manifest_only=true` returns just the sheet list (paths + presence flags,
+    empty diffs, no parse), so the client can start fetching+parsing the sheets
+    in the viewer immediately while the full diff computes in parallel.
 
     `parser` selects the parsing backend: 'native' (in-house s-expr) or
     'monkey' (kicad_monkey). The diff algorithm is identical for both.
@@ -95,6 +100,7 @@ async def get_schematic_diff(
         commit2,
         parser,
         include_content,
+        manifest_only,
     )
     if result is None:
         raise HTTPException(
@@ -111,6 +117,7 @@ async def get_pcb_diff(
     parser: str = "native",
     track_net_names: bool = False,
     include_content: bool = True,
+    manifest_only: bool = False,
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
@@ -123,6 +130,9 @@ async def get_pcb_diff(
     `include_content=false` omits the raw board text (the client lazy-fetches
     each board from the cacheable per-commit file endpoint), shrinking this
     payload from ~20 MB to a few KB on large boards.
+    `manifest_only=true` returns just the board list (paths + presence flags,
+    empty diffs, no parse), so the client can start fetching+parsing the board
+    in the viewer immediately while the full diff computes in parallel.
     """
     get_project_for_role_or_404(project_id, user.role)
     _validate_commits(commit1, commit2)
@@ -139,6 +149,7 @@ async def get_pcb_diff(
         parser,
         track_net_names,
         include_content,
+        manifest_only,
     )
     if result is None:
         raise HTTPException(

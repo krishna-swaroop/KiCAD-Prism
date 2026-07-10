@@ -46,14 +46,26 @@ export interface KiCanvasSelectDetail {
     sourceContext?: CrossProbeContext;
 }
 
+/** Value-based camera state from <ecad-viewer> (world center + zoom + rotation). */
+export interface CameraState {
+    x: number;
+    y: number;
+    zoom: number;
+    rotation: number;
+}
+
 export interface ECadViewerElement extends HTMLElement {
     setCommentMode(enabled: boolean): void;
     zoomToLocation(x: number, y: number): void;
     switchPage(pageId: string): void;
     getScreenLocation(x: number, y: number): { x: number; y: number } | null;
-    setCrossProbeEnabled(enabled: boolean): void;
-    isCrossProbeEnabled(): boolean;
-    requestCrossProbe(request: CrossProbeRequest): CrossProbeResult;
+    // Cross-probe API is OPTIONAL — the Huaqiu base fork does not implement it.
+    // Callers must guard (typeof viewer.requestCrossProbe === "function").
+    setCrossProbeEnabled?(enabled: boolean): void;
+    isCrossProbeEnabled?(): boolean;
+    requestCrossProbe?(request: CrossProbeRequest): CrossProbeResult;
+    /** Active tab's camera as a plain value, or null before load. Settable. */
+    camera: CameraState | null;
 }
 
 declare global {
@@ -65,6 +77,7 @@ declare global {
         "ecad-viewer:crossprobe:request": CustomEvent<CrossProbeRequest>;
         "ecad-viewer:crossprobe:result": CustomEvent<CrossProbeResult>;
         "kicanvas:select": CustomEvent<KiCanvasSelectDetail>;
+        "camerachange": CustomEvent<CameraState>;
     }
 
     namespace JSX {

@@ -577,6 +577,7 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
                         commit2={commit2}
                         onClose={onClose}
                         embedded
+                        active={tab === "schematic"}
                         onCrossProbe={handleSchematicCrossProbe}
                         crossProbeTarget={schCrossProbeTarget}
                         focusItemId={initialTab === "schematic" ? focusItemId : undefined}
