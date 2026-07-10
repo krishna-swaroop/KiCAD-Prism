@@ -16,6 +16,7 @@ import {
     useEcadInfoPanel,
     useViewerHotkeys,
     useViewerReadiness,
+    ViewerLoading,
 } from "@/components/ecad-viewer-shared";
 import { categorise, CATEGORY_META, categoryFor, type Category } from "@/lib/diff-grouping";
 
@@ -1480,14 +1481,7 @@ export function SchematicDiffViewer({
 
                 {/* ── Viewer area ── */}
                 <div ref={viewerContainerRef} className="flex-1 relative overflow-hidden">
-                    {loading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-40">
-                            <div className="flex flex-col items-center gap-3">
-                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                                <p className="text-sm text-muted-foreground">Parsing schematic diff…</p>
-                            </div>
-                        </div>
-                    )}
+                    {loading && <ViewerLoading label="Parsing schematic diff…" />}
                     {error && (
                         <div className="absolute inset-0 flex items-center justify-center z-40">
                             <div className="flex flex-col items-center gap-3 text-center">

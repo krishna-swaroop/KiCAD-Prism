@@ -24,6 +24,7 @@ import {
     useBoardClickFix,
     useEcadInfoPanel,
     useViewerHotkeys,
+    ViewerLoading,
 } from "./ecad-viewer-shared";
 
 const Model3DViewer = lazy(() =>
@@ -1525,7 +1526,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         { id: "stackup", label: "Stackup", icon: LayoutList },
     ];
 
-    if (loading) return <div className="flex justify-center items-center h-full">Loading Visualizer...</div>;
+    if (loading) return <div className="relative h-full"><ViewerLoading label="Loading visualizer…" /></div>;
 
     return (
         <div className="flex flex-col h-full bg-background relative selection-none">
@@ -1743,9 +1744,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                             </div>
                         )
                     ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                            <p>Loading schematic...</p>
-                        </div>
+                        <ViewerLoading label="Loading schematic…" />
                     )}
                     {activeTab === "sch" && (
                         <EcadInfoPanel
@@ -1774,9 +1773,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                             </div>
                         )
                     ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                            <p>Loading PCB...</p>
-                        </div>
+                        <ViewerLoading label="Loading PCB…" />
                     )}
                     {activeTab === "pcb" && (
                         <EcadInfoPanel

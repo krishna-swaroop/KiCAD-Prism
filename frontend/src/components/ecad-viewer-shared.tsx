@@ -1035,17 +1035,28 @@ function CatalogCrosslink({ libraryLink, assetType, footprintLink, projectId }: 
                                 <span>Extracting preview from file…</span>
                             </div>
                         )}
-                        {entry === "not-found" && previewFailed && !inlineSvg && !inlineLoading && (
-                            <p className="text-[11px] text-muted-foreground italic py-1">
-                                Not in catalog — <span className="font-mono">{libraryLink}</span>
-                            </p>
-                        )}
-                        {entry === "not-found" && inlineSvg && (
+                        {entry === "not-found" && (
                             <>
-                                <p className="text-[11px] text-muted-foreground italic py-0.5">
-                                    Extracted from file — <span className="font-mono">{libraryLink}</span>
-                                </p>
-                                {projectId && (
+                                {/* Status line: the preview is a nice-to-have, so its
+                                    absence must not block adding. Show whichever state
+                                    we're in without gating the button below on it. */}
+                                {inlineSvg ? (
+                                    <p className="text-[11px] text-muted-foreground italic py-0.5">
+                                        Extracted from file — <span className="font-mono">{libraryLink}</span>
+                                    </p>
+                                ) : !inlineLoading && (
+                                    <p className="text-[11px] text-muted-foreground italic py-1">
+                                        Not in catalog — <span className="font-mono">{libraryLink}</span>
+                                    </p>
+                                )}
+                                {/* The item is genuinely not in the catalog, so always
+                                    offer to add it as long as we can resolve a lib:name
+                                    and a project to extract from. Previously this button
+                                    was gated on a successful inline-SVG extraction, so a
+                                    part with no extractable preview (or whose preview
+                                    loaded from disk, never triggering extraction) showed
+                                    NO add button at all — the reported bug. */}
+                                {projectId && libraryLink.includes(":") && (
                                     <button
                                         onClick={() => {
                                             const colon = libraryLink.indexOf(":");
@@ -1171,6 +1182,38 @@ export function EcadInfoPanel({ detail, onClose, position = "top-right" }: EcadI
                         ))}
                     </>
                 )}
+            </div>
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// ViewerLoading / ViewerError — unified viewer status overlays
+// ---------------------------------------------------------------------------
+//
+// A single spinner/error treatment shared by every viewer surface (the sch/pcb
+// diff viewers and the standalone visualizer) so the loading experience is
+// identical everywhere. Rendered as an absolute overlay inside the viewer's
+// relatively-positioned container.
+
+export function ViewerLoading({ label = "Loading…" }: { label?: string }) {
+    return (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-40">
+            <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">{label}</p>
+            </div>
+        </div>
+    );
+}
+
+export function ViewerError({ label, hint }: { label: string; hint?: string }) {
+    return (
+        <div className="absolute inset-0 flex items-center justify-center z-40">
+            <div className="flex flex-col items-center gap-3 text-center">
+                <XIcon className="h-8 w-8 text-destructive" />
+                <p className="text-sm text-destructive">{label}</p>
+                {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
             </div>
         </div>
     );
@@ -2203,6 +2246,9 @@ type InteractiveItem = {
 type InnerBoardViewer = {
     viewport?: unknown;
     layers?: LayerSet;
+    /** Fork opt-in: a multi-item click selects the best-priority item instead
+     *  of popping the (host-hidden) disambiguation menu. See useBoardClickFix. */
+    auto_select_single?: boolean;
     /**
      * NOTE: kicanvas exposes this as a SETTER ONLY (no public getter). Reading
      * it always returns undefined; the underlying `#r` field is private. Use
@@ -2258,6 +2304,14 @@ export function useBoardClickFix({ viewerRefs, rebindKey }: UseBoardClickFixOpts
             if (!inner) return false;
             const layers = inner.layers?.in_ui_order ? Array.from(inner.layers.in_ui_order()) : [];
             if (layers.length === 0) return false;
+
+            // (0) Opt into single-select on multi-item clicks. We priority-sort
+            // find_items_under_pos below (pads → footprints → lines), and our
+            // React UI hides kicanvas's disambiguation pop-menu, so a multi-item
+            // click would otherwise dispatch a null selection + a menu nobody
+            // sees — the "hover shows a box but click does nothing" bug. With
+            // this flag the fork selects items[0] (our best pick) instead.
+            inner.auto_select_single = true;
 
             // (1) Ensure the layer_visibility map exists.
             //

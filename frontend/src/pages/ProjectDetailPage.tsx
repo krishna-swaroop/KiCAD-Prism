@@ -76,6 +76,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const [syncing, setSyncing] = useState(false);
     const [syncMessage, setSyncMessage] = useState<string | null>(null);
     const [visualizerLoaded, setVisualizerLoaded] = useState(false);
+    const [historyLoaded, setHistoryLoaded] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [pathConfigOpen, setPathConfigOpen] = useState(false);
     const [thumbnailGenerating, setThumbnailGenerating] = useState(false);
@@ -127,6 +128,9 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     useEffect(() => {
         if (activeSection === 'visualizers') {
             setVisualizerLoaded(true);
+        }
+        if (activeSection === 'history') {
+            setHistoryLoaded(true);
         }
     }, [activeSection]);
 
@@ -554,8 +558,12 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         </div>
                     )}
 
-                    {activeSection === "history" && (
-                        <div>
+                    {/* Mount-once + hidden toggle (like the visualizers section) so
+                        switching away from History keeps its state — no reload on
+                        return. `key={refreshKey}` still forces a deliberate remount
+                        on an explicit refresh. */}
+                    {historyLoaded && (
+                        <div className={cn(activeSection !== "history" && "hidden")}>
                             {projectId && (
                                 <Suspense fallback={<div className="text-sm text-muted-foreground">Loading history...</div>}>
                                     <HistoryViewer

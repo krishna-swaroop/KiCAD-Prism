@@ -493,6 +493,12 @@ interface CommitDiffModalProps {
 
 function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, focusItemId, focusFilename, singleCommit }: CommitDiffModalProps) {
     const [tab, setTab] = useState<DiffTab>(initialTab ?? "schematic");
+    // Latch true once the Stackup tab has been opened, then keep the panel
+    // mounted (toggled with display:none like the other tabs) so switching away
+    // and back doesn't re-fetch/re-render it. Lazy so we don't fetch stackup for
+    // every commit diff the user opens without visiting the tab.
+    const [stackupSeen, setStackupSeen] = useState(tab === "stackup");
+    useEffect(() => { if (tab === "stackup") setStackupSeen(true); }, [tab]);
     // Last reference selected in each tab — used to navigate the other tab when switching
     const lastSelected = useRef<{ schematic?: string; pcb?: string; bom?: string }>({});
     // CrossProbe targets carry a seq number so re-delivering the same reference
@@ -609,8 +615,8 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
                         crossProbeTarget={bomCrossProbeTarget}
                     />
                 </div>
-                {tab === "stackup" && (
-                    <div className="absolute inset-0 overflow-y-auto bg-background">
+                {stackupSeen && (
+                    <div className="absolute inset-0 overflow-y-auto bg-background" style={{ display: tab === "stackup" ? undefined : "none" }}>
                         <StackupDiffPanel projectId={projectId} commit1={commit1} commit2={commit2} />
                     </div>
                 )}
