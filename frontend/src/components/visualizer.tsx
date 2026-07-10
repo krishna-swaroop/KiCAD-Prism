@@ -145,6 +145,17 @@ function CommitDiffOverlay({ markers, viewerRef }: {
 
     useEffect(() => { startLoop(); }, [markers, startLoop]);
 
+    // Reposition on any camera move — including the post-load auto-fit, which
+    // emits no user event — via the viewer's camerachange event (same approach
+    // the diff overlays use).
+    useEffect(() => {
+        const viewer = viewerRef.current;
+        if (!viewer) return;
+        const onCam = () => startLoop();
+        viewer.addEventListener("camerachange", onCam);
+        return () => viewer.removeEventListener("camerachange", onCam);
+    }, [viewerRef, startLoop]);
+
     return (
         <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 15 }}>
             {markers.map((m) => (
@@ -758,40 +769,33 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                 return;
             }
 
-            // Optional API — the Huaqiu base fork lacks requestCrossProbe; guard
-            // so a viewer without it no-ops instead of throwing (a throw in this
-            // effect blanks the page).
-            if (typeof targetViewer.requestCrossProbe !== "function") {
+            // Use the viewer's crossProbe API (resolve designator -> focus +
+            // outline). Returns the settled camera on success, or null when the
+            // ref isn't on the current view yet (viewer still loading / on a
+            // different sheet) — in which case we retry briefly. Guarded because
+            // the API is optional on the viewer element.
+            if (typeof targetViewer.crossProbe !== "function") {
                 clearCrossProbeRetry(targetContext);
                 return;
             }
-            const result = targetViewer.requestCrossProbe({
-                sourceContext,
-                targetContext,
-                mode: "select",
-                kind: "designator",
-                value: designator,
-                designator,
+            const capturedRunId = runId;
+            void targetViewer.crossProbe(designator).then((cam) => {
+                // Superseded by a newer probe — drop this result.
+                if (crossProbeRunIdRef.current[targetContext] !== capturedRunId) return;
+                if (!cam && attempts < CROSS_PROBE_MAX_RETRIES) {
+                    crossProbeRetryTimerRef.current[targetContext] = window.setTimeout(() => {
+                        runCrossProbe(
+                            targetViewer,
+                            sourceContext,
+                            designator,
+                            attempts + 1,
+                            capturedRunId,
+                        );
+                    }, CROSS_PROBE_RETRY_DELAY_MS);
+                    return;
+                }
+                clearCrossProbeRetry(targetContext);
             });
-
-            if (
-                !result.resolved &&
-                result.reason === "target-not-available" &&
-                attempts < CROSS_PROBE_MAX_RETRIES
-            ) {
-                crossProbeRetryTimerRef.current[targetContext] = window.setTimeout(() => {
-                    runCrossProbe(
-                        targetViewer,
-                        sourceContext,
-                        designator,
-                        attempts + 1,
-                        runId,
-                    );
-                }, CROSS_PROBE_RETRY_DELAY_MS);
-                return;
-            }
-
-            clearCrossProbeRetry(targetContext);
         },
         [clearCrossProbeRetry, getCrossProbeTargetContext],
     );
@@ -1248,8 +1252,10 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
     }, [activeTab, commentMode, applyCommentModeToViewer]);
 
     useEffect(() => {
-        schematicViewerRef.current?.setCrossProbeEnabled(true);
-        pcbViewerRef.current?.setCrossProbeEnabled(true);
+        // setCrossProbeEnabled is optional — the Huaqiu base fork doesn't
+        // implement it (cross-probe is driven via viewer.crossProbe instead).
+        schematicViewerRef.current?.setCrossProbeEnabled?.(true);
+        pcbViewerRef.current?.setCrossProbeEnabled?.(true);
     }, [schematicViewerElement, pcbViewerElement]);
 
     useEffect(() => {
@@ -1347,12 +1353,17 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         const viewer = comment.context === "SCH" ? schematicViewerRef.current : pcbViewerRef.current;
         if (!viewer) return;
 
-        if (comment.context === "SCH" && comment.location.page) {
-            viewer.switchPage(comment.location.page);
-        }
-
-        if (viewer.zoomToLocation) {
-            viewer.zoomToLocation(comment.location.x, comment.location.y);
+        const doZoom = () => {
+            if (viewer.zoomToLocation) {
+                viewer.zoomToLocation(comment.location.x, comment.location.y);
+            }
+        };
+        if (comment.context === "SCH" && comment.location.page && viewer.showPage) {
+            // showPage resolves once the page is actually loaded, so the zoom
+            // lands on the right sheet instead of racing the page switch.
+            void viewer.showPage(comment.location.page).then(doZoom);
+        } else {
+            doZoom();
         }
     };
 
