@@ -55,6 +55,20 @@ router = APIRouter(dependencies=[Depends(require_viewer)])
 
 ARCHIVE_DIR_NAMES = {"archive", "archived", "old", "backup", "backups", "obsolete"}
 
+# KiCad design files are plain s-expr text but have no registered MIME type, so
+# mimetypes.guess_type() returns None and they'd be served as
+# application/octet-stream — which reverse proxies exclude from gzip. Typing them
+# as text/plain gets them compressed on the wire (a 9 MB board -> ~2 MB).
+_KICAD_TEXT_MIME = {
+    ".kicad_pcb": "text/plain",
+    ".kicad_sch": "text/plain",
+    ".kicad_pro": "application/json",
+    ".kicad_sym": "text/plain",
+    ".kicad_mod": "text/plain",
+    ".kicad_wks": "text/plain",
+    ".net": "text/plain",
+}
+
 
 class Monorepo(BaseModel):
     name: str
@@ -1402,7 +1416,14 @@ async def get_commit_file(
 
     mime, _ = mimetypes.guess_type(path)
     if mime is None:
-        mime = "application/octet-stream"
+        # KiCad design files are s-expr TEXT. Python has no MIME type for them, so
+        # they'd fall back to application/octet-stream — which reverse proxies skip
+        # when gzipping (their gzip_types list text/*), leaving multi-MB boards
+        # uncompressed on the wire. Typing them as text/plain gets them compressed
+        # (~5x on a 9 MB board) by both nginx and our GZipMiddleware.
+        mime = _KICAD_TEXT_MIME.get(
+            Path(path).suffix.lower(), "application/octet-stream"
+        )
 
     filename = Path(path).name
     return Response(
