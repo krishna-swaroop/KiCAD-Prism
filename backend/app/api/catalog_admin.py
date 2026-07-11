@@ -1020,7 +1020,11 @@ def _extract_symbol_from_sch(sch_text: str, sym_name: str) -> str | None:
 
 
 def _read_project_files(project_id: str) -> tuple[str | None, str | None]:
-    """Return (pcb_text, sch_text) for a project, either may be None if file not found."""
+    """Return (pcb_text, sch_text) for a project, either may be None if file not found.
+
+    sch_text is the MAIN schematic only. For symbol resolution use
+    _read_all_schematics(), which also includes hierarchical sub-sheets.
+    """
     project = workspace.get_project_by_id(project_id)
     if not project:
         return None, None
@@ -1040,6 +1044,43 @@ def _read_project_files(project_id: str) -> tuple[str | None, str | None]:
     return pcb_text, sch_text
 
 
+def _read_all_schematics(project_id: str) -> list[str]:
+    """Return the text of every schematic in the project: the main sheet plus all
+    hierarchical sub-sheets. A symbol's (symbol ...) definition lives in the
+    lib_symbols block of whichever sheet instantiates it, so a symbol placed only
+    on a sub-sheet is invisible to the main file alone — the cause of the
+    "not found in project files" failure for hierarchical projects.
+    """
+    project = workspace.get_project_by_id(project_id)
+    if not project:
+        return []
+    project_path = project["path"]
+    main_path = project_service.find_schematic_file(project_path)
+    texts: list[str] = []
+    seen: set[str] = set()
+
+    def _add(p: str | None) -> None:
+        if not p:
+            return
+        fp = Path(p)
+        if not fp.is_absolute():
+            fp = Path(project_path) / fp
+        key = str(fp.resolve())
+        if key in seen or not fp.is_file():
+            return
+        seen.add(key)
+        try:
+            texts.append(fp.read_text(encoding="utf-8"))
+        except OSError:
+            pass
+
+    _add(main_path)
+    if main_path:
+        for sub in project_service.get_subsheets(project_path, main_path):
+            _add(sub)
+    return texts
+
+
 def _resolve_asset_block(
     asset_type: str, name: str, project_id: str
 ) -> tuple[str, str] | None:
@@ -1048,7 +1089,7 @@ def _resolve_asset_block(
     Returns (block_text, normalized_block_text) or None if not found.
     For footprint: searches PCB file. For symbol: searches SCH file.
     """
-    pcb_text, sch_text = _read_project_files(project_id)
+    pcb_text, _sch_text = _read_project_files(project_id)
     if asset_type == "footprint":
         if not pcb_text:
             return None
@@ -1058,9 +1099,13 @@ def _resolve_asset_block(
         block = re.sub(r'^\(footprint\s+"[^"]*"', f'(footprint "{name}"', block)
         return block, block
     elif asset_type == "symbol":
-        if not sch_text:
-            return None
-        block = _extract_symbol_from_sch(sch_text, name)
+        # Search the main schematic AND every hierarchical sub-sheet: a symbol
+        # placed only on a sub-sheet isn't in the main file's lib_symbols block.
+        block = None
+        for text in _read_all_schematics(project_id):
+            block = _extract_symbol_from_sch(text, name)
+            if block:
+                break
         if not block:
             return None
         block = _normalize_symbol_block(block, name)
