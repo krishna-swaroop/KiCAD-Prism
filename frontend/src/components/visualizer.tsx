@@ -946,7 +946,10 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
 
     // Lazy load schematic content when schematic tab is first accessed
     useEffect(() => {
-        if (activeTab === "sch" && !schematicContentLoaded) {
+        // Load eagerly (not gated on the active tab) so the schematic and PCB
+        // fetch in parallel on mount — switching tabs is then instant instead of
+        // triggering a fresh load. Mirrors how the diff viewer loads both sides.
+        if (!schematicContentLoaded) {
             // If we're in commit-view mode, diff effect handles content loading
             if (commit) return;
 
@@ -1019,11 +1022,12 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             return () => controller.abort();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, schematicContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
+    }, [schematicContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
 
-    // Lazy load PCB content when PCB tab is first accessed
+    // Load PCB content eagerly (in parallel with the schematic), not gated on the
+    // PCB tab being active, so switching to it is instant.
     useEffect(() => {
-        if (activeTab === "pcb" && !pcbContentLoaded) {
+        if (!pcbContentLoaded) {
             if (commit) return; // PCB content comes from pcbDiffData when in commit mode
 
             const controller = new AbortController();
@@ -1057,7 +1061,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             return () => controller.abort();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, pcbContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
+    }, [pcbContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
 
     // Fetch schematic + PCB diffs when viewing a specific commit; also resets content state
     useEffect(() => {
