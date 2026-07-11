@@ -364,7 +364,24 @@ function CommitItem({
                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCopy} title="Copy full hash">
                                 {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                             </Button>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => onViewCommit(commit.full_hash)} title="View this version">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={() => {
+                                    // Open the single-commit diff view (fast
+                                    // manifest-first load + changes sidebar +
+                                    // toggle-highlights), same as comparing but
+                                    // one side. Root commits have no parent to
+                                    // diff, so fall back to the plain visualizer.
+                                    if (commit.parents?.[0] && onOpenItemDiff) {
+                                        onOpenItemDiff("schematic");
+                                    } else {
+                                        onViewCommit(commit.full_hash);
+                                    }
+                                }}
+                                title="View this version's changes"
+                            >
                                 <Eye className="h-3 w-3" />
                             </Button>
                         </div>

@@ -1542,7 +1542,10 @@ export function PcbDiffViewer({
         };
         for (const board of data.boards) {
             if (board.has_new) void fetchSide("new", data.commit1, board).catch(() => {});
-            if (board.has_old) void fetchSide("old", data.commit2, board).catch(() => {});
+            // In single-commit mode only the "new" side is ever displayed, so
+            // skip the (multi-MB) old-side git read entirely — it was doubling
+            // the board fetch/parse work for nothing.
+            if (!singleCommit && board.has_old) void fetchSide("old", data.commit2, board).catch(() => {});
         }
         return () => controller.abort();
     // Keyed on the board-list SIGNATURE + bgLoadArmed (NOT `active`): the board
@@ -1550,7 +1553,7 @@ export function PcbDiffViewer({
     // the late full-diff changes `diff` but not the list, so the in-flight parse
     // is not restarted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [boardManifestSig, projectId, bgLoadArmed]);
+    }, [boardManifestSig, projectId, bgLoadArmed, singleCommit]);
 
     const activeBoardData = data?.boards.find(b => b.filename === activeBoard) ?? null;
 

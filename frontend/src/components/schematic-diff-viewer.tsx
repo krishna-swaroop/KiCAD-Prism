@@ -994,14 +994,16 @@ export function SchematicDiffViewer({
             });
         };
         void loadSide("new", data.commit1).catch(() => {});
-        void loadSide("old", data.commit2).catch(() => {});
+        // Single-commit view only shows the "new" side, so skip fetching every
+        // old sheet — halves the git reads + parses for nothing.
+        if (!singleCommit) void loadSide("old", data.commit2).catch(() => {});
         return () => controller.abort();
     // Keyed on the sheet-list SIGNATURE + bgLoadArmed (NOT `active`): sheets now
     // load in the background so they're ready before the tab is shown. Merging
     // the late full-diff changes `diff` but not the list, so the in-flight parse
     // is not restarted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sheetManifestSig, projectId, bgLoadArmed]);
+    }, [sheetManifestSig, projectId, bgLoadArmed, singleCommit]);
 
     // KiCad-style hotkeys: zoom, fit, redraw, sheet nav, close.
     const cycleSheet = useCallback((delta: 1 | -1) => {

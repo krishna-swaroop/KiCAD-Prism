@@ -1350,13 +1350,19 @@ async def get_commit_file(
                 detail="Path is outside the project scope",
             )
 
-    try:
+    # The git blob read is blocking and the file can be multi-MB (a PCB board).
+    # Run it off the event loop so this content stream isn't serialized behind —
+    # or blocking — the concurrent diff requests the viewer fires alongside it.
+    def _read_blob() -> bytes:
         from git import Repo as GitRepo
 
         repo = GitRepo(repo_path)
         commit = repo.commit(commit_hash)
         blob = commit.tree / path
-        content = blob.data_stream.read()
+        return blob.data_stream.read()
+
+    try:
+        content = await asyncio.to_thread(_read_blob)
     except KeyError:
         raise HTTPException(
             status_code=404,
@@ -1507,13 +1513,18 @@ async def get_project_schematic(
     project = get_project_for_role_or_404(project_id, user.role)
 
     if commit:
-        config = _path_config_from_commit(project, commit)
-        commit_file = _read_configured_commit_file(
-            project,
-            commit,
-            config.schematic or "*.kicad_sch",
-            not_found_detail="Schematic not found",
-        )
+        # Blocking git reads → run off the event loop so the schematic isn't
+        # serialized behind the parallel diff endpoints (see get_project_pcb).
+        def _read() -> file_service.CommitFile:
+            config = _path_config_from_commit(project, commit)
+            return _read_configured_commit_file(
+                project,
+                commit,
+                config.schematic or "*.kicad_sch",
+                not_found_detail="Schematic not found",
+            )
+
+        commit_file = await asyncio.to_thread(_read)
         return _commit_file_response(commit_file, inline=True)
 
     path = project_service.find_schematic_file(project.path)
@@ -1586,13 +1597,21 @@ async def get_project_pcb(
     project = get_project_for_role_or_404(project_id, user.role)
 
     if commit:
-        config = _path_config_from_commit(project, commit)
-        commit_file = _read_configured_commit_file(
-            project,
-            commit,
-            config.pcb or "*.kicad_pcb",
-            not_found_detail="PCB not found",
-        )
+        # The commit path does blocking git reads (path config + blob). Run them
+        # in a thread so this fast read isn't serialized on the event loop behind
+        # the heavy diff endpoints (which the single-commit viewer fires in
+        # parallel) — otherwise the board waits ~2s behind a diff instead of the
+        # ~0.3s the read actually takes.
+        def _read() -> file_service.CommitFile:
+            config = _path_config_from_commit(project, commit)
+            return _read_configured_commit_file(
+                project,
+                commit,
+                config.pcb or "*.kicad_pcb",
+                not_found_detail="PCB not found",
+            )
+
+        commit_file = await asyncio.to_thread(_read)
         return _commit_file_response(commit_file, inline=True)
 
     path = project_service.find_pcb_file(project.path)
