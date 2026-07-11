@@ -92,6 +92,53 @@ def _parse_drills(pcb_path: str) -> list[dict]:
         return []
 
 
+def _edge_world_min(pcb_path: str) -> tuple[float, float] | None:
+    """Return the (min_x, min_y) world-mm corner of the board's Edge.Cuts bbox.
+
+    Handles every outline primitive — line, arc, circle, rect, polygon — not just
+    straight segments, so rounded/curved boards resolve correctly. Returns None if
+    no edge geometry is found (caller falls back to the SVG viewBox origin).
+    """
+    try:
+        from kiutils.board import Board  # noqa: PLC0415
+
+        board = Board.from_file(pcb_path)
+        xs: list[float] = []
+        ys: list[float] = []
+
+        def _pt(p: object) -> None:
+            x = getattr(p, "X", None)
+            y = getattr(p, "Y", None)
+            if x is not None and y is not None:
+                xs.append(x)
+                ys.append(y)
+
+        for s in board.graphicItems:
+            if getattr(s, "layer", None) != "Edge.Cuts":
+                continue
+            # start/end cover lines, arcs (start/end), rects. Circles use
+            # center/end. Arcs may also carry a midpoint. Polygons carry a
+            # coordinate list. Grab whatever points are present; a bbox min only
+            # needs extents, and arc/circle bulges beyond their control points are
+            # a sub-mm rounding effect at thumbnail scale.
+            for attr in ("start", "mid", "end", "center"):
+                p = getattr(s, attr, None)
+                if p is not None:
+                    _pt(p)
+            for coord_attr in ("coordinates", "points", "pts"):
+                seq = getattr(s, coord_attr, None)
+                if seq:
+                    for p in seq:
+                        _pt(p)
+
+        if xs and ys:
+            return (min(xs), min(ys))
+        return None
+    except Exception:
+        logger.exception("edge world-min parse failed for %s", pcb_path)
+        return None
+
+
 def _drills_to_mask(
     drills: list[dict],
     board_origin_mm: tuple[float, float],
@@ -325,41 +372,30 @@ def render_thumbnail(
         edge_svg_path = layer_map["Edge.Cuts"]
         with open(edge_svg_path, encoding="utf-8") as _f:
             _head = _f.read(1024)
-        _vb = _re.search(r'viewBox="([0-9. ]+)"', _head)
+        # Allow a leading sign / scientific notation in the viewBox numbers.
+        _vb = _re.search(r'viewBox="([-0-9.eE+ ]+)"', _head)
         hole: np.ndarray = _zero
         if _vb:
             _parts = list(map(float, _vb.group(1).split()))
-            if len(_parts) == 4:
-                # kicad-cli sets viewBox origin to the board bbox min in world coords
-                # We need the actual world origin; kiutils gives us pad world coords.
-                # The PCB edge items tell us the world bbox min directly.
+            if len(_parts) == 4 and _parts[2] > 0 and _parts[3] > 0:
+                # The kicad-cli Edge.Cuts SVG viewBox gives the board SIZE in mm
+                # reliably ("minX minY width height"), but its origin is normalised
+                # to (0,0) — NOT the world origin. Drills from _parse_drills are in
+                # world mm, so we still need the board's world bbox MIN. Derive it
+                # robustly from every Edge.Cuts shape (lines, arcs, circles, rects,
+                # polys). The previous code only inspected .start/.end (line
+                # segments), so boards with arc/circle/rounded/polygon outlines got
+                # an empty bbox and lost all their holes — the reported bug. If the
+                # world min can't be found, fall back to the viewBox origin.
+                _vw, _vh = _parts[2], _parts[3]
                 try:
-                    from kiutils.board import Board as _Board  # noqa: PLC0415
-
-                    _b = _Board.from_file(pcb_path)
-                    _edge = [
-                        s
-                        for s in _b.graphicItems
-                        if hasattr(s, "layer") and s.layer == "Edge.Cuts"
-                    ]
-                    _xs = [
-                        c
-                        for s in _edge
-                        for c in ([s.start.X, s.end.X] if hasattr(s, "start") else [])
-                    ]
-                    _ys = [
-                        c
-                        for s in _edge
-                        for c in ([s.start.Y, s.end.Y] if hasattr(s, "start") else [])
-                    ]
-                    if _xs and _ys:
-                        _origin = (min(_xs), min(_ys))
-                        _size = (max(_xs) - min(_xs), max(_ys) - min(_ys))
-                        _drills = _parse_drills(pcb_path)
-                        if _drills:
-                            hole = _drills_to_mask(
-                                _drills, _origin, _size, img_w, img_h
-                            )
+                    _origin = _edge_world_min(pcb_path)
+                    if _origin is None:
+                        _origin = (_parts[0], _parts[1])
+                    _size = (_vw, _vh)
+                    _drills = _parse_drills(pcb_path)
+                    if _drills:
+                        hole = _drills_to_mask(_drills, _origin, _size, img_w, img_h)
                 except Exception:
                     logger.exception("drill mask failed; holes will be omitted")
 
