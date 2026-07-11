@@ -47,6 +47,26 @@ _EXPORT_LAYERS = ["Edge.Cuts", "F.Cu", "F.Mask", "F.Silkscreen"]
 # ---------------------------------------------------------------------------
 
 
+def _load_board(pcb_path: str):
+    """Parse a .kicad_pcb with kiutils, tolerating the name-only net export.
+
+    Some exports write `(net "NAME")` on pads/segments instead of the standard
+    `(net <number> "NAME")`. kiutils' Net.from_sexpr does `exp[2]` and raises
+    IndexError on the 2-element form, aborting the WHOLE board parse — which
+    silently dropped every drill and rendered thumbnails with no holes. We
+    normalise `(net "X")` -> `(net 0 "X")` in the text first (the net number is
+    irrelevant to drill geometry) so kiutils parses cleanly.
+    """
+    import re  # noqa: PLC0415
+
+    from kiutils.board import Board  # noqa: PLC0415
+    from kiutils.utils import sexpr  # noqa: PLC0415
+
+    text = Path(pcb_path).read_text(encoding="utf-8")
+    text = re.sub(r'\(net\s+("[^"]*")\s*\)', r"(net 0 \1)", text)
+    return Board.from_sexpr(sexpr.parse_sexp(text))
+
+
 def _parse_drills(pcb_path: str) -> list[dict]:
     """Return a list of drill descriptors from a .kicad_pcb file.
 
@@ -54,9 +74,7 @@ def _parse_drills(pcb_path: str) -> list[dict]:
     Covers through-hole pads and vias.  Returns [] on any error.
     """
     try:
-        from kiutils.board import Board  # noqa: PLC0415
-
-        board = Board.from_file(pcb_path)
+        board = _load_board(pcb_path)
         drills: list[dict] = []
 
         # Through-hole pads
@@ -100,9 +118,7 @@ def _edge_world_min(pcb_path: str) -> tuple[float, float] | None:
     no edge geometry is found (caller falls back to the SVG viewBox origin).
     """
     try:
-        from kiutils.board import Board  # noqa: PLC0415
-
-        board = Board.from_file(pcb_path)
+        board = _load_board(pcb_path)
         xs: list[float] = []
         ys: list[float] = []
 
