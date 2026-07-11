@@ -261,11 +261,13 @@ interface CommitItemProps {
     /** Position in the commit list — used to draw the timeline. */
     isFirst?: boolean;
     isLast?: boolean;
+    /** Briefly ring-highlighted after a release card scrolls to this commit. */
+    highlighted?: boolean;
 }
 
 function CommitItem({
     commit, projectId, onViewCommit, isSelected, onSelect, selectable, onOpenItemDiff, onOpenPdf,
-    isFirst, isLast,
+    isFirst, isLast, highlighted,
 }: CommitItemProps) {
     const [copied, setCopied] = useState(false);
     const [expanded, setExpanded] = useState(false);
@@ -308,7 +310,10 @@ function CommitItem({
     };
 
     return (
-        <div className="flex items-stretch gap-3 pb-1.5 last:pb-0">
+        <div
+            id={`commit-row-${commit.full_hash}`}
+            className={`flex items-stretch gap-3 pb-1.5 last:pb-0 scroll-mt-20 rounded-lg transition-shadow ${highlighted ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
+        >
             {/* Timeline column: vertical line + dot, one row tall */}
             <div className="relative w-4 shrink-0 flex justify-center">
                 {/* upper line segment — hidden on the very first commit */}
@@ -649,6 +654,29 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
     const [error, setError] = useState<string | null>(null);
     const [selectedCommits, setSelectedCommits] = useState<string[]>([]);
     const [showDiff, setShowDiff] = useState(false);
+    // Commit briefly ring-highlighted after clicking a release that points to it.
+    const [highlightedCommit, setHighlightedCommit] = useState<string | null>(null);
+    const highlightTimer = useRef<number | undefined>(undefined);
+
+    // Scroll the commit list to the commit a release tags and flash it. Matches
+    // the release's (possibly short) hash against each commit's full/short hash.
+    const scrollToCommit = useCallback((releaseHash: string) => {
+        const target = commits.find(
+            (c) =>
+                c.full_hash === releaseHash ||
+                c.hash === releaseHash ||
+                c.full_hash.startsWith(releaseHash) ||
+                releaseHash.startsWith(c.hash),
+        );
+        if (!target) return;
+        const el = document.getElementById(`commit-row-${target.full_hash}`);
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        setHighlightedCommit(target.full_hash);
+        window.clearTimeout(highlightTimer.current);
+        highlightTimer.current = window.setTimeout(() => setHighlightedCommit(null), 2000);
+    }, [commits]);
+
+    useEffect(() => () => window.clearTimeout(highlightTimer.current), []);
     // Single-commit diff: opens the modal against the commit's parent and
     // optionally pre-selects an item / tab.
     const [itemDiff, setItemDiff] = useState<{
@@ -854,9 +882,12 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {releases.map((release) => (
-                            <div
+                            <button
                                 key={release.tag}
-                                className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                                type="button"
+                                onClick={() => scrollToCommit(release.commit_hash)}
+                                title="Jump to this commit in the list"
+                                className="text-left border rounded-lg p-4 hover:bg-muted/50 hover:border-primary/50 transition-colors cursor-pointer w-full"
                             >
                                 <div className="flex items-start justify-between mb-2">
                                     <div className="flex items-center gap-2">
@@ -874,7 +905,7 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                                     <Calendar className="h-3 w-3" />
                                     {formatDate(release.date)}
                                 </div>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 </div>
@@ -916,6 +947,7 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                                 selectable={canCompareDiffs}
                                 isFirst={idx === 0}
                                 isLast={idx === commits.length - 1}
+                                highlighted={highlightedCommit === commit.full_hash}
                                 onOpenItemDiff={(tab, itemId, filename) => {
                                     const parent = commit.parents?.[0];
                                     if (!parent) return; // root commit — nothing to diff against
