@@ -20,7 +20,11 @@ const VIEWER_BASE_CSS = `
     tab-view,
     tab-header,
     .bottom-left-badge,
-    .bottom-left-icon {
+    .bottom-left-icon,
+    /* The viewer's built-in spinner: we show our own <ViewerLoading> overlay
+       (dimmed backdrop + spinner) for the WHOLE load instead, so the two don't
+       both appear / hand off awkwardly. */
+    ecad-spinner {
         display: none !important;
     }
 

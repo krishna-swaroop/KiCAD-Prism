@@ -1483,7 +1483,14 @@ export function SchematicDiffViewer({
 
                 {/* ── Viewer area ── */}
                 <div ref={viewerContainerRef} className="flex-1 relative overflow-hidden">
-                    {loading && <ViewerLoading label="Parsing schematic diff…" />}
+                    {/* Keep the dimmed overlay + spinner up for the WHOLE load —
+                        not just until the (fast) manifest arrives — i.e. until the
+                        sheet that's actually being shown has parsed and painted.
+                        The viewer's own built-in spinner is hidden (see
+                        VIEWER_BASE_CSS), so this is the single loading indicator. */}
+                    {!error && (loading || !(showing === "new" ? newReady : oldReady)) && (
+                        <ViewerLoading label="Loading schematic…" />
+                    )}
                     {error && (
                         <div className="absolute inset-0 flex items-center justify-center z-40">
                             <div className="flex flex-col items-center gap-3 text-center">
