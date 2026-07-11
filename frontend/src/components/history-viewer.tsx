@@ -698,7 +698,9 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
     const [commits, setCommits] = useState<Commit[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [selectedCommits, setSelectedCommits] = useState<string[]>([]);
+    // Full Commit objects (not hashes) so a selection survives switching server
+    // pages — the two commits being compared may live on different pages.
+    const [selectedCommits, setSelectedCommits] = useState<Commit[]>([]);
     const [showDiff, setShowDiff] = useState(false);
     // Commit briefly ring-highlighted after clicking a release that points to it.
     const [highlightedCommit, setHighlightedCommit] = useState<string | null>(null);
@@ -817,40 +819,31 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
         setPdfViewer({ url, downloadUrl: url, filename });
     }, [projectId]);
 
-    // Filter commits to find selected ones and determining newer/older
+    // Determine newer/older from the two selected commits. Selection holds full
+    // Commit objects (not just hashes) so it survives page changes — with
+    // server-side paging the two commits may live on different pages, so we
+    // order by DATE rather than by index into the currently-loaded page.
     const diffPair = useMemo(() => {
         if (selectedCommits.length !== 2) return null;
+        const [a, b] = selectedCommits;
+        const aTime = new Date(a.date).getTime();
+        const bTime = new Date(b.date).getTime();
+        return aTime >= bTime ? { newer: a, older: b } : { newer: b, older: a };
+    }, [selectedCommits]);
 
-        // Commits are already sorted by date (newest first)
-        const c1Index = commits.findIndex(c => c.full_hash === selectedCommits[0]);
-        const c2Index = commits.findIndex(c => c.full_hash === selectedCommits[1]);
-
-        if (c1Index === -1 || c2Index === -1) return null;
-
-        // Smaller index = Newer commit
-        const newerIndex = Math.min(c1Index, c2Index);
-        const olderIndex = Math.max(c1Index, c2Index);
-
-        return {
-            newer: commits[newerIndex],
-            older: commits[olderIndex]
-        };
-    }, [commits, selectedCommits]);
-
-    const handleSelectCommit = (hash: string) => {
+    const handleSelectCommit = (commit: Commit) => {
         if (!canCompareDiffs) {
             return;
         }
         setSelectedCommits(prev => {
-            if (prev.includes(hash)) {
-                return prev.filter(h => h !== hash);
+            if (prev.some(c => c.full_hash === commit.full_hash)) {
+                return prev.filter(c => c.full_hash !== commit.full_hash);
             }
             if (prev.length >= 2) {
-                // Remove oldest selection (first one added? or just FIFO)
-                // Let's just create a new array with the new one
-                return [prev[1], hash];
+                // Keep the most recent pick and add the new one (FIFO).
+                return [prev[1], commit];
             }
-            return [...prev, hash];
+            return [...prev, commit];
         });
     };
 
@@ -859,11 +852,9 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
             setSelectedCommits([]);
         }
     }, [canCompareDiffs]);
-
-    useEffect(() => {
-        const currentHashes = new Set(commits.map((commit) => commit.full_hash));
-        setSelectedCommits((previous) => previous.filter((hash) => currentHashes.has(hash)).slice(-2));
-    }, [commits]);
+    // NOTE: deliberately NO effect pruning the selection to the current page —
+    // that would wipe a selection made on another page. Selection is intentionally
+    // page-independent so you can compare commits from different pages.
 
     // Releases — fetched once per project (few, paged client-side).
     useEffect(() => {
@@ -1041,6 +1032,29 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                     )}
                 </div>
 
+                {/* Selection status — selection is page-independent, so surface
+                    what's picked even when those commits aren't on this page. */}
+                {canCompareDiffs && selectedCommits.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
+                        <span className="text-muted-foreground">
+                            Selected {selectedCommits.length}/2:
+                        </span>
+                        {selectedCommits.map((c) => (
+                            <span key={c.full_hash} className="inline-flex items-center gap-1 rounded bg-background border px-1.5 py-0.5 font-mono">
+                                {c.hash}
+                                <button
+                                    type="button"
+                                    aria-label={`Deselect ${c.hash}`}
+                                    className="text-muted-foreground hover:text-foreground"
+                                    onClick={() => handleSelectCommit(c)}
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                )}
+
                 {commits.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
                         No commits found
@@ -1053,8 +1067,8 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                                 commit={commit}
                                 projectId={projectId}
                                 onViewCommit={onViewCommit}
-                                isSelected={selectedCommits.includes(commit.full_hash)}
-                                onSelect={() => handleSelectCommit(commit.full_hash)}
+                                isSelected={selectedCommits.some(c => c.full_hash === commit.full_hash)}
+                                onSelect={() => handleSelectCommit(commit)}
                                 selectable={canCompareDiffs}
                                 isFirst={idx === 0}
                                 isLast={idx === pagedCommits.length - 1}
