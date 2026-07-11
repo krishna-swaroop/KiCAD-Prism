@@ -1050,13 +1050,17 @@ function CatalogCrosslink({ libraryLink, assetType, footprintLink, projectId }: 
                                     </p>
                                 )}
                                 {/* The item is genuinely not in the catalog, so always
-                                    offer to add it as long as we can resolve a lib:name
-                                    and a project to extract from. Previously this button
-                                    was gated on a successful inline-SVG extraction, so a
-                                    part with no extractable preview (or whose preview
-                                    loaded from disk, never triggering extraction) showed
-                                    NO add button at all — the reported bug. */}
-                                {projectId && libraryLink.includes(":") && (
+                                    offer to add it as long as we have a project and a
+                                    non-empty library link. We deliberately do NOT require
+                                    a "library:name" colon: some symbols (seen in schematic
+                                    libraries) carry a bare lib_id with no library prefix,
+                                    which still marks the item not-found but previously hid
+                                    the Add button (the CIIA-schematic case). The prefill's
+                                    `name` falls back to the whole link when there's no
+                                    colon. Also previously this was coupled to a successful
+                                    inline-SVG extraction, hiding the button for parts with
+                                    no extractable preview. */}
+                                {projectId && libraryLink.trim() !== "" && (
                                     <button
                                         onClick={() => {
                                             const colon = libraryLink.indexOf(":");
@@ -1302,7 +1306,14 @@ type LayerWithDraw = {
 type DrawableViewer = {
     layers?: { in_ui_order?: () => Iterable<LayerWithDraw> };
     draw?: () => void;
+    // NOTE: `layer_visibility_ctrl` is SETTER-ONLY in the fork — reading it
+    // returns undefined. Writes to `.visibilities` on the read result are lost.
+    // To read/mutate the live visibility map, go through the `layer_visibility`
+    // GETTER (returns the ctrl's visibilities Map, or null). The hit-test
+    // (hover/click) and net isolation both read this map, so the layers panel
+    // MUST update it here for hidden layers to stop being interactive.
     layer_visibility_ctrl?: { visibilities?: Map<string, boolean> } | null;
+    layer_visibility?: Map<string, boolean> | null;
     board?: {
         nets?: NetInfo[];
         footprints?: FootprintInfo[];
@@ -1498,8 +1509,10 @@ function LayersPanel({
         for (const l of inner.layers.in_ui_order()) {
             if (l.name === name) {
                 l.visible = !l.visible;
-                const ctrl = inner.layer_visibility_ctrl;
-                if (ctrl?.visibilities) ctrl.visibilities.set(l.name, l.visible);
+                // Update the LIVE visibility map (read via the getter — the
+                // ..._ctrl property is setter-only and reads as undefined) so the
+                // hover/click hit-test and net isolation see the change.
+                inner.layer_visibility?.set(l.name, l.visible);
                 inner.draw?.();
                 setLayers(prev => prev.map(l => l.name === name ? { ...l, visible: !l.visible } : l));
                 break;
@@ -1793,7 +1806,8 @@ function setAllLayerVisibility(
     if (!inner?.layers?.in_ui_order) return;
     for (const l of inner.layers.in_ui_order()) {
         l.visible = visible;
-        inner.layer_visibility_ctrl?.visibilities?.set(l.name, visible);
+        // Live map via the getter (setter-only ..._ctrl reads as undefined).
+        inner.layer_visibility?.set(l.name, visible);
     }
     inner.draw?.();
     setLayers(prev => prev.map(l => ({ ...l, visible })));
@@ -1808,7 +1822,8 @@ function applyPreset(
     if (!inner?.layers?.in_ui_order) return;
     for (const l of inner.layers.in_ui_order()) {
         l.visible = preset.test(l.name);
-        inner.layer_visibility_ctrl?.visibilities?.set(l.name, l.visible);
+        // Live map via the getter (setter-only ..._ctrl reads as undefined).
+        inner.layer_visibility?.set(l.name, l.visible);
     }
     inner.draw?.();
     setLayers(prev => prev.map(l => ({ ...l, visible: preset.test(l.name) })));
