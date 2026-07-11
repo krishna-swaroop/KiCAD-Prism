@@ -1393,6 +1393,10 @@ export function PcbDiffViewer({
     const { detail: selectedDetail, clear: clearSelectedDetail } = useEcadInfoPanel({
         containerRef: viewerContainerRef,
         viewerRefs: viewerRefsArr,
+        // Needed by the info card's library crosslink: without it the inline
+        // preview can't be extracted from the project files and the "Add to
+        // Library Manager" button can't be offered (both are gated on projectId).
+        projectId,
     });
 
     // Two-phase fetch (see SchematicDiffViewer for the full rationale):

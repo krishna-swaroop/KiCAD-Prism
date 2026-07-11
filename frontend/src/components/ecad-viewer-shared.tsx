@@ -945,10 +945,15 @@ function CatalogCrosslink({ libraryLink, assetType, footprintLink, projectId }: 
         if (previewOpen) { setScale(1); setOffset({ x: 0, y: 0 }); }
     }, [previewOpen]);
 
-    // When the asset-store preview also fails, extract from the project files via the backend.
+    // Extract the preview from the project files whenever the asset isn't in the
+    // catalog. We deliberately do NOT wait for the asset-store fallback <img> to
+    // 404 first: that fallback URL only exists when libraryLink has a
+    // "library:name" colon, so colon-less symbols never triggered it and simply
+    // rendered no preview at all. Firing on `entry === "not-found"` covers every
+    // case; if the fallback image does happen to load, displayUrl prefers it.
     // Deps intentionally omit inlineSvg/inlineLoading to avoid cancelling the in-flight fetch.
     useEffect(() => {
-        if (!previewFailed || !projectId || entry !== "not-found") return;
+        if (!projectId || entry !== "not-found") return;
         if (inlineFetchedRef.current) return;
         inlineFetchedRef.current = true;
         const colon = libraryLink.indexOf(":");
@@ -968,7 +973,7 @@ function CatalogCrosslink({ libraryLink, assetType, footprintLink, projectId }: 
             setInlineLoading(false);
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [previewFailed, projectId, entry]);
+    }, [projectId, entry]);
 
     const colon = libraryLink.indexOf(":");
     const assetLibrary = colon !== -1 ? libraryLink.slice(0, colon) : "";

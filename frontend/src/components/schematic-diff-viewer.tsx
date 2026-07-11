@@ -673,6 +673,10 @@ export function SchematicDiffViewer({
     const { detail: selectedDetail, clear: clearSelectedDetail } = useEcadInfoPanel({
         containerRef: viewerContainerRef,
         viewerRefs: viewerRefsArr,
+        // Needed by the info card's library crosslink: without it the inline
+        // preview can't be extracted from the project files and the "Add to
+        // Library Manager" button can't be offered (both are gated on projectId).
+        projectId,
     });
 
     // Camera-impose loop. The rAF only spins while an impose is actually active
