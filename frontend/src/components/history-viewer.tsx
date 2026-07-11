@@ -705,6 +705,9 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
     const highlightTimer = useRef<number | undefined>(undefined);
 
     // ── Pagination ──────────────────────────────────────────────────────────
+    // Releases are few → paged client-side. Commits are paged SERVER-side so
+    // histories larger than a single window (repos can have thousands of commits)
+    // are fully reachable: `commits` holds only the current page.
     const RELEASES_PER_PAGE = 9;
     const COMMITS_PER_PAGE_KEY = "kicad-prism:history:commits-per-page";
     const [commitsPerPage, setCommitsPerPage] = useState<number>(() => {
@@ -715,14 +718,15 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
     });
     const [releasesPage, setReleasesPage] = useState(0);
     const [commitsPage, setCommitsPage] = useState(0);
+    const [commitsTotal, setCommitsTotal] = useState(0);
 
     const releasesPageCount = Math.max(1, Math.ceil(releases.length / RELEASES_PER_PAGE));
-    const commitsPageCount = Math.max(1, Math.ceil(commits.length / commitsPerPage));
+    const commitsPageCount = Math.max(1, Math.ceil(commitsTotal / commitsPerPage));
     const pagedReleases = releases.slice(releasesPage * RELEASES_PER_PAGE, releasesPage * RELEASES_PER_PAGE + RELEASES_PER_PAGE);
-    const pagedCommits = commits.slice(commitsPage * commitsPerPage, commitsPage * commitsPerPage + commitsPerPage);
+    // `commits` already IS the current server page.
+    const pagedCommits = commits;
 
-    // Keep pages in range if the underlying list shrinks or perPage changes.
-    useEffect(() => { if (commitsPage > commitsPageCount - 1) setCommitsPage(0); }, [commitsPageCount, commitsPage]);
+    // Keep the releases page in range if the list shrinks.
     useEffect(() => { if (releasesPage > releasesPageCount - 1) setReleasesPage(0); }, [releasesPageCount, releasesPage]);
 
     const changeCommitsPerPage = useCallback((n: number) => {
@@ -731,32 +735,64 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
         try { localStorage.setItem(COMMITS_PER_PAGE_KEY, String(n)); } catch { /* ignore */ }
     }, []);
 
-    // Scroll the commit list to the commit a release tags and flash it. Matches
-    // the release's (possibly short) hash against each commit's full/short hash.
-    const scrollToCommit = useCallback((releaseHash: string) => {
-        const idx = commits.findIndex(
+    // A commit (by full_hash) we want to scroll to + flash once it's rendered on
+    // the current page. Set when jumping across server pages.
+    const pendingScrollHash = useRef<string | null>(null);
+
+    const flashAndScroll = useCallback((fullHash: string) => {
+        setHighlightedCommit(fullHash);
+        window.clearTimeout(highlightTimer.current);
+        highlightTimer.current = window.setTimeout(() => setHighlightedCommit(null), 2000);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            document
+                .getElementById(`commit-row-${fullHash}`)
+                ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }));
+    }, []);
+
+    // Jump to the commit a release tags. It may live on a different SERVER page,
+    // so: if it's on the current page, flash it; otherwise ask the backend for
+    // its index, switch to that page, and flash once the page has loaded.
+    const scrollToCommit = useCallback(async (releaseHash: string) => {
+        const local = commits.find(
             (c) =>
                 c.full_hash === releaseHash ||
                 c.hash === releaseHash ||
                 c.full_hash.startsWith(releaseHash) ||
                 releaseHash.startsWith(c.hash),
         );
-        if (idx === -1) return;
-        const target = commits[idx];
-        // The target may live on a different commits page — switch to it first,
-        // then scroll+flash after the row has rendered.
-        const targetPage = Math.floor(idx / commitsPerPage);
-        setCommitsPage(targetPage);
-        setHighlightedCommit(target.full_hash);
-        window.clearTimeout(highlightTimer.current);
-        highlightTimer.current = window.setTimeout(() => setHighlightedCommit(null), 2000);
-        // Defer the scroll so the (possibly newly-paged) row exists in the DOM.
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            document
-                .getElementById(`commit-row-${target.full_hash}`)
-                ?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }));
-    }, [commits, commitsPerPage]);
+        if (local) { flashAndScroll(local.full_hash); return; }
+        try {
+            const { index } = await fetchJson<{ index: number }>(
+                `/api/projects/${projectId}/commits/${releaseHash}/index`,
+                undefined,
+                "Failed to locate commit",
+            );
+            // Remember the full hash to flash after the target page loads. The
+            // backend gives an index; the row id uses full_hash, which we'll have
+            // once the page arrives — so match on the release hash prefix then.
+            pendingScrollHash.current = releaseHash;
+            setCommitsPage(Math.floor(index / commitsPerPage));
+        } catch { /* commit not in history — nothing to jump to */ }
+    }, [commits, commitsPerPage, projectId, flashAndScroll]);
+
+    // Once a new commits page has loaded, resolve any pending release→commit
+    // jump: find the matching row on this page and flash it.
+    useEffect(() => {
+        const want = pendingScrollHash.current;
+        if (!want || commits.length === 0) return;
+        const target = commits.find(
+            (c) =>
+                c.full_hash === want ||
+                c.hash === want ||
+                c.full_hash.startsWith(want) ||
+                want.startsWith(c.hash),
+        );
+        if (target) {
+            pendingScrollHash.current = null;
+            flashAndScroll(target.full_hash);
+        }
+    }, [commits, flashAndScroll]);
 
     useEffect(() => () => window.clearTimeout(highlightTimer.current), []);
     // Single-commit diff: opens the modal against the commit's parent and
@@ -829,82 +865,50 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
         setSelectedCommits((previous) => previous.filter((hash) => currentHashes.has(hash)).slice(-2));
     }, [commits]);
 
-    // Releases + commits.
+    // Releases — fetched once per project (few, paged client-side).
     useEffect(() => {
         const controller = new AbortController();
-        setLoading(true);
-        setError(null);
-
-        // Fetch a generous window (backend caps at 500) and paginate client-side.
-        // Client-side paging keeps the release→commit jump trivial: the target's
-        // page is just its index / perPage, with no extra round-trips.
-        const commitsUrl = `/api/projects/${projectId}/commits?limit=500`;
-
-        const fetchHistory = async () => {
-            const [releasesResult, commitsResult] = await Promise.allSettled([
-                fetchJson<ReleasesResponse>(
-                    `/api/projects/${projectId}/releases`,
-                    { signal: controller.signal },
-                    "Failed to load releases"
-                ),
-                fetchJson<CommitsResponse>(
-                    commitsUrl,
-                    { signal: controller.signal },
-                    "Failed to load commits"
-                ),
-            ]);
-
-            if (controller.signal.aborted) {
-                return;
-            }
-
-            if (releasesResult.status === "fulfilled") {
-                setReleases(releasesResult.value.releases || []);
-            } else {
-                setReleases([]);
-            }
-
-            if (commitsResult.status === "fulfilled") {
-                setCommits(commitsResult.value.commits || []);
-            } else {
-                setCommits([]);
-            }
-
-            if (releasesResult.status === "rejected" && commitsResult.status === "rejected") {
-                const releaseMessage =
-                    releasesResult.reason instanceof Error ? releasesResult.reason.message : "Failed to load releases";
-                const commitMessage =
-                    commitsResult.reason instanceof Error ? commitsResult.reason.message : "Failed to load commits";
-                setError(`${releaseMessage}. ${commitMessage}`);
-            } else if (releasesResult.status === "rejected") {
-                const releaseMessage =
-                    releasesResult.reason instanceof Error ? releasesResult.reason.message : "Failed to load releases";
-                setError(releaseMessage);
-            } else if (commitsResult.status === "rejected") {
-                const commitMessage =
-                    commitsResult.reason instanceof Error ? commitsResult.reason.message : "Failed to load commits";
-                setError(commitMessage);
-            } else {
-                setError(null);
-            }
-
-            setLoading(false);
-        };
-
-        fetchHistory().catch((err: unknown) => {
-            if (controller.signal.aborted) {
-                return;
-            }
-            if (err instanceof DOMException && err.name === "AbortError") {
-                return;
-            }
-            console.error("Failed to fetch history", err);
-            setError("Failed to load history");
-            setLoading(false);
-        });
-
+        fetchJson<ReleasesResponse>(
+            `/api/projects/${projectId}/releases`,
+            { signal: controller.signal },
+            "Failed to load releases",
+        )
+            .then((r) => setReleases(r.releases || []))
+            .catch((e) => { if (!(e instanceof DOMException && e.name === "AbortError")) setReleases([]); });
         return () => controller.abort();
     }, [projectId]);
+
+    // Commits — one SERVER page at a time; re-fetches when the page or page size
+    // changes so arbitrarily long histories are reachable.
+    useEffect(() => {
+        const controller = new AbortController();
+        // Only show the big skeleton on the first load; page switches keep the
+        // list visible (they're quick).
+        setError(null);
+        const offset = commitsPage * commitsPerPage;
+        fetchJson<CommitsResponse & { total?: number }>(
+            `/api/projects/${projectId}/commits?limit=${commitsPerPage}&offset=${offset}`,
+            { signal: controller.signal },
+            "Failed to load commits",
+        )
+            .then((r) => {
+                if (controller.signal.aborted) return;
+                setCommits(r.commits || []);
+                if (typeof r.total === "number") setCommitsTotal(r.total);
+                setLoading(false);
+            })
+            .catch((e) => {
+                if (e instanceof DOMException && e.name === "AbortError") return;
+                console.error("Failed to fetch commits", e);
+                setCommits([]);
+                setError(e instanceof Error ? e.message : "Failed to load commits");
+                setLoading(false);
+            });
+        return () => controller.abort();
+    }, [projectId, commitsPage, commitsPerPage]);
+
+    // Reset to the first commits page when the project changes.
+    useEffect(() => { setCommitsPage(0); }, [projectId]);
 
     if (loading) {
         return (

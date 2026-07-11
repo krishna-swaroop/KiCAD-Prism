@@ -37,10 +37,16 @@ def _serialize_commit(commit) -> dict[str, Any]:
 
 
 def _get_commits(
-    repo_path: str, limit: int, relative_path: str = None, branch: str = None
+    repo_path: str,
+    limit: int,
+    relative_path: str = None,
+    branch: str = None,
+    skip: int = 0,
 ):
     repo = _open_repo(repo_path)
     iter_kwargs = {"max_count": limit}
+    if skip:
+        iter_kwargs["skip"] = skip
     if relative_path:
         iter_kwargs["paths"] = relative_path
 
@@ -123,13 +129,32 @@ def _kicad_change_flags(
 
 
 def get_commits_list_filtered(
-    repo_path: str, relative_path: str = None, limit: int = 50, branch: str = None
+    repo_path: str,
+    relative_path: str = None,
+    limit: int = 50,
+    branch: str = None,
+    skip: int = 0,
 ):
     """
     Get list of commits from repository, optionally filtered to a subdirectory
     and/or to a specific branch (or any other rev). Defaults to HEAD.
+    `skip` offsets into the history for pagination.
     """
-    return _get_commits(repo_path, limit, relative_path, branch)
+    return _get_commits(repo_path, limit, relative_path, branch, skip=skip)
+
+
+def count_commits(repo_path: str, relative_path: str = None, branch: str = None) -> int:
+    """Total number of commits reachable from HEAD (optionally path-filtered),
+    for pagination. Uses `git rev-list --count` — a single cheap call."""
+    repo = _open_repo(repo_path)
+    rev = branch if branch else "HEAD"
+    try:
+        args = ["--count", rev]
+        if relative_path:
+            args += ["--", relative_path]
+        return int(repo.git.rev_list(*args).strip() or "0")
+    except Exception:
+        return 0
 
 
 def _count_tree_entries(commit, relative_path: str) -> int | None:
@@ -255,11 +280,36 @@ def get_releases(repo_path: str):
     return _get_releases(repo_path)
 
 
-def get_commits_list(repo_path: str, limit: int = 50, branch: str = None):
+def get_commits_list(
+    repo_path: str, limit: int = 50, branch: str = None, skip: int = 0
+):
     """
     Get list of commits from repository, optionally for a specific branch.
+    `skip` offsets into the history for pagination.
     """
-    return _get_commits(repo_path, limit, branch=branch)
+    return _get_commits(repo_path, limit, branch=branch, skip=skip)
+
+
+def commit_index(
+    repo_path: str, commit_hash: str, relative_path: str = None, branch: str = None
+) -> int | None:
+    """0-based position of `commit_hash` in the HEAD history (how many commits
+    are newer than it), or None if it isn't reachable / not on the path filter.
+    Lets the client compute which page a commit lives on for pagination.
+
+    NOTE: when a relative_path filter is active the numeric page-index only lines
+    up with the (path-filtered) commit list if the commit itself touches that
+    path. `git rev-list --count HEAD ^<c> -- <path>` counts path-touching commits
+    newer than it, which is exactly the filtered-list index."""
+    repo = _open_repo(repo_path)
+    rev = branch if branch else "HEAD"
+    try:
+        args = ["--count", rev, f"^{commit_hash}"]
+        if relative_path:
+            args += ["--", relative_path]
+        return int(repo.git.rev_list(*args).strip() or "0")
+    except Exception:
+        return None
 
 
 def list_branches(repo_path: str) -> list[dict[str, Any]]:

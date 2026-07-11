@@ -39,6 +39,8 @@ from app.services.comments_url_service import (
     resolve_comments_base_url,
 )
 from app.services.git_service import (
+    commit_index,
+    count_commits,
     get_commit_distance,
     get_commit_file_summary,
     get_commits_list,
@@ -1199,21 +1201,48 @@ async def get_project_commit_distance(
 async def get_project_commits(
     project_id: str,
     limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
-    Get list of commits for a project.
-    For Type-2 projects, shows only commits affecting the subproject.
+    Get a page of commits for a project (server-side pagination).
+    `offset` skips that many commits from HEAD; `total` is the full count so the
+    client can render page controls. For Type-2 projects, only commits affecting
+    the subproject are considered.
     """
     project = get_project_for_role_or_404(project_id, user.role)
 
     repo_path, relative_path = _repo_context(project)
-    if relative_path:
-        commits = get_commits_list_filtered(repo_path, relative_path, limit)
-    else:
-        commits = get_commits_list(project.path, limit)
 
-    return {"commits": commits}
+    def _load() -> tuple[list, int]:
+        if relative_path:
+            rows = get_commits_list_filtered(
+                repo_path, relative_path, limit, skip=offset
+            )
+        else:
+            rows = get_commits_list(project.path, limit, skip=offset)
+        total = count_commits(repo_path, relative_path)
+        return rows, total
+
+    commits, total = await asyncio.to_thread(_load)
+    return {"commits": commits, "total": total, "offset": offset, "limit": limit}
+
+
+@router.get("/{project_id}/commits/{commit_hash}/index")
+async def get_project_commit_index(
+    project_id: str,
+    commit_hash: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """0-based position of a commit in the (path-filtered) HEAD history, so the
+    client can page directly to it — e.g. jumping from a release to its commit
+    when the commit lives beyond the currently loaded page."""
+    project = get_project_for_role_or_404(project_id, user.role)
+    repo_path, relative_path = _repo_context(project)
+    idx = await asyncio.to_thread(commit_index, repo_path, commit_hash, relative_path)
+    if idx is None:
+        raise HTTPException(status_code=404, detail="Commit not found in history")
+    return {"index": idx}
 
 
 # Bounded in-memory cache of expanded-commit summaries. A commit is immutable,
