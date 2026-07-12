@@ -51,6 +51,15 @@ export function useCrossProbeRunner() {
         if (!runId || runIdRef.current[targetContext] !== runId) return;
 
         viewer.setCrossProbeEnabled?.(true);
+        // The cross-probe API is optional on the viewer element — the Huaqiu
+        // base fork does not implement `requestCrossProbe`. Guard the call so a
+        // viewer without it degrades to a no-op instead of throwing (which, in a
+        // passive effect, blanks the whole page). No retry when the API is
+        // absent — retrying can't make a missing method appear.
+        if (typeof viewer.requestCrossProbe !== "function") {
+            clearRetry(targetContext);
+            return;
+        }
         const result = viewer.requestCrossProbe({
             sourceContext,
             targetContext,

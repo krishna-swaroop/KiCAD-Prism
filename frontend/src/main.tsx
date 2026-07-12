@@ -1,4 +1,3 @@
-import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
 import "./index.css"
@@ -13,8 +12,15 @@ if (!faviconLink.parentNode) {
   document.head.appendChild(faviconLink)
 }
 
+// TEMP [crash-diag] — surface any uncaught error/rejection with a full stack so
+// a blank-page crash prints its cause. Remove after diagnosing the tab-switch crash.
+window.addEventListener("error", (e) => {
+  console.error("[crash-diag] window error:", e.message, "\n", e.error?.stack ?? e.error ?? e);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("[crash-diag] unhandled rejection:", e.reason?.stack ?? e.reason ?? e);
+});
+
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
+  <App />
 )

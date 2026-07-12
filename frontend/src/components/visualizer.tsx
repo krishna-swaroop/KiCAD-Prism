@@ -24,6 +24,7 @@ import {
     useBoardClickFix,
     useEcadInfoPanel,
     useViewerHotkeys,
+    ViewerLoading,
 } from "./ecad-viewer-shared";
 
 const Model3DViewer = lazy(() =>
@@ -144,6 +145,17 @@ function CommitDiffOverlay({ markers, viewerRef }: {
     }, [startLoop]);
 
     useEffect(() => { startLoop(); }, [markers, startLoop]);
+
+    // Reposition on any camera move — including the post-load auto-fit, which
+    // emits no user event — via the viewer's camerachange event (same approach
+    // the diff overlays use).
+    useEffect(() => {
+        const viewer = viewerRef.current;
+        if (!viewer) return;
+        const onCam = () => startLoop();
+        viewer.addEventListener("camerachange", onCam);
+        return () => viewer.removeEventListener("camerachange", onCam);
+    }, [viewerRef, startLoop]);
 
     return (
         <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 15 }}>
@@ -758,33 +770,33 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                 return;
             }
 
-            const result = targetViewer.requestCrossProbe({
-                sourceContext,
-                targetContext,
-                mode: "select",
-                kind: "designator",
-                value: designator,
-                designator,
-            });
-
-            if (
-                !result.resolved &&
-                result.reason === "target-not-available" &&
-                attempts < CROSS_PROBE_MAX_RETRIES
-            ) {
-                crossProbeRetryTimerRef.current[targetContext] = window.setTimeout(() => {
-                    runCrossProbe(
-                        targetViewer,
-                        sourceContext,
-                        designator,
-                        attempts + 1,
-                        runId,
-                    );
-                }, CROSS_PROBE_RETRY_DELAY_MS);
+            // Use the viewer's crossProbe API (resolve designator -> focus +
+            // outline). Returns the settled camera on success, or null when the
+            // ref isn't on the current view yet (viewer still loading / on a
+            // different sheet) — in which case we retry briefly. Guarded because
+            // the API is optional on the viewer element.
+            if (typeof targetViewer.crossProbe !== "function") {
+                clearCrossProbeRetry(targetContext);
                 return;
             }
-
-            clearCrossProbeRetry(targetContext);
+            const capturedRunId = runId;
+            void targetViewer.crossProbe(designator).then((cam) => {
+                // Superseded by a newer probe — drop this result.
+                if (crossProbeRunIdRef.current[targetContext] !== capturedRunId) return;
+                if (!cam && attempts < CROSS_PROBE_MAX_RETRIES) {
+                    crossProbeRetryTimerRef.current[targetContext] = window.setTimeout(() => {
+                        runCrossProbe(
+                            targetViewer,
+                            sourceContext,
+                            designator,
+                            attempts + 1,
+                            capturedRunId,
+                        );
+                    }, CROSS_PROBE_RETRY_DELAY_MS);
+                    return;
+                }
+                clearCrossProbeRetry(targetContext);
+            });
         },
         [clearCrossProbeRetry, getCrossProbeTargetContext],
     );
@@ -934,7 +946,10 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
 
     // Lazy load schematic content when schematic tab is first accessed
     useEffect(() => {
-        if (activeTab === "sch" && !schematicContentLoaded) {
+        // Load eagerly (not gated on the active tab) so the schematic and PCB
+        // fetch in parallel on mount — switching tabs is then instant instead of
+        // triggering a fresh load. Mirrors how the diff viewer loads both sides.
+        if (!schematicContentLoaded) {
             // If we're in commit-view mode, diff effect handles content loading
             if (commit) return;
 
@@ -1007,11 +1022,12 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             return () => controller.abort();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, schematicContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
+    }, [schematicContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
 
-    // Lazy load PCB content when PCB tab is first accessed
+    // Load PCB content eagerly (in parallel with the schematic), not gated on the
+    // PCB tab being active, so switching to it is instant.
     useEffect(() => {
-        if (activeTab === "pcb" && !pcbContentLoaded) {
+        if (!pcbContentLoaded) {
             if (commit) return; // PCB content comes from pcbDiffData when in commit mode
 
             const controller = new AbortController();
@@ -1045,7 +1061,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
             return () => controller.abort();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, pcbContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
+    }, [pcbContentLoaded, projectId]); // commit intentionally omitted — diff mode is handled by a separate effect
 
     // Fetch schematic + PCB diffs when viewing a specific commit; also resets content state
     useEffect(() => {
@@ -1241,8 +1257,10 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
     }, [activeTab, commentMode, applyCommentModeToViewer]);
 
     useEffect(() => {
-        schematicViewerRef.current?.setCrossProbeEnabled(true);
-        pcbViewerRef.current?.setCrossProbeEnabled(true);
+        // setCrossProbeEnabled is optional — the Huaqiu base fork doesn't
+        // implement it (cross-probe is driven via viewer.crossProbe instead).
+        schematicViewerRef.current?.setCrossProbeEnabled?.(true);
+        pcbViewerRef.current?.setCrossProbeEnabled?.(true);
     }, [schematicViewerElement, pcbViewerElement]);
 
     useEffect(() => {
@@ -1340,12 +1358,17 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         const viewer = comment.context === "SCH" ? schematicViewerRef.current : pcbViewerRef.current;
         if (!viewer) return;
 
-        if (comment.context === "SCH" && comment.location.page) {
-            viewer.switchPage(comment.location.page);
-        }
-
-        if (viewer.zoomToLocation) {
-            viewer.zoomToLocation(comment.location.x, comment.location.y);
+        const doZoom = () => {
+            if (viewer.zoomToLocation) {
+                viewer.zoomToLocation(comment.location.x, comment.location.y);
+            }
+        };
+        if (comment.context === "SCH" && comment.location.page && viewer.showPage) {
+            // showPage resolves once the page is actually loaded, so the zoom
+            // lands on the right sheet instead of racing the page switch.
+            void viewer.showPage(comment.location.page).then(doZoom);
+        } else {
+            doZoom();
         }
     };
 
@@ -1507,7 +1530,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
         { id: "stackup", label: "Stackup", icon: LayoutList },
     ];
 
-    if (loading) return <div className="flex justify-center items-center h-full">Loading Visualizer...</div>;
+    if (loading) return <div className="relative h-full"><ViewerLoading label="Loading visualizer…" /></div>;
 
     return (
         <div className="flex flex-col h-full bg-background relative selection-none">
@@ -1725,9 +1748,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                             </div>
                         )
                     ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                            <p>Loading schematic...</p>
-                        </div>
+                        <ViewerLoading label="Loading schematic…" />
                     )}
                     {activeTab === "sch" && (
                         <EcadInfoPanel
@@ -1756,9 +1777,7 @@ export function Visualizer({ projectId, user, commit }: VisualizerProps) {
                             </div>
                         )
                     ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                            <p>Loading PCB...</p>
-                        </div>
+                        <ViewerLoading label="Loading PCB…" />
                     )}
                     {activeTab === "pcb" && (
                         <EcadInfoPanel

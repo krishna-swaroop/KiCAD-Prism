@@ -18,7 +18,13 @@ const VIEWER_BASE_CSS = `
     kc-board-properties-panel,
     kc-schematic-properties-panel,
     tab-view,
-    .bottom-left-badge {
+    tab-header,
+    .bottom-left-badge,
+    .bottom-left-icon,
+    /* The viewer's built-in spinner: we show our own <ViewerLoading> overlay
+       (dimmed backdrop + spinner) for the WHOLE load instead, so the two don't
+       both appear / hand off awkwardly. */
+    ecad-spinner {
         display: none !important;
     }
 
@@ -828,7 +834,14 @@ export function useEcadInfoPanel({ containerRef, viewerRefs, projectId }: UseEca
             ...viewerRefs.map(r => r.current as HTMLElement | null),
         ].filter(Boolean) as HTMLElement[];
         for (const t of targets) t.addEventListener("kicanvas:select", handler);
-        return () => { for (const t of targets) t.removeEventListener("kicanvas:select", handler); };
+        // Note: the fork re-emits selection as a composed+bubbling event on the
+        // <ecad-viewer> host, so it reaches both the host (viewerRefs) and the
+        // container. We intentionally do NOT listen on `document` — that would
+        // pick up selections from OTHER mounted viewers (new/old diff sides,
+        // sch+pcb tabs) and cross-populate this viewer's card.
+        return () => {
+            for (const t of targets) t.removeEventListener("kicanvas:select", handler);
+        };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [containerRef, ...viewerRefs.map(r => r.current)]);
 
@@ -932,10 +945,15 @@ function CatalogCrosslink({ libraryLink, assetType, footprintLink, projectId }: 
         if (previewOpen) { setScale(1); setOffset({ x: 0, y: 0 }); }
     }, [previewOpen]);
 
-    // When the asset-store preview also fails, extract from the project files via the backend.
+    // Extract the preview from the project files whenever the asset isn't in the
+    // catalog. We deliberately do NOT wait for the asset-store fallback <img> to
+    // 404 first: that fallback URL only exists when libraryLink has a
+    // "library:name" colon, so colon-less symbols never triggered it and simply
+    // rendered no preview at all. Firing on `entry === "not-found"` covers every
+    // case; if the fallback image does happen to load, displayUrl prefers it.
     // Deps intentionally omit inlineSvg/inlineLoading to avoid cancelling the in-flight fetch.
     useEffect(() => {
-        if (!previewFailed || !projectId || entry !== "not-found") return;
+        if (!projectId || entry !== "not-found") return;
         if (inlineFetchedRef.current) return;
         inlineFetchedRef.current = true;
         const colon = libraryLink.indexOf(":");
@@ -955,7 +973,7 @@ function CatalogCrosslink({ libraryLink, assetType, footprintLink, projectId }: 
             setInlineLoading(false);
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [previewFailed, projectId, entry]);
+    }, [projectId, entry]);
 
     const colon = libraryLink.indexOf(":");
     const assetLibrary = colon !== -1 ? libraryLink.slice(0, colon) : "";
@@ -1026,17 +1044,32 @@ function CatalogCrosslink({ libraryLink, assetType, footprintLink, projectId }: 
                                 <span>Extracting preview from file…</span>
                             </div>
                         )}
-                        {entry === "not-found" && previewFailed && !inlineSvg && !inlineLoading && (
-                            <p className="text-[11px] text-muted-foreground italic py-1">
-                                Not in catalog — <span className="font-mono">{libraryLink}</span>
-                            </p>
-                        )}
-                        {entry === "not-found" && inlineSvg && (
+                        {entry === "not-found" && (
                             <>
-                                <p className="text-[11px] text-muted-foreground italic py-0.5">
-                                    Extracted from file — <span className="font-mono">{libraryLink}</span>
-                                </p>
-                                {projectId && (
+                                {/* Status line: the preview is a nice-to-have, so its
+                                    absence must not block adding. Show whichever state
+                                    we're in without gating the button below on it. */}
+                                {inlineSvg ? (
+                                    <p className="text-[11px] text-muted-foreground italic py-0.5">
+                                        Extracted from file — <span className="font-mono">{libraryLink}</span>
+                                    </p>
+                                ) : !inlineLoading && (
+                                    <p className="text-[11px] text-muted-foreground italic py-1">
+                                        Not in catalog — <span className="font-mono">{libraryLink}</span>
+                                    </p>
+                                )}
+                                {/* The item is genuinely not in the catalog, so always
+                                    offer to add it as long as we have a project and a
+                                    non-empty library link. We deliberately do NOT require
+                                    a "library:name" colon: some symbols (seen in schematic
+                                    libraries) carry a bare lib_id with no library prefix,
+                                    which still marks the item not-found but previously hid
+                                    the Add button (the CIIA-schematic case). The prefill's
+                                    `name` falls back to the whole link when there's no
+                                    colon. Also previously this was coupled to a successful
+                                    inline-SVG extraction, hiding the button for parts with
+                                    no extractable preview. */}
+                                {projectId && libraryLink.trim() !== "" && (
                                     <button
                                         onClick={() => {
                                             const colon = libraryLink.indexOf(":");
@@ -1168,6 +1201,38 @@ export function EcadInfoPanel({ detail, onClose, position = "top-right" }: EcadI
 }
 
 // ---------------------------------------------------------------------------
+// ViewerLoading / ViewerError — unified viewer status overlays
+// ---------------------------------------------------------------------------
+//
+// A single spinner/error treatment shared by every viewer surface (the sch/pcb
+// diff viewers and the standalone visualizer) so the loading experience is
+// identical everywhere. Rendered as an absolute overlay inside the viewer's
+// relatively-positioned container.
+
+export function ViewerLoading({ label = "Loading…" }: { label?: string }) {
+    return (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-40">
+            <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">{label}</p>
+            </div>
+        </div>
+    );
+}
+
+export function ViewerError({ label, hint }: { label: string; hint?: string }) {
+    return (
+        <div className="absolute inset-0 flex items-center justify-center z-40">
+            <div className="flex flex-col items-center gap-3 text-center">
+                <XIcon className="h-8 w-8 text-destructive" />
+                <p className="text-sm text-destructive">{label}</p>
+                {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+            </div>
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
 // EcadViewerHost — unified ecad-viewer mounter
 // ---------------------------------------------------------------------------
 //
@@ -1250,7 +1315,14 @@ type LayerWithDraw = {
 type DrawableViewer = {
     layers?: { in_ui_order?: () => Iterable<LayerWithDraw> };
     draw?: () => void;
+    // NOTE: `layer_visibility_ctrl` is SETTER-ONLY in the fork — reading it
+    // returns undefined. Writes to `.visibilities` on the read result are lost.
+    // To read/mutate the live visibility map, go through the `layer_visibility`
+    // GETTER (returns the ctrl's visibilities Map, or null). The hit-test
+    // (hover/click) and net isolation both read this map, so the layers panel
+    // MUST update it here for hidden layers to stop being interactive.
     layer_visibility_ctrl?: { visibilities?: Map<string, boolean> } | null;
+    layer_visibility?: Map<string, boolean> | null;
     board?: {
         nets?: NetInfo[];
         footprints?: FootprintInfo[];
@@ -1446,8 +1518,10 @@ function LayersPanel({
         for (const l of inner.layers.in_ui_order()) {
             if (l.name === name) {
                 l.visible = !l.visible;
-                const ctrl = inner.layer_visibility_ctrl;
-                if (ctrl?.visibilities) ctrl.visibilities.set(l.name, l.visible);
+                // Update the LIVE visibility map (read via the getter — the
+                // ..._ctrl property is setter-only and reads as undefined) so the
+                // hover/click hit-test and net isolation see the change.
+                inner.layer_visibility?.set(l.name, l.visible);
                 inner.draw?.();
                 setLayers(prev => prev.map(l => l.name === name ? { ...l, visible: !l.visible } : l));
                 break;
@@ -1741,7 +1815,8 @@ function setAllLayerVisibility(
     if (!inner?.layers?.in_ui_order) return;
     for (const l of inner.layers.in_ui_order()) {
         l.visible = visible;
-        inner.layer_visibility_ctrl?.visibilities?.set(l.name, visible);
+        // Live map via the getter (setter-only ..._ctrl reads as undefined).
+        inner.layer_visibility?.set(l.name, visible);
     }
     inner.draw?.();
     setLayers(prev => prev.map(l => ({ ...l, visible })));
@@ -1756,7 +1831,8 @@ function applyPreset(
     if (!inner?.layers?.in_ui_order) return;
     for (const l of inner.layers.in_ui_order()) {
         l.visible = preset.test(l.name);
-        inner.layer_visibility_ctrl?.visibilities?.set(l.name, l.visible);
+        // Live map via the getter (setter-only ..._ctrl reads as undefined).
+        inner.layer_visibility?.set(l.name, l.visible);
     }
     inner.draw?.();
     setLayers(prev => prev.map(l => ({ ...l, visible: preset.test(l.name) })));
@@ -1928,6 +2004,43 @@ export const OVERLAY_FRAMES = {
     /** PCB only — when the shown version / svg group set changes. */
     GROUP_CHANGE: 5,
 } as const;
+
+// ---------------------------------------------------------------------------
+// FpsMeter — TEMP diagnostic. Renders a small live FPS readout in the corner
+// of the viewer. Measures the browser's actual frame cadence (a proxy for
+// main-thread health during pan/zoom). Enable by setting
+// localStorage["kicad-prism:fps"] = "1". Remove after diagnosing the FPS drop.
+// ---------------------------------------------------------------------------
+export function FpsMeter() {
+    const enabled = (() => {
+        try { return localStorage.getItem("kicad-prism:fps") === "1"; } catch { return false; }
+    })();
+    const [fps, setFps] = useState(0);
+    useEffect(() => {
+        if (!enabled) return;
+        let raf = 0;
+        let last = performance.now();
+        let frames = 0;
+        let acc = 0;
+        const tick = (now: number) => {
+            const dt = now - last; last = now; acc += dt; frames++;
+            if (acc >= 500) { setFps(Math.round((frames * 1000) / acc)); frames = 0; acc = 0; }
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [enabled]);
+    if (!enabled) return null;
+    const color = fps >= 50 ? "#22c55e" : fps >= 30 ? "#f59e0b" : "#ef4444";
+    return (
+        <div style={{
+            position: "absolute", top: 6, left: 6, zIndex: 50,
+            font: "600 12px ui-monospace, monospace", color,
+            background: "rgba(0,0,0,0.6)", padding: "2px 6px", borderRadius: 4,
+            pointerEvents: "none",
+        }}>{fps} fps</div>
+    );
+}
 
 // ---------------------------------------------------------------------------
 // useViewerReadiness — true once the underlying ecad-viewer is safe to drive
@@ -2157,6 +2270,9 @@ type InteractiveItem = {
 type InnerBoardViewer = {
     viewport?: unknown;
     layers?: LayerSet;
+    /** Fork opt-in: a multi-item click selects the best-priority item instead
+     *  of popping the (host-hidden) disambiguation menu. See useBoardClickFix. */
+    auto_select_single?: boolean;
     /**
      * NOTE: kicanvas exposes this as a SETTER ONLY (no public getter). Reading
      * it always returns undefined; the underlying `#r` field is private. Use
@@ -2212,6 +2328,14 @@ export function useBoardClickFix({ viewerRefs, rebindKey }: UseBoardClickFixOpts
             if (!inner) return false;
             const layers = inner.layers?.in_ui_order ? Array.from(inner.layers.in_ui_order()) : [];
             if (layers.length === 0) return false;
+
+            // (0) Opt into single-select on multi-item clicks. We priority-sort
+            // find_items_under_pos below (pads → footprints → lines), and our
+            // React UI hides kicanvas's disambiguation pop-menu, so a multi-item
+            // click would otherwise dispatch a null selection + a menu nobody
+            // sees — the "hover shows a box but click does nothing" bug. With
+            // this flag the fork selects items[0] (our best pick) instead.
+            inner.auto_select_single = true;
 
             // (1) Ensure the layer_visibility map exists.
             //

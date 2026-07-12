@@ -46,14 +46,40 @@ export interface KiCanvasSelectDetail {
     sourceContext?: CrossProbeContext;
 }
 
+/** Value-based camera state from <ecad-viewer> (world center + zoom + rotation). */
+export interface CameraState {
+    x: number;
+    y: number;
+    zoom: number;
+    rotation: number;
+}
+
 export interface ECadViewerElement extends HTMLElement {
     setCommentMode(enabled: boolean): void;
     zoomToLocation(x: number, y: number): void;
+    /** Resolves once the project has loaded (parse + first paint). */
+    readonly ready: Promise<void>;
+    /** Switch schematic page and resolve once it's actually loaded. Awaits
+        readiness first, and reconciles against any post-load auto-load. */
+    showPage(pageId: string): Promise<void>;
+    /** Back-compat fire-and-forget page switch. Prefer showPage(). */
     switchPage(pageId: string): void;
     getScreenLocation(x: number, y: number): { x: number; y: number } | null;
-    setCrossProbeEnabled(enabled: boolean): void;
-    isCrossProbeEnabled(): boolean;
-    requestCrossProbe(request: CrossProbeRequest): CrossProbeResult;
+    // Cross-probe API is OPTIONAL — the Huaqiu base fork does not implement it.
+    // Callers must guard (typeof viewer.requestCrossProbe === "function").
+    setCrossProbeEnabled?(enabled: boolean): void;
+    isCrossProbeEnabled?(): boolean;
+    requestCrossProbe?(request: CrossProbeRequest): CrossProbeResult;
+    /** Active tab's camera as a plain value, or null before load. Settable. */
+    camera: CameraState | null;
+    /** Fit the active viewer to a world-space bbox; resolves the settled camera. */
+    focusBBox(x: number, y: number, w: number, h: number): Promise<CameraState | null>;
+    /** Focus an item by uuid (resolve bbox + fit, optional select); resolves the
+        settled camera or null if the item can't be resolved. */
+    focusItem(uuid: string, opts?: { select?: boolean; pad?: number }): Promise<CameraState | null>;
+    /** Cross-probe: focus + outline the component with this reference/uuid in the
+        active viewer; resolves the settled camera, or null if not on this view. */
+    crossProbe(reference: string): Promise<CameraState | null>;
 }
 
 declare global {
@@ -65,6 +91,7 @@ declare global {
         "ecad-viewer:crossprobe:request": CustomEvent<CrossProbeRequest>;
         "ecad-viewer:crossprobe:result": CustomEvent<CrossProbeResult>;
         "kicanvas:select": CustomEvent<KiCanvasSelectDetail>;
+        "camerachange": CustomEvent<CameraState>;
     }
 
     namespace JSX {

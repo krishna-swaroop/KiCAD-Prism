@@ -11,15 +11,16 @@ import {
     COMMON_HOTKEYS,
     EcadInfoPanel,
     EcadViewerHost,
+    FpsMeter,
     HotkeysLegend,
     OVERLAY_FRAMES,
     useBoardClickFix,
     useEcadInfoPanel,
     useViewerHotkeys,
     useViewerReadiness,
+    ViewerLoading,
 } from "@/components/ecad-viewer-shared";
 import { CATEGORY_META, type Category } from "@/lib/diff-grouping";
-import { useCrossProbeRunner } from "@/lib/cross-probe-retry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -626,6 +627,14 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
         return () => svg.removeEventListener("wheel", handler);
     }, [dispatchWheel]);
 
+    // Cache of ref → world-space footprint bbox. The bbox is in world coords
+    // (independent of camera), so it never changes while the board is loaded —
+    // but findFootprint() walks the board's footprint list, which was being
+    // done PER GROUP PER FRAME during pan (O(groups × footprints) = the main
+    // FPS killer). Cache it; invalidate when the board (data) changes.
+    const fpBBoxCache = useRef<Map<string, { x: number; y: number; w: number; h: number } | null>>(new Map());
+    useEffect(() => { fpBBoxCache.current.clear(); }, [showing]);
+
     const updatePositions = useCallback((): boolean => {
         const viewer = viewerRef.current;
         const container = containerRef.current;
@@ -714,9 +723,16 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
                     const fpRef = useOld
                         ? (fpMember?.old_item?.reference ?? fpMember?.old_item?.uuid ?? fpMember?.item.reference ?? "")
                         : (fpMember?.item.reference ?? fpMember?.item.uuid ?? "");
-                    const fpBBox = g.category === "components"
-                        ? findFootprint?.(fpRef)?.bbox ?? null
-                        : null;
+                    // Cached ref→bbox lookup (world coords are camera-independent).
+                    let fpBBox: FootprintBBox | null = null;
+                    if (g.category === "components" && fpRef) {
+                        if (fpBBoxCache.current.has(fpRef)) {
+                            fpBBox = fpBBoxCache.current.get(fpRef) ?? null;
+                        } else {
+                            fpBBox = findFootprint?.(fpRef)?.bbox ?? null;
+                            fpBBoxCache.current.set(fpRef, fpBBox);
+                        }
+                    }
                     if (fpBBox) {
                         const tl = toContainerPt(fpBBox.x, fpBBox.y);
                         const br = toContainerPt(fpBBox.x + fpBBox.w, fpBBox.y + fpBBox.h);
@@ -796,31 +812,18 @@ function DiffOverlay({ groups, viewerRef, containerRef, getBoardEl, onGroupClick
 
     useEffect(() => { kick(OVERLAY_FRAMES.LOAD); }, [groups, kick]);
 
-    // Hook into kicanvas's on_viewport_change so the overlay refreshes whenever
-    // the camera moves — including the post-load auto-fit, which doesn't emit
-    // a DOM panzoom event and would otherwise leave boxes stranded at stale
-    // coordinates until the user interacts.
+    // Refresh the overlay whenever the camera moves. The viewer emits a
+    // `camerachange` event on the host (composed) for every camera move —
+    // including the post-load auto-fit — so we listen for that instead of
+    // monkey-patching the inner viewer's on_viewport_change through the shadow
+    // DOM (which also needed a 200ms retry poll to find it).
     useEffect(() => {
-        let stopped = false;
-        const tryHook = () => {
-            if (stopped) return;
-            const host = viewerRef.current;
-            const inner = host ? (getBoardEl(host) as (BoardEl & { viewer?: { on_viewport_change?: () => void; __overlayKickHooked?: boolean } }) | null)?.viewer : null;
-            if (!inner || typeof inner.on_viewport_change !== "function") {
-                window.setTimeout(tryHook, 200);
-                return;
-            }
-            if (inner.__overlayKickHooked) return;
-            const orig = inner.on_viewport_change.bind(inner);
-            inner.on_viewport_change = function () {
-                orig();
-                kick(OVERLAY_FRAMES.VIEWPORT);
-            };
-            inner.__overlayKickHooked = true;
-        };
-        tryHook();
-        return () => { stopped = true; };
-    }, [viewerRef, getBoardEl, kick]);
+        const host = viewerRef.current;
+        if (!host) return;
+        const onCam = () => kick(OVERLAY_FRAMES.VIEWPORT);
+        host.addEventListener("camerachange", onCam);
+        return () => host.removeEventListener("camerachange", onCam);
+    }, [viewerRef, kick]);
 
     // Groups rendered as individual SVG geometries (net tracks + vias)
     // vs. groups still using a bbox div (footprints, gr_* graphics)
@@ -1233,6 +1236,10 @@ export function PcbDiffViewer({
 }: PcbDiffViewerProps) {
     const [data, setData] = useState<PcbDiffData | null>(null);
     const [loading, setLoading] = useState(true);
+    // True while the full structural diff (the change markers / sidebar list) is
+    // still computing after the manifest has mounted the board. The board paints
+    // from the fast manifest first; changes stream in a beat later.
+    const [changesLoading, setChangesLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const [showing, setShowing] = useState<"new" | "old">("new");
@@ -1260,6 +1267,8 @@ export function PcbDiffViewer({
     const oldViewerRef = useRef<ECadViewerElement | null>(null);
     const viewerRef = showing === "new" ? newViewerRef : oldViewerRef;
     const overlayKickRef = useRef<((frames?: number) => void) | null>(null);
+    // Starts the camera-impose rAF loop on demand (only while imposing).
+    const startImposeLoopRef = useRef<(() => void) | null>(null);
     const viewerContainerRef = useRef<HTMLDivElement | null>(null);
 
     const boardElCache = useRef<WeakMap<ECadViewerElement, BoardEl>>(new WeakMap());
@@ -1300,15 +1309,6 @@ export function PcbDiffViewer({
         return result;
     }, []);
 
-    const getCamera = useCallback((host: ECadViewerElement): Camera | null => {
-        return getBoardEl(host)?.viewer?.viewport?.camera ?? null;
-    }, [getBoardEl]);
-
-    const safeDraw = useCallback((host: ECadViewerElement) => {
-        const inner = getBoardEl(host)?.viewer;
-        if (inner?.renderer?.gl) inner.draw?.();
-    }, [getBoardEl]);
-
     // PCB-only click hit-testing fixes (layer-visibility map + pad-priority).
     // Re-applies whenever the diff payload changes (new viewer instances).
     useBoardClickFix({ viewerRefs: [newViewerRef, oldViewerRef], rebindKey: data });
@@ -1319,24 +1319,43 @@ export function PcbDiffViewer({
     const showingRef = useRef(showing);
     useEffect(() => { showingRef.current = showing; }, [showing]);
 
+    // Camera-impose loop. Previously this ran a permanent requestAnimationFrame
+    // for the whole lifetime of the (always-mounted) viewer — 60 fps of
+    // getCamera() shadow-DOM walks even when nothing was being imposed, on BOTH
+    // the sch and pcb viewers, competing with the parse/paint during load. Now
+    // the rAF only spins while an impose is actually active (set on toggle) and
+    // stops itself as soon as the user interacts, so it costs nothing during
+    // load or idle.
     useEffect(() => {
         let raf = 0;
+        // The impose loop only exists to defeat the viewer's own post-flip
+        // auto-fit, which happens within a few frames of the visibility toggle.
+        // It is TIME-CAPPED (not "until interaction") so it can never keep
+        // fighting a later user pan/zoom — the previous unbounded version made
+        // scroll jitter "back and forth" because it kept re-imposing the old
+        // camera. ~600ms comfortably covers the settle.
+        const IMPOSE_MS = 600;
+        let deadline = 0;
         const tick = () => {
             const impose = imposeCamRef.current;
-            if (impose) {
-                const activeRef = showingRef.current === "new" ? newViewerRef : oldViewerRef;
-                const host = activeRef.current;
-                const cam = host ? getCamera(host) : null;
-                if (cam && host) {
-                    cam.zoom = impose.zoom;
-                    cam.center.set(impose.cx, impose.cy);
-                    safeDraw(host);
-                }
+            if (!impose || performance.now() > deadline) { imposeCamRef.current = null; raf = 0; return; }
+            const activeRef = showingRef.current === "new" ? newViewerRef : oldViewerRef;
+            const host = activeRef.current;
+            const cur = host?.camera;
+            // Re-write via the camera API (no shadow walk / manual draw).
+            if (host && cur) {
+                host.camera = { x: impose.cx, y: impose.cy, zoom: impose.zoom, rotation: cur.rotation };
             }
             raf = requestAnimationFrame(tick);
         };
-        raf = requestAnimationFrame(tick);
+        // Expose a starter the toggle path calls when it sets imposeCamRef.
+        startImposeLoopRef.current = () => {
+            deadline = performance.now() + IMPOSE_MS;
+            if (raf === 0 && imposeCamRef.current) raf = requestAnimationFrame(tick);
+        };
 
+        // Any user interaction releases the impose immediately (belt-and-braces
+        // on top of the time cap).
         const release = () => { imposeCamRef.current = null; };
         const container = viewerContainerRef.current;
         container?.addEventListener("pointerdown", release);
@@ -1344,30 +1363,29 @@ export function PcbDiffViewer({
 
         return () => {
             if (raf) cancelAnimationFrame(raf);
+            startImposeLoopRef.current = null;
             container?.removeEventListener("pointerdown", release);
             container?.removeEventListener("wheel", release);
         };
-
-    }, [getCamera, safeDraw]);
+        // Uses only refs + the camera API now — no reactive deps.
+    }, []);
 
     const handleToggle = useCallback((next: "new" | "old") => {
         if (next === showing) return;
         const fromRef = showing === "new" ? newViewerRef : oldViewerRef;
         const toRef   = showing === "new" ? oldViewerRef : newViewerRef;
-        const cam = fromRef.current ? getCamera(fromRef.current) : null;
+        // Copy the visible viewer's camera onto the target via the value-based
+        // camera API — no shadow-DOM walk, no manual Camera2/Vec2 poking. The
+        // impose loop below keeps re-writing it briefly so the target viewer's
+        // post-flip auto-fit can't override before it settles.
+        const cam = fromRef.current?.camera ?? null;
         if (cam) {
-            const state = { zoom: cam.zoom, cx: cam.center.x, cy: cam.center.y };
-            imposeCamRef.current = state;
-            const toHost = toRef.current;
-            const toCam  = toHost ? getCamera(toHost) : null;
-            if (toCam && toHost) {
-                toCam.zoom = state.zoom;
-                toCam.center.set(state.cx, state.cy);
-                safeDraw(toHost);
-            }
+            imposeCamRef.current = { zoom: cam.zoom, cx: cam.x, cy: cam.y };
+            startImposeLoopRef.current?.();
+            if (toRef.current) toRef.current.camera = cam;
         }
         setShowing(next);
-    }, [showing, getCamera, safeDraw]);
+    }, [showing]);
 
     const [activeBoard, setActiveBoard] = useState<string>("");
 
@@ -1375,35 +1393,89 @@ export function PcbDiffViewer({
     const { detail: selectedDetail, clear: clearSelectedDetail } = useEcadInfoPanel({
         containerRef: viewerContainerRef,
         viewerRefs: viewerRefsArr,
+        // Needed by the info card's library crosslink: without it the inline
+        // preview can't be extracted from the project files and the "Add to
+        // Library Manager" button can't be offered (both are gated on projectId).
+        projectId,
     });
 
+    // Two-phase fetch (see SchematicDiffViewer for the full rationale):
+    //   1. manifest_only=true → board LIST only (no parse) near-instantly, so the
+    //      viewer starts fetching + worker-parsing the (multi-MB) board right away.
+    //   2. full diff fetched in parallel; its markers are MERGED into the existing
+    //      board objects (keyed by rel_path) without changing the board-list
+    //      signature, so the in-flight fetch/parse of the board isn't restarted.
     useEffect(() => {
         setLoading(true);
+        setChangesLoading(true);
         setError(null);
-        const params = new URLSearchParams({ commit1, commit2, parser });
-        try {
-            if (localStorage.getItem("kicad-prism:diff:track-net-names") === "true") {
-                params.set("track_net_names", "true");
-            }
-        } catch { /* ignore */ }
-        // include_content=false: the diff payload carries only the change list
-        // + rel_path; board files are lazy-fetched separately from the
-        // cacheable per-commit file endpoint (see the board-content effect).
-        params.set("include_content", "false");
-        fetch(`/api/projects/${projectId}/pcb-diff?${params}`)
+        let cancelled = false;
+
+        const baseParams = () => {
+            const p = new URLSearchParams({ commit1, commit2, parser });
+            try {
+                if (localStorage.getItem("kicad-prism:diff:track-net-names") === "true") {
+                    p.set("track_net_names", "true");
+                }
+            } catch { /* ignore */ }
+            // include_content=false: board files lazy-fetched separately (below).
+            p.set("include_content", "false");
+            return p;
+        };
+
+        // Phase 1 — manifest (fast): mounts the viewer.
+        const manifestParams = baseParams();
+        manifestParams.set("manifest_only", "true");
+        const manifestP = fetch(`/api/projects/${projectId}/pcb-diff?${manifestParams}`)
             .then((r) => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
                 return r.json() as Promise<PcbDiffData>;
             })
             .then((d) => {
+                if (cancelled) return;
                 setData(d);
                 if (d.boards.length > 0) setActiveBoard(d.boards[0].filename);
                 setLoading(false);
-            })
-            .catch((e: unknown) => {
-                setError(e instanceof Error ? e.message : "Failed to load diff");
-                setLoading(false);
             });
+
+        // Phase 2 — full structural diff (parses server-side): merge markers in.
+        // Deferred until AFTER the manifest resolves so this slow (~6s) request
+        // never holds an HTTP/1.1 connection that would queue the fast manifest
+        // (and the board-file fetches) behind it in the browser. The full diff
+        // only feeds overlay markers, which are fine to arrive a beat later.
+        const fullP = manifestP
+            .then(() => (cancelled ? null : fetch(`/api/projects/${projectId}/pcb-diff?${baseParams()}`)))
+            .then((r) => {
+                if (!r) return null;
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json() as Promise<PcbDiffData>;
+            })
+            .then((full) => {
+                if (!full) return;
+                if (cancelled) return;
+                const byPath = new Map(full.boards.map(b => [b.rel_path, b]));
+                setData(prev => {
+                    if (!prev) return full;
+                    return {
+                        ...prev,
+                        boards: prev.boards.map(b => {
+                            const f = byPath.get(b.rel_path);
+                            return f ? { ...b, diff: f.diff, has_old: f.has_old, has_new: f.has_new } : b;
+                        }),
+                    };
+                });
+                setChangesLoading(false);
+            });
+
+        manifestP.catch((e: unknown) => {
+            if (cancelled) return;
+            void fullP.catch(() => {});
+            setError(e instanceof Error ? e.message : "Failed to load diff");
+            setLoading(false);
+        });
+        fullP.catch(() => { if (!cancelled) setChangesLoading(false); /* non-fatal: overlay stays empty */ });
+
+        return () => { cancelled = true; };
     }, [projectId, commit1, commit2, parser]);
 
     // Lazy-fetched board file contents, keyed `${side}:${filename}`. Populated
@@ -1415,8 +1487,54 @@ export function PcbDiffViewer({
         setBoardContent({});
     }, [commit1, commit2]);
 
+    // Stable signature of the board LIST (paths + presence), independent of the
+    // diff markers — the board-content fetch/parse effect keys on this so merging
+    // the late full-diff doesn't restart the in-flight parse. (See sch viewer.)
+    const boardManifestSig = useMemo(
+        () =>
+            (data?.boards ?? [])
+                .map(b => `${b.rel_path}:${b.has_new ? 1 : 0}${b.has_old ? 1 : 0}`)
+                .join("|"),
+        [data],
+    );
+
+    // Load (fetch + worker-parse) the board — in the BACKGROUND even while this
+    // tab is hidden. Parsing a 9 MB board runs entirely in a Web Worker (see
+    // project.ts worker pool), so it no longer blocks the visible tab's main
+    // thread; and the viewer's paint can build its WebGL geometry while hidden.
+    // The only thing that must wait for the tab to be visible is the final
+    // zoom-fit + first draw, which is gated by viewport.ready (canvas needs a
+    // non-zero size). Net effect: by the time the user switches to the PCB tab,
+    // the board is already parsed AND painted — it becomes interactive in ~one
+    // frame instead of paying the full ~3s parse + mount after the click.
+    //
+    // When this tab is NOT active we defer the start briefly so the visible tab
+    // gets first claim on the shared worker pool for its own initial paint; the
+    // PCB then parses in the slack behind it.
+    // Armed once we decide to load (immediately when active, or after a short
+    // yield when backgrounded). The actual fetch effect below keys on this.
+    const [bgLoadArmed, setBgLoadArmed] = useState(false);
+    useEffect(() => { setBgLoadArmed(false); }, [boardManifestSig]);
+
     useEffect(() => {
         if (!data) return;
+        // The PCB is the SLOW, high-priority item (multi-second parse). Start it
+        // in the background immediately — even when hidden — so it runs
+        // CONCURRENTLY with the (fast, ~0.5s) schematic parsing rather than
+        // queuing behind it. A tiny yield (one macrotask) lets the initial React
+        // commit finish first, but we do NOT wait ~400ms as before, which was
+        // pushing the heavy PCB parse to start only after the schematic drained
+        // the worker pool — making the PCB ready at ~7s instead of ~5s.
+        if (!active) {
+            const startTimer = window.setTimeout(() => setBgLoadArmed(true), 0);
+            return () => window.clearTimeout(startTimer);
+        }
+        setBgLoadArmed(true);
+        return;
+    }, [data, active]);
+
+    useEffect(() => {
+        if (!data || !bgLoadArmed) return;
         const controller = new AbortController();
         const fetchSide = async (side: "new" | "old", commit: string, board: BoardData) => {
             const key = `${side}:${board.filename}`;
@@ -1428,10 +1546,18 @@ export function PcbDiffViewer({
         };
         for (const board of data.boards) {
             if (board.has_new) void fetchSide("new", data.commit1, board).catch(() => {});
-            if (board.has_old) void fetchSide("old", data.commit2, board).catch(() => {});
+            // In single-commit mode only the "new" side is ever displayed, so
+            // skip the (multi-MB) old-side git read entirely — it was doubling
+            // the board fetch/parse work for nothing.
+            if (!singleCommit && board.has_old) void fetchSide("old", data.commit2, board).catch(() => {});
         }
         return () => controller.abort();
-    }, [data, projectId]);
+    // Keyed on the board-list SIGNATURE + bgLoadArmed (NOT `active`): the board
+    // now loads in the background so it's ready before the tab is shown. Merging
+    // the late full-diff changes `diff` but not the list, so the in-flight parse
+    // is not restarted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [boardManifestSig, projectId, bgLoadArmed, singleCommit]);
 
     const activeBoardData = data?.boards.find(b => b.filename === activeBoard) ?? null;
 
@@ -1558,34 +1684,23 @@ export function PcbDiffViewer({
     const zoomToGroupOn = useCallback((g: GroupedMarker, target: "new" | "old") => {
         const ref = target === "new" ? newViewerRef : oldViewerRef;
         const viewer = ref.current;
-        if (!viewer) return;
-        const camera = getCamera(viewer);
-        if (!camera) return;
+        if (!viewer?.focusBBox) return;
         const pad = 10;
-        // Drop any existing impose so the bbox math runs against the camera's
-        // own settle. Re-engage after the viewer has recomputed zoom/center.
+        // Drop any existing impose so the fit runs against the camera's own
+        // settle; re-engage with the SETTLED camera the API resolves for us.
         imposeCamRef.current = null;
-        camera.bbox = {
-            x: g.bboxMinX - pad, y: g.bboxMinY - pad,
-            w: (g.bboxMaxX - g.bboxMinX) + pad * 2,
-            h: (g.bboxMaxY - g.bboxMinY) + pad * 2,
-        };
-        safeDraw(viewer);
-        // The bbox setter schedules the zoom/center resolution for the next
-        // paint — reading camera.zoom/center *now* gives stale values (often
-        // zoom=1, which is what made the toggle look "miniscule"). Wait one
-        // rAF, then sample the resolved camera and lock it.
-        requestAnimationFrame(() => {
-            const cam = getCamera(viewer);
+        void viewer.focusBBox(
+            g.bboxMinX - pad,
+            g.bboxMinY - pad,
+            (g.bboxMaxX - g.bboxMinX) + pad * 2,
+            (g.bboxMaxY - g.bboxMinY) + pad * 2,
+        ).then((cam) => {
             if (!cam) return;
-            imposeCamRef.current = {
-                zoom: cam.zoom,
-                cx: cam.center.x,
-                cy: cam.center.y,
-            };
+            imposeCamRef.current = { zoom: cam.zoom, cx: cam.x, cy: cam.y };
+            startImposeLoopRef.current?.();
         });
         overlayKickRef.current?.(OVERLAY_FRAMES.ZOOM_TO);
-    }, [getCamera, safeDraw]);
+    }, []);
 
     const handleGroupClick = useCallback((g: GroupedMarker) => {
         // If this is a per-segment overlay sub-group, resolve to the parent net group.
@@ -1633,23 +1748,6 @@ export function PcbDiffViewer({
         handleGroupClick(group);
     }, [focusTarget, activeBoard, newReady, oldReady, allGroups, handleGroupClick]);
 
-    // Diagnostic safety net (option C): if everything except readiness is in
-    // place after 8s of waiting, log which signal is missing. No best-effort
-    // click — we don't want to fire against a viewer that genuinely isn't ready.
-    useEffect(() => {
-        if (!focusTarget) return;
-        if (focusFiredRef.current === focusTarget.uuid) return;
-        const t = window.setTimeout(() => {
-            if (focusFiredRef.current === focusTarget.uuid) return;
-
-            console.warn("[pcb-diff] focus stalled — target:", focusTarget,
-                "activeBoard:", activeBoard,
-                "newReady:", newReady, "oldReady:", oldReady,
-                "groupFound:", allGroups.some(g => g.members.some(m => m.item.uuid === focusTarget.uuid)));
-        }, 8000);
-        return () => window.clearTimeout(t);
-    }, [focusTarget, activeBoard, newReady, oldReady, allGroups]);
-
     // Fire onCrossProbe when the user selects an item.
     // kicanvas:select bubbles+composed so it reaches the container div.
     const onCrossProbeRef = useRef(onCrossProbe);
@@ -1668,11 +1766,9 @@ export function PcbDiffViewer({
     }, []);
 
     // Navigate to a reference when cross-probed from the schematic / BOM viewer.
-    // Gated on (a) the tab being active (canvas visible & sized) and
-    // (b) the side-of-interest being ready (camera + GL context live).
-    // The shared runner retries up to ~1.4s, cancelling stale retries when
-    // a newer probe arrives.
-    const crossProbeRunner = useCrossProbeRunner();
+    // Gated on the tab being active and the side-of-interest being ready. Uses
+    // the viewer's crossProbe() API (resolve footprint by ref -> focus + outline)
+    // instead of the old requestCrossProbe the Huaqiu fork never implemented.
     const crossProbeFiredSeqRef = useRef<number>(-1);
     useEffect(() => {
         if (!crossProbeTarget || !active) return;
@@ -1680,9 +1776,14 @@ export function PcbDiffViewer({
         const sideReady = showing === "new" ? newReady : oldReady;
         if (!sideReady) return;
         const viewer = (showing === "new" ? newViewerRef : oldViewerRef).current;
-        crossProbeFiredSeqRef.current = crossProbeTarget.seq;
-        crossProbeRunner.run(viewer, "SCH", "PCB", crossProbeTarget.ref);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (!viewer?.crossProbe) return;
+        void viewer.crossProbe(crossProbeTarget.ref).then((cam) => {
+            if (cam) {
+                crossProbeFiredSeqRef.current = crossProbeTarget.seq;
+                imposeCamRef.current = { zoom: cam.zoom, cx: cam.x, cy: cam.y };
+                startImposeLoopRef.current?.();
+            }
+        });
     }, [crossProbeTarget, active, newReady, oldReady, showing]);
 
     return (
@@ -1810,7 +1911,16 @@ export function PcbDiffViewer({
                         {!data && !loading && (
                             <p className="text-xs text-muted-foreground px-4 py-2">No data</p>
                         )}
-                        {data && totalChanges === 0 && (
+                        {/* Board paints from the fast manifest; the change list
+                            arrives with the full diff a beat later. Show a
+                            loading hint instead of "no changes" during that gap. */}
+                        {data && totalChanges === 0 && changesLoading && (
+                            <p className="text-xs text-muted-foreground px-4 py-4 text-center flex items-center justify-center gap-2">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Loading changes…
+                            </p>
+                        )}
+                        {data && totalChanges === 0 && !changesLoading && (
                             <p className="text-xs text-muted-foreground px-4 py-4 text-center">No PCB changes detected</p>
                         )}
                         {data && (
@@ -1899,13 +2009,13 @@ export function PcbDiffViewer({
 
                 {/* ── Viewer area ── */}
                 <div ref={viewerContainerRef} className="flex-1 relative overflow-hidden" style={{ isolation: "isolate" }}>
-                    {loading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-40">
-                            <div className="flex flex-col items-center gap-3">
-                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                                <p className="text-sm text-muted-foreground">Parsing PCB diff…</p>
-                            </div>
-                        </div>
+                    {/* Keep the dimmed overlay + spinner up for the WHOLE load —
+                        not just until the (fast) manifest arrives — i.e. until the
+                        board that's actually being shown has parsed and painted.
+                        The viewer's own built-in spinner is hidden (see
+                        VIEWER_BASE_CSS), so this is the single loading indicator. */}
+                    {!error && (loading || !(showing === "new" ? newReady : oldReady)) && (
+                        <ViewerLoading label="Loading PCB…" />
                     )}
                     {error && (
                         <div className="absolute inset-0 flex items-center justify-center z-40">
@@ -1942,18 +2052,27 @@ export function PcbDiffViewer({
                                     viewerRef={oldViewerRef}
                                 />
                             </div>
-                            <DiffOverlay
-                                groups={visibleGroups}
-                                viewerRef={viewerRef}
-                                containerRef={viewerContainerRef}
-                                getBoardEl={getBoardEl}
-                                onGroupClick={handleGroupClick}
-                                activeIds={activeGroup
-                                    ? new Set([activeGroup.id, ...(activeGroup.overlayGroups?.map(og => og.id) ?? [])])
-                                    : new Set<string>()}
-                                showing={showing}
-                                kickRef={overlayKickRef}
-                            />
+                            <FpsMeter />
+                            {/* Only mount the diff overlay once the active side
+                                is actually interactive. Mounting it during the
+                                board's parse/paint runs its rAF position-sync +
+                                per-marker getScreenLocation on the main thread,
+                                stealing time from the load. It has nothing to
+                                position until the board is painted anyway. */}
+                            {((showing === "new" ? newReady : oldReady)) && (
+                                <DiffOverlay
+                                    groups={visibleGroups}
+                                    viewerRef={viewerRef}
+                                    containerRef={viewerContainerRef}
+                                    getBoardEl={getBoardEl}
+                                    onGroupClick={handleGroupClick}
+                                    activeIds={activeGroup
+                                        ? new Set([activeGroup.id, ...(activeGroup.overlayGroups?.map(og => og.id) ?? [])])
+                                        : new Set<string>()}
+                                    showing={showing}
+                                    kickRef={overlayKickRef}
+                                />
+                            )}
                             {activeBoardData && (
                                 (showing === "new" && !activeBoardData.has_new) ||
                                 (showing === "old" && !activeBoardData.has_old)

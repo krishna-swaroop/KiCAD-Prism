@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from pathlib import Path
 
+from git import Repo
+
 from app.services.sch_diff_service import (
+    _blob_sha_at_commit,
     _get,
     _get_all,
     _git_root,
@@ -14,6 +18,29 @@ from app.services.sch_diff_service import (
     list_tree_paths,
 )
 from app.services.workspace_service import workspace
+
+# Bounded in-memory cache of parsed stackups keyed by blob SHA. Parsing a 9 MB
+# board just to pull its (tiny) stackup is wasteful to repeat; the blob is
+# immutable so the parsed stackup for a SHA never changes. Capped, no disk.
+_STACKUP_CACHE: OrderedDict[str, dict | None] = OrderedDict()
+_STACKUP_CACHE_MAX = 32
+
+
+def _stackup_for_blob(blob_sha: str | None, text: str | None) -> dict | None:
+    """Parse the stackup from board text, cached by immutable blob SHA."""
+    if text is None:
+        return None
+    if blob_sha is None:
+        return _parse_stackup_from_text(text)
+    if blob_sha in _STACKUP_CACHE:
+        _STACKUP_CACHE.move_to_end(blob_sha)
+        return _STACKUP_CACHE[blob_sha]
+    parsed = _parse_stackup_from_text(text)
+    _STACKUP_CACHE[blob_sha] = parsed
+    _STACKUP_CACHE.move_to_end(blob_sha)
+    while len(_STACKUP_CACHE) > _STACKUP_CACHE_MAX:
+        _STACKUP_CACHE.popitem(last=False)
+    return parsed
 
 
 def _str(node: list, key: str) -> str | None:
@@ -419,11 +446,27 @@ def get_stackup_diff(project_id: str, commit1: str, commit2: str) -> dict | None
         return None
 
     rel_path = pcb1 or pcb2
-    text1 = _read_pcb_at_commit(repo_root, commit1, rel_path) if pcb1 else None
-    text2 = _read_pcb_at_commit(repo_root, commit2, rel_path) if pcb2 else None
 
-    new_stackup = _parse_stackup_from_text(text1) if text1 else None
-    old_stackup = _parse_stackup_from_text(text2) if text2 else None
+    try:
+        repo = Repo(repo_root)
+    except Exception:
+        repo = None
+
+    sha1 = _blob_sha_at_commit(repo, commit1, rel_path) if (repo and pcb1) else None
+    sha2 = _blob_sha_at_commit(repo, commit2, rel_path) if (repo and pcb2) else None
+
+    # Fast path: identical board blob at both commits ⇒ the stackup is
+    # unchanged. Parse ONE side (cached) and reuse it for both — avoids parsing
+    # a second 9 MB board just to compare an identical result.
+    if sha1 is not None and sha1 == sha2:
+        text1 = _read_pcb_at_commit(repo_root, commit1, rel_path)
+        stk = _stackup_for_blob(sha1, text1)
+        new_stackup = old_stackup = stk
+    else:
+        text1 = _read_pcb_at_commit(repo_root, commit1, rel_path) if pcb1 else None
+        text2 = _read_pcb_at_commit(repo_root, commit2, rel_path) if pcb2 else None
+        new_stackup = _stackup_for_blob(sha1, text1)
+        old_stackup = _stackup_for_blob(sha2, text2)
 
     if new_stackup is None and old_stackup is None:
         return None

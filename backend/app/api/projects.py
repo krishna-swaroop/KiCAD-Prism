@@ -8,6 +8,7 @@ import shutil
 import threading
 import uuid
 import zipfile
+from collections import OrderedDict
 from pathlib import Path
 from urllib.parse import quote
 
@@ -38,6 +39,8 @@ from app.services.comments_url_service import (
     resolve_comments_base_url,
 )
 from app.services.git_service import (
+    commit_index,
+    count_commits,
     get_commit_distance,
     get_commit_file_summary,
     get_commits_list,
@@ -51,6 +54,20 @@ from app.services.workspace_service import workspace
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
 ARCHIVE_DIR_NAMES = {"archive", "archived", "old", "backup", "backups", "obsolete"}
+
+# KiCad design files are plain s-expr text but have no registered MIME type, so
+# mimetypes.guess_type() returns None and they'd be served as
+# application/octet-stream — which reverse proxies exclude from gzip. Typing them
+# as text/plain gets them compressed on the wire (a 9 MB board -> ~2 MB).
+_KICAD_TEXT_MIME = {
+    ".kicad_pcb": "text/plain",
+    ".kicad_sch": "text/plain",
+    ".kicad_pro": "application/json",
+    ".kicad_sym": "text/plain",
+    ".kicad_mod": "text/plain",
+    ".kicad_wks": "text/plain",
+    ".net": "text/plain",
+}
 
 
 class Monorepo(BaseModel):
@@ -1198,27 +1215,88 @@ async def get_project_commit_distance(
 async def get_project_commits(
     project_id: str,
     limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     """
-    Get list of commits for a project.
-    For Type-2 projects, shows only commits affecting the subproject.
+    Get a page of commits for a project (server-side pagination).
+    `offset` skips that many commits from HEAD; `total` is the full count so the
+    client can render page controls. For Type-2 projects, only commits affecting
+    the subproject are considered.
     """
     project = get_project_for_role_or_404(project_id, user.role)
 
     repo_path, relative_path = _repo_context(project)
-    if relative_path:
-        commits = get_commits_list_filtered(repo_path, relative_path, limit)
-    else:
-        commits = get_commits_list(project.path, limit)
 
-    return {"commits": commits}
+    def _load() -> tuple[list, int]:
+        if relative_path:
+            rows = get_commits_list_filtered(
+                repo_path, relative_path, limit, skip=offset
+            )
+        else:
+            rows = get_commits_list(project.path, limit, skip=offset)
+        total = count_commits(repo_path, relative_path)
+        return rows, total
+
+    commits, total = await asyncio.to_thread(_load)
+    return {"commits": commits, "total": total, "offset": offset, "limit": limit}
+
+
+@router.get("/{project_id}/commits/{commit_hash}/index")
+async def get_project_commit_index(
+    project_id: str,
+    commit_hash: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """0-based position of a commit in the (path-filtered) HEAD history, so the
+    client can page directly to it — e.g. jumping from a release to its commit
+    when the commit lives beyond the currently loaded page."""
+    project = get_project_for_role_or_404(project_id, user.role)
+    repo_path, relative_path = _repo_context(project)
+    idx = await asyncio.to_thread(commit_index, repo_path, commit_hash, relative_path)
+    if idx is None:
+        raise HTTPException(status_code=404, detail="Commit not found in history")
+    return {"index": idx}
+
+
+# Bounded in-memory cache of expanded-commit summaries. A commit is immutable,
+# so its summary (changed files + per-item board/schematic diffs) never changes
+# — the first expand pays the parse+diff cost, every re-expand (and re-open of
+# History) is a dict lookup. Keyed by (repo_path, commit, sub_path). Capped, no
+# disk.
+_COMMIT_SUMMARY_CACHE: "OrderedDict[tuple[str, str, str | None], dict]" = OrderedDict()
+_COMMIT_SUMMARY_CACHE_MAX = 128
+_COMMIT_SUMMARY_LOCK = threading.Lock()
 
 
 def _build_commit_summary(
     repo_path: str, relative_path: str | None, commit_hash: str
 ) -> dict:
-    """Blocking work for get_commit_summary - run via asyncio.to_thread."""
+    """Blocking work for get_commit_summary - run via asyncio.to_thread.
+
+    Result is cached per immutable commit (see _COMMIT_SUMMARY_CACHE).
+    """
+    cache_key = (repo_path, commit_hash, relative_path)
+    with _COMMIT_SUMMARY_LOCK:
+        cached = _COMMIT_SUMMARY_CACHE.get(cache_key)
+        if cached is not None:
+            _COMMIT_SUMMARY_CACHE.move_to_end(cache_key)
+            return cached
+
+    result = _build_commit_summary_uncached(repo_path, relative_path, commit_hash)
+
+    with _COMMIT_SUMMARY_LOCK:
+        _COMMIT_SUMMARY_CACHE[cache_key] = result
+        _COMMIT_SUMMARY_CACHE.move_to_end(cache_key)
+        while len(_COMMIT_SUMMARY_CACHE) > _COMMIT_SUMMARY_CACHE_MAX:
+            _COMMIT_SUMMARY_CACHE.popitem(last=False)
+    return result
+
+
+def _build_commit_summary_uncached(
+    repo_path: str, relative_path: str | None, commit_hash: str
+) -> dict:
+    """Parse + diff every changed board/schematic in the commit (the slow work)."""
     from git import Repo
 
     files = get_commit_file_summary(repo_path, commit_hash, relative_path)
@@ -1315,13 +1393,19 @@ async def get_commit_file(
                 detail="Path is outside the project scope",
             )
 
-    try:
+    # The git blob read is blocking and the file can be multi-MB (a PCB board).
+    # Run it off the event loop so this content stream isn't serialized behind —
+    # or blocking — the concurrent diff requests the viewer fires alongside it.
+    def _read_blob() -> bytes:
         from git import Repo as GitRepo
 
         repo = GitRepo(repo_path)
         commit = repo.commit(commit_hash)
         blob = commit.tree / path
-        content = blob.data_stream.read()
+        return blob.data_stream.read()
+
+    try:
+        content = await asyncio.to_thread(_read_blob)
     except KeyError:
         raise HTTPException(
             status_code=404,
@@ -1332,7 +1416,14 @@ async def get_commit_file(
 
     mime, _ = mimetypes.guess_type(path)
     if mime is None:
-        mime = "application/octet-stream"
+        # KiCad design files are s-expr TEXT. Python has no MIME type for them, so
+        # they'd fall back to application/octet-stream — which reverse proxies skip
+        # when gzipping (their gzip_types list text/*), leaving multi-MB boards
+        # uncompressed on the wire. Typing them as text/plain gets them compressed
+        # (~5x on a 9 MB board) by both nginx and our GZipMiddleware.
+        mime = _KICAD_TEXT_MIME.get(
+            Path(path).suffix.lower(), "application/octet-stream"
+        )
 
     filename = Path(path).name
     return Response(
@@ -1472,13 +1563,18 @@ async def get_project_schematic(
     project = get_project_for_role_or_404(project_id, user.role)
 
     if commit:
-        config = _path_config_from_commit(project, commit)
-        commit_file = _read_configured_commit_file(
-            project,
-            commit,
-            config.schematic or "*.kicad_sch",
-            not_found_detail="Schematic not found",
-        )
+        # Blocking git reads → run off the event loop so the schematic isn't
+        # serialized behind the parallel diff endpoints (see get_project_pcb).
+        def _read() -> file_service.CommitFile:
+            config = _path_config_from_commit(project, commit)
+            return _read_configured_commit_file(
+                project,
+                commit,
+                config.schematic or "*.kicad_sch",
+                not_found_detail="Schematic not found",
+            )
+
+        commit_file = await asyncio.to_thread(_read)
         return _commit_file_response(commit_file, inline=True)
 
     path = project_service.find_schematic_file(project.path)
@@ -1551,13 +1647,21 @@ async def get_project_pcb(
     project = get_project_for_role_or_404(project_id, user.role)
 
     if commit:
-        config = _path_config_from_commit(project, commit)
-        commit_file = _read_configured_commit_file(
-            project,
-            commit,
-            config.pcb or "*.kicad_pcb",
-            not_found_detail="PCB not found",
-        )
+        # The commit path does blocking git reads (path config + blob). Run them
+        # in a thread so this fast read isn't serialized on the event loop behind
+        # the heavy diff endpoints (which the single-commit viewer fires in
+        # parallel) — otherwise the board waits ~2s behind a diff instead of the
+        # ~0.3s the read actually takes.
+        def _read() -> file_service.CommitFile:
+            config = _path_config_from_commit(project, commit)
+            return _read_configured_commit_file(
+                project,
+                commit,
+                config.pcb or "*.kicad_pcb",
+                not_found_detail="PCB not found",
+            )
+
+        commit_file = await asyncio.to_thread(_read)
         return _commit_file_response(commit_file, inline=True)
 
     path = project_service.find_pcb_file(project.path)

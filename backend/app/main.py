@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.catalog_admin import router as catalog_admin_router
@@ -228,6 +229,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="KiCAD Prism API", lifespan=lifespan)
+
+# Compress responses. KiCad board/schematic files are large s-expr TEXT that
+# gzips ~5x (a 9.3 MB .kicad_pcb -> ~1.9 MB), but they're served as
+# application/octet-stream (Python has no MIME type for .kicad_pcb), so the
+# reverse proxy's content-type gzip filter skips them. Compressing here covers
+# every deployment (dev included) regardless of the proxy's gzip_types.
+# minimum_size skips tiny payloads where compression isn't worth the CPU.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # Configure CORS
 app.add_middleware(

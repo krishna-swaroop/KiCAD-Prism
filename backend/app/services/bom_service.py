@@ -10,12 +10,27 @@ Reuses parsing utilities from sch_diff_service to avoid duplication.
 
 import logging
 import re
+from collections import OrderedDict
 from pathlib import Path
+
+from git import Repo
 
 from app.services import sch_diff_service
 from app.services.workspace_service import workspace
 
 logger = logging.getLogger(__name__)
+
+# Bounded in-memory cache of a commit's aggregated BOM symbols, keyed by
+# (commit_sha, sub_path). A commit is immutable, so its BOM never changes — and
+# a BOM diff shares one commit between "this vs parent" navigation. Capped, no
+# disk.
+_BOM_COMMIT_CACHE: "OrderedDict[tuple[str, str | None], list[dict]]" = OrderedDict()
+_BOM_COMMIT_CACHE_MAX = 32
+
+# Per-sheet parsed BOM symbols, keyed by blob SHA (immutable). Lets unchanged
+# sheets skip re-parsing even when the commit-level cache misses.
+_BOM_SHEET_CACHE: "OrderedDict[str, dict]" = OrderedDict()
+_BOM_SHEET_CACHE_MAX = 128
 
 # Extra symbol property names to search (case-insensitive fallbacks listed in order)
 _MPN_KEYS = ["MPN", "Mpn", "mpn", "Part Number", "PartNumber"]
@@ -92,15 +107,46 @@ def _symbols_from_commit(
     - Deduplicates multi-unit parts: keeps the lowest unit number per reference
     - sub_path constrains the search to the project subtree (Type-2 projects)
     """
+    # Commit-level cache: a commit is immutable, so its aggregated BOM is too.
+    cache_key = (commit, sub_path)
+    cached = _BOM_COMMIT_CACHE.get(cache_key)
+    if cached is not None:
+        _BOM_COMMIT_CACHE.move_to_end(cache_key)
+        return cached
+
     paths = sch_diff_service._find_all_sch_paths(repo_root, commit, sub_path)
     by_reference: dict[str, dict] = {}
 
+    try:
+        repo = Repo(repo_root)
+    except Exception:
+        repo = None
+
     for rel_path in paths:
-        content = sch_diff_service._read_file_at_commit(repo_root, commit, rel_path)
-        if not content:
-            continue
-        tree = sch_diff_service._parse_sexp(content)
-        symbols = _extract_bom_symbols(tree)
+        # Per-sheet cache by immutable blob SHA — skip re-parsing unchanged
+        # sheets across commits/requests.
+        sha = (
+            sch_diff_service._blob_sha_at_commit(repo, commit, rel_path)
+            if repo
+            else None
+        )
+        symbols: dict | None = None
+        if sha is not None:
+            symbols = _BOM_SHEET_CACHE.get(sha)
+            if symbols is not None:
+                _BOM_SHEET_CACHE.move_to_end(sha)
+        if symbols is None:
+            content = sch_diff_service._read_file_at_commit(repo_root, commit, rel_path)
+            if not content:
+                continue
+            tree = sch_diff_service._parse_sexp(content)
+            symbols = _extract_bom_symbols(tree)
+            if sha is not None:
+                _BOM_SHEET_CACHE[sha] = symbols
+                _BOM_SHEET_CACHE.move_to_end(sha)
+                while len(_BOM_SHEET_CACHE) > _BOM_SHEET_CACHE_MAX:
+                    _BOM_SHEET_CACHE.popitem(last=False)
+
         for sym in symbols.values():
             if not sym["in_bom"]:
                 continue
@@ -111,7 +157,12 @@ def _symbols_from_commit(
             if existing is None or sym["unit"] < existing["unit"]:
                 by_reference[ref] = sym
 
-    return list(by_reference.values())
+    result = list(by_reference.values())
+    _BOM_COMMIT_CACHE[cache_key] = result
+    _BOM_COMMIT_CACHE.move_to_end(cache_key)
+    while len(_BOM_COMMIT_CACHE) > _BOM_COMMIT_CACHE_MAX:
+        _BOM_COMMIT_CACHE.popitem(last=False)
+    return result
 
 
 def _ref_sort_key(ref: str) -> tuple:

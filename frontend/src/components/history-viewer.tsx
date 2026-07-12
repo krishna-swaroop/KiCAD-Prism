@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar, GitCompare, ChevronDown, ChevronRight, FileText, Plus, Minus, RefreshCw, Loader2, X, CircuitBoard, Cpu, List, Settings, FileCode, LayoutList } from "lucide-react";
+import { GitCommit, Tag, Eye, Check, Copy, User, Clock, Calendar, GitCompare, ChevronDown, ChevronRight, ChevronLeft, FileText, Plus, Minus, RefreshCw, Loader2, X, CircuitBoard, Cpu, List, Settings, FileCode, LayoutList } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SchematicDiffViewer } from "./schematic-diff-viewer";
 import { PcbDiffViewer } from "./pcb-diff-viewer";
 import { BomDiffViewer } from "./bom-diff-viewer";
@@ -261,11 +262,13 @@ interface CommitItemProps {
     /** Position in the commit list — used to draw the timeline. */
     isFirst?: boolean;
     isLast?: boolean;
+    /** Briefly ring-highlighted after a release card scrolls to this commit. */
+    highlighted?: boolean;
 }
 
 function CommitItem({
     commit, projectId, onViewCommit, isSelected, onSelect, selectable, onOpenItemDiff, onOpenPdf,
-    isFirst, isLast,
+    isFirst, isLast, highlighted,
 }: CommitItemProps) {
     const [copied, setCopied] = useState(false);
     const [expanded, setExpanded] = useState(false);
@@ -308,7 +311,10 @@ function CommitItem({
     };
 
     return (
-        <div className="flex items-stretch gap-3 pb-1.5 last:pb-0">
+        <div
+            id={`commit-row-${commit.full_hash}`}
+            className={`flex items-stretch gap-3 pb-1.5 last:pb-0 scroll-mt-20 rounded-lg transition-shadow ${highlighted ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
+        >
             {/* Timeline column: vertical line + dot, one row tall */}
             <div className="relative w-4 shrink-0 flex justify-center">
                 {/* upper line segment — hidden on the very first commit */}
@@ -364,7 +370,24 @@ function CommitItem({
                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleCopy} title="Copy full hash">
                                 {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                             </Button>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => onViewCommit(commit.full_hash)} title="View this version">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={() => {
+                                    // Open the single-commit diff view (fast
+                                    // manifest-first load + changes sidebar +
+                                    // toggle-highlights), same as comparing but
+                                    // one side. Root commits have no parent to
+                                    // diff, so fall back to the plain visualizer.
+                                    if (commit.parents?.[0] && onOpenItemDiff) {
+                                        onOpenItemDiff("schematic");
+                                    } else {
+                                        onViewCommit(commit.full_hash);
+                                    }
+                                }}
+                                title="View this version's changes"
+                            >
                                 <Eye className="h-3 w-3" />
                             </Button>
                         </div>
@@ -493,6 +516,12 @@ interface CommitDiffModalProps {
 
 function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, focusItemId, focusFilename, singleCommit }: CommitDiffModalProps) {
     const [tab, setTab] = useState<DiffTab>(initialTab ?? "schematic");
+    // Latch true once the Stackup tab has been opened, then keep the panel
+    // mounted (toggled with display:none like the other tabs) so switching away
+    // and back doesn't re-fetch/re-render it. Lazy so we don't fetch stackup for
+    // every commit diff the user opens without visiting the tab.
+    const [stackupSeen, setStackupSeen] = useState(tab === "stackup");
+    useEffect(() => { if (tab === "stackup") setStackupSeen(true); }, [tab]);
     // Last reference selected in each tab — used to navigate the other tab when switching
     const lastSelected = useRef<{ schematic?: string; pcb?: string; bom?: string }>({});
     // CrossProbe targets carry a seq number so re-delivering the same reference
@@ -577,6 +606,7 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
                         commit2={commit2}
                         onClose={onClose}
                         embedded
+                        active={tab === "schematic"}
                         onCrossProbe={handleSchematicCrossProbe}
                         crossProbeTarget={schCrossProbeTarget}
                         focusItemId={initialTab === "schematic" ? focusItemId : undefined}
@@ -608,12 +638,57 @@ function CommitDiffModal({ projectId, commit1, commit2, onClose, initialTab, foc
                         crossProbeTarget={bomCrossProbeTarget}
                     />
                 </div>
-                {tab === "stackup" && (
-                    <div className="absolute inset-0 overflow-y-auto bg-background">
+                {stackupSeen && (
+                    <div className="absolute inset-0 overflow-y-auto bg-background" style={{ display: tab === "stackup" ? undefined : "none" }}>
                         <StackupDiffPanel projectId={projectId} commit1={commit1} commit2={commit2} />
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+/** Numbered pager with Prev/Next. Renders nothing when there's a single page. */
+function PageNav({ page, pageCount, onPage, label, total }: {
+    page: number;
+    pageCount: number;
+    onPage: (p: number) => void;
+    label: string;
+    total: number;
+}) {
+    if (pageCount <= 1) return null;
+    // Windowed page numbers around the current page (max 7 shown).
+    const window = 2;
+    const start = Math.max(0, Math.min(page - window, pageCount - (window * 2 + 1)));
+    const end = Math.min(pageCount, start + window * 2 + 1);
+    const nums: number[] = [];
+    for (let i = Math.max(0, start); i < end; i++) nums.push(i);
+    return (
+        <div className="flex items-center justify-center gap-1 pt-3">
+            <Button variant="ghost" size="sm" className="h-7 px-2" disabled={page === 0} onClick={() => onPage(page - 1)}>
+                <ChevronLeft className="h-4 w-4" />
+            </Button>
+            {nums[0]! > 0 && (
+                <>
+                    <Button variant={page === 0 ? "default" : "ghost"} size="sm" className="h-7 w-7 p-0" onClick={() => onPage(0)}>1</Button>
+                    {nums[0]! > 1 && <span className="px-1 text-muted-foreground">…</span>}
+                </>
+            )}
+            {nums.map((n) => (
+                <Button key={n} variant={n === page ? "default" : "ghost"} size="sm" className="h-7 w-7 p-0" onClick={() => onPage(n)}>
+                    {n + 1}
+                </Button>
+            ))}
+            {nums[nums.length - 1]! < pageCount - 1 && (
+                <>
+                    {nums[nums.length - 1]! < pageCount - 2 && <span className="px-1 text-muted-foreground">…</span>}
+                    <Button variant={page === pageCount - 1 ? "default" : "ghost"} size="sm" className="h-7 w-7 p-0" onClick={() => onPage(pageCount - 1)}>{pageCount}</Button>
+                </>
+            )}
+            <Button variant="ghost" size="sm" className="h-7 px-2" disabled={page >= pageCount - 1} onClick={() => onPage(page + 1)}>
+                <ChevronRight className="h-4 w-4" />
+            </Button>
+            <span className="ml-2 text-xs text-muted-foreground">{total} {label}</span>
         </div>
     );
 }
@@ -623,8 +698,105 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
     const [commits, setCommits] = useState<Commit[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [selectedCommits, setSelectedCommits] = useState<string[]>([]);
+    // Full Commit objects (not hashes) so a selection survives switching server
+    // pages — the two commits being compared may live on different pages.
+    const [selectedCommits, setSelectedCommits] = useState<Commit[]>([]);
     const [showDiff, setShowDiff] = useState(false);
+    // Commit briefly ring-highlighted after clicking a release that points to it.
+    const [highlightedCommit, setHighlightedCommit] = useState<string | null>(null);
+    const highlightTimer = useRef<number | undefined>(undefined);
+
+    // ── Pagination ──────────────────────────────────────────────────────────
+    // Releases are few → paged client-side. Commits are paged SERVER-side so
+    // histories larger than a single window (repos can have thousands of commits)
+    // are fully reachable: `commits` holds only the current page.
+    const RELEASES_PER_PAGE = 9;
+    const COMMITS_PER_PAGE_KEY = "kicad-prism:history:commits-per-page";
+    const [commitsPerPage, setCommitsPerPage] = useState<number>(() => {
+        try {
+            const v = parseInt(localStorage.getItem(COMMITS_PER_PAGE_KEY) ?? "", 10);
+            return [25, 50, 100, 200].includes(v) ? v : 50;
+        } catch { return 50; }
+    });
+    const [releasesPage, setReleasesPage] = useState(0);
+    const [commitsPage, setCommitsPage] = useState(0);
+    const [commitsTotal, setCommitsTotal] = useState(0);
+
+    const releasesPageCount = Math.max(1, Math.ceil(releases.length / RELEASES_PER_PAGE));
+    const commitsPageCount = Math.max(1, Math.ceil(commitsTotal / commitsPerPage));
+    const pagedReleases = releases.slice(releasesPage * RELEASES_PER_PAGE, releasesPage * RELEASES_PER_PAGE + RELEASES_PER_PAGE);
+    // `commits` already IS the current server page.
+    const pagedCommits = commits;
+
+    // Keep the releases page in range if the list shrinks.
+    useEffect(() => { if (releasesPage > releasesPageCount - 1) setReleasesPage(0); }, [releasesPageCount, releasesPage]);
+
+    const changeCommitsPerPage = useCallback((n: number) => {
+        setCommitsPerPage(n);
+        setCommitsPage(0);
+        try { localStorage.setItem(COMMITS_PER_PAGE_KEY, String(n)); } catch { /* ignore */ }
+    }, []);
+
+    // A commit (by full_hash) we want to scroll to + flash once it's rendered on
+    // the current page. Set when jumping across server pages.
+    const pendingScrollHash = useRef<string | null>(null);
+
+    const flashAndScroll = useCallback((fullHash: string) => {
+        setHighlightedCommit(fullHash);
+        window.clearTimeout(highlightTimer.current);
+        highlightTimer.current = window.setTimeout(() => setHighlightedCommit(null), 2000);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            document
+                .getElementById(`commit-row-${fullHash}`)
+                ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }));
+    }, []);
+
+    // Jump to the commit a release tags. It may live on a different SERVER page,
+    // so: if it's on the current page, flash it; otherwise ask the backend for
+    // its index, switch to that page, and flash once the page has loaded.
+    const scrollToCommit = useCallback(async (releaseHash: string) => {
+        const local = commits.find(
+            (c) =>
+                c.full_hash === releaseHash ||
+                c.hash === releaseHash ||
+                c.full_hash.startsWith(releaseHash) ||
+                releaseHash.startsWith(c.hash),
+        );
+        if (local) { flashAndScroll(local.full_hash); return; }
+        try {
+            const { index } = await fetchJson<{ index: number }>(
+                `/api/projects/${projectId}/commits/${releaseHash}/index`,
+                undefined,
+                "Failed to locate commit",
+            );
+            // Remember the full hash to flash after the target page loads. The
+            // backend gives an index; the row id uses full_hash, which we'll have
+            // once the page arrives — so match on the release hash prefix then.
+            pendingScrollHash.current = releaseHash;
+            setCommitsPage(Math.floor(index / commitsPerPage));
+        } catch { /* commit not in history — nothing to jump to */ }
+    }, [commits, commitsPerPage, projectId, flashAndScroll]);
+
+    // Once a new commits page has loaded, resolve any pending release→commit
+    // jump: find the matching row on this page and flash it.
+    useEffect(() => {
+        const want = pendingScrollHash.current;
+        if (!want || commits.length === 0) return;
+        const target = commits.find(
+            (c) =>
+                c.full_hash === want ||
+                c.hash === want ||
+                c.full_hash.startsWith(want) ||
+                want.startsWith(c.hash),
+        );
+        if (target) {
+            pendingScrollHash.current = null;
+            flashAndScroll(target.full_hash);
+        }
+    }, [commits, flashAndScroll]);
+
+    useEffect(() => () => window.clearTimeout(highlightTimer.current), []);
     // Single-commit diff: opens the modal against the commit's parent and
     // optionally pre-selects an item / tab.
     const [itemDiff, setItemDiff] = useState<{
@@ -647,40 +819,31 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
         setPdfViewer({ url, downloadUrl: url, filename });
     }, [projectId]);
 
-    // Filter commits to find selected ones and determining newer/older
+    // Determine newer/older from the two selected commits. Selection holds full
+    // Commit objects (not just hashes) so it survives page changes — with
+    // server-side paging the two commits may live on different pages, so we
+    // order by DATE rather than by index into the currently-loaded page.
     const diffPair = useMemo(() => {
         if (selectedCommits.length !== 2) return null;
+        const [a, b] = selectedCommits;
+        const aTime = new Date(a.date).getTime();
+        const bTime = new Date(b.date).getTime();
+        return aTime >= bTime ? { newer: a, older: b } : { newer: b, older: a };
+    }, [selectedCommits]);
 
-        // Commits are already sorted by date (newest first)
-        const c1Index = commits.findIndex(c => c.full_hash === selectedCommits[0]);
-        const c2Index = commits.findIndex(c => c.full_hash === selectedCommits[1]);
-
-        if (c1Index === -1 || c2Index === -1) return null;
-
-        // Smaller index = Newer commit
-        const newerIndex = Math.min(c1Index, c2Index);
-        const olderIndex = Math.max(c1Index, c2Index);
-
-        return {
-            newer: commits[newerIndex],
-            older: commits[olderIndex]
-        };
-    }, [commits, selectedCommits]);
-
-    const handleSelectCommit = (hash: string) => {
+    const handleSelectCommit = (commit: Commit) => {
         if (!canCompareDiffs) {
             return;
         }
         setSelectedCommits(prev => {
-            if (prev.includes(hash)) {
-                return prev.filter(h => h !== hash);
+            if (prev.some(c => c.full_hash === commit.full_hash)) {
+                return prev.filter(c => c.full_hash !== commit.full_hash);
             }
             if (prev.length >= 2) {
-                // Remove oldest selection (first one added? or just FIFO)
-                // Let's just create a new array with the new one
-                return [prev[1], hash];
+                // Keep the most recent pick and add the new one (FIFO).
+                return [prev[1], commit];
             }
-            return [...prev, hash];
+            return [...prev, commit];
         });
     };
 
@@ -689,85 +852,54 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
             setSelectedCommits([]);
         }
     }, [canCompareDiffs]);
+    // NOTE: deliberately NO effect pruning the selection to the current page —
+    // that would wipe a selection made on another page. Selection is intentionally
+    // page-independent so you can compare commits from different pages.
 
-    useEffect(() => {
-        const currentHashes = new Set(commits.map((commit) => commit.full_hash));
-        setSelectedCommits((previous) => previous.filter((hash) => currentHashes.has(hash)).slice(-2));
-    }, [commits]);
-
-    // Releases + commits.
+    // Releases — fetched once per project (few, paged client-side).
     useEffect(() => {
         const controller = new AbortController();
-        setLoading(true);
-        setError(null);
-
-        const commitsUrl = `/api/projects/${projectId}/commits`;
-
-        const fetchHistory = async () => {
-            const [releasesResult, commitsResult] = await Promise.allSettled([
-                fetchJson<ReleasesResponse>(
-                    `/api/projects/${projectId}/releases`,
-                    { signal: controller.signal },
-                    "Failed to load releases"
-                ),
-                fetchJson<CommitsResponse>(
-                    commitsUrl,
-                    { signal: controller.signal },
-                    "Failed to load commits"
-                ),
-            ]);
-
-            if (controller.signal.aborted) {
-                return;
-            }
-
-            if (releasesResult.status === "fulfilled") {
-                setReleases(releasesResult.value.releases || []);
-            } else {
-                setReleases([]);
-            }
-
-            if (commitsResult.status === "fulfilled") {
-                setCommits(commitsResult.value.commits || []);
-            } else {
-                setCommits([]);
-            }
-
-            if (releasesResult.status === "rejected" && commitsResult.status === "rejected") {
-                const releaseMessage =
-                    releasesResult.reason instanceof Error ? releasesResult.reason.message : "Failed to load releases";
-                const commitMessage =
-                    commitsResult.reason instanceof Error ? commitsResult.reason.message : "Failed to load commits";
-                setError(`${releaseMessage}. ${commitMessage}`);
-            } else if (releasesResult.status === "rejected") {
-                const releaseMessage =
-                    releasesResult.reason instanceof Error ? releasesResult.reason.message : "Failed to load releases";
-                setError(releaseMessage);
-            } else if (commitsResult.status === "rejected") {
-                const commitMessage =
-                    commitsResult.reason instanceof Error ? commitsResult.reason.message : "Failed to load commits";
-                setError(commitMessage);
-            } else {
-                setError(null);
-            }
-
-            setLoading(false);
-        };
-
-        fetchHistory().catch((err: unknown) => {
-            if (controller.signal.aborted) {
-                return;
-            }
-            if (err instanceof DOMException && err.name === "AbortError") {
-                return;
-            }
-            console.error("Failed to fetch history", err);
-            setError("Failed to load history");
-            setLoading(false);
-        });
-
+        fetchJson<ReleasesResponse>(
+            `/api/projects/${projectId}/releases`,
+            { signal: controller.signal },
+            "Failed to load releases",
+        )
+            .then((r) => setReleases(r.releases || []))
+            .catch((e) => { if (!(e instanceof DOMException && e.name === "AbortError")) setReleases([]); });
         return () => controller.abort();
     }, [projectId]);
+
+    // Commits — one SERVER page at a time; re-fetches when the page or page size
+    // changes so arbitrarily long histories are reachable.
+    useEffect(() => {
+        const controller = new AbortController();
+        // Only show the big skeleton on the first load; page switches keep the
+        // list visible (they're quick).
+        setError(null);
+        const offset = commitsPage * commitsPerPage;
+        fetchJson<CommitsResponse & { total?: number }>(
+            `/api/projects/${projectId}/commits?limit=${commitsPerPage}&offset=${offset}`,
+            { signal: controller.signal },
+            "Failed to load commits",
+        )
+            .then((r) => {
+                if (controller.signal.aborted) return;
+                setCommits(r.commits || []);
+                if (typeof r.total === "number") setCommitsTotal(r.total);
+                setLoading(false);
+            })
+            .catch((e) => {
+                if (e instanceof DOMException && e.name === "AbortError") return;
+                console.error("Failed to fetch commits", e);
+                setCommits([]);
+                setError(e instanceof Error ? e.message : "Failed to load commits");
+                setLoading(false);
+            });
+        return () => controller.abort();
+    }, [projectId, commitsPage, commitsPerPage]);
+
+    // Reset to the first commits page when the project changes.
+    useEffect(() => { setCommitsPage(0); }, [projectId]);
 
     if (loading) {
         return (
@@ -829,10 +961,13 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                         Releases
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {releases.map((release) => (
-                            <div
+                        {pagedReleases.map((release) => (
+                            <button
                                 key={release.tag}
-                                className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                                type="button"
+                                onClick={() => scrollToCommit(release.commit_hash)}
+                                title="Jump to this commit in the list"
+                                className="text-left border rounded-lg p-4 hover:bg-muted/50 hover:border-primary/50 transition-colors cursor-pointer w-full"
                             >
                                 <div className="flex items-start justify-between mb-2">
                                     <div className="flex items-center gap-2">
@@ -850,9 +985,16 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                                     <Calendar className="h-3 w-3" />
                                     {formatDate(release.date)}
                                 </div>
-                            </div>
+                            </button>
                         ))}
                     </div>
+                    <PageNav
+                        page={releasesPage}
+                        pageCount={releasesPageCount}
+                        onPage={setReleasesPage}
+                        label="releases"
+                        total={releases.length}
+                    />
                 </div>
             )}
 
@@ -873,7 +1015,45 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                             Compare Changes
                         </Button>
                     )}
+                    {commits.length > 0 && (
+                        <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>Per page</span>
+                            <Select value={String(commitsPerPage)} onValueChange={(v) => changeCommitsPerPage(parseInt(v, 10))}>
+                                <SelectTrigger className="h-7 w-[72px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[25, 50, 100, 200].map((n) => (
+                                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
                 </div>
+
+                {/* Selection status — selection is page-independent, so surface
+                    what's picked even when those commits aren't on this page. */}
+                {canCompareDiffs && selectedCommits.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
+                        <span className="text-muted-foreground">
+                            Selected {selectedCommits.length}/2:
+                        </span>
+                        {selectedCommits.map((c) => (
+                            <span key={c.full_hash} className="inline-flex items-center gap-1 rounded bg-background border px-1.5 py-0.5 font-mono">
+                                {c.hash}
+                                <button
+                                    type="button"
+                                    aria-label={`Deselect ${c.hash}`}
+                                    className="text-muted-foreground hover:text-foreground"
+                                    onClick={() => handleSelectCommit(c)}
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                )}
 
                 {commits.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
@@ -881,17 +1061,18 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                     </p>
                 ) : (
                     <div>
-                        {commits.map((commit, idx) => (
+                        {pagedCommits.map((commit, idx) => (
                             <CommitItem
                                 key={commit.full_hash}
                                 commit={commit}
                                 projectId={projectId}
                                 onViewCommit={onViewCommit}
-                                isSelected={selectedCommits.includes(commit.full_hash)}
-                                onSelect={() => handleSelectCommit(commit.full_hash)}
+                                isSelected={selectedCommits.some(c => c.full_hash === commit.full_hash)}
+                                onSelect={() => handleSelectCommit(commit)}
                                 selectable={canCompareDiffs}
                                 isFirst={idx === 0}
-                                isLast={idx === commits.length - 1}
+                                isLast={idx === pagedCommits.length - 1}
+                                highlighted={highlightedCommit === commit.full_hash}
                                 onOpenItemDiff={(tab, itemId, filename) => {
                                     const parent = commit.parents?.[0];
                                     if (!parent) return; // root commit — nothing to diff against
@@ -908,6 +1089,13 @@ export function HistoryViewer({ projectId, onViewCommit, canCompareDiffs }: Hist
                         ))}
                     </div>
                 )}
+                <PageNav
+                    page={commitsPage}
+                    pageCount={commitsPageCount}
+                    onPage={setCommitsPage}
+                    label="commits"
+                    total={commits.length}
+                />
             </div>
         </div>
     );
