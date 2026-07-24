@@ -11,20 +11,34 @@ import {
 } from "@/panel/lib/kicad-bridge";
 import { getCategories, isAuthError, setApiToken } from "@/panel/lib/panel-api";
 import type { PanelComponent } from "@/panel/lib/panel-api";
+import type { FinderViewState } from "@/panel/lib/view-state";
 
 import { PanelLoginScreen } from "@/panel/screens/PanelLoginScreen";
 import { SymbolFinderScreen } from "@/panel/screens/SymbolFinderScreen";
 import { CategoryListScreen } from "@/panel/screens/CategoryListScreen";
 import { PartDetailScreen } from "@/panel/screens/PartDetailScreen";
 
+type DetailReturnTarget =
+  | { kind: "finder" }
+  | { kind: "category"; name: string };
+
 type Screen =
   | { kind: "login" }
   | { kind: "finder" }
   | { kind: "category"; name: string }
-  | { kind: "detail"; componentId: string; prefetched: PanelComponent | null };
+  | {
+      kind: "detail";
+      componentId: string;
+      prefetched: PanelComponent | null;
+      returnTo: DetailReturnTarget;
+    };
 
 export function PanelApp() {
   const [screen, setScreen] = useState<Screen>({ kind: "login" });
+  const [finderView, setFinderView] = useState<FinderViewState>({
+    query: "",
+    searchResults: [],
+  });
   const [logEntries, setLogEntries] = useState<string[]>([]);
   const [sessionReady, setSessionReady] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
@@ -146,11 +160,38 @@ export function PanelApp() {
     []
   );
 
-  const goToDetail = useCallback(
-    (comp: PanelComponent) =>
-      setScreen({ kind: "detail", componentId: comp.id, prefetched: comp }),
-    []
+  const goToDetailFromFinder = useCallback((comp: PanelComponent) => {
+    setScreen({
+      kind: "detail",
+      componentId: comp.id,
+      prefetched: comp,
+      returnTo: { kind: "finder" },
+    });
+  }, []);
+
+  const goToDetailFromCategory = useCallback(
+    (comp: PanelComponent) => {
+      if (screen.kind !== "category") return;
+      setScreen({
+        kind: "detail",
+        componentId: comp.id,
+        prefetched: comp,
+        returnTo: { kind: "category", name: screen.name },
+      });
+    },
+    [screen]
   );
+
+  const goBackFromDetail = useCallback(() => {
+    setScreen((current) => {
+      if (current.kind !== "detail") return current;
+      const { returnTo } = current;
+      if (returnTo.kind === "category") {
+        return { kind: "category", name: returnTo.name };
+      }
+      return { kind: "finder" };
+    });
+  }, []);
 
   // ─── Render ─────────────────────────────────────────────────────
 
@@ -169,8 +210,10 @@ export function PanelApp() {
 
         {screen.kind === "finder" && (
           <SymbolFinderScreen
+            viewState={finderView}
+            onViewStateChange={setFinderView}
             onSelectCategory={goToCategory}
-            onSelectComponent={goToDetail}
+            onSelectComponent={goToDetailFromFinder}
             onAuthRequired={goToLogin}
             appendLog={appendLog}
           />
@@ -180,7 +223,7 @@ export function PanelApp() {
           <CategoryListScreen
             category={screen.name}
             onBack={goToFinder}
-            onSelectComponent={goToDetail}
+            onSelectComponent={goToDetailFromCategory}
             onAuthRequired={goToLogin}
             appendLog={appendLog}
           />
@@ -190,7 +233,7 @@ export function PanelApp() {
           <PartDetailScreen
             componentId={screen.componentId}
             prefetched={screen.prefetched}
-            onBack={goToFinder}
+            onBack={goBackFromDetail}
             appendLog={appendLog}
           />
         )}

@@ -12,7 +12,11 @@ import {
   isAuthError,
 } from "@/panel/lib/panel-api";
 
+import type { FinderViewState } from "@/panel/lib/view-state";
+
 interface SymbolFinderScreenProps {
+  viewState: FinderViewState;
+  onViewStateChange: React.Dispatch<React.SetStateAction<FinderViewState>>;
   onSelectCategory: (category: string) => void;
   onSelectComponent: (component: PanelComponent) => void;
   onAuthRequired: () => void;
@@ -36,15 +40,20 @@ function categoryIcon(name: string): string {
 }
 
 export function SymbolFinderScreen({
+  viewState,
+  onViewStateChange,
   onSelectCategory,
   onSelectComponent,
   onAuthRequired,
   appendLog,
 }: SymbolFinderScreenProps) {
+  const { query, searchResults } = viewState;
+  const setQuery = (value: string) =>
+    onViewStateChange((prev) => ({ ...prev, query: value }));
+  const setSearchResults = (items: PanelComponent[]) =>
+    onViewStateChange((prev) => ({ ...prev, searchResults: items }));
   const [categories, setCategories] = useState<PanelCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
-  const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<PanelComponent[]>([]);
   const [searching, setSearching] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
