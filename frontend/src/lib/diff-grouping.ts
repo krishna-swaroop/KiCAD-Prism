@@ -15,6 +15,7 @@ export type DiffKind = "added" | "removed" | "changed";
 
 /** Visual + semantic category. Stable identifiers used for grouping and ordering. */
 export type Category =
+    | "rules"      // board constraints, net classes, custom rules and waivers
     | "components" // PCB footprints
     | "nets"       // PCB segments + vias OR schematic wires + labels
     | "zones"      // PCB zones / fills
@@ -32,13 +33,14 @@ export interface CategoryMeta {
 }
 
 export const CATEGORY_META: Record<Category, CategoryMeta> = {
-    components: { label: "Components", order: 0 },
-    symbols:    { label: "Symbols",    order: 0 },
-    nets:       { label: "Nets",       order: 1 },
-    zones:      { label: "Zones",      order: 2 },
-    sheets:     { label: "Sheets",     order: 3 },
-    text:       { label: "Text",       order: 4 },
-    graphics:   { label: "Graphics",   order: 5 },
+    rules:      { label: "Rules & Constraints", order: 0 },
+    components: { label: "Components", order: 1 },
+    symbols:    { label: "Symbols",    order: 1 },
+    nets:       { label: "Nets",       order: 2 },
+    zones:      { label: "Zones",      order: 3 },
+    sheets:     { label: "Sheets",     order: 4 },
+    text:       { label: "Text",       order: 5 },
+    graphics:   { label: "Graphics",   order: 6 },
     other:      { label: "Other",      order: 9 },
 };
 
@@ -46,6 +48,20 @@ export const CATEGORY_META: Record<Category, CategoryMeta> = {
 export function categoryFor(type: string | undefined): Category {
     if (!type) return "other";
     switch (type) {
+        case "board_constraint":
+        case "drc_severity":
+        case "routing_preset":
+        case "board_default":
+        case "teardrop_setting":
+        case "zone_setting":
+        case "drc_exclusion":
+        case "erc_exclusion":
+        case "erc_pin_rule":
+        case "fabrication_output":
+        case "custom_rule":
+        case "net_class":
+        case "net_class_assignment": return "rules";
+        case "project_metadata": return "text";
         // PCB
         case "footprint": return "components";
         case "segment":
@@ -74,6 +90,7 @@ export function categoryFor(type: string | undefined): Category {
         case "net_label":
         case "wire":
         case "bus":
+        case "bus_alias":
         case "bus_entry":
         case "junction":
         case "no_connect":          return "nets";
@@ -150,6 +167,7 @@ type SubGroupPolicy =
     | "by-layer";     // PCB graphics — group by layer
 
 const POLICY: Record<Category, SubGroupPolicy> = {
+    rules:      "per-item",
     components: "per-item",
     symbols:    "per-item",
     sheets:     "per-item",
@@ -262,6 +280,10 @@ function labelForGroup(g: DiffGroup): string {
             const it = m[0].item;
             const ref = it.reference || it.lib_id || "?";
             return it.value ? `${ref} (${it.value})` : ref;
+        }
+        case "rules": {
+            const it = m[0].item;
+            return it.name || it.text || "Rule change";
         }
         case "symbols": {
             const it = m[0].item;

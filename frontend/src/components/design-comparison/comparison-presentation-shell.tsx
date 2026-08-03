@@ -6,8 +6,21 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import { AlertCircle, Cpu, Layers3, Loader2, MessageSquare, X } from "lucide-react";
+import {
+    AlertCircle,
+    ChevronDown,
+    FileText,
+    Layers3,
+    Loader2,
+    X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
+import { SchematicPageTree } from "@/components/ecad-viewer-controls";
 import { ViewerOverlayRail } from "@/components/viewer-overlay-rail";
 import { cn } from "@/lib/utils";
 import type {
@@ -26,6 +39,11 @@ import {
     type ComparisonSelection,
 } from "./comparison-selection-bridge";
 import { ComparisonViewerHost } from "./comparison-viewer-host";
+import {
+    focusVisibleLayers,
+    routeFocusForChanges,
+    type RouteFocusSide,
+} from "./comparison-route-focus";
 import {
     resolveSelectedDocument,
     revisionSourceKey,
@@ -59,12 +77,14 @@ type ComparisonPresentationShellProps = {
     reviewGroups: Array<{ id: string; changes: ChangeItem[] }>;
     initialVisibleLayers: string[];
     onVisibleLayersChange: (layers: string[]) => void;
-    rightRailTab?: "layers" | "discussion" | "component" | null;
-    onRightRailTabChange?: (
-        tab: "layers" | "discussion" | "component" | null,
-    ) => void;
-    discussionContent?: ReactNode;
-    discussionCount?: number;
+    /**
+     * Raised with the board's full layer state so the host can colour a
+     * selected net's "layers used" list with the same swatches the layer
+     * panel uses. Without it the panel can only name layers, not show them.
+     */
+    onPcbLayersChange?: (layers: EcadPcbLayerState[]) => void;
+    rightRailTab?: "layers" | null;
+    onRightRailTabChange?: (tab: "layers" | null) => void;
     /**
      * Rendered at the head of the panel's own top bar. The presentation
      * switcher belongs visually to the panel it controls, but both domain
@@ -74,15 +94,6 @@ type ComparisonPresentationShellProps = {
      * it to whichever shell is on screen.
      */
     toolbarContent?: ReactNode;
-    /**
-     * Raised when a component is clicked in one of this shell's viewer panes,
-     * carrying the pane's revision so the host can show that revision's
-     * metadata. Null when the click landed on empty canvas.
-     */
-    onComponentSelect?: (
-        selection: { reference: string; side: "base" | "compare" } | null,
-    ) => void;
-    componentContent?: ReactNode;
 };
 
 type SessionPhase = "waiting-layout" | "loading" | "ready" | "error";
@@ -190,13 +201,10 @@ export function ComparisonPresentationShell({
     reviewGroups,
     initialVisibleLayers,
     onVisibleLayersChange,
+    onPcbLayersChange,
     rightRailTab = null,
     onRightRailTabChange = ignoreRightRailChange,
-    discussionContent = null,
-    discussionCount = 0,
     toolbarContent = null,
-    onComponentSelect,
-    componentContent = null,
 }: ComparisonPresentationShellProps) {
     const [primaryViewer, setPrimaryViewer] =
         useState<ECadViewerElement | null>(null);
@@ -217,15 +225,23 @@ export function ComparisonPresentationShell({
         useState<string | null>(null);
     const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
     const [dismissedBanner, setDismissedBanner] = useState<string | null>(null);
-    const [diagnosticsDismissed, setDiagnosticsDismissed] = useState(false);
     const [rightRailInset, setRightRailInset] = useState(0);
     const [pcbLayers, setPcbLayers] = useState<EcadPcbLayerState[]>([]);
+    useEffect(() => {
+        onPcbLayersChange?.(pcbLayers);
+    }, [onPcbLayersChange, pcbLayers]);
+    const [layerFocusOverridden, setLayerFocusOverridden] = useState(false);
 
     const sessionGenerationRef = useRef(0);
     const presentationGenerationRef = useRef(0);
+    const presentationReadyKeyRef = useRef<string | null>(null);
     const selectionGenerationRef = useRef(0);
     const lastSelectionKeyRef = useRef<string | null>(null);
+    /** Selection that produced no native target, so its notice fires once. */
+    const unresolvedSelectionKeyRef = useRef<string | null>(null);
     const cameraSyncSuppressedRef = useRef(false);
+    /** Layer visibility owned by the reviewer, captured when a focus takes over. */
+    const preFocusLayersRef = useRef<string[] | null>(null);
     const mountedSecondaryRef = useRef(false);
     const sessionRef = useRef<EcadComparisonSession | null>(null);
     if (presentationMode === "side-by-side") {
@@ -295,6 +311,76 @@ export function ComparisonPresentationShell({
     const comparisonKey = `${projectId}:${base}:${compare}:${domain}`;
     const primaryHostKey = `${comparisonKey}:primary`;
     const secondaryHostKey = `${comparisonKey}:secondary`;
+    /**
+     * What "the scene is ready" means right now.
+     *
+     * Scoped by document as well as by presentation: a page transition
+     * re-prepares the session, and a ready key left over from the previous page
+     * must never satisfy the selection guard for the new one.
+     */
+    const presentationKey =
+        `${comparisonKey}:${documentPath}:${presentationMode}:${oldNewSide}`;
+    const baseHasDocument = preparation
+        ? !preparation.missingReference
+        : revisionHasDocument(files.base, documentPath);
+    const compareHasDocument = preparation
+        ? !preparation.missingComparison
+        : revisionHasDocument(files.head, documentPath);
+    /**
+     * The panes on screen: each attached viewer, the revision it shows, and
+     * whether that revision actually contains the current document.
+     *
+     * One derivation for all three consumers. The side travels with the viewer
+     * rather than with its position in the array — deriving it from the index
+     * meant that whenever one pane had not attached yet, the survivor took
+     * index 0 and was handed the *base* revision's layer set, so a removed
+     * route lit up the compare pane, which cannot contain it. Keeping three
+     * copies of this reasoning is what let that happen in the first place.
+     *
+     * `hasDocument` is the axis the consumers genuinely differ on: painting a
+     * selection skips a pane whose revision lacks the document, while layer
+     * visibility still applies to it.
+     */
+    const panes = useMemo((): Array<{
+        viewer: ECadViewerElement;
+        side: RouteFocusSide;
+        hasDocument: boolean;
+    }> => {
+        if (presentationMode === "side-by-side") {
+            const slots: Array<[ECadViewerElement | null, RouteFocusSide, boolean]> = [
+                [primaryViewer, "reference", baseHasDocument],
+                [secondaryViewer, "comparison", compareHasDocument],
+            ];
+            return slots.flatMap(([viewer, side, hasDocument]) =>
+                viewer ? [{ viewer, side, hasDocument }] : [],
+            );
+        }
+        if (!primaryViewer) return [];
+        if (presentationMode === "old-new") {
+            const base = oldNewSide === "base";
+            return [{
+                viewer: primaryViewer,
+                side: base ? "reference" : "comparison",
+                hasDocument: base ? baseHasDocument : compareHasDocument,
+            }];
+        }
+        // Composite carries both revisions in one pane, so it shows the union
+        // and always has something to paint.
+        return [{ viewer: primaryViewer, side: "both", hasDocument: true }];
+    }, [
+        baseHasDocument,
+        compareHasDocument,
+        oldNewSide,
+        presentationMode,
+        primaryViewer,
+        secondaryViewer,
+    ]);
+
+    const activeLayerViewers = useMemo(
+        () => panes.map((pane) => pane.viewer),
+        [panes],
+    );
+
     const selectionKey = useMemo(
         () =>
             selection
@@ -305,13 +391,15 @@ export function ComparisonPresentationShell({
         [allChanges, selection],
     );
 
-    const baseHasDocument = preparation
-        ? !preparation.missingReference
-        : revisionHasDocument(files.base, documentPath);
-    const compareHasDocument = preparation
-        ? !preparation.missingComparison
-        : revisionHasDocument(files.head, documentPath);
     const showLayers = rightRailTab === "layers";
+    const changedDocuments = useMemo(
+        () => new Set(
+            documentDiff.project.documents
+                .filter((document) => document.changes.length > 0)
+                .map((document) => document.path.split("/").at(-1) ?? document.path),
+        ),
+        [documentDiff],
+    );
     const oneSidedSheetNotice = documentPath && baseHasDocument !== compareHasDocument
         ? `${documentPath} exists only in the ${
             baseHasDocument ? "base" : "compare"
@@ -329,7 +417,6 @@ export function ComparisonPresentationShell({
 
     useEffect(() => {
         setDismissedBanner(null);
-        setDiagnosticsDismissed(false);
     }, [comparisonKey, documentPath]);
 
     useEffect(() => {
@@ -384,7 +471,9 @@ export function ComparisonPresentationShell({
         setPreparation(null);
         setSessionError(null);
         setSessionPhase("loading");
+        presentationReadyKeyRef.current = null;
         lastSelectionKeyRef.current = null;
+        unresolvedSelectionKeyRef.current = null;
         logComparisonDebug("session.prepare.start", {
             generation,
             comparisonKey,
@@ -518,6 +607,13 @@ export function ComparisonPresentationShell({
             presentationMode === "old-new"
                 ? primaryViewer.camera
                 : null;
+        // This ref closes the same-commit gap before the state update below is
+        // visible to the selection effect. Without it, Auto can change the
+        // presentation and the selected diff is painted onto the outgoing
+        // scene, then considered consumed before the new panes are ready.
+        presentationReadyKeyRef.current = null;
+        lastSelectionKeyRef.current = null;
+        unresolvedSelectionKeyRef.current = null;
         setPresentationSwitching(true);
         setSessionError(null);
         const operation =
@@ -544,6 +640,7 @@ export function ComparisonPresentationShell({
                 primaryViewer.camera = retainedOldNewCamera;
             }
             setPreparation(session.preparation);
+            presentationReadyKeyRef.current = presentationKey;
             setPresentationSwitching(false);
             logComparisonDebug("session.presentation.ready", {
                 generation,
@@ -588,6 +685,9 @@ export function ComparisonPresentationShell({
         };
     }, [
         oldNewSide,
+        comparisonKey,
+        documentPath,
+        presentationKey,
         presentationMode,
         primaryLayoutReady,
         primaryViewer,
@@ -603,13 +703,13 @@ export function ComparisonPresentationShell({
             || sessionPhase !== "ready"
             || presentationSwitching
             || !primaryViewer
+            || presentationReadyKeyRef.current !== presentationKey
         ) {
             return;
         }
         const applicationKey =
             `${presentationMode}:${oldNewSide}:${documentPath}:${selectionKey}`;
         if (lastSelectionKeyRef.current === applicationKey) return;
-        lastSelectionKeyRef.current = applicationKey;
         const nativeSelection = resolveNativeSelection(
             session.preparation,
             documentDiff,
@@ -617,35 +717,35 @@ export function ComparisonPresentationShell({
             allChanges,
         );
         if (!nativeSelection) {
-            setSelectionDiagnostic(null);
-            setSelectionNotice(
-                selection
-                    ? "This is a derived connectivity change with no standalone KiCad object to highlight."
-                    : null,
-            );
-            if (!selection) {
-                primaryViewer.clearDocumentDiffSelection?.();
-                secondaryViewer?.clearDocumentDiffSelection?.();
+            // Deliberately not marked as applied. When a selection sends the
+            // reviewer to another page, this runs once against the outgoing
+            // session, whose preparation still names the old document, and
+            // nothing resolves. Consuming the key here left the selection
+            // permanently unapplied until the reviewer picked something else
+            // and came back; instead it retries once the new page is prepared.
+            if (unresolvedSelectionKeyRef.current !== applicationKey) {
+                unresolvedSelectionKeyRef.current = applicationKey;
+                setSelectionDiagnostic(null);
+                const hasVisualTarget = allChanges.some(
+                    (change) => (change.details?.visualTargets?.length ?? 0) > 0,
+                );
+                setSelectionNotice(selection && hasVisualTarget
+                    ? "The selected KiCad object could not be resolved on the canvas; use the structured old/new evidence for review."
+                    : null);
+                if (!selection) {
+                    primaryViewer.clearDocumentDiffSelection?.();
+                    secondaryViewer?.clearDocumentDiffSelection?.();
+                }
             }
             return;
         }
-        const viewers =
-            presentationMode === "side-by-side"
-                ? [
-                    ...(baseHasDocument ? [primaryViewer] : []),
-                    ...(compareHasDocument && secondaryViewer
-                        ? [secondaryViewer]
-                        : []),
-                ]
-                : presentationMode === "old-new"
-                    ? (
-                        oldNewSide === "base"
-                            ? baseHasDocument
-                            : compareHasDocument
-                    )
-                        ? [primaryViewer]
-                        : []
-                    : [primaryViewer];
+        lastSelectionKeyRef.current = applicationKey;
+        unresolvedSelectionKeyRef.current = null;
+        // A pane whose revision does not carry this document has nothing to
+        // paint the selection onto.
+        const viewers = panes
+            .filter((pane) => pane.hasDocument)
+            .map((pane) => pane.viewer);
         const generation = ++selectionGenerationRef.current;
         cameraSyncSuppressedRef.current =
             presentationMode === "side-by-side";
@@ -658,8 +758,32 @@ export function ComparisonPresentationShell({
             if (generation !== selectionGenerationRef.current) return;
             if (selection && frames.every((frame) => frame.status === "missing")) {
                 setSelectionNotice(
-                    "This is a derived connectivity change with no standalone KiCad object to highlight.",
+                    "The selected KiCad object could not be resolved on the canvas; use the structured old/new evidence for review.",
                 );
+            }
+            // An added route resolves only on the compare pane, a removed one
+            // only on the base pane, and the pane that cannot resolve it never
+            // moves its camera. Left alone the two panes look at different
+            // parts of the board, which is the one thing side-by-side exists to
+            // prevent: proving an absence means seeing the place it is absent
+            // from. Camera sync is suppressed for the duration of a selection,
+            // so the framing is carried across explicitly here.
+            if (presentationMode === "side-by-side" && viewers.length === 2) {
+                const resolved = frames.findIndex(
+                    (frame) => frame.status === "applied",
+                );
+                const unresolved = frames.findIndex(
+                    (frame) => frame.status === "missing",
+                );
+                const camera = resolved >= 0 ? viewers[resolved]?.camera : null;
+                if (camera && unresolved >= 0 && viewers[unresolved]) {
+                    viewers[unresolved]!.camera = camera;
+                    logComparisonDebug("session.selection.frame.mirrored", {
+                        generation,
+                        from: resolved,
+                        to: unresolved,
+                    });
+                }
             }
             logComparisonDebug("session.selection.complete", {
                 generation,
@@ -691,8 +815,11 @@ export function ComparisonPresentationShell({
         });
     }, [
         allChanges,
+        panes,
+        presentationKey,
         baseHasDocument,
         compareHasDocument,
+        comparisonKey,
         documentDiff,
         documentPath,
         oldNewSide,
@@ -723,10 +850,7 @@ export function ComparisonPresentationShell({
                 previewChanges,
             )
             : null;
-        const viewers =
-            presentationMode === "side-by-side" && secondaryViewer
-                ? [primaryViewer, secondaryViewer]
-                : [primaryViewer];
+        const viewers = activeLayerViewers;
         for (const viewer of viewers) {
             viewer.previewDocumentDiff?.(nativePreview);
         }
@@ -736,6 +860,7 @@ export function ComparisonPresentationShell({
             }
         };
     }, [
+        activeLayerViewers,
         documentDiff,
         presentationMode,
         presentationSwitching,
@@ -756,21 +881,96 @@ export function ComparisonPresentationShell({
         cameraSyncSuppressedRef,
     );
 
-    const activeLayerViewers = useCallback((): ECadViewerElement[] => {
-        if (presentationMode === "side-by-side") {
-            return [primaryViewer, secondaryViewer].filter(
-                (viewer): viewer is ECadViewerElement => Boolean(viewer),
-            );
+    const routeFocus = useMemo(
+        () => (domain === "pcb" ? routeFocusForChanges(allChanges) : null),
+        [allChanges, domain],
+    );
+    const routeFocusKey = routeFocus
+        ? [
+            routeFocus.net ?? "",
+            routeFocus.reference.join(","),
+            routeFocus.comparison.join(","),
+        ].join("|")
+        : null;
+    const layerFocusActive = Boolean(routeFocus) && !layerFocusOverridden;
+
+    // A new route is a new focus: the reviewer's earlier manual override does
+    // not carry across to a different net's evidence.
+    useEffect(() => {
+        setLayerFocusOverridden(false);
+    }, [routeFocusKey]);
+
+    useEffect(() => {
+        if (domain !== "pcb" || sessionPhase !== "ready" || presentationSwitching) {
+            return;
         }
-        return primaryViewer ? [primaryViewer] : [];
-    }, [presentationMode, primaryViewer, secondaryViewer]);
+        const viewers = activeLayerViewers;
+        if (!viewers.length) return;
+        const applyVisibility = (
+            viewer: ECadViewerElement,
+            visible: Set<string>,
+        ) => {
+            for (const layer of viewer.getPcbViewState?.()?.layers ?? []) {
+                viewer.setPcbLayerVisibility?.(
+                    layer.name,
+                    visible.has(layer.name),
+                );
+            }
+        };
+
+        if (routeFocus && layerFocusActive) {
+            // Capture once. Re-capturing on a presentation switch or a second
+            // route would save the focused state as if the reviewer chose it.
+            if (!preFocusLayersRef.current) {
+                preFocusLayersRef.current =
+                    (viewers[0]?.getPcbViewState?.()?.layers ?? [])
+                        .filter((layer) => layer.visible)
+                        .map((layer) => layer.name);
+            }
+            for (const pane of panes) {
+                applyVisibility(
+                    pane.viewer,
+                    new Set(focusVisibleLayers(routeFocus, pane.side)),
+                );
+            }
+            setPcbLayers(viewers[0]?.getPcbViewState?.()?.layers ?? []);
+            logComparisonDebug("session.layers.focus", {
+                net: routeFocus.net,
+                viaOnly: routeFocus.viaOnly,
+                presentationMode,
+                reference: routeFocus.reference,
+                comparison: routeFocus.comparison,
+            });
+            return;
+        }
+
+        const restore = preFocusLayersRef.current;
+        if (!restore) return;
+        preFocusLayersRef.current = null;
+        const visible = new Set(restore);
+        for (const viewer of viewers) applyVisibility(viewer, visible);
+        setPcbLayers(viewers[0]?.getPcbViewState?.()?.layers ?? []);
+        logComparisonDebug("session.layers.focus.restore", {
+            presentationMode,
+            layers: restore,
+        });
+    }, [
+        activeLayerViewers,
+        panes,
+        domain,
+        layerFocusActive,
+        presentationMode,
+        presentationSwitching,
+        routeFocus,
+        sessionPhase,
+    ]);
 
     useEffect(() => {
         if (domain !== "pcb") {
             setPcbLayers([]);
             return;
         }
-        const viewers = activeLayerViewers();
+        const viewers = activeLayerViewers;
         if (
             sessionPhase !== "ready"
             || presentationSwitching
@@ -778,7 +978,9 @@ export function ComparisonPresentationShell({
         ) {
             return;
         }
-        if (initialVisibleLayers.length) {
+        // A routing focus temporarily owns layer visibility. Re-applying the
+        // reviewer's saved layers here would fight it on every URL update.
+        if (initialVisibleLayers.length && !layerFocusActive) {
             const visible = new Set(initialVisibleLayers);
             for (const viewer of viewers) {
                 for (const layer of viewer.getPcbViewState?.()?.layers ?? []) {
@@ -807,58 +1009,24 @@ export function ComparisonPresentationShell({
         activeLayerViewers,
         domain,
         initialVisibleLayers,
+        layerFocusActive,
         presentationSwitching,
         sessionPhase,
     ]);
 
-    // Report component clicks with the revision the clicked pane is showing.
-    //
-    // Which pane means which revision depends on the presentation: side-by-side
-    // runs two viewers (base left, compare right), Old/New runs one viewer whose
-    // revision is whichever side is flipped to, and Composite paints the
-    // comparison revision as the authority. Deciding that here keeps the host
-    // from having to know the pane layout.
-    useEffect(() => {
-        if (!onComponentSelect) return;
-        const panes: Array<[ECadViewerElement | null, OldNewSide]> =
-            presentationMode === "side-by-side"
-                ? [[primaryViewer, "base"], [secondaryViewer, "compare"]]
-                : [[
-                    primaryViewer,
-                    presentationMode === "old-new" ? oldNewSide : "compare",
-                ]];
-        const listeners: Array<[ECadViewerElement, EventListener]> = [];
-        for (const [viewer, side] of panes) {
-            if (!viewer) continue;
-            const listener: EventListener = (event) => {
-                const detail = (event as CustomEvent<{ reference?: string }>)
-                    .detail;
-                // An empty detail is the viewer reporting a click on bare
-                // canvas; anything without a reference is not a component.
-                onComponentSelect(
-                    detail?.reference
-                        ? { reference: detail.reference, side }
-                        : null,
-                );
-            };
-            viewer.addEventListener("ecad-viewer:selection", listener);
-            listeners.push([viewer, listener]);
-        }
-        return () => {
-            for (const [viewer, listener] of listeners) {
-                viewer.removeEventListener("ecad-viewer:selection", listener);
-            }
-        };
-    }, [
-        oldNewSide,
-        onComponentSelect,
-        presentationMode,
-        primaryViewer,
-        secondaryViewer,
-    ]);
+    /**
+     * Any hand-driven layer change hands visibility back to the reviewer for
+     * as long as this route stays selected, and there is nothing left to
+     * restore afterwards — the state they just built *is* their state.
+     */
+    const releaseLayerFocus = () => {
+        preFocusLayersRef.current = null;
+        setLayerFocusOverridden(true);
+    };
 
     const toggleLayer = (name: string, visible: boolean) => {
-        for (const viewer of activeLayerViewers()) {
+        releaseLayerFocus();
+        for (const viewer of activeLayerViewers) {
             viewer.setPcbLayerVisibility?.(name, visible);
         }
         const next = pcbLayers.map((layer) =>
@@ -874,7 +1042,8 @@ export function ComparisonPresentationShell({
             NonNullable<ECadViewerElement["applyPcbLayerPreset"]>
         >[0],
     ) => {
-        const viewers = activeLayerViewers();
+        releaseLayerFocus();
+        const viewers = activeLayerViewers;
         for (const viewer of viewers) {
             viewer.applyPcbLayerPreset?.(preset);
         }
@@ -885,7 +1054,7 @@ export function ComparisonPresentationShell({
         );
     };
     const highlightLayer = (name: string | null) => {
-        for (const viewer of activeLayerViewers()) {
+        for (const viewer of activeLayerViewers) {
             viewer.setPcbLayerHighlight?.(name);
         }
     };
@@ -901,8 +1070,6 @@ export function ComparisonPresentationShell({
         || sessionPhase === "waiting-layout"
         || sessionPhase === "loading"
         || presentationSwitching;
-    const diagnostics =
-        preparation?.diagnostics.length ?? documentDiff.diagnostics.length;
 
     if (baseMissingRoot && compareMissingRoot) {
         return (
@@ -925,6 +1092,7 @@ export function ComparisonPresentationShell({
     const secondaryActive =
         presentationMode === "side-by-side"
         && compareHasDocument;
+    const primaryPane = panes[0] ?? null;
     const primaryInset =
         presentationMode === "side-by-side" ? 0 : rightRailInset;
 
@@ -964,6 +1132,39 @@ export function ComparisonPresentationShell({
                         </Button>
                     </div>
                 )}
+                {domain === "schematic" && primaryViewer && (
+                    // The comparison had no way to browse sheets: the document
+                    // was only ever a side effect of the selected change. This
+                    // is the Visualizer's own page tree, in a popover.
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 max-w-56 shrink-0"
+                            >
+                                <FileText className="mr-2 h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">
+                                    {documentPath
+                                        ? documentPath.split("/").at(-1)
+                                        : "Sheet"}
+                                </span>
+                                <ChevronDown className="ml-2 h-3.5 w-3.5 shrink-0" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                            align="start"
+                            className="flex max-h-96 w-72 flex-col p-0"
+                        >
+                            <SchematicPageTree
+                                viewer={primaryViewer}
+                                hasChanges={(page) => changedDocuments.has(
+                                    page.filename,
+                                )}
+                            />
+                        </PopoverContent>
+                    </Popover>
+                )}
                 <span className="mr-auto" />
                 {domain === "pcb" && (
                     <ComparisonPcbLayersToggle
@@ -971,6 +1172,8 @@ export function ComparisonPresentationShell({
                         onClick={() => onRightRailTabChange(
                             showLayers ? null : "layers",
                         )}
+                        visibleCount={pcbLayers.filter((layer) => layer.visible).length}
+                        totalCount={pcbLayers.length}
                     />
                 )}
             </div>
@@ -999,29 +1202,17 @@ export function ComparisonPresentationShell({
                                 onLayoutReady={() => setPrimaryLayoutReady(true)}
                                 viewportInsets={{ right: primaryInset }}
                             />
-                            {presentationMode === "side-by-side"
-                                && !baseHasDocument
+                            {/* Three conditions collapsed into the one thing
+                                they all asked: does the revision this pane is
+                                showing carry the document? Composite always
+                                does, because it holds both. */}
+                            {primaryPane
+                                && !primaryPane.hasDocument
                                 && documentPath && (
                                 <MissingRevisionPane
-                                    side="base"
-                                    documentPath={documentPath}
-                                />
-                            )}
-                            {presentationMode === "old-new"
-                                && oldNewSide === "base"
-                                && !baseHasDocument
-                                && documentPath && (
-                                <MissingRevisionPane
-                                    side="base"
-                                    documentPath={documentPath}
-                                />
-                            )}
-                            {presentationMode === "old-new"
-                                && oldNewSide === "compare"
-                                && !compareHasDocument
-                                && documentPath && (
-                                <MissingRevisionPane
-                                    side="compare"
+                                    side={primaryPane.side === "reference"
+                                        ? "base"
+                                        : "compare"}
                                     documentPath={documentPath}
                                 />
                             )}
@@ -1098,77 +1289,30 @@ export function ComparisonPresentationShell({
                     </div>
                 )}
 
-                {presentationMode === "composite"
-                    && !!diagnostics
-                    && !showBanner
-                    && !diagnosticsDismissed && (
-                    <div className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded border bg-background/90 px-2 py-1 text-[10px] text-muted-foreground shadow-sm">
-                        <span>
-                            {diagnostics} unresolved native{" "}
-                            {diagnostics === 1 ? "item" : "items"}
-                        </span>
-                        <button
-                            type="button"
-                            className="rounded p-0.5 transition-colors hover:bg-muted hover:text-foreground"
-                            aria-label="Dismiss unresolved items notice"
-                            onClick={() => setDiagnosticsDismissed(true)}
-                        >
-                            <X className="h-3 w-3" />
-                        </button>
-                    </div>
-                )}
 
                 <ViewerOverlayRail
                     activeTab={rightRailTab}
-                    tabs={[
-                        ...(domain === "pcb"
-                            ? [{
-                                  id: "layers" as const,
-                                  label: "Layers",
-                                  icon: <Layers3 className="mr-1.5 size-3.5" />,
-                              }]
-                            : []),
-                        {
-                            id: "discussion" as const,
-                            label: "Comments",
-                            icon: <MessageSquare className="mr-1.5 size-3.5" />,
-                            badge: discussionCount > 0
-                                ? (
-                                    <span className="rounded-full bg-muted px-1.5 text-[10px]">
-                                        {discussionCount}
-                                    </span>
-                                )
-                                : null,
-                        },
-                        ...(componentContent
-                            ? [{
-                                  id: "component" as const,
-                                  label: "Component",
-                                  icon: <Cpu className="mr-1.5 size-3.5" />,
-                              }]
-                            : []),
-                    ]}
+                    tabs={domain === "pcb"
+                        ? [{
+                            id: "layers" as const,
+                            label: "Layers",
+                            icon: <Layers3 className="mr-1.5 size-3.5" />,
+                        }]
+                        : []}
                     onTabChange={onRightRailTabChange}
                     onClose={() => onRightRailTabChange(null)}
                     onVisibleWidthChange={setRightRailInset}
                     ariaLabel="Comparison tools"
                     className="w-80"
                 >
-                    {rightRailTab === "component" ? (
-                        componentContent
-                    ) : rightRailTab === "layers" && domain === "pcb" ? (
+                    {rightRailTab === "layers" && domain === "pcb" ? (
                         <ComparisonPcbLayersPanel
-                            open
-                            onOpenChange={(open) => {
-                                if (!open) onRightRailTabChange(null);
-                            }}
                             layers={pcbLayers}
                             onToggleVisibility={toggleLayer}
                             onApplyPreset={applyPreset}
                             onHighlight={highlightLayer}
-                            embedded
                         />
-                    ) : discussionContent}
+                    ) : null}
                 </ViewerOverlayRail>
             </div>
         </section>

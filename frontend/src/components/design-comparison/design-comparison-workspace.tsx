@@ -1,26 +1,15 @@
-import {
-    Profiler,
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-    type ProfilerOnRenderCallback,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
     AlertCircle,
-    ChevronDown,
-    ChevronLeft,
+    Cpu,
     ChevronRight,
     CircuitBoard,
     Columns2,
-    Cpu,
     FileText,
+    Factory,
     Layers3,
     Loader2,
-    MessageSquare,
-    Search,
     Square,
     ToggleLeft,
 } from "lucide-react";
@@ -32,11 +21,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { fetchApi, readApiError } from "@/lib/api";
+import { ResizablePanel } from "@/components/ui/resizable-panel";
+import { downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
-import { CATEGORY_META, mergedKind, type Category, type DiffKind } from "@/lib/diff-grouping";
-import { CHANGE_KIND_LABEL, ChangeStatusDot } from "./change-status";
+import { DifferencesPane } from "./differences-pane";
+import { useDesignCompareJob } from "./use-design-compare-job";
+import { useComparisonComments } from "./use-comparison-comments";
+import { useComparisonUrlState } from "./use-comparison-url-state";
 import { ComparisonPresentationShell } from "./comparison-presentation-shell";
 import type { ComparisonSelection } from "./comparison-selection-bridge";
 import {
@@ -44,31 +35,42 @@ import {
     startComparisonDebugSession,
 } from "./comparison-debug-log";
 import {
-    applyWorkspaceComparisonParams,
     readComparisonUrlState,
     type ComparisonPresentationMode,
     type ComparisonUrlTab,
 } from "./comparison-url";
 import { comparisonDomainStatus } from "./comparison-readiness";
-import { hydrateDesignComparePayload } from "./comparison-result-loader";
 import { BomPanel } from "./bom-panel";
 import { StackupPanel } from "./stackup-panel";
+import { FabricationPanel } from "./fabrication-panel";
 import { ComparisonDiscussionRail } from "./comparison-discussion-rail";
+import { ComparisonPropertyPanel } from "./comparison-property-panel";
+import { recommendPresentationForTab } from "./comparison-review-policy";
 import {
-    ComparisonComponentRail,
-    type ComparisonComponentSelection,
-} from "./comparison-component-rail";
-import type { Comment, CommentsFile } from "@/types/comments";
+    prepareChangesForReview,
+    semanticNetRenames,
+} from "./comparison-review-noise";
+import {
+    createGroupingContext,
+    groupChanges,
+    type ChangeGroup,
+} from "./comparison-review-groups";
+import {
+    groupMatchesSearch,
+    reviewImpactCounts,
+    reviewImpactForGroup,
+    reviewStatusCounts,
+    type ReviewImpact,
+} from "./comparison-review-queue";
+import {
+    reviewReportCsv,
+    reviewReportFilename,
+} from "./comparison-review-report";
+import type { EcadPcbLayerState } from "@/types/ecad-viewer";
 import type {
     ChangeItem,
     ChangeKind,
-    DesignCompareBundle,
-    DesignCompareJobStatus,
-    DesignCompareResult,
-    SemanticChangeGroup,
 } from "./types";
-
-const DIFFERENCES_PAGE_SIZE = 25;
 
 type WorkspaceTab = ComparisonUrlTab;
 export type PresentationMode = ComparisonPresentationMode;
@@ -82,186 +84,10 @@ interface DesignComparisonWorkspaceProps {
     onClose: () => void;
 }
 
-interface ChangeGroup {
-    id: string;
-    category: Category;
-    kind: DiffKind;
-    label: string;
-    classification: "primary" | "secondary";
-    unresolvedCount: number;
-    changes: ChangeItem[];
-}
-
 interface SemanticFocus {
     semanticId?: string | null;
     reference?: string | null;
     net?: string | null;
-}
-
-const STATUS_META: Array<{ id: ChangeKind; label: string }> = [
-    { id: "added", label: CHANGE_KIND_LABEL.added },
-    { id: "changed", label: CHANGE_KIND_LABEL.changed },
-    { id: "removed", label: CHANGE_KIND_LABEL.removed },
-];
-
-function normalizeCategory(category: string): Category {
-    if (category === "board") return "other";
-    return category in CATEGORY_META ? (category as Category) : "other";
-}
-
-const NET_REASON_CODES = new Set([
-    "connectivity-changed",
-    "net-renamed",
-    "label-count-changed",
-]);
-
-function semanticCategory(change: ChangeItem): Category {
-    if (
-        change.net
-        || change.reasons?.some((reason) => NET_REASON_CODES.has(reason))
-    ) {
-        return "nets";
-    }
-    return normalizeCategory(change.category);
-}
-
-export function groupChanges(
-    changes: ChangeItem[],
-    comments: Comment[] = [],
-): ChangeGroup[] {
-    const buckets = new Map<string, ChangeGroup>();
-    for (const change of changes) {
-        const category = semanticCategory(change);
-        const identity =
-            change.semantic_id
-            ?? change.reference
-            ?? change.net
-            ?? change.geometry?.semantic_id
-            ?? change.oldGeometry?.semantic_id
-            ?? change.id;
-        const key = `${change.domain}:${category}:${identity}`;
-        const existing = buckets.get(key);
-        if (existing) {
-            existing.changes.push(change);
-            if (change.classification !== "secondary") existing.classification = "primary";
-        } else {
-            buckets.set(key, {
-                id: key,
-                category,
-                kind: change.kind,
-                label: change.label,
-                classification: change.classification ?? "primary",
-                unresolvedCount: comments.filter(
-                    (comment) =>
-                        comment.status === "OPEN"
-                        && comment.semanticItemId === key,
-                ).length,
-                changes: [change],
-            });
-        }
-    }
-    const groups = [...buckets.values()];
-    for (const group of groups) {
-        group.kind = mergedKind(group.changes.map((change) => change.kind));
-        if (group.changes.length > 1) {
-            group.label = `${group.label} — ${group.changes.length} changes`;
-        }
-    }
-    return groups.sort((left, right) => {
-        const categoryOrder = CATEGORY_META[left.category].order - CATEGORY_META[right.category].order;
-        return categoryOrder || left.label.localeCompare(right.label);
-    });
-}
-
-function hydrateServerGroups(
-    changes: ChangeItem[],
-    serverGroups: SemanticChangeGroup[],
-    comments: Comment[],
-): ChangeGroup[] {
-    const visible = new Map(changes.map((change) => [change.id, change]));
-    const hydrated: ChangeGroup[] = [];
-    const consumed = new Set<string>();
-    for (const serverGroup of serverGroups) {
-        const members = serverGroup.members
-            .map((id) => visible.get(id))
-            .filter((change): change is ChangeItem => Boolean(change));
-        if (!members.length) continue;
-        members.forEach((change) => consumed.add(change.id));
-        const first = members[0]!;
-        const category = members.some((change) => semanticCategory(change) === "nets")
-            ? "nets"
-            : normalizeCategory(serverGroup.category);
-        const identity = first.semantic_id ?? first.reference ?? first.net ?? serverGroup.id;
-        const id = `${first.domain}:${category}:${identity}`;
-        hydrated.push({
-            id,
-            category,
-            kind: serverGroup.status,
-            label: serverGroup.label,
-            classification: serverGroup.classification,
-            unresolvedCount: comments.filter(
-                (comment) => comment.status === "OPEN" && comment.semanticItemId === id,
-            ).length,
-            changes: members,
-        });
-    }
-    hydrated.push(
-        ...groupChanges(
-            changes.filter((change) => !consumed.has(change.id)),
-            comments,
-        ),
-    );
-    return hydrated.sort((left, right) => {
-        const classOrder = left.classification === right.classification
-            ? 0
-            : left.classification === "primary" ? -1 : 1;
-        return classOrder
-            || CATEGORY_META[left.category].order - CATEGORY_META[right.category].order
-            || left.label.localeCompare(right.label);
-    });
-}
-
-function changeSummary(change: ChangeItem): string {
-    const details = change.details;
-    const reason = change.reasons?.[0];
-    if (
-        (reason === "object-added" || reason === "object-removed")
-        && details?.netInstances
-    ) {
-        return `Instances ${details.netInstances.old} → ${details.netInstances.new}`;
-    }
-    if (reason === "instance-replaced") return "Instance replaced (same RefDes)";
-    if (reason === "instance-count-changed" && details?.instanceCount) {
-        return `Instances ${details.instanceCount.old} → ${details.instanceCount.new}`;
-    }
-    if (reason === "label-count-changed" && details?.labelInstances) {
-        return `Labels ${details.labelInstances.old} → ${details.labelInstances.new}`;
-    }
-    if (reason === "sheet-changed" && details?.sheetChange) {
-        return `Sheet ${details.sheetChange.old ?? "—"} → ${details.sheetChange.new ?? "—"}`;
-    }
-    if (reason === "connectivity-changed" && details?.connectivity) {
-        const added = details.connectivity.addedTerminals.map((value) => `+${value}`);
-        const removed = details.connectivity.removedTerminals.map((value) => `−${value}`);
-        return [...added, ...removed].join(", ") || "Connectivity changed";
-    }
-    if (reason === "net-renamed") {
-        const value = change.fields?.name;
-        if (value && typeof value === "object") {
-            return `Net ${String(value.old ?? "—")} → ${String(value.new ?? "—")}`;
-        }
-    }
-    const firstField = Object.entries(change.fields ?? {})[0];
-    if (firstField) {
-        const [field, value] = firstField;
-        if (value && typeof value === "object") {
-            return `${field}: ${String(value.old ?? "—")} → ${String(value.new ?? "—")}`;
-        }
-    }
-    // No fallback to "Added"/"Removed"/"Modified": the status mark already says
-    // that, and repeating it as a second line doubled the height of rows that
-    // had nothing else to report. Rows with no detail collapse to one line.
-    return "";
 }
 
 export function readInitialUrlState(
@@ -270,399 +96,13 @@ export function readInitialUrlState(
     const state = readComparisonUrlState(search);
     return {
         activeTab: state.diff,
-        presentationMode: state.presentationMode,
+        presentationOverride: state.presentationOverride,
         selectedChangeId: state.item,
         showSecondary: state.showSecondary,
         layers: state.layers,
     };
 }
 
-function DifferencesPane({
-    groups,
-    totalGroups,
-    page,
-    pageSize,
-    onPageChange,
-    statuses,
-    onToggleStatus,
-    search,
-    onSearchChange,
-    showSecondary,
-    onShowSecondaryChange,
-    selectedChangeId,
-    selectedGroupId,
-    selectedDocumentPath,
-    documentDiff,
-    onSelectChange,
-    onSelectGroup,
-    onPreviewChange,
-    onPrevious,
-    onNext,
-}: {
-    groups: ChangeGroup[];
-    totalGroups: number;
-    page: number;
-    pageSize: number;
-    onPageChange: (page: number) => void;
-    statuses: Set<ChangeKind>;
-    onToggleStatus: (kind: ChangeKind) => void;
-    search: string;
-    onSearchChange: (value: string) => void;
-    showSecondary: boolean;
-    onShowSecondaryChange: (value: boolean) => void;
-    selectedChangeId: string | null;
-    selectedGroupId: string | null;
-    selectedDocumentPath?: string;
-    documentDiff: DesignCompareResult["document_diff"];
-    onSelectChange: (change: ChangeItem, documentPath?: string) => void;
-    onSelectGroup: (group: ChangeGroup) => void;
-    onPreviewChange: (selection: ComparisonSelection) => void;
-    onPrevious: () => void;
-    onNext: () => void;
-}) {
-    const paneRef = useRef<HTMLElement | null>(null);
-    const totalPages = Math.max(1, Math.ceil(totalGroups / pageSize));
-    const selectedGroup = groups.find((group) =>
-        group.changes.some((change) => change.id === selectedChangeId)
-    );
-    const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
-        () => new Set(),
-    );
-    useEffect(() => {
-        if (!selectedGroup) return;
-        setExpandedGroupIds((current) => {
-            if (current.has(selectedGroup.id)) return current;
-            const next = new Set(current);
-            next.add(selectedGroup.id);
-            return next;
-        });
-    }, [selectedGroup]);
-    useEffect(() => {
-        if (!selectedChangeId && !selectedGroupId) return;
-        const frame = requestAnimationFrame(() => {
-            const rows = paneRef.current?.querySelectorAll<HTMLElement>(
-                "[data-change-id], [data-group-id]",
-            );
-            const row = [...(rows ?? [])].find(
-                (candidate) =>
-                    candidate.dataset.changeId === selectedChangeId
-                    || candidate.dataset.groupId === selectedGroupId,
-            );
-            row?.scrollIntoView({ block: "nearest" });
-        });
-        return () => cancelAnimationFrame(frame);
-    }, [selectedChangeId, selectedGroupId, groups]);
-    const byCategory = useMemo(() => {
-        const result = new Map<Category, ChangeGroup[]>();
-        for (const group of groups) {
-            const list = result.get(group.category) ?? [];
-            list.push(group);
-            result.set(group.category, list);
-        }
-        return result;
-    }, [groups]);
-
-    return (
-        <aside ref={paneRef} className="flex h-full w-80 shrink-0 flex-col border-r bg-background max-md:w-64">
-            <div className="space-y-2 border-b p-2">
-                <div className="relative">
-                    <Search className="pointer-events-none absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input
-                        value={search}
-                        onChange={(event) => onSearchChange(event.target.value)}
-                        placeholder="Search changes, nets, references…"
-                        className="pl-8"
-                    />
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                    {STATUS_META.map((status) => (
-                        <Button
-                            key={status.id}
-                            variant={statuses.has(status.id) ? "secondary" : "outline"}
-                            size="sm"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => onToggleStatus(status.id)}
-                            aria-pressed={statuses.has(status.id)}
-                        >
-                            <ChangeStatusDot kind={status.id} className="mr-1.5" />
-                            {status.label}
-                        </Button>
-                    ))}
-                </div>
-                <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-muted-foreground hover:text-foreground">
-                    <input
-                        type="checkbox"
-                        checked={showSecondary}
-                        onChange={(event) => onShowSecondaryChange(event.target.checked)}
-                        className="accent-primary"
-                    />
-                    Show secondary graphics and generated noise
-                </label>
-            </div>
-
-            <div className="flex items-center justify-between border-b px-2 py-1.5">
-                <span className="text-[11px] text-muted-foreground">
-                    {totalGroups} group{totalGroups === 1 ? "" : "s"}
-                    {totalPages > 1 && (
-                        <span className="ml-1">
-                            · page {page + 1}/{totalPages}
-                        </span>
-                    )}
-                </span>
-                <div className="flex gap-1">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={onPrevious}
-                        disabled={!groups.length}
-                        aria-label="Previous change"
-                    >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={onNext}
-                        disabled={!groups.length}
-                        aria-label="Next change"
-                    >
-                        <ChevronRight className="h-3.5 w-3.5" />
-                    </Button>
-                </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-auto p-2">
-                {!groups.length ? (
-                    <p className="px-3 py-10 text-center text-xs text-muted-foreground">
-                        No differences match these filters.
-                    </p>
-                ) : (
-                    [...byCategory.entries()]
-                        .sort(([left], [right]) => CATEGORY_META[left].order - CATEGORY_META[right].order)
-                        .map(([category, categoryGroups]) => {
-                            const secondaryCategory = categoryGroups.every(
-                                (group) => group.classification === "secondary",
-                            );
-                            return (
-                            <details key={category} className="mb-3" open={!secondaryCategory}>
-                                <summary className="mb-1 cursor-pointer px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                                    {secondaryCategory
-                                        ? "Physical / Graphics"
-                                        : CATEGORY_META[category].label}
-                                </summary>
-                                <div className="space-y-0.5">
-                                    {categoryGroups.map((group) => {
-                                        // A group holding one change has nothing
-                                        // to expand into, and most groups are
-                                        // that. Those rows lose the chevron and
-                                        // its indent entirely.
-                                        const splittable = group.changes.length > 1;
-                                        const expanded =
-                                            splittable && expandedGroupIds.has(group.id);
-                                        const selected = selectedGroupId === group.id
-                                            || selectedGroup?.id === group.id;
-                                        const primaryChange = group.changes[0]!;
-                                        const summary = changeSummary(primaryChange);
-                                        return (
-                                            <div key={group.id}>
-                                                <button
-                                                    type="button"
-                                                    data-group-id={group.id}
-                                                    className={cn(
-                                                        "flex w-full items-center gap-2 border-l-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                                        selected
-                                                            ? "border-primary bg-accent text-accent-foreground"
-                                                            : "border-transparent",
-                                                    )}
-                                                    onClick={() => {
-                                                        if (splittable) {
-                                                            setExpandedGroupIds((current) => {
-                                                                const next = new Set(current);
-                                                                if (next.has(group.id)) next.delete(group.id);
-                                                                else next.add(group.id);
-                                                                return next;
-                                                            });
-                                                        }
-                                                        onSelectGroup(group);
-                                                    }}
-                                                    onMouseEnter={() =>
-                                                        onPreviewChange({ kind: "group", id: group.id })
-                                                    }
-                                                    onMouseLeave={() => onPreviewChange(null)}
-                                                    onKeyDown={(event) => {
-                                                        if (event.key === "ArrowUp") {
-                                                            event.preventDefault();
-                                                            onPrevious();
-                                                        } else if (event.key === "ArrowDown") {
-                                                            event.preventDefault();
-                                                            onNext();
-                                                        }
-                                                    }}
-                                                    aria-expanded={splittable ? expanded : undefined}
-                                                >
-                                                    {splittable ? (
-                                                        expanded
-                                                            ? <ChevronDown className="h-3 w-3 shrink-0" />
-                                                            : <ChevronRight className="h-3 w-3 shrink-0" />
-                                                    ) : null}
-                                                    <ChangeStatusDot kind={group.kind} />
-                                                    <span className="min-w-0 flex-1">
-                                                        <span className="flex items-center gap-1.5">
-                                                            <span className="truncate font-medium">{group.label}</span>
-                                                            {primaryChange.page && (
-                                                                <span className="max-w-20 truncate rounded bg-muted px-1 text-[9px] text-muted-foreground">
-                                                                    {primaryChange.page.split("/").at(-1)}
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                        {summary && (
-                                                            <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-                                                                {summary}
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                    {group.unresolvedCount > 0 && (
-                                                        <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1 text-[9px] text-muted-foreground">
-                                                            <MessageSquare className="h-2.5 w-2.5" />
-                                                            {group.unresolvedCount}
-                                                        </span>
-                                                    )}
-                                                    {group.classification === "secondary" && (
-                                                        <span className="rounded bg-muted px-1 text-[9px] uppercase text-muted-foreground">
-                                                            secondary
-                                                        </span>
-                                                    )}
-                                                </button>
-                                                {expanded && (
-                                                    <div className="ml-5 border-l py-1 pl-2">
-                                                        {group.changes.map((change) => {
-                                                            const navigation =
-                                                                documentDiff.navigation[change.id];
-                                                            const pageTargets = [
-                                                                ...new Map(
-                                                                    (
-                                                                        navigation?.documents
-                                                                        ?? (navigation
-                                                                            ? [navigation]
-                                                                            : [])
-                                                                    ).map((entry) => [
-                                                                        entry.documentPath,
-                                                                        entry,
-                                                                    ]),
-                                                                ).values(),
-                                                            ];
-                                                            return (
-                                                                <div key={change.id}>
-                                                                    <button
-                                                                        type="button"
-                                                                        data-change-id={change.id}
-                                                                        onClick={() => onSelectChange(change)}
-                                                                        onMouseEnter={() =>
-                                                                            onPreviewChange({ kind: "item", id: change.id })
-                                                                        }
-                                                                        onMouseLeave={() => onPreviewChange(null)}
-                                                                        className={cn(
-                                                                            "block w-full rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                                                            selectedChangeId === change.id && "bg-primary/10 text-primary",
-                                                                        )}
-                                                                        aria-current={
-                                                                            selectedChangeId === change.id
-                                                                                ? "true"
-                                                                                : undefined
-                                                                        }
-                                                                    >
-                                                                        <span className="block truncate font-medium">
-                                                                            {change.label}
-                                                                        </span>
-                                                                        <span className="block truncate text-[10px] text-muted-foreground">
-                                                                            {changeSummary(change)}
-                                                                        </span>
-                                                                    </button>
-                                                                    {pageTargets.length > 1 && (
-                                                                        <div className="ml-2 border-l pl-2">
-                                                                            {pageTargets.map((target) => {
-                                                                                const active =
-                                                                                    selectedChangeId === change.id
-                                                                                    && selectedDocumentPath === target.documentPath;
-                                                                                return (
-                                                                                    <button
-                                                                                        key={target.documentPath}
-                                                                                        type="button"
-                                                                                        onClick={() =>
-                                                                                            onSelectChange(
-                                                                                                change,
-                                                                                                target.documentPath,
-                                                                                            )
-                                                                                        }
-                                                                                        onMouseEnter={() =>
-                                                                                            onPreviewChange({
-                                                                                                kind: "item",
-                                                                                                id: change.id,
-                                                                                                documentPath: target.documentPath,
-                                                                                            })
-                                                                                        }
-                                                                                        onMouseLeave={() => onPreviewChange(null)}
-                                                                                        className={cn(
-                                                                                            "flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                                                                            active && "bg-primary/10 text-primary",
-                                                                                        )}
-                                                                                        aria-current={active ? "page" : undefined}
-                                                                                    >
-                                                                                        <FileText className="h-3 w-3 shrink-0" />
-                                                                                        <span className="truncate">
-                                                                                            {target.documentPath.split("/").at(-1)}
-                                                                                        </span>
-                                                                                    </button>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </details>
-                            );
-                        })
-                )}
-            </div>
-
-            {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t px-2 py-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={page <= 0}
-                        onClick={() => onPageChange(page - 1)}
-                    >
-                        Previous page
-                    </Button>
-                    <span className="text-[10px] text-muted-foreground">
-                        {page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalGroups)}
-                    </span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={page >= totalPages - 1}
-                        onClick={() => onPageChange(page + 1)}
-                    >
-                        Next page
-                    </Button>
-                </div>
-            )}
-
-        </aside>
-    );
-}
 
 export function DesignComparisonWorkspace({
     projectId,
@@ -672,22 +112,39 @@ export function DesignComparisonWorkspace({
     canComment,
     onClose,
 }: DesignComparisonWorkspaceProps) {
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchParams] = useSearchParams();
+    const { result, status: jobStatus, error } = useDesignCompareJob(
+        projectId,
+        base,
+        head,
+    );
+    const [comments, setComments] = useComparisonComments(
+        projectId,
+        base,
+        head,
+    );
     const initial = useMemo(
         () => readInitialUrlState(searchParams),
         [searchParams],
     );
-    const [jobId, setJobId] = useState<string | null>(null);
-    const [jobStatus, setJobStatus] = useState<DesignCompareJobStatus | null>(null);
-    const [result, setResult] = useState<DesignCompareResult | null>(null);
-    const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<WorkspaceTab>(initial.activeTab);
-    const [presentationMode, setPresentationMode] = useState<PresentationMode>(
-        initial.presentationMode,
-    );
+    /**
+     * A reviewer's explicit presentation choice for the change they are looking
+     * at right now, or null to follow the policy's recommendation.
+     *
+     * Auto is not a mode to select, it is what happens when nothing has been
+     * selected. An override answers "show me *this* change differently" and is
+     * discarded when the reviewer moves to another change, so the workspace
+     * never carries a stale choice into evidence it was not made for.
+     */
+    const [presentationOverride, setPresentationOverride] =
+        useState<PresentationMode | null>(initial.presentationOverride);
     const [statuses, setStatuses] = useState<Set<ChangeKind>>(
         () => new Set(["added", "changed", "removed"]),
     );
+    // Empty means "no owner filter". Six owners would otherwise need five
+    // clicks to isolate one, so these chips narrow rather than exclude.
+    const [impacts, setImpacts] = useState<Set<ReviewImpact>>(() => new Set());
     const [search, setSearch] = useState("");
     const [showSecondary, setShowSecondary] = useState(initial.showSecondary);
     const [selectedChangeId, setSelectedChangeId] = useState<string | null>(
@@ -699,34 +156,15 @@ export function DesignComparisonWorkspace({
             : null,
     );
     const [visibleLayers, setVisibleLayers] = useState<string[]>(initial.layers);
-    const [differencesPage, setDifferencesPage] = useState(0);
-    const [comments, setComments] = useState<Comment[]>([]);
+    // Board layer state, lifted so the property panel can draw a selected net's
+    // layers with the same swatches the layer panel uses.
+    const [pcbLayers, setPcbLayers] = useState<EcadPcbLayerState[]>([]);
     // Closed by default; the user opens it deliberately from the rail.
-    const [comparisonRightRailTab, setComparisonRightRailTab] = useState<
-        "layers" | "discussion" | "component" | null
-    >(null);
-    const [componentSelection, setComponentSelection] =
-        useState<ComparisonComponentSelection | null>(null);
-    const showDiscussion = comparisonRightRailTab === "discussion";
+    const [comparisonRightRailTab, setComparisonRightRailTab] =
+        useState<"layers" | null>(null);
     const [previewSelection, setPreviewSelection] =
         useState<ComparisonSelection>(null);
-    const jobIdRef = useRef<string | null>(null);
-    const resultVersionRef = useRef(0);
     const semanticFocusRef = useRef<SemanticFocus | null>(null);
-    const logRenderPerformance = useCallback<ProfilerOnRenderCallback>(
-        (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
-            if (phase !== "mount" && actualDuration < 4) return;
-            logComparisonDebug("performance.react", {
-                id,
-                phase,
-                actualDurationMs: Number(actualDuration.toFixed(3)),
-                baseDurationMs: Number(baseDuration.toFixed(3)),
-                startTimeMs: Number(startTime.toFixed(3)),
-                commitTimeMs: Number(commitTime.toFixed(3)),
-            });
-        },
-        [],
-    );
 
     useEffect(() => {
         if (activeTab !== "pcb" && comparisonRightRailTab === "layers") {
@@ -742,183 +180,6 @@ export function DesignComparisonWorkspace({
         });
     }, [projectId, base, head]);
 
-    useEffect(() => {
-        logComparisonDebug("workspace.state", {
-            activeTab,
-            presentationMode,
-            selectedChangeId,
-            selectionKind: reviewSelection?.kind ?? null,
-            selectionId: reviewSelection?.id ?? null,
-            differencesPage,
-        });
-    }, [
-        activeTab,
-        differencesPage,
-        presentationMode,
-        reviewSelection,
-        selectedChangeId,
-    ]);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        setResult(null);
-        setJobStatus(null);
-        setError(null);
-        resultVersionRef.current = 0;
-        void (async () => {
-            try {
-                const response = await fetchApi(`/api/projects/${projectId}/design-compare`, {
-                    method: "POST",
-                    body: JSON.stringify({ base, head, include_unchanged: true }),
-                    signal: controller.signal,
-                });
-                if (!response.ok) {
-                    throw new Error(await readApiError(response, "Failed to start semantic comparison"));
-                }
-                const data = (await response.json()) as { job_id: string };
-                jobIdRef.current = data.job_id;
-                setJobId(data.job_id);
-            } catch (caught) {
-                if (caught instanceof DOMException && caught.name === "AbortError") return;
-                setError(caught instanceof Error ? caught.message : "Failed to start semantic comparison");
-            }
-        })();
-        return () => controller.abort();
-    }, [projectId, base, head]);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        void (async () => {
-            try {
-                const params = new URLSearchParams({ base, compare: head });
-                const response = await fetchApi(
-                    `/api/projects/${projectId}/comparison-comments?${params}`,
-                    { signal: controller.signal },
-                );
-                if (!response.ok) return;
-                const payload = (await response.json()) as CommentsFile;
-                if (!controller.signal.aborted) setComments(payload.comments ?? []);
-            } catch (caught) {
-                // The cleanup aborts this fetch on every re-run; that rejection is
-                // expected, not an error. Without this catch it surfaced as an
-                // "Uncaught (in promise) AbortError" on each render.
-                if (caught instanceof DOMException && caught.name === "AbortError") return;
-                throw caught;
-            }
-        })();
-        return () => controller.abort();
-    }, [projectId, base, head]);
-
-    useEffect(() => {
-        if (!jobId) return;
-        const controller = new AbortController();
-        let cancelled = false;
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        const poll = async () => {
-            try {
-                const response = await fetchApi(`/api/projects/${projectId}/design-compare/${jobId}/status`);
-                if (!response.ok) throw new Error(await readApiError(response, "Failed to poll comparison"));
-                const status = (await response.json()) as DesignCompareJobStatus;
-                if (cancelled) return;
-                setJobStatus(status);
-                const resultVersion = status.result_version ?? 0;
-                if (resultVersion > resultVersionRef.current) {
-                    const resultResponse = await fetchApi(
-                        `/api/projects/${projectId}/design-compare/${jobId}`,
-                    );
-                    if (!resultResponse.ok) {
-                        throw new Error(await readApiError(resultResponse, "Failed to load comparison"));
-                    }
-                    const resultPayload = (await resultResponse.json()) as
-                        | DesignCompareResult
-                        | DesignCompareBundle;
-                    const nextResult = await hydrateDesignComparePayload(
-                        resultPayload,
-                        controller.signal,
-                    );
-                    if (cancelled) return;
-                    resultVersionRef.current = resultVersion;
-                    setResult(nextResult);
-                }
-                if (status.status === "failed") {
-                    setError(status.message || "Semantic comparison failed");
-                } else if (status.status === "completed") {
-                    return;
-                } else {
-                    timer = setTimeout(poll, 800);
-                }
-            } catch (caught) {
-                if (!cancelled) {
-                    setError(caught instanceof Error ? caught.message : "Failed to load semantic comparison");
-                }
-            }
-        };
-        void poll();
-        return () => {
-            cancelled = true;
-            controller.abort();
-            if (timer) clearTimeout(timer);
-        };
-    }, [jobId, projectId]);
-
-    useEffect(() => {
-        return () => {
-            const id = jobIdRef.current;
-            if (id) void fetchApi(`/api/projects/${projectId}/design-compare/${id}`, { method: "DELETE" });
-        };
-    }, [projectId]);
-
-    useEffect(() => {
-        setSearchParams(
-            (current) => {
-                const next = applyWorkspaceComparisonParams(current, {
-                    base,
-                    compare: head,
-                    activeTab,
-                    presentationMode,
-                    selectedChangeId,
-                    showSecondary,
-                    visibleLayers,
-                });
-                return next.toString() === current.toString() ? current : next;
-            },
-            { replace: true },
-        );
-    }, [
-        base,
-        head,
-        activeTab,
-        presentationMode,
-        selectedChangeId,
-        showSecondary,
-        visibleLayers,
-        setSearchParams,
-    ]);
-
-    useEffect(() => {
-        const next = readComparisonUrlState(searchParams);
-        if (!next.base || !next.compare) return;
-        setActiveTab((current) => (current === next.diff ? current : next.diff));
-        setPresentationMode((current) =>
-            current === next.presentationMode ? current : next.presentationMode,
-        );
-        setSelectedChangeId((current) =>
-            current === next.item ? current : next.item,
-        );
-        setShowSecondary((current) =>
-            current === next.showSecondary ? current : next.showSecondary,
-        );
-        setVisibleLayers((current) => {
-            if (
-                current.length === next.layers.length
-                && current.every((layer, index) => layer === next.layers[index])
-            ) {
-                return current;
-            }
-            return next.layers;
-        });
-    }, [searchParams]);
-
     const handleClose = () => {
         onClose();
     };
@@ -933,105 +194,137 @@ export function DesignComparisonWorkspace({
      * deliberate — it never becomes a close shortcut again by accident.
      */
     const dismissSelection = () => {
+        semanticFocusRef.current = null;
+        setSelectedChangeId(null);
         setReviewSelection(null);
         setPreviewSelection(null);
-        setComponentSelection(null);
         setComparisonRightRailTab(null);
     };
 
     const domain = activeTab === "pcb" ? "pcb" : "schematic";
-    const domainChanges = useMemo(() => {
-        if (!result) return [];
-        return activeTab === "sch"
-            ? result.schematic.changes
-            : activeTab === "pcb"
-                ? result.pcb.changes
-                : [];
-    }, [result, activeTab]);
-    const filteredChanges = useMemo(() => {
-        const query = search.trim().toLocaleLowerCase();
-        return domainChanges.filter((change) => {
-            if (!statuses.has(change.kind)) return false;
-            if (!showSecondary && change.classification === "secondary") return false;
-            if (!query) return true;
-            return [
-                change.label,
-                change.reference,
-                change.net,
-                change.category,
-                change.page,
-                changeSummary(change),
-                ...(change.reasons ?? []),
-                ...Object.keys(change.fields ?? {}),
-                ...(change.layers ?? []),
-            ].some((value) => String(value ?? "").toLocaleLowerCase().includes(query));
-        });
-    }, [domainChanges, statuses, showSecondary, search]);
-    const domainServerGroups = useMemo(
-        () => activeTab === "sch"
-            ? result?.schematic.groups ?? []
-            : activeTab === "pcb"
-                ? result?.pcb.groups ?? []
-                : [],
-        [activeTab, result],
+    const schematicReview = useMemo(
+        () => prepareChangesForReview(result?.schematic.changes ?? []),
+        [result?.schematic.changes],
+    );
+    // Read from the raw schematic changes, not the prepared ones: the board's
+    // rewritten net references are derivative even where the schematic pass
+    // chose to drop the rename itself as generated noise.
+    const netRenames = useMemo(
+        () => semanticNetRenames(result?.schematic.changes ?? []),
+        [result?.schematic.changes],
+    );
+    const pcbReview = useMemo(
+        () => prepareChangesForReview(result?.pcb.changes ?? [], { netRenames }),
+        [netRenames, result?.pcb.changes],
+    );
+    const domainReview = activeTab === "sch"
+        ? schematicReview
+        : activeTab === "pcb" ? pcbReview : { changes: [], suppressedCount: 0 };
+    const domainChanges = domainReview.changes;
+    /**
+     * Built once per domain and shared by every grouping below.
+     *
+     * The queue is regrouped for each combination of filters, and rebuilding the
+     * part index and the net aliases each time was both the expensive part and
+     * the inconsistent one: aliases are derived from the copper's own old/new
+     * net pairs, so deriving them from a filtered subset could hide the rename
+     * that ties a conductor together and split one trace back into two rows.
+     */
+    const schematicGrouping = useMemo(
+        () => createGroupingContext(schematicReview.changes, result?.bom),
+        [result?.bom, schematicReview.changes],
+    );
+    const pcbGrouping = useMemo(
+        () => createGroupingContext(pcbReview.changes, result?.bom),
+        [pcbReview.changes, result?.bom],
+    );
+    const grouping = activeTab === "pcb" ? pcbGrouping : schematicGrouping;
+    const statusFilteredChanges = useMemo(
+        () => domainChanges.filter((change) => (
+            statuses.has(change.kind)
+            && (showSecondary || change.classification !== "secondary")
+        )),
+        [domainChanges, showSecondary, statuses],
+    );
+    // Counted before the status, owner, and search filters so a chip always
+    // answers "how many review items of this kind exist", not "how many
+    // survive the filters I already applied".
+    const unfilteredGroups = useMemo(
+        () => groupChanges(
+            domainChanges.filter((change) => (
+                showSecondary || change.classification !== "secondary"
+            )),
+            comments,
+            grouping,
+        ),
+        [comments, domainChanges, grouping, showSecondary],
+    );
+    const statusCounts = useMemo(
+        () => reviewStatusCounts(unfilteredGroups),
+        [unfilteredGroups],
+    );
+    const impactCounts = useMemo(
+        () => reviewImpactCounts(unfilteredGroups),
+        [unfilteredGroups],
     );
     const groups = useMemo(
-        () => hydrateServerGroups(filteredChanges, domainServerGroups, comments),
-        [filteredChanges, domainServerGroups, comments],
+        () => groupChanges(statusFilteredChanges, comments, grouping)
+            .filter((group) => groupMatchesSearch(group, search))
+            .filter((group) => (
+                !impacts.size || impacts.has(reviewImpactForGroup(group))
+            )),
+        [comments, grouping, impacts, search, statusFilteredChanges],
     );
-    const paginatedGroups = useMemo(
-        () => groups.slice(
-            differencesPage * DIFFERENCES_PAGE_SIZE,
-            (differencesPage + 1) * DIFFERENCES_PAGE_SIZE,
-        ),
-        [differencesPage, groups],
+    const secondaryGroupCount = useMemo(
+        () => groupChanges(
+            domainChanges.filter((change) => (
+                statuses.has(change.kind) && change.classification === "secondary"
+            )),
+            [],
+            grouping,
+        ).length,
+        [domainChanges, grouping, statuses],
     );
-    const navigationGroups = useMemo(
-        () => hydrateServerGroups(domainChanges, domainServerGroups, comments),
-        [domainChanges, domainServerGroups, comments],
-    );
+    // Exports the filtered queue, not the whole delta: the reviewer's filters
+    // are the review scope, and an export that silently widens it is not the
+    // record they just signed off.
+    const exportReviewQueue = () => {
+        logComparisonDebug("difference.export", {
+            activeTab,
+            rows: groups.length,
+            impacts: [...impacts],
+            statuses: [...statuses],
+            search: search.trim().length > 0,
+            showSecondary,
+        });
+        downloadCsv(
+            reviewReportFilename({ domain, base, compare: head }),
+            reviewReportCsv(groups),
+        );
+    };
+    // The unfiltered queue for each domain, which is what selection and the
+    // canvas resolve against — a change must stay reachable while a filter is
+    // hiding its row.
     const schematicNavigationGroups = useMemo(
-        () => hydrateServerGroups(
-            result?.schematic.changes ?? [],
-            result?.schematic.groups ?? [],
-            comments,
-        ),
-        [comments, result],
+        () => groupChanges(schematicReview.changes, comments, schematicGrouping),
+        [comments, schematicGrouping, schematicReview.changes],
     );
     const pcbNavigationGroups = useMemo(
-        () => hydrateServerGroups(
-            result?.pcb.changes ?? [],
-            result?.pcb.groups ?? [],
-            comments,
-        ),
-        [comments, result],
+        () => groupChanges(pcbReview.changes, comments, pcbGrouping),
+        [comments, pcbGrouping, pcbReview.changes],
     );
+    const navigationGroups = activeTab === "pcb"
+        ? pcbNavigationGroups
+        : schematicNavigationGroups;
     const visitedDomainsRef = useRef<Set<"schematic" | "pcb">>(new Set());
     if (activeTab === "sch") visitedDomainsRef.current.add("schematic");
     if (activeTab === "pcb") visitedDomainsRef.current.add("pcb");
 
+    // Owners are domain-specific: "PCB fabrication" has no meaning in the
+    // schematic queue, so a filter carried across tabs would silently empty it.
     useEffect(() => {
-        setDifferencesPage(0);
-    }, [search, showSecondary, statuses, activeTab]);
-
-    useEffect(() => {
-        const totalPages = Math.max(1, Math.ceil(groups.length / DIFFERENCES_PAGE_SIZE));
-        if (differencesPage >= totalPages) {
-            setDifferencesPage(Math.max(0, totalPages - 1));
-        }
-    }, [differencesPage, groups.length]);
-
-    useEffect(() => {
-        if (!selectedChangeId) return;
-        const index = groups.findIndex((group) =>
-            group.changes.some((change) => change.id === selectedChangeId),
-        );
-        if (index < 0) return;
-        const selectedPage = Math.floor(index / DIFFERENCES_PAGE_SIZE);
-        setDifferencesPage((current) =>
-            current === selectedPage ? current : selectedPage,
-        );
-    }, [groups, selectedChangeId]);
+        setImpacts(new Set());
+    }, [activeTab]);
 
     const selectedChange = useMemo(
         () => domainChanges.find((change) => change.id === selectedChangeId) ?? null,
@@ -1044,6 +337,79 @@ export function DesignComparisonWorkspace({
         ) ?? null,
         [navigationGroups, reviewSelection, selectedChangeId],
     );
+    /**
+     * The evidence Auto reasons about: one change when the reviewer picked a
+     * single instance, the whole group when they picked the row.
+     *
+     * Picking one designator out of a part row asks about *that* instance, and
+     * recommending a view from its twenty-seven siblings would answer a
+     * different question.
+     */
+    const presentationChanges = useMemo(
+        () => (
+            reviewSelection?.kind === "item" && selectedChange
+                ? [selectedChange]
+                : selectedReviewGroup?.changes ?? []
+        ),
+        [reviewSelection?.kind, selectedChange, selectedReviewGroup],
+    );
+    const presentationRecommendation = useMemo(
+        () => recommendPresentationForTab(activeTab, presentationChanges),
+        [activeTab, presentationChanges],
+    );
+    const presentationMode =
+        presentationOverride ?? presentationRecommendation.mode;
+    const compositeRecommended = presentationRecommendation.mode === "composite";
+
+    useEffect(() => {
+        logComparisonDebug("workspace.state", {
+            activeTab,
+            presentationMode,
+            presentationOverride,
+            selectedChangeId,
+            selectionKind: reviewSelection?.kind ?? null,
+            selectionId: reviewSelection?.id ?? null,
+        });
+    }, [
+        activeTab,
+        presentationMode,
+        presentationOverride,
+        reviewSelection,
+        selectedChangeId,
+    ]);
+
+    useComparisonUrlState(
+        {
+            base,
+            compare: head,
+            activeTab,
+            presentationOverride,
+            selectedChangeId,
+            showSecondary,
+            visibleLayers,
+        },
+        {
+            setActiveTab,
+            setPresentationOverride,
+            setSelectedChangeId,
+            setShowSecondary,
+            setVisibleLayers,
+        },
+    );
+
+    // An override belongs to one change. Selecting a different one hands the
+    // decision back to the policy. The ref makes the first render a no-op so a
+    // deep link carrying `presentation` survives arriving at its own item.
+    const presentationSelectionKey =
+        `${reviewSelection?.kind ?? ""}:${reviewSelection?.id ?? ""}`;
+    const lastPresentationSelectionRef = useRef(presentationSelectionKey);
+    useEffect(() => {
+        if (lastPresentationSelectionRef.current === presentationSelectionKey) {
+            return;
+        }
+        lastPresentationSelectionRef.current = presentationSelectionKey;
+        setPresentationOverride(null);
+    }, [presentationSelectionKey]);
 
     const selectChange = (change: ChangeItem, documentPath?: string) => {
         logComparisonDebug("difference.click", {
@@ -1119,8 +485,11 @@ export function DesignComparisonWorkspace({
                 reference: current.reference,
                 net: current.net,
             };
+            // Search/status filters only change what is listed. They must not
+            // dissolve the selected semantic group or change Auto's review
+            // presentation while the reviewer refines the panel.
             const validGroupSelection = reviewSelection?.kind === "group"
-                && groups.some((group) => (
+                && navigationGroups.some((group) => (
                     group.id === reviewSelection.id
                     && group.changes.some((change) => change.id === current.id)
                 ));
@@ -1150,7 +519,7 @@ export function DesignComparisonWorkspace({
             setSelectedChangeId(null);
             setReviewSelection(null);
         }
-    }, [activeTab, domainChanges, groups, result, reviewSelection, selectedChangeId]);
+    }, [activeTab, domainChanges, navigationGroups, result, reviewSelection, selectedChangeId]);
 
     const navigate = (direction: -1 | 1) => {
         if (!groups.length) return;
@@ -1161,8 +530,6 @@ export function DesignComparisonWorkspace({
             ? 0
             : (current + direction + groups.length) % groups.length;
         selectGroup(groups[next]!);
-        const nextPage = Math.floor(next / DIFFERENCES_PAGE_SIZE);
-        if (nextPage !== differencesPage) setDifferencesPage(nextPage);
     };
 
     const tabs: Array<{
@@ -1178,9 +545,9 @@ export function DesignComparisonWorkspace({
             icon: Cpu,
             status: comparisonDomainStatus(result, "schematic"),
             badge: result
-                ? result.schematic.summary.added
-                    + result.schematic.summary.removed
-                    + result.schematic.summary.changed
+                ? schematicNavigationGroups.filter(
+                    (group) => group.classification === "primary",
+                ).length
                 : undefined,
         },
         {
@@ -1189,7 +556,9 @@ export function DesignComparisonWorkspace({
             icon: CircuitBoard,
             status: comparisonDomainStatus(result, "pcb"),
             badge: result
-                ? result.pcb.summary.added + result.pcb.summary.removed + result.pcb.summary.changed
+                ? pcbNavigationGroups.filter(
+                    (group) => group.classification === "primary",
+                ).length
                 : undefined,
         },
         {
@@ -1208,8 +577,16 @@ export function DesignComparisonWorkspace({
             status: comparisonDomainStatus(result, "stackup"),
             badge: result?.stackup.changed ? 1 : undefined,
         },
+        {
+            id: "fabrication",
+            label: "Fabrication",
+            icon: Factory,
+            status: comparisonDomainStatus(result, "fabrication"),
+            badge: result?.fabrication?.summary?.changedLayers || undefined,
+        },
     ];
     const activeTabStatus = tabs.find((tab) => tab.id === activeTab)?.status ?? "ready";
+    const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label ?? "";
 
     const branchTipLabel = branchTipSha === head
         ? "Compare revision is branch tip"
@@ -1233,8 +610,10 @@ export function DesignComparisonWorkspace({
             to: next,
             activeTab,
             selectedChangeId,
+            recommended: presentationRecommendation.mode,
+            rule: presentationRecommendation.rule,
         });
-        setPresentationMode(next);
+        setPresentationOverride(next);
     };
 
     // The switcher belongs in the bar of the panel it controls, but both domain
@@ -1253,6 +632,7 @@ export function DesignComparisonWorkspace({
                 className="h-7 text-xs"
                 onClick={() => choosePresentationMode("composite")}
                 aria-pressed={presentationMode === "composite"}
+                title={compositeRecommended ? presentationRecommendation.reason : undefined}
             >
                 <Square className="mr-1.5 h-3.5 w-3.5" />
                 Composite
@@ -1279,19 +659,6 @@ export function DesignComparisonWorkspace({
                 Old / New
             </Button>
         </div>
-    );
-
-    // A component click opens the rail on that pane's revision; a click on bare
-    // canvas closes it again. Only the Component tab is touched, so a reviewer
-    // reading Comments is not yanked away by a stray click.
-    const handleComponentSelect = useCallback(
-        (next: ComparisonComponentSelection | null) => {
-            setComponentSelection(next);
-            setComparisonRightRailTab((tab) =>
-                next ? "component" : tab === "component" ? null : tab,
-            );
-        },
-        [],
     );
 
     const renderDomainShell = (
@@ -1322,47 +689,11 @@ export function DesignComparisonWorkspace({
                     selection={isActive ? reviewSelection : null}
                     previewSelection={isActive ? previewSelection : null}
                     toolbarContent={isActive ? presentationSwitcher : null}
-                    onComponentSelect={isActive ? handleComponentSelect : undefined}
-                    componentContent={(
-                        <ComparisonComponentRail
-                            selection={componentSelection}
-                            bom={result.bom}
-                            baseLabel={base.slice(0, 7)}
-                            compareLabel={head.slice(0, 7)}
-                            onClose={() => {
-                                setComponentSelection(null);
-                                setComparisonRightRailTab(null);
-                            }}
-                            embedded
-                        />
-                    )}
                     initialVisibleLayers={visibleLayers}
                     onVisibleLayersChange={setVisibleLayers}
+                    onPcbLayersChange={isActive ? setPcbLayers : undefined}
                     rightRailTab={comparisonRightRailTab}
                     onRightRailTabChange={setComparisonRightRailTab}
-                    discussionCount={comments.filter(
-                        (comment) => comment.status === "OPEN",
-                    ).length}
-                    discussionContent={(
-                        <ComparisonDiscussionRail
-                            projectId={projectId}
-                            base={base}
-                            compare={head}
-                            domain={shellDomain === "pcb" ? "PCB" : "SCH"}
-                            anchor={isActive && selectedReviewGroup
-                                ? {
-                                    id: selectedReviewGroup.id,
-                                    label: selectedReviewGroup.label,
-                                    page: selectedChange?.page,
-                                }
-                                : null}
-                            comments={comments}
-                            canComment={canComment}
-                            onCommentsChange={setComments}
-                            onClose={() => setComparisonRightRailTab(null)}
-                            embedded
-                        />
-                    )}
                 />
             </div>
         );
@@ -1405,55 +736,50 @@ export function DesignComparisonWorkspace({
                         </div>
                     </div>
                     <DialogDescription className="sr-only">
-                        Compare schematic, PCB, BOM, and stackup changes between two immutable revisions.
+                        Compare schematic, PCB, BOM, stackup, and fabrication output between two immutable revisions.
                     </DialogDescription>
                 </DialogHeader>
 
                 {result ? (
                     <div className="flex min-h-0 flex-1 flex-col">
-                        <nav className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/20 px-2 py-1">
-                            {tabs.map((tab) => {
-                                const Icon = tab.icon;
-                                return (
-                                    <Button
-                                        key={tab.id}
-                                        variant={activeTab === tab.id ? "secondary" : "ghost"}
-                                        size="sm"
-                                        onClick={() => chooseTab(tab.id)}
-                                        className="h-8 text-xs"
-                                        aria-pressed={activeTab === tab.id}
-                                        disabled={tab.status !== "ready"}
-                                    >
-                                        <Icon className="mr-2 h-3.5 w-3.5" />
-                                        {tab.label}
-                                        {tab.status === "building" && (
-                                            <Loader2 className="ml-2 h-3 w-3 animate-spin" />
-                                        )}
-                                        {!!tab.badge && (
-                                            <span className="ml-2 rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground">
-                                                {tab.badge}
-                                            </span>
-                                        )}
-                                    </Button>
-                                );
-                            })}
-                            <Button
-                                variant={showDiscussion ? "secondary" : "ghost"}
-                                size="sm"
-                                onClick={() => setComparisonRightRailTab((tab) =>
-                                    tab === "discussion" ? null : "discussion"
-                                )}
-                                className="ml-auto h-8 text-xs"
-                                aria-pressed={showDiscussion}
+                        {/* Every domain is a peer. The band already costs its
+                            vertical space for Schematic and PCB, so hiding the
+                            three report domains behind a dropdown bought no
+                            room and made them harder to reach. */}
+                        <nav
+                            className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/20 px-2 py-1"
+                            aria-label="Comparison domain"
+                        >
+                            <div
+                                className="inline-flex items-center gap-0.5 rounded-md border bg-background p-0.5"
+                                role="group"
                             >
-                                <MessageSquare className="mr-2 h-3.5 w-3.5" />
-                                Comments
-                                {comments.some((comment) => comment.status === "OPEN") && (
-                                    <span className="ml-2 rounded-full bg-muted px-1.5 text-[10px]">
-                                        {comments.filter((comment) => comment.status === "OPEN").length}
-                                    </span>
-                                )}
-                            </Button>
+                                {tabs.map((tab) => {
+                                    const Icon = tab.icon;
+                                    return (
+                                        <Button
+                                            key={tab.id}
+                                            variant={activeTab === tab.id ? "secondary" : "ghost"}
+                                            size="sm"
+                                            onClick={() => chooseTab(tab.id)}
+                                            className="h-7 shrink-0 text-xs"
+                                            aria-pressed={activeTab === tab.id}
+                                            disabled={tab.status !== "ready"}
+                                        >
+                                            <Icon className="mr-2 h-3.5 w-3.5" />
+                                            {tab.label}
+                                            {tab.status === "building" && (
+                                                <Loader2 className="ml-2 h-3 w-3 animate-spin" />
+                                            )}
+                                            {!!tab.badge && (
+                                                <span className="ml-2 rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground">
+                                                    {tab.badge}
+                                                </span>
+                                            )}
+                                        </Button>
+                                    );
+                                })}
+                            </div>
                         </nav>
 
                         {error && (
@@ -1485,16 +811,33 @@ export function DesignComparisonWorkspace({
                                             && "hidden",
                                     )}
                                 >
-                                    <Profiler
-                                        id="differences-pane"
-                                        onRender={logRenderPerformance}
+                                    <ResizablePanel
+                                        side="left"
+                                        storageKey="prism.compare.queueWidth"
+                                        defaultWidth={360}
+                                        minWidth={260}
+                                        maxWidth={620}
+                                        aria-label="Review queue"
                                     >
                                         <DifferencesPane
-                                            groups={paginatedGroups}
-                                            totalGroups={groups.length}
-                                            page={differencesPage}
-                                            pageSize={DIFFERENCES_PAGE_SIZE}
-                                            onPageChange={setDifferencesPage}
+                                            title={activeTab === "pcb"
+                                                ? "PCB compare"
+                                                : "Schematic compare"}
+                                            groups={groups}
+                                            totalGroups={unfilteredGroups.length}
+                                            secondaryGroupCount={secondaryGroupCount}
+                                            statusCounts={statusCounts}
+                                            impactCounts={impactCounts}
+                                            impacts={impacts}
+                                            onToggleImpact={(impact) => {
+                                                setImpacts((current) => {
+                                                    const next = new Set(current);
+                                                    if (next.has(impact)) next.delete(impact);
+                                                    else next.add(impact);
+                                                    return next;
+                                                });
+                                            }}
+                                            onExport={exportReviewQueue}
                                             statuses={statuses}
                                             onToggleStatus={(kind) => {
                                                 setStatuses((current) => {
@@ -1517,19 +860,15 @@ export function DesignComparisonWorkspace({
                                             selectedDocumentPath={
                                                 reviewSelection?.documentPath
                                             }
-                                            documentDiff={result.document_diff}
                                             onSelectChange={selectChange}
                                             onSelectGroup={selectGroup}
                                             onPreviewChange={setPreviewSelection}
                                             onPrevious={() => navigate(-1)}
                                             onNext={() => navigate(1)}
                                         />
-                                    </Profiler>
+                                    </ResizablePanel>
                                     {result.document_diff ? (
-                                        <Profiler
-                                            id="comparison-presentation"
-                                            onRender={logRenderPerformance}
-                                        >
+                                        <>
                                             {visitedDomainsRef.current.has("schematic")
                                                 && renderDomainShell(
                                                     "schematic",
@@ -1540,7 +879,7 @@ export function DesignComparisonWorkspace({
                                                     "pcb",
                                                     pcbNavigationGroups,
                                                 )}
-                                        </Profiler>
+                                        </>
                                     ) : (
                                         <div className="flex min-w-0 flex-1 items-center justify-center p-8 text-center">
                                             <div className="max-w-sm text-sm text-muted-foreground">
@@ -1550,6 +889,48 @@ export function DesignComparisonWorkspace({
                                             </div>
                                         </div>
                                     )}
+                                    {/* The third zone. Permanent rather than a
+                                        rail tab: what the selected change did
+                                        is the reason the reviewer is here, so
+                                        it should never need opening. */}
+                                    <ResizablePanel
+                                        side="right"
+                                        storageKey="prism.compare.propertyWidth"
+                                        defaultWidth={400}
+                                        minWidth={280}
+                                        maxWidth={720}
+                                        aria-label="Selected change"
+                                    >
+                                        <ComparisonPropertyPanel
+                                            group={selectedReviewGroup ?? null}
+                                            bom={result.bom}
+                                            routeMetrics={result.pcb.route_metrics}
+                                            pcbLayers={pcbLayers}
+                                            diagnosticsCount={
+                                                result.document_diff?.diagnostics.length ?? 0
+                                            }
+                                            discussion={(
+                                                <ComparisonDiscussionRail
+                                                    projectId={projectId}
+                                                    base={base}
+                                                    compare={head}
+                                                    domain={domain === "pcb" ? "PCB" : "SCH"}
+                                                    anchor={selectedReviewGroup
+                                                        ? {
+                                                            id: selectedReviewGroup.id,
+                                                            label: selectedReviewGroup.label,
+                                                            page: selectedChange?.page,
+                                                        }
+                                                        : null}
+                                                    comments={comments}
+                                                    canComment={canComment}
+                                                    onCommentsChange={setComments}
+                                                    onClose={() => undefined}
+                                                    embedded
+                                                />
+                                            )}
+                                        />
+                                    </ResizablePanel>
                                 </div>
                             )}
                             {activeTabStatus !== "ready" && (
@@ -1562,11 +943,13 @@ export function DesignComparisonWorkspace({
                                         )}
                                         <div>
                                             <p className="text-sm font-medium">
+                                                {/* Named from the tab itself: a
+                                                    nested ternary told reviewers
+                                                    on Fabrication that Stackup
+                                                    had failed. */}
                                                 {activeTabStatus === "failed"
-                                                    ? `${activeTab === "pcb" ? "PCB" : "Stackup"} comparison failed`
-                                                    : activeTab === "pcb"
-                                                        ? "Building PCB comparison"
-                                                        : "Building Stackup comparison"}
+                                                    ? `${activeTabLabel} comparison failed`
+                                                    : `Building ${activeTabLabel} comparison`}
                                             </p>
                                             <p className="mt-1 text-xs text-muted-foreground">
                                                 {activeTabStatus === "failed"
@@ -1579,24 +962,12 @@ export function DesignComparisonWorkspace({
                             )}
                             {activeTab === "bom" && activeTabStatus === "ready" && <BomPanel bom={result.bom} />}
                             {activeTab === "stackup" && activeTabStatus === "ready" && <StackupPanel stackup={result.stackup} />}
-                            {showDiscussion
-                                && (activeTab === "bom" || activeTab === "stackup") && (
-                                <ComparisonDiscussionRail
-                                    projectId={projectId}
-                                    base={base}
-                                    compare={head}
-                                    domain={activeTab === "stackup" ? "PCB" : "SCH"}
-                                    anchor={selectedReviewGroup
-                                        ? {
-                                            id: selectedReviewGroup.id,
-                                            label: selectedReviewGroup.label,
-                                            page: selectedChange?.page,
-                                        }
-                                        : null}
-                                    comments={comments}
-                                    canComment={canComment}
-                                    onCommentsChange={setComments}
-                                    onClose={() => setComparisonRightRailTab(null)}
+                            {activeTab === "fabrication" && activeTabStatus === "ready" && (
+                                <FabricationPanel
+                                    fabrication={result.fabrication}
+                                    sidecarUrls={result.sidecarUrls}
+                                    presentationMode={presentationMode}
+                                    presentationSwitcher={presentationSwitcher}
                                 />
                             )}
                         </div>

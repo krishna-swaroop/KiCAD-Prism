@@ -48,7 +48,7 @@ describe("comparisonDomainStatus", () => {
             schematic: "ready",
             bom: "ready",
             pcb: "building",
-            stackup: "building",
+            stackup: "building", fabrication: "ready",
         });
 
         expect(comparisonDomainStatus(result, "schematic")).toBe("ready");
@@ -63,7 +63,7 @@ describe("comparisonDomainStatus", () => {
             schematic: "ready",
             bom: "ready",
             pcb: "ready",
-            stackup: "ready",
+            stackup: "ready", fabrication: "ready",
         });
         delete legacy.readiness;
         expect(comparisonDomainStatus(legacy, "stackup")).toBe("ready");
@@ -74,7 +74,7 @@ describe("comparisonDomainStatus", () => {
             schematic: "ready",
             bom: "ready",
             pcb: "failed",
-            stackup: "failed",
+            stackup: "failed", fabrication: "ready",
         });
 
         expect(comparisonDomainStatus(result, "schematic")).toBe("ready");

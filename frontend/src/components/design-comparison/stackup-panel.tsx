@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { StackupDiff, StackupLayer } from "./types";
+import type { StackupDiff, StackupLayer, StackupSettings } from "./types";
 
 interface StackupPanelProps {
     stackup: StackupDiff | null;
@@ -7,7 +7,19 @@ interface StackupPanelProps {
 
 function rowsDiffer(a: StackupLayer | undefined, b: StackupLayer | undefined): boolean {
     if (!a || !b) return true;
-    return a.name !== b.name || a.type !== b.type || (a.thickness ?? null) !== (b.thickness ?? null);
+    return a.name !== b.name
+        || a.type !== b.type
+        || (a.thickness ?? null) !== (b.thickness ?? null)
+        || (a.material ?? null) !== (b.material ?? null)
+        || (a.color ?? null) !== (b.color ?? null)
+        || (a.epsilon_r ?? null) !== (b.epsilon_r ?? null)
+        || (a.loss_tangent ?? null) !== (b.loss_tangent ?? null);
+}
+
+function settingText(value: boolean | string | null | undefined): string {
+    if (value === true) return "Enabled";
+    if (value === false) return "Disabled";
+    return value || "—";
 }
 
 function StackupTable({
@@ -15,13 +27,18 @@ function StackupTable({
     accent,
     layers,
     otherLayers,
+    settings,
+    otherSettings,
 }: {
     title: string;
     accent: "old" | "new";
     layers: StackupLayer[];
     otherLayers: StackupLayer[];
+    settings: StackupSettings;
+    otherSettings: StackupSettings;
 }) {
     const rowCount = Math.max(layers.length, otherLayers.length);
+    const settingsChanged = JSON.stringify(settings) !== JSON.stringify(otherSettings);
     return (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div
@@ -34,8 +51,23 @@ function StackupTable({
             >
                 {title}
             </div>
+            <div className={cn(
+                "grid shrink-0 grid-cols-2 gap-3 border-b px-4 py-2 text-[10px]",
+                settingsChanged && "bg-warning/10",
+            )}>
+                <span>
+                    <span className="text-muted-foreground">Copper finish </span>
+                    <span className="font-medium">{settingText(settings.copper_finish)}</span>
+                </span>
+                <span>
+                    <span className="text-muted-foreground">Dielectric constraints </span>
+                    <span className="font-medium">
+                        {settingText(settings.dielectric_constraints)}
+                    </span>
+                </span>
+            </div>
             <div className="min-h-0 flex-1 overflow-auto">
-                <table className="w-full border-separate border-spacing-0 text-xs">
+                <table className="w-full min-w-[44rem] border-separate border-spacing-0 text-xs">
                     <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground shadow-[0_1px_0_0_hsl(var(--border))]">
                         <tr>
                             <th className="w-10 border-b bg-muted px-3 py-2 text-left font-medium">#</th>
@@ -44,6 +76,10 @@ function StackupTable({
                             <th className="whitespace-nowrap border-b bg-muted px-3 py-2 text-right font-medium">
                                 Thickness (mm)
                             </th>
+                            <th className="border-b bg-muted px-3 py-2 text-left font-medium">Material</th>
+                            <th className="border-b bg-muted px-3 py-2 text-right font-medium">Dk</th>
+                            <th className="border-b bg-muted px-3 py-2 text-right font-medium">Df</th>
+                            <th className="border-b bg-muted px-3 py-2 text-left font-medium">Color</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -54,7 +90,7 @@ function StackupTable({
                                 return (
                                     <tr key={idx} className="italic text-muted-foreground opacity-50">
                                         <td className="border-b px-3 py-2">{idx + 1}</td>
-                                        <td className="border-b px-3 py-2" colSpan={3}>—</td>
+                                        <td className="border-b px-3 py-2" colSpan={7}>—</td>
                                     </tr>
                                 );
                             }
@@ -92,12 +128,24 @@ function StackupTable({
                                     <td className="border-b px-3 py-2 text-right font-mono tabular-nums">
                                         {layer.thickness != null ? layer.thickness.toFixed(4) : "—"}
                                     </td>
+                                    <td className="border-b px-3 py-2 text-muted-foreground">
+                                        {layer.material || "—"}
+                                    </td>
+                                    <td className="border-b px-3 py-2 text-right font-mono tabular-nums">
+                                        {layer.epsilon_r ?? "—"}
+                                    </td>
+                                    <td className="border-b px-3 py-2 text-right font-mono tabular-nums">
+                                        {layer.loss_tangent ?? "—"}
+                                    </td>
+                                    <td className="border-b px-3 py-2 text-muted-foreground">
+                                        {layer.color || "—"}
+                                    </td>
                                 </tr>
                             );
                         })}
                         {rowCount === 0 && (
                             <tr>
-                                <td colSpan={4} className="px-3 py-12 text-center text-muted-foreground">
+                                <td colSpan={8} className="px-3 py-12 text-center text-muted-foreground">
                                     No stackup layers found
                                 </td>
                             </tr>
@@ -149,8 +197,22 @@ export function StackupPanel({ stackup }: StackupPanelProps) {
                     : "Stackup is identical in both revisions."}
             </div>
             <div className="flex min-h-0 flex-1 divide-x">
-                <StackupTable title="Old stackup" accent="old" layers={stackup.base} otherLayers={stackup.head} />
-                <StackupTable title="New stackup" accent="new" layers={stackup.head} otherLayers={stackup.base} />
+                <StackupTable
+                    title="Old stackup"
+                    accent="old"
+                    layers={stackup.base}
+                    otherLayers={stackup.head}
+                    settings={stackup.base_settings ?? {}}
+                    otherSettings={stackup.head_settings ?? {}}
+                />
+                <StackupTable
+                    title="New stackup"
+                    accent="new"
+                    layers={stackup.head}
+                    otherLayers={stackup.base}
+                    settings={stackup.head_settings ?? {}}
+                    otherSettings={stackup.base_settings ?? {}}
+                />
             </div>
         </section>
     );

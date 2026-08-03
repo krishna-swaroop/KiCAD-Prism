@@ -1,4 +1,4 @@
-export type ComparisonUrlTab = "sch" | "pcb" | "bom" | "stackup";
+export type ComparisonUrlTab = "sch" | "pcb" | "bom" | "stackup" | "fabrication";
 export type ComparisonPresentationMode =
     | "composite"
     | "side-by-side"
@@ -9,7 +9,14 @@ export type ComparisonUrlState = {
     compare: string | null;
     view: "semantic" | null;
     diff: ComparisonUrlTab;
-    presentationMode: ComparisonPresentationMode;
+    /**
+     * A presentation the reviewer chose for the linked item, or null to let the
+     * policy recommend one.
+     *
+     * One nullable value rather than a mode plus an `auto` flag: those two could
+     * disagree, and every consumer had to collapse them back into this anyway.
+     */
+    presentationOverride: ComparisonPresentationMode | null;
     item: string | null;
     showSecondary: boolean;
     layers: string[];
@@ -26,12 +33,18 @@ const COMPARISON_KEYS = [
     "layers",
 ] as const;
 
-function parsePresentationMode(
+/**
+ * No `presentation` parameter is the shareable default: Prism follows the
+ * selected change. An explicit mode records a reviewer's override, `auto`
+ * being the long-hand way of saying there isn't one.
+ */
+function parsePresentationOverride(
     raw: string | null,
-): ComparisonPresentationMode {
+): ComparisonPresentationMode | null {
     if (raw === "side-by-side") return "side-by-side";
     if (raw === "old-new") return "old-new";
-    return "composite";
+    if (raw === "composite") return "composite";
+    return null;
 }
 
 export function readComparisonUrlState(
@@ -40,8 +53,10 @@ export function readComparisonUrlState(
     const params =
         typeof search === "string" ? new URLSearchParams(search) : search;
     const rawTab = params.get("diff");
+    const rawPresentation = params.get("presentation");
     const diff: ComparisonUrlTab =
         rawTab === "pcb" || rawTab === "bom" || rawTab === "stackup"
+        || rawTab === "fabrication"
             ? rawTab
             : "sch";
     return {
@@ -49,7 +64,7 @@ export function readComparisonUrlState(
         compare: params.get("compare"),
         view: params.get("view") === "semantic" ? "semantic" : null,
         diff,
-        presentationMode: parsePresentationMode(params.get("presentation")),
+        presentationOverride: parsePresentationOverride(rawPresentation),
         item: params.get("item"),
         showSecondary: params.get("secondary") === "1",
         layers: (params.get("layers") ?? "").split(",").filter(Boolean),
@@ -63,7 +78,7 @@ export function applyOpenComparisonParams(
         base: string;
         compare: string;
         diff?: ComparisonUrlTab;
-        presentationMode?: ComparisonPresentationMode;
+        presentationOverride?: ComparisonPresentationMode | null;
     },
 ): URLSearchParams {
     const next = new URLSearchParams(params);
@@ -72,10 +87,10 @@ export function applyOpenComparisonParams(
     next.set("compare", input.compare);
     next.set("view", "semantic");
     next.set("diff", input.diff ?? "sch");
-    if (!input.presentationMode || input.presentationMode === "composite") {
-        next.delete("presentation");
+    if (input.presentationOverride) {
+        next.set("presentation", input.presentationOverride);
     } else {
-        next.set("presentation", input.presentationMode);
+        next.delete("presentation");
     }
     return next;
 }
@@ -98,7 +113,7 @@ export function applyWorkspaceComparisonParams(
         base: string;
         compare: string;
         activeTab: ComparisonUrlTab;
-        presentationMode: ComparisonPresentationMode;
+        presentationOverride: ComparisonPresentationMode | null;
         selectedChangeId: string | null;
         showSecondary: boolean;
         visibleLayers: string[];
@@ -108,7 +123,7 @@ export function applyWorkspaceComparisonParams(
         base: state.base,
         compare: state.compare,
         diff: state.activeTab,
-        presentationMode: state.presentationMode,
+        presentationOverride: state.presentationOverride,
     });
     if (state.selectedChangeId) next.set("item", state.selectedChangeId);
     else next.delete("item");

@@ -1,5 +1,6 @@
-import { Eye, EyeOff, Layers3 } from "lucide-react";
+import { Layers3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PcbLayerList } from "@/components/ecad-viewer-controls";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     Select,
@@ -23,8 +24,6 @@ const PCB_PRESETS = [
 ] as const;
 
 export type ComparisonPcbLayersPanelProps = {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
     layers: EcadPcbLayerState[];
     onToggleVisibility: (name: string, visible: boolean) => void;
     onApplyPreset: (
@@ -34,16 +33,27 @@ export type ComparisonPcbLayersPanelProps = {
     ) => void;
     onHighlight?: (name: string | null) => void;
     className?: string;
-    embedded?: boolean;
 };
 
+/**
+ * Compact layer trigger for the canvas toolbar.
+ *
+ * Reads as "visible of total" rather than a word, so the state a reviewer
+ * cares about — am I looking at the whole board or a subset — is legible
+ * without opening the panel.
+ */
 export function ComparisonPcbLayersToggle({
     open,
     onClick,
+    visibleCount,
+    totalCount,
 }: {
     open: boolean;
     onClick: () => void;
+    visibleCount?: number;
+    totalCount?: number;
 }) {
+    const counted = totalCount !== undefined && visibleCount !== undefined;
     return (
         <Button
             variant={open ? "secondary" : "outline"}
@@ -51,51 +61,34 @@ export function ComparisonPcbLayersToggle({
             className="h-8"
             onClick={onClick}
             aria-expanded={open}
+            aria-label={counted
+                ? `Layers, ${visibleCount} of ${totalCount} visible`
+                : "Layers"}
         >
             <Layers3 className="mr-2 h-3.5 w-3.5" />
-            Layers
+            {counted ? `${visibleCount}/${totalCount}` : "Layers"}
         </Button>
     );
 }
 
-/** Visualizer-style PCB layer drawer for design comparison hosts. */
+/**
+ * Visualizer-style PCB layer list for the comparison's overlay rail.
+ *
+ * The rail owns its own header, close affordance and open/closed state, so this
+ * is only ever the body: presets, then the layer list.
+ */
 export function ComparisonPcbLayersPanel({
-    open,
-    onOpenChange,
     layers,
     onToggleVisibility,
     onApplyPreset,
     onHighlight,
     className,
-    embedded = false,
 }: ComparisonPcbLayersPanelProps) {
-    if (!open) return null;
-
     return (
         <aside
-            className={cn(
-                "flex w-72 shrink-0 flex-col border-l bg-background/95",
-                embedded && "h-full w-full border-l-0",
-                className,
-            )}
+            className={cn("flex h-full w-full flex-col bg-background/95", className)}
             aria-label="PCB layer visibility"
         >
-            {!embedded && (
-            <div className="flex h-10 shrink-0 items-center justify-between border-b px-3">
-                <div className="flex items-center gap-2 text-xs font-medium">
-                    <Layers3 className="size-4" />
-                    Board layers
-                </div>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => onOpenChange(false)}
-                >
-                    Close
-                </Button>
-            </div>
-            )}
             <div className="border-b p-3">
                 <Select
                     onValueChange={(value) =>
@@ -122,54 +115,11 @@ export function ComparisonPcbLayersPanel({
             </div>
             <ScrollArea className="min-h-0 flex-1">
                 <div className="p-2">
-                    {layers.map((layer) => (
-                        <div
-                            key={layer.name}
-                            className={cn(
-                                "group flex items-center gap-2 border-l-2 px-2 py-1.5 text-xs hover:bg-accent",
-                                layer.highlighted
-                                    ? "border-primary bg-accent"
-                                    : "border-transparent",
-                            )}
-                        >
-                            <button
-                                type="button"
-                                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                onClick={() => onHighlight?.(layer.name)}
-                            >
-                                <span
-                                    className="size-3 shrink-0 border"
-                                    style={{ backgroundColor: layer.color }}
-                                />
-                                <span
-                                    className={cn(
-                                        "truncate",
-                                        !layer.visible && "text-muted-foreground",
-                                    )}
-                                >
-                                    {layer.name}
-                                </span>
-                            </button>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-7"
-                                onClick={() =>
-                                    onToggleVisibility(
-                                        layer.name,
-                                        !layer.visible,
-                                    )
-                                }
-                                aria-label={`${layer.visible ? "Hide" : "Show"} ${layer.name}`}
-                            >
-                                {layer.visible ? (
-                                    <Eye className="size-3.5" />
-                                ) : (
-                                    <EyeOff className="size-3.5 text-muted-foreground" />
-                                )}
-                            </Button>
-                        </div>
-                    ))}
+                    <PcbLayerList
+                        layers={layers}
+                        onToggleVisibility={onToggleVisibility}
+                        onHighlight={onHighlight}
+                    />
                     {!layers.length && (
                         <p className="px-2 py-4 text-xs text-muted-foreground">
                             Layers appear after the PCB comparison loads.

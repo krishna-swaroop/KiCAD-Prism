@@ -10,6 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { csvCell, downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 import type { BomChangeRow, BomDiff, BomRowStatus } from "./types";
 
@@ -28,11 +29,6 @@ const STATUS_OPTIONS: Array<{
     { id: "removed", label: "Removed", marker: "bg-destructive" },
     { id: "changed", label: "Modified", marker: "bg-warning" },
 ];
-
-function csvCell(value: unknown) {
-    const text = String(value ?? "");
-    return `"${text.replace(/"/g, '""')}"`;
-}
 
 function rowValue(row: BomChangeRow, field: string, view: BomView) {
     if (view === "base") return row.old?.[field] ?? "";
@@ -187,13 +183,7 @@ export function BomPanel({ bom }: BomPanelProps) {
                     : rowValue(row, field, view),
             )),
         ].join(","));
-        const blob = new Blob([[header, ...body].join("\n")], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `bom-${view}-filtered.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
+        downloadCsv(`bom-${view}-filtered.csv`, [header, ...body].join("\n"));
     };
 
     return (

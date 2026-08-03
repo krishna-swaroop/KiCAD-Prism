@@ -32,15 +32,20 @@ export function resolveNativeSelection(
                 (document) =>
                     document.documentPath === preparation.document.path,
             )
-            .map((document) => document.changeId);
+            // A semantic item owns every native object it resolved: a net is
+            // all of its wires, labels and junctions, a route is all of its
+            // segments. `changeId` is only the first of those, so selecting on
+            // it alone highlights one fragment of the wire the reviewer picked.
+            .flatMap((document) => document.changeIds ?? [document.changeId]);
     });
 
-    if (!changeIds.length) return null;
-    if (selection?.kind === "group") {
-        return { kind: "changes", ids: [...new Set(changeIds)] };
+    const ids = [...new Set(changeIds.filter(Boolean))];
+    if (!ids.length) return null;
+    if (selection?.kind === "group" || ids.length > 1) {
+        return { kind: "changes", ids };
     }
 
-    return { kind: "change", id: changeIds[0]! };
+    return { kind: "change", id: ids[0]! };
 }
 
 export function resolveComparisonFocus(

@@ -9,6 +9,7 @@ export type ChangeDomain = "schematic" | "pcb";
 
 /** Matches the shared category taxonomy in `@/lib/diff-grouping`. */
 export type ChangeCategory =
+    | "rules"
     | "components"
     | "nets"
     | "board"
@@ -20,9 +21,10 @@ export type ChangeCategory =
     | "other";
 
 export type FieldDiffValue =
-    | { old?: string | number | null; new?: string | number | null }
+    | { old?: unknown; new?: unknown }
     | string
     | number
+    | boolean
     | null
     | undefined;
 
@@ -63,6 +65,12 @@ export interface NativeComparisonItem {
     page?: string | null;
     path?: string | null;
     layer?: string | null;
+    /**
+     * Every layer this revision's object occupies. A track names one layer; a
+     * via names its span endpoints. Kept per revision so a focused routing
+     * review can show each pane only the copper that revision carries.
+     */
+    layers?: string[] | null;
     reference?: string | null;
     net?: string | null;
 }
@@ -78,6 +86,8 @@ export interface ChangeItem {
     uuid?: string;
     source_id_base?: string | null;
     source_id_compare?: string | null;
+    parent_source_id_base?: string | null;
+    parent_source_id_compare?: string | null;
     semantic_id?: string | null;
     reference?: string | null;
     classification?: "primary" | "secondary";
@@ -93,6 +103,22 @@ export interface ChangeItem {
     affected_source_ids_base?: string[];
     affected_source_ids_compare?: string[];
     source_side?: "reference" | "comparison";
+    /** Native parser kind retained for reviewer-specific presentation policy. */
+    object_kind?: string | null;
+    /**
+     * Set when this change only records another domain's authored edit being
+     * propagated into this file. KiCad rewrites every copper object's net
+     * reference after one schematic net rename; those rewrites are evidence of
+     * the rename, not separate design decisions.
+     */
+    derivedFrom?: { kind: "net-rename"; old: string; new: string };
+    position_base?: [number, number] | null;
+    position_compare?: [number, number] | null;
+    position_delta?: {
+        dx: number;
+        dy: number;
+        distance: number;
+    } | null;
 }
 
 export type ChangeReason =
@@ -106,9 +132,21 @@ export type ChangeReason =
     | "connectivity-changed"
     | "label-count-changed"
     | "bus-membership-changed"
+    | "moved"
+    | "rotated"
+    | "mirrored"
+    | "layer-changed"
+    | "net-changed"
+    | "renamed"
+    | "lib-changed"
+    | "dnp-changed"
+    | "re-pathed"
+    | "properties-changed"
     | "content-changed";
 
 export interface ChangeDetails {
+    /** Structured review evidence with no independently paintable KiCad item. */
+    reviewOnly?: boolean;
     fieldDeltas?: Record<string, FieldDiffValue>;
     connectivity?: {
         addedTerminals: string[];
@@ -124,6 +162,9 @@ export interface ChangeDetails {
         status: "added" | "removed" | "modified";
         sourceId: string;
         parentSourceId?: string | null;
+        kind?: string | null;
+        documentPath?: string | null;
+        at?: [number, number] | null;
         /** Native .kicad_sch filename used to load the paint document. */
         page?: string | null;
         /** Human hierarchy retained separately from the native filename. */
@@ -140,7 +181,21 @@ export interface ChangeDetails {
             | "sheet_pin"
             | "symbol"
             | "no_connect"
-            | "graphic";
+            | "graphic"
+            | "footprint"
+            | "pad"
+            | "track"
+            | "segment"
+            | "arc"
+            | "via"
+            | "zone"
+            | "footprint_graphic"
+            | "footprint_text"
+            | "image"
+            | "table"
+            | "group"
+            | "net_class"
+            | "net_class_assignment";
         reference?: string;
         pin?: string;
     }>;
@@ -215,11 +270,22 @@ export interface StackupLayer {
     type: string;
     thickness?: number | null;
     ordinal?: number;
+    material?: string | null;
+    color?: string | null;
+    epsilon_r?: number | null;
+    loss_tangent?: number | null;
+}
+
+export interface StackupSettings {
+    copper_finish?: string | null;
+    dielectric_constraints?: boolean | null;
 }
 
 export interface StackupDiff {
     base: StackupLayer[];
     head: StackupLayer[];
+    base_settings?: StackupSettings;
+    head_settings?: StackupSettings;
     changed: boolean;
     present: boolean;
 }
@@ -294,6 +360,73 @@ export interface GeometrySnapshot {
     pcb: Record<string, GeometryEntry>;
 }
 
+/**
+ * One plotted layer of the fabrication package, compared between revisions.
+ * The regions are in KiCad board millimetres so they cross-probe against the
+ * same coordinate space as every other visual target.
+ */
+export interface FabricationRegion {
+    index: number;
+    kind: "added" | "removed" | "changed";
+    /** Bottom-left corner of the marker. */
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    addedOps: number;
+    removedOps: number;
+}
+
+export interface FabricationLayerDiff {
+    /** Gerber X2 file function, e.g. `Copper,L1,Top`. */
+    function: string;
+    /** KiCad layer name, e.g. `F.Cu`. */
+    name: string;
+    file: { base: string | null; compare: string | null };
+    status: "changed" | "unchanged" | "added" | "removed" | "unreadable";
+    regions: FabricationRegion[];
+    warnings: string[];
+    /**
+     * Sidecar names for this layer's artwork, drawn from the same operations
+     * the comparison comes from. Resolve through `sidecarUrls`.
+     */
+    render?: { base?: string; compare?: string };
+}
+
+export interface FabricationDiff {
+    present: boolean;
+    summary: {
+        layers: number;
+        changedLayers: number;
+        regions: number;
+        addedRegions?: number;
+        removedRegions?: number;
+        changedRegions?: number;
+    };
+    /**
+     * Board profile in KiCad board millimetres, used to frame the difference
+     * markers.
+     */
+    outline?: {
+        segments: number[][][];
+        bounds: [number, number, number, number];
+    } | null;
+    layers: FabricationLayerDiff[];
+    warnings: string[];
+    /**
+     * Rectangle every layer render is drawn in, in KiCad board millimetres.
+     * The difference markers use the same space, so they overlay the artwork
+     * without a second coordinate system.
+     */
+    bounds: [number, number, number, number] | null;
+    /**
+     * The board profile, which is what the view fits to. Fabrication and
+     * courtyard layers carry annotation well outside it, and fitting to the
+     * drawn extent instead leaves the board adrift in the middle of the pane.
+     */
+    board: [number, number, number, number] | null;
+}
+
 export interface DesignCompareResult {
     schema?: "prism.semantic_comparison_v2" | "prism.semantic_comparison_v3" | string;
     base: string;
@@ -304,6 +437,8 @@ export interface DesignCompareResult {
     pcb: PcbDiff;
     bom: BomDiff | null;
     stackup: StackupDiff;
+    /** Absent on comparisons produced before the fabrication domain existed. */
+    fabrication?: FabricationDiff;
     /** Legacy debug sidecar; current viewers consume document_diff and source files. */
     geometry?: {
         base: GeometrySnapshot;
@@ -315,6 +450,8 @@ export interface DesignCompareResult {
     };
     document_diff: KiCadProjectDiffBundle;
     readiness?: DesignCompareReadiness;
+    /** Sidecar name → URL, for payloads that reference artifacts by name. */
+    sidecarUrls?: Record<string, string>;
 }
 
 export interface DesignCompareBundle {
@@ -332,8 +469,13 @@ export interface DesignCompareBundle {
             groupCount: number;
         }
     >;
+    /**
+     * Named immutable artifacts. Beyond the fixed domain payloads this also
+     * carries per-layer fabrication artwork under `fab:<layer>:<side>`, so the
+     * count is open-ended.
+     */
     sidecars: Record<
-        "core" | "schematic" | "pcb" | "bom" | "stackup" | "document_diff",
+        string,
         {
             digest: string;
             sizeBytes: number;
@@ -343,7 +485,12 @@ export interface DesignCompareBundle {
     >;
 }
 
-export type DesignCompareDomain = "schematic" | "bom" | "pcb" | "stackup";
+export type DesignCompareDomain =
+    | "schematic"
+    | "bom"
+    | "pcb"
+    | "stackup"
+    | "fabrication";
 export type DesignCompareDomainStatus = "pending" | "building" | "ready" | "failed";
 
 export interface DesignCompareReadiness {

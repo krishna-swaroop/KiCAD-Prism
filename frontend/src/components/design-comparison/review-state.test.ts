@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { filterBomRows } from "./bom-panel";
 import {
     applyOpenComparisonParams,
+    applyWorkspaceComparisonParams,
     clearComparisonParams,
     readComparisonUrlState,
 } from "./comparison-url";
 import {
-    groupChanges,
     readInitialUrlState,
 } from "./design-comparison-workspace";
+import { groupChanges } from "./comparison-review-groups";
 import { resolveNativeSelection } from "./comparison-selection-bridge";
 import {
     resolveSelectedDocument,
@@ -59,12 +60,37 @@ describe("semantic comparison state", () => {
         expect(groups[0]?.category).toBe("nets");
     });
 
+    it("keeps net-bound zones independently grouped under Zones", () => {
+        const groups = groupChanges([{
+            ...change("zone-change", "changed", "zone-1"),
+            category: "zones",
+            object_kind: "zone",
+            net: "GND",
+            semantic_id: "obj:zone-1",
+        }]);
+
+        expect(groups).toHaveLength(1);
+        expect(groups[0]?.category).toBe("zones");
+    });
+
+    it("defensively treats KiCad power symbols as electrical changes", () => {
+        const groups = groupChanges([{
+            ...change("power-change", "changed", "power-1"),
+            domain: "schematic",
+            reference: "#PWR0118",
+            label: "#PWR0118",
+            object_kind: "symbol",
+        }]);
+
+        expect(groups[0]?.category).toBe("nets");
+    });
+
     it("hydrates the shareable semantic URL state", () => {
         expect(readInitialUrlState(
             "?diff=pcb&item=track-1&secondary=1&layers=F.Cu,B.Cu",
         )).toEqual({
             activeTab: "pcb",
-            presentationMode: "composite",
+            presentationOverride: null,
             selectedChangeId: "track-1",
             showSecondary: true,
             layers: ["F.Cu", "B.Cu"],
@@ -76,11 +102,52 @@ describe("semantic comparison state", () => {
             "?diff=sch&presentation=side-by-side&item=wire-1",
         )).toEqual({
             activeTab: "sch",
-            presentationMode: "side-by-side",
+            presentationOverride: "side-by-side",
             selectedChangeId: "wire-1",
             showSecondary: false,
             layers: [],
         });
+    });
+
+    it("distinguishes automatic presentation from an explicit Composite override", () => {
+        // No parameter means "follow the selected change", which is what a
+        // shared link should do. An explicit `composite` is a reviewer's
+        // decision and has to survive the round trip as one.
+        expect(readComparisonUrlState("?diff=pcb").presentationOverride)
+            .toBeNull();
+        expect(readComparisonUrlState("?diff=pcb&presentation=auto")
+            .presentationOverride).toBeNull();
+        expect(
+            readComparisonUrlState("?diff=pcb&presentation=composite"),
+        ).toMatchObject({ presentationOverride: "composite" });
+
+        const automatic = applyWorkspaceComparisonParams(
+            new URLSearchParams(),
+            {
+                base: "aaa",
+                compare: "bbb",
+                activeTab: "pcb",
+                presentationOverride: null,
+                selectedChangeId: "via-1",
+                showSecondary: false,
+                visibleLayers: [],
+            },
+        );
+        expect(automatic.get("presentation")).toBeNull();
+
+        const manual = applyWorkspaceComparisonParams(
+            automatic,
+            {
+                base: "aaa",
+                compare: "bbb",
+                activeTab: "pcb",
+                presentationOverride: "composite",
+                selectedChangeId: "via-1",
+                showSecondary: false,
+                visibleLayers: [],
+            },
+        );
+        expect(manual.get("presentation")).toBe("composite");
     });
 
     it("opens and clears comparison params without dropping unrelated keys", () => {

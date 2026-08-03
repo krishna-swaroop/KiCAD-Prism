@@ -51,4 +51,40 @@ describe("StackupPanel", () => {
         expect(view.container.firstElementChild?.className).toContain("flex-1");
         expect(view.getByText(/Stackup differs between revisions/)).toBeTruthy();
     });
+
+    it("shows fabrication finish and dielectric material evidence", () => {
+        const view = render(
+            <StackupPanel
+                stackup={{
+                    base: [{
+                        name: "dielectric 1",
+                        type: "core",
+                        thickness: 1.2,
+                        material: "FR4",
+                        epsilon_r: 4.2,
+                        loss_tangent: 0.02,
+                    }],
+                    head: [{
+                        name: "dielectric 1",
+                        type: "core",
+                        thickness: 1.2,
+                        material: "Megtron 6",
+                        epsilon_r: 3.6,
+                        loss_tangent: 0.004,
+                    }],
+                    base_settings: { copper_finish: "HASL", dielectric_constraints: false },
+                    head_settings: { copper_finish: "ENIG", dielectric_constraints: true },
+                    changed: true,
+                    present: true,
+                }}
+            />,
+        );
+
+        expect(view.getByText("HASL")).toBeTruthy();
+        expect(view.getByText("ENIG")).toBeTruthy();
+        expect(view.getByText("FR4")).toBeTruthy();
+        expect(view.getByText("Megtron 6")).toBeTruthy();
+        expect(view.getByText("Disabled")).toBeTruthy();
+        expect(view.getByText("Enabled")).toBeTruthy();
+    });
 });

@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+    cleanup,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
     CameraState,
@@ -24,15 +30,18 @@ class FakeEcadViewer extends HTMLElement {
     readonly isReady = true;
     readonly cameraAssignments: CameraState[] = [];
     readonly layers: EcadPcbLayerState[] = [
+        { name: "F.Cu", color: "#ff0000", visible: true, highlighted: false },
+        { name: "In1.Cu", color: "#00ff00", visible: true, highlighted: false },
+        { name: "B.Cu", color: "#0000ff", visible: true, highlighted: false },
         {
-            name: "F.Cu",
-            color: "#ff0000",
+            name: "Edge.Cuts",
+            color: "#ffff00",
             visible: true,
             highlighted: false,
         },
         {
-            name: "B.Cu",
-            color: "#0000ff",
+            name: "F.SilkS",
+            color: "#ffffff",
             visible: true,
             highlighted: false,
         },
@@ -233,6 +242,28 @@ const documentDiff: KiCadProjectDiffBundle = {
     navigation: {},
     diagnostics: [],
 };
+
+const pcbDocumentDiff: KiCadProjectDiffBundle = {
+    ...documentDiff,
+    project: {
+        documents: [{
+            path: "board.kicad_pcb",
+            docType: "kicad_pcb",
+            changes: [],
+        }],
+    },
+};
+
+const pcbFiles = {
+    base: [{ filename: "board.kicad_pcb", path: "board.kicad_pcb" }],
+    head: [{ filename: "board.kicad_pcb", path: "board.kicad_pcb" }],
+};
+
+function visibleLayers(instance: number): string[] {
+    return (FakeEcadViewer.instances[instance]?.layers ?? [])
+        .filter((layer) => layer.visible)
+        .map((layer) => layer.name);
+}
 
 const shellProps = {
     projectId: "project",
@@ -445,6 +476,151 @@ describe("ComparisonPresentationShell", () => {
         });
     });
 
+    it("reapplies the selected difference after a presentation switch settles", async () => {
+        const selectedChange: ChangeItem = {
+            id: "changed-r5-across-presentations",
+            kind: "changed",
+            domain: "schematic",
+            category: "components",
+            label: "R5",
+            page: "main.kicad_sch",
+        };
+        const diff: KiCadProjectDiffBundle = {
+            ...documentDiff,
+            navigation: {
+                [selectedChange.id]: {
+                    documentPath: "main.kicad_sch",
+                    changeId: "/r5",
+                    changeIds: ["/r5"],
+                },
+            },
+        };
+        const props = {
+            ...shellProps,
+            documentDiff: diff,
+            selection: { kind: "item" as const, id: selectedChange.id },
+            reviewGroups: [{ id: "component-r5", changes: [selectedChange] }],
+        };
+        const view = render(
+            <ComparisonPresentationShell
+                {...props}
+                presentationMode="composite"
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
+                .toHaveBeenCalledWith({ kind: "change", id: "/r5" });
+        });
+        FakeEcadViewer.instances[0]!.selectDocumentDiff.mockClear();
+
+        view.rerender(
+            <ComparisonPresentationShell
+                {...props}
+                presentationMode="side-by-side"
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
+                .toHaveBeenCalledWith({ kind: "change", id: "/r5" });
+            expect(FakeEcadViewer.instances[1]?.selectDocumentDiff)
+                .toHaveBeenCalledWith({ kind: "change", id: "/r5" });
+        });
+    });
+
+    it("frames the pane that cannot resolve the change on the one that can", async () => {
+        // A removed route exists only in the base revision, so the compare
+        // pane reports "missing" and never moves its own camera. Proving an
+        // absence means seeing the place it is absent from, so the resolving
+        // pane's framing has to be carried across — camera sync is suppressed
+        // while a selection is being applied.
+        const route = (id: string) => ({
+            id,
+            kind: "removed" as const,
+            domain: "pcb" as const,
+            category: "nets",
+            classification: "primary" as const,
+            label: "AUX.DATA3",
+            object_kind: "track",
+            net: "AUX.DATA3",
+            details: {
+                visualTargets: [{
+                    side: "reference" as const,
+                    status: "removed" as const,
+                    sourceId: "/r9",
+                    role: "track" as const,
+                }],
+            },
+        });
+        const diff = {
+            ...shellProps.documentDiff,
+            navigation: {
+                "removed-a": {
+                    documentPath: shellProps.documentDiff.project.documents[0]!.path,
+                    changeId: "/r9",
+                },
+                "removed-b": {
+                    documentPath: shellProps.documentDiff.project.documents[0]!.path,
+                    changeId: "/r9",
+                },
+            },
+        };
+        const props = {
+            ...shellProps,
+            documentDiff: diff,
+            presentationMode: "side-by-side" as const,
+        };
+
+        const view = render(
+            <ComparisonPresentationShell
+                {...props}
+                selection={{ kind: "item", id: "removed-a" }}
+                reviewGroups={[{ id: "net-a", changes: [route("removed-a")] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[1]?.selectDocumentDiff)
+                .toHaveBeenCalled();
+        });
+
+        const base = FakeEcadViewer.instances[0]!;
+        const compare = FakeEcadViewer.instances[1]!;
+        base.selectDocumentDiff.mockResolvedValue({
+            status: "applied" as const,
+            requestId: 2,
+            clickToFrameMs: 0,
+            paintCount: 0,
+            parserCount: 0,
+        });
+        compare.selectDocumentDiff.mockResolvedValue({
+            status: "missing" as unknown as "applied",
+            requestId: 2,
+            clickToFrameMs: 0,
+            paintCount: 0,
+            parserCount: 0,
+        });
+        base.camera = { x: 10, y: 20, zoom: 3 } as never;
+        const before = compare.cameraAssignments.length;
+
+        // A different selection id so the shell applies a fresh selection to
+        // the viewers already mounted, rather than remounting them.
+        view.rerender(
+            <ComparisonPresentationShell
+                {...props}
+                selection={{ kind: "item", id: "removed-b" }}
+                reviewGroups={[{ id: "net-b", changes: [route("removed-b")] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(compare.cameraAssignments.length).toBeGreaterThan(before);
+        });
+        expect(compare.cameraAssignments.at(-1))
+            .toEqual({ x: 10, y: 20, zoom: 3 });
+    });
+
     it("renders host toolbar content once, beside its own Old/New toggle", async () => {
         // The presentation switcher lives in this bar but is owned by the
         // workspace, because both domain shells stay mounted and a
@@ -564,6 +740,62 @@ describe("ComparisonPresentationShell", () => {
         });
     });
 
+    it("treats intentional structured-only evidence as a valid review state", async () => {
+        const ruleChange: ChangeItem = {
+            id: "drc-exclusion-added",
+            kind: "added",
+            domain: "schematic",
+            category: "rules",
+            label: "DRC exclusions",
+            page: "main.kicad_sch",
+            details: { reviewOnly: true, visualTargets: [] },
+        };
+        render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                presentationMode="old-new"
+                selection={{ kind: "item", id: ruleChange.id }}
+                reviewGroups={[{ id: "drc-exclusions", changes: [ruleChange] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.sessions[0]?.setPresentation).toHaveBeenCalled();
+        });
+        expect(screen.queryByText(/could not be resolved on the canvas/i)).toBeNull();
+        expect(screen.queryByText(/derived connectivity/i)).toBeNull();
+    });
+
+    it("warns only when expected canvas evidence cannot be resolved", async () => {
+        const unresolvedChange: ChangeItem = {
+            id: "unresolved-wire",
+            kind: "changed",
+            domain: "schematic",
+            category: "nets",
+            label: "USB_D+",
+            page: "main.kicad_sch",
+            details: {
+                visualTargets: [{
+                    side: "comparison",
+                    status: "modified",
+                    sourceId: "wire-1",
+                    role: "wire",
+                }],
+            },
+        };
+        render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                presentationMode="side-by-side"
+                selection={{ kind: "item", id: unresolvedChange.id }}
+                reviewGroups={[{ id: "net-usb", changes: [unresolvedChange] }]}
+            />,
+        );
+
+        expect(await screen.findByText(/could not be resolved on the canvas/i))
+            .toBeTruthy();
+    });
+
     it("uses native document selection for side-relative label targets", async () => {
         const labelChange: ChangeItem = {
             id: "pf-01-count",
@@ -614,16 +846,140 @@ describe("ComparisonPresentationShell", () => {
             />,
         );
 
+        // Every native label the semantic item resolved is selected, not just
+        // the first. Highlighting one of a net's two labels reads as if the
+        // rest of the net were unchanged.
         await waitFor(() => {
             expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
                 .toHaveBeenCalledWith({
                     kind: "changes",
-                    ids: ["/label-a"],
+                    ids: ["/label-a", "/label-b"],
                 });
             expect(FakeEcadViewer.instances[1]?.selectDocumentDiff)
                 .toHaveBeenCalledWith({
                     kind: "changes",
-                    ids: ["/label-a"],
+                    ids: ["/label-a", "/label-b"],
+                });
+        });
+    });
+
+    it("selects every native object behind a single semantic item", async () => {
+        // A route or net picked as one row must light up all of its copper or
+        // wiring, not the one parser change that happened to sort first.
+        const routeChange: ChangeItem = {
+            id: "pcb-changed-route",
+            kind: "changed",
+            domain: "pcb",
+            category: "nets",
+            label: "USB_DP",
+            object_kind: "track",
+            net: "USB_DP",
+            reasons: ["content-changed"],
+        };
+        const diff: KiCadProjectDiffBundle = {
+            ...pcbDocumentDiff,
+            navigation: {
+                [routeChange.id]: {
+                    documentPath: "board.kicad_pcb",
+                    changeId: "/track-1",
+                    changeIds: ["/track-1", "/track-2", "/via-1"],
+                },
+            },
+        };
+        render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                documentDiff={diff}
+                files={pcbFiles}
+                presentationMode="composite"
+                selection={{ kind: "item", id: routeChange.id }}
+                reviewGroups={[{ id: "net-usb-dp", changes: [routeChange] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
+                .toHaveBeenCalledWith({
+                    kind: "changes",
+                    ids: ["/track-1", "/track-2", "/via-1"],
+                });
+        });
+    });
+
+    it("applies a selection that had to wait for a page transition", async () => {
+        // Selecting a change on another sheet re-prepares the session. The
+        // first pass runs against the outgoing page and resolves nothing; the
+        // selection must be retried once the new page is ready rather than
+        // waiting for the reviewer to pick something else and come back.
+        const onPageTwo: ChangeItem = {
+            id: "sch-changed-two",
+            kind: "changed",
+            domain: "schematic",
+            category: "nets",
+            label: "VCC",
+            net: "VCC",
+            page: "two.kicad_sch",
+            reasons: ["content-changed"],
+        };
+        const diff: KiCadProjectDiffBundle = {
+            ...documentDiff,
+            project: {
+                documents: [
+                    { path: "one.kicad_sch", docType: "kicad_sch", changes: [] },
+                    { path: "two.kicad_sch", docType: "kicad_sch", changes: [] },
+                ],
+            },
+            navigation: {
+                [onPageTwo.id]: {
+                    documentPath: "two.kicad_sch",
+                    changeId: "/wire-1",
+                    changeIds: ["/wire-1", "/wire-2"],
+                },
+            },
+        };
+        const files = {
+            base: [
+                { filename: "one.kicad_sch", path: "one.kicad_sch" },
+                { filename: "two.kicad_sch", path: "two.kicad_sch" },
+            ],
+            head: [
+                { filename: "one.kicad_sch", path: "one.kicad_sch" },
+                { filename: "two.kicad_sch", path: "two.kicad_sch" },
+            ],
+        };
+        const reviewGroups = [{ id: "net-vcc", changes: [onPageTwo] }];
+        const view = render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                documentDiff={diff}
+                files={files}
+                presentationMode="composite"
+                selection={null}
+                reviewGroups={reviewGroups}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.sessions.length).toBeGreaterThan(0);
+        });
+
+        view.rerender(
+            <ComparisonPresentationShell
+                {...shellProps}
+                documentDiff={diff}
+                files={files}
+                presentationMode="composite"
+                selection={{ kind: "item", id: onPageTwo.id }}
+                reviewGroups={reviewGroups}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
+                .toHaveBeenCalledWith({
+                    kind: "changes",
+                    ids: ["/wire-1", "/wire-2"],
                 });
         });
     });
@@ -938,13 +1294,189 @@ describe("ComparisonPresentationShell", () => {
                 FakeEcadViewer.instances[1]?.setPcbLayerVisibility,
             ).toHaveBeenCalledWith("F.Cu", false);
         });
-        expect(FakeEcadViewer.instances[0]?.layers).toMatchObject([
-            { name: "F.Cu", visible: false },
-            { name: "B.Cu", visible: true },
+        expect(visibleLayers(0)).toEqual(["B.Cu"]);
+        expect(visibleLayers(1)).toEqual(["B.Cu"]);
+    });
+
+    it("shows each pane only the copper its own revision routes", async () => {
+        const change: ChangeItem = {
+            id: "pcb-changed-route",
+            kind: "changed",
+            domain: "pcb",
+            category: "nets",
+            label: "USB_DP",
+            object_kind: "track",
+            net: "USB_DP",
+            reasons: ["layer-changed"],
+            base_item: { source_id: "t1", layers: ["F.Cu"] },
+            compare_item: { source_id: "t1", layers: ["B.Cu"] },
+        };
+        render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "net-usb-dp" }}
+                reviewGroups={[{ id: "net-usb-dp", changes: [change] }]}
+            />,
+        );
+
+        // The reference pane proves the route left F.Cu; the comparison pane
+        // proves it arrived on B.Cu. Neither borrows the other's copper, and
+        // the untouched inner layer stays out of the review entirely.
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["F.Cu", "Edge.Cuts"]);
+        });
+        expect(visibleLayers(1)).toEqual(["B.Cu", "Edge.Cuts"]);
+    });
+
+    it("restores the reviewer's layers when the routing selection clears", async () => {
+        const change: ChangeItem = {
+            id: "pcb-changed-route",
+            kind: "changed",
+            domain: "pcb",
+            category: "nets",
+            label: "USB_DP",
+            object_kind: "track",
+            net: "USB_DP",
+            reasons: ["content-changed"],
+            base_item: { source_id: "t1", layers: ["F.Cu"] },
+            compare_item: { source_id: "t1", layers: ["F.Cu"] },
+        };
+        const reviewGroups = [{ id: "net-usb-dp", changes: [change] }];
+        const view = render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                initialVisibleLayers={["F.Cu", "B.Cu", "F.SilkS"]}
+                selection={null}
+                reviewGroups={reviewGroups}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["F.Cu", "B.Cu", "F.SilkS"]);
+        });
+
+        view.rerender(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                initialVisibleLayers={["F.Cu", "B.Cu", "F.SilkS"]}
+                selection={{ kind: "group", id: "net-usb-dp" }}
+                reviewGroups={reviewGroups}
+            />,
+        );
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["F.Cu", "Edge.Cuts"]);
+        });
+
+        view.rerender(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                initialVisibleLayers={["F.Cu", "B.Cu", "F.SilkS"]}
+                selection={null}
+                reviewGroups={reviewGroups}
+            />,
+        );
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["F.Cu", "B.Cu", "F.SilkS"]);
+        });
+    });
+
+    it("leaves layer visibility alone for a non-routing selection", async () => {
+        const change: ChangeItem = {
+            id: "pcb-changed-footprint",
+            kind: "changed",
+            domain: "pcb",
+            category: "components",
+            label: "U1",
+            object_kind: "footprint",
+            reference: "U1",
+            reasons: ["moved"],
+            base_item: { source_id: "f1", layers: ["F.Cu"] },
+            compare_item: { source_id: "f1", layers: ["F.Cu"] },
+        };
+        render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "component-u1" }}
+                reviewGroups={[{ id: "component-u1", changes: [change] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances.length).toBeGreaterThan(1);
+        });
+        expect(visibleLayers(0)).toEqual([
+            "F.Cu",
+            "In1.Cu",
+            "B.Cu",
+            "Edge.Cuts",
+            "F.SilkS",
         ]);
-        expect(FakeEcadViewer.instances[1]?.layers).toMatchObject([
-            { name: "F.Cu", visible: false },
-            { name: "B.Cu", visible: true },
+    });
+
+    it("hands layer control back to the reviewer after a manual toggle", async () => {
+        const change: ChangeItem = {
+            id: "pcb-changed-route",
+            kind: "changed",
+            domain: "pcb",
+            category: "nets",
+            label: "USB_DP",
+            object_kind: "track",
+            net: "USB_DP",
+            reasons: ["content-changed"],
+            base_item: { source_id: "t1", layers: ["F.Cu"] },
+            compare_item: { source_id: "t1", layers: ["F.Cu"] },
+        };
+        const onVisibleLayersChange = vi.fn();
+        const view = render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                onVisibleLayersChange={onVisibleLayersChange}
+                selection={{ kind: "group", id: "net-usb-dp" }}
+                reviewGroups={[{ id: "net-usb-dp", changes: [change] }]}
+                rightRailTab="layers"
+            />,
+        );
+
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["F.Cu", "Edge.Cuts"]);
+        });
+        // The focus never writes the reviewer's shareable layer state.
+        expect(onVisibleLayersChange).not.toHaveBeenCalled();
+
+        const toggle = await view.findByRole("button", { name: "Show In1.Cu" });
+        fireEvent.click(toggle);
+
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["F.Cu", "In1.Cu", "Edge.Cuts"]);
+        });
+        expect(onVisibleLayersChange).toHaveBeenCalledWith([
+            "F.Cu",
+            "In1.Cu",
+            "Edge.Cuts",
         ]);
     });
 
