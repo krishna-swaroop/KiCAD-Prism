@@ -1,9 +1,7 @@
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { PermissionHint, permissionHintMessage } from "./permission-hint";
-
-afterEach(cleanup);
 
 describe("PermissionHint", () => {
   it("renders the control untouched when nothing is blocked", () => {

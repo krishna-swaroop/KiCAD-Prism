@@ -1,10 +1,8 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Project } from "@/types/project";
 import { WorkspaceListView } from "./workspace-list-view";
-
-afterEach(cleanup);
 
 const project: Project = {
   id: "prj_visible",

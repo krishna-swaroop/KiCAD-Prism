@@ -1,9 +1,7 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { RoleAuthorityPopover } from "./role-authority-popover";
-
-afterEach(cleanup);
 
 describe("RoleAuthorityPopover", () => {
   it("opens the authority matrix from the role label and highlights the current role", () => {
