@@ -244,7 +244,9 @@ def _row_payload(row_id: str, line, component_by_ref: Mapping[str, object]) -> d
     source_components = [component_by_ref[designator] for designator in designators if designator in component_by_ref]
     fields = _merged_fields(source_components)
     row_fields = {
-        column: _column_value(column, fields, line=line, designators=designators)
+        column: _column_value(
+            column, fields, dnp=bool(line.dnp), line=line, designators=designators
+        )
         for column in PRIMARY_COLUMNS
     }
     return {
@@ -269,7 +271,12 @@ def _component_payload(component, row_id: str) -> dict[str, object]:
         "sheet": component.sheet,
         "libraryRef": component.library_ref,
         "fields": {
-            column: _column_value(column, fields, designators=[component.designator])
+            column: _column_value(
+                column,
+                fields,
+                dnp=bool(component.dnp),
+                designators=[component.designator],
+            )
             for column in PRIMARY_COLUMNS
         },
         "canonicalFields": fields,
@@ -306,6 +313,7 @@ def _column_value(
     column: str,
     fields: Mapping[str, str],
     *,
+    dnp: bool,
     line=None,
     designators: list[str] | None = None,
 ) -> str:
@@ -314,9 +322,11 @@ def _column_value(
     if column == "Qty":
         return str(line.quantity if line is not None else 1)
     if column == "DNP":
-        if line is not None:
-            return "Yes" if line.dnp else "No"
-        return "Yes" if str(fields.get("dnp", "")).casefold() in {"1", "true", "yes"} else "No"
+        # The resolved flag, never the raw field.  KiCad writes a DNP part's
+        # `dnp` property with no value at all, and `_component_fields` drops
+        # empty values, so reading the field reported every DNP component as
+        # populated.
+        return "Yes" if dnp else "No"
     key = DISPLAY_TO_CANONICAL.get(column, column)
     return str(fields.get(key, ""))
 

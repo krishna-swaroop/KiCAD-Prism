@@ -163,3 +163,30 @@ def test_bom_artifact_accepts_reused_assembly_without_from_file(tmp_path, monkey
     assert summary["components"] == 2
     assert "bom_normalize_group_ms" in timings
     assert "bom_design_reuse_ms" not in timings
+
+
+def test_a_dnp_component_reports_yes_in_its_own_dnp_column(tmp_path, monkeypatch):
+    """KiCad writes a DNP part's `dnp` property with no value at all.
+
+    The per-component DNP cell used to be re-derived from that field, which is
+    dropped as empty before it ever reaches the column, so every DNP component
+    read as populated even though the payload's own boolean was right beside
+    it.  The row-level cell was always correct, so the two disagreed.
+    """
+    install_fake_kicad_cruncher(monkeypatch)
+    project = tmp_path / "fixture.kicad_pro"
+    project.write_text("{}", encoding="utf-8")
+
+    raw = FakeManufacturingDesign().to_bom()
+    raw[0] = {**raw[0], "dnp": True, "parameters": {**raw[0]["parameters"], "dnp": ""}}
+
+    build_bom_artifact(project, tmp_path, raw_components=raw)
+    payload = json.loads((tmp_path / "bom" / "bom.json").read_text(encoding="utf-8"))
+
+    by_reference = {component["reference"]: component for component in payload["components"]}
+
+    assert by_reference["R2"]["dnp"] is True
+    assert by_reference["R2"]["fields"]["DNP"] == "Yes"
+    assert by_reference["R1"]["dnp"] is False
+    assert by_reference["R1"]["fields"]["DNP"] == "No"
+    assert payload["counts"]["dnpComponents"] == 1

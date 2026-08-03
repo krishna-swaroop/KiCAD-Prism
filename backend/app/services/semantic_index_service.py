@@ -413,6 +413,35 @@ def _schematic_instance_fields(project_file: Path) -> dict[str, dict[str, str]]:
     return result
 
 
+_TRUTHY_FLAGS = {"1", "true", "yes", "y", "dnp"}
+
+
+def _resolve_dnp(parameters: dict[str, str], casefolded: dict[str, str]) -> str:
+    """Decide whether a component is DNP, from whichever field carries it.
+
+    ``kicad_dnp`` is kicad-monkey's parse of the symbol's own ``(dnp ...)``
+    attribute and wins outright.  Failing that, KiCad's netlist marks a DNP
+    part with a *valueless* ``dnp`` property — presence is the signal, and it
+    is also how DNP inherited from a parent sheet reaches us.  That flag is
+    matched on the exact lowercase key so a user field named ``DNP`` left
+    blank, which means the opposite, is not mistaken for it.
+    """
+
+    explicit = casefolded.get("kicaddnp", "").strip()
+    if explicit:
+        return "Yes" if explicit.casefold() in _TRUTHY_FLAGS else "No"
+
+    if "dnp" in parameters and not parameters["dnp"].strip():
+        return "Yes"
+
+    for alias in ("DNP", "Do Not Populate", "Do Not Fit"):
+        value = casefolded.get(re.sub(r"[^a-z0-9]", "", alias.casefold()), "").strip()
+        if value:
+            return "Yes" if value.casefold() in _TRUTHY_FLAGS else "No"
+
+    return "No"
+
+
 def _canonical_fields(component: dict[str, Any]) -> dict[str, str]:
     parameters = {
         str(key): _string(value)
@@ -425,14 +454,16 @@ def _canonical_fields(component: dict[str, Any]) -> dict[str, str]:
     }
 
     def pick(name: str, *aliases: str) -> str:
+        # A present-but-empty field must not shadow a populated alias; KiCad
+        # emits plenty of blank properties, and the first non-blank one is
+        # what the panel should show.
         for candidate in (name, *aliases):
             value = casefolded.get(re.sub(r"[^a-z0-9]", "", candidate.casefold()))
-            if value is not None:
+            if value:
                 return value
         return ""
 
-    dnp_source = pick("DNP", "kicad_dnp", "Do Not Populate", "Do Not Fit")
-    dnp = "Yes" if dnp_source.strip().casefold() in {"1", "true", "yes", "y", "dnp"} else "No"
+    dnp = _resolve_dnp(parameters, casefolded)
     required = {
         "Value": _string(component.get("value")) or pick("Value"),
         "DNP": dnp,

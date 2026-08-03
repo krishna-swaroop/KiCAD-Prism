@@ -767,5 +767,53 @@ class SchematicInstanceFieldTests(unittest.TestCase):
         self.assertNotIn("pin-uuid-1", fields)
 
 
+class CanonicalFieldTests(unittest.TestCase):
+    """How a component's DNP state and aliased fields are read.
+
+    KiCad records "do not populate" in two unrelated shapes, and Prism sees
+    both: kicad-monkey's parsed ``kicad_dnp`` boolean, and the raw netlist's
+    valueless ``dnp`` property, which is what carries DNP inherited from a
+    parent sheet.  Reading only the first key that exists made every DNP part
+    report "No", because the valueless one sorts first and looks empty.
+    """
+
+    @staticmethod
+    def _fields(**parameters: str) -> dict[str, str]:
+        return semantic_index_service._canonical_fields({"parameters": parameters})
+
+    def test_the_parsed_symbol_attribute_marks_a_part_dnp(self) -> None:
+        self.assertEqual(self._fields(kicad_dnp="true")["DNP"], "Yes")
+
+    def test_a_valueless_netlist_flag_marks_a_part_dnp(self) -> None:
+        """KiCad emits `(property (name "dnp"))` only for parts that are DNP."""
+        self.assertEqual(self._fields(dnp="")["DNP"], "Yes")
+
+    def test_the_valueless_flag_does_not_shadow_the_parsed_attribute(self) -> None:
+        self.assertEqual(self._fields(dnp="", kicad_dnp="true")["DNP"], "Yes")
+
+    def test_a_populated_part_reports_no(self) -> None:
+        self.assertEqual(self._fields(kicad_dnp="false")["DNP"], "No")
+
+    def test_a_blank_user_field_named_dnp_means_populated(self) -> None:
+        """Unlike the netlist flag, an empty user field is the default, not a mark."""
+        self.assertEqual(self._fields(DNP="", kicad_dnp="false")["DNP"], "No")
+
+    def test_a_user_field_alias_can_mark_a_part_dnp(self) -> None:
+        self.assertEqual(self._fields(**{"Do Not Populate": "yes"})["DNP"], "Yes")
+
+    def test_the_parsed_attribute_overrules_a_stale_user_field(self) -> None:
+        self.assertEqual(self._fields(DNP="no", kicad_dnp="true")["DNP"], "Yes")
+
+    def test_a_component_with_no_dnp_information_reports_no(self) -> None:
+        self.assertEqual(self._fields(Value="10k")["DNP"], "No")
+
+    def test_a_blank_field_does_not_shadow_a_populated_alias(self) -> None:
+        fields = self._fields(
+            **{"Datasheet": "", "Datasheet Link": "https://example.invalid/ds.pdf"}
+        )
+
+        self.assertEqual(fields["Datasheet"], "https://example.invalid/ds.pdf")
+
+
 if __name__ == "__main__":
     unittest.main()
