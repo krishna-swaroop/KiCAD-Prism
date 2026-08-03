@@ -1,6 +1,12 @@
 /** RFC 4180 quoting. Always quoted: net names and file paths carry commas. */
 export function csvCell(value: unknown): string {
-    return `"${String(value ?? "").replace(/"/g, '""')}"`;
+    let text = String(value ?? "");
+    // Spreadsheet formula injection: Excel/Sheets still treat a leading
+    // equals (and siblings) as a formula even inside quoted CSV fields.
+    if (/^[=+\-@\t]/.test(text)) {
+        text = `'${text}`;
+    }
+    return `"${text.replace(/"/g, '""')}"`;
 }
 
 /** Hand a generated CSV to the browser as a download. */

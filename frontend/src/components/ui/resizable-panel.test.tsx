@@ -133,4 +133,32 @@ describe("resizable panel", () => {
         expect(handle.getAttribute("aria-valuemax")).toBe("720");
         expect(handle.getAttribute("aria-label")).toBe("Resize Selected change");
     });
+
+    it("does not persist a viewport emergency shrink as the preferred width", () => {
+        window.localStorage.setItem("test.width", "512");
+        const { container } = render(
+            <ResizablePanel
+                side="right"
+                storageKey="test.width"
+                defaultWidth={400}
+                minWidth={240}
+            >
+                <span>content</span>
+            </ResizablePanel>,
+        );
+
+        expect(panelOf(container).style.width).toBe("512px");
+
+        // A narrow window forces the panel to yield, but the stored preference
+        // must survive so widening the window restores what the reviewer chose.
+        Object.defineProperty(window, "innerWidth", {
+            configurable: true,
+            value: 600,
+        });
+        fireEvent(window, new Event("resize"));
+
+        expect(Number(panelOf(container).style.width.replace("px", "")))
+            .toBeLessThan(512);
+        expect(window.localStorage.getItem("test.width")).toBe("512");
+    });
 });

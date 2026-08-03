@@ -797,6 +797,59 @@ describe("copper grouped by conductor across a net rename", () => {
         // Bucketing on the current name split one trace across an "Added
         // <new>" row and a "Removed <old>" row, and selecting either
         // highlighted only its share of the trace.
+        //
+        // The production path marks the rewrites as `derivedFrom` via
+        // prepareChangesForReview; removals on the old name must still join
+        // that same row.
+        const renames = semanticNetRenames([
+            schematicChange({
+                id: "semantic-aux-rename",
+                category: "nets",
+                object_kind: "net",
+                reference: null,
+                reasons: ["net-renamed"],
+                fields: {
+                    name: {
+                        old: "/AUX/AUX.SBU2S",
+                        new: "/AUX/AUX_TYPE_C.SBU2S",
+                    },
+                },
+            }),
+        ]);
+        const renetted = Array.from({ length: 11 }, (_, index) => copper({
+            id: `renetted-${index}`,
+            kind: "changed",
+            net: "/AUX/AUX_TYPE_C.SBU2S",
+            reasons: ["net-changed"],
+            fields: {
+                Net: { old: "/AUX/AUX.SBU2S", new: "/AUX/AUX_TYPE_C.SBU2S" },
+            },
+        }));
+        const deleted = Array.from({ length: 2 }, (_, index) => copper({
+            id: `deleted-${index}`,
+            kind: "removed",
+            net: "/AUX/AUX.SBU2S",
+            reasons: ["object-removed"],
+        }));
+
+        const prepared = prepareChangesForReview(
+            [...renetted, ...deleted],
+            { netRenames: renames },
+        );
+        const groups = groupChanges(
+            prepared.changes,
+            [],
+            createGroupingContext(prepared.changes),
+        );
+
+        expect(groups).toHaveLength(1);
+        expect(groups[0]!.changes).toHaveLength(13);
+        expect(groups[0]!.label).toBe("/AUX/AUX_TYPE_C.SBU2S");
+    });
+
+    it("merges renamed copper by alias when prepare never marked the rewrite", () => {
+        // No schematic rename in hand: the copper's own old/new Net pairs are
+        // the only evidence. Aliasing still has to keep one conductor together.
         const renetted = Array.from({ length: 11 }, (_, index) => copper({
             id: `renetted-${index}`,
             kind: "changed",

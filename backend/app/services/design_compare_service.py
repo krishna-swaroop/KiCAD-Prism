@@ -559,6 +559,9 @@ def _load_or_build_pcb_revision(
 
 
 
+_FABRICATION_COMPLETE_MARKER = ".prism_complete"
+
+
 def _export_fabrication(
     cache: Path,
     snap: Path,
@@ -571,24 +574,38 @@ def _export_fabrication(
     cached with the revision and reused by every comparison that touches it.
     A missing or broken KiCad CLI degrades the fabrication domain only — the
     rest of the comparison is pure parsing and must still complete.
+
+    Completeness is gated on a marker file, not on the directory being
+    non-empty: a killed `kicad-cli` can leave a partial plot that must not be
+    treated as a successful export on the next compare.
     """
 
     board = _find_pcb(snap)
     if board is None:
         return {"present": False, "reason": "no board file in this revision"}
     output = cache / "fabrication"
-    if output.is_dir() and any(output.iterdir()):
+    if (output / _FABRICATION_COMPLETE_MARKER).is_file():
         return {"present": True, "dir": str(output)}
-    ok, message = fabrication_compare_service.export_gerbers(board, output)
+    # Incomplete leftover from an interrupted export — do not reuse.
+    if output.exists():
+        shutil.rmtree(output, ignore_errors=True)
+    staging = cache / "fabrication.staging"
+    if staging.exists():
+        shutil.rmtree(staging, ignore_errors=True)
+    ok, message = fabrication_compare_service.export_gerbers(board, staging)
     if not ok:
         logs.append(f"Gerber export failed for {commit[:7]}: {message}")
-        shutil.rmtree(output, ignore_errors=True)
+        shutil.rmtree(staging, ignore_errors=True)
         return {"present": False, "reason": message}
     # A missing drill program costs the drill layers, not the whole package, so
     # it is a warning on an otherwise usable fabrication comparison.
-    drilled, drill_message = fabrication_compare_service.export_drill(board, output)
+    drilled, drill_message = fabrication_compare_service.export_drill(board, staging)
     if not drilled:
         logs.append(f"Drill export failed for {commit[:7]}: {drill_message}")
+    # Marker last inside staging, then promote atomically so a crash mid-plot
+    # never leaves a directory that the next run would treat as complete.
+    (staging / _FABRICATION_COMPLETE_MARKER).write_text("1", encoding="utf-8")
+    staging.replace(output)
     logs.append(f"Plotted fabrication output for {commit[:7]}")
     return {
         "present": True,

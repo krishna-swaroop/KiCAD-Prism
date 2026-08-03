@@ -724,7 +724,10 @@ export function ComparisonPresentationShell({
             oldNewSide,
             documentPath,
             selectionKey,
-            panes.map((pane) => pane.side).join("+"),
+            // Document presence is part of the pane set: a side that attaches
+            // without the document, then later gains it, must re-apply rather
+            // than treat the earlier pass as already consumed.
+            panes.map((pane) => `${pane.side}:${pane.hasDocument ? 1 : 0}`).join("+"),
         ].join(":");
         if (lastSelectionKeyRef.current === applicationKey) return;
         const nativeSelection = resolveNativeSelection(

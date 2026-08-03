@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
  *
  * The chosen width persists per `storageKey`, because a reviewer who has sized
  * their queue and their property sheet has expressed a layout preference, not
- * made a one-off adjustment.
+ * made a one-off adjustment. Viewport emergency shrinks affect only the
+ * displayed width — they must not overwrite that preference.
  */
 
 export type ResizablePanelProps = {
@@ -44,6 +45,11 @@ function readStoredWidth(key: string, fallback: number): number {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function viewportCap(minWidth: number): number {
+    if (typeof window === "undefined") return Number.POSITIVE_INFINITY;
+    return Math.max(minWidth, window.innerWidth - RESERVED_FOR_CONTENT);
+}
+
 export function ResizablePanel({
     side,
     storageKey,
@@ -58,15 +64,19 @@ export function ResizablePanel({
         (value: number) => Math.min(maxWidth, Math.max(minWidth, value)),
         [maxWidth, minWidth],
     );
-    const [width, setWidth] = useState(
+    // Preference is what the reviewer chose. Display may be narrower when the
+    // viewport cannot hold it, but that emergency shrink must not be persisted.
+    const [preferredWidth, setPreferredWidth] = useState(
         () => clamp(readStoredWidth(storageKey, defaultWidth)),
     );
+    const [viewportMax, setViewportMax] = useState(() => viewportCap(minWidth));
     const [dragging, setDragging] = useState(false);
     const panelRef = useRef<HTMLElement | null>(null);
+    const width = Math.round(Math.min(preferredWidth, viewportMax));
 
     useEffect(() => {
-        window.localStorage.setItem(storageKey, String(width));
-    }, [storageKey, width]);
+        window.localStorage.setItem(storageKey, String(preferredWidth));
+    }, [storageKey, preferredWidth]);
 
     /**
      * On a viewport too narrow to hold the panel and still show the design, the
@@ -77,22 +87,19 @@ export function ResizablePanel({
      * would silently overwrite a width the reviewer had chosen.
      */
     useEffect(() => {
-        const fit = () => setWidth((current) => Math.round(Math.min(
-            clamp(current),
-            Math.max(minWidth, window.innerWidth - RESERVED_FOR_CONTENT),
-        )));
+        const fit = () => setViewportMax(viewportCap(minWidth));
         fit();
         window.addEventListener("resize", fit);
         return () => window.removeEventListener("resize", fit);
-    }, [clamp, minWidth]);
+    }, [minWidth]);
 
     const widthFrom = useCallback((clientX: number): number => {
         const rect = panelRef.current?.getBoundingClientRect();
-        if (!rect) return width;
+        if (!rect) return preferredWidth;
         return clamp(
             side === "left" ? clientX - rect.left : rect.right - clientX,
         );
-    }, [clamp, side, width]);
+    }, [clamp, preferredWidth, side]);
 
     const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
         event.preventDefault();
@@ -102,7 +109,7 @@ export function ResizablePanel({
 
     const onDrag = (event: React.PointerEvent<HTMLDivElement>) => {
         if (!dragging) return;
-        setWidth(widthFrom(event.clientX));
+        setPreferredWidth(widthFrom(event.clientX));
     };
 
     const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -119,13 +126,13 @@ export function ResizablePanel({
         const shrink = side === "left" ? "ArrowLeft" : "ArrowRight";
         if (event.key === grow) {
             event.preventDefault();
-            setWidth((current) => clamp(current + step));
+            setPreferredWidth((current) => clamp(current + step));
         } else if (event.key === shrink) {
             event.preventDefault();
-            setWidth((current) => clamp(current - step));
+            setPreferredWidth((current) => clamp(current - step));
         } else if (event.key === "Home") {
             event.preventDefault();
-            setWidth(clamp(defaultWidth));
+            setPreferredWidth(clamp(defaultWidth));
         }
     };
 
@@ -158,7 +165,7 @@ export function ResizablePanel({
                 onPointerUp={endDrag}
                 onPointerCancel={endDrag}
                 onKeyDown={onKeyDown}
-                onDoubleClick={() => setWidth(clamp(defaultWidth))}
+                onDoubleClick={() => setPreferredWidth(clamp(defaultWidth))}
                 className={cn(
                     "absolute inset-y-0 z-20 w-1.5 cursor-col-resize transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none",
                     dragging && "bg-primary/60",

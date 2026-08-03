@@ -751,10 +751,85 @@ class FabricationDomainTests(unittest.TestCase):
                 )
 
             self.assertFalse((root / "fabrication").exists())
+            self.assertFalse((root / "fabrication.staging").exists())
 
         self.assertFalse(result["present"])
         self.assertEqual(result["reason"], "kicad-cli is not available")
         self.assertTrue(any("abc1234" in line for line in logs))
+
+    def test_a_partial_fabrication_dir_without_a_marker_is_re_exported(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            snapshot = root / "snapshot"
+            snapshot.mkdir()
+            (snapshot / "board.kicad_pcb").write_text("(kicad_pcb)")
+            partial = root / "fabrication"
+            partial.mkdir()
+            (partial / "board-F_Cu.gbr").write_text("%TF.incomplete*%\n")
+            logs: list[str] = []
+            calls: list[Path] = []
+
+            def fake_gerbers(board: Path, output_dir: Path):
+                calls.append(output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                (output_dir / "board-F_Cu.gbr").write_text("%TF.complete*%\n")
+                return (True, "")
+
+            with mock.patch.object(
+                design_compare_service.fabrication_compare_service,
+                "export_gerbers",
+                side_effect=fake_gerbers,
+            ), mock.patch.object(
+                design_compare_service.fabrication_compare_service,
+                "export_drill",
+                return_value=(True, ""),
+            ):
+                result = design_compare_service._export_fabrication(
+                    root, snapshot, "abc1234", logs
+                )
+
+            self.assertTrue(result["present"])
+            self.assertEqual(len(calls), 1)
+            self.assertTrue(
+                (root / "fabrication" / design_compare_service._FABRICATION_COMPLETE_MARKER)
+                .is_file()
+            )
+            self.assertEqual(
+                (root / "fabrication" / "board-F_Cu.gbr").read_text(),
+                "%TF.complete*%\n",
+            )
+            self.assertFalse((root / "fabrication.staging").exists())
+
+    def test_a_marked_fabrication_dir_is_reused_without_replotting(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            snapshot = root / "snapshot"
+            snapshot.mkdir()
+            (snapshot / "board.kicad_pcb").write_text("(kicad_pcb)")
+            output = root / "fabrication"
+            output.mkdir()
+            (output / "board-F_Cu.gbr").write_text("%TF.cached*%\n")
+            (output / design_compare_service._FABRICATION_COMPLETE_MARKER).write_text(
+                "1", encoding="utf-8"
+            )
+            logs: list[str] = []
+
+            with mock.patch.object(
+                design_compare_service.fabrication_compare_service,
+                "export_gerbers",
+            ) as export_gerbers, mock.patch.object(
+                design_compare_service.fabrication_compare_service,
+                "export_drill",
+            ) as export_drill:
+                result = design_compare_service._export_fabrication(
+                    root, snapshot, "abc1234", logs
+                )
+
+            export_gerbers.assert_not_called()
+            export_drill.assert_not_called()
+            self.assertTrue(result["present"])
+            self.assertEqual(result["dir"], str(output))
+            self.assertEqual(logs, [])
 
     def test_one_revision_without_fabrication_output_disables_the_domain(self):
         result = design_compare_service._diff_fabrication(

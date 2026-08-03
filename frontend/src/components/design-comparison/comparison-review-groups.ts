@@ -253,6 +253,41 @@ function canonicalNetName(
     return aliases?.get(own) ?? own;
 }
 
+type DerivedNetRename = { old: string; new: string };
+
+/**
+ * One authored schematic rename, keyed by the base-revision name.
+ *
+ * `prepareChangesForReview` marks rewritten copper with `derivedFrom`, but
+ * genuinely deleted stubs on the old name never get that mark. Harvesting the
+ * rename here lets those removals share the same review row as the rewrite
+ * cascade, so one physical conductor stays one queue item on the production
+ * path — not only on the alias-only path that skips prepare.
+ */
+function buildDerivedNetRenames(
+    changes: ChangeItem[],
+): Map<string, DerivedNetRename> {
+    const renames = new Map<string, DerivedNetRename>();
+    for (const change of changes) {
+        if (change.derivedFrom?.kind !== "net-rename") continue;
+        const oldName = change.derivedFrom.old.trim();
+        const newName = change.derivedFrom.new.trim();
+        if (!oldName || !newName || oldName === newName) continue;
+        renames.set(oldName, { old: oldName, new: newName });
+    }
+    return renames;
+}
+
+/** Shared identity for a schematic-owned net rename and every board object that followed it. */
+function netRenameIdentity(oldName: string, newName: string): GroupIdentity {
+    return {
+        bucket: `net-rename:${oldName} ${newName}`,
+        idIdentity: `net-rename:${oldName} ${newName}`,
+        category: "nets",
+        label: newName,
+    };
+}
+
 /**
  * Identity for a change that belongs to a placed component.
  *
@@ -290,6 +325,7 @@ function identityFor(
     change: ChangeItem,
     parts: PartIdentityIndex | null,
     netAliases: Map<string, string> | null,
+    derivedNetRenames: Map<string, DerivedNetRename> | null,
 ): GroupIdentity {
     const kind = objectKind(change);
     const page = pageFor(change);
@@ -345,13 +381,7 @@ function identityFor(
     // One authored rename, one review item, regardless of how many board
     // objects KiCad rewrote to follow it.
     if (change.derivedFrom?.kind === "net-rename") {
-        const { old: oldName, new: newName } = change.derivedFrom;
-        return {
-            bucket: `net-rename:${oldName} ${newName}`,
-            idIdentity: `net-rename:${oldName} ${newName}`,
-            category: "nets",
-            label: newName,
-        };
+        return netRenameIdentity(change.derivedFrom.old, change.derivedFrom.new);
     }
 
     if (isSamePageLayoutOnly(change)) {
@@ -450,6 +480,14 @@ function identityFor(
         if (PCB_COPPER_KINDS.has(kind)) {
             const canonical = canonicalNetName(change, netAliases);
             const current = (change.net ?? "").trim();
+            // Removals on the pre-rename name never carry `derivedFrom`, but they
+            // are the same conductor as the rewrite cascade. Join that row.
+            const ownedRename = (canonical && derivedNetRenames?.get(canonical))
+                || (current && derivedNetRenames?.get(current))
+                || null;
+            if (ownedRename) {
+                return netRenameIdentity(ownedRename.old, ownedRename.new);
+            }
             const net = canonical ?? "Unconnected copper";
             // Name the row for the conductor it is, and say so when the net was
             // renamed underneath it.
@@ -516,6 +554,8 @@ function identityFor(
 export interface ReviewGroupingContext {
     parts: PartIdentityIndex;
     netAliases: Map<string, string>;
+    /** Schematic-owned renames, keyed by the base-revision net name. */
+    derivedNetRenames: Map<string, DerivedNetRename>;
 }
 
 /** Build the indexes for one domain's full change list. */
@@ -526,6 +566,7 @@ export function createGroupingContext(
     return {
         parts: buildPartIdentityIndex(bom),
         netAliases: buildNetAliases(changes),
+        derivedNetRenames: buildDerivedNetRenames(changes),
     };
 }
 
@@ -535,10 +576,16 @@ export function groupChanges(
     grouping?: ReviewGroupingContext | null,
 ): ChangeGroup[] {
     // Without a shared context this still works, on the changes it was handed.
-    const { parts, netAliases } = grouping ?? createGroupingContext(changes);
+    const { parts, netAliases, derivedNetRenames } = grouping
+        ?? createGroupingContext(changes);
     const buckets = new Map<string, ChangeGroup>();
     for (const change of changes) {
-        const identity = identityFor(change, parts, netAliases);
+        const identity = identityFor(
+            change,
+            parts,
+            netAliases,
+            derivedNetRenames,
+        );
         const key = `${change.domain}:${identity.category}:${identity.bucket}`;
         const existing = buckets.get(key);
         if (existing) {
