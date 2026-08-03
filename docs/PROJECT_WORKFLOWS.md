@@ -110,6 +110,14 @@ Comparison provides side-by-side and synchronized presentation, change groups,
 cross-probe where supported, and commit-pinned discussions. Large boards can
 take time to prepare; repeated comparisons may reuse generated caches.
 
+The default `Auto` presentation follows the selected change: Composite for
+simple schematic additions/removals, Side-by-side for connectivity, geometry,
+and fabrication changes, and Old/New for clean content or constraint review.
+A manually selected presentation remains in force until `Auto` is selected
+again. See the
+[reviewer presentation policy](design-comparison/reviewer-presentation-policy.md)
+for the complete schematic and PCB map.
+
 The current Design Comparison is the supported V3 path. Do not build new team
 processes around the older raster-diff API.
 

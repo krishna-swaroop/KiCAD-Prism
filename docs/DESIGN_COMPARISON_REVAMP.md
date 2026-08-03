@@ -401,6 +401,9 @@ and 7,634/7,634 on B: **zero duplicate targets and zero diagnostics**. Power
 library symbols, including `PWR_FLAG`, are connectivity/Nets objects and are
 excluded from component and BOM projection.
 
+The reviewer-facing automatic view and evidence policy is documented in
+[Reviewer presentation policy](design-comparison/reviewer-presentation-policy.md).
+
 ## Open questions, and which milestone answers each
 
 | Question | Answered by |
