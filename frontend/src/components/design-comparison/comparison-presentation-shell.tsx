@@ -707,8 +707,25 @@ export function ComparisonPresentationShell({
         ) {
             return;
         }
-        const applicationKey =
-            `${presentationMode}:${oldNewSide}:${documentPath}:${selectionKey}`;
+        // A pane whose revision does not carry this document has nothing to
+        // paint the selection onto.
+        const viewers = panes
+            .filter((pane) => pane.hasDocument)
+            .map((pane) => pane.viewer);
+        // The panes are part of the key, not just the selection.
+        //
+        // In side-by-side the two viewers do not attach on the same frame. Keyed
+        // on the selection alone, a pass that ran while only the base pane
+        // existed painted it, marked the selection consumed, and the compare
+        // pane — attaching a moment later — never received it. Whether that
+        // happened came down to how fast the machine was.
+        const applicationKey = [
+            presentationMode,
+            oldNewSide,
+            documentPath,
+            selectionKey,
+            panes.map((pane) => pane.side).join("+"),
+        ].join(":");
         if (lastSelectionKeyRef.current === applicationKey) return;
         const nativeSelection = resolveNativeSelection(
             session.preparation,
@@ -741,11 +758,6 @@ export function ComparisonPresentationShell({
         }
         lastSelectionKeyRef.current = applicationKey;
         unresolvedSelectionKeyRef.current = null;
-        // A pane whose revision does not carry this document has nothing to
-        // paint the selection onto.
-        const viewers = panes
-            .filter((pane) => pane.hasDocument)
-            .map((pane) => pane.viewer);
         const generation = ++selectionGenerationRef.current;
         cameraSyncSuppressedRef.current =
             presentationMode === "side-by-side";
