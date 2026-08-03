@@ -140,6 +140,24 @@ class DocumentDiffServiceTests(unittest.TestCase):
             [{"changeId": "semantic-net", "reason": "missing-source-id"}],
         )
 
+    def test_structured_review_only_changes_do_not_create_fake_diagnostics(self) -> None:
+        result = document_diff_service.build_project_diff(
+            schematic_changes=[],
+            pcb_changes=[{
+                "id": "net-class-usb",
+                "kind": "changed",
+                "domain": "pcb",
+                "category": "nets",
+                "source_id_compare": "net-class-usb",
+                "fields": {"Track width": {"old": 0.18, "new": 0.2}},
+                "details": {"reviewOnly": True, "visualTargets": []},
+            }],
+            files={},
+        )
+
+        self.assertEqual(result["project"]["documents"], [])
+        self.assertEqual(result["diagnostics"], [])
+
     def test_hydrates_field_only_changes_from_the_semantic_geometry_index(
         self,
     ) -> None:
@@ -472,6 +490,51 @@ class DocumentDiffServiceTests(unittest.TestCase):
 
         document = result["project"]["documents"][0]
         self.assertEqual(document["changes"][0]["id"], "/fp-uuid")
+
+    def test_pcb_segment_targets_are_native_tracks_on_both_revisions(self) -> None:
+        result = document_diff_service.build_project_diff(
+            schematic_changes=[],
+            pcb_changes=[{
+                "id": "pmod-a10-route",
+                "kind": "changed",
+                "domain": "pcb",
+                "category": "nets",
+                "net": "/Expansion/PMOD_A10",
+                "fields": {
+                    "Net": {
+                        "old": "/Expansion/PMOD_A7",
+                        "new": "/Expansion/PMOD_A10",
+                    }
+                },
+                "details": {
+                    "visualTargets": [
+                        {
+                            "side": side,
+                            "status": "modified",
+                            "sourceId": "track-1",
+                            "kind": "segment",
+                            "role": "segment",
+                        }
+                        for side in ("reference", "comparison")
+                    ]
+                },
+            }],
+            files={
+                "head": [{"path": "board.kicad_pcb"}],
+                "base": [{"path": "board.kicad_pcb"}],
+            },
+        )
+
+        root = result["project"]["documents"][0]["changes"][0]
+        self.assertEqual(root["typeName"], "PCB_TRACK")
+        self.assertEqual(root["sourceSide"], "reference")
+        self.assertEqual(len(root["children"]), 1)
+        self.assertEqual(root["children"][0]["typeName"], "PCB_TRACK")
+        self.assertEqual(root["children"][0]["sourceSide"], "comparison")
+        self.assertEqual(
+            result["navigation"]["pmod-a10-route"]["changeIds"],
+            ["/track-1", "/track-1"],
+        )
 
 
 if __name__ == "__main__":

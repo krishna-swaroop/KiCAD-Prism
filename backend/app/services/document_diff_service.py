@@ -26,7 +26,11 @@ _TYPE_NAMES = {
     "graphic": "SCH_SHAPE",
     "footprint": "PCB_FOOTPRINT",
     "track": "PCB_TRACK",
+    # Accept parser-native names defensively. design_compare_service normally
+    # canonicalizes these first, but document-diff is also a public adapter.
+    "segment": "PCB_TRACK",
     "arc": "PCB_ARC",
+    "arc_segment": "PCB_ARC",
     "via": "PCB_VIA",
     "zone": "ZONE",
     "pad": "PCB_PAD",
@@ -146,6 +150,8 @@ def _item_change(
 
 
 def _visual_targets(change: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    if (change.get("details") or {}).get("reviewOnly"):
+        return []
     values = (change.get("details") or {}).get("visualTargets") or []
     targets = [dict(value) for value in values if isinstance(value, Mapping)]
     if targets:
@@ -249,12 +255,13 @@ def build_project_diff(
         prism_id = str(change.get("id") or "")
         targets = _visual_targets(change)
         if not prism_id or not targets:
-            diagnostics.append(
-                {
-                    "changeId": prism_id,
-                    "reason": "missing-source-id",
-                }
-            )
+            if not (change.get("details") or {}).get("reviewOnly"):
+                diagnostics.append(
+                    {
+                        "changeId": prism_id,
+                        "reason": "missing-source-id",
+                    }
+                )
             continue
 
         resolved_by_document: Dict[

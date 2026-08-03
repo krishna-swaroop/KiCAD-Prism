@@ -45,6 +45,17 @@ const CLASSIFIERS = [
     ],
 ];
 
+const CLASSIFIED_REVIEW_FIELDS = new Set([
+    "Position",
+    "Rotation",
+    "Mirror",
+    "Layer",
+    "Net",
+    "Reference",
+    "Library",
+    "DNP",
+]);
+
 // Values projected by the index rather than read verbatim from the item's
 // shallow hash. Most importantly, a schematic pin inherits its owning
 // symbol's position. Comparing only `hash` would therefore miss every pin move
@@ -60,9 +71,16 @@ const INDEX_FIELDS = [
     "refdes",
     "libId",
     "dnp",
+    "inBom",
+    "onBoard",
     "kiidPaths",
     "instances",
     "properties",
+    "number",
+    "text",
+    "name",
+    "reviewFields",
+    "reviewOnly",
 ];
 
 function same_point(before, after) {
@@ -74,6 +92,97 @@ function same_point(before, after) {
 
 function key_of(object) {
     return `${object.documentPath}#${object.uuid}`;
+}
+
+function stable_json(value) {
+    if (Array.isArray(value)) return value.map(stable_json);
+    if (value && typeof value === "object") {
+        return Object.fromEntries(
+            Object.entries(value)
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([key, child]) => [key, stable_json(child)]),
+        );
+    }
+    return value ?? null;
+}
+
+/**
+ * Authored-content identity for unmatched UUIDs.
+ *
+ * KiCad can recreate objects while preserving every reviewer-visible value.
+ * UUID is deliberately absent; parent UUID is also absent because a recreated
+ * footprint/symbol otherwise makes all of its unchanged children look new.
+ */
+function authored_content_identity(object) {
+    const container = new Set(["symbol", "footprint", "sheet"]).has(object.kind);
+    return JSON.stringify(stable_json({
+        documentPath: object.documentPath,
+        kind: object.kind,
+        // A container's shallow hash intentionally contains child UUIDs so a
+        // re-parent is detectable. For UUID-churn reconciliation those child
+        // identities are precisely what must be ignored; all authored child
+        // objects are independently compared below it.
+        hash: container ? undefined : object.hash,
+        at: object.at,
+        rotation: object.rotation,
+        mirror: object.mirror,
+        layer: object.layer,
+        layers: object.layers,
+        net: object.net,
+        refdes: object.refdes,
+        libId: object.libId,
+        dnp: object.dnp,
+        inBom: object.inBom,
+        onBoard: object.onBoard,
+        kiidPaths: object.kiidPaths,
+        instances: object.instances,
+        properties: object.properties,
+        number: object.number,
+        text: object.text,
+        name: object.name,
+        reviewFields: object.reviewFields,
+    }));
+}
+
+/** A sheet-pin name/type can change while its logical interface slot remains. */
+function sheet_pin_slot_identity(object) {
+    if (object.kind !== "sheet_pin" || !object.parentUuid || !object.at) return null;
+    return JSON.stringify([
+        object.documentPath,
+        object.kind,
+        object.parentUuid,
+        object.at,
+        object.rotation ?? 0,
+    ]);
+}
+
+function pair_unmatched(base, head, matchedBase, matchedHead, identity, reason, matches) {
+    const baseGroups = new Map();
+    const headGroups = new Map();
+    const add = (groups, signature, key) => {
+        if (!signature) return;
+        const values = groups.get(signature) ?? [];
+        values.push(key);
+        groups.set(signature, values);
+    };
+    for (const [key, object] of base) {
+        if (!matchedBase.has(key)) add(baseGroups, identity(object), key);
+    }
+    for (const [key, object] of head) {
+        if (!matchedHead.has(key)) add(headGroups, identity(object), key);
+    }
+    for (const signature of [...baseGroups.keys()].sort()) {
+        const baseKeys = (baseGroups.get(signature) ?? []).sort();
+        const headKeys = (headGroups.get(signature) ?? []).sort();
+        const count = Math.min(baseKeys.length, headKeys.length);
+        for (let index = 0; index < count; index += 1) {
+            const baseKey = baseKeys[index];
+            const headKey = headKeys[index];
+            matchedBase.add(baseKey);
+            matchedHead.add(headKey);
+            matches.set(headKey, { baseKey, reason });
+        }
+    }
 }
 
 function same_index_fields(before, after) {
@@ -102,6 +211,11 @@ function native_object(object) {
         kiidPaths: object.kiidPaths,
         instances: object.instances,
         properties: object.properties,
+        number: object.number,
+        text: object.text,
+        name: object.name,
+        reviewFields: object.reviewFields,
+        reviewOnly: object.reviewOnly,
     };
 }
 
@@ -164,6 +278,47 @@ function property_deltas(before, after) {
     return deltas.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function review_fields(object) {
+    if (!object) return {};
+    return {
+        ...(object.at ? { Position: object.at.join(", ") } : {}),
+        ...(object.rotation !== undefined ? { Rotation: object.rotation } : {}),
+        ...(object.mirror !== undefined ? { Mirror: object.mirror } : {}),
+        ...(object.layer !== undefined ? { Layer: object.layer } : {}),
+        ...(object.net !== undefined ? { Net: object.net } : {}),
+        ...(object.refdes !== undefined ? { Reference: object.refdes } : {}),
+        ...(object.libId !== undefined ? { Library: object.libId } : {}),
+        ...(object.dnp !== undefined ? { DNP: object.dnp } : {}),
+        ...(object.inBom !== undefined ? { "In BOM": object.inBom } : {}),
+        ...(object.onBoard !== undefined ? { "On board": object.onBoard } : {}),
+        ...(object.reviewFields ?? {}),
+    };
+}
+
+function review_field_deltas(before, after) {
+    const oldFields = review_fields(before);
+    const newFields = review_fields(after);
+    const deltas = [];
+    for (const name of new Set([...Object.keys(oldFields), ...Object.keys(newFields)])) {
+        const from = oldFields[name];
+        const to = newFields[name];
+        if (JSON.stringify(from ?? null) === JSON.stringify(to ?? null)) continue;
+        deltas.push({ name, from, to });
+    }
+    return deltas.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function merged_property_deltas(before, after) {
+    const byName = new Map();
+    for (const delta of [
+        ...review_field_deltas(before, after),
+        ...property_deltas(before, after),
+    ]) {
+        byName.set(delta.name, delta);
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function position_delta(before, after) {
     if (!before.at || !after.at) {
         return undefined;
@@ -183,19 +338,63 @@ function round6(value) {
 export function diff_indexes(baseObjects, headObjects) {
     const base = new Map(baseObjects.map((object) => [key_of(object), object]));
     const head = new Map(headObjects.map((object) => [key_of(object), object]));
+    const matchedBase = new Set();
+    const matchedHead = new Set();
+    const matches = new Map();
+    for (const key of head.keys()) {
+        if (!base.has(key)) continue;
+        matchedBase.add(key);
+        matchedHead.add(key);
+        matches.set(key, { baseKey: key, reason: "native-identity" });
+    }
+    // First remove pure UUID churn for any object whose authored content is
+    // byte-for-byte equivalent after canonicalisation. Then reconcile a
+    // hierarchical pin that retained its exact parent slot so a name/type edit
+    // is one modification, not an opaque removal plus addition.
+    pair_unmatched(
+        base,
+        head,
+        matchedBase,
+        matchedHead,
+        authored_content_identity,
+        "internal-identity-only",
+        matches,
+    );
+    pair_unmatched(
+        base,
+        head,
+        matchedBase,
+        matchedHead,
+        sheet_pin_slot_identity,
+        "sheet-pin-slot",
+        matches,
+    );
     const changes = [];
     const ignored = [];
     let unchanged = 0;
 
     for (const [key, after] of head) {
-        const before = base.get(key);
+        const match = matches.get(key);
+        const before = match ? base.get(match.baseKey) : undefined;
         if (before === undefined) {
+            const properties = review_field_deltas(null, after);
             changes.push({
                 key,
                 status: "added",
                 ...native_object(after),
                 compare: native_object(after),
+                properties: properties.length > 0 ? properties : undefined,
             });
+            continue;
+        }
+        if (match.reason === "internal-identity-only") {
+            ignored.push({
+                key,
+                status: "ignored",
+                reason: match.reason,
+                ...native_object(after),
+            });
+            unchanged += 1;
             continue;
         }
         if (before.hash === after.hash && same_index_fields(before, after)) {
@@ -216,8 +415,10 @@ export function diff_indexes(baseObjects, headObjects) {
         const reasons = CLASSIFIERS.filter(([, test]) => test(before, after)).map(
             ([name]) => name,
         );
-        const properties = property_deltas(before, after);
-        if (properties.length > 0) {
+        const properties = merged_property_deltas(before, after);
+        if (properties.some(
+            (delta) => delta.attributesChanged || !CLASSIFIED_REVIEW_FIELDS.has(delta.name),
+        )) {
             reasons.push("properties-changed");
         }
         changes.push({
@@ -238,14 +439,16 @@ export function diff_indexes(baseObjects, headObjects) {
     }
 
     for (const [key, before] of base) {
-        if (head.has(key)) {
+        if (matchedBase.has(key)) {
             continue;
         }
+        const properties = review_field_deltas(before, null);
         changes.push({
             key,
             status: "removed",
             ...native_object(before),
             base: native_object(before),
+            properties: properties.length > 0 ? properties : undefined,
         });
     }
 

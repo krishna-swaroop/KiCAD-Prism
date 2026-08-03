@@ -17,12 +17,18 @@ function object(overrides = {}) {
 
 test("added, removed and modified objects are emitted deterministically", () => {
     const unchanged = object();
-    const removed = object({ uuid: "00000000-0000-0000-0000-000000000001" });
+    const removed = object({
+        uuid: "00000000-0000-0000-0000-000000000001",
+        at: [8, 8],
+    });
     const modified = object({
         uuid: "00000000-0000-0000-0000-000000000002",
         hash: "before",
     });
-    const added = object({ uuid: "00000000-0000-0000-0000-000000000003" });
+    const added = object({
+        uuid: "00000000-0000-0000-0000-000000000003",
+        at: [9, 9],
+    });
     const after = {
         ...modified,
         hash: "after",
@@ -90,6 +96,48 @@ test("document path is part of identity", () => {
     );
 });
 
+test("pure KiCad UUID churn is ignored when authored content is identical", () => {
+    const before = object({ uuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" });
+    const after = object({ uuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" });
+
+    const result = diff_indexes([before], [after]);
+
+    assert.equal(result.changes.length, 0);
+    assert.equal(result.counts.unchanged, 1);
+    assert.equal(result.counts.ignored, 1);
+    assert.equal(result.ignored[0].reason, "internal-identity-only");
+});
+
+test("a recreated sheet pin is paired by interface slot and reports its rename", () => {
+    const before = object({
+        uuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        kind: "sheet_pin",
+        parentUuid: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        text: "~{ENABLE}",
+        name: "~{ENABLE}",
+        reviewFields: { "Sheet pin": "~{ENABLE}", "Electrical type": "input" },
+        hash: "before",
+    });
+    const after = {
+        ...before,
+        uuid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        text: "ENABLE",
+        name: "ENABLE",
+        reviewFields: { "Sheet pin": "ENABLE", "Electrical type": "input" },
+        hash: "after",
+    };
+
+    const result = diff_indexes([before], [after]);
+
+    assert.equal(result.changes.length, 1);
+    assert.equal(result.changes[0].status, "modified");
+    assert.equal(result.changes[0].base.uuid, before.uuid);
+    assert.equal(result.changes[0].compare.uuid, after.uuid);
+    assert.deepEqual(result.changes[0].properties, [
+        { name: "Sheet pin", from: "~{ENABLE}", to: "ENABLE" },
+    ]);
+});
+
 test("property value and attribute edits are classified", () => {
     const before = object({
         kind: "symbol",
@@ -122,6 +170,28 @@ test("property value and attribute edits are classified", () => {
                 effects: undefined,
             },
         },
+    ]);
+});
+
+test("assembly-state changes expose explicit old and new booleans", () => {
+    const before = object({
+        kind: "symbol",
+        dnp: false,
+        inBom: true,
+        onBoard: true,
+    });
+    const after = {
+        ...before,
+        inBom: false,
+        onBoard: false,
+    };
+
+    const result = diff_indexes([before], [after]);
+
+    assert.deepEqual(result.changes[0].reasons, ["properties-changed"]);
+    assert.deepEqual(result.changes[0].properties, [
+        { name: "In BOM", from: true, to: false },
+        { name: "On board", from: true, to: false },
     ]);
 });
 
@@ -190,14 +260,104 @@ test("route aggregates retain centerline, via span, and used layers", () => {
     assert.deepEqual(board.routeMetrics.VCC.viaSpans, { "F.Cu|B.Cu": 1 });
 });
 
-test("real board objects preserve add/remove status for the M2 gate kinds", () => {
+test("pad geometry edits expose exact old and new fabrication values", () => {
+    const board = (size) => index_document(`
+        (kicad_pcb
+          (version 20240108)
+          (net 0 "")
+          (net 1 "VCC")
+          (footprint "QFN" (layer "F.Cu") (at 1 2)
+            (uuid "aaaaaaaa-0000-0000-0000-000000000000")
+            (property "Reference" "U1")
+            (pad "3" smd rect (at 0 0) (size ${size})
+              (layers "F.Cu" "F.Paste" "F.Mask") (net 1 "VCC")
+              (uuid "bbbbbbbb-0000-0000-0000-000000000000"))))`,
+        "board.kicad_pcb",
+    );
+    const base = board("1 1");
+    const head = board("1.5 0.8");
+
+    const result = diff_indexes(
+        [...base.byUuid.values()],
+        [...head.byUuid.values()],
+    );
+    const change = result.changes.find((item) => item.kind === "pad");
+
+    assert.deepEqual(change.reasons, ["properties-changed"]);
+    assert.deepEqual(
+        change.properties.find((field) => field.name === "Size"),
+        { name: "Size", from: "1 × 1", to: "1.5 × 0.8" },
+    );
+    assert.equal(change.compare.refdes, "U1");
+    assert.equal(change.compare.number, "3");
+});
+
+test("additions and removals retain review evidence for the missing side", () => {
+    const added = object({
+        uuid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        kind: "via",
+        documentPath: "board.kicad_pcb",
+        layer: "F.Cu",
+        net: "GND",
+        reviewFields: { Diameter: 0.8, Drill: 0.4 },
+    });
+
+    const addition = diff_indexes([], [added]).changes[0];
+    const removal = diff_indexes([added], []).changes[0];
+    assert.deepEqual(
+        addition.properties.find((field) => field.name === "Diameter"),
+        { name: "Diameter", from: undefined, to: 0.8 },
+    );
+    assert.deepEqual(
+        removal.properties.find((field) => field.name === "Drill"),
+        { name: "Drill", from: 0.4, to: undefined },
+    );
+});
+
+test("net-class rule and assignment changes are explicit old/new evidence", () => {
+    const project = (trackWidth, assignedClass) => index_document(JSON.stringify({
+        net_settings: {
+            classes: [{ name: "USB", clearance: 0.2, track_width: trackWidth }],
+            netclass_assignments: { "/USB D+": assignedClass },
+        },
+    }), "board.kicad_pro");
+    const base = project(0.18, "Default");
+    const head = project(0.2, "USB");
+
+    const result = diff_indexes(
+        [...base.byUuid.values()],
+        [...head.byUuid.values()],
+    );
+    const classChange = result.changes.find((item) => item.kind === "net_class");
+    const assignmentChange = result.changes.find(
+        (item) => item.kind === "net_class_assignment",
+    );
+
+    assert.deepEqual(
+        classChange.properties.find((field) => field.name === "Track width"),
+        { name: "Track width", from: 0.18, to: 0.2 },
+    );
+    assert.deepEqual(
+        assignmentChange.properties.find((field) => field.name === "Net class"),
+        { name: "Net class", from: "Default", to: "USB" },
+    );
+    assert.equal(classChange.compare.reviewOnly, true);
+});
+
+test("recreated board objects with identical authored content are not review changes", () => {
     const board = (suffix) => `
         (kicad_pcb
           (version 20240108)
           (net 0 "")
           (net 1 "VBUS")
           (footprint "R_0402" (layer "F.Cu") (at 1 2)
-            (uuid "aaaaaaaa-0000-0000-0000-0000000000${suffix}"))
+            (uuid "aaaaaaaa-0000-0000-0000-0000000000${suffix}")
+            (property "Reference" "R1")
+            (fp_line (start 0 0) (end 1 0) (stroke (width 0.1) (type solid))
+              (layer "F.SilkS")
+              (uuid "eeeeeeee-0000-0000-0000-0000000000${suffix}"))
+            (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "VBUS")
+              (uuid "ffffffff-0000-0000-0000-0000000000${suffix}")))
           (segment (start 0 0) (end 4 0) (width 0.2)
             (layer "F.Cu") (net 1)
             (uuid "bbbbbbbb-0000-0000-0000-0000000000${suffix}"))
@@ -215,11 +375,7 @@ test("real board objects preserve add/remove status for the M2 gate kinds", () =
         [...head.byUuid.values()],
     );
 
-    for (const kind of ["footprint", "segment", "via", "zone"]) {
-        assert.deepEqual(result.byKind[kind], {
-            added: 1,
-            removed: 1,
-            modified: 0,
-        });
-    }
+    assert.equal(result.changes.length, 0);
+    assert.equal(result.counts.ignored, 6);
+    assert.equal(result.counts.unchanged, 6);
 });
