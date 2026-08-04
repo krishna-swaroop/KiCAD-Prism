@@ -1,6 +1,7 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Suspense, lazy, useEffect, useMemo, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/button";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings } from "lucide-react";
 import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { toast } from "sonner";
@@ -548,64 +549,73 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 </aside>
 
                 <main className={cn("min-h-0 min-w-0 flex-1", activeSection === "visualizers" ? "overflow-hidden" : "overflow-auto p-6")}>
-                    {activeSection === "overview" && (
-                        <div className="space-y-6">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <span>Last Updated: {project.last_modified}</span>
+                    {/* Keyed to the section: a reviewer whose History tab throws
+                        can move to Assets and back to get a fresh attempt,
+                        rather than being stuck with a dead tab until reload.
+                        The viewer and history panels carry their own boundaries
+                        inside this one, so the heavy code fails closer to where
+                        it broke. */}
+                    <ErrorBoundary label="this tab" resetKeys={[activeSection, projectId]}>
+                        {activeSection === "overview" && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <span>Last Updated: {project.last_modified}</span>
+                                </div>
+
+                                {readme && (
+                                    <Suspense fallback={<div className="text-sm text-muted-foreground">Loading README...</div>}>
+                                        <MarkdownContent
+                                            content={readme}
+                                            resolveImageSrc={resolveProjectAssetSrc}
+                                        />
+                                    </Suspense>
+                                )}
+
+                                {!readme && (
+                                    <p className="text-muted-foreground">No README.md found for this project.</p>
+                                )}
                             </div>
+                        )}
 
-                            {readme && (
-                                <Suspense fallback={<div className="text-sm text-muted-foreground">Loading README...</div>}>
-                                    <MarkdownContent
-                                        content={readme}
-                                        resolveImageSrc={resolveProjectAssetSrc}
-                                    />
-                                </Suspense>
-                            )}
+                        {activeSection === "assets" && (
+                            <div>
+                                <h2 className="text-2xl font-bold mb-6">Assets Portal</h2>
+                                {projectId && (
+                                    <Suspense fallback={<div className="text-sm text-muted-foreground">Loading assets...</div>}>
+                                        <AssetsPortal projectId={projectId} commit={activeCommit} />
+                                    </Suspense>
+                                )}
+                            </div>
+                        )}
 
-                            {!readme && (
-                                <p className="text-muted-foreground">No README.md found for this project.</p>
-                            )}
-                        </div>
-                    )}
+                        {activeSection === "documentation" && (
+                            <div>
+                                <h2 className="text-2xl font-bold mb-6">Documentation</h2>
+                                {projectId && (
+                                    <Suspense fallback={<div className="text-sm text-muted-foreground">Loading documentation...</div>}>
+                                        <DocumentationBrowser projectId={projectId} commit={activeCommit} key={activeSection} />
+                                    </Suspense>
+                                )}
+                            </div>
+                        )}
 
-                    {activeSection === "assets" && (
-                        <div>
-                            <h2 className="text-2xl font-bold mb-6">Assets Portal</h2>
-                            {projectId && (
-                                <Suspense fallback={<div className="text-sm text-muted-foreground">Loading assets...</div>}>
-                                    <AssetsPortal projectId={projectId} commit={activeCommit} />
-                                </Suspense>
-                            )}
-                        </div>
-                    )}
-
-                    {activeSection === "documentation" && (
-                        <div>
-                            <h2 className="text-2xl font-bold mb-6">Documentation</h2>
-                            {projectId && (
-                                <Suspense fallback={<div className="text-sm text-muted-foreground">Loading documentation...</div>}>
-                                    <DocumentationBrowser projectId={projectId} commit={activeCommit} key={activeSection} />
-                                </Suspense>
-                            )}
-                        </div>
-                    )}
-
-                    {activeSection === "history" && (
-                        <div>
-                            <h2 className="text-2xl font-bold mb-6">History</h2>
-                            {projectId && (
-                                <Suspense fallback={<div className="text-sm text-muted-foreground">Loading history...</div>}>
-                                    <HistoryViewer
-                                        key={refreshKey}
-                                        projectId={projectId}
-                                        branchRef={selectedBranchRef}
-                                        onViewCommit={handleViewCommit}
-                                        onOpenVisualizer={handleOpenCommitVisualizer}
-                                        canCompareDiffs
-                                        canComment={canMutateProject}
-                                    />
-                                </Suspense>
+                        {activeSection === "history" && (
+                            <div>
+                                <h2 className="text-2xl font-bold mb-6">History</h2>
+                                {projectId && (
+                                    <ErrorBoundary label="the history viewer" resetKeys={[projectId, selectedBranchRef, refreshKey]}>
+                                        <Suspense fallback={<div className="text-sm text-muted-foreground">Loading history...</div>}>
+                                            <HistoryViewer
+                                                key={refreshKey}
+                                                projectId={projectId}
+                                                branchRef={selectedBranchRef}
+                                                onViewCommit={handleViewCommit}
+                                                onOpenVisualizer={handleOpenCommitVisualizer}
+                                                canCompareDiffs
+                                                canComment={canMutateProject}
+                                            />
+                                        </Suspense>
+                                </ErrorBoundary>
                             )}
                         </div>
                     )}
@@ -619,14 +629,19 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         >
                             <div className="flex-1 min-h-0">
                                 {projectId && (
-                                    <Suspense fallback={<div className="text-sm text-muted-foreground">Loading visualizers...</div>}>
-                                        <Visualizer
-                                            projectId={projectId}
-                                            user={user}
-                                            commit={activeCommit}
-                                            active={!comparisonOpen && activeSection === "visualizers"}
-                                        />
-                                    </Suspense>
+                                    // Its own boundary because this stays mounted while other
+                                    // tabs are on screen: a viewer crash must not reach the
+                                    // section boundary and take down whatever is being viewed.
+                                    <ErrorBoundary label="the visualizer" resetKeys={[projectId, activeCommit]}>
+                                        <Suspense fallback={<div className="text-sm text-muted-foreground">Loading visualizers...</div>}>
+                                            <Visualizer
+                                                projectId={projectId}
+                                                user={user}
+                                                commit={activeCommit}
+                                                active={!comparisonOpen && activeSection === "visualizers"}
+                                            />
+                                        </Suspense>
+                                    </ErrorBoundary>
                                 )}
                             </div>
                         </div>
@@ -638,7 +653,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         </div>
                     )}
 
-
+                    </ErrorBoundary>
                 </main>
             </div>
         </div>

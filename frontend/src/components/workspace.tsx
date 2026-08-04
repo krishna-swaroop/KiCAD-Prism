@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { User } from "@/types/auth";
 import type { FolderTreeItem, Project } from "@/types/project";
 import { Button } from "@/components/ui/button";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useWorkspaceData } from "@/hooks/use-workspace-data";
 import { useWorkspaceSearch } from "@/hooks/use-workspace-search";
 import { canManageProjects as roleCanManageProjects, canOpenLibraryManager } from "@/lib/roles";
@@ -546,175 +547,181 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
             )}
           </header>
 
+          {/* Scoped to the content area so a crash here leaves the sidebar and
+              the section switcher alive — the reviewer can navigate out of a
+              broken section instead of reloading. Keyed to the section so
+              switching away and back retries rather than staying broken. */}
           <main className="min-h-0 flex-1 overflow-hidden">
-            {loading ? (
-              <WorkspaceLoadingState />
-            ) : section === "library-manager" ? (
-              canOpenLibrary ? (
-                <LibraryManagerWorkspace user={user} projects={projects} />
+            <ErrorBoundary label="this section" resetKeys={[section]}>
+              {loading ? (
+                <WorkspaceLoadingState />
+              ) : section === "library-manager" ? (
+                canOpenLibrary ? (
+                  <LibraryManagerWorkspace user={user} projects={projects} />
+                ) : (
+                  <WorkspaceAppsPlaceholder
+                    canOpenLibraryManager={canOpenLibrary}
+                    onOpenLibraryManager={() => {}}
+                  />
+                )
               ) : (
-                <WorkspaceAppsPlaceholder
-                  canOpenLibraryManager={canOpenLibrary}
-                  onOpenLibraryManager={() => {}}
-                />
-              )
-            ) : (
-              <div className="flex h-full min-h-0 flex-col p-6">
-                <WorkspaceBreadcrumbs
-                  isSearching={isSearching}
-                  breadcrumbs={breadcrumbs}
-                  viewMode={viewMode}
-                  onGoRoot={() => setFolderInUrl(null)}
-                  onSelectFolder={(folderId) => setFolderInUrl(folderId)}
-                />
+                <div className="flex h-full min-h-0 flex-col p-6">
+                  <WorkspaceBreadcrumbs
+                    isSearching={isSearching}
+                    breadcrumbs={breadcrumbs}
+                    viewMode={viewMode}
+                    onGoRoot={() => setFolderInUrl(null)}
+                    onSelectFolder={(folderId) => setFolderInUrl(folderId)}
+                  />
 
-                <div className="relative mt-6 min-h-0 flex-1 overflow-hidden">
-                  <div className="h-full overflow-y-auto pr-1">
-                    <div className="mb-4 flex items-center justify-between rounded-lg border bg-card/30 px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-xs text-muted-foreground">
-                          Page {currentPage} of {totalPages} · {pageLabel}
-                        </p>
-                        {canManageProjects && listProjects.length > 0 && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-[11px]"
-                            onClick={toggleVisibleProjectSelection}
-                          >
-                            {allVisibleProjectsSelected ? "Clear selection" : `Select visible (${listProjects.length})`}
-                          </Button>
-                        )}
-                        {canManageProjects && selectedVisibleProjects.length > 0 && (
-                          <>
-                            <Button
-                              size="sm"
-                              className="h-7 px-2 text-[11px]"
-                              onClick={() => setProjectsToMove(selectedVisibleProjects)}
-                            >
-                              <FolderInput className="mr-1.5 h-3.5 w-3.5" />
-                              Move selected ({selectedVisibleProjects.length})
-                            </Button>
+                  <div className="relative mt-6 min-h-0 flex-1 overflow-hidden">
+                    <div className="h-full overflow-y-auto pr-1">
+                      <div className="mb-4 flex items-center justify-between rounded-lg border bg-card/30 px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-xs text-muted-foreground">
+                            Page {currentPage} of {totalPages} · {pageLabel}
+                          </p>
+                          {canManageProjects && listProjects.length > 0 && (
                             <Button
                               size="sm"
                               variant="outline"
                               className="h-7 px-2 text-[11px]"
-                              disabled={isRegeneratingThumbnails}
-                              onClick={() => void handleRegenerateThumbnails(selectedVisibleProjects)}
+                              onClick={toggleVisibleProjectSelection}
                             >
-                              <Image className="mr-1.5 h-3.5 w-3.5" />
-                              Regenerate thumbnails ({selectedVisibleProjects.length})
+                              {allVisibleProjectsSelected ? "Clear selection" : `Select visible (${listProjects.length})`}
                             </Button>
-                          </>
-                        )}
+                          )}
+                          {canManageProjects && selectedVisibleProjects.length > 0 && (
+                            <>
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => setProjectsToMove(selectedVisibleProjects)}
+                              >
+                                <FolderInput className="mr-1.5 h-3.5 w-3.5" />
+                                Move selected ({selectedVisibleProjects.length})
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-[11px]"
+                                disabled={isRegeneratingThumbnails}
+                                onClick={() => void handleRegenerateThumbnails(selectedVisibleProjects)}
+                              >
+                                <Image className="mr-1.5 h-3.5 w-3.5" />
+                                Regenerate thumbnails ({selectedVisibleProjects.length})
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-[11px]"
+                            disabled={currentPage <= 1}
+                            onClick={() => setCurrentPage(1)}
+                          >
+                            First
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-[11px]"
+                            disabled={currentPage <= 1}
+                            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-[11px]"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                          >
+                            Next
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-[11px]"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setCurrentPage(totalPages)}
+                          >
+                            Last
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-[11px]"
-                          disabled={currentPage <= 1}
-                          onClick={() => setCurrentPage(1)}
-                        >
-                          First
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-[11px]"
-                          disabled={currentPage <= 1}
-                          onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                        >
-                          Previous
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-[11px]"
-                          disabled={currentPage >= totalPages}
-                          onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                        >
-                          Next
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-[11px]"
-                          disabled={currentPage >= totalPages}
-                          onClick={() => setCurrentPage(totalPages)}
-                        >
-                          Last
-                        </Button>
-                      </div>
+                      {viewMode === "gallery" ? (
+                        <WorkspaceGalleryView
+                          searchQuery={searchQuery}
+                          isSearching={isSearching}
+                          searchResults={listProjects}
+                          selectedProjectId={selectedProjectId}
+                          bulkSelectedProjectIds={bulkSelectedProjectIds}
+                          currentFolderId={currentFolderId}
+                          visibleFolders={visibleFolders}
+                          visibleProjects={listProjects}
+                          getProjectDisplayName={getProjectDisplayName}
+                          onSelectProject={selectProject}
+                          onToggleProjectSelection={toggleProjectSelection}
+                          onOpenProject={openProject}
+                          onOpenFolder={(folderId) => setFolderInUrl(folderId)}
+                          onRenameFolder={setFolderToRename}
+                          onDeleteFolder={setFolderToDelete}
+                          onMoveProject={(project) => setProjectsToMove([project])}
+                          onDeleteProject={setProjectToDelete}
+                          onRegenerateThumbnail={handleRegenerateThumbnail}
+                          canManageProjects={canManageProjects}
+                        />
+                      ) : (
+                        <WorkspaceListView
+                          isSearching={isSearching}
+                          selectedProjectId={selectedProjectId}
+                          bulkSelectedProjectIds={bulkSelectedProjectIds}
+                          currentFolderId={currentFolderId}
+                          breadcrumbs={breadcrumbs}
+                          listFolders={listFolders}
+                          listProjects={listProjects}
+                          getProjectDisplayName={getProjectDisplayName}
+                          onSelectProject={selectProject}
+                          onToggleProjectSelection={toggleProjectSelection}
+                          onOpenProject={openProject}
+                          onOpenFolder={(folderId) => setFolderInUrl(folderId)}
+                          onRenameFolder={setFolderToRename}
+                          onDeleteFolder={setFolderToDelete}
+                          onMoveProject={(project) => setProjectsToMove([project])}
+                          onDeleteProject={setProjectToDelete}
+                          onRegenerateThumbnail={handleRegenerateThumbnail}
+                          canManageProjects={canManageProjects}
+                        />
+                      )}
                     </div>
-                    {viewMode === "gallery" ? (
-                      <WorkspaceGalleryView
-                        searchQuery={searchQuery}
-                        isSearching={isSearching}
-                        searchResults={listProjects}
-                        selectedProjectId={selectedProjectId}
-                        bulkSelectedProjectIds={bulkSelectedProjectIds}
-                        currentFolderId={currentFolderId}
-                        visibleFolders={visibleFolders}
-                        visibleProjects={listProjects}
-                        getProjectDisplayName={getProjectDisplayName}
-                        onSelectProject={selectProject}
-                        onToggleProjectSelection={toggleProjectSelection}
-                        onOpenProject={openProject}
-                        onOpenFolder={(folderId) => setFolderInUrl(folderId)}
-                        onRenameFolder={setFolderToRename}
-                        onDeleteFolder={setFolderToDelete}
-                        onMoveProject={(project) => setProjectsToMove([project])}
-                        onDeleteProject={setProjectToDelete}
-                        onRegenerateThumbnail={handleRegenerateThumbnail}
-                        canManageProjects={canManageProjects}
-                      />
-                    ) : (
-                      <WorkspaceListView
-                        isSearching={isSearching}
-                        selectedProjectId={selectedProjectId}
-                        bulkSelectedProjectIds={bulkSelectedProjectIds}
-                        currentFolderId={currentFolderId}
-                        breadcrumbs={breadcrumbs}
-                        listFolders={listFolders}
-                        listProjects={listProjects}
-                        getProjectDisplayName={getProjectDisplayName}
-                        onSelectProject={selectProject}
-                        onToggleProjectSelection={toggleProjectSelection}
-                        onOpenProject={openProject}
-                        onOpenFolder={(folderId) => setFolderInUrl(folderId)}
-                        onRenameFolder={setFolderToRename}
-                        onDeleteFolder={setFolderToDelete}
-                        onMoveProject={(project) => setProjectsToMove([project])}
-                        onDeleteProject={setProjectToDelete}
-                        onRegenerateThumbnail={handleRegenerateThumbnail}
-                        canManageProjects={canManageProjects}
-                      />
-                    )}
-                  </div>
 
-                  <div className="pointer-events-none absolute inset-y-0 right-0 z-20 flex justify-end">
-                    <div className="pointer-events-auto h-full">
-                      <WorkspaceProjectPropertiesSheet
-                        open={selectedProject !== null}
-                        project={selectedProject}
-                        folderById={folderById}
-                        onOpenChange={(open) => {
-                          if (!open) {
-                            setSelectedProjectId(null);
-                          }
-                        }}
-                        onOpenProject={openProject}
-                        canManageProjects={canManageProjects}
-                        onRegenerateThumbnail={handleRegenerateThumbnail}
-                        onUploadThumbnail={handleUploadThumbnail}
-                        onRevertThumbnail={handleRevertThumbnail}
-                      />
+                    <div className="pointer-events-none absolute inset-y-0 right-0 z-20 flex justify-end">
+                      <div className="pointer-events-auto h-full">
+                        <WorkspaceProjectPropertiesSheet
+                          open={selectedProject !== null}
+                          project={selectedProject}
+                          folderById={folderById}
+                          onOpenChange={(open) => {
+                            if (!open) {
+                              setSelectedProjectId(null);
+                            }
+                          }}
+                          onOpenProject={openProject}
+                          canManageProjects={canManageProjects}
+                          onRegenerateThumbnail={handleRegenerateThumbnail}
+                          onUploadThumbnail={handleUploadThumbnail}
+                          onRevertThumbnail={handleRevertThumbnail}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </ErrorBoundary>
           </main>
         </div>
       </div>
