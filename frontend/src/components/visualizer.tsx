@@ -307,6 +307,17 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             : "sch";
     });
     const [threeDActivated, setThreeDActivated] = useState(false);
+    /**
+     * Whether the PCB tab has ever been opened.
+     *
+     * The board *source* is fetched eagerly so the tab is ready the moment it is
+     * shown, but mounting the viewer is what parses the board, and that parse
+     * runs on the main thread. Mounting it as soon as the fetch resolved froze
+     * the whole UI while the reviewer was still reading the schematic. Fetch
+     * early, parse on first visit; once visited it stays mounted so switching
+     * back does not re-parse.
+     */
+    const [pcbActivated, setPcbActivated] = useState(false);
     const [schematicContent, setSchematicContent] = useState<string | null>(null);
     const [subsheets, setSubsheets] = useState<{ filename: string, content: string }[]>([]);
     const [viewerSupportFiles, setViewerSupportFiles] = useState<ViewerBlobSource[]>([]);
@@ -638,6 +649,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         setSemanticIndexError(null);
         setRightRailTab(null);
         setThreeDActivated(false);
+        setPcbActivated(false);
         clearGlobalSelection();
         setComments([]);
         setMentionCandidates([]);
@@ -653,6 +665,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
 
     useEffect(() => {
         if (activeTab === "3d" || activeTab === "stackup") setThreeDActivated(true);
+        if (activeTab === "pcb") setPcbActivated(true);
     }, [activeTab]);
 
     // Re-apply an active cross-probe when SCH/PCB becomes visible so hatch/net
@@ -1257,7 +1270,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
 
                     {/* PCB View - always mounted after first visit */}
                     <div aria-hidden={activeTab !== "pcb"} className={`absolute inset-0 z-10 transition-opacity duration-200 ${activeTab === "pcb" ? "visible pointer-events-auto opacity-100" : "invisible pointer-events-none opacity-0"}`}>
-                        {pcbContentLoaded ? (
+                        {!pcbActivated ? null : pcbContentLoaded ? (
                             pcbSources.length > 0 ? (
                                 <div className="relative h-full min-w-0 overflow-hidden">
                                     <div className="absolute inset-0 min-h-0 min-w-0">
