@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { DesignComparisonWorkspace } from "./design-comparison/design-comparison-workspace";
 import {
     applyOpenComparisonParams,
@@ -688,14 +689,22 @@ export function HistoryViewer({
 
             {/* Design Comparison Workspace */}
             {showDiff && baseRevision && compareRevision && (
-                <DesignComparisonWorkspace
-                    projectId={projectId}
-                    base={baseRevision.sha}
-                    head={compareRevision.sha}
-                    branchTipSha={branchTipSha}
-                    canComment={canComment}
-                    onClose={closeComparison}
-                />
+                // Contained separately from the commit list: a comparison that
+                // throws should still leave the reviewer their history, and the
+                // revision pair they picked is what to retry on.
+                <ErrorBoundary
+                    label="the design comparison"
+                    resetKeys={[projectId, baseRevision.sha, compareRevision.sha]}
+                >
+                    <DesignComparisonWorkspace
+                        projectId={projectId}
+                        base={baseRevision.sha}
+                        head={compareRevision.sha}
+                        branchTipSha={branchTipSha}
+                        canComment={canComment}
+                        onClose={closeComparison}
+                    />
+                </ErrorBoundary>
             )}
 
             {/* Releases Section */}
