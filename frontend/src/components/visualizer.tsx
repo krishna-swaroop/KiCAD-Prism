@@ -683,7 +683,17 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         const selection = globalSelection;
         if (viewer && selection) {
             const request = crossProbeRequestForSelection(selection, "SCH", semanticIndex);
-            if (request.page && typeof viewer.showPage === "function") {
+            // Only force the page for a probe that arrived from somewhere else.
+            //
+            // This effect also runs on every selection change while the reviewer
+            // is already in the schematic, and the page hint is derived from the
+            // selection's own anchor. Clicking a hierarchical sheet symbol
+            // anchors the selection to the *child* sheet, so forcing the page
+            // here navigated into it: a single click opened the subsheet. The
+            // viewer already reserves that for a double click. A selection made
+            // in the schematic is by definition already on the right page.
+            const arrivedFromElsewhere = selection.sourceContext !== "SCH";
+            if (arrivedFromElsewhere && request.page && typeof viewer.showPage === "function") {
                 void viewer.showPage(request.page).finally(() => {
                     notifyClientReady("visualizer-schematic");
                 });
