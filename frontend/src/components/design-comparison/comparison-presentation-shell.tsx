@@ -27,6 +27,7 @@ import type {
     ECadViewerElement,
     EcadComparisonSession,
     EcadDocumentComparisonPreparation,
+    EcadDocumentComparisonSelection,
     EcadPcbLayerState,
     EcadTransitionTraceDetail,
 } from "@/types/ecad-viewer";
@@ -138,6 +139,36 @@ function viewerState(viewer: ECadViewerElement | null) {
         activePage: viewer?.getActiveSchematicPage?.() ?? null,
         camera: viewer?.camera ?? null,
     };
+}
+
+/**
+ * Push a preview overlay to a viewer, tolerating one that has already gone.
+ *
+ * `useEffect` cleanups are passive: on unmount React detaches the DOM first and
+ * flushes the destroy functions afterwards, so by the time this runs on close
+ * the `<ecad-viewer>` element has had its `disconnectedCallback` and released
+ * its renderer. Asking it to clear an overlay then throws `Uninitialized` from
+ * deep inside the viewer, and a throw in a cleanup propagates to the nearest
+ * error boundary — which is why closing the comparison took the panel down with
+ * it rather than just closing.
+ *
+ * A detached viewer has no overlay left to clear, so skipping it is the correct
+ * outcome and not merely a way to silence the error. The catch covers the same
+ * race in the other direction (disposal landing mid-call) and records it rather
+ * than swallowing it, since a failure here is never worth a visible crash.
+ */
+function setPreviewOverlay(
+    viewer: ECadViewerElement,
+    selection: EcadDocumentComparisonSelection | null,
+): void {
+    if (!viewer.isConnected) return;
+    try {
+        viewer.previewDocumentDiff?.(selection);
+    } catch (caught) {
+        logComparisonDebugError("session.preview.failed", caught, {
+            clearing: selection === null,
+        });
+    }
 }
 
 function diffForDocument(
@@ -867,11 +898,11 @@ export function ComparisonPresentationShell({
             : null;
         const viewers = activeLayerViewers;
         for (const viewer of viewers) {
-            viewer.previewDocumentDiff?.(nativePreview);
+            setPreviewOverlay(viewer, nativePreview);
         }
         return () => {
             for (const viewer of viewers) {
-                viewer.previewDocumentDiff?.(null);
+                setPreviewOverlay(viewer, null);
             }
         };
     }, [

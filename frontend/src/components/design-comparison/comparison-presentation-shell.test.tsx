@@ -1573,4 +1573,40 @@ describe("ComparisonPresentationShell", () => {
         )).toEqual(resizeCounts.map((count) => count + 1));
         rectSpy.mockRestore();
     });
+
+    it("closes without crashing when the viewer is already torn down", async () => {
+        const view = render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                presentationMode="composite"
+            />,
+        );
+
+        // Wait for the session to reach "ready": the preview effect returns
+        // early before that, so unmounting sooner registers no cleanup at all
+        // and the test would pass without exercising anything.
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances).toHaveLength(1);
+            expect(FakeEcadViewer.sessions[0]?.setPresentation).toHaveBeenCalled();
+        });
+        await waitFor(() => {
+            expect(
+                FakeEcadViewer.instances[0]?.previewDocumentDiff,
+            ).toHaveBeenCalled();
+        });
+
+        // Closing runs the preview effect's cleanup, but `useEffect` destroys are
+        // passive: React detaches the DOM first and flushes them afterwards, so
+        // the real viewer has already released its renderer and throws
+        // `Uninitialized` from `start_layer`. A throw in a cleanup reaches the
+        // nearest error boundary, so pressing Esc blanked the panel instead of
+        // closing it.
+        for (const instance of FakeEcadViewer.instances) {
+            instance.previewDocumentDiff.mockImplementation(() => {
+                if (!instance.isConnected) throw new Error("Uninitialized");
+            });
+        }
+
+        expect(() => view.unmount()).not.toThrow();
+    });
 });
