@@ -1578,6 +1578,11 @@ class JobService:
                 DELETE FROM ws_artifacts artifact
                 USING ws_jobs job
                 WHERE artifact.source_job_id = job.id
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM ws_artifact_release_pins pin
+                    WHERE pin.artifact_id = artifact.id
+                  )
                   AND (
                     (
                       artifact.invalidated_at IS NOT NULL
@@ -1644,7 +1649,7 @@ class JobService:
         return row is not None
 
     def referenced_object_paths(self) -> set[str]:
-        """Return all non-invalidated object paths for offline garbage collection."""
+        """Return live object paths, including indefinitely pinned artifacts."""
 
         self.initialize()
         with self._connect() as conn:
@@ -1652,8 +1657,13 @@ class JobService:
             rows = conn.execute(
                 """
                 SELECT object_path
-                FROM ws_artifacts
-                WHERE invalidated_at IS NULL
+                FROM ws_artifacts artifact
+                WHERE artifact.invalidated_at IS NULL
+                   OR EXISTS (
+                        SELECT 1
+                        FROM ws_artifact_release_pins pin
+                        WHERE pin.artifact_id = artifact.id
+                   )
                 """
             ).fetchall()
         return {str(row["object_path"]) for row in rows if row.get("object_path")}
