@@ -1,7 +1,7 @@
 ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('FreeCAD Model'),'2;1');
-FILE_NAME('H:/svn/c/trunk/vkvm/etc/HRO_TYPE-C-31-M-12.step',
+FILE_NAME('USB_C_Receptacle_HRO_TYPE-C-31-M-12.step',
   '2020-05-09T14:22:16',('Author'),(''),
   'Open CASCADE STEP processor 7.3','FreeCAD','Unknown');
 FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));

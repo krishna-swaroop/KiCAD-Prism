@@ -1,7 +1,7 @@
 ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'1');
-FILE_NAME('D:/Cad files/Output Folder/Step/CDN Quarter.stp', '2017-04-06T13:05:16',(''), (''), 'KCM Version 1.1.2016.0', 'Kubotek KeyCreator', '');
+FILE_NAME('quarter.stp', '2017-04-06T13:05:16',(''), (''), 'KCM Version 1.1.2016.0', 'Kubotek KeyCreator', '');
 FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));
 ENDSEC;
 DATA;

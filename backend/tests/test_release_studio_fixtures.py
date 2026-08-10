@@ -31,7 +31,11 @@ _SHEETFILE_RE = re.compile(r'\(property\s+"Sheetfile"\s+"([^"]+)"')
 _REFERENCE_RE = re.compile(
     r'\((?:property\s+"Reference"|fp_text\s+reference)\s+"([^"]+)"'
 )
-_ABSOLUTE_PATH_RE = re.compile(r"(?:^|[\s\"(])(?:/Users/|/home/|[A-Za-z]:[\\/])")
+_ABSOLUTE_PATH_RE = re.compile(
+    r"(?:^|[\s\"'(])(?:/(?:Users|home|private|tmp|var|opt|workspace|workspaces|"
+    r"mnt|root|Volumes|Applications|System|Library|usr|etc|bin|sbin|dev|proc|run|srv|"
+    r"app|build|data)/|[A-Za-z]:[\\/])"
+)
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
     re.IGNORECASE,
@@ -402,7 +406,15 @@ class ReleaseStudioFixtureTests(unittest.TestCase):
     def test_fixture_sources_have_no_machine_specific_paths_or_external_job_commands(self) -> None:
         for name in FIXTURE_NAMES:
             for path in fixture_root(name).rglob("*"):
-                if not path.is_file() or path.suffix.lower() in {".step", ".stp", ".wrl"}:
+                if not path.is_file():
+                    continue
+                if path.suffix.lower() in {".step", ".stp"}:
+                    header = path.read_bytes().split(b"ENDSEC;", 1)[0].decode(
+                        "ascii", errors="replace"
+                    )
+                    self.assertIsNone(_ABSOLUTE_PATH_RE.search(header), path)
+                    continue
+                if path.suffix.lower() == ".wrl":
                     continue
                 text = path.read_text(encoding="utf-8", errors="replace")
                 self.assertIsNone(_ABSOLUTE_PATH_RE.search(text), path)
