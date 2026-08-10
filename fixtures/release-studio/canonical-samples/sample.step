@@ -1,0 +1,10 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME(' /tmp/generated.step','2026-01-02T03:04:05',(''),(''),' ', ' ', ' ');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));
+ENDSEC;
+DATA;
+#1=CARTESIAN_POINT('',(0.0,0.0,0.0));
+ENDSEC;
+END-ISO-10303-21;
