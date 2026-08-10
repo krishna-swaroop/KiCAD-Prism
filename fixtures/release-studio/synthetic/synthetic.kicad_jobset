@@ -1,0 +1,43 @@
+{
+  "jobs": [
+    {
+      "description": "Release Studio schematic PDF",
+      "id": "55555555-5555-4555-8555-555555555555",
+      "settings": {
+        "black_and_white": false,
+        "color_theme": "KiCad Classic",
+        "description": "",
+        "drawing_sheet": "",
+        "format": "pdf",
+        "hpgl_page_size": "default",
+        "hpgl_pen_size": 1.016,
+        "hpgl_plot_origin": "A3",
+        "min_pen_width": 847,
+        "output_dir": "",
+        "page_size": "auto",
+        "pdf_hierarchical_links": true,
+        "pdf_metadata": true,
+        "pdf_property_popups": true,
+        "plot_all": true,
+        "plot_drawing_sheet": true,
+        "use_background_color": true
+      },
+      "type": "sch_export_plot_pdf"
+    },
+    {
+      "description": "Release Studio board DRC record",
+      "id": "66666666-6666-4666-8666-666666666666",
+      "settings": {
+        "description": "",
+        "fail_on_error": false,
+        "format": "json",
+        "output_filename": "${PROJECTNAME}-drc.json",
+        "parity": true,
+        "report_all_track_errors": false,
+        "severity": "all",
+        "units": "mm"
+      },
+      "type": "pcb_drc"
+    }
+  ]
+}

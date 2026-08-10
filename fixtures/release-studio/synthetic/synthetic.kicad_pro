@@ -1,0 +1,34 @@
+{
+  "board": {},
+  "boards": [],
+  "cvpcb": {},
+  "erc": {},
+  "libraries": {
+    "pinned_footprint_libs": [],
+    "pinned_symbol_libs": []
+  },
+  "meta": {
+    "filename": "synthetic.kicad_pro",
+    "version": 1
+  },
+  "net_settings": {},
+  "pcbnew": {},
+  "schematic": {
+    "variants": [
+      {
+        "name": "default",
+        "description": "Populated reference assembly."
+      },
+      {
+        "name": "dnp-led",
+        "description": "Status LED omitted from the assembly."
+      },
+      {
+        "name": "assembly-reduced",
+        "description": "Status indication omitted for a reduced assembly."
+      }
+    ]
+  },
+  "sheets": [],
+  "text_variables": {}
+}

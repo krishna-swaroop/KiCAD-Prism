@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "fixture": "usb-pd",
+  "description": "Repository USB-PD Trigger Board with a hierarchical output-connector sheet.",
+  "entrypoints": {
+    "project": "USB-PD-Trigger-Board.kicad_pro",
+    "board": "USB-PD-Trigger-Board.kicad_pcb",
+    "schematic": "USB-PD-Trigger-Board.kicad_sch",
+    "jobset": "Outputs.kicad_jobset",
+    "child_schematics": ["Subsheets/Output-Connector.kicad_sch"]
+  },
+  "provenance": {
+    "repository": "https://github.com/krishna-swaroop/USB-PD-Trigger-Board",
+    "commit": "3ec8f9cc79c874c433551f96889fce49c4eaac94",
+    "license": "MIT",
+    "license_file": "LICENSE",
+    "import_policy": "Committed source inputs only; output/plugin jobs were replaced with local deterministic jobs."
+  },
+  "recording": "../cli-recordings/usb-pd.json"
+}

@@ -1,8 +1,7 @@
 """Strict unittest runner for Release Studio live executor gates.
 
 Exits nonzero when zero tests ran, any test was skipped, or any test failed
-or errored. R0 appends its fixture module to LIVE_MODULES after rebase onto
-the baked-identity contract.
+or errored. Includes the R00a identity module and R0 fixture module.
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ import unittest
 
 LIVE_MODULES: tuple[str, ...] = (
     "tests.test_release_studio_live_ci",
-    # "tests.test_release_studio_fixtures",  # R0
+    "tests.test_release_studio_fixtures",
 )
 
 
