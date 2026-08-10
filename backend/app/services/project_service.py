@@ -736,11 +736,7 @@ def run_semantic_index_job_v3(context: JobContext) -> JobResult:
     )
 
 
-_WORKFLOW_OUTPUT_IDS = {
-    "design": "28dab1d3-7bf2-4d8a-9723-bcdd14e1d814",
-    "manufacturing": "9e5c254b-cb26-4a49-beea-fa7af8a62903",
-    "render": "81c80ad4-e8b9-4c9a-8bed-df7864fdefc6",
-}
+from app.release_studio.jobset import WORKFLOW_OUTPUT_IDS as _WORKFLOW_OUTPUT_IDS
 
 
 def run_kicad_workflow_job_v3(context: JobContext) -> JobResult:
