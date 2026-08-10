@@ -21,7 +21,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
-        KICAD_BASE_IMAGE: ${KICAD_BASE_IMAGE:-kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c}
+        # KICAD_BASE_IMAGE defaults live only in backend/Dockerfile. Override
+        # with: docker compose build --build-arg KICAD_BASE_IMAGE=...
         KICAD_BASE_PLATFORM: ${KICAD_BASE_PLATFORM:-linux/amd64}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: kicad-prism-backend
@@ -131,7 +132,6 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
-        KICAD_BASE_IMAGE: ${KICAD_BASE_IMAGE:-kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c}
         KICAD_BASE_PLATFORM: ${KICAD_BASE_PLATFORM:-linux/amd64}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: kicad-prism-catalog-worker
@@ -194,7 +194,6 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
-        KICAD_BASE_IMAGE: ${KICAD_BASE_IMAGE:-kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c}
         KICAD_BASE_PLATFORM: ${KICAD_BASE_PLATFORM:-linux/amd64}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: kicad-prism-worker

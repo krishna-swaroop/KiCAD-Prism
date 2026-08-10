@@ -266,42 +266,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
-    env:
-      PRISM_RELEASE_EXECUTOR_IMAGE: kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c
-
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Build backend image from pinned KiCad runtime
+      - name: Build backend image from Dockerfile KiCad default
         run: >-
-          docker build --pull
+          docker build
           --platform linux/amd64
-          --build-arg "KICAD_BASE_IMAGE=$PRISM_RELEASE_EXECUTOR_IMAGE"
           --build-arg KICAD_BASE_PLATFORM=linux/amd64
           --tag release-studio-live-kicad:ci
           --file backend/Dockerfile
           .
 
-      - name: Run Release Studio live KiCad test
+      - name: Run Release Studio live KiCad tests
         run: |
           set -euo pipefail
+          BAKED_IMAGE="$(docker run --rm --entrypoint /bin/cat release-studio-live-kicad:ci /etc/prism/kicad-base-image | tr -d '\r\n')"
+          if [[ ! "$BAKED_IMAGE" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "baked KiCad base image must end with @sha256:<64 lowercase hex>; got: ${BAKED_IMAGE}" >&2
+            exit 1
+          fi
+          export PRISM_RELEASE_EXECUTOR_IMAGE="$BAKED_IMAGE"
+          echo "PRISM_RELEASE_EXECUTOR_IMAGE=${PRISM_RELEASE_EXECUTOR_IMAGE}"
+
           docker run --rm \
             --platform linux/amd64 \
-            --env "PRISM_RELEASE_EXECUTOR_IMAGE=$PRISM_RELEASE_EXECUTOR_IMAGE" \
+            --env "PRISM_RELEASE_EXECUTOR_IMAGE=${PRISM_RELEASE_EXECUTOR_IMAGE}" \
             --entrypoint /app/venv/bin/python \
             release-studio-live-kicad:ci \
-            -m unittest tests.test_release_studio_live_ci -v 2>&1 | tee live-result.log
-
-          if grep -Eiq 'skipped' live-result.log; then
-            echo "Release Studio live test was skipped; the KiCad live gate must run." >&2
-            exit 1
-          fi
-
-          if ! grep -Eq 'Ran [1-9][0-9]* tests? in ' live-result.log; then
-            echo "Release Studio live test ran zero tests or did not report a unittest summary." >&2
-            exit 1
-          fi
+            -m tests.release_studio_live_runner
 
   quality-gate:
     name: Quality gate

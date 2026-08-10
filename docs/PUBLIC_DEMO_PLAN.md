@@ -332,8 +332,9 @@ Edit `.env`. The demo-critical values (see §4 for the full rationale — **do n
 skip that section, the defaults are unsafe for public hosting**):
 
 ```env
-# --- Platform: switch off the local ARM base image ---
-KICAD_BASE_IMAGE=kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c
+# --- Platform: use the Dockerfile AMD64 KiCad default ---
+# Exact digest lives only in backend/Dockerfile. Override at build time with:
+#   docker compose build --build-arg KICAD_BASE_IMAGE=...
 KICAD_BASE_PLATFORM=linux/amd64
 DOCKER_PLATFORM=linux/amd64
 

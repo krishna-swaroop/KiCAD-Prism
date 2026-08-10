@@ -94,9 +94,11 @@ KICAD_BASE_PLATFORM=linux/amd64
 DOCKER_PLATFORM=linux/amd64
 ```
 
-The repository default also pins `KICAD_BASE_IMAGE` to the selected stable KiCad
-AMD64 manifest digest. The public source-build and release targets are Linux
-AMD64.
+The repository default pins `KICAD_BASE_IMAGE` in `backend/Dockerfile` to the
+selected stable KiCad AMD64 manifest digest. Compose does not duplicate that
+default; override at build time with
+`docker compose build --build-arg KICAD_BASE_IMAGE=...`. The public
+source-build and release targets are Linux AMD64.
 
 ## Project-level `.prism.json`
 
