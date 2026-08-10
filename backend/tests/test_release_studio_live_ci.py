@@ -16,6 +16,10 @@ EXECUTOR_IMAGE_ENV = "PRISM_RELEASE_EXECUTOR_IMAGE"
 
 
 class ReleaseStudioLiveCiTests(unittest.TestCase):
+    @unittest.skipUnless(
+        EXECUTOR_IMAGE_ENV in os.environ,
+        "PRISM_RELEASE_EXECUTOR_IMAGE is required for the live executor test",
+    )
     def test_pinned_executor_has_kicad_cli_10_0_4(self) -> None:
         """Run the real CLI and require the exact CI executor identity."""
         self.assertEqual(
