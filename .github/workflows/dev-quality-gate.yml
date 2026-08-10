@@ -5,10 +5,12 @@ on:
     branches:
       - dev
       - main
+      - feature/release-studio
   push:
     branches:
       - dev
       - main
+      - feature/release-studio
   workflow_dispatch:
 
 permissions:
@@ -259,6 +261,48 @@ jobs:
             echo "  $scheme: compose configuration is valid"
           done
 
+  kicad-live:
+    name: Release Studio live KiCad
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    env:
+      PRISM_RELEASE_EXECUTOR_IMAGE: kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build backend image from pinned KiCad runtime
+        run: >-
+          docker build --pull
+          --platform linux/amd64
+          --build-arg "KICAD_BASE_IMAGE=$PRISM_RELEASE_EXECUTOR_IMAGE"
+          --build-arg KICAD_BASE_PLATFORM=linux/amd64
+          --tag release-studio-live-kicad:ci
+          --file backend/Dockerfile
+          .
+
+      - name: Run Release Studio live KiCad test
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --platform linux/amd64 \
+            --env "PRISM_RELEASE_EXECUTOR_IMAGE=$PRISM_RELEASE_EXECUTOR_IMAGE" \
+            --entrypoint /app/venv/bin/python \
+            release-studio-live-kicad:ci \
+            -m unittest tests.test_release_studio_live_ci -v 2>&1 | tee live-result.log
+
+          if grep -Eiq 'skipped' live-result.log; then
+            echo "Release Studio live test was skipped; the KiCad live gate must run." >&2
+            exit 1
+          fi
+
+          if ! grep -Eq 'Ran [1-9][0-9]* tests? in ' live-result.log; then
+            echo "Release Studio live test ran zero tests or did not report a unittest summary." >&2
+            exit 1
+          fi
+
   quality-gate:
     name: Quality gate
     if: ${{ always() }}
@@ -267,6 +311,7 @@ jobs:
       - backend
       - semantic-viewer
       - deployment-config
+      - kicad-live
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -277,8 +322,10 @@ jobs:
           BACKEND_RESULT: ${{ needs.backend.result }}
           VIEWER_RESULT: ${{ needs.semantic-viewer.result }}
           DEPLOYMENT_RESULT: ${{ needs.deployment-config.result }}
+          KICAD_LIVE_RESULT: ${{ needs.kicad-live.result }}
         run: |
           test "$FRONTEND_RESULT" = "success"
           test "$BACKEND_RESULT" = "success"
           test "$VIEWER_RESULT" = "success"
           test "$DEPLOYMENT_RESULT" = "success"
+          test "$KICAD_LIVE_RESULT" = "success"
