@@ -12,19 +12,39 @@ from pathlib import Path
 from typing import Any, Callable, ParamSpec, TypeVar, cast
 
 
-EXPECTED_KICAD_IMAGE = (
-    "kicad/kicad:10.0.4@"
-    "sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c"
-)
 EXECUTOR_IMAGE_ENV = "PRISM_RELEASE_EXECUTOR_IMAGE"
+BAKED_KICAD_BASE_IMAGE_PATH = Path("/etc/prism/kicad-base-image")
 REQUIRED_KICAD_VERSION = "10.0.4"
 _KICAD_VERSION_RE = re.compile(r"(?<![0-9.])10\.0\.4(?![0-9.])")
+_DIGEST_SUFFIX = re.compile(r"@sha256:([0-9a-f]{64})$")
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 RELEASE_STUDIO_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "release-studio"
 FIXTURE_NAMES = ("synthetic", "usb-pd", "cynthion")
 RECORDING_ROOT = RELEASE_STUDIO_ROOT / "cli-recordings"
+
+
+def read_baked_kicad_base_image(
+    path: Path = BAKED_KICAD_BASE_IMAGE_PATH,
+) -> str:
+    """Return the executor identity baked into the running image."""
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise AssertionError(
+            f"missing baked KiCad base image identity at {path}"
+        ) from exc
+    value = raw.strip()
+    if not value:
+        raise AssertionError(f"baked KiCad base image identity at {path} is empty")
+    if _DIGEST_SUFFIX.search(value) is None:
+        raise AssertionError(
+            "baked KiCad base image must end with @sha256:<64 lowercase hex>; "
+            f"got {value!r}"
+        )
+    return value
 
 
 def fixture_root(name: str) -> Path:
@@ -120,10 +140,17 @@ def _require_kicad_cli(test_case: unittest.TestCase) -> str:
     """Skip only the ordinary host job; fail closed in the R00 executor."""
 
     executor_active = _executor_identity_present()
-    if executor_active and os.environ.get(EXECUTOR_IMAGE_ENV) != EXPECTED_KICAD_IMAGE:
-        test_case.fail(
-            f"{EXECUTOR_IMAGE_ENV} must contain the exact pinned KiCad image reference"
-        )
+    if executor_active:
+        try:
+            baked = read_baked_kicad_base_image()
+        except AssertionError as exc:
+            test_case.fail(str(exc))
+        runtime = os.environ.get(EXECUTOR_IMAGE_ENV, "")
+        if runtime != baked:
+            test_case.fail(
+                f"{EXECUTOR_IMAGE_ENV} must match the baked identity at "
+                f"{BAKED_KICAD_BASE_IMAGE_PATH}"
+            )
 
     executable, version_or_reason = _probe_kicad_cli()
     if executable is None:

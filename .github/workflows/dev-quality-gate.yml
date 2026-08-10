@@ -293,6 +293,7 @@ jobs:
           docker run --rm \
             --platform linux/amd64 \
             --env "PRISM_RELEASE_EXECUTOR_IMAGE=${PRISM_RELEASE_EXECUTOR_IMAGE}" \
+            --volume "${GITHUB_WORKSPACE}/fixtures/release-studio:/fixtures/release-studio:ro" \
             --entrypoint /app/venv/bin/python \
             release-studio-live-kicad:ci \
             -m tests.release_studio_live_runner

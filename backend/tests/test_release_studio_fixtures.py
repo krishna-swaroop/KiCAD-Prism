@@ -14,7 +14,6 @@ from unittest.mock import patch
 
 from tests import release_studio_support as support
 from tests.release_studio_support import (
-    EXPECTED_KICAD_IMAGE,
     EXECUTOR_IMAGE_ENV,
     FIXTURE_NAMES,
     fixture_entrypoint,
@@ -443,11 +442,23 @@ class ReleaseStudioFixtureTests(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {EXECUTOR_IMAGE_ENV: EXPECTED_KICAD_IMAGE},
+            {
+                EXECUTOR_IMAGE_ENV: (
+                    "kicad/kicad:10.0.4@sha256:"
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                )
+            },
             clear=False,
         ):
             os.environ.pop("KICAD_CLI", None)
-            with patch.object(support.shutil, "which", return_value=None):
+            with patch.object(
+                support,
+                "read_baked_kicad_base_image",
+                return_value=(
+                    "kicad/kicad:10.0.4@sha256:"
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                ),
+            ), patch.object(support.shutil, "which", return_value=None):
                 executor_result = unittest.TestResult()
                 ExecutorProbe("test_live").run(executor_result)
         self.assertEqual(len(executor_result.failures), 1)
