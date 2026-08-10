@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "fixture": "synthetic",
+  "tool": {
+    "name": "kicad-cli",
+    "version": "10.0.4"
+  },
+  "commands": [
+    {
+      "name": "pcb-drc",
+      "argv": ["kicad-cli", "pcb", "drc", "--output", "<output>/synthetic-drc.json", "<fixture>/synthetic.kicad_pcb"],
+      "exit_code": 0,
+      "stdout": ["Processed synthetic.kicad_pcb"],
+      "stderr": [],
+      "normalized_output": {
+        "format": "kicad-drc-json",
+        "board_parsed": true
+      }
+    },
+    {
+      "name": "sch-export-pdf",
+      "argv": ["kicad-cli", "sch", "export", "pdf", "--output", "<output>/synthetic.pdf", "<fixture>/synthetic.kicad_sch"],
+      "exit_code": 0,
+      "stdout": ["Processed synthetic.kicad_sch"],
+      "stderr": [],
+      "normalized_output": {
+        "format": "pdf",
+        "schematic_parsed": true,
+        "sheet_count": 1
+      }
+    },
+    {
+      "name": "sch-export-bom-default",
+      "argv": ["kicad-cli", "sch", "export", "bom", "--variant", "default", "--exclude-dnp", "--output", "<output>/synthetic-default.csv", "<fixture>/synthetic.kicad_sch"],
+      "exit_code": 0,
+      "stdout": ["Wrote bill of materials to '<output>/synthetic-default.csv'."],
+      "stderr": [],
+      "normalized_output": {
+        "format": "csv",
+        "schematic_parsed": true,
+        "variant": "default",
+        "references": ["D1", "R1"]
+      }
+    },
+    {
+      "name": "sch-export-bom-dnp-led",
+      "argv": ["kicad-cli", "sch", "export", "bom", "--variant", "dnp-led", "--exclude-dnp", "--output", "<output>/synthetic-dnp-led.csv", "<fixture>/synthetic.kicad_sch"],
+      "exit_code": 0,
+      "stdout": ["Wrote bill of materials to '<output>/synthetic-dnp-led.csv'."],
+      "stderr": [],
+      "normalized_output": {
+        "format": "csv",
+        "schematic_parsed": true,
+        "variant": "dnp-led",
+        "references": ["R1"]
+      }
+    },
+    {
+      "name": "sch-export-bom-assembly-reduced",
+      "argv": ["kicad-cli", "sch", "export", "bom", "--variant", "assembly-reduced", "--exclude-dnp", "--output", "<output>/synthetic-assembly-reduced.csv", "<fixture>/synthetic.kicad_sch"],
+      "exit_code": 0,
+      "stdout": ["Wrote bill of materials to '<output>/synthetic-assembly-reduced.csv'."],
+      "stderr": [],
+      "normalized_output": {
+        "format": "csv",
+        "schematic_parsed": true,
+        "variant": "assembly-reduced",
+        "references": []
+      }
+    },
+    {
+      "name": "jobset-run",
+      "argv": ["kicad-cli", "jobset", "run", "--stop-on-error", "--file", "<fixture>/synthetic.kicad_jobset", "<fixture>/synthetic.kicad_pro"],
+      "exit_code": 0,
+      "stdout": ["Completed synthetic.kicad_jobset"],
+      "stderr": [],
+      "normalized_output": {
+        "format": "jobset",
+        "jobset_parsed": true,
+        "jobs_completed": 2
+      }
+    }
+  ]
+}

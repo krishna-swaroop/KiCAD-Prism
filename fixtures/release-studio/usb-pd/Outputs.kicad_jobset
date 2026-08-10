@@ -1,0 +1,68 @@
+{
+  "jobs": [
+    {
+      "description": "Release Studio hierarchical schematic PDF",
+      "id": "77777777-7777-4777-8777-777777777777",
+      "settings": {
+        "black_and_white": false,
+        "color_theme": "KiCad Classic",
+        "description": "",
+        "drawing_sheet": "",
+        "format": "pdf",
+        "hpgl_page_size": "default",
+        "hpgl_pen_size": 1.016,
+        "hpgl_plot_origin": "A3",
+        "min_pen_width": 847,
+        "output_dir": "",
+        "page_size": "auto",
+        "pdf_hierarchical_links": true,
+        "pdf_metadata": true,
+        "pdf_property_popups": true,
+        "plot_all": true,
+        "plot_drawing_sheet": true,
+        "use_background_color": true
+      },
+      "type": "sch_export_plot_pdf"
+    },
+    {
+      "description": "Release Studio BOM",
+      "id": "88888888-8888-4888-8888-888888888888",
+      "settings": {
+        "bom_format_preset_name": "CSV",
+        "bom_preset_name": "",
+        "description": "",
+        "exclude_dnp": false,
+        "field_delimiter": ",",
+        "fields_group_by": ["Value", "Footprint", "${DNP}"],
+        "fields_labels": ["#", "Reference", "Qty", "Value", "Footprint", "DNP"],
+        "fields_ordered": ["${ITEM_NUMBER}", "Reference", "${QUANTITY}", "Value", "Footprint", "${DNP}"],
+        "filter_string": "",
+        "include_excluded_from_bom": false,
+        "keep_line_breaks": false,
+        "keep_tabs": false,
+        "output_filename": "${PROJECTNAME}.csv",
+        "ref_delimiter": ",",
+        "ref_range_delimiter": "",
+        "sort_asc": true,
+        "sort_field": "Reference",
+        "string_delimiter": "\""
+      },
+      "type": "sch_export_bom"
+    },
+    {
+      "description": "Release Studio board DRC record",
+      "id": "99999999-9999-4999-8999-999999999999",
+      "settings": {
+        "description": "",
+        "fail_on_error": false,
+        "format": "json",
+        "output_filename": "${PROJECTNAME}-drc.json",
+        "parity": true,
+        "report_all_track_errors": false,
+        "severity": "all",
+        "units": "mm"
+      },
+      "type": "pcb_drc"
+    }
+  ]
+}
