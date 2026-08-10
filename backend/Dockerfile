@@ -15,7 +15,11 @@ COPY frontend/ .
 RUN npm run build:panel
 
 FROM --platform=${KICAD_BASE_PLATFORM} ${KICAD_BASE_IMAGE} AS prism-runtime
+# Redeclare so the value that satisfied FROM is available in this stage and can
+# be baked into the image as the Release Studio executor identity.
+ARG KICAD_BASE_IMAGE
 ARG KICAD_LIBRARY_UTILS_REF=7124a92887b2280f85cfe2d5abb216062978d5e1
+LABEL prism.release.kicad_base_image="${KICAD_BASE_IMAGE}"
 
 # Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -90,6 +94,12 @@ RUN cd /opt/kicad-prism-viewer && npm run build
 COPY backend/ .
 COPY scripts/ scripts/
 COPY --from=remote-provider-panel /panel/dist/remote_provider/ /app/app/static/remote_provider/
+
+# Stable on-disk identity for toolchain_digest / live CI. Written late so the
+# expensive layers above stay cacheable when only executor identity changes.
+RUN mkdir -p /etc/prism \
+    && printf '%s\n' "${KICAD_BASE_IMAGE}" > /etc/prism/kicad-base-image \
+    && chmod 0644 /etc/prism/kicad-base-image
 
 # Expose backend port
 EXPOSE 8000

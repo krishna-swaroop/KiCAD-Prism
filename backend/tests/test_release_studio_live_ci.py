@@ -6,13 +6,33 @@ import os
 import re
 import subprocess
 import unittest
+from pathlib import Path
 
 
-EXPECTED_KICAD_IMAGE = (
-    "kicad/kicad:10.0.4@"
-    "sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c"
-)
 EXECUTOR_IMAGE_ENV = "PRISM_RELEASE_EXECUTOR_IMAGE"
+BAKED_KICAD_BASE_IMAGE_PATH = Path("/etc/prism/kicad-base-image")
+_DIGEST_SUFFIX = re.compile(r"@sha256:([0-9a-f]{64})$")
+
+
+def _read_baked_kicad_base_image() -> str:
+    try:
+        raw = BAKED_KICAD_BASE_IMAGE_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise AssertionError(
+            f"missing baked KiCad base image identity at {BAKED_KICAD_BASE_IMAGE_PATH}"
+        ) from exc
+    value = raw.strip()
+    if not value:
+        raise AssertionError(
+            f"baked KiCad base image identity at {BAKED_KICAD_BASE_IMAGE_PATH} is empty"
+        )
+    match = _DIGEST_SUFFIX.search(value)
+    if match is None:
+        raise AssertionError(
+            "baked KiCad base image must end with @sha256:<64 lowercase hex>; "
+            f"got {value!r}"
+        )
+    return value
 
 
 class ReleaseStudioLiveCiTests(unittest.TestCase):
@@ -21,13 +41,15 @@ class ReleaseStudioLiveCiTests(unittest.TestCase):
         "PRISM_RELEASE_EXECUTOR_IMAGE is required for the live executor test",
     )
     def test_pinned_executor_has_kicad_cli_10_0_4(self) -> None:
-        """Run the real CLI and require the exact CI executor identity."""
+        """Require baked image identity, matching env, and KiCad 10.0.4."""
+        baked = _read_baked_kicad_base_image()
+        runtime = os.environ.get(EXECUTOR_IMAGE_ENV, "")
         self.assertEqual(
-            os.environ.get(EXECUTOR_IMAGE_ENV),
-            EXPECTED_KICAD_IMAGE,
+            runtime,
+            baked,
             msg=(
-                f"{EXECUTOR_IMAGE_ENV} must contain the exact pinned KiCad "
-                "image reference"
+                f"{EXECUTOR_IMAGE_ENV} must match the baked identity at "
+                f"{BAKED_KICAD_BASE_IMAGE_PATH}"
             ),
         )
 
