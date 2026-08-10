@@ -1012,6 +1012,401 @@ def _release_studio(conn: Any) -> None:
     )
 
 
+def _release_studio_hardening(conn: Any) -> None:
+    """Harden the Release Studio schema introduced by Migration 8.
+
+    Migration 8 remains the historical schema definition.  This migration
+    repairs its already-applied data and constraints in place before later
+    Release Studio writers depend on the stricter contracts.
+    """
+
+    # Drop the Migration 8 outcome CHECK before rewriting legacy values; the
+    # old vocabulary rejects the canonical replacements.
+    conn.execute(
+        "ALTER TABLE ws_release_evaluations "
+        "DROP CONSTRAINT IF EXISTS ws_release_evaluations_outcome_check"
+    )
+    conn.execute(
+        "ALTER TABLE ws_release_evaluations "
+        "DROP CONSTRAINT IF EXISTS ck_ws_release_evaluations_outcome_vocabulary"
+    )
+
+    # Normalize the development vocabulary before installing the new CHECK.
+    conn.execute(
+        """
+        UPDATE ws_release_evaluations
+        SET outcome = CASE outcome
+            WHEN 'warn' THEN 'warning'
+            WHEN 'block' THEN 'blocker'
+            WHEN 'error' THEN 'failure'
+            ELSE outcome
+        END
+        WHERE outcome IN ('warn', 'block', 'error')
+        """
+    )
+
+    # Empty JSON objects were the Migration 8 defaults.  Only exact empty
+    # objects are list-shape mistakes; preserve every non-empty value.
+    # Disable the M8 immutability guard while backfilling published rows;
+    # the replacement guard is installed later in this migration.
+    conn.execute(
+        "ALTER TABLE ws_release_policy_versions "
+        "DISABLE TRIGGER trg_ws_release_policy_versions_guard"
+    )
+    try:
+        conn.execute(
+            """
+            UPDATE ws_release_policy_versions
+            SET rules = '[]'::jsonb
+            WHERE rules = '{}'::jsonb
+            """
+        )
+        conn.execute(
+            """
+            ALTER TABLE ws_release_policy_versions
+                ALTER COLUMN rules SET DEFAULT '[]'::jsonb
+            """
+        )
+        conn.execute(
+            """
+            ALTER TABLE ws_release_policy_versions
+                ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS published_by TEXT
+            """
+        )
+        # Existing published/retired development rows did not record
+        # publication provenance. Prefer the row's original timestamp and
+        # creator; the documented fallback is stable when the creator was blank.
+        conn.execute(
+            """
+            UPDATE ws_release_policy_versions
+            SET published_at = COALESCE(published_at, created_at, NOW()),
+                published_by = COALESCE(
+                    NULLIF(btrim(published_by), ''),
+                    NULLIF(btrim(created_by), ''),
+                    'release-studio-migration-9'
+                )
+            WHERE status IN ('published', 'retired')
+            """
+        )
+        conn.execute(
+            """
+            UPDATE ws_release_policy_versions
+            SET published_at = NULL,
+                published_by = NULL
+            WHERE status = 'draft'
+              AND (published_at IS NOT NULL OR published_by IS NOT NULL)
+            """
+        )
+    finally:
+        conn.execute(
+            "ALTER TABLE ws_release_policy_versions "
+            "ENABLE TRIGGER trg_ws_release_policy_versions_guard"
+        )
+
+    conn.execute(
+        """
+        UPDATE ws_release_waivers
+        SET evidence = '[]'::jsonb
+        WHERE evidence = '{}'::jsonb
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_waivers
+            ALTER COLUMN evidence SET DEFAULT '[]'::jsonb
+        """
+    )
+
+    conn.execute(
+        """
+        ALTER TABLE ws_release_evaluations
+            ADD CONSTRAINT ck_ws_release_evaluations_outcome_vocabulary
+            CHECK (outcome IN (
+                'pass', 'warning', 'failure', 'blocker', 'unsupported', 'waived'
+            ))
+        """
+    )
+
+    for table, constraint in (
+        ("ws_release_findings", "ck_ws_release_findings_severity_vocabulary"),
+        ("ws_release_findings", "ck_ws_release_findings_status_vocabulary"),
+        ("ws_release_approvals", "ck_ws_release_approvals_decision_vocabulary"),
+    ):
+        conn.execute(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint}")
+    conn.execute(
+        """
+        ALTER TABLE ws_release_findings
+            ADD CONSTRAINT ck_ws_release_findings_severity_vocabulary
+            CHECK (severity IN ('warning', 'failure', 'blocker'))
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_findings
+            ADD CONSTRAINT ck_ws_release_findings_status_vocabulary
+            CHECK (status IN ('open', 'waived'))
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_approvals
+            ADD CONSTRAINT ck_ws_release_approvals_decision_vocabulary
+            CHECK (decision IN ('approved', 'changes_requested', 'emergency_override'))
+        """
+    )
+    conn.execute(
+        "ALTER TABLE ws_release_policy_versions "
+        "DROP CONSTRAINT IF EXISTS ck_ws_release_policy_versions_publication_provenance"
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_policy_versions
+            ADD CONSTRAINT ck_ws_release_policy_versions_publication_provenance
+            CHECK (
+                (
+                    status = 'draft'
+                    AND published_at IS NULL
+                    AND published_by IS NULL
+                )
+                OR (
+                    status IN ('published', 'retired')
+                    AND published_at IS NOT NULL
+                    AND published_by IS NOT NULL
+                    AND btrim(published_by) <> ''
+                )
+            )
+        """
+    )
+    conn.execute(
+        "ALTER TABLE ws_release_records "
+        "DROP CONSTRAINT IF EXISTS ck_ws_release_records_signature_key_pair"
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_records
+            ADD CONSTRAINT ck_ws_release_records_signature_key_pair
+            CHECK (
+                (signature IS NULL AND signing_key_id IS NULL)
+                OR (signature IS NOT NULL AND signing_key_id IS NOT NULL)
+            )
+        """
+    )
+    for constraint in (
+        "ck_ws_release_audit_events_sequence_positive",
+        "ck_ws_release_audit_events_genesis_previous_hash",
+    ):
+        conn.execute(
+            "ALTER TABLE ws_release_audit_events "
+            f"DROP CONSTRAINT IF EXISTS {constraint}"
+        )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_audit_events
+            ADD CONSTRAINT ck_ws_release_audit_events_sequence_positive
+            CHECK (sequence > 0)
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_audit_events
+            ADD CONSTRAINT ck_ws_release_audit_events_genesis_previous_hash
+            CHECK (
+                (
+                    sequence = 1
+                    AND previous_hash IS NULL
+                )
+                OR (
+                    sequence > 1
+                    AND previous_hash IS NOT NULL
+                    AND btrim(previous_hash) <> ''
+                )
+            )
+        """
+    )
+
+    # Explicit names make the repaired delete policy stable and make it clear
+    # that immutable approval/waiver history must block parent deletion.
+    for table, old_constraint, new_constraint in (
+        (
+            "ws_release_approvals",
+            "ws_release_approvals_project_id_fkey",
+            "fk_ws_release_approvals_project_restrict",
+        ),
+        (
+            "ws_release_approvals",
+            "ws_release_approvals_candidate_id_fkey",
+            "fk_ws_release_approvals_candidate_restrict",
+        ),
+        (
+            "ws_release_approvals",
+            "ws_release_approvals_build_id_fkey",
+            "fk_ws_release_approvals_build_restrict",
+        ),
+        (
+            "ws_release_waivers",
+            "ws_release_waivers_project_id_fkey",
+            "fk_ws_release_waivers_project_restrict",
+        ),
+        (
+            "ws_release_findings",
+            "ws_release_findings_waiver_id_fkey",
+            "fk_ws_release_findings_waiver_restrict",
+        ),
+    ):
+        conn.execute(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {old_constraint}")
+        conn.execute(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {new_constraint}")
+
+    conn.execute(
+        """
+        ALTER TABLE ws_release_approvals
+            ADD CONSTRAINT fk_ws_release_approvals_project_restrict
+            FOREIGN KEY (project_id) REFERENCES ws_projects(id) ON DELETE RESTRICT,
+            ADD CONSTRAINT fk_ws_release_approvals_candidate_restrict
+            FOREIGN KEY (candidate_id) REFERENCES ws_release_candidates(id) ON DELETE RESTRICT,
+            ADD CONSTRAINT fk_ws_release_approvals_build_restrict
+            FOREIGN KEY (build_id) REFERENCES ws_release_builds(id) ON DELETE RESTRICT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_waivers
+            ADD CONSTRAINT fk_ws_release_waivers_project_restrict
+            FOREIGN KEY (project_id) REFERENCES ws_projects(id) ON DELETE RESTRICT
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_findings
+            ADD CONSTRAINT fk_ws_release_findings_waiver_restrict
+            FOREIGN KEY (waiver_id) REFERENCES ws_release_waivers(id) ON DELETE RESTRICT
+        """
+    )
+
+    # A supersession target is part of the same project/configuration stream.
+    # The composite unique constraint is the minimal target key PostgreSQL
+    # requires for the structural foreign key.
+    conn.execute(
+        "ALTER TABLE ws_release_records "
+        "DROP CONSTRAINT IF EXISTS ws_release_records_superseded_by_fkey"
+    )
+    conn.execute(
+        "ALTER TABLE ws_release_records "
+        "DROP CONSTRAINT IF EXISTS fk_ws_release_records_superseded_by_same_config"
+    )
+    conn.execute(
+        "ALTER TABLE ws_release_records "
+        "DROP CONSTRAINT IF EXISTS uq_ws_release_records_project_config_id"
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_records
+            ADD CONSTRAINT uq_ws_release_records_project_config_id
+            UNIQUE (project_id, config_key, id)
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_records
+            ADD CONSTRAINT fk_ws_release_records_superseded_by_same_config
+            FOREIGN KEY (project_id, config_key, superseded_by)
+            REFERENCES ws_release_records(project_id, config_key, id)
+            ON DELETE RESTRICT
+        """
+    )
+
+    for index in (
+        "idx_ws_release_closure_inputs_candidate",
+        "idx_ws_release_members_build",
+        "idx_ws_release_scope_fingerprints_build",
+        "idx_ws_release_audit_events_project",
+    ):
+        conn.execute(f"DROP INDEX IF EXISTS {index}")
+
+    # Keep publication provenance immutable for every published/retired row;
+    # only the content-preserving published -> retired transition is allowed.
+    conn.execute(
+        """
+        CREATE OR REPLACE FUNCTION ws_release_policy_version_guard()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                IF OLD.status IN ('published', 'retired') THEN
+                    RAISE EXCEPTION
+                        'published or retired policy versions cannot be deleted'
+                        USING ERRCODE = '55000';
+                END IF;
+                RETURN OLD;
+            END IF;
+
+            IF OLD.status = 'published' THEN
+                IF NEW.status = 'retired'
+                   AND NEW.id = OLD.id
+                   AND NEW.policy_id = OLD.policy_id
+                   AND NEW.version = OLD.version
+                   AND NEW.rules IS NOT DISTINCT FROM OLD.rules
+                   AND NEW.content_digest = OLD.content_digest
+                   AND NEW.published_at = OLD.published_at
+                   AND NEW.published_by = OLD.published_by
+                   AND NEW.created_by = OLD.created_by
+                   AND NEW.created_at = OLD.created_at
+                   AND NEW.retired_at IS NOT NULL
+                   AND NEW.retired_by IS NOT NULL
+                   AND btrim(NEW.retired_by) <> ''
+                THEN
+                    RETURN NEW;
+                END IF;
+
+                IF NEW.id = OLD.id
+                   AND NEW.policy_id = OLD.policy_id
+                   AND NEW.version = OLD.version
+                   AND NEW.status = OLD.status
+                   AND NEW.rules IS NOT DISTINCT FROM OLD.rules
+                   AND NEW.content_digest = OLD.content_digest
+                   AND NEW.published_at = OLD.published_at
+                   AND NEW.published_by = OLD.published_by
+                   AND NEW.retired_at IS NOT DISTINCT FROM OLD.retired_at
+                   AND NEW.retired_by IS NOT DISTINCT FROM OLD.retired_by
+                   AND NEW.created_by = OLD.created_by
+                   AND NEW.created_at = OLD.created_at
+                THEN
+                    RETURN NEW;
+                END IF;
+
+                RAISE EXCEPTION
+                    'published policy version content and provenance are immutable; only published to retired is legal'
+                    USING ERRCODE = '55000';
+            END IF;
+
+            IF OLD.status = 'retired' THEN
+                IF NEW.id = OLD.id
+                   AND NEW.policy_id = OLD.policy_id
+                   AND NEW.version = OLD.version
+                   AND NEW.status = OLD.status
+                   AND NEW.rules IS NOT DISTINCT FROM OLD.rules
+                   AND NEW.content_digest = OLD.content_digest
+                   AND NEW.published_at = OLD.published_at
+                   AND NEW.published_by = OLD.published_by
+                   AND NEW.retired_at = OLD.retired_at
+                   AND NEW.retired_by = OLD.retired_by
+                   AND NEW.created_by = OLD.created_by
+                   AND NEW.created_at = OLD.created_at
+                THEN
+                    RETURN NEW;
+                END IF;
+
+                RAISE EXCEPTION
+                    'retired policy versions are immutable'
+                    USING ERRCODE = '55000';
+            END IF;
+
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+        """
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1021,6 +1416,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (6, "thumbnail_source", _thumbnail_source),
     (7, "generated_thumbnail_default", _generated_thumbnail_default),
     (8, "release_studio", _release_studio),
+    (9, "release_studio_hardening", _release_studio_hardening),
 )
 
 
