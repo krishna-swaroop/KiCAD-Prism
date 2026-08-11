@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 import yaml
 
@@ -134,6 +134,7 @@ def load_configuration_at_commit(
     rel = configuration_relpath(config_key)
     text = _git_show(root, commit, rel.as_posix())
     config = parse_configuration_yaml(text, source=f"{commit}:{rel.as_posix()}")
+    _validate_referenced_commit_paths(root, commit, config)
     _load_referenced_policy_at_commit(root, commit, config, source=rel.as_posix())
     return config
 
@@ -190,26 +191,42 @@ def _validate_referenced_checkout_paths(
     root: Path,
     config: Mapping[str, Any],
 ) -> None:
-    """Reject present config references that resolve outside the checkout."""
+    """Require declared config references to be regular files in the checkout."""
 
-    for field in ("board", "schematic", "jobset", "template"):
-        path = config.get(field)
-        if path is not None:
-            _resolve_checkout_path(
-                root,
-                Path(str(path)),
-                kind=field,
-                require_exists=False,
-                require_file=True,
-            )
-    for index, path in enumerate(config.get("sheets", []) or []):
+    for field, path in _referenced_file_paths(config):
         _resolve_checkout_path(
             root,
             Path(str(path)),
-            kind=f"schematic sheet {index}",
-            require_exists=False,
+            kind=field,
+            require_exists=True,
             require_file=True,
         )
+
+
+def _validate_referenced_commit_paths(
+    root: Path,
+    commit: str,
+    config: Mapping[str, Any],
+) -> None:
+    """Require declared config references to resolve to tracked regular files."""
+
+    for field, path in _referenced_file_paths(config):
+        try:
+            _resolve_git_file_path(root, commit, str(path))
+        except ConfigLoadError as exc:
+            raise ConfigLoadError(
+                f"{field} path {path!r} is not a regular repository file at "
+                f"{commit}: {exc}"
+            ) from exc
+
+
+def _referenced_file_paths(config: Mapping[str, Any]) -> Iterator[tuple[str, Any]]:
+    for field in ("board", "schematic", "jobset"):
+        yield field, config[field]
+    if config.get("template") is not None:
+        yield "template", config["template"]
+    for index, path in enumerate(config.get("sheets", []) or []):
+        yield f"schematic sheet {index}", path
 
 
 def _policy_path_from_reference(policy: Any) -> Path | None:

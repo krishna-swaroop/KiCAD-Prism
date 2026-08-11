@@ -41,6 +41,63 @@ policy: org:default@1
 """
 
 
+def _write_design_files(root: Path) -> None:
+    for relative in ("board.kicad_pcb", "board.kicad_sch", "Outputs.kicad_jobset"):
+        (root / relative).write_text("fixture\n", encoding="utf-8")
+
+
+def _config_with_file_reference(field: str, relative: str) -> str:
+    defaults = {
+        "board": "board.kicad_pcb",
+        "schematic": "board.kicad_sch",
+        "jobset": "Outputs.kicad_jobset",
+    }
+    if field in defaults:
+        return _MIN_CONFIG.replace(
+            f"{field}: {defaults[field]}",
+            f"{field}: {relative}",
+        )
+    if field == "template":
+        return _MIN_CONFIG.replace(
+            "policy: org:default@1",
+            f"template: {relative}\npolicy: org:default@1",
+        )
+    if field == "sheets":
+        return _MIN_CONFIG.replace(
+            "policy: org:default@1",
+            f"sheets:\n  - {relative}\npolicy: org:default@1",
+        )
+    raise AssertionError(f"unsupported file reference field: {field}")
+
+
+def _commit_temp_repo(root: Path, message: str) -> str:
+    subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "r6@example.com"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "R6"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        text=True,
+    ).strip()
+
+
 class ReleaseStudioConfigTests(unittest.TestCase):
     def test_unknown_configuration_key_is_rejected_by_name(self) -> None:
         with self.assertRaisesRegex(ConfigSchemaError, "unknown key\\(s\\): 'extra'"):
@@ -216,30 +273,13 @@ variants: null
                 with tempfile.TemporaryDirectory(dir=workspace) as checkout_tmp:
                     with tempfile.TemporaryDirectory() as outside_tmp:
                         root = Path(checkout_tmp)
+                        _write_design_files(root)
                         target = Path(outside_tmp) / Path(relative).name
                         target.write_text("outside", encoding="utf-8")
                         link = root / relative
                         link.parent.mkdir(parents=True, exist_ok=True)
                         os.symlink(target, link)
-                        config = _MIN_CONFIG.replace(
-                            f"{field}: "
-                            + {
-                                "board": "board.kicad_pcb",
-                                "schematic": "board.kicad_sch",
-                                "jobset": "Outputs.kicad_jobset",
-                            }.get(field, ""),
-                            f"{field}: {relative}",
-                        )
-                        if field == "template":
-                            config = _MIN_CONFIG.replace(
-                                "policy: org:default@1",
-                                f"template: {relative}\npolicy: org:default@1",
-                            )
-                        elif field == "sheets":
-                            config = _MIN_CONFIG.replace(
-                                "policy: org:default@1",
-                                f"sheets:\n  - {relative}\npolicy: org:default@1",
-                            )
+                        config = _config_with_file_reference(field, relative)
                         config_dir = root / ".prism" / "release-studio" / "configurations"
                         config_dir.mkdir(parents=True, exist_ok=True)
                         (config_dir / "default.yaml").write_text(
@@ -254,6 +294,7 @@ variants: null
         with tempfile.TemporaryDirectory(dir=workspace) as checkout_tmp:
             with tempfile.TemporaryDirectory() as outside_tmp:
                 root = Path(checkout_tmp)
+                _write_design_files(root)
                 policy_dir = root / ".prism" / "release-studio" / "policies"
                 config_dir = root / ".prism" / "release-studio" / "configurations"
                 policy_dir.mkdir(parents=True)
@@ -274,10 +315,95 @@ variants: null
                 with self.assertRaisesRegex(ConfigLoadError, "escapes checkout"):
                     load_configuration_from_checkout(root, "default")
 
+    def test_missing_declared_file_is_rejected_by_checkout_and_commit(self) -> None:
+        workspace = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory(dir=workspace) as temporary:
+            root = Path(temporary)
+            config_dir = root / ".prism" / "release-studio" / "configurations"
+            config_dir.mkdir(parents=True)
+            (config_dir / "default.yaml").write_text(_MIN_CONFIG, encoding="utf-8")
+            commit = _commit_temp_repo(root, "add incomplete config")
+
+            with self.assertRaisesRegex(ConfigLoadError, "board.*not found"):
+                load_configuration_from_checkout(root, "default")
+            with self.assertRaisesRegex(ConfigLoadError, "board.*not found"):
+                load_configuration_at_commit(root, commit, "default")
+
+    def test_external_file_symlink_is_rejected_by_checkout_and_commit(self) -> None:
+        workspace = Path(__file__).resolve().parents[2]
+        fields = (
+            ("board", "linked/board.kicad_pcb"),
+            ("schematic", "linked/board.kicad_sch"),
+            ("jobset", "linked/Outputs.kicad_jobset"),
+            ("template", "linked/template.yaml"),
+            ("sheets", "linked/sheet.kicad_sch"),
+        )
+        for field, relative in fields:
+            with self.subTest(field=field):
+                with tempfile.TemporaryDirectory(dir=workspace) as temporary:
+                    with tempfile.TemporaryDirectory() as outside_tmp:
+                        root = Path(temporary)
+                        _write_design_files(root)
+                        target = Path(outside_tmp) / Path(relative).name
+                        target.write_text("outside", encoding="utf-8")
+                        link = root / relative
+                        if link.exists() or link.is_symlink():
+                            link.unlink()
+                        link.parent.mkdir(parents=True, exist_ok=True)
+                        os.symlink(target, link)
+                        config_dir = root / ".prism" / "release-studio" / "configurations"
+                        config_dir.mkdir(parents=True)
+                        (config_dir / "default.yaml").write_text(
+                            _config_with_file_reference(field, relative),
+                            encoding="utf-8",
+                        )
+                        commit = _commit_temp_repo(root, f"add external {field} link")
+
+                        with self.assertRaisesRegex(ConfigLoadError, "escapes"):
+                            load_configuration_from_checkout(root, "default")
+                        with self.assertRaisesRegex(ConfigLoadError, "escapes"):
+                            load_configuration_at_commit(root, commit, "default")
+
+    def test_in_repo_file_symlink_is_resolved_by_checkout_and_commit(self) -> None:
+        workspace = Path(__file__).resolve().parents[2]
+        fields = (
+            ("board", "board.kicad_pcb"),
+            ("schematic", "board.kicad_sch"),
+            ("jobset", "Outputs.kicad_jobset"),
+            ("template", "linked/template.yaml"),
+            ("sheets", "linked/sheet.kicad_sch"),
+        )
+        for field, relative in fields:
+            with self.subTest(field=field):
+                with tempfile.TemporaryDirectory(dir=workspace) as temporary:
+                    root = Path(temporary)
+                    _write_design_files(root)
+                    source = root / "sources" / Path(relative).name
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    source.write_text("in repo fixture\n", encoding="utf-8")
+                    link = root / relative
+                    if link.exists() or link.is_symlink():
+                        link.unlink()
+                    link.parent.mkdir(parents=True, exist_ok=True)
+                    os.symlink(os.path.relpath(source, link.parent), link)
+                    config_dir = root / ".prism" / "release-studio" / "configurations"
+                    config_dir.mkdir(parents=True)
+                    (config_dir / "default.yaml").write_text(
+                        _config_with_file_reference(field, relative),
+                        encoding="utf-8",
+                    )
+                    commit = _commit_temp_repo(root, f"add in-repo {field} link")
+
+                    self.assertEqual(
+                        load_configuration_from_checkout(root, "default"),
+                        load_configuration_at_commit(root, commit, "default"),
+                    )
+
     def test_valid_local_policy_loads_from_checkout_and_commit(self) -> None:
         workspace = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory(dir=workspace) as temporary:
             root = Path(temporary)
+            _write_design_files(root)
             config_dir = root / ".prism" / "release-studio" / "configurations"
             policy_dir = root / ".prism" / "release-studio" / "policies"
             config_dir.mkdir(parents=True)
@@ -291,31 +417,7 @@ variants: null
                 "schema: prism.release-studio.policy/1\nrules: []\n",
                 encoding="utf-8",
             )
-            subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
-            subprocess.run(
-                ["git", "config", "user.email", "r6@example.com"],
-                cwd=root,
-                check=True,
-                capture_output=True,
-            )
-            subprocess.run(
-                ["git", "config", "user.name", "R6"],
-                cwd=root,
-                check=True,
-                capture_output=True,
-            )
-            subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
-            subprocess.run(
-                ["git", "commit", "-m", "add local policy"],
-                cwd=root,
-                check=True,
-                capture_output=True,
-            )
-            commit = subprocess.check_output(
-                ["git", "rev-parse", "HEAD"],
-                cwd=root,
-                text=True,
-            ).strip()
+            commit = _commit_temp_repo(root, "add local policy")
 
             from_checkout = load_configuration_from_checkout(root, "default")
             from_commit = load_configuration_at_commit(root, commit, "default")
@@ -325,6 +427,7 @@ variants: null
         workspace = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory(dir=workspace) as temporary:
             root = Path(temporary)
+            _write_design_files(root)
             config_dir = root / ".prism" / "release-studio" / "configurations"
             policy_dir = root / ".prism" / "release-studio" / "policies"
             config_dir.mkdir(parents=True)
@@ -341,31 +444,7 @@ variants: null
                 encoding="utf-8",
             )
             os.symlink("base.yaml", policy_dir / "alias.yaml")
-            subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
-            subprocess.run(
-                ["git", "config", "user.email", "r6@example.com"],
-                cwd=root,
-                check=True,
-                capture_output=True,
-            )
-            subprocess.run(
-                ["git", "config", "user.name", "R6"],
-                cwd=root,
-                check=True,
-                capture_output=True,
-            )
-            subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
-            subprocess.run(
-                ["git", "commit", "-m", "add in-repo policy symlink"],
-                cwd=root,
-                check=True,
-                capture_output=True,
-            )
-            commit = subprocess.check_output(
-                ["git", "rev-parse", "HEAD"],
-                cwd=root,
-                text=True,
-            ).strip()
+            commit = _commit_temp_repo(root, "add in-repo policy symlink")
 
             self.assertEqual(
                 load_configuration_from_checkout(root, "default"),
@@ -434,6 +513,7 @@ variants: null
         workspace = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory(dir=workspace) as temporary:
             root = Path(temporary)
+            _write_design_files(root)
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
             subprocess.run(
                 ["git", "config", "user.email", "r6@example.com"],
