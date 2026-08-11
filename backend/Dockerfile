@@ -2,8 +2,9 @@
 ARG KICAD_MONKEY_VARIANT=kicad-monkey-upstream
 
 # KiCad CLI runtime. Release/source defaults are reproducible and AMD64-only.
-# Developers can override both build args in an uncommitted .env when testing
-# another native runtime.
+# Compose supplies the platform from its environment file. Select a different
+# base image explicitly with `docker compose build --build-arg`; it is not a
+# runtime environment value.
 ARG KICAD_BASE_PLATFORM=linux/amd64
 ARG KICAD_BASE_IMAGE=kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c
 
