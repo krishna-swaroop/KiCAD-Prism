@@ -11,3 +11,6 @@ python-multipart
 psycopg[binary]>=3.2,<4
 psycopg-pool>=3.2,<4
 Pillow>=11,<13
+# Release Studio R4 PDF canonicalization and page/text semantic verification.
+pikepdf>=9,<11
+pypdf>=5,<7
