@@ -636,7 +636,8 @@ def _release_studio(conn: Any) -> None:
             decision                       TEXT NOT NULL,
             approver                       TEXT NOT NULL,
             note                           TEXT NOT NULL DEFAULT '',
-            self_approval_override_reason  TEXT,
+            exception_kind                TEXT,
+            exception_reason              TEXT,
             technical_scope_fingerprints   JSONB NOT NULL DEFAULT '{}'::jsonb,
             policy_binding_digest          TEXT NOT NULL,
             manifest_digest                TEXT NOT NULL DEFAULT '',
@@ -1012,13 +1013,16 @@ def _release_studio(conn: Any) -> None:
     )
 
 
-def _preflight_release_studio_audit_history(conn: Any) -> None:
-    """Reject M8 audit rows that M9 cannot validate without rewriting them.
+def _check_release_studio_audit_shape_precondition(conn: Any) -> None:
+    """Reject M8 audit rows that M9 cannot shape-check without rewriting them.
 
     Sequence and previous-hash values are part of the audit chain.  Rebuilding
     either value during a schema migration would fabricate a different chain,
     so M9 fails before changing any data when an existing stream violates the
-    shape of its new CHECK constraints.
+    shape of its new CHECK constraints. This intentionally checks only positive
+    sequence values, a NULL genesis previous hash, and a nonblank non-genesis
+    previous hash; it does not verify contiguity, exactly one genesis event, or
+    previous-hash linkage.
     """
 
     row = conn.execute(
@@ -1049,7 +1053,8 @@ def _preflight_release_studio_audit_history(conn: Any) -> None:
         return
 
     raise RuntimeError(
-        "Migration 9 precondition failed: ws_release_audit_events contains "
+        "Migration 9 audit-shape precondition failed: "
+        "ws_release_audit_events contains "
         "an invalid existing audit row "
         f"(project_id={row['project_id']!r}, "
         f"config_key={row['config_key']!r}, sequence={row['sequence']!r}, "
@@ -1060,17 +1065,17 @@ def _preflight_release_studio_audit_history(conn: Any) -> None:
 
 
 def _release_studio_hardening(conn: Any) -> None:
-    """Harden the Release Studio schema introduced by Migration 8.
+    """Apply the reviewed pre-release hardening to the Migration 8 schema.
 
-    Migration 8 remains the historical schema definition.  This migration
-    repairs its already-applied data and constraints in place before later
-    Release Studio writers depend on the stricter contracts.
+    Migration 9 remains a separate ledger entry only until the pre-dev R23
+    collapse folds this implementation into Migration 8 before the feature
+    branch merges to dev.
     """
 
     # Audit sequence and hash fields are chain material, not ordinary
     # backfillable data.  Fail before any M9 repair or constraint validation so
     # a bad M8 stream cannot be silently rewritten or partially migrated.
-    _preflight_release_studio_audit_history(conn)
+    _check_release_studio_audit_shape_precondition(conn)
 
     # Drop the Migration 8 outcome CHECK before rewriting legacy values; the
     # old vocabulary rejects the canonical replacements.
@@ -1184,6 +1189,7 @@ def _release_studio_hardening(conn: Any) -> None:
         ("ws_release_findings", "ck_ws_release_findings_severity_vocabulary"),
         ("ws_release_findings", "ck_ws_release_findings_status_vocabulary"),
         ("ws_release_approvals", "ck_ws_release_approvals_decision_vocabulary"),
+        ("ws_release_approvals", "ck_ws_release_approvals_exception_pair"),
     ):
         conn.execute(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint}")
     conn.execute(
@@ -1204,7 +1210,24 @@ def _release_studio_hardening(conn: Any) -> None:
         """
         ALTER TABLE ws_release_approvals
             ADD CONSTRAINT ck_ws_release_approvals_decision_vocabulary
-            CHECK (decision IN ('approved', 'changes_requested', 'emergency_override'))
+            CHECK (decision IN ('approved', 'rejected', 'changes_requested'))
+        """
+    )
+    conn.execute(
+        """
+        ALTER TABLE ws_release_approvals
+            ADD CONSTRAINT ck_ws_release_approvals_exception_pair
+            CHECK (
+                (exception_kind IS NULL AND exception_reason IS NULL)
+                OR (
+                    exception_kind IS NOT NULL
+                    AND exception_kind IN (
+                        'self_approval', 'emergency', 'self_approval_and_emergency'
+                    )
+                    AND exception_reason IS NOT NULL
+                    AND btrim(exception_reason) <> ''
+                )
+            )
         """
     )
     conn.execute(
@@ -1459,64 +1482,6 @@ def _release_studio_hardening(conn: Any) -> None:
     )
 
 
-def _release_studio_approval_hardening(conn: Any) -> None:
-    """Append Migration 10's explicit approval decision contract.
-
-    ``emergency_override`` was present in the shipped M9 vocabulary without a
-    documented contract.  Preserve it for compatibility, but only as an
-    exceptional, reasoned decision; later approval-gate code must not count it
-    as an ordinary required approval.
-    """
-
-    row = conn.execute(
-        """
-        SELECT id
-        FROM ws_release_approvals
-        WHERE decision = 'emergency_override'
-          AND NULLIF(btrim(self_approval_override_reason), '') IS NULL
-        ORDER BY id
-        LIMIT 1
-        """
-    ).fetchone()
-    if row is not None:
-        raise RuntimeError(
-            "Migration 10 precondition failed: ws_release_approvals row "
-            f"{row['id']!r} uses emergency_override without a nonblank "
-            "self_approval_override_reason. Add the approved override reason "
-            "or remediate that exceptional decision before retrying."
-        )
-
-    # M9 is already shipped, so replace its narrower CHECK rather than editing
-    # the historical migration.  No rows are rewritten by this migration.
-    conn.execute(
-        "ALTER TABLE ws_release_approvals "
-        "DROP CONSTRAINT IF EXISTS ck_ws_release_approvals_decision_vocabulary"
-    )
-    conn.execute(
-        """
-        ALTER TABLE ws_release_approvals
-            ADD CONSTRAINT ck_ws_release_approvals_decision_vocabulary
-            CHECK (decision IN (
-                'approved', 'rejected', 'changes_requested', 'emergency_override'
-            ))
-        """
-    )
-    conn.execute(
-        "ALTER TABLE ws_release_approvals "
-        "DROP CONSTRAINT IF EXISTS ck_ws_release_approvals_override_reason"
-    )
-    conn.execute(
-        """
-        ALTER TABLE ws_release_approvals
-            ADD CONSTRAINT ck_ws_release_approvals_override_reason
-            CHECK (
-                decision <> 'emergency_override'
-                OR NULLIF(btrim(self_approval_override_reason), '') IS NOT NULL
-            )
-        """
-    )
-
-
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1527,7 +1492,6 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (7, "generated_thumbnail_default", _generated_thumbnail_default),
     (8, "release_studio", _release_studio),
     (9, "release_studio_hardening", _release_studio_hardening),
-    (10, "release_studio_approval_hardening", _release_studio_approval_hardening),
 )
 
 

@@ -22,7 +22,6 @@ except ImportError:  # pragma: no cover - dependency guard for host-only checks
 from app.services.workspace_schema_migrations import (  # noqa: E402
     MIGRATIONS,
     _release_studio,
-    _release_studio_approval_hardening,
     _release_studio_hardening,
     apply_workspace_migrations,
 )
@@ -221,7 +220,8 @@ EXPECTED_COLUMNS: dict[str, set[str]] = {
         "decision",
         "approver",
         "note",
-        "self_approval_override_reason",
+        "exception_kind",
+        "exception_reason",
         "technical_scope_fingerprints",
         "policy_binding_digest",
         "manifest_digest",
@@ -481,7 +481,7 @@ EXPECTED_FKS = {
     "TEST_POSTGRES_URL must not target PRISM_DATABASE_URL",
 )
 class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
-    """Run Release Studio Migrations 8 through 10 against isolated PostgreSQL."""
+    """Run Release Studio Migrations 8 through 9 against isolated PostgreSQL."""
 
     def setUp(self) -> None:
         assert psycopg is not None
@@ -776,7 +776,7 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
             "ck_ws_release_findings_severity_vocabulary",
             "ck_ws_release_findings_status_vocabulary",
             "ck_ws_release_approvals_decision_vocabulary",
-            "ck_ws_release_approvals_override_reason",
+            "ck_ws_release_approvals_exception_pair",
             "ck_ws_release_policy_versions_publication_provenance",
             "ck_ws_release_records_signature_key_pair",
             "ck_ws_release_audit_events_sequence_positive",
@@ -1332,25 +1332,30 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                     f"approval-digest-{index}-{uuid.uuid4().hex}",
                 ),
             )
-        self.conn.execute(
-            """
-            INSERT INTO ws_release_approvals(
-                id, project_id, config_key, candidate_id, build_id, role,
-                decision, approver, self_approval_override_reason,
-                policy_binding_digest
+        for index, exception_kind in enumerate(
+            ("self_approval", "emergency", "self_approval_and_emergency"),
+            start=1,
+        ):
+            self.conn.execute(
+                """
+                INSERT INTO ws_release_approvals(
+                    id, project_id, config_key, candidate_id, build_id, role,
+                    decision, approver, exception_kind, exception_reason,
+                    policy_binding_digest
+                )
+                VALUES (%s, %s, 'default', %s, %s, 'engineering', 'approved',
+                        'approver@example.test', %s, %s, %s)
+                """,
+                (
+                    f"approval-exception-{index}-{uuid.uuid4().hex}",
+                    ids["project"],
+                    ids["candidate"],
+                    ids["build"],
+                    exception_kind,
+                    f"approved exception {exception_kind}",
+                    f"approval-exception-digest-{index}-{uuid.uuid4().hex}",
+                ),
             )
-            VALUES (%s, %s, 'default', %s, %s, 'engineering',
-                    'emergency_override', 'approver@example.test',
-                    'incident-2026-08-11: release owner unavailable', %s)
-            """,
-            (
-                f"approval-vocabulary-emergency-{uuid.uuid4().hex}",
-                ids["project"],
-                ids["candidate"],
-                ids["build"],
-                f"approval-emergency-digest-{uuid.uuid4().hex}",
-            ),
-        )
         self._assert_rejected(
             """
             INSERT INTO ws_release_approvals(
@@ -1383,6 +1388,76 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 ids["candidate"],
                 ids["build"],
                 f"approval-invalid-digest-{uuid.uuid4().hex}",
+            ),
+        )
+        self._assert_rejected(
+            """
+            INSERT INTO ws_release_approvals(
+                id, project_id, config_key, candidate_id, build_id, role,
+                decision, approver, exception_kind, policy_binding_digest
+            )
+            VALUES (%s, %s, 'default', %s, %s, 'engineering', 'approved',
+                    'approver@example.test', 'self_approval', %s)
+            """,
+            (
+                f"approval-exception-without-reason-{uuid.uuid4().hex}",
+                ids["project"],
+                ids["candidate"],
+                ids["build"],
+                f"approval-exception-invalid-digest-{uuid.uuid4().hex}",
+            ),
+        )
+        self._assert_rejected(
+            """
+            INSERT INTO ws_release_approvals(
+                id, project_id, config_key, candidate_id, build_id, role,
+                decision, approver, exception_reason, policy_binding_digest
+            )
+            VALUES (%s, %s, 'default', %s, %s, 'engineering', 'approved',
+                    'approver@example.test', 'reason without kind', %s)
+            """,
+            (
+                f"approval-reason-without-exception-{uuid.uuid4().hex}",
+                ids["project"],
+                ids["candidate"],
+                ids["build"],
+                f"approval-exception-invalid-digest-{uuid.uuid4().hex}",
+            ),
+        )
+        self._assert_rejected(
+            """
+            INSERT INTO ws_release_approvals(
+                id, project_id, config_key, candidate_id, build_id, role,
+                decision, approver, exception_kind, exception_reason,
+                policy_binding_digest
+            )
+            VALUES (%s, %s, 'default', %s, %s, 'engineering', 'approved',
+                    'approver@example.test', 'emergency', '   ', %s)
+            """,
+            (
+                f"approval-blank-exception-reason-{uuid.uuid4().hex}",
+                ids["project"],
+                ids["candidate"],
+                ids["build"],
+                f"approval-exception-invalid-digest-{uuid.uuid4().hex}",
+            ),
+        )
+        self._assert_rejected(
+            """
+            INSERT INTO ws_release_approvals(
+                id, project_id, config_key, candidate_id, build_id, role,
+                decision, approver, exception_kind, exception_reason,
+                policy_binding_digest
+            )
+            VALUES (%s, %s, 'default', %s, %s, 'engineering', 'approved',
+                    'approver@example.test', 'unknown', 'reason', %s)
+            """,
+            (
+                f"approval-unknown-exception-kind-{uuid.uuid4().hex}",
+                ids["project"],
+                ids["candidate"],
+                ids["build"],
+                f"approval-exception-invalid-digest-{uuid.uuid4().hex}",
             ),
         )
 
@@ -1660,8 +1735,6 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
 
             _release_studio_hardening(self.conn)
             _release_studio_hardening(self.conn)
-            _release_studio_approval_hardening(self.conn)
-            _release_studio_approval_hardening(self.conn)
 
             evaluation = self.conn.execute(
                 "SELECT outcome FROM ws_release_evaluations WHERE id = %s",
@@ -1695,7 +1768,12 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
             self.conn.execute(f'DROP SCHEMA IF EXISTS "{legacy_schema}" CASCADE')
             self.conn.commit()
 
-    def test_m9_preflights_invalid_m8_audit_rows_without_rewriting_chain_data(self) -> None:
+    def test_m9_audit_shape_precondition_rejects_all_m8_shapes_without_rewriting_chain_data(
+        self,
+    ) -> None:
+        # Four M8-shaped rows cover the three precondition classes:
+        # nonpositive sequence, non-NULL genesis hash, and NULL/blank
+        # non-genesis hash.
         cases = (
             ("nonpositive_sequence", 0, None, "sequence_must_be_positive"),
             ("non_null_genesis", 1, "not-genesis", "genesis_previous_hash_must_be_null"),
@@ -1735,7 +1813,8 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
 
                     with self.assertRaisesRegex(
                         RuntimeError,
-                        rf"Migration 9 precondition failed: .*sequence={sequence}.*{expected_violation}",
+                        rf"Migration 9 audit-shape precondition failed: .*"
+                        rf"sequence={sequence}.*{expected_violation}",
                     ):
                         _release_studio_hardening(self.conn)
 
@@ -1773,168 +1852,8 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                     self.conn.execute(f'DROP SCHEMA IF EXISTS "{legacy_schema}" CASCADE')
                     self.conn.commit()
 
-    def test_v9_rows_upgrade_m10_adds_rejected_and_preserves_reasoned_override(self) -> None:
-        legacy_schema = f"release_r3_m10_{uuid.uuid4().hex}"
-        self.conn.execute(f'CREATE SCHEMA "{legacy_schema}"')
-        try:
-            self.conn.execute(f'SET search_path TO "{legacy_schema}", public')
-            self._create_base_workspace_tables()
-            for version, _, migration in MIGRATIONS:
-                if version <= 9:
-                    migration(self.conn)
-            ids = self._seed_release_graph()
-            emergency_id = f"approval-m10-emergency-{uuid.uuid4().hex}"
-            self.conn.execute(
-                """
-                INSERT INTO ws_release_approvals(
-                    id, project_id, config_key, candidate_id, build_id, role,
-                    decision, approver, self_approval_override_reason,
-                    policy_binding_digest
-                )
-                VALUES (%s, %s, 'default', %s, %s, 'engineering',
-                        'emergency_override', 'approver@example.test',
-                        'incident-2026-08-11: emergency release authority', %s)
-                """,
-                (
-                    emergency_id,
-                    ids["project"],
-                    ids["candidate"],
-                    ids["build"],
-                    f"m10-emergency-digest-{uuid.uuid4().hex}",
-                ),
-            )
-
-            _release_studio_approval_hardening(self.conn)
-            _release_studio_approval_hardening(self.conn)
-            rejected_id = f"approval-m10-rejected-{uuid.uuid4().hex}"
-            self.conn.execute(
-                """
-                INSERT INTO ws_release_approvals(
-                    id, project_id, config_key, candidate_id, build_id, role,
-                    decision, approver, policy_binding_digest
-                )
-                VALUES (%s, %s, 'default', %s, %s, 'engineering',
-                        'rejected', 'approver@example.test', %s)
-                """,
-                (
-                    rejected_id,
-                    ids["project"],
-                    ids["candidate"],
-                    ids["build"],
-                    f"m10-rejected-digest-{uuid.uuid4().hex}",
-                ),
-            )
-            self._assert_rejected(
-                """
-                INSERT INTO ws_release_approvals(
-                    id, project_id, config_key, candidate_id, build_id, role,
-                    decision, approver, policy_binding_digest
-                )
-                VALUES (%s, %s, 'default', %s, %s, 'engineering',
-                        'emergency_override', 'approver@example.test', %s)
-                """,
-                (
-                    f"approval-m10-blank-reason-{uuid.uuid4().hex}",
-                    ids["project"],
-                    ids["candidate"],
-                    ids["build"],
-                    f"m10-blank-reason-digest-{uuid.uuid4().hex}",
-                ),
-            )
-            stored = self.conn.execute(
-                """
-                SELECT decision, self_approval_override_reason
-                FROM ws_release_approvals
-                WHERE id IN (%s, %s)
-                ORDER BY id
-                """,
-                (emergency_id, rejected_id),
-            ).fetchall()
-            self.assertEqual(
-                {(row["decision"], row["self_approval_override_reason"]) for row in stored},
-                {
-                    (
-                        "emergency_override",
-                        "incident-2026-08-11: emergency release authority",
-                    ),
-                    ("rejected", None),
-                },
-            )
-        finally:
-            self.conn.rollback()
-            self.conn.execute(f'SET search_path TO "{self.schema}", public')
-            self.conn.execute(f'DROP SCHEMA IF EXISTS "{legacy_schema}" CASCADE')
-            self.conn.commit()
-
-    def test_m10_rejects_existing_blank_emergency_override_before_constraint_change(self) -> None:
-        legacy_schema = f"release_r3_m10_invalid_{uuid.uuid4().hex}"
-        self.conn.execute(f'CREATE SCHEMA "{legacy_schema}"')
-        try:
-            self.conn.execute(f'SET search_path TO "{legacy_schema}", public')
-            self._create_base_workspace_tables()
-            for version, _, migration in MIGRATIONS:
-                if version <= 9:
-                    migration(self.conn)
-            ids = self._seed_release_graph()
-            self.conn.execute(
-                """
-                INSERT INTO ws_release_approvals(
-                    id, project_id, config_key, candidate_id, build_id, role,
-                    decision, approver, policy_binding_digest
-                )
-                VALUES ('approval-m10-invalid', %s, 'default', %s, %s,
-                        'engineering', 'emergency_override',
-                        'approver@example.test', 'm10-invalid-digest')
-                """,
-                (ids["project"], ids["candidate"], ids["build"]),
-            )
-
-            with self.assertRaisesRegex(
-                RuntimeError,
-                r"Migration 10 precondition failed: .*approval-m10-invalid.*nonblank",
-            ):
-                _release_studio_approval_hardening(self.conn)
-
-            old_constraint = self.conn.execute(
-                """
-                SELECT 1
-                FROM pg_constraint AS constraint_row
-                JOIN pg_class AS table_row
-                  ON table_row.oid = constraint_row.conrelid
-                JOIN pg_namespace AS namespace_row
-                  ON namespace_row.oid = table_row.relnamespace
-                WHERE namespace_row.nspname = %s
-                  AND table_row.relname = 'ws_release_approvals'
-                  AND constraint_row.conname = 'ck_ws_release_approvals_decision_vocabulary'
-                """,
-                (legacy_schema,),
-            ).fetchone()
-            self.assertIsNotNone(old_constraint)
-            self.assertIsNone(
-                self.conn.execute(
-                    """
-                    SELECT 1
-                    FROM pg_constraint AS constraint_row
-                    JOIN pg_class AS table_row
-                      ON table_row.oid = constraint_row.conrelid
-                    JOIN pg_namespace AS namespace_row
-                      ON namespace_row.oid = table_row.relnamespace
-                    WHERE namespace_row.nspname = %s
-                      AND table_row.relname = 'ws_release_approvals'
-                      AND constraint_row.conname = 'ck_ws_release_approvals_override_reason'
-                    """,
-                    (legacy_schema,),
-                ).fetchone()
-            )
-        finally:
-            self.conn.rollback()
-            self.conn.execute(f'SET search_path TO "{self.schema}", public')
-            self.conn.execute(f'DROP SCHEMA IF EXISTS "{legacy_schema}" CASCADE')
-            self.conn.commit()
-
-
 class ReleaseStudioMigrationLadderTests(unittest.TestCase):
-    def test_migration_10_is_named_and_follows_migrations_1_to_9(self) -> None:
+    def test_migration_ladder_remains_ordered_through_migration_9(self) -> None:
         self.assertEqual(
             [(version, name) for version, name, _ in MIGRATIONS],
             [
@@ -1947,7 +1866,6 @@ class ReleaseStudioMigrationLadderTests(unittest.TestCase):
                 (7, "generated_thumbnail_default"),
                 (8, "release_studio"),
                 (9, "release_studio_hardening"),
-                (10, "release_studio_approval_hardening"),
             ],
         )
 
