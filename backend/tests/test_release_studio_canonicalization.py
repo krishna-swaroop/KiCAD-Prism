@@ -457,6 +457,13 @@ class ReleaseStudioCanonicalJsonTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 canonical_json({"value": value})
 
+    def test_canonical_json_rejects_non_string_keys_at_every_nesting_level(self) -> None:
+        message = "canonical JSON object keys must be strings"
+        with self.assertRaisesRegex(TypeError, message):
+            canonical_json({1: "top-level"})
+        with self.assertRaisesRegex(TypeError, message):
+            canonical_json({"nested": {2: "nested"}})
+
     def test_canonical_json_behaves_differently_from_prepare_json(self) -> None:
         payload = {
             "b": 1,

@@ -14,14 +14,6 @@ import unicodedata
 from typing import Any
 
 
-CANONICAL_JSON_OPTIONS = {
-    "sort_keys": True,
-    "separators": (",", ":"),
-    "ensure_ascii": False,
-    "allow_nan": False,
-}
-
-
 def canonical_json(value: Any) -> str:
     """Return normalized canonical JSON text for a Release Studio record."""
 
@@ -56,12 +48,15 @@ def _normalize_nfc(value: Any) -> Any:
     if isinstance(value, tuple):
         return tuple(_normalize_nfc(item) for item in value)
     if isinstance(value, dict):
-        normalized: dict[Any, Any] = {}
+        normalized: dict[str, Any] = {}
         for key, item in value.items():
-            normalized_key = (
-                unicodedata.normalize("NFC", key) if isinstance(key, str) else key
-            )
-            if isinstance(normalized_key, str) and normalized_key in normalized:
+            if not isinstance(key, str):
+                raise TypeError(
+                    "canonical JSON object keys must be strings; "
+                    f"found {type(key).__name__} key {key!r}"
+                )
+            normalized_key = unicodedata.normalize("NFC", key)
+            if normalized_key in normalized:
                 raise ValueError(
                     "NFC-normalized JSON object key collision: "
                     f"{key!r} conflicts with {normalized_key!r}"
