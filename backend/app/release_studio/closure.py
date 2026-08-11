@@ -28,6 +28,7 @@ from app.release_studio.canonical import sha256_canonical
 
 _LFS_POINTER_VERSION = "version https://git-lfs.github.com/spec/v1"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_RESOURCE_DIGEST_RE = _SHA256_RE
 _VARIABLE_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _URI_RE = re.compile(
     r"\(\s*uri\s+(?:\"((?:\\.|[^\"\\])*)\"|([^\s()]+))",
@@ -692,22 +693,22 @@ def _coerce_toolchain_resources(
             raise ClosureError("toolchain resource names must be non-empty strings")
         if isinstance(value, PinnedToolchainResource):
             root = Path(value.root)
-            digest = value.digest
+            digest = _verify_resource_digest(name, root, value.digest)
             resource_name = value.name or name
         elif isinstance(value, Mapping):
             raw_root = value.get("root") or value.get("path")
-            digest = str(value.get("digest") or "")
+            supplied_digest = value.get("digest")
             if not raw_root:
                 raise ClosureError(f"toolchain resource {name!r} has no root")
+            if supplied_digest is None:
+                raise ClosureError(f"toolchain resource {name!r} has no pinned digest")
             root = Path(os.fspath(raw_root))
+            digest = _verify_resource_digest(name, root, supplied_digest)
             resource_name = name
         else:
             root = Path(os.fspath(value))
             resource_name = name
-            digest = _digest_path(root)
-        digest = str(digest).strip()
-        if not digest:
-            raise ClosureError(f"toolchain resource {name!r} has no pinned digest")
+            digest = resource_root_digest(root)
         specs[resource_name] = _ToolchainSpec(
             name=resource_name,
             root=root.resolve(strict=False),
@@ -717,7 +718,7 @@ def _coerce_toolchain_resources(
 
 
 def _digest_path(path: Path) -> str:
-    """Hash a local toolchain directory without embedding its host path."""
+    """Hash a resource tree without embedding its host path."""
 
     if not path.exists() or not path.is_dir():
         raise ClosureError(f"toolchain resource root is not a directory: {path}")
@@ -744,6 +745,30 @@ def _digest_path(path: Path) -> str:
             }
         )
     return _digest_json(entries)
+
+
+def resource_root_digest(path: str | Path) -> str:
+    """Return the canonical content/tree digest for a pinned resource root."""
+
+    return _digest_path(Path(path).resolve(strict=False))
+
+
+def _verify_resource_digest(name: str, root: Path, supplied: object) -> str:
+    digest = str(supplied).strip()
+    if not digest:
+        raise ClosureError(f"toolchain resource {name!r} has no pinned digest")
+    if not _RESOURCE_DIGEST_RE.fullmatch(digest):
+        raise ClosureError(
+            f"toolchain resource {name!r} digest must be canonical lowercase "
+            "64-hex SHA-256"
+        )
+    actual = resource_root_digest(root)
+    if digest != actual:
+        raise ClosureError(
+            f"toolchain resource {name!r} digest mismatch: supplied {digest}, "
+            f"resolved root has {actual}"
+        )
+    return digest
 
 
 def _resolve_project_paths(
@@ -988,4 +1013,5 @@ __all__ = [
     "build_input_closure",
     "materialize_input_closure",
     "materialize_project_input_closure",
+    "resource_root_digest",
 ]

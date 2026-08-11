@@ -36,7 +36,7 @@ turn the materialization into a subpath snapshot, so a table such as
 repository_inputs[]  { path, git_object_id, mode, type, materialized_digest }
 submodule_inputs[]   { path, gitlink_sha, resolved_tree_digest, recursive }
 lfs_inputs[]         { path, pointer_blob_sha, lfs_oid, materialized_digest }
-toolchain_resources  { name, digest }
+toolchain_resources  { name, digest }  # verified resource-root digest
 env_bindings[]       { name, value }
 library_references[] { source_path, reference, resolved_path, location }
 ```
@@ -48,10 +48,18 @@ excluded.  Records are sorted before hashing, and
 `app.release_studio.canonical.sha256_canonical` boundary.  Consequently two
 independent materializations of the same commit and pinned resources have the
 same digest, while a regular file and a symlink differ through their mode/type
-record even when they point at equivalent content.  A pinned toolchain digest
-is an opaque, caller-supplied nonblank identity (for example an OCI digest or
-resource-bundle digest); R2b intentionally does not require a particular digest
-format, and records only that stable value, not the host resource path.
+record even when they point at equivalent content.  `digest` for a supplied
+`PinnedToolchainResource` or `{root, digest}` mapping must be a canonical
+lowercase 64-hex SHA-256.  R2b recomputes that digest from the resolved
+resource-root tree (relative paths, modes/types, and file or symlink content)
+and fails closed on a mismatch.  A bare resource path derives the same digest
+automatically.  Only the stable digest enters the record, never the host path,
+so identical trees at different mount points remain path-independent.
+
+This verified resource-bundle digest is separate from the later
+`toolchain_digest` identity: R00/R00a bind the executor to the pinned OCI image
+digest, while R2b verifies the mounted project/toolchain resource root.  R2b
+does not redesign the executor/toolchain identity composition.
 
 The dynamic tests in `backend/tests/test_release_studio_closure.py` build small
 local repositories with nested submodules and LFS pointer blobs.  They do not

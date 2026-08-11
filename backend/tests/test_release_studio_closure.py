@@ -16,6 +16,7 @@ from app.release_studio.closure import (
     LfsMaterializationError,
     PinnedToolchainResource,
     materialize_input_closure,
+    resource_root_digest,
 )
 
 
@@ -272,7 +273,7 @@ class ReleaseStudioClosureTests(unittest.TestCase):
             '(options "") (descr "")))\n',
             encoding="utf-8",
         )
-        resource_digest = hashlib.sha256(b"pinned-resource").hexdigest()
+        resource_digest = resource_root_digest(toolchain)
         self.assertTrue(resource_digest)
         copied_toolchain = self.root / "pinned-kicad-copy/footprints"
         shutil.copytree(toolchain, copied_toolchain)
@@ -294,9 +295,10 @@ class ReleaseStudioClosureTests(unittest.TestCase):
             self.root / "pinned-closure-copy",
             relative_path="hardware/board",
             toolchain_resources={
-                "KICAD10_FOOTPRINT_DIR": PinnedToolchainResource(
-                    "KICAD10_FOOTPRINT_DIR", copied_toolchain, resource_digest
-                )
+                "KICAD10_FOOTPRINT_DIR": {
+                    "root": copied_toolchain,
+                    "digest": resource_digest,
+                }
             },
         )
         self.assertEqual(closure.input_closure_digest, copied_closure.input_closure_digest)
@@ -307,6 +309,23 @@ class ReleaseStudioClosureTests(unittest.TestCase):
             {reference.resolved_path for reference in closure.library_references},
         )
         self.assertEqual(closure.env_bindings[0].value, "toolchain:KICAD10_FOOTPRINT_DIR")
+
+        (toolchain / "Common.pretty/common.kicad_mod").write_text(
+            "(footprint mutated)", encoding="utf-8"
+        )
+        with self.assertRaisesRegex(ClosureError, "digest mismatch"):
+            materialize_input_closure(
+                self.repo,
+                pinned_commit,
+                self.root / "pinned-closure-mutated",
+                relative_path="hardware/board",
+                toolchain_resources={
+                    "KICAD10_FOOTPRINT_DIR": {
+                        "root": toolchain,
+                        "digest": resource_digest,
+                    }
+                },
+            )
 
         with self.assertRaisesRegex(ClosureError, "no pinned digest"):
             materialize_input_closure(
