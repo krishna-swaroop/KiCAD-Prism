@@ -214,6 +214,27 @@ def _step_projection(data: bytes) -> tuple[int, bytes]:
     return len(_STEP_ENTITY_RE.findall(body)), body
 
 
+def _assert_kicad_output(
+    result,
+    output: Path,
+    label: str,
+    *,
+    directory: bool = False,
+) -> None:
+    if result.returncode != 0:
+        raise AssertionError(f"{label} generation failed:\n{result.stdout}\n{result.stderr}")
+    if directory:
+        files = (
+            [path for path in output.iterdir() if path.is_file() and path.stat().st_size > 0]
+            if output.is_dir()
+            else []
+        )
+        if not files:
+            raise AssertionError(f"{label} generation produced no files: {output}")
+    elif not output.is_file() or output.stat().st_size == 0:
+        raise AssertionError(f"{label} generation produced an empty output: {output}")
+
+
 def _generate_samples(root: Path) -> dict[str, Path]:
     """Generate R4 inputs from R0 synthetic using the live KiCad CLI.
 
@@ -260,8 +281,7 @@ def _generate_samples(root: Path) -> dict[str, Path]:
         str(board),
         cwd=live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(f"Gerber generation failed:\n{result.stdout}\n{result.stderr}")
+    _assert_kicad_output(result, gerbers, "Gerber", directory=True)
 
     drill = output_root / "drill"
     drill.mkdir()
@@ -278,8 +298,7 @@ def _generate_samples(root: Path) -> dict[str, Path]:
         str(board),
         cwd=live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(f"Excellon generation failed:\n{result.stdout}\n{result.stderr}")
+    _assert_kicad_output(result, drill, "Excellon", directory=True)
 
     step = output_root / "board.step"
     result = run_kicad_cli(
@@ -291,8 +310,7 @@ def _generate_samples(root: Path) -> dict[str, Path]:
         str(board),
         cwd=live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(f"STEP generation failed:\n{result.stdout}\n{result.stderr}")
+    _assert_kicad_output(result, step, "STEP")
 
     svg = output_root / "board.svg"
     result = run_kicad_cli(
@@ -307,20 +325,20 @@ def _generate_samples(root: Path) -> dict[str, Path]:
         str(svg_board),
         cwd=svg_live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(f"SVG generation failed:\n{result.stdout}\n{result.stderr}")
+    _assert_kicad_output(result, svg, "SVG")
 
     drc = output_root / "board-drc.json"
     result = run_kicad_cli(
         "pcb",
         "drc",
+        "--format",
+        "json",
         "--output",
         str(drc),
         str(board),
         cwd=live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(f"DRC generation failed:\n{result.stdout}\n{result.stderr}")
+    _assert_kicad_output(result, drc, "DRC")
 
     erc = output_root / "schematic-erc.json"
     result = run_kicad_cli(
@@ -334,8 +352,7 @@ def _generate_samples(root: Path) -> dict[str, Path]:
         str(schematic),
         cwd=live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(f"ERC generation failed:\n{result.stdout}\n{result.stderr}")
+    _assert_kicad_output(result, erc, "ERC")
 
     raw_stats = output_root / "raw-board-stats.json"
     result = run_kicad_cli(
@@ -349,10 +366,7 @@ def _generate_samples(root: Path) -> dict[str, Path]:
         str(board),
         cwd=live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(
-            f"board statistics generation failed:\n{result.stdout}\n{result.stderr}"
-        )
+    _assert_kicad_output(result, raw_stats, "board statistics")
 
     pdf = output_root / "schematic.pdf"
     result = run_kicad_cli(
@@ -364,8 +378,7 @@ def _generate_samples(root: Path) -> dict[str, Path]:
         str(schematic),
         cwd=live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(f"PDF generation failed:\n{result.stdout}\n{result.stderr}")
+    _assert_kicad_output(result, pdf, "PDF")
 
     csv_path = output_root / "bom.csv"
     result = run_kicad_cli(
@@ -380,8 +393,7 @@ def _generate_samples(root: Path) -> dict[str, Path]:
         str(schematic),
         cwd=live_root,
     )
-    if result.returncode != 0:
-        raise AssertionError(f"CSV generation failed:\n{result.stdout}\n{result.stderr}")
+    _assert_kicad_output(result, csv_path, "CSV")
 
     gerber = next(
         path for path in sorted(gerbers.glob("*.gbr")) if not path.name.endswith("-job.gbr")
@@ -687,12 +699,12 @@ class ReleaseStudioGeneratedSemanticTests(unittest.TestCase):
 
     def test_svg_strips_metadata_comments_and_preserves_complete_geometry(self) -> None:
         raw = self.samples["svg"].read_text(encoding="utf-8")
-        derived = (
+        timestamp_comment = (
             "<!-- generated on "
             + datetime.now(timezone.utc).isoformat()
-            + " -->\n"
-            + raw
+            + " -->"
         )
+        derived = timestamp_comment + "\n" + raw
         if "<metadata" not in derived.lower():
             derived = derived.replace(
                 "<svg",
@@ -702,6 +714,8 @@ class ReleaseStudioGeneratedSemanticTests(unittest.TestCase):
         cleaned = canonicalize("svg", derived.encode()).decode("utf-8")
         self.assertIsNone(_SVG_TIMESTAMP_COMMENT.search(cleaned))
         self.assertIsNone(_SVG_METADATA.search(cleaned))
+        if raw.startswith("<?xml"):
+            self.assertTrue(cleaned.startswith("<?xml"))
         self.assertEqual(_svg_projection(raw), _svg_projection(cleaned))
 
     def test_pdf_preserves_page_count_and_extracted_text(self) -> None:

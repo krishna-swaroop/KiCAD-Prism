@@ -174,7 +174,11 @@ def canonicalize_svg(data: bytes) -> bytes:
     text = _as_text(data)
     text = _SVG_METADATA.sub("", text)
     text = _SVG_DATE_COMMENT.sub("", text)
-    return _normalize_newlines(text).encode("utf-8")
+    text = _normalize_newlines(text)
+    declaration_index = text.find("<?xml")
+    if declaration_index > 0 and not text[:declaration_index].strip():
+        text = text[declaration_index:]
+    return text.encode("utf-8")
 
 
 def canonicalize_board_stats_json(data: bytes) -> bytes:
