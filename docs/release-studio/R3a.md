@@ -4,10 +4,13 @@ R3a appends Migration 9, `release_studio_hardening`, to repair databases that
 already applied Migration 8. Migration 8 remains historical state; fresh
 databases still run M8 and then M9. The migration is safe to replay directly.
 
-## Stage 1 vocabulary
+Migration 10 is the follow-on correction for the approval decision vocabulary;
+its compatibility and upgrade rules are documented in [`R3b.md`](R3b.md).
 
-The database now deliberately accepts only these evaluator and approval
-values:
+## Stage 1 vocabulary in Migration 9
+
+Migration 9 deliberately accepts only these evaluator and approval values in
+the schema it installs:
 
 | Column | Vocabulary |
 | --- | --- |
@@ -19,6 +22,11 @@ values:
 Migration 9 converts the old development-only evaluation values
 `warn` → `warning`, `block` → `blocker`, and `error` → `failure` before adding
 the canonical CHECK. The old aggregate vocabulary is not retained.
+
+Migration 9's approval CHECK is historical and accepts
+`approved|changes_requested|emergency_override`. Migration 10 adds the
+plan-specified `rejected` value and gives the pre-existing
+`emergency_override` value an explicit, reasoned exceptional meaning.
 
 ## Data-shape and provenance contracts
 
@@ -48,7 +56,12 @@ history. Release supersession uses a composite foreign key over
 Audit sequence numbers are positive and scoped by `(project_id, config_key)`.
 Sequence 1 is the genesis event and requires `previous_hash IS NULL`; later
 events require a nonblank previous hash. Canonical hashing represents that
-genesis value as JSON `null`, never as an empty string.
+genesis value as JSON `null`, never as an empty string. Before adding these
+CHECKs, M9 deterministically preflights the existing M8 audit table. An
+invalid row stops the migration with a named precondition error; M9 does not
+rewrite sequence or hash fields because doing so would fabricate a different
+audit chain. M9 is expected before R11 writers and requires a valid or empty
+audit history.
 
 The redundant leading-key indexes on closure inputs, members, scope
 fingerprints, and audit events are removed. The member-domain build index is
@@ -62,7 +75,7 @@ remain lifecycle-updateable; and release records may update only
 ## Validation
 
 `backend/tests/test_release_studio_schema_migration.py` applies a disposable
-PostgreSQL schema through M9, replays M9 directly, inspects
+PostgreSQL schema through M10, replays M9/M10 directly, inspects
 `information_schema`/`pg_catalog`, checks v8-shaped upgrade data, and probes
 the FK, CHECK, provenance, supersession, signature, audit, and trigger
 boundaries. It uses `TEST_POSTGRES_URL` only and skips when that isolated URL
@@ -75,6 +88,8 @@ Migration ordering that the upgrade path depends on:
 2. Disable `trg_ws_release_policy_versions_guard` while normalizing `rules` and
    backfilling `published_at`/`published_by` on published/retired rows, then
    re-enable it before installing the replacement guard function.
+3. Preflight existing audit rows before adding the sequence/genesis CHECKs;
+   there is no hash-destroying backfill path.
 
 Isolated acceptance run:
 
