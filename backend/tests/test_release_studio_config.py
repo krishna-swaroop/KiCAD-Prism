@@ -8,16 +8,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app.release_studio.canonical import canonical_json, sha256_canonical
 from app.release_studio.config import (
     ConfigLoadError,
     ConfigSchemaError,
     SubstitutionError,
-    canonical_json,
     load_configuration_at_commit,
     load_configuration_from_checkout,
     parse_configuration_yaml,
     parse_policy_yaml,
-    sha256_canonical,
     substitute_string,
     technical_config_digest,
     validate_org_extends,
@@ -488,8 +487,15 @@ variants: null
         self.assertEqual(canonical_json(composed), canonical_json(decomposed))
         self.assertEqual(sha256_canonical(composed), sha256_canonical(decomposed))
 
-        with self.assertRaisesRegex(ValueError, "collision.*NFC"):
+        with self.assertRaisesRegex(ValueError, "NFC-normalized.*collision"):
             canonical_json({"e\u0301": "first", "é": "second"})
+
+    def test_canonical_json_rejects_non_string_keys(self) -> None:
+        message = "canonical JSON object keys must be strings"
+        with self.assertRaisesRegex(TypeError, message):
+            canonical_json({1: "top-level"})
+        with self.assertRaisesRegex(TypeError, message):
+            canonical_json({"nested": {2: "nested"}})
 
     def test_technical_config_digest_ignores_policy_reference_only_changes(self) -> None:
         base = parse_configuration_yaml(_MIN_CONFIG)

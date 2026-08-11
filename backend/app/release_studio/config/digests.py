@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from .canonical import sha256_canonical
+from app.release_studio.canonical import sha256_canonical
 from .errors import ConfigSchemaError
 
 # Keep these sets explicit. A new configuration key must be classified here

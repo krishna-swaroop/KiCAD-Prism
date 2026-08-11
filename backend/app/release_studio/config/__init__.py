@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .canonical import canonical_json, sha256_canonical
+from app.release_studio.canonical import canonical_json, sha256_canonical
 from .digests import technical_config_digest, technical_config_payload
 from .errors import (
     ConfigLoadError,
