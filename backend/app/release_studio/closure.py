@@ -705,6 +705,7 @@ def _coerce_toolchain_resources(
             root = Path(os.fspath(value))
             resource_name = name
             digest = _digest_path(root)
+        digest = str(digest).strip()
         if not digest:
             raise ClosureError(f"toolchain resource {name!r} has no pinned digest")
         specs[resource_name] = _ToolchainSpec(

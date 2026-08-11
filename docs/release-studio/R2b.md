@@ -48,7 +48,10 @@ excluded.  Records are sorted before hashing, and
 `app.release_studio.canonical.sha256_canonical` boundary.  Consequently two
 independent materializations of the same commit and pinned resources have the
 same digest, while a regular file and a symlink differ through their mode/type
-record even when they point at equivalent content.
+record even when they point at equivalent content.  A pinned toolchain digest
+is an opaque, caller-supplied nonblank identity (for example an OCI digest or
+resource-bundle digest); R2b intentionally does not require a particular digest
+format, and records only that stable value, not the host resource path.
 
 The dynamic tests in `backend/tests/test_release_studio_closure.py` build small
 local repositories with nested submodules and LFS pointer blobs.  They do not

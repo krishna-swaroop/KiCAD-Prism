@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.release_studio.canonical import sha256_canonical
 from app.release_studio.closure import (
+    ClosureError,
     ExternalPathError,
     LfsMaterializationError,
     PinnedToolchainResource,
@@ -122,9 +123,32 @@ class ReleaseStudioClosureTests(unittest.TestCase):
     def test_full_tree_recursive_submodules_lfs_and_digest_are_deterministic(self) -> None:
         payload = b"small hydrated STEP payload\n"
         source_lfs_path = self.repo / "hardware/board/model.step"
+        clone = self.root / "monorepo-independent-clone"
+        self._git(
+            self.root,
+            "-c",
+            "protocol.file.allow=always",
+            "clone",
+            "--quiet",
+            "--no-local",
+            "--recurse-submodules",
+            str(self.repo),
+            str(clone),
+        )
+        self.assertEqual(self._git(clone, "rev-parse", "HEAD").strip(), self.commit)
+        # Clone-local submodule URL/config state may contain different host
+        # paths, but the recorded commit tree and gitlinks must be identical.
+        self.assertEqual(
+            self._git(self.repo, "ls-tree", "-r", "--full-tree", self.commit),
+            self._git(clone, "ls-tree", "-r", "--full-tree", self.commit),
+        )
         source_lfs_path.write_bytes(payload)
+        clone_lfs_path = clone / "hardware/board/model.step"
+        clone_lfs_path.write_bytes(payload)
         before_status = self._status(self.repo)
+        clone_before_status = self._status(clone)
         before_source = source_lfs_path.read_bytes()
+        clone_before_source = clone_lfs_path.read_bytes()
 
         destination = self.root / "materialized-a"
         second_destination = self.root / "materialized-b"
@@ -135,7 +159,7 @@ class ReleaseStudioClosureTests(unittest.TestCase):
             relative_path="hardware/board",
         )
         second = materialize_input_closure(
-            self.repo,
+            clone,
             self.commit,
             second_destination,
             relative_path="hardware/board",
@@ -144,6 +168,9 @@ class ReleaseStudioClosureTests(unittest.TestCase):
         self.assertEqual(first.input_closure_digest, second.input_closure_digest)
         self.assertEqual(first.input_closure_digest, sha256_canonical(first.to_dict(False)))
         self.assertEqual(first.to_dict(), second.to_dict())
+        record_text = repr(first.to_dict())
+        for host_path in (self.repo, clone, destination, second_destination):
+            self.assertNotIn(str(host_path), record_text)
         self.assertEqual(
             (destination / ".prism/release-studio/project.yaml").read_text(),
             "closure: whole-tree\n",
@@ -177,6 +204,8 @@ class ReleaseStudioClosureTests(unittest.TestCase):
         )
         self.assertEqual(before_status, self._status(self.repo))
         self.assertEqual(before_source, source_lfs_path.read_bytes())
+        self.assertEqual(clone_before_status, self._status(clone))
+        self.assertEqual(clone_before_source, clone_lfs_path.read_bytes())
 
     def test_unmaterialized_and_mismatched_lfs_content_fail_closed(self) -> None:
         with self.assertRaisesRegex(LfsMaterializationError, "unmaterialized"):
@@ -244,6 +273,9 @@ class ReleaseStudioClosureTests(unittest.TestCase):
             encoding="utf-8",
         )
         resource_digest = hashlib.sha256(b"pinned-resource").hexdigest()
+        self.assertTrue(resource_digest)
+        copied_toolchain = self.root / "pinned-kicad-copy/footprints"
+        shutil.copytree(toolchain, copied_toolchain)
         pinned_commit = self._commit(self.repo, "pinned resource")
         closure = materialize_input_closure(
             self.repo,
@@ -256,11 +288,38 @@ class ReleaseStudioClosureTests(unittest.TestCase):
                 )
             },
         )
+        copied_closure = materialize_input_closure(
+            self.repo,
+            pinned_commit,
+            self.root / "pinned-closure-copy",
+            relative_path="hardware/board",
+            toolchain_resources={
+                "KICAD10_FOOTPRINT_DIR": PinnedToolchainResource(
+                    "KICAD10_FOOTPRINT_DIR", copied_toolchain, resource_digest
+                )
+            },
+        )
+        self.assertEqual(closure.input_closure_digest, copied_closure.input_closure_digest)
+        self.assertEqual(closure.to_dict(), copied_closure.to_dict())
+        self.assertEqual(closure.toolchain_resources[0].digest, resource_digest)
         self.assertIn(
             "toolchain:KICAD10_FOOTPRINT_DIR/Common.pretty",
             {reference.resolved_path for reference in closure.library_references},
         )
         self.assertEqual(closure.env_bindings[0].value, "toolchain:KICAD10_FOOTPRINT_DIR")
+
+        with self.assertRaisesRegex(ClosureError, "no pinned digest"):
+            materialize_input_closure(
+                self.repo,
+                pinned_commit,
+                self.root / "pinned-closure-invalid",
+                relative_path="hardware/board",
+                toolchain_resources={
+                    "KICAD10_FOOTPRINT_DIR": PinnedToolchainResource(
+                        "KICAD10_FOOTPRINT_DIR", toolchain, ""
+                    )
+                },
+            )
 
     def _init_repo(self, path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
