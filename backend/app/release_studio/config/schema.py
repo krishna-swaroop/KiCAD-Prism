@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from copy import deepcopy
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Mapping
 
@@ -157,7 +156,7 @@ def validate_configuration_mapping(
         "schematic": schematic,
         "jobset": jobset,
         "default_variant": default_variant,
-        "fields": deepcopy(dict(fields)),
+        "fields": dict(fields),
         "notes": {key: list(value) for key, value in notes.items()},
         "variants": variants,
     }
@@ -239,7 +238,7 @@ def validate_policy_mapping(
 
     normalized: dict[str, Any] = {
         "schema": POLICY_SCHEMA,
-        "rules": deepcopy(rules),
+        "rules": list(rules),
     }
     if extends is not None:
         normalized["extends"] = extends
@@ -248,7 +247,7 @@ def validate_policy_mapping(
     if title is not None:
         normalized["title"] = title
     if waivers is not None:
-        normalized["waivers"] = deepcopy(dict(waivers))
+        normalized["waivers"] = dict(waivers)
     return normalized
 
 
