@@ -136,13 +136,22 @@ Why this wins:
 - **Traffic is effectively free** at 20 TB. Your demo will use single-digit GB.
   This satisfies the spirit of "charges by traffic" better than metered hosts do,
   because the traffic bill is simply zero.
-- **x86 matters.** Your `.env` currently targets
-  `KICAD_BASE_IMAGE=kicad/kicad:10.0.4-arm64-local` — a base image you built
-  yourself on Apple Silicon, which does not exist in any registry. On an x86 host
-  use the repository's pinned upstream `kicad/kicad:10.0.4` AMD64 image and its
-  digest. Native ARM64 release images are not published; Docker Desktop can
-  emulate the supported AMD64 image for local testing, but AMD64 is the public
-  deployment target.
+- **x86 matters.** `.env` does not select the KiCad base image. Source builds use
+  the repository's pinned upstream `kicad/kicad:10.0.4` AMD64 image and its
+  digest from `backend/Dockerfile`. Native ARM64 release images are not
+  published; Docker Desktop can emulate the supported AMD64 image for local
+  testing, but AMD64 is the public deployment target. For a locally built ARM
+  image on Apple Silicon, keep `KICAD_BASE_PLATFORM` and `DOCKER_PLATFORM`
+  aligned in `.env`, then select that image at build time:
+
+  ```bash
+  docker compose build \
+    --build-arg KICAD_BASE_IMAGE=kicad/kicad:10.0.4-arm64-local
+  docker compose up -d
+  ```
+
+  `KICAD_BASE_IMAGE` is a build-time override, not a runtime Compose
+  environment variable.
 - Everything you already have — `docker-compose.yml`, `deploy/Caddyfile` — runs
   unchanged.
 
@@ -332,9 +341,8 @@ Edit `.env`. The demo-critical values (see §4 for the full rationale — **do n
 skip that section, the defaults are unsafe for public hosting**):
 
 ```env
-# --- Platform: use the Dockerfile AMD64 KiCad default ---
-# Exact digest lives only in backend/Dockerfile. Override at build time with:
-#   docker compose build --build-arg KICAD_BASE_IMAGE=...
+# --- Runtime/build platform: use the Dockerfile AMD64 KiCad default ---
+# The base image is selected during `docker compose build`, not in this file.
 KICAD_BASE_PLATFORM=linux/amd64
 DOCKER_PLATFORM=linux/amd64
 
@@ -359,6 +367,16 @@ SESSION_SECRET=<generate with the command below>
 GITHUB_TOKEN=
 ```
 
+The values above configure the runtime environment and build platform. Build the
+backend image separately so the Dockerfile default is used for the public AMD64
+deployment, or pass an explicit build-time override when testing another image:
+
+```bash
+docker compose build
+# Override example:
+# docker compose build --build-arg KICAD_BASE_IMAGE=<image>
+```
+
 Generate secrets:
 
 ```bash
@@ -376,10 +394,10 @@ demo.kicadprism.com {
 ```
 
 Caddy obtains and renews a Let's Encrypt certificate automatically. Bring the
-stack up with the proxy overlay:
+stack up with the proxy overlay after the image build:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --wait
 ```
 
 The first build compiles the frontend and installs the Python environment on top
