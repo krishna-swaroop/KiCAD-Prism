@@ -1,71 +1,264 @@
-name: Build and Publish Docker Images
+name: Tagged release images
 
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch: {}
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  BACKEND_IMAGE: ghcr.io/krishna-swaroop/kicad-prism-backend
+  FRONTEND_IMAGE: ghcr.io/krishna-swaroop/kicad-prism-frontend
 
 jobs:
-  build-and-push:
-    runs-on: self-hosted
+  validate:
+    name: Validate release source
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
+      actions: read
       contents: read
-      packages: write
+
+    outputs:
+      commit_sha: ${{ steps.source.outputs.commit_sha }}
+      image_tags: ${{ steps.metadata.outputs.image_tags }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+      version: ${{ steps.metadata.outputs.version }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Check out tagged source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate semantic release tag
+        id: metadata
+        run: >-
+          python3 scripts/release_bundle.py metadata
+          --tag "$GITHUB_REF_NAME"
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Require tagged commit on main
+        id: source
+        run: |
+          git fetch --no-tags origin main
+          tagged_commit="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          if ! git merge-base --is-ancestor "$tagged_commit" origin/main; then
+            echo "Release tag $GITHUB_REF_NAME does not point to a commit contained in main." >&2
+            exit 1
+          fi
+          echo "commit_sha=$tagged_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Require successful main quality gate
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          TAGGED_COMMIT: ${{ steps.source.outputs.commit_sha }}
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: "dev-quality-gate.yml",
+              branch: "main",
+              event: "push",
+              head_sha: process.env.TAGGED_COMMIT,
+              status: "success",
+              per_page: 100,
+            });
+            if (response.data.workflow_runs.length === 0) {
+              core.setFailed(
+                `Tagged commit ${process.env.TAGGED_COMMIT} does not have a successful Quality gate push run on main.`
+              );
+            }
+
+  build-smoke-publish:
+    name: Build, smoke-test, and publish AMD64 release
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      packages: write
+
+    env:
+      DOCKER_DEFAULT_PLATFORM: linux/amd64
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RELEASE_IMAGE_TAGS: ${{ needs.validate.outputs.image_tags }}
+      RELEASE_COMMIT: ${{ needs.validate.outputs.commit_sha }}
+      LOCAL_BACKEND_IMAGE: local/kicad-prism-backend:${{ needs.validate.outputs.version }}
+      LOCAL_FRONTEND_IMAGE: local/kicad-prism-frontend:${{ needs.validate.outputs.version }}
+      POSTGRES_PASSWORD: prism-release-smoke-test
+      PRISM_BACKEND_IMAGE: local/kicad-prism-backend:${{ needs.validate.outputs.version }}
+      PRISM_FRONTEND_IMAGE: local/kicad-prism-frontend:${{ needs.validate.outputs.version }}
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.commit_sha }}
+
+      - name: Record build metadata
+        id: build-metadata
+        run: echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - name: Build backend image locally
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
-          registry: ${{ env.REGISTRY }}
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.LOCAL_BACKEND_IMAGE }}
+          build-args: |
+            KICAD_BASE_PLATFORM=linux/amd64
+            PRISM_RELEASE=${{ env.RELEASE_VERSION }}
+            PRISM_REVISION=${{ env.RELEASE_COMMIT }}
+            PRISM_BUILD_DATE=${{ steps.build-metadata.outputs.build_date }}
+          cache-from: type=gha,scope=release-backend-amd64
+          cache-to: type=gha,mode=max,scope=release-backend-amd64
+
+      - name: Build frontend image locally
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.LOCAL_FRONTEND_IMAGE }}
+          build-args: |
+            PRISM_RELEASE=${{ env.RELEASE_VERSION }}
+            PRISM_REVISION=${{ env.RELEASE_COMMIT }}
+            PRISM_BUILD_DATE=${{ steps.build-metadata.outputs.build_date }}
+          cache-from: type=gha,scope=release-frontend-amd64
+          cache-to: type=gha,mode=max,scope=release-frontend-amd64
+
+      - name: Prepare isolated smoke-test deployment
+        id: prepare_smoke
+        run: |
+          smoke_project_dir="$RUNNER_TEMP/prism-smoke"
+          prism_env_file="$smoke_project_dir/.env"
+          mkdir -p "$smoke_project_dir"
+          cp deploy/release/.env.example "$prism_env_file"
+          sed -i \
+            -e 's/^AUTH_ENABLED=.*/AUTH_ENABLED=false/' \
+            -e 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://127.0.0.1:8080|' \
+            -e '/^PRISM_RELEASE=/d' \
+            -e '/^PRISM_REVISION=/d' \
+            -e '/^PRISM_BUILD_DATE=/d' \
+            "$prism_env_file"
+          echo "SMOKE_PROJECT_DIR=$smoke_project_dir" >> "$GITHUB_ENV"
+          echo "PRISM_ENV_FILE=$prism_env_file" >> "$GITHUB_ENV"
+
+      - name: Start complete release stack
+        run: >-
+          docker compose
+          --project-directory "$SMOKE_PROJECT_DIR"
+          --project-name prism-release-smoke
+          -f "$GITHUB_WORKSPACE/deploy/release/compose.yml"
+          up -d --wait --wait-timeout 600
+
+      - name: Verify release stack and native KiCad
+        run: |
+          compose=(
+            docker compose
+            --project-directory "$SMOKE_PROJECT_DIR"
+            --project-name prism-release-smoke
+            -f "$GITHUB_WORKSPACE/deploy/release/compose.yml"
+          )
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS http://127.0.0.1:8080/api/health/ready |
+            jq -e --arg revision "$RELEASE_COMMIT" '.status == "ready" and .revision == $revision'
+          "${compose[@]}" exec -T catalog-worker grep -aq app.prism_worker /proc/1/cmdline
+          "${compose[@]}" exec -T prism-worker grep -aq app.prism_worker /proc/1/cmdline
+          test "$("${compose[@]}" exec -T backend uname -m | tr -d '\r')" = "x86_64"
+          "${compose[@]}" exec -T backend kicad-cli --version
+
+      - name: Print smoke-test logs after failure
+        if: ${{ failure() && steps.prepare_smoke.outcome == 'success' }}
+        run: >-
+          docker compose
+          --project-directory "$SMOKE_PROJECT_DIR"
+          --project-name prism-release-smoke
+          -f "$GITHUB_WORKSPACE/deploy/release/compose.yml"
+          logs --no-color
+
+      - name: Stop smoke-test deployment
+        if: ${{ always() && steps.prepare_smoke.outcome == 'success' }}
+        run: >-
+          docker compose
+          --project-directory "$SMOKE_PROJECT_DIR"
+          --project-name prism-release-smoke
+          -f "$GITHUB_WORKSPACE/deploy/release/compose.yml"
+          down --volumes --remove-orphans
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for Backend
-        id: meta-backend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+      - name: Publish the smoke-tested images
+        id: publish
+        run: |
+          IFS=',' read -r -a release_tags <<< "$RELEASE_IMAGE_TAGS"
+          for release_tag in "${release_tags[@]}"; do
+            backend_ref="$BACKEND_IMAGE:$release_tag"
+            frontend_ref="$FRONTEND_IMAGE:$release_tag"
+            docker tag "$LOCAL_BACKEND_IMAGE" "$backend_ref"
+            docker tag "$LOCAL_FRONTEND_IMAGE" "$frontend_ref"
+            docker push "$backend_ref"
+            docker push "$frontend_ref"
+          done
 
-      - name: Build and push Backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./backend/Dockerfile
-          push: true
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          backend_digest_ref="$(
+            docker image inspect \
+              --format '{{ index .RepoDigests 0 }}' \
+              "$BACKEND_IMAGE:$RELEASE_VERSION"
+          )"
+          frontend_digest_ref="$(
+            docker image inspect \
+              --format '{{ index .RepoDigests 0 }}' \
+              "$FRONTEND_IMAGE:$RELEASE_VERSION"
+          )"
+          test "${backend_digest_ref#*@sha256:}" != "$backend_digest_ref"
+          test "${frontend_digest_ref#*@sha256:}" != "$frontend_digest_ref"
+          echo "backend_digest_ref=$backend_digest_ref" >> "$GITHUB_OUTPUT"
+          echo "frontend_digest_ref=$frontend_digest_ref" >> "$GITHUB_OUTPUT"
 
-      - name: Extract metadata for Frontend
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+      - name: Build digest-pinned deployment bundle
+        id: bundle
+        run: |
+          python3 scripts/release_bundle.py bundle \
+            --template-dir deploy/release \
+            --output-root "$RUNNER_TEMP/release-assets" \
+            --tag "$GITHUB_REF_NAME" \
+            --backend-image "${{ steps.publish.outputs.backend_digest_ref }}" \
+            --frontend-image "${{ steps.publish.outputs.frontend_digest_ref }}" \
+            --revision "$RELEASE_COMMIT" \
+            --build-date "${{ steps.build-metadata.outputs.build_date }}" \
+            --github-output "$GITHUB_OUTPUT"
 
-      - name: Build and push Frontend image
-        uses: docker/build-push-action@v5
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          context: ./frontend
-          push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          name: KiCAD Prism ${{ github.ref_name }}
+          prerelease: ${{ needs.validate.outputs.prerelease }}
+          make_latest: ${{ needs.validate.outputs.prerelease == 'false' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.bundle.outputs.archive }}
+            ${{ steps.bundle.outputs.archive_checksum }}

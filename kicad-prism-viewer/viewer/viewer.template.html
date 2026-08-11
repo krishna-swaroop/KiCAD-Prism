@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>$title</title>
+    <style>
+$styles
+    </style>
+  </head>
+  <body>
+    <main id="app">
+      <nav class="workspace-rail" aria-label="Visualiser views">
+        <button class="workspace-tab active" data-workspace="pcb" title="PCB visualiser">PCB</button>
+        <button class="workspace-tab" data-workspace="schematic" title="Schematic world">Schematic</button>
+        <button class="workspace-tab" data-workspace="bom" title="Bill of materials">BoM</button>
+        <button class="workspace-tab" data-workspace="stackup" title="Layer Stackup">Stackup</button>
+      </nav>
+      <section class="viewport-shell">
+        <canvas id="viewport"></canvas>
+        <canvas id="schematic-viewport" hidden></canvas>
+        <div id="schematic-dom-layer" hidden></div>
+        <canvas id="schematic-flow-overlay" hidden></canvas>
+        <div id="bom-view" hidden></div>
+        <div id="stackup-workspace-view" hidden></div>
+        <div id="panel-labels"></div>
+        <div id="schematic-labels" hidden></div>
+        <div id="selection-card" hidden></div>
+        <canvas id="axis-gizmo" width="112" height="112" title="Click an axis to align the camera"></canvas>
+        <div id="fallback" hidden></div>
+      </section>
+      <aside class="panel">
+        <nav class="panel-rail" aria-label="Viewer tools">
+          <button class="rail-tab active" data-tab="layers" title="Layers">Layers</button>
+          <button class="rail-tab" data-tab="search" title="Search and selection">Find</button>
+          <button class="rail-tab" data-tab="view" title="View controls">View</button>
+        </nav>
+        <div class="panel-drawer">
+          <header>
+            <p id="viewer-kind" class="eyebrow">Semantic GLTF A0</p>
+            <h1>$title</h1>
+            <p id="status">Booting renderer</p>
+          </header>
+          <section class="tab-panel active" data-panel="layers">
+            <div class="section-heading"><h2 id="primary-heading">Layers</h2><span id="primary-description">Visibility and compare</span></div>
+            <div id="layers"></div>
+          </section>
+          <section class="tab-panel" data-panel="search">
+            <div class="section-heading"><h2>Find</h2><span>Nets, components and pins</span></div>
+            <div id="search-controls"></div>
+          </section>
+          <section class="tab-panel" data-panel="view">
+            <div class="section-heading"><h2>View</h2><span>Camera and stackup</span></div>
+            <div id="view-controls"></div>
+          </section>
+        </div>
+      </aside>
+    </main>
+    <script>
+      window.__TOPOLOGY__ = $topology_json;
+      window.__SEMANTIC_GEOMETRY__ = $semantic_geometry_json;
+    </script>
+    <script>
+$app
+    </script>
+  </body>
+</html>

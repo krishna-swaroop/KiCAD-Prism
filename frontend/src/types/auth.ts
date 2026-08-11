@@ -10,10 +10,15 @@ export interface User {
 export interface AuthConfig {
     auth_enabled: boolean;
     dev_mode: boolean;
-    oidc_issuer_url: string;
-    oidc_authorization_endpoint: string;
-    oidc_client_id: string;
-    oidc_scopes: string;
     oidc_provider_name: string;
     workspace_name: string;
+}
+
+export interface ActiveSession {
+    id: string;
+    created_at: string;
+    last_seen_at: string;
+    expires_at: string;
+    user_agent: string;
+    client_ip: string;
 }

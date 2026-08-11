@@ -1,0 +1,44 @@
+<svg width="900" height="630" viewBox="0 0 900 630" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bannerTitle bannerDesc">
+  <title id="bannerTitle">KiCAD-Prism: Git-Native, Self-Hosted Collaboration and Library Governance for KiCad Teams</title>
+  <desc id="bannerDesc">KiCon Europe 2026 talk banner for KiCAD-Prism.</desc>
+
+  <defs>
+    <linearGradient id="bannerBg" x1="0" y1="0" x2="900" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#020617"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+
+    <linearGradient id="kpStroke" x1="6" y1="6" x2="60" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="0.55" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+
+    <linearGradient id="kpFacetTint" x1="34" y1="18" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#93C5FD" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#1D4ED8" stop-opacity="0.26"/>
+    </linearGradient>
+
+    <pattern id="kpHatch" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="4" stroke="#60A5FA" stroke-opacity="0.66" stroke-width="1.8"/>
+    </pattern>
+  </defs>
+
+  <rect width="900" height="630" fill="url(#bannerBg)"/>
+
+  <g transform="translate(335 56) scale(3.6)">
+    <polygon points="32,4 58,19 32,60 6,19" stroke="url(#kpStroke)" stroke-width="4" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+    <polygon points="58,19 32,31 32,60" fill="url(#kpFacetTint)"/>
+    <polygon points="58,19 32,31 32,60" fill="url(#kpHatch)"/>
+    <polyline points="6,19 32,31 32,60" stroke="url(#kpStroke)" stroke-width="4" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+    <line x1="32" y1="31" x2="58" y2="19" stroke="url(#kpStroke)" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <text x="450" y="338" text-anchor="middle" fill="#F8FAFC" font-size="42" font-weight="700" font-family="Inter, Segoe UI, Arial, sans-serif" letter-spacing="0.2">
+    <tspan x="450" dy="0">KiCAD-Prism:</tspan>
+    <tspan x="450" dy="52" font-size="30" font-weight="600" fill="#E2E8F0">Git-Native, Self-Hosted Collaboration</tspan>
+    <tspan x="450" dy="46" font-size="30" font-weight="600" fill="#E2E8F0">and Library Governance for KiCad Teams</tspan>
+  </text>
+
+  <text x="450" y="598" text-anchor="middle" fill="#64748B" font-size="16" font-weight="600" font-family="Inter, Segoe UI, Arial, sans-serif" letter-spacing="0.12em">KICON EUROPE 2026</text>
+</svg>

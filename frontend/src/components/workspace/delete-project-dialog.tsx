@@ -1,8 +1,6 @@
-import { type KeyboardEvent } from "react";
-
-import { isDialogSubmitShortcut } from "@/lib/dialog-shortcuts";
 import { Project } from "@/types/project";
 import { Button } from "@/components/ui/button";
+import { HoldToConfirmButton } from "@/components/ui/hold-to-confirm-button";
 import {
   Dialog,
   DialogContent,
@@ -27,22 +25,12 @@ export function DeleteProjectDialog({
   onConfirm,
   getProjectDisplayName,
 }: DeleteProjectDialogProps) {
-  const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!isDialogSubmitShortcut(event)) {
-      return;
-    }
-
-    event.preventDefault();
-    if (isDeleting || !project) {
-      return;
-    }
-
-    void onConfirm(project.id);
-  };
-
+  // The ⌘Enter submit shortcut other dialogs use is deliberately absent here:
+  // a single chord that permanently deletes a project is the accident this
+  // dialog exists to prevent.
   return (
     <Dialog open={!!project} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent onKeyDown={handleDialogKeyDown}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete Project</DialogTitle>
           <DialogDescription>
@@ -54,13 +42,13 @@ export function DeleteProjectDialog({
           <Button variant="outline" onClick={onClose} disabled={isDeleting}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={() => project && void onConfirm(project.id)}
+          <HoldToConfirmButton
+            onConfirm={() => project && void onConfirm(project.id)}
             disabled={isDeleting || !project}
+            holdingLabel="Hold to delete…"
           >
-            {isDeleting ? "Deleting..." : "Delete"}
-          </Button>
+            {isDeleting ? "Deleting..." : "Hold to delete"}
+          </HoldToConfirmButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

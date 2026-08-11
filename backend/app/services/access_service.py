@@ -1,12 +1,15 @@
-import json
-import os
+from __future__ import annotations
+
+import threading
 from datetime import datetime, timezone
-from typing import Any
 
 from app.core.config import settings
 from app.core.roles import Role, normalize_role
+from app.services.postgres_database import database
 
-ROLE_STORE_VERSION = "1"
+
+_init_lock = threading.Lock()
+_initialized = False
 
 
 def _now_iso() -> str:
@@ -28,130 +31,76 @@ def _default_viewer_domain_set() -> set[str]:
     return {domain.strip().lower() for domain in settings.DEFAULT_VIEWER_DOMAINS if domain.strip()}
 
 
-def _default_store() -> dict[str, Any]:
-    return {
-        "version": ROLE_STORE_VERSION,
-        "updated_at": _now_iso(),
-        "updated_by": "system",
-        "users": {},
-    }
-
-
-def _role_store_path() -> str:
-    return settings.RESOLVED_ROLE_STORE_PATH
-
-
-def _ensure_role_store_directory() -> None:
-    os.makedirs(os.path.dirname(_role_store_path()), exist_ok=True)
-
-
-_role_cache: dict[str, Any] | None = None
-_role_cache_mtime: float = 0.0
-
-
-def _load_role_store() -> dict[str, Any]:
-    global _role_cache, _role_cache_mtime
-    path = _role_store_path()
-
-    try:
-        mtime = os.path.getmtime(path)
-    except OSError:
-        return _default_store()
-
-    if _role_cache is not None and _role_cache_mtime == mtime:
-        return _role_cache
-
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-        if not isinstance(payload, dict):
-            payload = _default_store()
-        users = payload.get("users")
-        if not isinstance(users, dict):
-            payload["users"] = {}
-        _role_cache = payload
-        _role_cache_mtime = mtime
-        return payload
-    except (OSError, json.JSONDecodeError):
-        return _default_store()
-
-
-def _save_role_store(payload: dict[str, Any]) -> None:
-    _ensure_role_store_directory()
-    path = _role_store_path()
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-    os.replace(tmp_path, path)
-
-
-def _entry_to_role(entry: Any) -> Role | None:
-    if isinstance(entry, str):
-        return normalize_role(entry)
-    if isinstance(entry, dict):
-        return normalize_role(entry.get("role"))
-    return None
+def initialize_role_store() -> None:
+    global _initialized
+    if _initialized:
+        return
+    with _init_lock:
+        if _initialized:
+            return
+        with database.connection() as connection:
+            connection.execute("CREATE SCHEMA IF NOT EXISTS workspace")
+            connection.execute("SET search_path TO workspace, public")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_roles (
+                    email TEXT PRIMARY KEY,
+                    role TEXT NOT NULL CHECK (role IN ('admin', 'designer', 'viewer', 'component_designer', 'component_qa')),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_by TEXT NOT NULL
+                )
+                """
+            )
+            connection.commit()
+        _initialized = True
 
 
 def _load_explicit_user_role(normalized_email: str) -> Role | None:
-    payload = _load_role_store()
-    users = payload.get("users") or {}
-    return _entry_to_role(users.get(normalized_email))
+    initialize_role_store()
+    with database.connection() as connection:
+        connection.execute("SET search_path TO workspace, public")
+        row = connection.execute(
+            "SELECT role FROM user_roles WHERE email = %s", (normalized_email,)
+        ).fetchone()
+    return normalize_role(row["role"]) if row else None
 
 
 def resolve_user_role(email: str) -> Role | None:
     normalized_email = _normalize_email(email)
     if normalized_email in _bootstrap_admin_set():
         return "admin"
-
     explicit_role = _load_explicit_user_role(normalized_email)
     if explicit_role:
         return explicit_role
-
     domain = normalized_email.split("@", 1)[-1]
-    if domain in _default_viewer_domain_set():
-        return "viewer"
-
-    return None
+    return "viewer" if domain in _default_viewer_domain_set() else None
 
 
 def ensure_default_viewer_assignment(email: str) -> dict[str, str] | None:
     normalized_email = _normalize_email(email)
     if normalized_email in _bootstrap_admin_set():
         return {"email": normalized_email, "role": "admin", "source": "bootstrap"}
-
     explicit_role = _load_explicit_user_role(normalized_email)
     if explicit_role:
         return {"email": normalized_email, "role": explicit_role, "source": "store"}
-
-    domain = normalized_email.split("@", 1)[-1]
-    if domain not in _default_viewer_domain_set():
+    if normalized_email.split("@", 1)[-1] not in _default_viewer_domain_set():
         return None
-
-    return upsert_user_role(email=normalized_email, role="viewer", updated_by="system@local")
+    return upsert_user_role(normalized_email, "viewer", "system@local")
 
 
 def list_role_assignments() -> list[dict[str, str]]:
-    payload = _load_role_store()
-    users = payload.get("users") or {}
-    bootstrap_admins = _bootstrap_admin_set()
-
-    assignments: list[dict[str, str]] = []
-    for email, value in users.items():
-        if email in bootstrap_admins:
-            assignments.append({"email": str(email), "role": "admin", "source": "bootstrap"})
-            continue
-        role = _entry_to_role(value)
-        if not role:
-            continue
-        assignments.append({"email": str(email), "role": role, "source": "store"})
-
-    bootstrap_only = bootstrap_admins - {entry["email"] for entry in assignments}
-    for email in sorted(bootstrap_only):
-        assignments.append({"email": email, "role": "admin", "source": "bootstrap"})
-
-    assignments.sort(key=lambda item: item["email"])
-    return assignments
+    initialize_role_store()
+    with database.connection() as connection:
+        connection.execute("SET search_path TO workspace, public")
+        rows = connection.execute("SELECT email, role FROM user_roles ORDER BY email").fetchall()
+    assignments = [
+        {"email": str(row["email"]), "role": str(row["role"]), "source": "store"}
+        for row in rows
+    ]
+    indexed = {item["email"]: item for item in assignments}
+    for email in _bootstrap_admin_set():
+        indexed[email] = {"email": email, "role": "admin", "source": "bootstrap"}
+    return sorted(indexed.values(), key=lambda item: item["email"])
 
 
 def upsert_user_role(email: str, role: Role, updated_by: str) -> dict[str, str]:
@@ -160,34 +109,33 @@ def upsert_user_role(email: str, role: Role, updated_by: str) -> dict[str, str]:
         if role != "admin":
             raise ValueError("Cannot override bootstrap admin role assignment")
         return {"email": normalized_email, "role": "admin", "source": "bootstrap"}
-
-    payload = _load_role_store()
-    users = payload.setdefault("users", {})
-    users[normalized_email] = {
-        "role": role,
-        "updated_at": _now_iso(),
-        "updated_by": _normalize_email(updated_by),
-    }
-    payload["version"] = ROLE_STORE_VERSION
-    payload["updated_at"] = _now_iso()
-    payload["updated_by"] = _normalize_email(updated_by)
-    _save_role_store(payload)
-
+    initialize_role_store()
+    actor = _normalize_email(updated_by)
+    with database.connection() as connection:
+        connection.execute("SET search_path TO workspace, public")
+        connection.execute(
+            """
+            INSERT INTO user_roles (email, role, updated_at, updated_by)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (email) DO UPDATE SET
+                role = EXCLUDED.role,
+                updated_at = EXCLUDED.updated_at,
+                updated_by = EXCLUDED.updated_by
+            """,
+            (normalized_email, role, _now_iso(), actor),
+        )
+        connection.commit()
     return {"email": normalized_email, "role": role, "source": "store"}
 
 
 def delete_user_role(email: str, updated_by: str) -> bool:
+    del updated_by
     normalized_email = _normalize_email(email)
     if normalized_email in _bootstrap_admin_set():
         raise ValueError("Cannot delete bootstrap admin role assignment")
-
-    payload = _load_role_store()
-    users = payload.setdefault("users", {})
-    if normalized_email not in users:
-        return False
-
-    users.pop(normalized_email, None)
-    payload["updated_at"] = _now_iso()
-    payload["updated_by"] = _normalize_email(updated_by)
-    _save_role_store(payload)
-    return True
+    initialize_role_store()
+    with database.connection() as connection:
+        connection.execute("SET search_path TO workspace, public")
+        cursor = connection.execute("DELETE FROM user_roles WHERE email = %s", (normalized_email,))
+        connection.commit()
+    return cursor.rowcount > 0

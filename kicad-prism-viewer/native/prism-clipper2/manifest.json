@@ -1,0 +1,14 @@
+{
+  "abi": 20260708,
+  "libraries": {
+    "darwin-arm64": {
+      "path": "darwin-arm64/libprism_clipper2.dylib",
+      "sha256": "180d9de23b68f65d8058a65ae4db4cb71f3c68cdb6b1722b8e4043fb683bf005"
+    }
+  },
+  "protocols": [
+    "a2"
+  ],
+  "schema": "prism.clipper2_bundle_a0",
+  "version": "0.1.0"
+}

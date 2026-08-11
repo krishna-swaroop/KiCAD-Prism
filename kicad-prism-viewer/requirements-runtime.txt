@@ -1,0 +1,2 @@
+kicad-monkey==2026.6.13
+kicad-cruncher==2026.6.13

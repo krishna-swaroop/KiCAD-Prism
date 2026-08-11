@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import logging
 import time
 from dataclasses import dataclass
@@ -18,6 +21,9 @@ from app.core.roles import Role, normalize_role
 from app.services import access_service
 
 logger = logging.getLogger(__name__)
+
+# Tolerance for clock drift between Prism and the identity provider.
+_CLOCK_SKEW_LEEWAY_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -96,7 +102,15 @@ def oidc_public_config() -> dict[str, str]:
     }
 
 
-def build_oidc_authorization_url(*, redirect_uri: str, state: str, nonce: str | None = None) -> str:
+def pkce_code_challenge(code_verifier: str) -> str:
+    """S256 challenge, matching the inbound provider flow in provider_auth_service."""
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def build_oidc_authorization_url(
+    *, redirect_uri: str, state: str, nonce: str, code_verifier: str
+) -> str:
     metadata = get_oidc_metadata()
     authorization_endpoint = str(metadata.get("authorization_endpoint") or "")
     if not authorization_endpoint:
@@ -108,13 +122,14 @@ def build_oidc_authorization_url(*, redirect_uri: str, state: str, nonce: str | 
         "response_type": "code",
         "scope": settings.EFFECTIVE_OIDC_SCOPES,
         "state": state,
+        "nonce": nonce,
+        "code_challenge": pkce_code_challenge(code_verifier),
+        "code_challenge_method": "S256",
     }
-    if nonce:
-        params["nonce"] = nonce
     return f"{authorization_endpoint}?{urlencode(params)}"
 
 
-def _exchange_oidc_code(code: str, redirect_uri: str) -> dict[str, Any]:
+def _exchange_oidc_code(code: str, redirect_uri: str, code_verifier: str) -> dict[str, Any]:
     metadata = get_oidc_metadata()
     token_endpoint = str(metadata.get("token_endpoint") or "")
     if not token_endpoint:
@@ -125,6 +140,7 @@ def _exchange_oidc_code(code: str, redirect_uri: str) -> dict[str, Any]:
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri,
+        "code_verifier": code_verifier,
     }
     auth = None
     token_auth_method = settings.OIDC_TOKEN_AUTH_METHOD.strip().lower()
@@ -156,6 +172,11 @@ def _exchange_oidc_code(code: str, redirect_uri: str) -> dict[str, Any]:
 
 
 def _verify_jwt(token: str, *, issuer: str, audience: str) -> dict[str, Any]:
+    if not audience:
+        # An unverified audience means any token that issuer minted for any relying
+        # party would authenticate here. Refuse rather than degrade.
+        raise HTTPException(status_code=500, detail="JWT audience verification is not configured")
+
     metadata = get_oidc_metadata() if issuer.rstrip("/") == _oidc_issuer() else _fetch_external_issuer_metadata(issuer)
     jwks_uri = str(metadata.get("jwks_uri") or "")
     if not jwks_uri:
@@ -163,16 +184,30 @@ def _verify_jwt(token: str, *, issuer: str, audience: str) -> dict[str, Any]:
 
     try:
         signing_key = _jwks_client(jwks_uri).get_signing_key_from_jwt(token)
-        return jwt.decode(
+        payload = jwt.decode(
             token,
             signing_key.key,
-            algorithms=["RS256", "ES256"],
+            algorithms=["RS256", "RS384", "RS512", "ES256", "ES384"],
             audience=audience,
             issuer=issuer.rstrip("/"),
-            options={"verify_aud": bool(audience)},
+            leeway=_CLOCK_SKEW_LEEWAY_SECONDS,
+            options={
+                "verify_aud": True,
+                "verify_exp": True,
+                "verify_iat": True,
+                "verify_iss": True,
+                "require": ["exp", "iat", "iss", "aud", "sub"],
+            },
         )
     except Exception as exc:  # noqa: BLE001 - PyJWT raises several concrete exception classes.
         raise HTTPException(status_code=401, detail="Invalid bearer JWT") from exc
+
+    # When a token lists several audiences, the authorized party must be us.
+    raw_audience = payload.get("aud")
+    if isinstance(raw_audience, list) and len(raw_audience) > 1:
+        if str(payload.get("azp") or "") != audience:
+            raise HTTPException(status_code=401, detail="Invalid bearer JWT authorized party")
+    return payload
 
 
 def _fetch_external_issuer_metadata(issuer: str) -> dict[str, Any]:
@@ -252,26 +287,38 @@ def _resolve_session_user(profile: dict[str, Any]) -> ResolvedSessionUser:
     return ResolvedSessionUser(email=email, name=name, picture=picture, role=role)
 
 
-def authenticate_oidc_auth_code(code: str, redirect_uri: str, expected_nonce: str = "") -> ResolvedSessionUser:
+def authenticate_oidc_auth_code(
+    *, code: str, redirect_uri: str, expected_nonce: str, code_verifier: str
+) -> ResolvedSessionUser:
     if not oidc_enabled():
         raise HTTPException(status_code=500, detail="OIDC client credentials are not configured")
+    if not expected_nonce or not code_verifier:
+        # Both are minted server-side and returned in the transaction cookie. Missing
+        # values mean the callback did not originate from a Prism-initiated login.
+        raise HTTPException(status_code=400, detail="OIDC login transaction is missing or expired")
 
-    token_payload = _exchange_oidc_code(code, redirect_uri)
+    token_payload = _exchange_oidc_code(code, redirect_uri, code_verifier)
     access_token = str(token_payload.get("access_token") or "")
     id_token = str(token_payload.get("id_token") or "")
+    if not id_token:
+        raise HTTPException(status_code=401, detail="OIDC provider did not return an id_token")
 
-    profile: dict[str, Any] = {}
-    if id_token:
-        id_payload = _verify_jwt(
-            id_token,
-            issuer=_oidc_issuer(),
-            audience=settings.EFFECTIVE_OIDC_CLIENT_ID,
-        )
-        if expected_nonce and str(id_payload.get("nonce") or "") != expected_nonce:
-            raise HTTPException(status_code=401, detail="Invalid OIDC nonce")
-        profile.update(id_payload)
+    id_payload = _verify_jwt(
+        id_token,
+        issuer=_oidc_issuer(),
+        audience=settings.EFFECTIVE_OIDC_CLIENT_ID,
+    )
+    if not hmac.compare_digest(str(id_payload.get("nonce") or ""), expected_nonce):
+        raise HTTPException(status_code=401, detail="Invalid OIDC nonce")
+
+    profile: dict[str, Any] = dict(id_payload)
     if access_token:
-        profile.update(_fetch_userinfo(access_token))
+        userinfo = _fetch_userinfo(access_token)
+        # OpenID Connect Core 5.3.2: a userinfo response whose subject differs from
+        # the id_token's must be discarded, otherwise it can substitute an identity.
+        if userinfo and str(userinfo.get("sub") or "") != str(id_payload.get("sub") or ""):
+            raise HTTPException(status_code=401, detail="OIDC userinfo subject mismatch")
+        profile.update(userinfo)
 
     return _resolve_session_user(profile)
 

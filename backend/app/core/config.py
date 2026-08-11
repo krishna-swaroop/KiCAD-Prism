@@ -7,10 +7,23 @@ Configuration can be set via:
 
 See .env.example for available configuration options.
 """
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 from typing import List
 import os
+
+
+# Placeholders that appear in this repository's examples and in copy-pasted guides.
+# None of them may sign a real session.
+_WEAK_SESSION_SECRETS = {
+    "change-me",
+    "changeme",
+    "secret",
+    "kicad-prism",
+    "kicad-prism-local",
+    "your-session-secret",
+    "replace-with-a-long-random-string",
+}
 
 
 class Settings(BaseSettings):
@@ -139,12 +152,6 @@ class Settings(BaseSettings):
         ),
     )
 
-    # Path to persistent role assignment JSON file.
-    ROLE_STORE_PATH: str = Field(
-        default="",
-        description="Path to persistent RBAC role store JSON"
-    )
-
     # Session signing secret for HttpOnly cookie authentication.
     SESSION_SECRET: str = Field(
         default="",
@@ -159,10 +166,50 @@ class Settings(BaseSettings):
         description="Session expiration (hours)"
     )
 
-    # Cookie secure flag (set true behind HTTPS).
-    SESSION_COOKIE_SECURE: bool = Field(
-        default=False,
-        description="Whether session cookie should be marked Secure"
+    # Idle timeout. A session unused for this long is revoked even before TTL.
+    SESSION_IDLE_TIMEOUT_MINUTES: int = Field(
+        default=0,
+        ge=0,
+        le=10080,
+        description="Revoke a session after this many minutes without use. 0 disables idle expiry."
+    )
+
+    # Cookie secure flag. Left unset, Prism derives it from PUBLIC_BASE_URL.
+    SESSION_COOKIE_SECURE_OVERRIDE: bool | None = Field(
+        default=None,
+        alias="SESSION_COOKIE_SECURE",
+        description=(
+            "Force the session cookie Secure flag. When unset, Prism marks the cookie Secure "
+            "for any deployment whose PUBLIC_BASE_URL is HTTPS."
+        ),
+    )
+
+    @field_validator("SESSION_COOKIE_SECURE_OVERRIDE", mode="before")
+    @classmethod
+    def _blank_cookie_secure_is_unset(cls, value: object) -> object:
+        """Treat an empty value as unset so the PUBLIC_BASE_URL default applies.
+
+        docker-compose.yml passes `SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-}`,
+        so an operator who follows .env.example and leaves the setting commented out
+        still gets the variable in the container environment, as "". Without this,
+        pydantic rejects "" as a bool and the backend cannot start at all.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    AUTH_LOGIN_RATE_LIMIT: int = Field(
+        default=10,
+        ge=1,
+        le=1000,
+        description="Maximum authentication attempts per client per window."
+    )
+
+    AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = Field(
+        default=300,
+        ge=10,
+        le=3600,
+        description="Sliding window for authentication attempt rate limiting."
     )
 
     # Comma-separated browser origins allowed to make credentialed API requests.
@@ -176,7 +223,20 @@ class Settings(BaseSettings):
     # ===========================================
     DEV_MODE: bool = Field(
         default=True,
-        description="Enable development mode. When True, bypasses authentication."
+        description=(
+            "Enable development affordances (verbose errors, the login page's local bypass "
+            "hint). This flag no longer disables authentication on its own; set AUTH_ENABLED=false "
+            "for that, which is an explicit and loudly logged choice."
+        )
+    )
+
+    DEV_GUEST_ROLE: str = Field(
+        default="viewer",
+        description=(
+            "Role granted to the implicit guest user when AUTH_ENABLED is false. Defaults to "
+            "the least privilege that still lets an evaluator look around: a misconfigured "
+            "deployment then exposes reading, not administration. Raise it deliberately."
+        ),
     )
     
     # ===========================================
@@ -235,44 +295,186 @@ class Settings(BaseSettings):
         description="Lifetime for KiCad remote provider refresh tokens."
     )
 
-    MANUFACTURO_SQL_SERVER: str = Field(
-        default="",
-        description="Manufacturo SQL Server hostname."
-    )
+    # The MANUFACTURO_SQL_* settings were removed. Nothing under app/ ever read
+    # them, so they were a set of credential fields that asked operators to put
+    # a database password in .env for a feature that did not exist. Reintroduce
+    # them with the code that uses them.
 
-    MANUFACTURO_SQL_DATABASE: str = Field(
-        default="",
-        description="Manufacturo SQL Server database name."
-    )
-
-    MANUFACTURO_SQL_USERNAME: str = Field(
-        default="",
-        description="Manufacturo SQL Server username."
-    )
-
-    MANUFACTURO_SQL_PASSWORD: str = Field(
-        default="",
-        description="Manufacturo SQL Server password."
-    )
-
-    MANUFACTURO_SQL_DRIVER: str = Field(
-        default="ODBC Driver 18 for SQL Server",
-        description="ODBC driver name for Manufacturo SQL connectivity."
-    )
-
-    MANUFACTURO_SYNC_LIMIT: int = Field(
-        default=0,
-        ge=0,
-        le=100000,
-        description="Optional row limit for Manufacturo syncs. 0 means no explicit limit."
-    )
-
-    CATALOG_SQLITE_PATH: str = Field(
+    PRISM_DATABASE_URL: str = Field(
         default="",
         description=(
-            "SQLite database path for component catalog, remote-provider OAuth, "
-            "and local service-client metadata. Defaults under KICAD_PROJECTS_ROOT."
+            "Authoritative PostgreSQL URL for workspace, comments, catalog, jobs, "
+            "and artifact metadata."
         ),
+    )
+
+    PRISM_DATABASE_POOL_MIN_SIZE: int = Field(
+        default=1,
+        ge=0,
+        le=20,
+        description="Minimum PostgreSQL connections retained per backend worker.",
+    )
+
+    PRISM_DATABASE_POOL_MAX_SIZE: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum PostgreSQL connections retained per backend worker.",
+    )
+
+    # The three settings below matter when PostgreSQL is not on the same host.
+    # A NAT gateway, cloud load balancer or firewall will silently drop an idle
+    # connection, and neither end finds out until a query is attempted on it.
+    # Anything set explicitly in PRISM_DATABASE_URL wins over these.
+
+    PRISM_DATABASE_CONNECT_TIMEOUT_SECONDS: int = Field(
+        default=10,
+        ge=1,
+        le=120,
+        description=(
+            "How long to wait for a new PostgreSQL connection before giving up. "
+            "Without this a request hangs indefinitely when the database host is "
+            "unreachable rather than merely slow."
+        ),
+    )
+
+    PRISM_DATABASE_KEEPALIVE_IDLE_SECONDS: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        description=(
+            "Idle time before TCP keepalive probes start on a PostgreSQL "
+            "connection. Keep this below the idle timeout of any NAT or load "
+            "balancer between Prism and the database."
+        ),
+    )
+
+    PRISM_DATABASE_POOL_MAX_LIFETIME_SECONDS: int = Field(
+        default=1800,
+        ge=60,
+        le=86400,
+        description=(
+            "Age at which a pooled PostgreSQL connection is retired and replaced. "
+            "Bounds how long a connection can survive a server-side restart or a "
+            "load balancer rotating backends underneath it."
+        ),
+    )
+
+    CATALOG_WORKER_CONCURRENCY: int = Field(
+        default=2,
+        ge=1,
+        le=8,
+        description="Maximum catalog jobs executed concurrently by the local worker.",
+    )
+
+    CATALOG_KICAD_CONCURRENCY: int = Field(
+        default=1,
+        ge=1,
+        le=8,
+        description="Global fenced slot count for KiCad-heavy catalog jobs.",
+    )
+
+    CATALOG_WORKER_POLL_SECONDS: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=30.0,
+        description="PostgreSQL catalog job polling interval.",
+    )
+
+    CATALOG_JOB_LEASE_SECONDS: int = Field(
+        default=120,
+        ge=30,
+        le=3600,
+        description="Duration of a catalog worker lease before an abandoned job is reclaimable.",
+    )
+
+    PRISM_WORKER_CONCURRENCY: int = Field(
+        default=4,
+        ge=1,
+        le=16,
+        description="Maximum number of supervised user jobs run by prism-worker.",
+    )
+
+    PRISM_WORKER_POLL_SECONDS: float = Field(
+        default=0.5,
+        ge=0.1,
+        le=30.0,
+        description="PostgreSQL queue polling interval for prism-worker.",
+    )
+
+    PRISM_JOB_LEASE_SECONDS: int = Field(
+        default=30,
+        ge=10,
+        le=3600,
+        description="Duration of a fenced Prism worker lease.",
+    )
+
+    PRISM_JOB_HEARTBEAT_SECONDS: float = Field(
+        default=10.0,
+        ge=1.0,
+        le=300.0,
+        description="Lease-renewal interval for supervised Prism jobs.",
+    )
+
+    PRISM_JOB_CANCEL_GRACE_SECONDS: float = Field(
+        default=10.0,
+        ge=0.0,
+        le=120.0,
+        description="Grace period before a cancelled job process group is killed.",
+    )
+
+    PRISM_JOB_ARTIFACT_ROOT: str = Field(
+        default="",
+        description=(
+            "Root for immutable V3 job artifacts and attempt logs. Defaults to "
+            "KICAD_PROJECTS_ROOT/.kicad-prism."
+        ),
+    )
+
+    PRISM_WEBGPU_CONCURRENCY: int = Field(default=1, ge=1, le=8)
+    PRISM_DESIGN_COMPARE_CONCURRENCY: int = Field(default=1, ge=1, le=8)
+    PRISM_WORKFLOW_CONCURRENCY: int = Field(default=1, ge=1, le=8)
+    PRISM_IMPORT_CONCURRENCY: int = Field(default=1, ge=1, le=8)
+    PRISM_SEMANTIC_COMPILE_SLOTS: int = Field(default=2, ge=1, le=8)
+
+    CATALOG_ARTIFACT_ROOT: str = Field(
+        default="",
+        description=(
+            "Local content-addressed artifact root. Defaults to "
+            "KICAD_PROJECTS_ROOT/.kicad-prism/artifacts."
+        ),
+    )
+
+    CATALOG_RETENTION_ENABLED: bool = Field(
+        default=True,
+        description="Run the local archive/quarantine/GC policy once per day.",
+    )
+
+    CATALOG_IMPORT_ROOTS: str = Field(
+        default="",
+        description=(
+            "Comma-separated name=/absolute/read-only/path entries exposed as folder "
+            "snapshot sources in the Import Center."
+        ),
+    )
+
+    CATALOG_IMPORT_MAX_FILES: int = Field(
+        default=100000,
+        ge=1,
+        le=1000000,
+        description="Maximum files in one immutable folder snapshot.",
+    )
+
+    CATALOG_IMPORT_MAX_FILE_BYTES: int = Field(
+        default=2 * 1024 * 1024 * 1024,
+        ge=1024,
+        description="Maximum size of one folder snapshot file.",
+    )
+
+    CATALOG_IMPORT_MAX_SNAPSHOT_BYTES: int = Field(
+        default=200 * 1024 * 1024 * 1024,
+        ge=1024,
+        description="Maximum aggregate size of one folder snapshot.",
     )
 
     CATALOG_DBL_EXPORT_DIR: str = Field(
@@ -334,7 +536,20 @@ class Settings(BaseSettings):
         default=False,
         description="Run ssh-keyscan for common Git hosts during backend startup.",
     )
-    
+
+    # Comma-separated list of Git hosts projects may be imported from.
+    # Empty means any host, which suits a single-operator deployment.
+    IMPORT_ALLOWED_HOSTS_STR: str = Field(
+        default="",
+        description="Comma-separated list of Git hosts allowed for project import",
+    )
+
+    # Plaintext HTTP clone URLs, for an internal Git server that has no TLS.
+    IMPORT_ALLOW_INSECURE_HTTP: bool = Field(
+        default=False,
+        description="Allow http:// repository URLs during project import",
+    )
+
     # ===========================================
     # Computed Properties
     # ===========================================
@@ -347,6 +562,11 @@ class Settings(BaseSettings):
     def ALLOWED_DOMAINS(self) -> List[str]:
         """Parse allowed domains from comma-separated string."""
         return [d.strip().lower() for d in self.ALLOWED_DOMAINS_STR.split(",") if d.strip()]
+
+    @property
+    def IMPORT_ALLOWED_HOSTS(self) -> List[str]:
+        """Parse allowed import hosts from comma-separated string."""
+        return [h.strip().lower() for h in self.IMPORT_ALLOWED_HOSTS_STR.split(",") if h.strip()]
 
     @property
     def BOOTSTRAP_ADMIN_USERS(self) -> List[str]:
@@ -387,30 +607,147 @@ class Settings(BaseSettings):
         )
 
     @property
-    def RESOLVED_ROLE_STORE_PATH(self) -> str:
-        if self.ROLE_STORE_PATH.strip():
-            return os.path.abspath(os.path.expanduser(self.ROLE_STORE_PATH.strip()))
-        return os.path.join(self.KICAD_PROJECTS_ROOT, ".rbac_roles.json")
-    
-    @property
     def AUTH_ENABLED(self) -> bool:
         """
-        Authentication is enabled only if:
-        1. AUTH_ENABLED env var is True (default), AND
-        2. Valid OIDC/OAuth client credentials are configured, AND
-        3. DEV_MODE is False
+        Authentication follows the AUTH_ENABLED env var and nothing else.
+
+        Incomplete OIDC configuration used to silently disable authentication, which
+        turned any misconfiguration into an unauthenticated admin console. Prism now
+        refuses to start in that state instead - see validate_auth_configuration().
         """
-        # If explicitly disabled via env var, it's off.
-        if not self.AUTH_ENABLED_OVERRIDE:
+        return self.AUTH_ENABLED_OVERRIDE
+
+    @property
+    def SESSION_COOKIE_SECURE(self) -> bool:
+        """Mark the session cookie Secure unless an operator explicitly opts out."""
+        if self.SESSION_COOKIE_SECURE_OVERRIDE is not None:
+            return self.SESSION_COOKIE_SECURE_OVERRIDE
+        return self.PUBLIC_BASE_URL.strip().lower().startswith("https://")
+
+    @property
+    def BASE_URL_IS_LOCAL(self) -> bool:
+        """Whether PUBLIC_BASE_URL points at this machine only.
+
+        Used to tell an evaluation apart from something other people can reach.
+
+        Unset counts as local. It is the default, so it means nobody has said
+        where this deployment is published -- which describes a developer's
+        checkout, not a shared instance. Anything reachable has to set it
+        anyway, for OIDC redirects, CORS and the Secure cookie. A malformed
+        value is a different matter and counts as remote, so it fails safe.
+        """
+        from urllib.parse import urlsplit
+
+        raw = self.PUBLIC_BASE_URL.strip()
+        if not raw:
+            return True
+        try:
+            host = (urlsplit(raw).hostname or "").lower()
+        except ValueError:
             return False
-            
-        return (
-            bool(self.EFFECTIVE_OIDC_ISSUER_URL)
-            and bool(self.EFFECTIVE_OIDC_CLIENT_ID)
-            and bool(self.EFFECTIVE_OIDC_CLIENT_SECRET)
-            and not self.DEV_MODE
-        )
-    
+        return host in {"localhost", "127.0.0.1", "::1", "0.0.0.0"} or host.endswith(".localhost")
+
+    def _open_auth_errors(self) -> List[str]:
+        """Reasons an unauthenticated deployment must refuse to start.
+
+        AUTH_ENABLED=false exists so somebody can evaluate Prism without
+        standing up an identity provider first, and the plain-HTTP scheme in the
+        installer depends on it. Evaluation means localhost. A deployment shaped
+        like production -- TLS, a name other machines resolve -- is not an
+        evaluation, and starting it open publishes every project and the whole
+        API to anyone who can reach the port.
+        """
+        if self.BASE_URL_IS_LOCAL:
+            return []
+
+        base = self.PUBLIC_BASE_URL.strip()
+        errors: List[str] = []
+        if base.lower().startswith("https://"):
+            errors.append(
+                f"AUTH_ENABLED=false is not allowed with PUBLIC_BASE_URL={base}. A TLS "
+                "deployment on a routable name is not a local evaluation. Enable "
+                "authentication, or evaluate over http on localhost."
+            )
+        if self.DEV_GUEST_ROLE.strip().lower() == "admin":
+            errors.append(
+                f"DEV_GUEST_ROLE=admin with AUTH_ENABLED=false and PUBLIC_BASE_URL={base} "
+                "gives every visitor administrative access to this workspace. Use "
+                "DEV_GUEST_ROLE=viewer, or enable authentication."
+            )
+        return errors
+
+    def configuration_warnings(self) -> List[str]:
+        """Things that are permitted, dangerous, and easy to have not noticed."""
+        warnings: List[str] = []
+
+        if not self.AUTH_ENABLED:
+            warnings.append(
+                f"AUTH_ENABLED=false: every request is treated as a {self.DEV_GUEST_ROLE!r} "
+                "guest and no login is required. Evaluation only."
+            )
+
+        if not self.IMPORT_ALLOWED_HOSTS:
+            warnings.append(
+                "IMPORT_ALLOWED_HOSTS_STR is empty, so project import will clone from any "
+                "host a user names -- including addresses inside this network that the "
+                "browser cannot reach but the server can. Set it to the Git hosts this "
+                "installation is meant to reach."
+            )
+
+        return warnings
+
+    def auth_configuration_errors(self) -> List[str]:
+        """Return every reason this deployment must not serve authenticated traffic."""
+        if not self.AUTH_ENABLED:
+            return self._open_auth_errors()
+
+        errors: List[str] = []
+        if not self.EFFECTIVE_OIDC_ISSUER_URL:
+            errors.append("OIDC_ISSUER_URL is required when AUTH_ENABLED=true")
+        elif not self.EFFECTIVE_OIDC_ISSUER_URL.startswith("https://"):
+            errors.append("OIDC_ISSUER_URL must use https://")
+        if not self.EFFECTIVE_OIDC_CLIENT_ID:
+            errors.append("OIDC_CLIENT_ID is required when AUTH_ENABLED=true")
+        if not self.EFFECTIVE_OIDC_CLIENT_SECRET:
+            errors.append("OIDC_CLIENT_SECRET is required when AUTH_ENABLED=true")
+        if self.OIDC_TOKEN_AUTH_METHOD.strip().lower() not in {"client_secret_post", "client_secret_basic"}:
+            errors.append("OIDC_TOKEN_AUTH_METHOD must be client_secret_post or client_secret_basic")
+
+        secret = self.SESSION_SECRET.strip()
+        if not secret:
+            errors.append("SESSION_SECRET is required when AUTH_ENABLED=true")
+        elif len(secret) < 32:
+            errors.append("SESSION_SECRET must be at least 32 characters")
+        elif len(set(secret)) < 8:
+            errors.append("SESSION_SECRET is not sufficiently random")
+        elif secret.lower() in _WEAK_SESSION_SECRETS:
+            errors.append("SESSION_SECRET is a well-known placeholder value")
+
+        if not self.PRISM_DATABASE_URL.strip():
+            errors.append("PRISM_DATABASE_URL is required to store revocable sessions")
+
+        if self.OAUTH_EXTERNAL_JWT_ISSUER_URL.strip() and not self.OAUTH_EXTERNAL_JWT_AUDIENCE.strip():
+            errors.append(
+                "OAUTH_EXTERNAL_JWT_AUDIENCE is required whenever OAUTH_EXTERNAL_JWT_ISSUER_URL is set; "
+                "without it Prism would accept any token that issuer minted for any audience"
+            )
+
+        for origin in self.CORS_ORIGINS:
+            if origin == "*":
+                errors.append("CORS_ORIGINS_STR must not contain '*' because Prism sends credentials")
+
+        return errors
+
+    def validate_auth_configuration(self) -> None:
+        """Fail closed at startup rather than serving an unauthenticated admin console."""
+        errors = self.auth_configuration_errors()
+        if errors:
+            raise RuntimeError(
+                "Refusing to start with an unsafe authentication configuration:\n  - "
+                + "\n  - ".join(errors)
+            )
+
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

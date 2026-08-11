@@ -69,7 +69,7 @@ function TreeNodeComponent({
                 )}
                 {node.isDir && !hasChildren && <div className="w-4" />}
 
-                <Icon className={`h-4 w-4 ${node.isDir ? 'text-yellow-500' : 'text-blue-500'} flex-shrink-0`} />
+                <Icon className={`h-4 w-4 ${node.isDir ? 'text-warning' : 'text-primary'} flex-shrink-0`} />
 
                 <div className="flex-1 min-w-0 flex items-center justify-between gap-4">
                     <div className="min-w-0">

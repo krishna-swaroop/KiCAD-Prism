@@ -1,0 +1,22 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+node_modules/
+*.egg-info/
+
+# Reference repositories are cloned locally for inspection, not vendored here.
+references/
+
+# Generated viewer bundles and KiCad export artifacts.
+samples/
+/dist/
+/viewer/app.js
+/native/prism-clipper2/build/
+*.glb
+*.xao
+*.step
+*.stp
+*.stpz
+*.bin

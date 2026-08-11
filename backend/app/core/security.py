@@ -4,7 +4,13 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.core.roles import CATALOG_READ_ROLES, CATALOG_WRITE_ROLES, Role, normalize_role, role_meets_minimum
 from app.core.session import SESSION_COOKIE_NAME, decode_session_token
-from app.services import access_service, auth_service, provider_auth_service, service_client_service
+from app.services import (
+    access_service,
+    auth_service,
+    provider_auth_service,
+    service_client_service,
+    session_store_service,
+)
 
 
 class AuthenticatedUser(BaseModel):
@@ -15,10 +21,17 @@ class AuthenticatedUser(BaseModel):
     auth_type: str = "session"
     client_id: str = ""
     scopes: list[str] = []
+    session_id: str = ""
 
 
 def guest_user() -> AuthenticatedUser:
-    return AuthenticatedUser(email="guest@local", name="Guest User", picture="", role="admin")
+    """The implicit identity used only when AUTH_ENABLED is explicitly false."""
+    return AuthenticatedUser(
+        email="guest@local",
+        name="Guest User",
+        picture="",
+        role=normalize_role(settings.DEV_GUEST_ROLE) or "viewer",
+    )
 
 
 def _resolve_allowed_user_role(email: str) -> Role | None:
@@ -35,16 +48,24 @@ async def get_current_user(request: Request) -> AuthenticatedUser:
     token = request.cookies.get(SESSION_COOKIE_NAME)
     payload = decode_session_token(token or "")
     if payload:
-        role = _resolve_allowed_user_role(payload["email"])
+        # The cookie only proves authenticity. The session store decides whether this
+        # session is still live, so logout and administrative revocation take effect
+        # immediately instead of at token expiry.
+        session = session_store_service.load_session(payload["sid"])
+        if not session:
+            raise HTTPException(status_code=401, detail="Session expired or revoked")
+
+        role = _resolve_allowed_user_role(session.email)
         if not role:
             raise HTTPException(status_code=403, detail="Access denied. No role assignment found for your account.")
 
         return AuthenticatedUser(
-            email=payload["email"],
-            name=payload["name"],
-            picture=payload["picture"],
+            email=session.email,
+            name=session.name,
+            picture=session.picture,
             role=role,
             auth_type="session",
+            session_id=session.session_id,
         )
 
     authorization = request.headers.get("authorization") or ""

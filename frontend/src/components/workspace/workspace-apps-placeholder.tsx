@@ -1,4 +1,6 @@
 import { Blocks, ChevronRight } from "lucide-react";
+
+import { PermissionHint } from "@/components/ui/permission-hint";
 import { cn } from "@/lib/utils";
 
 interface WorkspaceAppsPlaceholderProps {
@@ -20,6 +22,12 @@ export function WorkspaceAppsPlaceholder({ canOpenLibraryManager, onOpenLibraryM
           </p>
         </div>
 
+        <PermissionHint
+          blocked={!canOpenLibraryManager}
+          action="open the Library Manager"
+          allowedRoles={["designer", "component_designer", "component_qa", "admin"]}
+          className="w-full"
+        >
         <button
           type="button"
           onClick={onOpenLibraryManager}
@@ -45,6 +53,7 @@ export function WorkspaceAppsPlaceholder({ canOpenLibraryManager, onOpenLibraryM
             <ChevronRight className="h-4 w-4" />
           </span>
         </button>
+        </PermissionHint>
       </div>
     </div>
   );

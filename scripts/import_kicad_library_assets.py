@@ -31,19 +31,22 @@ STEP_EXTENSIONS = {".step", ".stp"}
 SPICE_EXTENSIONS = {".lib", ".mod", ".mdl", ".cir", ".sub", ".subckt", ".spice"}
 
 
-def _load_catalog_runtime() -> None:
+def _load_catalog_runtime(database_url: str = "") -> None:
     global ComponentCatalogService
     global _discover_footprint_name_in_text
     global _discover_symbol_names_in_text
     global _sanitize_name
 
     try:
-        from app.services.component_catalog_service_sqlite import (  # noqa: PLC0415
-            ComponentCatalogService as LoadedComponentCatalogService,
+        from app.services.component_catalog_domain import (  # noqa: PLC0415
             _discover_footprint_name_in_text as loaded_discover_footprint_name,
             _discover_symbol_names_in_text as loaded_discover_symbol_names,
             _sanitize_name as loaded_sanitize_name,
         )
+        from app.services.component_catalog_service_postgres import (  # noqa: PLC0415
+            ComponentCatalogPostgresService,
+        )
+        from app.core.config import settings  # noqa: PLC0415
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "Backend Python dependencies are not available. Run this with the backend virtualenv "
@@ -52,7 +55,8 @@ def _load_catalog_runtime() -> None:
             "KiCAD-Prism-remote-datasource/scripts/import_kicad_library_assets.py --help"
         ) from exc
 
-    ComponentCatalogService = LoadedComponentCatalogService
+    _ = database_url or settings.PRISM_DATABASE_URL
+    ComponentCatalogService = ComponentCatalogPostgresService
     _discover_footprint_name_in_text = loaded_discover_footprint_name
     _discover_symbol_names_in_text = loaded_discover_symbol_names
     _sanitize_name = loaded_sanitize_name
@@ -673,10 +677,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--database-url",
-        default=os.environ.get("CATALOG_SQLITE_PATH", ""),
-        help="SQLite catalog path used to index reusable asset rows. Defaults to CATALOG_SQLITE_PATH.",
+        default=os.environ.get("PRISM_DATABASE_URL", ""),
+        help="PostgreSQL catalog URL. Defaults to PRISM_DATABASE_URL.",
     )
-    parser.add_argument("--no-index-db", action="store_true", help="Only write files; do not create/update SQLite catalog asset rows.")
+    parser.add_argument("--no-index-db", action="store_true", help="Only write files; do not create/update catalog asset rows.")
     parser.add_argument("--no-previews", action="store_true", help="Skip symbol/footprint preview generation.")
     parser.add_argument("--skip-symbol-upgrade", action="store_true", help="Do not run kicad-cli sym upgrade before splitting symbols.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite conflicting canonical files instead of writing suffixed names.")
@@ -718,7 +722,7 @@ def main() -> int:
         return 2
 
     try:
-        _load_catalog_runtime()
+        _load_catalog_runtime(args.database_url)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -798,6 +802,7 @@ def main() -> int:
     finally:
         if conn_context is not None:
             conn_context.__exit__(None, None, None)
+        service.close()
 
     report = asdict(stats)
     report["source_root"] = str(source_root)

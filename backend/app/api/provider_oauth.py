@@ -6,7 +6,14 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.core.config import settings
-from app.core.session import create_session_token, set_session_cookie
+from app.core.session import (
+    OIDC_TRANSACTION_COOKIE_NAME,
+    clear_oidc_transaction_cookie,
+    create_session_token,
+    set_oidc_transaction_cookie,
+    set_session_cookie,
+)
+from app.services import rate_limit_service, session_store_service
 from app.core.security import get_current_user
 from app.services import provider_auth_service
 from app.services.public_url_service import resolve_public_base_url
@@ -63,8 +70,12 @@ async def authorize(
     try:
         user = await get_current_user(request)
     except HTTPException:
-        login_url = provider_auth_service.build_oidc_login_url(_base_url(request), str(request.url))
-        return RedirectResponse(login_url, status_code=302)
+        login_url, transaction_token = provider_auth_service.build_oidc_login_url(
+            _base_url(request), str(request.url)
+        )
+        redirect = RedirectResponse(login_url, status_code=302)
+        set_oidc_transaction_cookie(redirect, transaction_token)
+        return redirect
 
     code = provider_auth_service.issue_authorization_code(
         user=user,  # type: ignore[arg-type]
@@ -82,15 +93,22 @@ async def authorize(
 @router.get("/oauth/oidc/callback", include_in_schema=False)
 async def oidc_callback(request: Request, code: str = Query(...), state: str = Query(...)):
     _require_provider_auth()
-    user, return_to = provider_auth_service.resolve_oidc_callback(code, state, _base_url(request))
-    token = create_session_token(
+    user, return_to = provider_auth_service.resolve_oidc_callback(
+        code,
+        state,
+        request.cookies.get(OIDC_TRANSACTION_COOKIE_NAME) or "",
+        _base_url(request),
+    )
+    session_id, _ = session_store_service.create_session(
         email=user.email,
         name=user.name,
         picture=user.picture,
-        role=user.role,
+        user_agent=request.headers.get("user-agent", ""),
+        client_ip=rate_limit_service.client_fingerprint(request),
     )
     response = RedirectResponse(return_to, status_code=302)
-    set_session_cookie(response, token)
+    set_session_cookie(response, create_session_token(session_id))
+    clear_oidc_transaction_cookie(response)
     return response
 
 
@@ -151,12 +169,12 @@ async def session_bootstrap(request: Request):
 async def bootstrap_redirect(token: str = Query(...)):
     _require_provider_auth()
     payload = provider_auth_service.consume_bootstrap_token(token)
-    session_token = create_session_token(
+    session_id, _ = session_store_service.create_session(
         email=str(payload["email"]),
         name=str(payload["name"]),
         picture=str(payload.get("picture") or ""),
-        role=str(payload["role"]),
+        user_agent="kicad-remote-provider-panel",
     )
     response = RedirectResponse(str(payload["next_url"]), status_code=302)
-    set_session_cookie(response, session_token)
+    set_session_cookie(response, create_session_token(session_id))
     return response

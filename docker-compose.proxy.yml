@@ -1,15 +1,36 @@
+# Optional TLS terminator for KiCAD Prism.
+#
+# Usage (public ACME / Let's Encrypt):
+#   1. Edit deploy/Caddyfile and set your domain
+#   2. Set SESSION_COOKIE_SECURE=true and HTTPS CORS_ORIGINS_STR in .env
+#   3. docker compose -f docker-compose.yml -f docker-compose.proxy.yml up --build -d
+#
+# Usage (internal CA):
+#   1. Place certificates under deploy/certs/
+#   2. Point the caddy service at deploy/Caddyfile.internal (see comments below)
+#   3. Distribute the CA certificate to every KiCad workstation
+#
+# See docs/DEPLOYMENT.md.
+
 services:
   caddy:
     image: caddy:2
     container_name: kicad-prism-proxy
     restart: unless-stopped
+    depends_on:
+      - frontend
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # For internal CA deployments, swap the line above for:
+      # - ./deploy/Caddyfile.internal:/etc/caddy/Caddyfile:ro
+      # - ./deploy/certs:/certs:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - default
 
 volumes:
   caddy_data:

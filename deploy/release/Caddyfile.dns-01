@@ -1,0 +1,56 @@
+# KiCAD Prism reverse proxy (public ACME, DNS-01 challenge)
+
+# Use this when Prism must be reachable over publicly trusted HTTPS but the
+# host must not accept inbound connections from the internet. DNS-01 proves
+# domain control by publishing a TXT record, so:
+#
+# - ports 80 and 443 never need to be reachable from outside your network;
+# - the A record may resolve to a private address in internal DNS only;
+# - no root CA has to be distributed to KiCad workstations.
+#
+# Requires a Caddy binary with your DNS provider module compiled in. The stock
+# caddy:2 image will not work. See Dockerfile.caddy-dns.
+#
+# Replace prism.example.com and the provider directive below.
+#
+# See the Deployment guide.
+
+prism.example.com {
+	tls {
+		# Cloudflare shown as an example. Each caddy-dns module documents its
+		# own directive and arguments; substitute yours. Read credentials from
+		# the environment so they stay out of this file and out of Git.
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+
+		# Caddy confirms the TXT record is visible before asking the CA to
+		# validate. Name resolvers that can see the public zone: a split-horizon
+		# corporate resolver may never return the public answer. On a network
+		# that intercepts outbound DNS, these must be resolvers the network
+		# permits, or the propagation check times out.
+		resolvers 1.1.1.1 8.8.8.8
+
+		# Rehearse against the staging CA first. Staging issues untrusted
+		# certificates but has far higher rate limits than production, which
+		# allows only 5 failed validations per hostname per hour.
+		# Inside a tls block the subdirective is `ca`; `acme_ca` is the
+		# global-options spelling and is rejected here.
+		# ca https://acme-staging-v02.api.letsencrypt.org/directory
+	}
+
+	encode gzip zstd
+
+	# Large catalog imports and long-running semantic generation
+	request_body {
+		max_size 2GB
+	}
+
+	reverse_proxy frontend:80 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}

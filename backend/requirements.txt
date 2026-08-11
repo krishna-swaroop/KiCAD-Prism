@@ -8,3 +8,6 @@ requests
 PyJWT[crypto]
 kiutils
 python-multipart
+psycopg[binary]>=3.2,<4
+psycopg-pool>=3.2,<4
+Pillow>=11,<13

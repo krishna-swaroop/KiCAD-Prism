@@ -1,72 +1,57 @@
 import * as React from "react"
+import { Tooltip as TooltipPrimitive } from "radix-ui"
+
 import { cn } from "@/lib/utils"
 
-// Simple Context
-const TooltipContext = React.createContext<{
-    open: boolean
-    setOpen: React.Dispatch<React.SetStateAction<boolean>>
-}>({
-    open: false,
-    setOpen: () => { },
-})
+/**
+ * Radix-backed tooltip.
+ *
+ * This replaces a hand-rolled version that positioned itself with static
+ * utility classes and only opened on mouse enter. That was enough for the one
+ * decorative hint it was written for, but not for explaining why a control is
+ * unavailable: those need to reach keyboard users, survive being near a
+ * viewport edge, and close on Escape. The exported names and props are
+ * unchanged, so the existing call site keeps working.
+ */
 
-const TooltipProvider = ({ children }: { children: React.ReactNode }) => {
-    return <>{children}</>
-}
+const TooltipProvider = ({
+    delayDuration = 200,
+    ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Provider>) => (
+    <TooltipPrimitive.Provider delayDuration={delayDuration} {...props} />
+)
 
-const Tooltip = ({ children }: { children: React.ReactNode }) => {
-    const [open, setOpen] = React.useState(false)
+const Tooltip = ({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) => (
+    // Each tooltip carries its own provider so a call site can drop one in
+    // without the whole app having to be wrapped.
+    <TooltipProvider>
+        <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+    </TooltipProvider>
+)
 
-    return (
-        <TooltipContext.Provider value={{ open, setOpen }}>
-            <div
-                className="relative inline-block"
-                onMouseEnter={() => setOpen(true)}
-                onMouseLeave={() => setOpen(false)}
-            >
-                {children}
-            </div>
-        </TooltipContext.Provider>
-    )
-}
-
-// Trigger just passes through children since we handle hover on parent
-const TooltipTrigger = React.forwardRef<
-    HTMLDivElement,
-    React.HTMLAttributes<HTMLDivElement> & { asChild?: boolean }
->(({ children, ...props }, ref) => {
-    return <div ref={ref} {...props}>{children}</div>
-})
-TooltipTrigger.displayName = "TooltipTrigger"
+const TooltipTrigger = TooltipPrimitive.Trigger
 
 const TooltipContent = React.forwardRef<
-    HTMLDivElement,
-    React.HTMLAttributes<HTMLDivElement> & { side?: "top" | "bottom" | "left" | "right" }
->(({ className, side = "top", ...props }, ref) => {
-    const { open } = React.useContext(TooltipContext)
-
-    if (!open) return null
-
-    // Positioning logic (simplified)
-    const positionClasses = {
-        top: "bottom-full left-1/2 -translate-x-1/2 mb-2",
-        bottom: "top-full left-1/2 -translate-x-1/2 mt-2",
-        left: "right-full top-1/2 -translate-y-1/2 mr-2",
-        right: "left-full top-1/2 -translate-y-1/2 ml-2",
-    }
-
-    return (
-        <div
+    React.ElementRef<typeof TooltipPrimitive.Content>,
+    React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
+>(({ className, side = "top", sideOffset = 6, children, ...props }, ref) => (
+    <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Content
             ref={ref}
+            data-slot="tooltip-content"
+            side={side}
+            sideOffset={sideOffset}
             className={cn(
-                "absolute z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95",
-                positionClasses[side],
+                "z-50 max-w-xs border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md",
+                "data-[state=delayed-open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=delayed-open]:fade-in-0",
                 className
             )}
             {...props}
-        />
-    )
-})
-TooltipContent.displayName = "TooltipContent"
+        >
+            {children}
+        </TooltipPrimitive.Content>
+    </TooltipPrimitive.Portal>
+))
+TooltipContent.displayName = TooltipPrimitive.Content.displayName
 
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }

@@ -8,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import sys
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -25,6 +26,9 @@ ComponentCatalogService: Any = None
 _discover_footprint_name_in_text: Any = None
 _sanitize_name: Any = None
 _utc_now_iso: Any = None
+_slugify: Any = None
+REVISION_MANIFEST_A2 = "prism.revision_manifest_a2"
+MAX_REPORTED_ERRORS = 100
 
 
 def _load_catalog_runtime() -> None:
@@ -33,12 +37,17 @@ def _load_catalog_runtime() -> None:
     global _sanitize_name
     global _utc_now_iso
 
+    global _slugify
+
     try:
-        from app.services.component_catalog_service_sqlite import (  # noqa: PLC0415
-            ComponentCatalogService as LoadedComponentCatalogService,
+        from app.services.component_catalog_domain import (  # noqa: PLC0415
             _discover_footprint_name_in_text as loaded_discover_footprint_name,
             _sanitize_name as loaded_sanitize_name,
+            _slugify as loaded_slugify,
             _utc_now_iso as loaded_utc_now_iso,
+        )
+        from app.services.component_catalog_service_postgres import (  # noqa: PLC0415
+            ComponentCatalogPostgresService,
         )
     except ModuleNotFoundError as exc:
         raise RuntimeError(
@@ -46,9 +55,10 @@ def _load_catalog_runtime() -> None:
             "or inside the backend container."
         ) from exc
 
-    ComponentCatalogService = LoadedComponentCatalogService
+    ComponentCatalogService = ComponentCatalogPostgresService
     _discover_footprint_name_in_text = loaded_discover_footprint_name
     _sanitize_name = loaded_sanitize_name
+    _slugify = loaded_slugify
     _utc_now_iso = loaded_utc_now_iso
 
 
@@ -74,6 +84,19 @@ class FootprintAsset:
 
 
 @dataclass
+class ImportRowPlan:
+    table: str
+    part_number: str
+    import_name: str
+    metadata: dict[str, Any]
+    symbol_library: SymbolLibrary | None
+    symbol_name: str
+    footprint_asset: FootprintAsset | None
+    symbol_error: str = ""
+    footprint_error: str = ""
+
+
+@dataclass
 class ImportStats:
     database_tables_seen: int = 0
     database_rows_seen: int = 0
@@ -94,11 +117,26 @@ class ImportStats:
     errors: list[str] = field(default_factory=list)
 
 
-CATALOG_DELETE_ORDER = (
+# Truncate order is irrelevant under CASCADE; list every catalog table that holds
+# imported component/asset state so --replace-catalog clears the Postgres schema.
+CATALOG_TRUNCATE_TABLES = (
     "asset_validation_findings",
     "asset_validation_runs",
+    "revision_validation_evidence_links",
+    "revision_preview_outputs",
+    "revision_previews",
+    "asset_preview_versions",
     "asset_previews",
     "revision_assets",
+    "component_release_records",
+    "component_review_decisions",
+    "catalog_audit_events",
+    "catalog_metadata_batch_items",
+    "catalog_metadata_batches",
+    "component_usage",
+    "project_component_import_proposals",
+    "project_component_import_sessions",
+    "component_heads",
     "component_revisions",
     "components",
     "assets",
@@ -183,6 +221,463 @@ def _row_get(row: sqlite3.Row, *names: str) -> str:
             value = row[key]
             return "" if value is None else str(value).strip()
     return ""
+
+
+def _table_column_maps(conn: sqlite3.Connection, tables: list[str]) -> dict[str, dict[str, str]]:
+    maps: dict[str, dict[str, str]] = {}
+    for table in tables:
+        maps[table] = {
+            str(row["name"]).lower().replace(" ", "_"): str(row["name"])
+            for row in conn.execute(f'PRAGMA table_info("{table}")')
+        }
+    return maps
+
+
+def _row_get_cached(row: sqlite3.Row, column_map: dict[str, str], *names: str) -> str:
+    for name in names:
+        if name in row.keys():
+            value = row[name]
+            return "" if value is None else str(value).strip()
+        key = column_map.get(name.lower().replace(" ", "_"))
+        if key:
+            value = row[key]
+            return "" if value is None else str(value).strip()
+    return ""
+
+
+def _record_error(stats: ImportStats, message: str) -> None:
+    if len(stats.errors) < MAX_REPORTED_ERRORS:
+        stats.errors.append(message)
+
+
+def _unique_slug_local(used_slugs: set[str], base: str) -> str:
+    slug = _slugify(base or "component")
+    candidate = slug
+    counter = 2
+    while candidate in used_slugs:
+        candidate = f"{slug}-{counter}"
+        counter += 1
+    used_slugs.add(candidate)
+    return candidate
+
+
+def _symbol_payload_cached(
+    cache: dict[tuple[str, str], bytes],
+    library: SymbolLibrary,
+    selected_symbol: str,
+) -> bytes:
+    key = (library.target_library, selected_symbol)
+    payload = cache.get(key)
+    if payload is None:
+        payload = _symbol_payload_from_index(library, selected_symbol)
+        cache[key] = payload
+    return payload
+
+
+def _link_asset_fast(conn: Any, revision_id: str, asset: dict[str, Any], *, required: bool, now: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO revision_assets (revision_id, asset_type, asset_id, required, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (revision_id, asset_id)
+        DO UPDATE SET required = excluded.required, updated_at = excluded.updated_at
+        """,
+        (revision_id, asset["asset_type"], asset["id"], 1 if required else 0, now, now),
+    )
+
+
+def _release_component_fast(
+    service: Any,
+    conn: Any,
+    *,
+    component_id: str,
+    revision_id: str,
+    now: str,
+) -> None:
+    manifest_hash = service._revision_manifest_hash(conn, revision_id)  # type: ignore[attr-defined]
+    conn.execute(
+        """
+        UPDATE component_revisions
+        SET manifest_hash = %s, release_status = 'released', updated_at = %s
+        WHERE id = %s
+        """,
+        (manifest_hash, now, revision_id),
+    )
+    conn.execute(
+        "UPDATE components SET released_revision_id = %s, updated_at = %s WHERE id = %s",
+        (revision_id, now, component_id),
+    )
+
+
+def _insert_import_component(
+    service: Any,
+    conn: Any,
+    *,
+    metadata: dict[str, Any],
+    slug: str,
+    now: str,
+) -> tuple[str, str]:
+    component_id = str(uuid.uuid4())
+    revision_id = str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO components (
+            id, slug, source, external_source, external_id, stock_quantity, stock_uom, inventory_status,
+            serial_number, lot_number, pedigree, last_synced_at, is_active, current_revision_id,
+            released_revision_id, created_at, updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, 0, '', '', '', '', '', NULL, 1, %s, '', %s, %s)
+        """,
+        (component_id, slug, "import", "", "", revision_id, now, now),
+    )
+    conn.execute(
+        """
+        INSERT INTO component_revisions (
+            id, component_id, version, parent_revision_id, change_kind, change_summary, created_by,
+            manifest_hash, manifest_schema, release_status, name, value, description, datasheet_url,
+            manufacturer, mpn, category, package_name, vendor, vendor_part_number, mass_g,
+            rqjc_c_w, rqjc_top_c_w, temp_max_c, temp_min_c, power_dissipation_w, rate, sap_code,
+            summary, keywords, extra_fields, search_document, created_at, updated_at
+        )
+        VALUES (
+            %s, %s, 1, '', 'import', 'Imported from database library', 'system:import_database_library',
+            '', %s, 'open', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s
+        )
+        """,
+        (
+            revision_id,
+            component_id,
+            REVISION_MANIFEST_A2,
+            metadata["name"],
+            metadata["value"],
+            metadata["description"],
+            metadata["datasheet_url"],
+            metadata["manufacturer"],
+            metadata["mpn"],
+            metadata["category"],
+            metadata["package_name"],
+            metadata["vendor"],
+            metadata["vendor_part_number"],
+            metadata["mass_g"],
+            metadata["rqjc_c_w"],
+            metadata["rqjc_top_c_w"],
+            metadata["temp_max_c"],
+            metadata["temp_min_c"],
+            metadata["power_dissipation_w"],
+            metadata["rate"],
+            metadata["sap_code"],
+            metadata["summary"],
+            json.dumps(service._keywords(metadata), separators=(",", ":")),  # type: ignore[attr-defined]
+            json.dumps(metadata["extra_fields"], sort_keys=True, separators=(",", ":")),
+            service._search_document(metadata),  # type: ignore[attr-defined]
+            now,
+            now,
+        ),
+    )
+    return component_id, revision_id
+
+
+def _collect_import_plans(
+    source_conn: sqlite3.Connection,
+    tables: list[str],
+    *,
+    symbol_libraries: dict[str, SymbolLibrary],
+    footprint_index: dict[str, dict[str, FootprintAsset | None]],
+    service: Any,
+    stats: ImportStats,
+    allow_missing_assets: bool,
+    limit: int,
+) -> list[ImportRowPlan]:
+    column_maps = _table_column_maps(source_conn, tables)
+    part_occurrences: dict[str, int] = {}
+    plans: list[ImportRowPlan] = []
+
+    for table in tables:
+        rows = source_conn.execute(f'SELECT * FROM "{table}"')
+        column_map = column_maps[table]
+        for row in rows:
+            stats.database_rows_seen += 1
+            if limit and stats.rows_selected >= limit:
+                return plans
+
+            part_number = _row_get_cached(row, column_map, "Part Number", "Part Number Nocolon")
+            symbol_ref = _row_get_cached(row, column_map, "LibSymbol")
+            footprint_ref = _row_get_cached(row, column_map, "LibFootprint")
+            if not part_number:
+                stats.skipped_rows += 1
+                _record_error(stats, f"{table}: row without Part Number")
+                continue
+
+            occurrence = part_occurrences.get(part_number, 0) + 1
+            part_occurrences[part_number] = occurrence
+            import_name = part_number if occurrence == 1 else f"{part_number}__ALT{occurrence:03d}"
+            if occurrence > 1:
+                stats.duplicate_part_numbers += 1
+
+            symbol_library_ref, symbol_name_ref = _split_library_ref(symbol_ref)
+            footprint_library_ref, footprint_name_ref = _split_library_ref(footprint_ref)
+            symbol_library, symbol_name, symbol_error = _resolve_symbol(
+                symbol_libraries, symbol_library_ref, symbol_name_ref
+            )
+            footprint_asset, footprint_error = _resolve_footprint(
+                footprint_index, footprint_library_ref, footprint_name_ref
+            )
+
+            if symbol_error == "ambiguous":
+                stats.ambiguous_symbol_refs += 1
+                _record_error(stats, f"{table}:{part_number}: ambiguous symbol '{symbol_ref}'")
+            elif symbol_error:
+                stats.missing_symbol_refs += 1
+                _record_error(
+                    stats,
+                    f"{table}:{part_number}: unresolved symbol '{symbol_ref}' ({symbol_error})",
+                )
+            if footprint_error == "ambiguous":
+                stats.ambiguous_footprint_refs += 1
+                _record_error(stats, f"{table}:{part_number}: ambiguous footprint '{footprint_ref}'")
+            elif footprint_error:
+                stats.missing_footprint_refs += 1
+                _record_error(
+                    stats,
+                    f"{table}:{part_number}: unresolved footprint '{footprint_ref}' ({footprint_error})",
+                )
+
+            if (symbol_error or footprint_error) and not allow_missing_assets:
+                stats.skipped_rows += 1
+                continue
+
+            stats.rows_selected += 1
+            metadata = service._normalize_metadata(  # type: ignore[attr-defined]
+                _metadata_from_row_cached(row, table, import_name, column_map)
+            )
+            plans.append(
+                ImportRowPlan(
+                    table=table,
+                    part_number=part_number,
+                    import_name=import_name,
+                    metadata=metadata,
+                    symbol_library=symbol_library,
+                    symbol_name=symbol_name,
+                    footprint_asset=footprint_asset,
+                    symbol_error=symbol_error,
+                    footprint_error=footprint_error,
+                )
+            )
+    return plans
+
+
+def _metadata_from_row_cached(
+    row: sqlite3.Row,
+    table: str,
+    import_name: str,
+    column_map: dict[str, str],
+) -> dict[str, str]:
+    value = _row_get_cached(row, column_map, "Value", "Comment") or import_name
+    description = _row_get_cached(row, column_map, "Part Description", "Description", "Comment") or import_name
+    manufacturer = _row_get_cached(row, column_map, "Manufacturer") or "TBD"
+    datasheet = _row_get_cached(row, column_map, "Datasheet", "HelpURL") or "TBD"
+    category = _row_get_cached(row, column_map, "Database Table Name") or table
+    return {
+        "value": value,
+        "description": description,
+        "datasheet_url": datasheet,
+        "manufacturer": manufacturer,
+        "mpn": import_name,
+        "category": category,
+        "package_name": _row_get_cached(row, column_map, "PackageDescription", "Case"),
+        "vendor": "",
+        "vendor_part_number": "",
+        "mass_g": "",
+        "rqjc_c_w": "",
+        "rqjc_top_c_w": "",
+        "temp_max_c": "",
+        "temp_min_c": "",
+        "power_dissipation_w": _row_get_cached(row, column_map, "Power"),
+        "rate": "",
+        "sap_code": _row_get_cached(row, column_map, "SCEM"),
+    }
+
+
+def _register_planned_assets(
+    plans: list[ImportRowPlan],
+    *,
+    service: Any,
+    target_conn: Any,
+    stats: ImportStats,
+    overwrite_assets: bool,
+    generate_previews: bool,
+    runtime_store_root: Path | None,
+    symbol_payload_cache: dict[tuple[str, str], bytes],
+    symbol_asset_cache: dict[tuple[str, str], dict[str, Any]],
+    footprint_asset_cache: dict[tuple[str, str], dict[str, Any]],
+    commit_batch: int,
+) -> None:
+    symbol_jobs: dict[tuple[str, str], SymbolLibrary] = {}
+    footprint_jobs: dict[tuple[str, str], FootprintAsset] = {}
+    for plan in plans:
+        if plan.symbol_library and plan.symbol_name:
+            symbol_jobs[(plan.symbol_library.target_library, plan.symbol_name)] = plan.symbol_library
+        if plan.footprint_asset:
+            footprint_jobs[(plan.footprint_asset.target_library, plan.footprint_asset.target_name)] = plan.footprint_asset
+
+    pending = 0
+    started = time.perf_counter()
+
+    def _commit_asset_batch(label: str) -> None:
+        nonlocal pending
+        if pending <= 0:
+            return
+        target_conn.commit()
+        _begin_import_transaction(target_conn)
+        elapsed = max(time.perf_counter() - started, 0.001)
+        print(
+            f"{label}: registered {stats.symbol_assets_registered} symbols, "
+            f"{stats.footprint_assets_registered} footprints "
+            f"({(stats.symbol_assets_registered + stats.footprint_assets_registered) / elapsed:.1f} assets/s)",
+            flush=True,
+        )
+        pending = 0
+
+    for (target_library, symbol_name), library in sorted(symbol_jobs.items()):
+        key = (target_library, symbol_name)
+        if key in symbol_asset_cache:
+            continue
+        payload = _symbol_payload_cached(symbol_payload_cache, library, symbol_name)
+        destination = service._symbol_destination(target_library, symbol_name)  # type: ignore[attr-defined]
+        canonical = _write_or_copy(destination, None, payload, overwrite=overwrite_assets)
+        asset = _register_asset(
+            service,
+            target_conn,
+            asset_type="symbol",
+            canonical_path=canonical,
+            target_library=target_library,
+            target_name=symbol_name,
+            source_group=library.path.name,
+            runtime_store_root=runtime_store_root,
+        )
+        if generate_previews:
+            preview_asset = dict(asset)
+            preview_asset["canonical_path"] = str(canonical)
+            service._ensure_asset_preview(target_conn, preview_asset)  # type: ignore[attr-defined]
+        symbol_asset_cache[key] = asset
+        stats.symbol_assets_registered += 1
+        pending += 1
+        if pending >= commit_batch:
+            _commit_asset_batch("Asset batch")
+
+    for (target_library, target_name), footprint in sorted(footprint_jobs.items()):
+        key = (target_library, target_name)
+        if key in footprint_asset_cache:
+            continue
+        destination = service._footprint_destination(target_library, target_name)  # type: ignore[attr-defined]
+        canonical = _write_or_copy(destination, footprint.path, None, overwrite=overwrite_assets)
+        asset = _register_asset(
+            service,
+            target_conn,
+            asset_type="footprint",
+            canonical_path=canonical,
+            target_library=target_library,
+            target_name=target_name,
+            source_group=footprint.path.parent.name,
+            runtime_store_root=runtime_store_root,
+        )
+        if generate_previews:
+            preview_asset = dict(asset)
+            preview_asset["canonical_path"] = str(canonical)
+            service._ensure_asset_preview(target_conn, preview_asset)  # type: ignore[attr-defined]
+        footprint_asset_cache[key] = asset
+        stats.footprint_assets_registered += 1
+        pending += 1
+        if pending >= commit_batch:
+            _commit_asset_batch("Asset batch")
+
+    _commit_asset_batch("Asset registration complete")
+
+
+def _import_plans(
+    plans: list[ImportRowPlan],
+    *,
+    service: Any,
+    target_conn: Any,
+    stats: ImportStats,
+    symbol_asset_cache: dict[tuple[str, str], dict[str, Any]],
+    footprint_asset_cache: dict[tuple[str, str], dict[str, Any]],
+    release_imported: bool,
+    commit_batch: int,
+) -> None:
+    used_slugs: set[str] = set()
+    imported_since_commit = 0
+    started = time.perf_counter()
+
+    def _commit_import_batch(force: bool = False) -> None:
+        nonlocal imported_since_commit
+        if not force and imported_since_commit < max(1, commit_batch):
+            return
+        target_conn.commit()
+        _begin_import_transaction(target_conn)
+        imported_since_commit = 0
+        elapsed = max(time.perf_counter() - started, 0.001)
+        print(
+            f"Committed batch: {stats.components_created} created, "
+            f"{stats.components_released} released, {stats.skipped_rows} skipped "
+            f"({stats.components_created / elapsed:.1f} components/s)",
+            flush=True,
+        )
+
+    def _recover_import_transaction() -> None:
+        nonlocal imported_since_commit
+        target_conn.rollback()
+        _begin_import_transaction(target_conn)
+        imported_since_commit = 0
+
+    for plan in plans:
+        try:
+            now = _utc_now_iso()
+            slug = _unique_slug_local(used_slugs, plan.metadata["mpn"] or plan.metadata["value"])
+            component_id, revision_id = _insert_import_component(
+                service,
+                target_conn,
+                metadata=plan.metadata,
+                slug=slug,
+                now=now,
+            )
+            stats.components_created += 1
+
+            linked_symbol = False
+            linked_footprint = False
+            if plan.symbol_library and plan.symbol_name:
+                asset = symbol_asset_cache[(plan.symbol_library.target_library, plan.symbol_name)]
+                _link_asset_fast(target_conn, revision_id, asset, required=True, now=now)
+                stats.symbol_links_created += 1
+                linked_symbol = True
+
+            if plan.footprint_asset:
+                asset = footprint_asset_cache[
+                    (plan.footprint_asset.target_library, plan.footprint_asset.target_name)
+                ]
+                _link_asset_fast(target_conn, revision_id, asset, required=True, now=now)
+                stats.footprint_links_created += 1
+                linked_footprint = True
+
+            if release_imported and linked_symbol and linked_footprint:
+                _release_component_fast(
+                    service,
+                    target_conn,
+                    component_id=component_id,
+                    revision_id=revision_id,
+                    now=now,
+                )
+                stats.components_released += 1
+
+            imported_since_commit += 1
+            _commit_import_batch()
+        except Exception as exc:  # noqa: BLE001
+            stats.skipped_rows += 1
+            _record_error(stats, f"{plan.table}:{plan.part_number}: {exc}")
+            _recover_import_transaction()
+
+    _commit_import_batch(force=True)
 
 
 def _autodiscover_database(source_root: Path) -> Path:
@@ -394,7 +889,7 @@ def _runtime_path(local_path: Path, local_store_root: Path, runtime_store_root: 
 
 def _register_asset(
     service: Any,
-    conn: sqlite3.Connection,
+    conn: Any,
     *,
     asset_type: str,
     canonical_path: Path,
@@ -414,19 +909,22 @@ def _register_asset(
     )
     runtime_canonical_path = _runtime_path(local_path, service.store_root, runtime_store_root)
     if str(asset["canonical_path"]) != runtime_canonical_path:
-        conn.execute("UPDATE assets SET canonical_path = ? WHERE id = ?", (runtime_canonical_path, asset["id"]))
+        conn.execute(
+            "UPDATE assets SET canonical_path = %s WHERE id = %s",
+            (runtime_canonical_path, asset["id"]),
+        )
         asset = dict(asset)
         asset["canonical_path"] = runtime_canonical_path
     return asset
 
 
-def _find_existing_component(conn: sqlite3.Connection, mpn: str) -> str | None:
+def _find_existing_component(conn: Any, mpn: str) -> str | None:
     row = conn.execute(
         """
         SELECT c.id
         FROM components c
         JOIN component_revisions cr ON cr.id = c.current_revision_id
-        WHERE cr.mpn = ?
+        WHERE cr.mpn = %s
         LIMIT 1
         """,
         (mpn,),
@@ -434,27 +932,17 @@ def _find_existing_component(conn: sqlite3.Connection, mpn: str) -> str | None:
     return str(row["id"]) if row else None
 
 
-def _clear_catalog(conn: sqlite3.Connection) -> None:
-    conn.execute("PRAGMA foreign_keys = OFF")
-    for table in CATALOG_DELETE_ORDER:
-        conn.execute(f'DELETE FROM "{table}"')
-    conn.execute("PRAGMA foreign_keys = ON")
+def _clear_catalog(conn: Any) -> None:
+    tables = ", ".join(f'"{table}"' for table in CATALOG_TRUNCATE_TABLES)
+    conn.execute(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE")
 
 
-def _rebuild_fts(conn: sqlite3.Connection) -> None:
-    conn.execute("INSERT INTO component_revisions_fts(component_revisions_fts) VALUES ('rebuild')")
-    signature_row = conn.execute(
-        "SELECT COUNT(1) AS count, COALESCE(MAX(updated_at), '') AS updated_at FROM component_revisions"
-    ).fetchone()
-    signature = f"{int(signature_row['count'])}:{signature_row['updated_at']}"
-    conn.execute(
-        """
-        INSERT INTO catalog_meta(key, value)
-        VALUES ('component_revisions_fts_signature', ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        """,
-        (signature,),
-    )
+def _enable_catalog_migration(conn: Any) -> None:
+    conn.execute("SET LOCAL prism.catalog_migration = 'on'")
+
+
+def _begin_import_transaction(conn: Any) -> None:
+    _enable_catalog_migration(conn)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -471,7 +959,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-table", action="append", default=[], help="Import only this source table. Can be repeated.")
     parser.add_argument("--store-root", type=Path, default=None, help="Local Prism canonical component store root.")
     parser.add_argument("--runtime-store-root", type=Path, default=None, help="Canonical store root to write into DB paths, e.g. /app/projects/.kicad-prism/components.")
-    parser.add_argument("--database-url", default=os.environ.get("CATALOG_SQLITE_PATH", ""), help="Target Prism catalog SQLite path.")
+    parser.add_argument("--database-url", default=os.environ.get("PRISM_DATABASE_URL", ""), help="Target Prism PostgreSQL URL.")
     parser.add_argument("--replace-catalog", action="store_true", help="Delete existing Prism catalog component/asset rows before importing.")
     parser.add_argument("--overwrite-assets", action="store_true", help="Overwrite canonical asset files when content differs.")
     parser.add_argument("--allow-missing-assets", action="store_true", help="Create metadata rows even when symbol or footprint refs cannot be resolved.")
@@ -480,6 +968,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="Resolve rows and report counts without writing files or DB rows.")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when any row fails or is skipped.")
     parser.add_argument("--limit", type=int, default=0, help="Import at most this many database rows after filtering.")
+    parser.add_argument("--commit-batch", type=int, default=500, help="Commit PostgreSQL changes every N imported rows/assets.")
     parser.add_argument("--report-json", type=Path, default=None, help="Optional JSON report path.")
     return parser
 
@@ -515,22 +1004,40 @@ def main() -> int:
     runtime_store_root = args.runtime_store_root
     include_tables = set(args.include_table or [])
 
-    print(f"Indexing symbol libraries from {symbols_root} ...")
+    print(f"Indexing symbol libraries from {symbols_root} ...", flush=True)
     symbol_libraries = _build_symbol_index(service, symbols_root)
-    print(f"Indexing footprint libraries from {footprints_root} ...")
+    print(f"Indexing footprint libraries from {footprints_root} ...", flush=True)
     footprint_index = _build_footprint_index(footprints_root)
 
-    part_occurrences: dict[str, int] = {}
-    seen_symbol_asset_ids: set[str] = set()
-    seen_footprint_asset_ids: set[str] = set()
+    source_conn = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+    source_conn.row_factory = sqlite3.Row
+    source_conn.execute("PRAGMA query_only = ON")
+    source_conn.execute("PRAGMA temp_store = MEMORY")
+    source_conn.execute("PRAGMA cache_size = -64000")
+    tables = _database_tables(source_conn, include_tables)
+    stats.database_tables_seen = len(tables)
+
+    print(f"Scanning {stats.database_tables_seen} source tables ...", flush=True)
+    plans = _collect_import_plans(
+        source_conn,
+        tables,
+        symbol_libraries=symbol_libraries,
+        footprint_index=footprint_index,
+        service=service,
+        stats=stats,
+        allow_missing_assets=args.allow_missing_assets,
+        limit=args.limit,
+    )
+    print(
+        f"Prepared {len(plans)} import rows "
+        f"({stats.skipped_rows} skipped during scan, {stats.duplicate_part_numbers} duplicate MPN variants)",
+        flush=True,
+    )
+
+    symbol_payload_cache: dict[tuple[str, str], bytes] = {}
     symbol_asset_cache: dict[tuple[str, str], dict[str, Any]] = {}
     footprint_asset_cache: dict[tuple[str, str], dict[str, Any]] = {}
     fatal_error = False
-
-    source_conn = sqlite3.connect(database_path)
-    source_conn.row_factory = sqlite3.Row
-    tables = _database_tables(source_conn, include_tables)
-    stats.database_tables_seen = len(tables)
 
     target_conn_context = None
     target_conn = None
@@ -539,165 +1046,44 @@ def main() -> int:
             service.initialize()
             target_conn_context = service._connect()  # type: ignore[attr-defined]
             target_conn = target_conn_context.__enter__()
+            _begin_import_transaction(target_conn)
             if args.replace_catalog:
-                print("Clearing existing Prism catalog rows ...")
+                print("Clearing existing Prism catalog rows ...", flush=True)
                 _clear_catalog(target_conn)
+                target_conn.commit()
+                _begin_import_transaction(target_conn)
 
-        for table in tables:
-            rows = source_conn.execute(f'SELECT * FROM "{table}"')
-            for row in rows:
-                stats.database_rows_seen += 1
-                if args.limit and stats.rows_selected >= args.limit:
-                    break
+            print("Registering canonical symbol and footprint assets ...", flush=True)
+            _register_planned_assets(
+                plans,
+                service=service,
+                target_conn=target_conn,
+                stats=stats,
+                overwrite_assets=args.overwrite_assets,
+                generate_previews=args.generate_previews,
+                runtime_store_root=runtime_store_root,
+                symbol_payload_cache=symbol_payload_cache,
+                symbol_asset_cache=symbol_asset_cache,
+                footprint_asset_cache=footprint_asset_cache,
+                commit_batch=max(50, args.commit_batch),
+            )
 
-                part_number = _row_get(row, "Part Number", "Part Number Nocolon")
-                symbol_ref = _row_get(row, "LibSymbol")
-                footprint_ref = _row_get(row, "LibFootprint")
-                if not part_number:
-                    stats.skipped_rows += 1
-                    stats.errors.append(f"{table}: row without Part Number")
-                    continue
-
-                occurrence = part_occurrences.get(part_number, 0) + 1
-                part_occurrences[part_number] = occurrence
-                import_name = part_number if occurrence == 1 else f"{part_number}__ALT{occurrence:03d}"
-                if occurrence > 1:
-                    stats.duplicate_part_numbers += 1
-
-                symbol_library_ref, symbol_name_ref = _split_library_ref(symbol_ref)
-                footprint_library_ref, footprint_name_ref = _split_library_ref(footprint_ref)
-                symbol_library, symbol_name, symbol_error = _resolve_symbol(symbol_libraries, symbol_library_ref, symbol_name_ref)
-                footprint_asset, footprint_error = _resolve_footprint(footprint_index, footprint_library_ref, footprint_name_ref)
-
-                if symbol_error == "ambiguous":
-                    stats.ambiguous_symbol_refs += 1
-                    stats.errors.append(f"{table}:{part_number}: ambiguous symbol '{symbol_ref}'")
-                elif symbol_error:
-                    stats.missing_symbol_refs += 1
-                    stats.errors.append(f"{table}:{part_number}: unresolved symbol '{symbol_ref}' ({symbol_error})")
-                if footprint_error == "ambiguous":
-                    stats.ambiguous_footprint_refs += 1
-                    stats.errors.append(f"{table}:{part_number}: ambiguous footprint '{footprint_ref}'")
-                elif footprint_error:
-                    stats.missing_footprint_refs += 1
-                    stats.errors.append(f"{table}:{part_number}: unresolved footprint '{footprint_ref}' ({footprint_error})")
-
-                if (symbol_error or footprint_error) and not args.allow_missing_assets:
-                    stats.skipped_rows += 1
-                    continue
-
-                stats.rows_selected += 1
-                if args.dry_run:
-                    continue
-                assert target_conn is not None
-
-                try:
-                    metadata = service._normalize_metadata(_metadata_from_row(row, table, import_name))  # type: ignore[attr-defined]
-                    existing_component_id = _find_existing_component(target_conn, import_name)
-                    if existing_component_id:
-                        component_id, revision_id = service._upsert_component_metadata_row(  # type: ignore[attr-defined]
-                            target_conn,
-                            component_id=existing_component_id,
-                            metadata=metadata,
-                            now=_utc_now_iso(),
-                            existing_component_id=existing_component_id,
-                        )
-                        stats.components_updated += 1
-                    else:
-                        component_id, revision_id = service._upsert_component_metadata_row(  # type: ignore[attr-defined]
-                            target_conn,
-                            component_id=str(uuid.uuid4()),
-                            metadata=metadata,
-                            now=_utc_now_iso(),
-                            existing_component_id=None,
-                        )
-                        stats.components_created += 1
-
-                    linked_symbol = False
-                    linked_footprint = False
-                    if symbol_library and symbol_name:
-                        symbol_key = (symbol_library.target_library, symbol_name)
-                        asset = symbol_asset_cache.get(symbol_key)
-                        if not asset:
-                            payload = _symbol_payload_from_index(symbol_library, symbol_name)
-                            destination = service._symbol_destination(symbol_library.target_library, symbol_name)  # type: ignore[attr-defined]
-                            canonical = _write_or_copy(destination, None, payload, overwrite=args.overwrite_assets)
-                            asset = _register_asset(
-                                service,
-                                target_conn,
-                                asset_type="symbol",
-                                canonical_path=canonical,
-                                target_library=symbol_library.target_library,
-                                target_name=symbol_name,
-                                source_group=symbol_library.path.name,
-                                runtime_store_root=runtime_store_root,
-                            )
-                            if args.generate_previews:
-                                preview_asset = dict(asset)
-                                preview_asset["canonical_path"] = str(canonical)
-                                service._ensure_asset_preview(target_conn, preview_asset)  # type: ignore[attr-defined]
-                            symbol_asset_cache[symbol_key] = asset
-                        service._link_asset_to_revision(target_conn, revision_id, asset, required=True)  # type: ignore[attr-defined]
-                        if str(asset["id"]) not in seen_symbol_asset_ids:
-                            seen_symbol_asset_ids.add(str(asset["id"]))
-                            stats.symbol_assets_registered += 1
-                        stats.symbol_links_created += 1
-                        linked_symbol = True
-
-                    if footprint_asset:
-                        footprint_key = (footprint_asset.target_library, footprint_asset.target_name)
-                        asset = footprint_asset_cache.get(footprint_key)
-                        if not asset:
-                            destination = service._footprint_destination(footprint_asset.target_library, footprint_asset.target_name)  # type: ignore[attr-defined]
-                            canonical = _write_or_copy(destination, footprint_asset.path, None, overwrite=args.overwrite_assets)
-                            asset = _register_asset(
-                                service,
-                                target_conn,
-                                asset_type="footprint",
-                                canonical_path=canonical,
-                                target_library=footprint_asset.target_library,
-                                target_name=footprint_asset.target_name,
-                                source_group=footprint_asset.path.parent.name,
-                                runtime_store_root=runtime_store_root,
-                            )
-                            if args.generate_previews:
-                                preview_asset = dict(asset)
-                                preview_asset["canonical_path"] = str(canonical)
-                                service._ensure_asset_preview(target_conn, preview_asset)  # type: ignore[attr-defined]
-                            footprint_asset_cache[footprint_key] = asset
-                        service._link_asset_to_revision(target_conn, revision_id, asset, required=True)  # type: ignore[attr-defined]
-                        if str(asset["id"]) not in seen_footprint_asset_ids:
-                            seen_footprint_asset_ids.add(str(asset["id"]))
-                            stats.footprint_assets_registered += 1
-                        stats.footprint_links_created += 1
-                        linked_footprint = True
-
-                    if not args.no_release and linked_symbol and linked_footprint:
-                        now = _utc_now_iso()
-                        target_conn.execute(
-                            "UPDATE component_revisions SET release_status = 'released', updated_at = ? WHERE id = ?",
-                            (now, revision_id),
-                        )
-                        target_conn.execute(
-                            "UPDATE components SET released_revision_id = ?, updated_at = ? WHERE id = ?",
-                            (revision_id, now, component_id),
-                        )
-                        stats.components_released += 1
-                except Exception as exc:  # noqa: BLE001
-                    stats.skipped_rows += 1
-                    stats.errors.append(f"{table}:{part_number}: {exc}")
-
-            if args.limit and stats.rows_selected >= args.limit:
-                break
-
-        if target_conn is not None:
-            _rebuild_fts(target_conn)
-            target_conn.commit()
+            print("Importing component metadata and release records ...", flush=True)
+            _import_plans(
+                plans,
+                service=service,
+                target_conn=target_conn,
+                stats=stats,
+                symbol_asset_cache=symbol_asset_cache,
+                footprint_asset_cache=footprint_asset_cache,
+                release_imported=not args.no_release,
+                commit_batch=max(50, args.commit_batch),
+            )
     except Exception as exc:  # noqa: BLE001
         fatal_error = True
         if target_conn is not None:
             target_conn.rollback()
-        stats.errors.append(str(exc))
+        _record_error(stats, str(exc))
     finally:
         source_conn.close()
         if target_conn_context is not None:
@@ -710,7 +1096,7 @@ def main() -> int:
             "source_database": str(database_path),
             "symbols_root": str(symbols_root),
             "footprints_root": str(footprints_root),
-            "target_database": str(service.db_path),
+            "target_database": "postgresql:catalog",
             "store_root": str(service.store_root),
             "runtime_store_root": str(runtime_store_root) if runtime_store_root else "",
             "dry_run": bool(args.dry_run),

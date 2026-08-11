@@ -1,11 +1,12 @@
 """
 Comments API for KiCAD-Prism Collaboration Feature.
 
-All comment CRUD is backed by SQLite (single source of truth).
-comments.json is generated from DB only during push/export workflows.
+Comment CRUD is backed by the PostgreSQL ``comments`` schema. Visualizer markers
+are published via ecad-viewer overlay scenes (never written into KiCad sources).
 """
 
 import os
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,7 +14,14 @@ from pydantic import BaseModel, Field
 
 from app.api._helpers import get_project_for_role_or_404
 from app.core.security import AuthenticatedUser, require_designer, require_viewer
-from app.services.comments_store_service import comments_store
+from app.services import access_service
+from app.services.comments_store_service import (
+    COMMENT_CLASSES,
+    COMMENT_SEVERITIES,
+    DEFAULT_COMMENT_CLASS,
+    DEFAULT_COMMENT_SEVERITY,
+    comments_store,
+)
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
@@ -27,6 +35,7 @@ class CommentLocation(BaseModel):
     y: float
     layer: str = ""
     page: str = ""
+    bounds: Optional[List[float]] = None  # [x, y, w, h] for area comments
 
 
 class CreateCommentRequest(BaseModel):
@@ -34,6 +43,13 @@ class CreateCommentRequest(BaseModel):
     location: CommentLocation
     content: str
     author: Optional[str] = "anonymous"
+    elementId: Optional[str] = None
+    elementRef: Optional[str] = None
+    elementType: Optional[str] = None
+    commentClass: Optional[str] = DEFAULT_COMMENT_CLASS
+    severity: Optional[str] = DEFAULT_COMMENT_SEVERITY
+    mentions: Optional[List[str]] = None
+    metadata: Optional[dict] = None
 
 
 class CreateReplyRequest(BaseModel):
@@ -60,6 +76,24 @@ class Comment(BaseModel):
     location: CommentLocation
     content: str
     replies: List[CommentReply] = Field(default_factory=list)
+    elementId: Optional[str] = None
+    elementRef: Optional[str] = None
+    elementType: Optional[str] = None
+    commentClass: str = DEFAULT_COMMENT_CLASS
+    severity: str = DEFAULT_COMMENT_SEVERITY
+    mentions: List[str] = Field(default_factory=list)
+    scope: str = "canvas"
+    baseCommit: Optional[str] = None
+    compareCommit: Optional[str] = None
+    comparisonDomain: Optional[str] = None
+    filePath: Optional[str] = None
+    semanticItemId: Optional[str] = None
+    anchorKind: Optional[str] = None
+    # Reserved for future forge Issues sync (null/omitted until enabled).
+    forgeProvider: Optional[str] = None
+    forgeIssueId: Optional[str] = None
+    forgeIssueUrl: Optional[str] = None
+    forgeSyncState: Optional[str] = None
 
 
 class CommentsMeta(BaseModel):
@@ -70,6 +104,26 @@ class CommentsMeta(BaseModel):
 class CommentsFile(BaseModel):
     meta: CommentsMeta = Field(default_factory=CommentsMeta)
     comments: List[Comment] = Field(default_factory=list)
+
+
+class MentionCandidate(BaseModel):
+    email: str
+    role: str
+
+
+class CreateComparisonCommentRequest(BaseModel):
+    baseCommit: str
+    compareCommit: str
+    domain: str
+    content: str
+    author: Optional[str] = "anonymous"
+    filePath: Optional[str] = None
+    semanticItemId: Optional[str] = None
+    semanticItemRef: Optional[str] = None
+    anchorKind: str = "comparison"
+    commentClass: Optional[str] = DEFAULT_COMMENT_CLASS
+    severity: Optional[str] = DEFAULT_COMMENT_SEVERITY
+    mentions: Optional[List[str]] = None
 
 
 def _normalize_author(author: Optional[str]) -> str:
@@ -90,9 +144,76 @@ def _normalize_content(content: str, *, field: str = "content") -> str:
     return normalized
 
 
+def _normalize_bounds(bounds: Optional[List[float]]) -> Optional[List[float]]:
+    if bounds is None:
+        return None
+    if len(bounds) != 4:
+        raise HTTPException(status_code=400, detail="location.bounds must be [x, y, w, h]")
+    try:
+        x, y, w, h = (float(bounds[0]), float(bounds[1]), float(bounds[2]), float(bounds[3]))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="location.bounds must be numeric")
+    if w <= 0 or h <= 0:
+        raise HTTPException(status_code=400, detail="location.bounds width/height must be > 0")
+    return [x, y, w, h]
+
+
+def _normalize_comment_class(value: Optional[str]) -> str:
+    normalized = (value or DEFAULT_COMMENT_CLASS).strip().lower()
+    if normalized not in COMMENT_CLASSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"commentClass must be one of: {', '.join(COMMENT_CLASSES)}",
+        )
+    return normalized
+
+
+def _normalize_severity(value: Optional[str]) -> str:
+    normalized = (value or DEFAULT_COMMENT_SEVERITY).strip().lower()
+    if normalized not in COMMENT_SEVERITIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"severity must be one of: {', '.join(COMMENT_SEVERITIES)}",
+        )
+    return normalized
+
+
+def _normalize_commit(value: str, field: str) -> str:
+    normalized = value.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", normalized):
+        raise HTTPException(status_code=400, detail=f"{field} must be a full commit SHA")
+    return normalized
+
+
+def _normalize_anchor_kind(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized not in {"comparison", "file", "item", "group"}:
+        raise HTTPException(
+            status_code=400,
+            detail="anchorKind must be comparison, file, item, or group",
+        )
+    return normalized
+
+
 # ============================================================
 # API ENDPOINTS
 # ============================================================
+
+@router.get("/{project_id}/comments/mention-candidates", response_model=List[MentionCandidate])
+async def list_mention_candidates(
+    project_id: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """
+    Workspace-scoped users available for @mentions in comments.
+    Requires project access; list itself is instance-wide role assignments.
+    """
+    get_project_for_role_or_404(project_id, user.role)
+    return [
+        MentionCandidate(email=item["email"], role=item["role"])
+        for item in access_service.list_role_assignments()
+    ]
+
 
 @router.get("/{project_id}/comments")
 async def get_comments(project_id: str, user: AuthenticatedUser = Depends(require_viewer)):
@@ -101,6 +222,67 @@ async def get_comments(project_id: str, user: AuthenticatedUser = Depends(requir
     """
     project = get_project_for_role_or_404(project_id, user.role)
     return comments_store.get_comments_file(project.id, project.path)
+
+
+@router.get("/{project_id}/comparison-comments")
+async def get_comparison_comments(
+    project_id: str,
+    base: str,
+    compare: str,
+    domain: Optional[str] = None,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """List discussion threads for one immutable, explicitly ordered comparison."""
+    project = get_project_for_role_or_404(project_id, user.role)
+    domain_norm = _normalize_context(domain) if domain else None
+    return comments_store.get_comparison_comments(
+        project_id=project.id,
+        project_path=project.path,
+        base_commit=_normalize_commit(base, "base"),
+        compare_commit=_normalize_commit(compare, "compare"),
+        comparison_domain=domain_norm,
+    )
+
+
+@router.post(
+    "/{project_id}/comparison-comments",
+    dependencies=[Depends(require_designer)],
+)
+async def create_comparison_comment(
+    project_id: str,
+    request: CreateComparisonCommentRequest,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Create a comparison-, file-, group-, or semantic-item discussion."""
+    project = get_project_for_role_or_404(project_id, user.role)
+    domain = _normalize_context(request.domain)
+    anchor_kind = _normalize_anchor_kind(request.anchorKind)
+    if anchor_kind in {"item", "group"} and not request.semanticItemId:
+        raise HTTPException(
+            status_code=400,
+            detail="semanticItemId is required for item and group comments",
+        )
+    return comments_store.create_comment(
+        project_id=project.id,
+        project_path=project.path,
+        context=domain,
+        location={"x": 0.0, "y": 0.0, "layer": "", "page": request.filePath or ""},
+        content=_normalize_content(request.content),
+        author=_normalize_author(request.author),
+        element_id=request.semanticItemId,
+        element_ref=request.semanticItemRef,
+        element_type=anchor_kind,
+        comment_class=_normalize_comment_class(request.commentClass),
+        severity=_normalize_severity(request.severity),
+        mentions=request.mentions,
+        scope="comparison",
+        base_commit=_normalize_commit(request.baseCommit, "baseCommit"),
+        compare_commit=_normalize_commit(request.compareCommit, "compareCommit"),
+        comparison_domain=domain,
+        file_path=request.filePath,
+        semantic_item_id=request.semanticItemId,
+        anchor_kind=anchor_kind,
+    )
 
 
 @router.post("/{project_id}/comments", dependencies=[Depends(require_designer)])
@@ -116,14 +298,23 @@ async def create_comment(
 
     context = _normalize_context(request.context)
     content = _normalize_content(request.content)
+    location = request.location.model_dump()
+    location["bounds"] = _normalize_bounds(request.location.bounds)
 
     return comments_store.create_comment(
         project_id=project.id,
         project_path=project.path,
         context=context,
-        location=request.location.model_dump(),
+        location=location,
         content=content,
         author=_normalize_author(request.author),
+        element_id=request.elementId,
+        element_ref=request.elementRef,
+        element_type=request.elementType,
+        comment_class=_normalize_comment_class(request.commentClass),
+        severity=_normalize_severity(request.severity),
+        mentions=request.mentions,
+        metadata=request.metadata,
     )
 
 

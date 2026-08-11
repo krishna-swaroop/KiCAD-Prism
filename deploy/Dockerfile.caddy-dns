@@ -1,0 +1,34 @@
+# Caddy with an ACME DNS-01 provider module compiled in.
+#
+# The official caddy:2 image cannot solve DNS-01 challenges. Caddy's DNS
+# providers are Go modules linked into the binary, not plugins loaded at
+# runtime, so the provider must be chosen at build time.
+#
+#   docker build -f deploy/Dockerfile.caddy-dns \
+#     --build-arg DNS_PROVIDER_MODULE=github.com/caddy-dns/cloudflare \
+#     -t kicad-prism-caddy-dns:2 .
+#
+# Providers live at https://github.com/caddy-dns. Common ones:
+#
+#   Cloudflare    github.com/caddy-dns/cloudflare
+#   Route 53      github.com/caddy-dns/route53
+#   Azure DNS     github.com/caddy-dns/azure
+#   Google Cloud  github.com/caddy-dns/googleclouddns
+#   DigitalOcean  github.com/caddy-dns/digitalocean
+#   deSEC         github.com/caddy-dns/desec
+#
+# Verify the module is present before deploying. An empty result means the
+# build did not link it, and issuance will fail with an unhelpful error:
+#
+#   docker run --rm kicad-prism-caddy-dns:2 caddy list-modules | grep dns.providers
+#
+# See docs/DEPLOYMENT.md.
+
+ARG CADDY_VERSION=2
+
+FROM caddy:${CADDY_VERSION}-builder AS builder
+ARG DNS_PROVIDER_MODULE=github.com/caddy-dns/cloudflare
+RUN xcaddy build --with "${DNS_PROVIDER_MODULE}"
+
+FROM caddy:${CADDY_VERSION}
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy

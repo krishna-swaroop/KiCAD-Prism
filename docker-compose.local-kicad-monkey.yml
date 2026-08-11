@@ -1,0 +1,31 @@
+# Opt-in Docker override for testing the adjacent kicad-monkey working tree.
+# Use together with docker-compose.yml; normal Compose builds remain pinned to
+# the upstream release in kicad-prism-viewer/requirements-runtime.txt.
+#
+# PRISM_COPPER_EMIT_ENABLED skips Plotter IR and uses emit_pcb_copper_geometry
+# for semantic 3D copper. Requires a local monkey tree that exports that API.
+services:
+  backend:
+    build:
+      additional_contexts:
+        kicad_monkey: ../kicad_monkey
+      args:
+        KICAD_MONKEY_VARIANT: kicad-monkey-local
+    environment:
+      - PRISM_COPPER_EMIT_ENABLED=true
+
+  catalog-worker:
+    build:
+      additional_contexts:
+        kicad_monkey: ../kicad_monkey
+      args:
+        KICAD_MONKEY_VARIANT: kicad-monkey-local
+
+  prism-worker:
+    build:
+      additional_contexts:
+        kicad_monkey: ../kicad_monkey
+      args:
+        KICAD_MONKEY_VARIANT: kicad-monkey-local
+    environment:
+      - PRISM_COPPER_EMIT_ENABLED=true

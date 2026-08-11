@@ -1,0 +1,33 @@
+# KiCAD Prism reverse proxy (public HTTPS)
+
+# Replace prism.example.com with your public DNS name.
+# Point this site at the Compose frontend service on the Docker network.
+#
+# Prerequisites:
+# - DNS A/AAAA records for the hostname
+# - Ports 80 and 443 reachable for ACME HTTP-01
+# - Prism .env configured with SESSION_COOKIE_SECURE=true and an HTTPS CORS origin
+#
+# See docs/DEPLOYMENT.md.
+
+prism.example.com {
+	encode gzip zstd
+
+	# Large catalog imports and long-running semantic generation
+	request_body {
+		max_size 2GB
+	}
+
+	reverse_proxy frontend:80 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}

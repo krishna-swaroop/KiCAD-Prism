@@ -1,0 +1,15 @@
+[project]
+name = "kicad-3d-viz-dev"
+version = "0.1.0"
+description = "WebGPU-first CAD-neutral KiCad visualisation prototype"
+requires-python = ">=3.11,<3.13"
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pipeline*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

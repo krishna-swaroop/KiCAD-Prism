@@ -131,7 +131,7 @@ def create_service_client(*, name: str, role: str, scopes: list[str]) -> dict[st
             """
             INSERT INTO oauth_service_clients
                 (client_id, name, secret_hash, role, scopes, enabled, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, 1, %s, %s)
             """,
             (
                 client_id,
@@ -147,7 +147,7 @@ def create_service_client(*, name: str, role: str, scopes: list[str]) -> dict[st
             """
             SELECT client_id, name, role, scopes, enabled, created_at, updated_at, last_used_at
             FROM oauth_service_clients
-            WHERE client_id = ?
+            WHERE client_id = %s
             """,
             (client_id,),
         ).fetchone()
@@ -176,8 +176,8 @@ def rotate_service_client_secret(client_id: str) -> dict[str, Any]:
         conn.execute(
             """
             UPDATE oauth_service_clients
-            SET secret_hash = ?, updated_at = ?
-            WHERE client_id = ?
+            SET secret_hash = %s, updated_at = %s
+            WHERE client_id = %s
             """,
             (_hash_secret(client_secret), now, client_id),
         )
@@ -185,7 +185,7 @@ def rotate_service_client_secret(client_id: str) -> dict[str, Any]:
             """
             SELECT client_id, name, role, scopes, enabled, created_at, updated_at, last_used_at
             FROM oauth_service_clients
-            WHERE client_id = ?
+            WHERE client_id = %s
             """,
             (client_id,),
         ).fetchone()
@@ -203,8 +203,8 @@ def set_service_client_enabled(client_id: str, enabled: bool) -> dict[str, Any]:
         conn.execute(
             """
             UPDATE oauth_service_clients
-            SET enabled = ?, updated_at = ?
-            WHERE client_id = ?
+            SET enabled = %s, updated_at = %s
+            WHERE client_id = %s
             """,
             (1 if enabled else 0, now, client_id),
         )
@@ -212,7 +212,7 @@ def set_service_client_enabled(client_id: str, enabled: bool) -> dict[str, Any]:
             """
             SELECT client_id, name, role, scopes, enabled, created_at, updated_at, last_used_at
             FROM oauth_service_clients
-            WHERE client_id = ?
+            WHERE client_id = %s
             """,
             (client_id,),
         ).fetchone()
@@ -224,7 +224,7 @@ def set_service_client_enabled(client_id: str, enabled: bool) -> dict[str, Any]:
 
 def delete_service_client(client_id: str) -> bool:
     with _db()._connect() as conn:  # noqa: SLF001
-        result = conn.execute("DELETE FROM oauth_service_clients WHERE client_id = ?", (client_id,))
+        result = conn.execute("DELETE FROM oauth_service_clients WHERE client_id = %s", (client_id,))
         conn.commit()
     return bool(result.rowcount)
 
@@ -235,7 +235,7 @@ def issue_client_credentials_token(*, client_id: str, client_secret: str, reques
             """
             SELECT client_id, name, secret_hash, role, scopes, enabled
             FROM oauth_service_clients
-            WHERE client_id = ?
+            WHERE client_id = %s
             """,
             (client_id,),
         ).fetchone()
@@ -249,7 +249,7 @@ def issue_client_credentials_token(*, client_id: str, client_secret: str, reques
             raise HTTPException(status_code=403, detail="Requested scope is not allowed for this client")
 
         conn.execute(
-            "UPDATE oauth_service_clients SET last_used_at = ? WHERE client_id = ?",
+            "UPDATE oauth_service_clients SET last_used_at = %s WHERE client_id = %s",
             (_utc_now_iso(), client_id),
         )
         conn.commit()
@@ -279,7 +279,7 @@ def validate_service_access_token(token: str) -> dict[str, Any]:
     client_id = str(payload.get("client_id") or "")
     with _db()._connect() as conn:  # noqa: SLF001
         row = conn.execute(
-            "SELECT client_id, name, role, scopes, enabled FROM oauth_service_clients WHERE client_id = ?",
+            "SELECT client_id, name, role, scopes, enabled FROM oauth_service_clients WHERE client_id = %s",
             (client_id,),
         ).fetchone()
     if not row or not bool(row["enabled"]):

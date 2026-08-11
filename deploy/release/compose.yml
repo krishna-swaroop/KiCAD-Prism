@@ -1,0 +1,143 @@
+name: kicad-prism
+
+services:
+  postgres:
+    image: ${PRISM_POSTGRES_IMAGE:-postgres:17-alpine}
+    platform: linux/amd64
+    container_name: kicad-prism-postgres
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kicad_prism}
+      POSTGRES_USER: ${POSTGRES_USER:-kicad_prism}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - prism-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    image: ${PRISM_BACKEND_IMAGE:?Set PRISM_BACKEND_IMAGE in .env}
+    platform: linux/amd64
+    container_name: kicad-prism-backend
+    restart: unless-stopped
+    cpus: ${PRISM_BACKEND_CPU_LIMIT:-2.0}
+    mem_limit: ${PRISM_BACKEND_MEMORY_LIMIT:-4g}
+    env_file:
+      - ${PRISM_ENV_FILE:-.env}
+    environment:
+      DEV_MODE: "false"
+      KICAD_PROJECTS_ROOT: /app/projects
+      PRISM_DATABASE_URL: postgresql://${POSTGRES_USER:-kicad_prism}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kicad_prism}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/projects:/app/projects
+      - ./data/ssh:/root/.ssh:rw
+
+  catalog-worker:
+    image: ${PRISM_BACKEND_IMAGE:?Set PRISM_BACKEND_IMAGE in .env}
+    platform: linux/amd64
+    container_name: kicad-prism-catalog-worker
+    restart: unless-stopped
+    cpus: ${CATALOG_WORKER_CPU_LIMIT:-4.0}
+    mem_limit: ${CATALOG_WORKER_MEMORY_LIMIT:-8g}
+    env_file:
+      - ${PRISM_ENV_FILE:-.env}
+    environment:
+      KICAD_PROJECTS_ROOT: /app/projects
+      PRISM_DATABASE_URL: postgresql://${POSTGRES_USER:-kicad_prism}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kicad_prism}
+      PRISM_DATABASE_POOL_MIN_SIZE: "1"
+      PRISM_DATABASE_POOL_MAX_SIZE: ${CATALOG_WORKER_DATABASE_POOL_MAX_SIZE:-4}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/projects:/app/projects
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -r /proc/1/cmdline && grep -aq 'app.prism_worker' /proc/1/cmdline
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    command:
+      - /app/venv/bin/python
+      - -m
+      - app.prism_worker
+      - --pool
+      - catalog
+
+  prism-worker:
+    image: ${PRISM_BACKEND_IMAGE:?Set PRISM_BACKEND_IMAGE in .env}
+    platform: linux/amd64
+    container_name: kicad-prism-worker
+    restart: unless-stopped
+    cpus: ${PRISM_WORKER_CPU_LIMIT:-6.0}
+    mem_limit: ${PRISM_WORKER_MEMORY_LIMIT:-12g}
+    env_file:
+      - ${PRISM_ENV_FILE:-.env}
+    environment:
+      KICAD_PROJECTS_ROOT: /app/projects
+      PRISM_DATABASE_URL: postgresql://${POSTGRES_USER:-kicad_prism}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kicad_prism}
+      PRISM_DATABASE_POOL_MIN_SIZE: "1"
+      PRISM_DATABASE_POOL_MAX_SIZE: ${PRISM_WORKER_DATABASE_POOL_MAX_SIZE:-6}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/projects:/app/projects
+      - ./data/ssh:/root/.ssh:rw
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test -r /proc/1/cmdline && grep -aq 'app.prism_worker' /proc/1/cmdline
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+    command:
+      - /app/venv/bin/python
+      - -m
+      - app.prism_worker
+
+  frontend:
+    image: ${PRISM_FRONTEND_IMAGE:?Set PRISM_FRONTEND_IMAGE in .env}
+    platform: linux/amd64
+    container_name: kicad-prism-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PRISM_HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./data/projects:/srv/prism-projects:ro
+
+  caddy:
+    profiles: ["proxy"]
+    image: ${PRISM_CADDY_IMAGE:-caddy:2}
+    platform: linux/amd64
+    container_name: kicad-prism-proxy
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  prism-postgres-data:
+  caddy-data:
+  caddy-config:

@@ -9,6 +9,7 @@ data/
 
 # Python local environments and caches
 backend/.venv/
+backend/venv/
 .venv/
 **/.pytest_cache/
 **/.mypy_cache/
@@ -17,6 +18,8 @@ backend/.venv/
 # Frontend dependency/build outputs
 frontend/node_modules/
 frontend/dist/
+kicad-prism-viewer/node_modules/
+kicad-prism-viewer/native/prism-clipper2/build/
 backend/app/static/remote_provider/
 
 # Local reports and logs

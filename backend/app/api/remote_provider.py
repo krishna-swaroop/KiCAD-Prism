@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -20,8 +22,7 @@ def _provider_origin(request: Request) -> str:
     return resolve_public_base_url(request)
 
 
-def _component_payload(component: dict, request: Request) -> dict:
-    origin = _provider_origin(request)
+def _component_payload(component: dict, origin: str) -> dict:
     preview_map = {
         preview["kind"]: f"{origin}/api/remote-provider/previews/{preview['id']}"
         for preview in component["previews"]
@@ -63,6 +64,18 @@ def _component_payload(component: dict, request: Request) -> dict:
         "manifest_url": f"{origin}/api/remote-provider/parts/{component['id']}",
         "inline_url": f"{origin}/api/remote-provider/components/{component['id']}/inline",
     }
+
+
+def _projection_etag(version: str, **parameters: object) -> str:
+    suffix = hashlib.sha256(
+        json.dumps(
+            parameters,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()[:16]
+    return f'"remote-{version}-{suffix}"'
 
 
 @router.get("/.well-known/kicad-remote-provider", include_in_schema=False)
@@ -143,27 +156,55 @@ async def search_components(
     request: Request,
     q: str = Query(default=""),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=500),
+    page_size: int = Query(default=50, ge=1, le=200),
+    include_total: bool = Query(default=False),
     user: AuthenticatedUser = Depends(require_remote_symbol_reader),
 ):
     _ = user
-    result = await asyncio.to_thread(catalog_service.search_components, q, page=page, page_size=page_size)
-    return {
-        "items": [_component_payload(c, request) for c in result["items"]],
+    version = await asyncio.to_thread(catalog_service.remote_projection_version)
+    etag = _projection_etag(
+        version,
+        endpoint="search",
+        q=q,
+        page=page,
+        page_size=page_size,
+        include_total=include_total,
+    )
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    result = await asyncio.to_thread(
+        catalog_service.list_remote_component_heads,
+        query=q,
+        page=page,
+        page_size=page_size,
+        include_total=include_total,
+    )
+    origin = _provider_origin(request)
+    return JSONResponse({
+        "items": [_component_payload(c, origin) for c in result["items"]],
         "total": result["total"],
+        "has_more": result["has_more"],
         "page": result["page"],
         "pages": result["pages"],
         "page_size": result["page_size"],
-    }
+    }, headers={"ETag": etag, "Cache-Control": "private, no-cache"})
 
 
 @router.get("/api/remote-provider/categories")
 async def list_categories(
+    request: Request,
     user: AuthenticatedUser = Depends(require_remote_symbol_reader),
 ):
     _ = user
-    categories = await asyncio.to_thread(catalog_service.list_categories)
-    return {"categories": categories}
+    version = await asyncio.to_thread(catalog_service.remote_projection_version)
+    etag = _projection_etag(version, endpoint="categories")
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    result = await asyncio.to_thread(catalog_service.list_remote_categories)
+    return JSONResponse(
+        {"categories": result["categories"]},
+        headers={"ETag": etag, "Cache-Control": "private, no-cache"},
+    )
 
 
 @router.get("/api/remote-provider/components-by-category")
@@ -171,25 +212,38 @@ async def components_by_category(
     request: Request,
     category: str = Query(...),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=500),
+    page_size: int = Query(default=50, ge=1, le=200),
+    include_total: bool = Query(default=False),
     user: AuthenticatedUser = Depends(require_remote_symbol_reader),
 ):
     _ = user
-    result = await asyncio.to_thread(
-        catalog_service.list_components,
+    version = await asyncio.to_thread(catalog_service.remote_projection_version)
+    etag = _projection_etag(
+        version,
+        endpoint="category",
         category=category,
         page=page,
         page_size=page_size,
-        released_only=True,
-        lightweight=True,
+        include_total=include_total,
     )
-    return {
-        "items": [_component_payload(c, request) for c in result["items"]],
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    result = await asyncio.to_thread(
+        catalog_service.list_remote_component_heads,
+        category=category,
+        page=page,
+        page_size=page_size,
+        include_total=include_total,
+    )
+    origin = _provider_origin(request)
+    return JSONResponse({
+        "items": [_component_payload(c, origin) for c in result["items"]],
         "total": result["total"],
+        "has_more": result["has_more"],
         "page": result["page"],
         "pages": result["pages"],
         "page_size": result["page_size"],
-    }
+    }, headers={"ETag": etag, "Cache-Control": "private, no-cache"})
 
 @router.get("/api/remote-provider/components/{component_id}")
 async def get_component(
@@ -206,7 +260,7 @@ async def get_component(
     )
     if not component:
         raise HTTPException(status_code=404, detail="Component not found")
-    return _component_payload(component, request)
+    return _component_payload(component, _provider_origin(request))
 
 
 @router.get("/api/remote-provider/parts/{part_id}")

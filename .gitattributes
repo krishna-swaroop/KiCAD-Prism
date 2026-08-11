@@ -1,0 +1,44 @@
+# Normalize line endings.
+#
+# Everything in this repository is consumed by Linux containers: scripts are
+# COPY'd into images and executed, and Compose reads .env verbatim. A CRLF
+# checkout breaks the image build with
+#   env: 'bash\r': No such file or directory
+# so the working tree is LF on every platform, including Windows.
+
+* text=auto eol=lf
+
+# Executed inside containers. Never CRLF.
+*.sh text eol=lf
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+*.dockerignore text eol=lf
+
+# Read by Compose, Caddy, and nginx at runtime.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.env text eol=lf
+.env.example text eol=lf
+*.conf text eol=lf
+*.conf.example text eol=lf
+Caddyfile text eol=lf
+Caddyfile.* text eol=lf
+
+# Windows-native tooling keeps CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets: never touch.
+*.png binary
+*.gif binary
+*.ico binary
+*.wasm binary
+*.dylib binary
+*.so binary
+*.dll binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary
+*.gz binary

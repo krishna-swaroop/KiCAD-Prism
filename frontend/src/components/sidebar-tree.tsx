@@ -34,7 +34,7 @@ export function SidebarTree({
               >
                 <CircuitBoard className={cn(
                   "h-4 w-4 shrink-0",
-                  selectedProjectId === project.id ? "text-foreground" : "text-green-500"
+                  selectedProjectId === project.id ? "text-foreground" : "text-success"
                 )} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm truncate font-medium">{project.display_name || project.name}</div>

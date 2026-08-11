@@ -78,12 +78,45 @@ class GitBranchViewingTests(unittest.TestCase):
             repo.git.checkout(repo.heads[0].name)
 
             commits = git_service.get_commits_list(str(root), ref="feature/project")
+            page = commits["commits"] if isinstance(commits, dict) else commits
 
-            self.assertEqual(commits[0]["full_hash"], feature_commit.hexsha)
+            self.assertEqual(page[0]["full_hash"], feature_commit.hexsha)
             self.assertEqual(
                 git_service.get_commit_distance(str(root), initial.hexsha, ref="feature/project"),
                 1,
             )
+
+            first_page = git_service.get_commits_list(
+                str(root),
+                limit=1,
+                ref="feature/project",
+                include_total=False,
+            )
+            self.assertIsNone(first_page["total"])
+            self.assertTrue(first_page["has_more"])
+            self.assertEqual(first_page["resolved_ref_sha"], feature_commit.hexsha)
+
+    def test_release_pagination_can_skip_total_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = Repo.init(root)
+            (root / "README.md").write_text("one", encoding="utf-8")
+            first = _commit_all(repo, "one")
+            repo.create_tag("v1", ref=first)
+            (root / "README.md").write_text("two", encoding="utf-8")
+            second = _commit_all(repo, "two")
+            repo.create_tag("v2", ref=second)
+
+            page = git_service.get_releases(
+                str(root),
+                limit=1,
+                include_total=False,
+            )
+
+            self.assertEqual(len(page["releases"]), 1)
+            self.assertIsNone(page["total"])
+            self.assertTrue(page["has_more"])
+            self.assertEqual(page["resolved_ref_sha"], second.hexsha)
 
 
 if __name__ == "__main__":

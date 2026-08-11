@@ -1,0 +1,37 @@
+# Separate load-generator container. Does NOT start Prism services.
+# Requires the live stack on network kicad-prism_default (default compose project).
+#
+# Bootstrap credentials once:
+#   ./scripts/bootstrap_remote_panel_loadtest_client.sh
+#
+# Run:
+#   docker compose -f docker-compose.loadtest.yml up --build --abort-on-container-exit
+#
+# Override knobs:
+#   PRISM_LOADTEST_USERS=20 PRISM_LOADTEST_DURATION=300 docker compose -f docker-compose.loadtest.yml up --build
+
+services:
+  remote-panel-loadtest:
+    build:
+      context: .
+      dockerfile: loadtest/Dockerfile
+    container_name: kicad-prism-remote-panel-loadtest
+    env_file:
+      - path: loadtest/.env.loadtest
+        required: true
+    environment:
+      PRISM_BASE_URL: ${PRISM_BASE_URL:-http://frontend}
+      PRISM_LOADTEST_USERS: ${PRISM_LOADTEST_USERS:-20}
+      PRISM_LOADTEST_DURATION: ${PRISM_LOADTEST_DURATION:-180}
+      PRISM_LOADTEST_SCOPE: ${PRISM_LOADTEST_SCOPE:-remote_symbols.read api:read}
+      PRISM_LOADTEST_OUTPUT: /results/remote-panel-load.json
+    volumes:
+      - ./loadtest/results:/results
+    networks:
+      - prism
+    restart: "no"
+
+networks:
+  prism:
+    external: true
+    name: kicad-prism_default

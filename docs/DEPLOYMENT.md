@@ -1,105 +1,135 @@
-# Deployment Guide
+# Deployment
 
-This document covers the current KiCAD Prism deployment model for Docker hosting and local development.
+This guide covers the supported shared deployment path for KiCAD Prism:
+the digest-pinned deployment bundle attached to a stable GitHub Release.
 
-## Runtime Overview
+Feature development and source testing happen on `dev`. Stable code is promoted
+to `main`, tagged, built, smoke-tested, and published by the release workflow.
+Operators should not deploy a moving branch.
 
-KiCAD Prism runs as two services:
+## Supported deployment contract
 
-- `backend`: FastAPI API server on port `8000`
-- `frontend`: production Vite bundle served by Nginx on port `8080`
+The public release target is a Linux AMD64 Docker host. A successful release
+contains:
 
-In Docker, the frontend proxies `/api/*`, `/oauth/*`, `/.well-known/kicad-remote-provider`, and `/remote-provider/*` requests to the backend over the Compose network. The backend stores component metadata, release workflow state, KiCad OAuth state, and local service-client metadata in SQLite under the mounted project data directory. KiCad symbol, footprint, 3D model, SPICE, preview, DBL export, and revision files are stored on disk under the same project data directory.
+```text
+kicad-prism-vX.Y.Z-linux-amd64.tar.gz
+├── compose.yml
+├── .env.example
+├── Caddyfile
+├── Caddyfile.internal
+├── Caddyfile.dns-01
+├── Dockerfile.caddy-dns
+├── README.md
+├── VERSION
+└── SHA256SUMS
+```
 
-Default local endpoints:
-- UI: [http://127.0.0.1:8080](http://127.0.0.1:8080)
-- API: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+The generated `.env.example` pins the Prism backend and frontend images by
+registry digest. The backend image is reused by the API, general worker, and
+catalog worker. The Compose file has no source checkout or `build:` directive.
 
-## Docker Hosting
+Docker Desktop can emulate AMD64 containers on other host architectures, but
+native ARM64 release images are not currently published. Emulated deployments
+are not the supported production target.
 
-### Prerequisites
+## Prerequisites
 
-- Docker Engine or Docker Desktop
-- Docker Compose support
-- enough disk space for imported repositories and generated outputs
+Prepare:
 
-### 1. Clone the repository
+- a Linux AMD64 host with Docker Engine and Docker Compose v2;
+- local SSD or NVMe storage sized for repositories and generated artifacts;
+- a DNS name and TLS termination for a shared deployment;
+- an OIDC client;
+- a durable backup destination;
+- enough CPU and memory for the selected worker concurrency.
+
+Allow outbound HTTPS to the configured Git hosts, OIDC provider, GitHub
+Container Registry, Docker Hub, and any other registries selected in `.env`.
+
+## 1. Obtain and verify a stable release
+
+Open the
+[latest stable GitHub Release](https://github.com/krishna-swaroop/KiCAD-Prism/releases/latest)
+and download:
+
+- `kicad-prism-vX.Y.Z-linux-amd64.tar.gz`
+- `kicad-prism-vX.Y.Z-linux-amd64.tar.gz.sha256`
+
+Verify and extract:
 
 ```bash
-git clone https://github.com/krishna-swaroop/KiCAD-Prism.git
-cd KiCAD-Prism
+sha256sum -c kicad-prism-vX.Y.Z-linux-amd64.tar.gz.sha256
+tar -xzf kicad-prism-vX.Y.Z-linux-amd64.tar.gz
+cd kicad-prism-vX.Y.Z-linux-amd64
+sha256sum -c SHA256SUMS
 ```
 
-### 2. Create the root `.env`
+Use a stable installation directory and keep it for future upgrades. Relative
+paths in `compose.yml` deliberately keep project and SSH state under that
+directory.
 
-Docker Compose reads the repository root `.env` automatically.
+```text
+/srv/kicad-prism/
+├── compose.yml
+├── .env
+├── Caddyfile
+├── VERSION
+├── certs/
+└── data/
+    ├── projects/
+    └── ssh/
+```
+
+For the first installation, move the extracted bundle contents into the chosen
+directory before starting Prism.
+
+## 2. Configure the environment
+
+### Guided installer
+
+`deploy.sh` (or `deploy.ps1` on Windows) asks which HTTPS scheme applies,
+collects the settings it cannot derive, and writes a complete configuration
+into `generated/`. It does not modify anything else in the checkout.
 
 ```bash
-cp .env.example .env
+./deploy.sh
 ```
 
-Baseline authenticated configuration:
-
-```env
-WORKSPACE_NAME=KiCAD Prism
-AUTH_ENABLED=true
-OIDC_ISSUER_URL=https://sso.example.com/realms/engineering
-OIDC_CLIENT_ID=kicad-prism
-OIDC_CLIENT_SECRET=
-SESSION_SECRET=
-SESSION_TTL_HOURS=12
-SESSION_COOKIE_SECURE=false
-ALLOWED_USERS_STR=
-ALLOWED_DOMAINS_STR=
-BOOTSTRAP_ADMIN_USERS_STR=admin@example.com
-DEFAULT_VIEWER_DOMAINS_STR=
-GITHUB_TOKEN=
-DEV_MODE=false
-CATALOG_SQLITE_PATH=
-CATALOG_DBL_EXPORT_DIR=
-CATALOG_KLC_ENABLED=false
-CATALOG_KLC_RELEASE_GATE=warn
+```powershell
+.\deploy.ps1
 ```
 
-Generate a session secret with:
+It generates `.env`, the proxy `Caddyfile`, a Compose overlay that binds the
+frontend and backend to loopback, a redacted record of the run, and a
+`NEXT_STEPS.md` listing what remains manual. For DNS-01 it also builds the
+Caddy image with the provider module.
+
+Before starting anything it verifies the Compose version, container egress to
+the ACME and DNS provider endpoints, whether container DNS answers match the
+host's, the OIDC discovery document, and the generated Caddy and Compose
+configuration. Network probes run inside a container: a filtering appliance
+that leaves the host alone while intercepting container traffic is a common
+cause of issuance failures that look like certificate problems.
 
 ```bash
-python3 - <<'PY'
-import secrets
-print(secrets.token_urlsafe(48))
-PY
+./deploy.sh --dry-run                              # render and print, write nothing
+./deploy.sh --fresh                                # ignore any existing configuration
+./deploy.sh --answers answers.json --non-interactive
+./deploy.sh --start                                # bring the stack up when checks pass
+./deploy.sh --promote                              # staging CA -> production, in place
 ```
 
-Important:
-- `SESSION_SECRET` is required whenever auth is effectively enabled.
-- `DEFAULT_VIEWER_DOMAINS_STR` can stay empty. Set it only if every user from one or more trusted email domains should get implicit viewer access.
-- `CATALOG_SQLITE_PATH` can stay empty for the bundled Compose stack. Docker defaults to `/app/projects/.kicad-prism/prism.sqlite3`.
-- `CATALOG_DBL_EXPORT_DIR` can stay empty for the bundled Compose stack. Docker defaults to `/app/projects/.kicad-prism/exports/kicad-dbl`.
-- `CATALOG_KLC_ENABLED=false` keeps KiCad Library Convention checks optional. Set it to `true` to enable Library Manager health validation.
-- `CATALOG_KLC_RELEASE_GATE=warn` surfaces validation issues without blocking release. Use `block` only if your team wants KLC errors or missing KLC reports to prevent release.
-- `SESSION_COOKIE_SECURE=true` should be used only behind HTTPS.
-- `DEV_MODE` should stay `false` in Docker hosting.
+`--promote` rewrites the proxy configuration for the production endpoint,
+discards the staging ACME account, and restarts, without re-asking anything.
+Secrets are read back from the generated `.env`, so the database password and
+session secret are preserved.
 
-### 3. Start the stack
+`generated/` contains live credentials and is excluded from Git. Back it up
+with the rest of the deployment state.
 
-```bash
-docker compose up --build -d
-```
-
-Open the UI at [http://127.0.0.1:8080](http://127.0.0.1:8080).
-
-### 4. Stop the stack
-
-```bash
-docker compose down
-```
-
-## Docker Volumes and Persistence
-
-Current Compose mounts:
-
-- `./data/projects` -> `/app/projects`
-- `./data/ssh` -> `/root/.ssh`
+The remainder of this section describes the same configuration by hand, which
+is still supported and is what the installer produces.
 
 To keep persistent data somewhere other than the repo checkout (for example a shared machine
 where each deployment needs its own data directory, or a PaaS like Coolify with its own storage
@@ -119,130 +149,77 @@ Persisted data includes:
 - `.rbac_roles.json`
 - exported comments JSON inside repos when generated
 - SSH keys and `known_hosts`
+### Manual configuration
 
-The backend creates `data/projects/.kicad-prism` automatically during startup. The catalog initializer also creates the canonical component subdirectories:
-
-- `symbols/`
-- `footprints/`
-- `3dmodels/`
-- `spice/`
-- `previews/symbols/`
-- `previews/footprints/`
-- `revisions/`
-
-You do not need to create these directories manually for a normal deployment.
-
-## Authentication Modes
-
-### Guest Mode
-
-```env
-AUTH_ENABLED=false
-OIDC_CLIENT_ID=
-SESSION_SECRET=
-DEV_MODE=false
+```bash
+cp .env.example .env
+mkdir -p data/projects data/ssh certs
 ```
 
-Behavior:
-- login wall is disabled
-- backend serves a guest admin session
-- all visitors have full admin/designer/viewer access while auth is disabled
+Do not replace `PRISM_BACKEND_IMAGE` or `PRISM_FRONTEND_IMAGE` with mutable tags.
+They are the tested image digests for this release.
 
-### OIDC Login + Session Auth
+At minimum, configure:
 
 ```env
+POSTGRES_DB=kicad_prism
+POSTGRES_USER=kicad_prism
+POSTGRES_PASSWORD=<random-database-password>
+
 AUTH_ENABLED=true
+WORKSPACE_NAME=Engineering ECAD
 OIDC_ISSUER_URL=https://sso.example.com/realms/engineering
 OIDC_CLIENT_ID=kicad-prism
-OIDC_CLIENT_SECRET=
-OIDC_SCOPES=openid email profile
-OIDC_EMAIL_CLAIM=email
-OIDC_NAME_CLAIM=name
-OIDC_PICTURE_CLAIM=picture
-OIDC_PROVIDER_NAME=SSO
-OIDC_TOKEN_AUTH_METHOD=client_secret_post
-SESSION_SECRET=
-CORS_ORIGINS_STR=https://your-domain.example
-DEFAULT_VIEWER_DOMAINS_STR=
-DEV_MODE=false
+OIDC_CLIENT_SECRET=<oidc-client-secret>
+OIDC_PROVIDER_NAME=Company SSO
+SESSION_SECRET=<random-value-of-at-least-32-characters>
+BOOTSTRAP_ADMIN_USERS_STR=admin@example.com
+
+PUBLIC_BASE_URL=https://prism.example.com
+CORS_ORIGINS_STR=https://prism.example.com
 ```
 
-Behavior:
-- frontend shows the configured SSO sign-in screen
-- backend exchanges the OIDC authorization code, verifies signed `id_token`s with JWKS, validates nonce, and reads user profile claims
-- backend issues an `HttpOnly` signed session cookie
-- RBAC role resolution uses stored assignments plus bootstrap admins
-- if `DEFAULT_VIEWER_DOMAINS_STR` is set, users from those domains get implicit `viewer` access when no explicit role is stored
-- on first successful login, those implicit viewers are written into `.rbac_roles.json` so admins can promote them later
+Generate secrets independently:
 
-Google Sign-In uses this same generic OIDC path with
-`OIDC_ISSUER_URL=https://accounts.google.com`. For Docker frontend testing, Google must allow the
-exact redirect URI `http://127.0.0.1:8080/auth/callback`. The KiCad remote-provider callback is a
-separate backend callback and does not replace the frontend login callback.
-
-### Local Dev Bypass
-
-```env
-AUTH_ENABLED=true
-OIDC_CLIENT_ID=
-SESSION_SECRET=
-DEV_MODE=true
+```bash
+openssl rand -base64 48
 ```
 
-Behavior:
-- auth is effectively disabled because the backend only enables auth when `AUTH_ENABLED=true`, OIDC client settings are set, and `DEV_MODE=false`
-- this is convenient for local backend/frontend development
+Keep `.env` readable only by the deployment administrator and backup process.
+It contains database, OIDC, session, and optional Git credentials.
 
-## OIDC/OAuth Setup
+See [Configuration](CONFIGURATION.md) for the remaining settings.
 
-Create an OIDC client in your identity provider and add the frontend origins and redirect URIs you actually use.
+## 3. Configure OIDC
 
-Typical origins:
-- local frontend dev: `http://127.0.0.1:5173`
-- local Docker frontend: `http://127.0.0.1:8080`
-- production: `https://your-domain.example`
+Register both redirect URIs with the identity provider:
 
-Typical redirect URIs:
-- local frontend dev: `http://127.0.0.1:5173/auth/callback`
-- local Docker frontend: `http://127.0.0.1:8080/auth/callback`
-- production: `https://your-domain.example/auth/callback`
-- KiCad remote-symbol login: `https://your-domain.example/oauth/oidc/callback`
-
-Use the issuer URL in `OIDC_ISSUER_URL`, the client ID in `OIDC_CLIENT_ID`, and the client secret in `OIDC_CLIENT_SECRET`.
-Most providers work with `OIDC_SCOPES=openid email profile` and claim names `email`, `name`, and
-`picture`. If your provider requires HTTP Basic authentication at the token endpoint, set
-`OIDC_TOKEN_AUTH_METHOD=client_secret_basic`; otherwise keep the default `client_secret_post`.
-
-Google Sign-In through the generic OIDC path:
-
-```env
-OIDC_ISSUER_URL=https://accounts.google.com
-OIDC_SCOPES=openid email profile
-OIDC_EMAIL_CLAIM=email
-OIDC_NAME_CLAIM=name
-OIDC_PICTURE_CLAIM=picture
-OIDC_PROVIDER_NAME=Google
-OIDC_TOKEN_AUTH_METHOD=client_secret_post
+```text
+https://prism.example.com/auth/callback
+https://prism.example.com/oauth/oidc/callback
 ```
 
-Register the frontend callback URLs above in Google Cloud Console when using Google. For local
-Docker, the required URI is exactly `http://127.0.0.1:8080/auth/callback`; `localhost` and
-`127.0.0.1` are not interchangeable for Google redirect matching.
+The issuer must use HTTPS and provide standard OIDC discovery metadata.
+`AUTH_ENABLED=true` fails closed if the issuer, client credentials, session
+secret, or database configuration is incomplete.
 
-Set `CORS_ORIGINS_STR` to the exact browser origins that should be allowed to send credentialed
-requests to the API. For local Docker the default includes `http://127.0.0.1:8080`; for production
-use your HTTPS origin and do not use `*`.
+Use `BOOTSTRAP_ADMIN_USERS_STR` only to establish the first administrators.
+After first login, verify explicit roles and keep at least two administrator
+accounts.
 
-If your production deployment is HTTPS, also set:
+Read [Authentication and access](AUTHENTICATION_AND_ACCESS.md) before onboarding
+the team.
 
-```env
-SESSION_COOKIE_SECURE=true
-PUBLIC_BASE_URL=https://your-domain.example
+## 4. Configure HTTPS
+
+The request path is:
+
+```text
+client -> TLS reverse proxy -> frontend:80 -> backend:8000
 ```
 
-`PUBLIC_BASE_URL` is the hard override for absolute URLs advertised to KiCad (Remote Symbols
-metadata and OAuth endpoints). Prefer it whenever Prism sits behind a reverse proxy. See
-[HTTPS and TLS](HTTPS_AND_TLS.md).
+The release Compose file publishes the frontend only on
+`127.0.0.1:${PRISM_HTTP_PORT:-8080}`. It does not publish the backend.
 
 ## Shared Machine Hosting: Custom Ports and Disabling Port Publishing
 
@@ -282,304 +259,326 @@ host port at all, avoiding conflicts with any other service on the machine. `BAC
 `FRONTEND_PORT` are irrelevant when using this overlay since nothing is published.
 
 ## Reverse Proxy for Office/VPN Hosting
+### Bundled Caddy
 
-For an internal workstation deployment such as `http://kicad-prism.example.internal`, keep the SQLite
-database and `.kicad-prism/components` asset directory on the workstation's local SSD/NVMe. Do not
-place either path on NFS/SMB/network storage; SQLite WAL mode is designed for local filesystems.
-
-If the external reverse proxy points at the frontend container, the bundled frontend Nginx config
-already forwards KiCad/API paths to the backend and preserves outer `X-Forwarded-Proto` when present.
-If the external reverse proxy routes directly to individual containers, use these path rules:
-
-- `/` to the frontend container
-- `/api/*` to the backend container
-- `/oauth/*` to the backend container
-- `/.well-known/kicad-remote-provider` to the backend container
-- `/remote-provider/*` to the backend container
-
-For plain internal HTTP:
-
-```env
-CORS_ORIGINS_STR=http://kicad-prism.example.internal
-SESSION_COOKIE_SECURE=false
-```
-
-For HTTPS:
-
-```env
-CORS_ORIGINS_STR=https://kicad-prism.example.internal
-SESSION_COOKIE_SECURE=true
-PUBLIC_BASE_URL=https://kicad-prism.example.internal
-```
-
-The proxy must preserve the original `Host` header and set `X-Forwarded-Proto: https` so provider
-metadata advertises the public office/VPN URL instead of the backend container name. Enable gzip or
-Brotli compression at the proxy for JSON responses and static panel assets.
-
-## Private Repository Access
-
-KiCAD Prism supports two normal approaches.
-
-### SSH
-
-Recommended for long-lived hosted deployments.
-
-- SSH material persists under `./data/ssh`
-- backend startup ensures `~/.ssh` exists and scans common Git hosts into `known_hosts`
-- add the generated or mounted public key to your Git host account
-
-By default, startup does not scan Git host keys because network DNS during startup can slow down local Docker boot. If you want the backend to run `ssh-keyscan` for common Git hosts at startup, set:
-
-```env
-GIT_SCAN_KNOWN_HOSTS_ON_STARTUP=true
-```
-
-### GitHub Personal Access Token
-
-If you use HTTPS cloning for private GitHub repositories, set:
-
-```env
-GITHUB_TOKEN=
-```
-
-The backend configures Git URL rewriting at startup so GitHub HTTPS operations can use the token.
-
-## Local Development Hosting
-
-### Backend
+Edit `Caddyfile`, replace `prism.example.com`, point DNS to the host, and allow
+inbound ports 80 and 443:
 
 ```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+docker compose --profile proxy pull
+docker compose --profile proxy up -d --wait
 ```
 
-Notes:
-- backend settings also support a backend-local `.env`
-- if nothing is configured, local dev defaults generally keep auth off because `DEV_MODE=true`
-- local backend development uses SQLite by default at `data/projects/.kicad-prism/prism.sqlite3`
+For a private CA or custom certificate:
 
-### Frontend
+1. replace `Caddyfile` with `Caddyfile.internal`;
+2. place `prism.crt` and `prism.key` in `certs/`;
+3. distribute the issuing root CA to browsers and KiCad workstations;
+4. start the same `proxy` profile.
+
+### Tailscale
+
+If the team already uses Tailscale, this is the least work of any option. A
+sidecar joins the tailnet, Tailscale Serve terminates TLS under the node's
+MagicDNS name, and the certificate is issued and renewed for you.
+
+There is no public DNS record to create, no inbound firewall rule to open, no
+ACME credential to scope, and nothing to renew. Only devices on the tailnet can
+reach the service, and access is governed by tailnet ACLs in addition to Prism's
+own roles.
+
+Requirements, both on the DNS page of the Tailscale admin console:
+
+- **MagicDNS** enabled;
+- **HTTPS Certificates** enabled.
+
+There are two ways to attach, and the installer detects which applies:
+
+**The host is already on the tailnet.** Nothing extra runs and no auth key is
+needed. Point Serve at the frontend once; it persists across reboots:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+tailscale serve --bg 8080
 ```
 
-Frontend dev URL:
-- [http://127.0.0.1:5173](http://127.0.0.1:5173)
+**The host is not a tailnet member.** A sidecar joins it. The installer asks for
+the node's MagicDNS name and a reusable auth key, then writes a Serve
+configuration alongside the Compose overlay:
 
-### Remote Symbols Panel Bundle
-
-The Remote Symbols panel source lives in the dedicated frontend app under `frontend/src/panel`. The backend still serves the panel at `/remote-provider/panel`, but `backend/app/static/remote_provider` is generated output and is intentionally not committed.
-
-For Docker deployments, the backend Dockerfile builds the panel with `npm run build:panel` and copies `frontend/dist/remote_provider` into the backend image at `/app/app/static/remote_provider`.
-
-For local development of the panel UI:
-
-```bash
-cd frontend
-npm install
-npm run dev:panel
+```json
+{
+  "TCP": {"443": {"HTTPS": true}},
+  "Web": {"${TS_CERT_DOMAIN}:443": {"Handlers": {"/": {"Proxy": "http://frontend:80"}}}}
+}
 ```
 
-For local backend testing without Docker, build the panel and copy the output into the backend static path before starting Uvicorn:
+The sidecar runs with `TS_USERSPACE=true`, so it needs neither `/dev/net/tun`
+nor `NET_ADMIN`. Node state persists in a named volume: without it the node
+re-authenticates on restart and may be renamed, which would change the
+certificate domain.
+
+Leave the key's *Ephemeral* option off for the same reason.
+
+### Public certificates without inbound exposure (ACME DNS-01)
+
+Use this when Prism must present a publicly trusted certificate but the host
+must not accept inbound connections from the internet. The HTTP-01 challenge
+above requires the CA to reach port 80 from outside. DNS-01 instead proves
+domain control by publishing a TXT record, so ports 80 and 443 stay closed to
+the internet, the A record may exist only in internal DNS and resolve to a
+private address, and no root CA has to be distributed to KiCad workstations.
+
+The cost is a DNS credential on the deployment host and a custom proxy image.
+
+#### 1. Build a Caddy image with a DNS provider
+
+The stock `caddy:2` image cannot solve DNS-01. Providers are Go modules linked
+into the binary, not runtime plugins:
 
 ```bash
-cd frontend
-npm run build:panel
-mkdir -p ../backend/app/static/remote_provider
-cp -R dist/remote_provider/. ../backend/app/static/remote_provider/
+docker build -f deploy/Dockerfile.caddy-dns \
+  --build-arg DNS_PROVIDER_MODULE=github.com/caddy-dns/cloudflare \
+  -t kicad-prism-caddy-dns:2 .
+docker run --rm kicad-prism-caddy-dns:2 caddy list-modules | grep dns.providers
 ```
 
-Then start or rebuild the stack as usual:
+The `grep` must return a line. Providers are listed at
+<https://github.com/caddy-dns>.
+
+#### 2. Obtain a scoped DNS credential
+
+Request the narrowest credential the provider supports. For Cloudflare that is
+an API token — not the Global API Key — with `Zone / DNS / Edit` on the single
+zone, and IP filtering restricted to the host's egress address.
+
+That credential can still rewrite any record in the zone, including MX and SPF.
+Where the DNS team will not accept that, delegate only the challenge record:
+
+```text
+_acme-challenge.prism.example.com.  CNAME  prism.acme-delegation.example.
+```
+
+The target lives in a separate zone whose credentials are held only by this
+deployment. ACME follows the CNAME, so Caddy needs no access to the main zone.
+This is one static record, created once.
+
+#### 3. Configure and start
+
+Copy `deploy/Caddyfile.dns-01` over `Caddyfile`, set the hostname and provider
+directive, and uncomment the staging `ca` line for the first run.
+
+Set `PRISM_CADDY_IMAGE=kicad-prism-caddy-dns:2` in `.env`, and pass the
+provider credential to the proxy with a Compose override so the shipped file
+stays untouched:
+
+```yaml
+# docker-compose.dns-01.yml
+services:
+  caddy:
+    environment:
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:?Set CLOUDFLARE_API_TOKEN in .env}
+```
+
+Check the configuration before starting anything. This resolves the provider
+module and the credential, so it catches a missing module, an unset variable,
+and a malformed token in one step:
 
 ```bash
+docker run --rm -e CLOUDFLARE_API_TOKEN \
+  -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+  kicad-prism-caddy-dns:2 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
+```bash
+docker compose -f compose.yml -f docker-compose.dns-01.yml --profile proxy up -d --wait
+docker compose -f compose.yml -f docker-compose.dns-01.yml logs -f caddy
+```
+
+Confirm success from the proxy logs rather than a browser. Prism sends
+`Strict-Transport-Security` with a one-year `max-age`, so once a hostname has
+served a trusted certificate, browsers will not offer an exception for the
+untrusted staging one.
+
+Confirm the challenge succeeds against staging, then promote:
+
+```bash
+./deploy.sh --promote
+```
+
+That rewrites the configuration, discards the staging ACME account, and
+restarts. The certificate is issued when `/data/caddy/certificates` appears.
+
+#### Operational notes
+
+Egress must reach the ACME directory and the DNS provider API. Both are
+frequently miscategorised by filtering appliances, and the resulting failure is
+misleading: the ACME client reports a TLS verification error against
+`acme-v02.api.letsencrypt.org` rather than a block. Confirm from inside the
+container, not from the host, because container DNS often resolves through a
+different path:
+
+```bash
+docker compose exec caddy nslookup acme-v02.api.letsencrypt.org
+```
+
+An address outside the CA's published ranges means DNS interception. Pinning
+`dns:` on the proxy service works around it; exempting the hostnames from
+filtering is the durable fix, because a pinned resolver breaks silently when
+the host's network changes and the failure only surfaces at renewal.
+
+Every issued certificate is published to Certificate Transparency logs, so the
+hostname becomes publicly enumerable within minutes even though the service is
+internal. Treat that as a decision to record, not a surprise. A wildcard
+certificate hides the label at the cost of concentrating risk in one key.
+
+Renewal is automatic at roughly 30 days remaining and needs no scheduled task,
+but it depends on the DNS credential still being valid. Track the credential's
+expiry alongside the certificate's.
+
+### Plain HTTP, for evaluation only
+
+The installer offers a fifth scheme that runs Prism without TLS. It exists to
+try the product on a laptop or an isolated host, and it is not a way to operate
+it.
+
+The **Remote Symbol Provider is not supported** on this scheme. HTTPS with a
+certificate the workstation already trusts is a prerequisite, and without a TLS
+terminator Prism advertises `http://` origins in its provider metadata, which
+[Remote Symbol Provider](REMOTE_SYMBOL_PROVIDER.md) treats as a misconfiguration
+to correct. Do not build a datasource package against such an origin.
+
+Single sign-on usually fails too, because most identity providers reject
+non-HTTPS redirect URIs. The installer therefore offers to disable
+authentication, which serves every request as an unauthenticated guest; it
+defaults that guest to `viewer` rather than `admin`, and defaults the published
+port to loopback.
+
+Everything else -- import, comparison, workflows, the Library Manager, and the
+browser viewer -- behaves normally.
+
+### Existing reverse proxy
+
+Start Prism without the proxy profile and route the host proxy to
+`http://127.0.0.1:8080`.
+
+The proxy must preserve `Host` and forward the public protocol. Keep
+`PUBLIC_BASE_URL` and `CORS_ORIGINS_STR` set to the exact external HTTPS origin.
+
+## 5. Start and verify
+
+Pulling by digest verifies that the registry content matches the bundle:
+
+```bash
+docker compose pull
+docker compose up -d --wait
+docker compose ps
+```
+
+Inspect startup:
+
+```bash
+docker compose logs --tail=100 postgres backend prism-worker catalog-worker frontend
+```
+
+Verify health through the frontend:
+
+```bash
+curl -fsS https://prism.example.com/healthz
+curl -fsS https://prism.example.com/api/health/live
+curl -fsS https://prism.example.com/api/health/ready
+```
+
+The readiness endpoint verifies PostgreSQL and writable project storage. It
+returns HTTP 503 until both are available.
+
+Verify public metadata:
+
+```bash
+curl -fsS https://prism.example.com/api/auth/config
+curl -fsS https://prism.example.com/.well-known/kicad-remote-provider
+curl -fsS https://prism.example.com/oauth/.well-known/oauth-authorization-server
+```
+
+Every advertised absolute URL must use the public HTTPS origin.
+
+Sign in as a bootstrap administrator, assign roles, import a small test
+repository, complete one comparison or workflow, and place one released
+component before onboarding the wider team.
+
+## Persistent state
+
+A complete installation contains three persistence domains:
+
+| Location | Contents |
+| --- | --- |
+| Docker volume `prism-postgres-data` | users, roles, sessions, projects, comments, catalog, jobs, and audit records |
+| `data/projects` | Git checkouts, catalog assets, generated artifacts, caches, and exports |
+| `data/ssh` | Prism Git identity and known-host state |
+
+All three are required for complete recovery. Do not place them on ephemeral
+container storage.
+
+## Private Git hosting
+
+For SSH:
+
+1. sign in as an administrator;
+2. open Settings and obtain Prism's SSH public key;
+3. install it as a read-only deploy key or machine-user key;
+4. verify and pin the Git host key;
+5. test repository access before importing.
+
+Automatic `ssh-keyscan` is disabled by default. Do not accept an unverified host
+key simply to make import succeed.
+
+For private GitHub HTTPS access, `GITHUB_TOKEN` is supported. Use a narrowly
+scoped credential and store it only in the deployment secret store.
+
+## Worker sizing
+
+KiCad rendering, comparison, and catalog validation are CPU- and memory-heavy.
+Start conservatively:
+
+| Installation | Suggested starting point |
+| --- | --- |
+| Private evaluation | 4 vCPU, 16 GB RAM, one API worker, one general job, one catalog job |
+| Small team | 8 vCPU, 32 GB RAM, two API workers, two general jobs, one catalog job |
+| Larger or complex designs | benchmark representative projects before increasing concurrency |
+
+The CPU and memory settings in `.env.example` are service ceilings. They are not
+reservations and their sum should not exceed what the host can sustain alongside
+PostgreSQL and filesystem cache.
+
+Increase one concurrency class at a time. Monitor worker memory, job duration,
+queue depth, PostgreSQL connections, and disk growth before raising it again.
+
+## Releases without a deployment bundle
+
+Releases created before this contract must be built from their tagged source:
+
+```bash
+git clone https://github.com/krishna-swaroop/KiCAD-Prism.git
+cd KiCAD-Prism
+git checkout <stable-release-tag>
+cp .env.example .env
 docker compose up --build -d
 ```
 
-## Component Library Deployment
+Record the tag, commit SHA, and rendered Compose configuration. This is also the
+development path, but it is not preferred when a release bundle exists.
 
-The component catalog has two storage layers:
+## Production readiness
 
-- SQLite stores component metadata, revisions, reusable asset rows, release workflow state, OAuth state, service-client metadata, and preview status.
-- Disk storage under `data/projects/.kicad-prism/components` stores canonical KiCad files.
-- Disk storage under `data/projects/.kicad-prism/exports/kicad-dbl` stores generated KiCad DBL compatibility bundles.
-- Disk storage under `data/projects/.kicad-prism/validation/klc` stores durable KLC report artifacts.
+Before declaring the service ready:
 
-Canonical disk layout:
+- OIDC fails closed when credentials are removed;
+- browsers and KiCad workstations trust HTTPS;
+- only the intended frontend or proxy ports are reachable;
+- Prism image references remain digest-pinned;
+- PostgreSQL, project data, SSH state, and `.env` are backed up;
+- a restore has succeeded on an isolated host;
+- the upgrade and rollback procedure has been rehearsed;
+- disk-full and worker-failure behavior is understood;
+- at least two administrators can access the workspace.
 
-- `symbols/`
-- `footprints/`
-- `3dmodels/`
-- `spice/`
-- `previews/`
-- `revisions/`
-- `validation/klc/`
-
-Back up the full `data/projects/.kicad-prism` directory. A database backup without the canonical asset directory is not enough to restore placeable components.
-
-Only components in the `Released` workflow stage and with both symbol and footprint assets attached are visible/placeable through the KiCad Remote Symbols panel.
-
-### Optional KLC Validation
-
-The backend image includes a pinned checkout of KiCad's `kicad-library-utils` under `/opt/kicad-library-utils`. When `CATALOG_KLC_ENABLED=true`, Library Manager admins can run KLC checks against a component's attached symbol and footprint assets.
-
-Prism stores every run as:
-
-- SQLite summary and normalized findings for fast dashboard queries.
-- `stdout.txt`, `stderr.txt`, `report.junit.xml`, and `report.json` under `data/projects/.kicad-prism/validation/klc/{run_id}/`.
-
-Useful settings:
-
-```env
-CATALOG_KLC_ENABLED=true
-CATALOG_KLC_UTILS_PATH=/opt/kicad-library-utils
-CATALOG_KLC_RELEASE_GATE=warn
-CATALOG_KLC_TIMEOUT_SECONDS=30
-CATALOG_KLC_SYMBOL_RULES=
-CATALOG_KLC_SYMBOL_EXCLUDE_RULES=
-CATALOG_KLC_FOOTPRINT_RULES=
-CATALOG_KLC_FOOTPRINT_EXCLUDE_RULES=
-CATALOG_KLC_FOOTPRINT_LIB_DIR=
-```
-
-The release gate modes are:
-
-- `off`: validation is available but never affects release.
-- `warn`: validation issues are shown in Library Manager but release remains allowed.
-- `block`: release requires current required symbol and footprint assets to have non-failing KLC runs.
-
-Prism never invokes KLC `--fix` or `--fixmore`; validation is read-only.
-
-To generate a CERN-style KiCad DBL bundle from released/place-ready parts, call the admin API:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/catalog/exports/kicad-dbl
-```
-
-The export writes `Prism.sqlite`, `Prism_Linux.kicad_dbl`, `Prism_Windows.kicad_dbl`, `sym-lib-table`, `fp-lib-table`, `SchLib/`, and `PcbLib/`. Symbols are exported as one `.kicad_sym` file per DBL symbol library entry, which matches the KiCad v10 DBL lookup model while avoiding packed generated symbol libraries.
-
-For migrating existing KiCad libraries, see [Import Existing KiCad Libraries](IMPORT_EXISTING_KICAD_LIBRARIES.md).
-
-## Production Tuning
-
-Docker defaults favor the workstation/VPN deployment profile:
-
-```env
-UVICORN_WORKERS=4
-```
-
-For constrained development machines, lower this to one worker if startup speed matters more than
-concurrent request handling:
-
-```env
-UVICORN_WORKERS=1
-```
-
-SQLite uses one local database file with WAL enabled and automatic WAL checkpoints. Background import,
-workflow, and visual-diff job status is persisted in SQLite so polling remains reliable across
-multiple Uvicorn worker processes. Keep write-heavy catalog imports as explicit admin operations.
-
-Remote-symbol search uses SQLite FTS5 when available. The backend maintains the FTS index with
-SQLite triggers and falls back to `LIKE` search only if the runtime SQLite build does not include
-FTS5. The KiCad panel also fetches slim list payloads for search/category views and loads full
-asset/preview details only when a part is opened.
-
-Signed asset URLs are valid for a short time and are not bound to a specific user session. Anyone
-who receives a signed asset URL can download that single asset until the URL expires, so keep Prism
-behind the office network/VPN as planned.
-
-For a workstation-class host with local NVMe and 10-15 concurrent users, expected server-side
-latency at a CERN-scale catalog size is:
-
-- component search, first 50 results: usually below `100 ms`
-- category browsing, first 200-500 results: usually below `100 ms`
-- part manifest or inline placement bundle: usually below `20 ms` plus file read time
-
-Perceived latency over office LAN/VPN is mostly network RTT. A healthy same-site VPN should keep
-search in the `100-300 ms` range; slow or cross-region VPN links can push that higher without
-indicating a database bottleneck.
-
-## Operational Notes
-
-### Rebuild after env or frontend changes
-
-```bash
-docker compose up --build -d
-```
-
-### Inspect logs
-
-```bash
-docker compose logs --tail=100 frontend
-docker compose logs --tail=100 backend
-```
-
-### Session behavior
-
-- changing `SESSION_SECRET` invalidates all existing sessions
-- secure cookies require HTTPS and will not work correctly on plain HTTP if `SESSION_COOKIE_SECURE=true`
-
-## Troubleshooting
-
-### Blank page with frontend bundle errors
-
-If the browser shows a blank page, open DevTools and check the first JavaScript error.
-
-A previously observed production issue came from unsafe manual chunk splitting. If a bundle regression returns, rebuild and verify that:
-- `/assets/index-*.js` loads successfully
-- `/api/auth/config` returns `200`
-- the first console error is captured before reloading again
-
-### `SESSION_SECRET is not configured`
-
-Cause:
-- auth is enabled but `SESSION_SECRET` is empty
-
-Fix:
-- set `SESSION_SECRET` in the root `.env`
-- rebuild/restart the stack
-
-### SSO sign-in not appearing
-
-Check:
-- `AUTH_ENABLED=true`
-- OIDC client settings are set
-- `DEV_MODE=false`
-- browser origin is listed in the identity provider OAuth/OIDC configuration
-
-### `/api/auth/config` returns `502 Bad Gateway`
-
-Cause:
-- the frontend is running, but the backend is unavailable or restarting
-
-Fix:
-- inspect `docker compose logs --tail=100 backend`
-- if the catalog database is corrupt during local testing, stop the stack and move `data/projects/.kicad-prism/prism.sqlite3` aside before restarting:
-
-```bash
-docker compose down
-mv data/projects/.kicad-prism/prism.sqlite3 "data/projects/.kicad-prism/prism.sqlite3.bak.$(date +%Y%m%d%H%M%S)"
-docker compose up --build -d
-```
-
-### Login works but API requests fail after deploy
-
-Check:
-- `SESSION_COOKIE_SECURE` matches your transport mode
-- HTTPS termination is configured correctly if using secure cookies
-- browser is not blocking cookies for the deployed origin
-
-### Imported repositories disappear after restart
-
-Check that `./data/projects` is mounted and writable on the host.
-
-## Related Docs
-
-- [../README.md](../README.md)
-- [./KICAD-PRJ-REPO-STRUCTURE.md](./KICAD-PRJ-REPO-STRUCTURE.md)
-- [./PATH-MAPPING.md](./PATH-MAPPING.md)
+Continue with [Operations](OPERATIONS.md).

@@ -19,6 +19,7 @@ interface WorkspaceDataState {
   renameFolder: (folderId: string, name: string) => Promise<WorkspaceActionResult>;
   deleteFolder: (folderId: string) => Promise<WorkspaceActionResult>;
   moveProject: (projectId: string, folderId: string | null) => Promise<WorkspaceActionResult>;
+  moveProjects: (projectIds: string[], folderId: string | null) => Promise<WorkspaceActionResult>;
   deleteProject: (projectId: string) => Promise<WorkspaceActionResult>;
 }
 
@@ -151,19 +152,26 @@ export function useWorkspaceData(): WorkspaceDataState {
     [runMutation]
   );
 
-  const moveProject = useCallback(
-    async (projectId: string, folderId: string | null): Promise<WorkspaceActionResult> => {
+  const moveProjects = useCallback(
+    async (projectIds: string[], folderId: string | null): Promise<WorkspaceActionResult> => {
       return runMutation(
-        `/api/folders/projects/${projectId}/move`,
+        "/api/folders/projects/move",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ folder_id: folderId }),
+          body: JSON.stringify({ project_ids: projectIds, folder_id: folderId }),
         },
-        "Failed to move project"
+        projectIds.length === 1 ? "Failed to move project" : "Failed to move projects"
       );
     },
     [runMutation]
+  );
+
+  const moveProject = useCallback(
+    async (projectId: string, folderId: string | null): Promise<WorkspaceActionResult> => {
+      return moveProjects([projectId], folderId);
+    },
+    [moveProjects]
   );
 
   const deleteProject = useCallback(
@@ -190,6 +198,7 @@ export function useWorkspaceData(): WorkspaceDataState {
     renameFolder,
     deleteFolder,
     moveProject,
+    moveProjects,
     deleteProject,
   };
 }

@@ -1,108 +1,144 @@
 /**
  * Comment Types for KiCAD-Prism Collaboration Feature
- * 
- * These types match the JSON schema stored in .kicad-prism/comments.json
+ *
+ * These types match the PostgreSQL-backed comments API and optional
+ * .comments/comments.json export artifact.
  */
 
-/**
- * Comment status - can be OPEN or RESOLVED
- */
 export type CommentStatus = "OPEN" | "RESOLVED";
 
-/**
- * Comment context - PCB or Schematic
- */
 export type CommentContext = "PCB" | "SCH";
 
-/**
- * Location information for a comment
- */
+export type CommentClass = "general" | "observation" | "question" | "task";
+
+export type CommentSeverity = "info" | "minor" | "major" | "critical";
+
+export const COMMENT_CLASSES: CommentClass[] = [
+    "general",
+    "observation",
+    "question",
+    "task",
+];
+
+export const COMMENT_SEVERITIES: CommentSeverity[] = [
+    "info",
+    "minor",
+    "major",
+    "critical",
+];
+
+export const DEFAULT_COMMENT_CLASS: CommentClass = "general";
+export const DEFAULT_COMMENT_SEVERITY: CommentSeverity = "info";
+
 export interface CommentLocation {
-    /** X coordinate in board units (mm) */
+    /** X coordinate in board/schematic units (mm) */
     x: number;
-    /** Y coordinate in board units (mm) */
+    /** Y coordinate in board/schematic units (mm) */
     y: number;
     /** Layer name (e.g., "F.Cu", "B.Cu") */
     layer: string;
     /** Schematic page identifier (filename or path) */
     page?: string;
+    /** Optional area bounds [x, y, w, h] for rectangle comments */
+    bounds?: [number, number, number, number];
 }
 
-/**
- * A reply to a comment
- */
 export interface CommentReply {
-    /** Author username */
     author: string;
-    /** ISO 8601 timestamp */
     timestamp: string;
-    /** Reply content */
     content: string;
 }
 
-/**
- * A design review comment
- */
 export interface Comment {
-    /** Unique comment ID (e.g., "c_8a7b9c") */
     id: string;
-    /** Author username */
     author: string;
-    /** ISO 8601 timestamp */
     timestamp: string;
-    /** Comment status */
     status: CommentStatus;
-    /** Context: PCB or Schematic */
     context: CommentContext;
-    /** Location on the design */
     location: CommentLocation;
-    /** Comment content */
     content: string;
-    /** Replies to this comment */
     replies: CommentReply[];
-    /** Element designator (e.g., "U1") */
     elementRef?: string;
-    /** Element type (e.g., "Footprint") */
     elementType?: string;
-    /** Element ID (UUID) */
     elementId?: string;
+    commentClass: CommentClass;
+    severity: CommentSeverity;
+    mentions: string[];
+    metadata?: Record<string, unknown>;
+    scope?: "canvas" | "comparison";
+    baseCommit?: string;
+    compareCommit?: string;
+    comparisonDomain?: CommentContext;
+    filePath?: string;
+    semanticItemId?: string;
+    anchorKind?: "comparison" | "file" | "item" | "group";
+    /** Reserved for future GitHub/GitLab Issues sync */
+    forgeProvider?: string;
+    forgeIssueId?: string;
+    forgeIssueUrl?: string;
+    forgeSyncState?: string;
 }
 
-/**
- * Metadata for the comments file
- */
 export interface CommentsMeta {
     version: string;
     generator: string;
 }
 
-/**
- * Root structure of .kicad-prism/comments.json
- */
 export interface CommentsFile {
     meta: CommentsMeta;
     comments: Comment[];
 }
 
-/**
- * Request payload for creating a new comment
- */
 export interface CreateCommentRequest {
     context: CommentContext;
     location: CommentLocation;
     content: string;
+    author?: string;
+    elementId?: string;
+    elementRef?: string;
+    elementType?: string;
+    commentClass?: CommentClass;
+    severity?: CommentSeverity;
+    mentions?: string[];
+    metadata?: Record<string, unknown>;
 }
 
-/**
- * Request payload for adding a reply
- */
 export interface CreateReplyRequest {
     content: string;
+    author?: string;
 }
 
-/**
- * Request payload for updating comment status
- */
 export interface UpdateCommentRequest {
     status?: CommentStatus;
+}
+
+export interface MentionCandidate {
+    email: string;
+    role: string;
+}
+
+export function commentClassLabel(value: CommentClass): string {
+    switch (value) {
+        case "general":
+            return "General";
+        case "observation":
+            return "Observation";
+        case "question":
+            return "Question";
+        case "task":
+            return "Task";
+    }
+}
+
+export function commentSeverityLabel(value: CommentSeverity): string {
+    switch (value) {
+        case "info":
+            return "Info";
+        case "minor":
+            return "Minor";
+        case "major":
+            return "Major";
+        case "critical":
+            return "Critical";
+    }
 }

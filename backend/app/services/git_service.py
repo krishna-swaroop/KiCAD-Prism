@@ -1,9 +1,16 @@
+import logging
+import hashlib
 import os
+from pathlib import PurePosixPath
 from fastapi import HTTPException
 from git import Repo
 from git.exc import BadName, GitCommandError
 from typing import Dict, Any
 import datetime
+
+from app.services.git_read_cache_service import git_read_cache
+
+logger = logging.getLogger(__name__)
 
 
 def _open_repo(repo_path: str) -> Repo:
@@ -46,29 +53,155 @@ def _resolve_commit(repo: Repo, ref: str | None):
         raise HTTPException(status_code=500, detail=f"Git error: {str(error)}") from error
 
 
-def _get_commits(repo_path: str, limit: int, relative_path: str = None, ref: str = None):
+def _get_commits(
+    repo_path: str,
+    limit: int,
+    relative_path: str = None,
+    ref: str = None,
+    offset: int = 0,
+    include_total: bool = True,
+):
     repo = _open_repo(repo_path)
-    iter_kwargs = {"max_count": limit}
-    if ref:
-        _resolve_commit(repo, ref)
-        iter_kwargs["rev"] = ref
+    resolved_ref_sha = _resolve_commit(repo, ref).hexsha
+    normalized_limit = max(1, int(limit))
+    normalized_offset = max(0, int(offset))
+    cache_parameters = {
+        "relative_path": relative_path or "",
+        "limit": normalized_limit,
+        "offset": normalized_offset,
+        "include_total": bool(include_total),
+    }
+    cached = git_read_cache.unwrap(
+        git_read_cache.get(
+            "commits",
+            os.path.realpath(repo_path),
+            resolved_ref_sha,
+            cache_parameters,
+        )
+    )
+    if isinstance(cached, dict):
+        return cached
+
+    iter_kwargs = {
+        "max_count": normalized_limit + (0 if include_total else 1),
+        "skip": normalized_offset,
+        "rev": resolved_ref_sha,
+    }
     if relative_path:
         iter_kwargs["paths"] = relative_path
 
     try:
-        return [_serialize_commit(commit) for commit in repo.iter_commits(**iter_kwargs)]
+        commits = [_serialize_commit(commit) for commit in repo.iter_commits(**iter_kwargs)]
+        has_more = len(commits) > normalized_limit
+        if has_more:
+            commits = commits[:normalized_limit]
+        total = None
+        if include_total:
+            count_args = ["rev-list", "--count", resolved_ref_sha]
+            if relative_path:
+                count_args.extend(["--", relative_path])
+            total = int(repo.git.execute(["git", *count_args]))
+            has_more = normalized_offset + len(commits) < total
     except HTTPException:
         raise
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"Git error: {str(error)}") from error
 
+    # Cheap enrichment: per-commit counts of which kinds of KiCad files were
+    # touched (without running a full diff per commit). One `git log` call
+    # covers the whole page. Best-effort — never blocks the commits list.
+    try:
+        flags_by_hash = _kicad_change_flags(repo, [c["full_hash"] for c in commits], relative_path)
+        for c in commits:
+            c["kicad_changes"] = flags_by_hash.get(
+                c["full_hash"], {"sch": 0, "pcb": 0, "pro": 0, "other": 0}
+            )
+    except Exception:
+        for c in commits:
+            c.setdefault("kicad_changes", {"sch": 0, "pcb": 0, "pro": 0, "other": 0})
 
-def get_commits_list_filtered(repo_path: str, relative_path: str = None, limit: int = 50, ref: str = None):
+    result = {
+        "commits": commits,
+        "total": total,
+        "has_more": has_more,
+        "limit": normalized_limit,
+        "offset": normalized_offset,
+        "resolved_ref_sha": resolved_ref_sha,
+    }
+    git_read_cache.put(
+        "commits",
+        os.path.realpath(repo_path),
+        resolved_ref_sha,
+        cache_parameters,
+        result,
+    )
+    return result
+
+
+def _kicad_change_flags(
+    repo: Repo, full_hashes: list[str], relative_path: str | None
+) -> dict[str, dict[str, int]]:
     """
-    Get list of commits from repository, optionally filtered to a subdirectory.
+    Return {full_hash: {sch, pcb, pro, other}} where each value is the count of
+    files of that kind changed in the commit (vs its first parent).
+
+    Uses a single `git log --name-only` call that walks the requested commits.
+    """
+    if not full_hashes:
+        return {}
+
+    args = [
+        "log",
+        "--no-renames",
+        "--name-only",
+        "--format=PRISMHASH:%H",
+        "--no-walk",
+    ] + full_hashes
+    if relative_path:
+        args.extend(["--", relative_path])
+
+    raw = repo.git.execute(["git", *args])
+    out: dict[str, dict[str, int]] = {}
+    current = None
+    for line in raw.splitlines():
+        if line.startswith("PRISMHASH:"):
+            current = line[len("PRISMHASH:") :]
+            out[current] = {"sch": 0, "pcb": 0, "pro": 0, "other": 0}
+            continue
+        if not current or not line.strip():
+            continue
+        if line.endswith(".kicad_sch"):
+            out[current]["sch"] += 1
+        elif line.endswith(".kicad_pcb"):
+            out[current]["pcb"] += 1
+        elif line.endswith(".kicad_pro"):
+            out[current]["pro"] += 1
+        else:
+            out[current]["other"] += 1
+    return out
+
+
+def get_commits_list_filtered(
+    repo_path: str,
+    relative_path: str = None,
+    limit: int = 50,
+    ref: str = None,
+    offset: int = 0,
+    include_total: bool = True,
+):
+    """
+    Get paginated commits from repository, optionally filtered to a subdirectory.
     For Type-2 projects, relative_path scopes commits to the subproject.
+    Returns {commits, total, limit, offset}.
     """
-    return _get_commits(repo_path, limit, relative_path, ref)
+    return _get_commits(
+        repo_path,
+        limit,
+        relative_path,
+        ref,
+        offset,
+        include_total,
+    )
 
 
 def _count_tree_entries(commit, relative_path: str) -> int | None:
@@ -100,41 +233,106 @@ def _is_ancestor(repo: Repo, ancestor: str, descendant: str) -> bool:
         return False
 
 
-def _get_releases(repo_path: str, relative_path: str = None, ref: str = None):
+def _get_releases(
+    repo_path: str,
+    relative_path: str = None,
+    ref: str = None,
+    limit: int | None = None,
+    offset: int = 0,
+    include_total: bool = True,
+):
     repo = _open_repo(repo_path)
-    releases = []
+    resolved_ref_sha = _resolve_commit(repo, ref).hexsha
     try:
-        resolved_ref = _resolve_commit(repo, ref).hexsha if ref else None
-        for tag in repo.tags:
-            commit = tag.commit
-            if resolved_ref and not _is_ancestor(repo, commit.hexsha, resolved_ref):
-                continue
-            if relative_path and not _commit_touches_path(repo, commit, relative_path):
-                continue
-            release = {
-                "tag": tag.name,
-                "commit_hash": commit.hexsha[:7],
-                "date": datetime.datetime.fromtimestamp(commit.committed_date).isoformat(),
-                "message": commit.message.strip(),
-            }
-            if relative_path:
-                release["subproject_files_changed"] = _count_tree_entries(commit, relative_path)
-            releases.append(release)
+        tag_state = repo.git.for_each_ref(
+            "--format=%(refname):%(objectname)",
+            "refs/tags",
+        )
+    except GitCommandError:
+        tag_state = ""
+    tag_fingerprint = hashlib.sha256(tag_state.encode("utf-8")).hexdigest()
+    cache_parameters = {
+        "relative_path": relative_path or "",
+        "filter_to_ref": bool(ref),
+        "tag_fingerprint": tag_fingerprint,
+    }
+    cached = git_read_cache.unwrap(
+        git_read_cache.get(
+            "releases",
+            os.path.realpath(repo_path),
+            resolved_ref_sha,
+            cache_parameters,
+        )
+    )
+    releases = list(cached) if isinstance(cached, list) else []
+    try:
+        if not isinstance(cached, list):
+            for tag in repo.tags:
+                commit = tag.commit
+                if ref and not _is_ancestor(repo, commit.hexsha, resolved_ref_sha):
+                    continue
+                if relative_path and not _commit_touches_path(repo, commit, relative_path):
+                    continue
+                release = {
+                    "tag": tag.name,
+                    "commit_hash": commit.hexsha[:7],
+                    "full_hash": commit.hexsha,
+                    "date": datetime.datetime.fromtimestamp(commit.committed_date).isoformat(),
+                    "message": commit.message.strip(),
+                }
+                if relative_path:
+                    release["subproject_files_changed"] = _count_tree_entries(commit, relative_path)
+                releases.append(release)
 
-        releases.sort(key=lambda item: item["date"], reverse=True)
-        return releases
+            releases.sort(key=lambda item: item["date"], reverse=True)
+            git_read_cache.put(
+                "releases",
+                os.path.realpath(repo_path),
+                resolved_ref_sha,
+                cache_parameters,
+                releases,
+            )
+        total = len(releases)
+        start = max(0, offset)
+        if limit is None:
+            return releases if start == 0 else releases[start:]
+        normalized_limit = max(0, int(limit))
+        page = releases[start : start + normalized_limit]
+        return {
+            "releases": page,
+            "total": total if include_total else None,
+            "has_more": start + len(page) < total,
+            "limit": normalized_limit,
+            "offset": start,
+            "resolved_ref_sha": resolved_ref_sha,
+        }
     except HTTPException:
         raise
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"Git error: {str(error)}") from error
 
 
-def get_releases_filtered(repo_path: str, relative_path: str = None, ref: str = None):
+def get_releases_filtered(
+    repo_path: str,
+    relative_path: str = None,
+    ref: str = None,
+    limit: int | None = None,
+    offset: int = 0,
+    include_total: bool = True,
+):
     """
-    Get list of Git tags/releases from repository.
+    Get Git tags/releases from repository.
     For Type-2 projects, shows file count under relative_path for each tag.
+    When limit is set, returns {releases, total, limit, offset}; otherwise a list.
     """
-    return _get_releases(repo_path, relative_path, ref)
+    return _get_releases(
+        repo_path,
+        relative_path,
+        ref,
+        limit,
+        offset,
+        include_total,
+    )
 
 
 def get_file_from_commit_with_prefix(repo_path: str, commit_hash: str, file_path: str, relative_prefix: str = None) -> str:
@@ -184,17 +382,43 @@ def file_exists_in_commit_with_prefix(repo_path: str, commit_hash: str, file_pat
     except:
         return False
 
-def get_releases(repo_path: str, ref: str = None):
+def get_releases(
+    repo_path: str,
+    ref: str = None,
+    limit: int | None = None,
+    offset: int = 0,
+    include_total: bool = True,
+):
     """
     Get list of Git tags/releases from repository.
+    When limit is set, returns {releases, total, limit, offset}; otherwise a list.
     """
-    return _get_releases(repo_path, ref=ref)
+    return _get_releases(
+        repo_path,
+        ref=ref,
+        limit=limit,
+        offset=offset,
+        include_total=include_total,
+    )
 
-def get_commits_list(repo_path: str, limit: int = 50, ref: str = None):
+def get_commits_list(
+    repo_path: str,
+    limit: int = 50,
+    ref: str = None,
+    offset: int = 0,
+    include_total: bool = True,
+):
     """
-    Get list of commits from repository.
+    Get paginated commits from repository.
+    Returns {commits, total, limit, offset}.
     """
-    return _get_commits(repo_path, limit, ref=ref)
+    return _get_commits(
+        repo_path,
+        limit,
+        ref=ref,
+        offset=offset,
+        include_total=include_total,
+    )
 
 
 def get_commit_distance(repo_path: str, commit_hash: str, relative_path: str = None, ref: str = None) -> int:
@@ -204,15 +428,36 @@ def get_commit_distance(repo_path: str, commit_hash: str, relative_path: str = N
     """
     try:
         repo = _open_repo(repo_path)
-        repo.commit(commit_hash)
-        target_ref = ref or "HEAD"
-        repo.commit(target_ref)
+        commit_sha = repo.commit(commit_hash).hexsha
+        target_sha = repo.commit(ref or "HEAD").hexsha
+        cache_parameters = {
+            "commit_sha": commit_sha,
+            "relative_path": relative_path or "",
+        }
+        cached = git_read_cache.unwrap(
+            git_read_cache.get(
+                "commit_distance",
+                os.path.realpath(repo_path),
+                target_sha,
+                cache_parameters,
+            )
+        )
+        if isinstance(cached, int):
+            return cached
 
-        rev_list_args = ["--count", f"{commit_hash}..{target_ref}"]
+        rev_list_args = ["--count", f"{commit_sha}..{target_sha}"]
         if relative_path:
             rev_list_args.extend(["--", relative_path])
 
-        return int(repo.git.rev_list(*rev_list_args).strip() or "0")
+        result = int(repo.git.rev_list(*rev_list_args).strip() or "0")
+        git_read_cache.put(
+            "commit_distance",
+            os.path.realpath(repo_path),
+            target_sha,
+            cache_parameters,
+            result,
+        )
+        return result
     except BadName as error:
         raise HTTPException(status_code=404, detail=f"Commit not found: {commit_hash}") from error
     except GitCommandError as error:
@@ -329,57 +574,117 @@ def file_exists_in_commit(repo_path: str, commit_hash: str, file_path: str) -> b
         return False
 
 
-def sync_with_remote(repo_path: str) -> Dict[str, Any]:
-    """
-    Sync local repository with remote by performing a git pull.
-    
-    This fetches and merges the latest changes from the remote tracking branch.
-    
-    Returns:
-        Dict with sync status information including:
-        - success: bool
-        - previous_commit: str
-        - current_commit: str
-        - commits_pulled: int
-        - message: str
-    """
-    if not os.path.exists(repo_path):
-        raise HTTPException(status_code=404, detail=f"Repository not found at {repo_path}")
-    
+_EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
+def _path_is_within(path: str, relative_path: str | None) -> bool:
+    """Match a repository path to a Type-2 project on component boundaries."""
+    if not relative_path:
+        return True
+    candidate = PurePosixPath(path)
+    root = PurePosixPath(relative_path.strip("/"))
     try:
-        repo = Repo(repo_path)
-        
-        # Get current HEAD before sync
-        previous_commit = repo.head.commit.hexsha
-        
-        # Perform git pull
-        origin = repo.remotes.origin
-        
-        env = os.environ.copy()
-        env['GIT_TERMINAL_PROMPT'] = '0'
-        # Trust On First Use (TOFU) for SSH
-        env['GIT_SSH_COMMAND'] = 'ssh -o StrictHostKeyChecking=accept-new'
-        
-        pull_info = origin.pull(env=env)
-        
-        # Get new HEAD after sync
-        current_commit = repo.head.commit.hexsha
-        
-        # Count how many commits were pulled
-        commits_pulled = 0
-        if previous_commit != current_commit:
-            try:
-                commits_pulled = len(list(repo.iter_commits(f'{previous_commit}..{current_commit}')))
-            except Exception:
-                commits_pulled = 1  # At least one if heads differ
-        
+        candidate.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _diff_line_stats_map(
+    repo: Repo,
+    old_sha: str,
+    new_sha: str,
+) -> dict[str, tuple[int | None, int | None]]:
+    """Return every changed path's line statistics with one Git invocation."""
+    stats: dict[str, tuple[int | None, int | None]] = {}
+    try:
+        output = repo.git.diff("--numstat", "--no-renames", old_sha, new_sha)
+    except GitCommandError as error:
+        logger.debug(
+            "Could not calculate line stats for %s..%s: %s",
+            old_sha,
+            new_sha,
+            error,
+        )
+        return stats
+
+    for line in output.splitlines():
+        columns = line.split("\t", 2)
+        if len(columns) < 3:
+            continue
+        additions, deletions, path = columns
+        if additions == "-" or deletions == "-":
+            stats[path] = (None, None)
+            continue
+        try:
+            stats[path] = (int(additions), int(deletions))
+        except ValueError:
+            continue
+    return stats
+
+
+def get_commit_file_summary(
+    repo_path: str, commit_hash: str, relative_path: str = None
+) -> dict[str, Any]:
+    """
+    Return a commit's changed files with explicit first-parent context.
+
+    Merge commits intentionally compare against their first parent, matching
+    the file list and GitHub's default commit view. Root commits compare with
+    Git's empty tree.
+    """
+    try:
+        repo = _open_repo(repo_path)
+        commit = repo.commit(commit_hash)
+        parent = commit.parents[0] if commit.parents else None
+        base_sha = parent.hexsha if parent else _EMPTY_TREE_SHA
+
+        diffs = (
+            parent.diff(commit)
+            if parent
+            else repo.tree(_EMPTY_TREE_SHA).diff(commit)
+        )
+        line_stats = _diff_line_stats_map(repo, base_sha, commit.hexsha)
+
+        result = []
+        for d in diffs:
+            path = d.b_path or d.a_path
+            if not path or not _path_is_within(path, relative_path):
+                continue
+            if d.change_type == "A":
+                status = "added"
+            elif d.change_type == "D":
+                status = "removed"
+            elif d.change_type == "R":
+                status = "renamed"
+            else:
+                status = "modified"
+
+            additions, deletions = line_stats.get(
+                d.b_path or "",
+                line_stats.get(d.a_path or "", (None, None)),
+            )
+
+            filename = path.split("/")[-1]
+            entry: dict[str, Any] = {
+                "path": path,
+                "filename": filename,
+                "status": status,
+                "additions": additions,
+                "deletions": deletions,
+            }
+
+            result.append(entry)
+
+        result.sort(key=lambda x: x["path"])
         return {
-            "success": True,
-            "previous_commit": previous_commit[:7],
-            "current_commit": current_commit[:7],
-            "commits_pulled": commits_pulled,
-            "message": f"Successfully pulled {commits_pulled} commit(s) from remote."
+            "files": result,
+            "base_commit": parent.hexsha if parent else None,
+            "compare_commit": commit.hexsha,
+            "parent_count": len(commit.parents),
+            "comparison_basis": "first-parent" if parent else "root",
         }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Git error: {str(error)}") from error

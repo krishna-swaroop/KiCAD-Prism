@@ -1,0 +1,22 @@
+{
+  "name": "kicad-prism-semantic-viewer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:viewer": "esbuild viewer/src/main.js --bundle --minify --format=iife --platform=browser --external:node:fs --external:node:path --outfile=viewer/app.js",
+    "build:element": "esbuild viewer/src/element-entry.js --bundle --minify --format=esm --platform=browser --loader:.css=text --external:node:fs --external:node:path --outfile=dist/prism-semantic-viewer.js",
+    "build": "npm run build:viewer && npm run build:element",
+    "test:gltf": "node --test tools/semantic-gltf/*.test.mjs",
+    "test:viewer": "node --test viewer/src/*.test.mjs",
+    "bench:schematic-dom": "node tools/schematic-dom-benchmark.mjs"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.2.1",
+    "@gltf-transform/extensions": "^4.2.1",
+    "@gltf-transform/functions": "^4.2.1",
+    "earcut": "^3.0.2",
+    "esbuild": "^0.25.5",
+    "meshoptimizer": "^0.24.0",
+    "polygon-clipping": "^0.15.7"
+  }
+}

@@ -2,18 +2,21 @@ import { Folder } from "lucide-react";
 
 import { SearchProject } from "@/hooks/use-workspace-search";
 import { FolderTreeItem, Project } from "@/types/project";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { FolderActionMenu, ProjectActionMenu } from "./workspace-action-menus";
 
 interface WorkspaceListViewProps {
   isSearching: boolean;
   selectedProjectId: string | null;
+  bulkSelectedProjectIds: ReadonlySet<string>;
   currentFolderId: string | null;
   breadcrumbs: FolderTreeItem[];
   listFolders: FolderTreeItem[];
   listProjects: Project[];
   getProjectDisplayName: (project: Project) => string;
   onSelectProject: (project: Project) => void;
+  onToggleProjectSelection: (projectId: string, selected: boolean) => void;
   onOpenProject: (project: Project) => void;
   onOpenFolder: (folderId: string) => void;
   onRenameFolder: (folder: FolderTreeItem) => void;
@@ -44,12 +47,14 @@ function resolveProjectLocation(
 export function WorkspaceListView({
   isSearching,
   selectedProjectId,
+  bulkSelectedProjectIds,
   currentFolderId,
   breadcrumbs,
   listFolders,
   listProjects,
   getProjectDisplayName,
   onSelectProject,
+  onToggleProjectSelection,
   onOpenProject,
   onOpenFolder,
   onRenameFolder,
@@ -61,7 +66,8 @@ export function WorkspaceListView({
 }: WorkspaceListViewProps) {
   return (
     <div className="overflow-hidden rounded-xl border">
-      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] border-b bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] gap-x-3 border-b bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="w-4"><span className="sr-only">Select</span></span>
         <div>Name</div>
         <div>Description</div>
         <div>Location</div>
@@ -76,8 +82,9 @@ export function WorkspaceListView({
           {listFolders.map((folder) => (
             <div
               key={folder.id}
-              className="grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center border-b px-4 py-2"
+              className="grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center gap-x-3 border-b px-4 py-2"
             >
+              <span className="w-4" />
               <button
                 type="button"
                 className="flex min-w-0 items-center gap-2 text-left text-sm font-medium hover:text-primary"
@@ -103,10 +110,23 @@ export function WorkspaceListView({
           {listProjects.map((project) => (
             <div
               key={project.id}
-              className={`grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center border-b px-4 py-2 transition-colors ${selectedProjectId === project.id ? "bg-primary/5" : "hover:bg-muted/30"}`}
+              className={`grid grid-cols-[auto_minmax(0,2fr)_minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,1fr)_auto] items-center gap-x-3 border-b px-4 py-2 transition-colors ${selectedProjectId === project.id || bulkSelectedProjectIds.has(project.id) ? "bg-primary/5" : "hover:bg-muted/30"}`}
               onClick={() => onSelectProject(project)}
               onDoubleClick={() => onOpenProject(project)}
             >
+              <div
+                className="flex w-4 items-center"
+                onClick={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => event.stopPropagation()}
+              >
+                {canManageProjects && (
+                  <Checkbox
+                    checked={bulkSelectedProjectIds.has(project.id)}
+                    onCheckedChange={(checked) => onToggleProjectSelection(project.id, checked === true)}
+                    aria-label={`Select ${getProjectDisplayName(project)}`}
+                  />
+                )}
+              </div>
               <button
                 type="button"
                 className="truncate text-left text-sm font-medium hover:text-primary"

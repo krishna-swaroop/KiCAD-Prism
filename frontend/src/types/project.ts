@@ -7,6 +7,13 @@ export interface Project {
     last_modified: string;
     registered_at?: string;
     thumbnail_url?: string;
+    /**
+     * Where the visible thumbnail came from. "generated" is a kicad-cli render
+     * of the board and is the default; "custom" is an image uploaded in the
+     * workspace; "repository" is an image committed under assets/thumbnail,
+     * used only when there is no board to render.
+     */
+    thumbnail_source?: "generated" | "custom" | "repository";
     sub_path?: string;
     parent_repo?: string;
     repo_url?: string;

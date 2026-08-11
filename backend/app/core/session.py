@@ -8,18 +8,28 @@ from typing import Any, TypedDict
 from fastapi import Response
 
 from app.core.config import settings
-from app.core.roles import Role
 
 SESSION_COOKIE_NAME = "kicad_prism_session"
 SESSION_COOKIE_SAMESITE = "lax"
 
+# Holds the OIDC state/nonce/PKCE verifier between the authorization redirect and
+# the callback. HttpOnly so page scripts cannot read or forge it, and short-lived
+# because an authorization round trip takes seconds, not hours.
+OIDC_TRANSACTION_COOKIE_NAME = "kicad_prism_oidc_txn"
+OIDC_TRANSACTION_TTL_SECONDS = 600
+
 
 class SessionPayload(TypedDict):
-    email: str
-    name: str
-    picture: str
-    role: Role
+    sid: str
     iat: int
+    exp: int
+
+
+class OidcTransaction(TypedDict):
+    state: str
+    nonce: str
+    code_verifier: str
+    redirect_uri: str
     exp: int
 
 
@@ -32,78 +42,103 @@ def _b64_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode((value + pad).encode("ascii"))
 
 
-def _sign(message: str) -> str:
+def _sign(message: str, *, purpose: str) -> str:
+    """Domain-separated HMAC so a session token can never be replayed as a transaction."""
     secret = settings.SESSION_SECRET.encode("utf-8")
-    digest = hmac.new(secret, message.encode("utf-8"), hashlib.sha256).digest()
+    digest = hmac.new(secret, f"{purpose}:{message}".encode("utf-8"), hashlib.sha256).digest()
     return _b64_encode(digest)
 
 
-def _serialize_payload(payload: SessionPayload) -> str:
-    return _b64_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+def _encode(payload: dict[str, Any], *, purpose: str, version: str) -> str:
+    encoded = _b64_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    return f"{version}.{encoded}.{_sign(encoded, purpose=purpose)}"
 
 
-def _deserialize_payload(encoded_payload: str) -> SessionPayload:
-    raw = _b64_decode(encoded_payload)
-    data: dict[str, Any] = json.loads(raw.decode("utf-8"))
-    return SessionPayload(
-        email=str(data["email"]).strip().lower(),
-        name=str(data.get("name") or ""),
-        picture=str(data.get("picture") or ""),
-        role=str(data["role"]),  # type: ignore[typeddict-item]
-        iat=int(data["iat"]),
-        exp=int(data["exp"]),
-    )
-
-
-def create_session_token(email: str, name: str, picture: str, role: Role) -> str:
-    now = int(time.time())
-    payload: SessionPayload = SessionPayload(
-        email=email.strip().lower(),
-        name=name,
-        picture=picture,
-        role=role,
-        iat=now,
-        exp=now + (settings.SESSION_TTL_HOURS * 3600),
-    )
-    encoded_payload = _serialize_payload(payload)
-    signature = _sign(encoded_payload)
-    return f"v1.{encoded_payload}.{signature}"
-
-
-def decode_session_token(token: str) -> SessionPayload | None:
-    if not token:
-        return None
-    if not settings.SESSION_SECRET:
+def _decode(token: str, *, purpose: str, version: str) -> dict[str, Any] | None:
+    if not token or not settings.SESSION_SECRET:
         return None
 
     parts = token.split(".")
-    if len(parts) != 3 or parts[0] != "v1":
+    if len(parts) != 3 or parts[0] != version:
         return None
 
     _, encoded_payload, signature = parts
-    expected_signature = _sign(encoded_payload)
-    if not hmac.compare_digest(signature, expected_signature):
+    if not hmac.compare_digest(signature, _sign(encoded_payload, purpose=purpose)):
         return None
 
     try:
-        payload = _deserialize_payload(encoded_payload)
-    except (ValueError, json.JSONDecodeError, KeyError, TypeError):
+        data = json.loads(_b64_decode(encoded_payload).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
+    if int(data.get("exp", 0)) <= int(time.time()):
+        return None
+    return data
 
-    if payload["exp"] <= int(time.time()):
+
+def create_session_token(session_id: str) -> str:
+    """Wrap an opaque session id in a signed, expiring envelope.
+
+    Identity and revocation live in the session store; this token only proves the
+    cookie was minted by this deployment and has not been tampered with.
+    """
+    now = int(time.time())
+    payload: SessionPayload = SessionPayload(
+        sid=session_id,
+        iat=now,
+        exp=now + (settings.SESSION_TTL_HOURS * 3600),
+    )
+    return _encode(dict(payload), purpose="session", version="v2")
+
+
+def decode_session_token(token: str) -> SessionPayload | None:
+    data = _decode(token, purpose="session", version="v2")
+    if data is None:
         return None
-    return payload
+    session_id = str(data.get("sid") or "")
+    if not session_id:
+        return None
+    return SessionPayload(sid=session_id, iat=int(data.get("iat", 0)), exp=int(data["exp"]))
+
+
+def create_oidc_transaction_token(
+    *, state: str, nonce: str, code_verifier: str, redirect_uri: str
+) -> str:
+    payload: OidcTransaction = OidcTransaction(
+        state=state,
+        nonce=nonce,
+        code_verifier=code_verifier,
+        redirect_uri=redirect_uri,
+        exp=int(time.time()) + OIDC_TRANSACTION_TTL_SECONDS,
+    )
+    return _encode(dict(payload), purpose="oidc-txn", version="t1")
+
+
+def decode_oidc_transaction_token(token: str) -> OidcTransaction | None:
+    data = _decode(token, purpose="oidc-txn", version="t1")
+    if data is None:
+        return None
+    try:
+        return OidcTransaction(
+            state=str(data["state"]),
+            nonce=str(data["nonce"]),
+            code_verifier=str(data["code_verifier"]),
+            redirect_uri=str(data["redirect_uri"]),
+            exp=int(data["exp"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def set_session_cookie(response: Response, token: str) -> None:
-    max_age = settings.SESSION_TTL_HOURS * 3600
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
         secure=settings.SESSION_COOKIE_SECURE,
         samesite=SESSION_COOKIE_SAMESITE,
-        max_age=max_age,
+        max_age=settings.SESSION_TTL_HOURS * 3600,
         path="/",
     )
 
@@ -111,6 +146,28 @@ def set_session_cookie(response: Response, token: str) -> None:
 def clear_session_cookie(response: Response) -> None:
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
+        httponly=True,
+        secure=settings.SESSION_COOKIE_SECURE,
+        samesite=SESSION_COOKIE_SAMESITE,
+        path="/",
+    )
+
+
+def set_oidc_transaction_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=OIDC_TRANSACTION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=settings.SESSION_COOKIE_SECURE,
+        samesite=SESSION_COOKIE_SAMESITE,
+        max_age=OIDC_TRANSACTION_TTL_SECONDS,
+        path="/",
+    )
+
+
+def clear_oidc_transaction_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=OIDC_TRANSACTION_COOKIE_NAME,
         httponly=True,
         secure=settings.SESSION_COOKIE_SECURE,
         samesite=SESSION_COOKIE_SAMESITE,

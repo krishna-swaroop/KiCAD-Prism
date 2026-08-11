@@ -13,6 +13,7 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.core.roles import Role, normalize_role
+from app.core.session import create_oidc_transaction_token, decode_oidc_transaction_token
 from app.services.auth_service import ResolvedSessionUser, authenticate_oidc_auth_code, build_oidc_authorization_url
 
 REMOTE_SYMBOL_SCOPE = "remote_symbols.read"
@@ -96,24 +97,43 @@ def build_oauth_metadata(base_url: str) -> dict[str, str]:
     }
 
 
-def build_oidc_login_url(base_url: str, return_to: str) -> str:
+def build_oidc_login_url(base_url: str, return_to: str) -> tuple[str, str]:
+    """Return the IdP redirect plus a transaction token the caller must set as a cookie.
+
+    The PKCE verifier deliberately never travels in the `state` parameter. State is
+    visible to anyone who can observe the redirect URL, and a verifier disclosed
+    alongside its own authorization code would make PKCE pointless.
+    """
     redirect_uri = f"{base_url.rstrip('/')}/oauth/oidc/callback"
-    nonce = secrets.token_urlsafe(16)
+    nonce = secrets.token_urlsafe(32)
+    code_verifier = secrets.token_urlsafe(64)
     state = _encode_payload(
         {
             "type": "provider_oidc_state",
             "return_to": return_to,
-            "nonce": nonce,
             "jti": secrets.token_urlsafe(8),
             "exp": _now() + 600,
         }
     )
-    return build_oidc_authorization_url(redirect_uri=redirect_uri, state=state, nonce=nonce)
+    authorization_url = build_oidc_authorization_url(
+        redirect_uri=redirect_uri,
+        state=state,
+        nonce=nonce,
+        code_verifier=code_verifier,
+    )
+    transaction_token = create_oidc_transaction_token(
+        state=state,
+        nonce=nonce,
+        code_verifier=code_verifier,
+        redirect_uri=redirect_uri,
+    )
+    return authorization_url, transaction_token
 
 
 def resolve_oidc_callback(
     code: str,
     state_token: str,
+    transaction_token: str,
     base_url: str,
     callback_path: str = "/oauth/oidc/callback",
 ) -> tuple[ResolvedSessionUser, str]:
@@ -121,11 +141,21 @@ def resolve_oidc_callback(
     if state.get("type") != "provider_oidc_state":
         raise HTTPException(status_code=401, detail="Invalid OAuth state")
 
+    transaction = decode_oidc_transaction_token(transaction_token)
+    if not transaction:
+        raise HTTPException(status_code=400, detail="Login session expired. Please sign in again.")
+    if not hmac.compare_digest(transaction["state"], state_token):
+        raise HTTPException(status_code=400, detail="Invalid login state. Please sign in again.")
+
     redirect_uri = f"{base_url.rstrip('/')}{callback_path}"
+    if transaction["redirect_uri"] != redirect_uri:
+        raise HTTPException(status_code=400, detail="Login redirect mismatch. Please sign in again.")
+
     session_user = authenticate_oidc_auth_code(
         code=code,
         redirect_uri=redirect_uri,
-        expected_nonce=str(state.get("nonce") or ""),
+        expected_nonce=transaction["nonce"],
+        code_verifier=transaction["code_verifier"],
     )
     return session_user, str(state["return_to"])
 

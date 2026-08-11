@@ -20,6 +20,11 @@ class MoveProjectRequest(BaseModel):
     folder_id: Optional[str] = None
 
 
+class MoveProjectsRequest(BaseModel):
+    project_ids: List[str] = Field(min_length=1)
+    folder_id: Optional[str] = None
+
+
 class UpdateFolderRequest(BaseModel):
     name: Optional[str] = None
     parent_id: Optional[str] = None
@@ -102,8 +107,26 @@ async def delete_folder(folder_id: str, cascade: bool = Query(default=True)):
 
 @router.post("/projects/{project_id}/move", dependencies=[Depends(require_designer)])
 async def move_project_to_folder(project_id: str, request: MoveProjectRequest):
-    result = await asyncio.to_thread(workspace.move_project_to_folder, project_id, request.folder_id)
+    try:
+        result = await asyncio.to_thread(workspace.move_project_to_folder, project_id, request.folder_id)
+    except ValueError as error:
+        raise HTTPException(status_code=_status_code_for_value_error(error), detail=str(error))
     if not result:
         raise HTTPException(status_code=404, detail="Project not found")
 
     return {"message": "Project moved successfully"}
+
+
+@router.post("/projects/move", dependencies=[Depends(require_designer)])
+async def move_projects_to_folder(request: MoveProjectsRequest):
+    try:
+        moved = await asyncio.to_thread(
+            workspace.move_projects_to_folder,
+            request.project_ids,
+            request.folder_id,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=_status_code_for_value_error(error), detail=str(error))
+
+    noun = "project" if moved == 1 else "projects"
+    return {"message": f"{moved} {noun} moved successfully", "moved": moved}

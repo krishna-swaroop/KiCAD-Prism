@@ -1,0 +1,27 @@
+# KiCAD Prism reverse proxy (internal CA / custom certificates)
+
+# Replace kicad-prism.corp.internal and certificate paths.
+# Put prism.crt and prism.key in the bundle's certs directory.
+
+kicad-prism.corp.internal {
+	tls /certs/prism.crt /certs/prism.key
+
+	encode gzip zstd
+
+	request_body {
+		max_size 2GB
+	}
+
+	reverse_proxy frontend:80 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}

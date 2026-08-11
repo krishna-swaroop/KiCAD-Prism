@@ -1,0 +1,4 @@
+# Ignore all certificate material dropped here.
+*
+!.gitignore
+!README.md

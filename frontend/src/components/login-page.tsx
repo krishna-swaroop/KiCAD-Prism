@@ -5,7 +5,7 @@ import prismLogoHorizontal from "@/assets/branding/kicad-prism/kicad-prism-logo-
 import prismLogoMark from "@/assets/branding/kicad-prism/kicad-prism-icon.svg";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { buildOidcAuthUrl } from "@/lib/auth";
+import { startOidcLogin } from "@/lib/auth";
 import type { AuthConfig } from "@/types/auth";
 
 interface LoginPageProps {
@@ -80,10 +80,15 @@ export function LoginPage({
     };
   }, []);
 
-  const handleSignIn = () => {
+  const handleSignIn = async () => {
     setIsLoading(true);
     setError(null);
-    window.location.href = buildOidcAuthUrl(authConfig);
+    try {
+      window.location.href = await startOidcLogin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start sign-in");
+      setIsLoading(false);
+    }
   };
 
   const handleDevBypass = () => {
@@ -131,7 +136,7 @@ export function LoginPage({
             </CardHeader>
 
             <CardContent className="space-y-5 pb-7">
-              <Button className="w-full" onClick={handleSignIn} disabled={isLoading}>
+              <Button className="w-full" onClick={() => void handleSignIn()} disabled={isLoading}>
                 {isLoading
                   ? `Redirecting to ${authConfig.oidc_provider_name || "SSO"}...`
                   : `Continue with ${authConfig.oidc_provider_name || "SSO"}`}

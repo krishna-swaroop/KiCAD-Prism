@@ -1,0 +1,41 @@
+{
+  "source": "issue-86/VR5510_PMIC.kicad_sch (sanitized)",
+  "symbols": [
+    {
+      "reference": "R106",
+      "libId": "Device:R_Small_US",
+      "body": [
+        {"kind": "PlotPoly", "points": [[309626000, 218440000], [310007000, 217424000], [310388000, 218440000], [310769000, 219456000], [311150000, 218440000]], "fill": "NO_FILL", "width_nm": 152400, "stroke_color": "#9C9B99FF"},
+        {"kind": "PlotPoly", "points": [[311150000, 218440000], [311531000, 217424000], [311912000, 218440000], [312293000, 219456000], [312674000, 218440000]], "fill": "NO_FILL", "width_nm": 152400, "stroke_color": "#9C9B99FF"}
+      ],
+      "marker": [
+        {"kind": "ThickSegment", "start_x": 308940200, "start_y": 217164920, "end_x": 313359800, "end_y": 219715080, "width_nm": 457200, "stroke_color": "#DC090DD9"},
+        {"kind": "ThickSegment", "start_x": 313359800, "start_y": 217164920, "end_x": 308940200, "end_y": 219715080, "width_nm": 457200, "stroke_color": "#DC090DD9"}
+      ]
+    },
+    {
+      "reference": "R108",
+      "libId": "Device:R_Small_US",
+      "body": [
+        {"kind": "PlotPoly", "points": [[313436000, 198120000], [313817000, 197104000], [314198000, 198120000], [314579000, 199136000], [314960000, 198120000]], "fill": "NO_FILL", "width_nm": 152400, "stroke_color": "#9C9B99FF"},
+        {"kind": "PlotPoly", "points": [[314960000, 198120000], [315341000, 197104000], [315722000, 198120000], [316103000, 199136000], [316484000, 198120000]], "fill": "NO_FILL", "width_nm": 152400, "stroke_color": "#9C9B99FF"}
+      ],
+      "marker": [
+        {"kind": "ThickSegment", "start_x": 312750200, "start_y": 196844920, "end_x": 317169800, "end_y": 199395080, "width_nm": 457200, "stroke_color": "#DC090DD9"},
+        {"kind": "ThickSegment", "start_x": 317169800, "start_y": 196844920, "end_x": 312750200, "end_y": 199395080, "width_nm": 457200, "stroke_color": "#DC090DD9"}
+      ]
+    },
+    {
+      "reference": "C111",
+      "libId": "Device:C_Small",
+      "body": [
+        {"kind": "PlotPoly", "points": [[318516000, 225552000], [321564000, 225552000]], "fill": "NO_FILL", "width_nm": 304800, "stroke_color": "#9C9B99FF"},
+        {"kind": "PlotPoly", "points": [[318516000, 226568000], [321564000, 226568000]], "fill": "NO_FILL", "width_nm": 330200, "stroke_color": "#9C9B99FF"}
+      ],
+      "marker": [
+        {"kind": "ThickSegment", "start_x": 317764160, "start_y": 224226120, "end_x": 322315840, "end_y": 227906580, "width_nm": 457200, "stroke_color": "#DC090DD9"},
+        {"kind": "ThickSegment", "start_x": 322315840, "start_y": 224226120, "end_x": 317764160, "end_y": 227906580, "width_nm": 457200, "stroke_color": "#DC090DD9"}
+      ]
+    }
+  ]
+}

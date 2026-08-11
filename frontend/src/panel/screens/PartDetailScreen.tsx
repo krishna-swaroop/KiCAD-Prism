@@ -46,7 +46,7 @@ const PARAMETER_ORDER = [
 ];
 
 function formatAvailability(state: string): string {
-  if (state === "place_ready") return "Ready to place";
+  if (state === "place_ready") return "CAD complete";
   if (state === "files_partial") return "Files partial";
   return "Metadata only";
 }

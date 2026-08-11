@@ -13,6 +13,7 @@ import shutil
 import time
 import json
 import re
+import tempfile
 from pathlib import Path
 from typing import Optional, List, Dict
 from app.services.project_service import find_schematic_file
@@ -103,9 +104,15 @@ CLI_CMD = _get_cli_command()
 logger.info("[%s] Resolved kicad-cli: %s", platform.system(), CLI_CMD)
 
 
+# `/tmp` does not exist on Windows, where contributors increasingly run the
+# backend outside Docker. gettempdir() honours TMPDIR/TEMP and is correct on
+# every platform Prism is developed on.
+DIFF_ROOT = Path(tempfile.gettempdir()) / "prism_diff"
+
+
 def _prune_stale_diff_dirs() -> None:
     """Remove diff output directories older than MAX_JOB_AGE_SECONDS."""
-    diff_root = Path("/tmp/prism_diff")
+    diff_root = DIFF_ROOT
     if not diff_root.is_dir():
         return
     cutoff = time.time() - MAX_JOB_AGE_SECONDS
@@ -268,7 +275,7 @@ def _run_diff_generation(job_id: str, project_id: str, commit1: str, commit2: st
             raise ValueError(f"Project '{project_id}' not found")
             
         project_path = Path(row['path'])
-        job_dir = (Path("/tmp/prism_diff") / job_id).resolve()
+        job_dir = (DIFF_ROOT / job_id).resolve()
         job_dir.mkdir(parents=True, exist_ok=True)
         job['abs_output_path'] = str(job_dir)
         

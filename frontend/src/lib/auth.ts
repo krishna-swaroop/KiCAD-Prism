@@ -1,14 +1,12 @@
 import { fetchJson } from "@/lib/api";
-import type { AuthConfig, User } from "@/types/auth";
+import type { ActiveSession, AuthConfig, User } from "@/types/auth";
 
 const AUTH_CALLBACK_PATH = "/auth/callback";
-const AUTH_STATE_KEY = "kicad_prism_oidc_state";
-const AUTH_NONCE_KEY = "kicad_prism_oidc_nonce";
 
 interface LoginRequest {
   code: string;
+  state: string;
   redirectUri: string;
-  nonce?: string;
 }
 
 export function getOidcAuthRedirectUri() {
@@ -19,53 +17,20 @@ export function isAuthCallbackPath() {
   return window.location.pathname === AUTH_CALLBACK_PATH;
 }
 
-function createState() {
-  const state = createSecureRandomToken();
-  window.sessionStorage.setItem(AUTH_STATE_KEY, state);
-  return state;
-}
-
-function createNonce() {
-  const nonce = createSecureRandomToken();
-  window.sessionStorage.setItem(AUTH_NONCE_KEY, nonce);
-  return nonce;
-}
-
-function createSecureRandomToken() {
-  if (window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
-  }
-
-  if (!window.crypto?.getRandomValues) {
-    throw new Error("Secure browser crypto is required for OIDC login.");
-  }
-
-  const bytes = new Uint8Array(32);
-  window.crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-export function consumeExpectedAuthState() {
-  const state = window.sessionStorage.getItem(AUTH_STATE_KEY);
-  window.sessionStorage.removeItem(AUTH_STATE_KEY);
-  return state;
-}
-
-export function consumeExpectedAuthNonce() {
-  const nonce = window.sessionStorage.getItem(AUTH_NONCE_KEY);
-  window.sessionStorage.removeItem(AUTH_NONCE_KEY);
-  return nonce;
-}
-
-export function buildOidcAuthUrl(config: AuthConfig) {
-  const authUrl = new URL(config.oidc_authorization_endpoint);
-  authUrl.searchParams.set("client_id", config.oidc_client_id);
-  authUrl.searchParams.set("redirect_uri", getOidcAuthRedirectUri());
-  authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", config.oidc_scopes || "openid profile email");
-  authUrl.searchParams.set("state", createState());
-  authUrl.searchParams.set("nonce", createNonce());
-  return authUrl.toString();
+/**
+ * Ask the backend to start a login.
+ *
+ * State, nonce, and the PKCE verifier are generated server-side and pinned to this
+ * browser through an HttpOnly cookie, so nothing security-relevant is stored in
+ * sessionStorage where page scripts could read or overwrite it.
+ */
+export async function startOidcLogin() {
+  const { authorization_url } = await fetchJson<{ authorization_url: string }>(
+    "/api/auth/login/start",
+    { method: "POST" },
+    "Failed to start sign-in"
+  );
+  return authorization_url;
 }
 
 export function fetchAuthConfig(signal?: AbortSignal) {
@@ -84,14 +49,12 @@ export function fetchCurrentUser(signal?: AbortSignal) {
   );
 }
 
-export function exchangeOidcAuthCode(code: string, nonce: string | null) {
+export function exchangeOidcAuthCode(code: string, state: string) {
   const payload: LoginRequest = {
     code,
+    state,
     redirectUri: getOidcAuthRedirectUri(),
   };
-  if (nonce) {
-    payload.nonce = nonce;
-  }
 
   return fetchJson<User>(
     "/api/auth/login",
@@ -101,5 +64,21 @@ export function exchangeOidcAuthCode(code: string, nonce: string | null) {
       body: JSON.stringify(payload),
     },
     "Authentication failed"
+  );
+}
+
+export function fetchActiveSessions(signal?: AbortSignal) {
+  return fetchJson<ActiveSession[]>(
+    "/api/auth/sessions",
+    signal ? { signal } : undefined,
+    "Failed to load active sessions"
+  );
+}
+
+export function revokeOtherSessions() {
+  return fetchJson<{ revoked: number }>(
+    "/api/auth/sessions/revoke-others",
+    { method: "POST" },
+    "Failed to sign out other sessions"
   );
 }

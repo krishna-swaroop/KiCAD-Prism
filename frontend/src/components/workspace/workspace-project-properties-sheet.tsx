@@ -1,5 +1,17 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Box, CalendarDays, FolderTree, GitBranch, GitCommit, PanelRightOpen, Tag, X } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Box,
+  CalendarDays,
+  FolderTree,
+  GitBranch,
+  GitCommit,
+  Image as ImageIcon,
+  PanelRightOpen,
+  RefreshCw,
+  Tag,
+  Upload,
+  X,
+} from "lucide-react";
 
 import { fetchJson } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -14,7 +26,20 @@ interface WorkspaceProjectPropertiesSheetProps {
   folderById: Map<string, FolderTreeItem>;
   onOpenChange: (open: boolean) => void;
   onOpenProject: (project: Project) => void;
+  canManageProjects?: boolean;
+  onRegenerateThumbnail?: (project: Project) => Promise<void>;
+  onUploadThumbnail?: (project: Project, file: File) => Promise<void>;
+  onRevertThumbnail?: (project: Project) => Promise<void>;
 }
+
+/** What the browser will let someone pick, and what Pillow will read back. */
+const THUMBNAIL_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/bmp";
+
+const THUMBNAIL_SOURCE_LABELS: Record<string, string> = {
+  generated: "Rendered from the PCB",
+  custom: "Uploaded image",
+  repository: "Committed in the repository",
+};
 
 function formatDateTime(value?: string | null): string {
   if (!value) {
@@ -203,10 +228,16 @@ export function WorkspaceProjectPropertiesSheet({
   folderById,
   onOpenChange,
   onOpenProject,
+  canManageProjects = false,
+  onRegenerateThumbnail,
+  onUploadThumbnail,
+  onRevertThumbnail,
 }: WorkspaceProjectPropertiesSheetProps) {
   const [data, setData] = useState<ProjectPropertiesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [thumbnailBusy, setThumbnailBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open || !project) {
@@ -250,6 +281,24 @@ export function WorkspaceProjectPropertiesSheet({
     () => buildFolderPath(panelProject?.folder_id ?? null, folderById),
     [panelProject?.folder_id, folderById]
   );
+  const thumbnailSource = panelProject?.thumbnail_source ?? "generated";
+  const usesUploadedThumbnail = thumbnailSource === "custom";
+  const thumbnailSourceLabel = panelProject?.thumbnail_url
+    ? THUMBNAIL_SOURCE_LABELS[thumbnailSource] ?? "Unknown source"
+    : "No thumbnail yet";
+
+  /** Run one thumbnail action at a time, so a slow render cannot be double-fired. */
+  const runThumbnailAction = async (action: () => Promise<void> | undefined) => {
+    if (thumbnailBusy) {
+      return;
+    }
+    setThumbnailBusy(true);
+    try {
+      await action();
+    } finally {
+      setThumbnailBusy(false);
+    }
+  };
 
   if (!open) {
     return null;
@@ -302,7 +351,7 @@ export function WorkspaceProjectPropertiesSheet({
 
           {!loading && !error && panelProject ? (
             <>
-              <section className="space-y-4">
+              <section className="space-y-3">
                 <div className="aspect-[4/3] overflow-hidden rounded-none border bg-muted/30">
                   {activeProject?.thumbnail_url ? (
                     <img
@@ -316,6 +365,60 @@ export function WorkspaceProjectPropertiesSheet({
                     </div>
                   )}
                 </div>
+
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                  <span>{thumbnailSourceLabel}</span>
+                </div>
+
+                {canManageProjects ? (
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept={THUMBNAIL_ACCEPT}
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        // Clear first, so picking the same file twice still fires.
+                        event.target.value = "";
+                        if (file) {
+                          void runThumbnailAction(() => onUploadThumbnail?.(panelProject, file));
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={thumbnailBusy || !onUploadThumbnail}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Upload className="h-4 w-4" />
+                      Upload image
+                    </Button>
+                    {usesUploadedThumbnail ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={thumbnailBusy || !onRevertThumbnail}
+                        onClick={() => void runThumbnailAction(() => onRevertThumbnail?.(panelProject))}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Use rendered board
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={thumbnailBusy || !onRegenerateThumbnail}
+                        onClick={() => void runThumbnailAction(() => onRegenerateThumbnail?.(panelProject))}
+                      >
+                        <RefreshCw className={cn("h-4 w-4", thumbnailBusy && "animate-spin")} />
+                        Re-render
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
               </section>
 
               <MetadataSection title="Project Details" icon={FolderTree}>

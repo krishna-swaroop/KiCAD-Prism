@@ -1,8 +1,6 @@
-import { type KeyboardEvent } from "react";
-
-import { isDialogSubmitShortcut } from "@/lib/dialog-shortcuts";
 import { FolderTreeItem } from "@/types/project";
 import { Button } from "@/components/ui/button";
+import { HoldToConfirmButton } from "@/components/ui/hold-to-confirm-button";
 import {
   Dialog,
   DialogContent,
@@ -20,22 +18,11 @@ interface DeleteFolderDialogProps {
 }
 
 export function DeleteFolderDialog({ folder, isDeleting, onClose, onConfirm }: DeleteFolderDialogProps) {
-  const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!isDialogSubmitShortcut(event)) {
-      return;
-    }
-
-    event.preventDefault();
-    if (isDeleting || !folder) {
-      return;
-    }
-
-    void onConfirm(folder.id);
-  };
-
+  // No ⌘Enter shortcut here, for the same reason as the project delete dialog:
+  // the confirmation must cost more than one chord.
   return (
     <Dialog open={!!folder} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent onKeyDown={handleDialogKeyDown}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete Folder</DialogTitle>
           <DialogDescription>
@@ -46,13 +33,13 @@ export function DeleteFolderDialog({ folder, isDeleting, onClose, onConfirm }: D
           <Button variant="outline" onClick={onClose} disabled={isDeleting}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={() => folder && void onConfirm(folder.id)}
+          <HoldToConfirmButton
+            onConfirm={() => folder && void onConfirm(folder.id)}
             disabled={isDeleting || !folder}
+            holdingLabel="Hold to delete…"
           >
-            {isDeleting ? "Deleting..." : "Delete"}
-          </Button>
+            {isDeleting ? "Deleting..." : "Hold to delete"}
+          </HoldToConfirmButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

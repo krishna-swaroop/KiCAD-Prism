@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { consumeExpectedAuthNonce, consumeExpectedAuthState, exchangeOidcAuthCode } from "@/lib/auth";
+import { exchangeOidcAuthCode } from "@/lib/auth";
 import type { User } from "@/types/auth";
 
 interface AuthCallbackPageProps {
@@ -26,20 +26,15 @@ export function AuthCallbackPage({ onLoginSuccess }: AuthCallbackPageProps) {
         setError("No authorization code received from the identity provider.");
         return;
       }
-
-      const expectedState = consumeExpectedAuthState();
-      const expectedNonce = consumeExpectedAuthNonce();
-      if (!expectedState || !state || state !== expectedState) {
-        setError("Authentication failed: invalid state.");
-        return;
-      }
-      if (!expectedNonce) {
-        setError("Authentication failed: missing nonce.");
+      if (!state) {
+        setError("Authentication failed: the identity provider did not return a state value.");
         return;
       }
 
+      // State, nonce, and the PKCE verifier are verified by the backend against the
+      // HttpOnly transaction cookie it set when this login started.
       try {
-        const user = await exchangeOidcAuthCode(code, expectedNonce);
+        const user = await exchangeOidcAuthCode(code, state);
         window.history.replaceState(null, "", "/");
         onLoginSuccess(user);
       } catch (err) {

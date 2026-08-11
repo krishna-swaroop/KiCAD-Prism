@@ -51,9 +51,9 @@ function TreeNodeComponent({
                 {node.isDir && !hasChildren && <div className="w-4" />}
 
                 {node.isDir ? (
-                    <Folder className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+                    <Folder className="h-4 w-4 text-warning flex-shrink-0" />
                 ) : isMarkdown ? (
-                    <FileText className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                    <FileText className="h-4 w-4 text-primary flex-shrink-0" />
                 ) : (
                     <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 )}

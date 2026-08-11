@@ -1,1 +1,5 @@
-from app.services.component_catalog_service_sqlite import *  # noqa: F401,F403
+from app.services.component_catalog_service_postgres import ComponentCatalogPostgresService
+
+
+ComponentCatalogService = ComponentCatalogPostgresService
+catalog_service = ComponentCatalogPostgresService()

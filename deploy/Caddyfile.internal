@@ -1,0 +1,34 @@
+# KiCAD Prism reverse proxy (internal CA / custom certificates)
+
+# Replace kicad-prism.corp.internal and certificate paths.
+# Mount this file and the cert directory into the Caddy container.
+#
+# Example docker-compose.proxy.yml volume additions:
+#   - ./deploy/Caddyfile.internal:/etc/caddy/Caddyfile:ro
+#   - ./deploy/certs:/certs:ro
+#
+# Distribute deploy/certs/corp-root-ca.crt (or your real root) to every
+# KiCad workstation OS trust store. See docs/DEPLOYMENT.md.
+
+kicad-prism.corp.internal {
+	tls /certs/prism.crt /certs/prism.key
+
+	encode gzip zstd
+
+	request_body {
+		max_size 2GB
+	}
+
+	reverse_proxy frontend:80 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+}
