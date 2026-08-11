@@ -15,6 +15,7 @@ LIVE_MODULES: tuple[str, ...] = (
     "tests.test_release_studio_live_ci",
     "tests.test_release_studio_fixtures",
     "tests.test_release_studio_canonicalization",
+    "tests.test_release_studio_projections",
 )
 
 
