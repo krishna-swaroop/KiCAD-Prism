@@ -1,7 +1,6 @@
 import os
 import hashlib
 import json
-import shlex
 import time
 import shutil
 import datetime
@@ -12,7 +11,7 @@ from urllib.parse import quote
 from git import Repo
 from pydantic import BaseModel
 
-from app.services import path_config_service, semantic_index_service
+from app.services import kicad_jobset_service, path_config_service, semantic_index_service
 from app.services.workspace_service import workspace
 from app.services.job_artifact_service import job_artifacts
 from app.services.job_runtime import JobContext, JobResult
@@ -425,11 +424,9 @@ def get_job_status(job_id: str):
 
 # Workflow Jobs
 def _find_cli_path():
-    # Check standard Mac path first
-    mac_path = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
-    if os.path.exists(mac_path):
-        return mac_path
-    return "kicad-cli" # Fallback to PATH
+    """Keep the legacy lookup seam while delegating to the jobset service."""
+
+    return kicad_jobset_service.find_kicad_cli_path()
 
 def start_workflow_job(
     project_id: str,
@@ -774,98 +771,29 @@ def run_kicad_workflow_job_v3(context: JobContext) -> JobResult:
     if not jobset_path:
         raise ValueError(f"{configured_jobset} not found in project root")
 
-    try:
-        project_root_abs = os.path.abspath(project.path)
-        jobset_abs = os.path.abspath(jobset_path)
-        jobset_file = (
-            os.path.relpath(jobset_abs, project_root_abs)
-            if os.path.commonpath([project_root_abs, jobset_abs]) == project_root_abs
-            else jobset_path
-        )
-    except ValueError:
-        jobset_file = jobset_path
-
-    command = [
-        _find_cli_path(),
-        "jobset",
-        "run",
-        "-f",
-        jobset_file,
-        "--output",
-        output_id,
-        pro_file,
-    ]
-    print(f"Running: {shlex.join(command)}", flush=True)
-    context.progress(
-        stage="run-jobset",
-        message=f"Generating {workflow_type} outputs",
-        percent=15,
-        force=True,
+    execution = kicad_jobset_service.execute_kicad_jobset(
+        context,
+        project_path=project.path,
+        jobset_path=jobset_path,
+        project_file=pro_file,
+        output_id=output_id,
+        workflow_type=workflow_type,
+        author=author,
+        routing="repository",
+        cli_path=_find_cli_path(),
+        # Keep the old project_service.Repo patch seam for the legacy handler
+        # while the generic service remains independently testable.
+        repository_factory=Repo,
+        timestamp_factory=datetime.datetime.now,
     )
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        cwd=project.path,
-        text=True,
-        bufsize=1,
-    )
-    if process.stdout is not None:
-        for line in process.stdout:
-            line = line.rstrip()
-            if line:
-                print(line, flush=True)
-    return_code = process.wait()
-    if return_code != 0:
-        raise RuntimeError(f"KiCad workflow exited with code {return_code}")
-
-    context.check_cancelled()
-    context.progress(
-        stage="git-sync",
-        message="Synchronizing generated outputs",
-        percent=90,
-        force=True,
-    )
-    warnings: list[str] = []
-    generated_commit = ""
-    try:
-        repo = Repo(project.path)
-        if repo.is_dirty(untracked_files=True):
-            repo.git.add(".")
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            commit_message = (
-                f"Generated {workflow_type} outputs - {timestamp} by {author}"
-            )
-            repo.git.commit(
-                m=commit_message,
-                author="KiCAD Prism <prism@example.com>",
-            )
-            generated_commit = str(repo.head.commit.hexsha)
-            context.check_cancelled()
-            # Share the import path's environment rather than rolling a second
-            # one: this push previously had neither the GITHUB_TOKEN rewrite nor
-            # the strict host-key check that every other remote operation uses.
-            from app.services.project_import_service import git_env
-
-            push_info = repo.remote(name="origin").push(env=git_env())
-            for info in push_info:
-                if info.flags & info.ERROR:
-                    raise RuntimeError(f"Push failed: {info.summary}")
-            print(f"Generated commit {generated_commit} pushed successfully", flush=True)
-        else:
-            print("No generated changes detected to commit", flush=True)
-    except Exception as error:
-        warning = f"Git sync warning: {error}"
-        warnings.append(warning)
-        print(warning, flush=True)
 
     return JobResult(
         message="Workflow completed successfully",
         details={
             "project_id": project_id,
             "workflow_type": workflow_type,
-            "generated_commit": generated_commit,
-            "warnings": warnings,
+            "generated_commit": execution.generated_commit,
+            "warnings": list(execution.warnings),
         },
     )
 
