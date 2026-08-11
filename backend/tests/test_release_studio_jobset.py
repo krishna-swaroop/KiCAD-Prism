@@ -9,7 +9,11 @@ from pathlib import Path
 
 from app.release_studio.jobset import (
     HERMETIC_STEP_TYPES,
+    KICAD_10_0_4_JOB_TYPES,
+    KICAD_10_0_4_STEP_TYPE_STATUS,
+    StepTypeStatus,
     WORKFLOW_OUTPUT_IDS,
+    classify_step_type,
     classify_output_hermetic,
     load_jobset,
     step_closure_for_output,
@@ -37,17 +41,11 @@ class ReleaseStudioJobsetTests(unittest.TestCase):
             self.assertIn(output_id, output_ids)
             self.assertEqual(workflow_output_id(workflow_type), output_id)
 
-        project_service_source = (
-            REPO_ROOT / "backend" / "app" / "services" / "project_service.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn(
-            "from app.release_studio.jobset import WORKFLOW_OUTPUT_IDS as _WORKFLOW_OUTPUT_IDS",
-            project_service_source,
-        )
-        self.assertNotIn(
-            '"design": "28dab1d3-7bf2-4d8a-9723-bcdd14e1d814"',
-            project_service_source,
-        )
+        from app.services import project_service
+
+        self.assertIs(project_service._WORKFLOW_OUTPUT_IDS, WORKFLOW_OUTPUT_IDS)
+        with self.assertRaises(TypeError):
+            WORKFLOW_OUTPUT_IDS["new-workflow"] = "must-not-mutate"  # type: ignore[index]
 
     def test_reference_outputs_are_hermetic_despite_unreferenced_special_execute(
         self,
@@ -60,7 +58,9 @@ class ReleaseStudioJobsetTests(unittest.TestCase):
         for output_id in WORKFLOW_OUTPUT_IDS.values():
             closure = classify_output_hermetic(model, output_id)
             self.assertTrue(closure.hermetic, output_id)
+            self.assertIs(closure.status, StepTypeStatus.HERMETIC)
             self.assertEqual(closure.non_hermetic_reasons, ())
+            self.assertEqual(closure.unsupported_reasons, ())
             closed_ids = {job.id for job in closure.jobs}
             self.assertTrue(closed_ids.isdisjoint(special_ids), output_id)
             self.assertEqual(
@@ -84,15 +84,9 @@ class ReleaseStudioJobsetTests(unittest.TestCase):
             ],
             "outputs": [
                 {
-                    "id": "nested-safe",
-                    "type": "folder",
-                    "only": ["safe-job"],
-                    "settings": {},
-                },
-                {
                     "id": "with-special",
                     "type": "folder",
-                    "only": ["nested-safe", "unsafe-job"],
+                    "only": ["safe-job", "unsafe-job"],
                     "settings": {},
                 },
             ],
@@ -103,12 +97,9 @@ class ReleaseStudioJobsetTests(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             model = load_jobset(path)
 
-            nested = classify_output_hermetic(model, "nested-safe")
-            self.assertTrue(nested.hermetic)
-            self.assertEqual([job.id for job in nested.jobs], ["safe-job"])
-
             flagged = classify_output_hermetic(model, "with-special")
             self.assertFalse(flagged.hermetic)
+            self.assertIs(flagged.status, StepTypeStatus.NON_HERMETIC)
             self.assertEqual(
                 [job.id for job in flagged.jobs],
                 ["safe-job", "unsafe-job"],
@@ -117,25 +108,136 @@ class ReleaseStudioJobsetTests(unittest.TestCase):
             reason = flagged.non_hermetic_reasons[0]
             self.assertEqual(reason.step_id, "unsafe-job")
             self.assertEqual(reason.step_type, "special_execute")
-
-            # Recursive expansion must visit nested outputs before sibling jobs.
             self.assertEqual(
                 [job.id for job in step_closure_for_output(model, "with-special")],
                 ["safe-job", "unsafe-job"],
             )
 
-    def test_unknown_and_cyclic_closures_raise(self) -> None:
+    def test_missing_or_empty_only_selects_every_job(self) -> None:
         payload = {
-            "jobs": [{"id": "job-a", "type": "pcb_drc", "settings": {}}],
+            "jobs": [
+                {"id": "safe-job", "type": "pcb_export_stats", "settings": {}},
+                {
+                    "id": "unsafe-job",
+                    "type": "special_execute",
+                    "settings": {"command": "echo hi"},
+                },
+            ],
+            "outputs": [
+                {"id": "missing-only", "type": "folder", "settings": {}},
+                {"id": "empty-only", "type": "folder", "only": [], "settings": {}},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "default-selection.kicad_jobset"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            model = load_jobset(path)
+
+            for output_id in ("missing-only", "empty-only"):
+                self.assertEqual(
+                    [job.id for job in step_closure_for_output(model, output_id)],
+                    ["safe-job", "unsafe-job"],
+                )
+                closure = classify_output_hermetic(model, output_id)
+                self.assertFalse(closure.hermetic)
+                self.assertIs(closure.status, StepTypeStatus.NON_HERMETIC)
+                self.assertEqual(
+                    [(reason.step_id, reason.step_type)
+                     for reason in closure.non_hermetic_reasons],
+                    [("unsafe-job", "special_execute")],
+                )
+
+    def test_kicad_10_0_4_registry_classification_is_explicit(self) -> None:
+        expected_hermetic = {
+            "pcb_drc",
+            "pcb_export_3d",
+            "pcb_export_drill",
+            "pcb_export_dxf",
+            "pcb_export_gencad",
+            "pcb_export_gerbers",
+            "pcb_export_hpgl",
+            "pcb_export_ipc2581",
+            "pcb_export_ipcd356",
+            "pcb_export_odb",
+            "pcb_export_pdf",
+            "pcb_export_pos",
+            "pcb_export_ps",
+            "pcb_export_stats",
+            "pcb_export_svg",
+            "pcb_render",
+            "sch_erc",
+            "sch_export_bom",
+            "sch_export_netlist",
+            "sch_export_plot_dxf",
+            "sch_export_plot_hpgl",
+            "sch_export_plot_pdf",
+            "sch_export_plot_ps",
+            "sch_export_plot_svg",
+        }
+        self.assertEqual(HERMETIC_STEP_TYPES, frozenset(expected_hermetic))
+        self.assertEqual(
+            KICAD_10_0_4_JOB_TYPES,
+            expected_hermetic | {"special_copyfiles", "special_execute"},
+        )
+        self.assertEqual(
+            set(KICAD_10_0_4_STEP_TYPE_STATUS),
+            KICAD_10_0_4_JOB_TYPES,
+        )
+
+        for step_type in expected_hermetic:
+            classification = classify_step_type(step_type)
+            self.assertIs(classification.status, StepTypeStatus.HERMETIC)
+
+        for step_type in ("special_copyfiles", "special_execute"):
+            classification = classify_step_type(step_type)
+            self.assertIs(classification.status, StepTypeStatus.NON_HERMETIC)
+
+        unknown = classify_step_type("customer_plugin_job")
+        self.assertIs(unknown.status, StepTypeStatus.UNSUPPORTED)
+
+    def test_unknown_types_are_unsupported_not_non_hermetic(self) -> None:
+        payload = {
+            "jobs": [
+                {"id": "unknown-job", "type": "customer_plugin_job", "settings": {}},
+            ],
+            "outputs": [
+                {
+                    "id": "unknown-type-output",
+                    "type": "folder",
+                    "only": ["unknown-job"],
+                    "settings": {},
+                },
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "unknown-type.kicad_jobset"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            closure = classify_output_hermetic(
+                load_jobset(path), "unknown-type-output"
+            )
+
+        self.assertFalse(closure.hermetic)
+        self.assertIs(closure.status, StepTypeStatus.UNSUPPORTED)
+        self.assertEqual(closure.non_hermetic_reasons, ())
+        self.assertEqual(len(closure.unsupported_reasons), 1)
+        reason = closure.unsupported_reasons[0]
+        self.assertEqual(reason.step_id, "unknown-job")
+        self.assertEqual(reason.step_type, "customer_plugin_job")
+
+    def test_only_is_flat_jobs_take_precedence_and_unknown_ids_fail_closed(self) -> None:
+        payload = {
+            "jobs": [
+                {"id": "shared-id", "type": "pcb_export_svg", "settings": {}},
+            ],
             "outputs": [
                 {
                     "id": "out-a",
                     "type": "folder",
-                    "only": ["out-b"],
+                    "only": ["shared-id", "missing-id"],
                     "settings": {},
                 },
                 {
-                    "id": "out-b",
+                    "id": "shared-id",
                     "type": "folder",
                     "only": ["out-a"],
                     "settings": {},
@@ -143,11 +245,21 @@ class ReleaseStudioJobsetTests(unittest.TestCase):
             ],
         }
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "cycle.kicad_jobset"
+            path = Path(temporary) / "flat-only.kicad_jobset"
             path.write_text(json.dumps(payload), encoding="utf-8")
             model = load_jobset(path)
-            with self.assertRaisesRegex(ValueError, "cyclic"):
-                step_closure_for_output(model, "out-a")
+            self.assertEqual(
+                [job.id for job in step_closure_for_output(model, "out-a")],
+                ["shared-id"],
+            )
+            closure = classify_output_hermetic(model, "out-a")
+            self.assertIs(closure.status, StepTypeStatus.UNSUPPORTED)
+            self.assertEqual(closure.unresolved_references, ("missing-id",))
+            self.assertEqual(
+                closure.unsupported_reasons[0].reference,
+                "missing-id",
+            )
+
             with self.assertRaisesRegex(ValueError, "unknown jobset output"):
                 step_closure_for_output(model, "missing")
 
