@@ -1696,68 +1696,82 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
             self.conn.commit()
 
     def test_m9_preflights_invalid_m8_audit_rows_without_rewriting_chain_data(self) -> None:
-        legacy_schema = f"release_r3_invalid_audit_{uuid.uuid4().hex}"
-        self.conn.execute(f'CREATE SCHEMA "{legacy_schema}"')
-        try:
-            self.conn.execute(f'SET search_path TO "{legacy_schema}", public')
-            self._create_base_workspace_tables()
-            for version, _, migration in MIGRATIONS:
-                if version <= 8:
-                    migration(self.conn)
+        cases = (
+            ("nonpositive_sequence", 0, None, "sequence_must_be_positive"),
+            ("non_null_genesis", 1, "not-genesis", "genesis_previous_hash_must_be_null"),
+            ("null_non_genesis", 2, None, "non_genesis_previous_hash_must_be_nonblank"),
+            ("blank_non_genesis", 2, "   ", "non_genesis_previous_hash_must_be_nonblank"),
+        )
+        for label, sequence, previous_hash, expected_violation in cases:
+            with self.subTest(violation=label):
+                legacy_schema = f"release_r3_invalid_audit_{label}_{uuid.uuid4().hex}"
+                self.conn.execute(f'CREATE SCHEMA "{legacy_schema}"')
+                try:
+                    self.conn.execute(f'SET search_path TO "{legacy_schema}", public')
+                    self._create_base_workspace_tables()
+                    for version, _, migration in MIGRATIONS:
+                        if version <= 8:
+                            migration(self.conn)
 
-            self.conn.execute("INSERT INTO ws_repositories(id) VALUES ('audit-repository')")
-            self.conn.execute(
-                "INSERT INTO ws_projects(id, repo_id) VALUES ('audit-project', 'audit-repository')"
-            )
-            self.conn.execute(
-                """
-                INSERT INTO ws_release_audit_events(
-                    id, project_id, config_key, sequence, event_type, actor,
-                    subject_kind, subject_id, previous_hash, event_hash, created_at_iso
-                )
-                VALUES (
-                    'audit-invalid-sequence', 'audit-project', 'default', 0,
-                    'release.created', 'migration-test', 'release',
-                    'release-1', NULL, 'event-hash-0', '2026-01-01T00:00:00Z'
-                )
-                """
-            )
+                    self.conn.execute("INSERT INTO ws_repositories(id) VALUES ('audit-repository')")
+                    self.conn.execute(
+                        "INSERT INTO ws_projects(id, repo_id) VALUES ('audit-project', 'audit-repository')"
+                    )
+                    self.conn.execute(
+                        """
+                        INSERT INTO ws_release_audit_events(
+                            id, project_id, config_key, sequence, event_type, actor,
+                            subject_kind, subject_id, previous_hash, event_hash, created_at_iso
+                        )
+                        VALUES (
+                            'audit-invalid', 'audit-project', 'default', %s,
+                            'release.created', 'migration-test', 'release',
+                            'release-1', %s, 'event-hash-original',
+                            '2026-01-01T00:00:00Z'
+                        )
+                        """,
+                        (sequence, previous_hash),
+                    )
 
-            with self.assertRaisesRegex(
-                RuntimeError,
-                r"Migration 9 precondition failed: .*sequence=0.*sequence_must_be_positive",
-            ):
-                _release_studio_hardening(self.conn)
+                    with self.assertRaisesRegex(
+                        RuntimeError,
+                        rf"Migration 9 precondition failed: .*sequence={sequence}.*{expected_violation}",
+                    ):
+                        _release_studio_hardening(self.conn)
 
-            row = self.conn.execute(
-                """
-                SELECT sequence, previous_hash
-                FROM ws_release_audit_events
-                WHERE id = 'audit-invalid-sequence'
-                """
-            ).fetchone()
-            self.assertEqual(row["sequence"], 0)
-            self.assertIsNone(row["previous_hash"])
-            constraint = self.conn.execute(
-                """
-                SELECT 1
-                FROM pg_constraint AS constraint_row
-                JOIN pg_class AS table_row
-                  ON table_row.oid = constraint_row.conrelid
-                JOIN pg_namespace AS namespace_row
-                  ON namespace_row.oid = table_row.relnamespace
-                WHERE namespace_row.nspname = %s
-                  AND table_row.relname = 'ws_release_audit_events'
-                  AND constraint_row.conname = 'ck_ws_release_audit_events_sequence_positive'
-                """,
-                (legacy_schema,),
-            ).fetchone()
-            self.assertIsNone(constraint)
-        finally:
-            self.conn.rollback()
-            self.conn.execute(f'SET search_path TO "{self.schema}", public')
-            self.conn.execute(f'DROP SCHEMA IF EXISTS "{legacy_schema}" CASCADE')
-            self.conn.commit()
+                    row = self.conn.execute(
+                        """
+                        SELECT sequence, previous_hash, event_hash
+                        FROM ws_release_audit_events
+                        WHERE id = 'audit-invalid'
+                        """
+                    ).fetchone()
+                    self.assertEqual(row["sequence"], sequence)
+                    self.assertEqual(row["previous_hash"], previous_hash)
+                    self.assertEqual(row["event_hash"], "event-hash-original")
+                    constraints = self.conn.execute(
+                        """
+                        SELECT constraint_row.conname
+                        FROM pg_constraint AS constraint_row
+                        JOIN pg_class AS table_row
+                          ON table_row.oid = constraint_row.conrelid
+                        JOIN pg_namespace AS namespace_row
+                          ON namespace_row.oid = table_row.relnamespace
+                        WHERE namespace_row.nspname = %s
+                          AND table_row.relname = 'ws_release_audit_events'
+                          AND constraint_row.conname IN (
+                              'ck_ws_release_audit_events_sequence_positive',
+                              'ck_ws_release_audit_events_genesis_previous_hash'
+                          )
+                        """,
+                        (legacy_schema,),
+                    ).fetchall()
+                    self.assertEqual(constraints, [])
+                finally:
+                    self.conn.rollback()
+                    self.conn.execute(f'SET search_path TO "{self.schema}", public')
+                    self.conn.execute(f'DROP SCHEMA IF EXISTS "{legacy_schema}" CASCADE')
+                    self.conn.commit()
 
     def test_v9_rows_upgrade_m10_adds_rejected_and_preserves_reasoned_override(self) -> None:
         legacy_schema = f"release_r3_m10_{uuid.uuid4().hex}"

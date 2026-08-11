@@ -1,9 +1,12 @@
 # Release Studio R3b: Migration 10 and pre-release hardening
 
-R3b preserves the merged M8/M9 history and appends Migration 10,
-`release_studio_approval_hardening`. M9 remains the historical schema
-hardening migration; it is not silently rewritten. Fresh databases run M8,
-M9, and M10 in order, while an already-upgraded M9 database only needs M10.
+R3b preserves the already-merged M8/M9 migration numbers and ordering, and
+appends Migration 10, `release_studio_approval_hardening`. As a pre-release
+correction, the implementation of M9 is amended to preflight existing audit
+rows before its new CHECKs; this does not change the migration ledger. A
+database that has already recorded M9 does not rerun it and already satisfies
+those constraints. Fresh databases run M8, amended M9, and M10 in order,
+while an already-upgraded M9 database only needs M10.
 
 ## Approval decision contract
 
