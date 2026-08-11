@@ -68,8 +68,8 @@ _EXCELLON_METADATA_COMMENT = re.compile(
 )
 _CSV_GENERATED_HEADER = re.compile(
     r"^\s*(?:#|//|;)\s*(?:"
-    r"(?:GENERATED|CREATED)\s+(?:ON|AT|BY)\b"
-    r"|(?:GENERATION|CREATION)\s+(?:DATE|TIME)\b"
+    r"(?:GENERATED|CREATED)\s+(?:ON|AT|BY)\b.*"
+    r"|(?:GENERATION|CREATION)\s+(?:DATE|TIME)\b.*"
     r")",
     re.IGNORECASE,
 )
@@ -80,44 +80,38 @@ class _RunningJobService:
         return {"job_id": job_id, "fence": 1, "status": "running"}
 
 
-def _json_without_report_timestamps(payload: dict[str, object]) -> dict[str, object]:
-    keys = {
-        "date",
-        "timestamp",
-        "report_date",
-        "report_timestamp",
-        "created",
-        "created_at",
-        "generated",
-        "generated_at",
-        "report_time",
-    }
-    containers = {"metadata", "header", "report"}
+def _expected_report_without_top_level_date(
+    payload: dict[str, object],
+) -> dict[str, object]:
+    """Project a real KiCad report after removing only its top-level date."""
+
     result = copy.deepcopy(payload)
-    for key in keys:
-        result.pop(key, None)
-    for name in containers:
-        value = result.get(name)
-        if isinstance(value, dict):
-            value = dict(value)
-            for key in keys:
-                value.pop(key, None)
-            result[name] = value
-    violations = result.get("violations")
-    if isinstance(violations, list):
-        result["violations"] = sorted(
-            violations,
-            key=lambda item: (
-                "|".join(
-                    str(item.get(key) or "")
-                    for key in ("type", "severity", "description")
+    result.pop("date", None)
+    for key in ("violations", "unconnected_items", "schematic_parity"):
+        violations = result.get(key)
+        if isinstance(violations, list):
+            result[key] = sorted(violations, key=_report_violation_sort_key)
+    sheets = result.get("sheets")
+    if isinstance(sheets, list):
+        for sheet in sheets:
+            if isinstance(sheet, dict) and isinstance(sheet.get("violations"), list):
+                sheet["violations"] = sorted(
+                    sheet["violations"],
+                    key=_report_violation_sort_key,
                 )
-                if isinstance(item, dict)
-                else "",
-                canonical_json(item),
-            ),
-        )
     return result
+
+
+def _report_violation_sort_key(item: object) -> tuple[str, str]:
+    if not isinstance(item, dict):
+        return ("", canonical_json(item))
+    return (
+        "|".join(
+            str(item.get(key) or "")
+            for key in ("type", "severity", "description")
+        ),
+        canonical_json(item),
+    )
 
 
 def _fabrication_projection(text: str, parser):
@@ -428,18 +422,35 @@ def _generate_samples(root: Path) -> dict[str, Path]:
 
 class ReleaseStudioCanonicalJsonTests(unittest.TestCase):
     def test_canonical_json_has_the_declared_byte_contract(self) -> None:
-        payload = {"b": 1, "a": {"z": 2, "y": 3}, "café": "東京"}
+        payload = {
+            "b": 1,
+            "a": {"z": 2, "e\u0301": "Cafe\u0301"},
+            "e\u0301": "東京",
+        }
         self.assertEqual(
             canonical_json(payload),
-            '{"a":{"y":3,"z":2},"b":1,"café":"東京"}',
+            '{"a":{"z":2,"é":"Café"},"b":1,"é":"東京"}',
         )
         self.assertEqual(
             canonical_json_bytes(payload),
             canonical_json(payload).encode("utf-8"),
         )
 
+    def test_canonical_json_rejects_nfc_key_collisions_and_nonfinite_numbers(self) -> None:
+        with self.assertRaisesRegex(ValueError, "NFC-normalized"):
+            canonical_json({"é": 1, "e\u0301": 2})
+        with self.assertRaisesRegex(ValueError, "NFC-normalized"):
+            canonical_json({"nested": {"é": 1, "e\u0301": 2}})
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                canonical_json({"value": value})
+
     def test_canonical_json_behaves_differently_from_prepare_json(self) -> None:
-        payload = {"b": 1, "a": {"z": 2, "y": 3}, "café": "東京"}
+        payload = {
+            "b": 1,
+            "a": {"z": 2, "e\u0301": "Cafe\u0301"},
+            "e\u0301": "東京",
+        }
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with patch(
@@ -463,7 +474,9 @@ class ReleaseStudioCanonicalJsonTests(unittest.TestCase):
         # inspection: prepare_json preserves insertion order by contract.
         self.assertEqual(
             prepared,
-            '{"b":1,"a":{"z":2,"y":3},"café":"東京"}'.encode("utf-8"),
+            '{"b":1,"a":{"z":2,"e\u0301":"Cafe\u0301"},"e\u0301":"東京"}'.encode(
+                "utf-8"
+            ),
         )
         self.assertNotEqual(prepared, canonical_json_bytes(payload))
         self.assertEqual(
@@ -487,6 +500,7 @@ class ReleaseStudioCanonicalJsonTests(unittest.TestCase):
             "pdf",
             "board_stats_json",
             "archive",
+            "json",
             "manifest",
             "attestation",
         ):
@@ -519,6 +533,9 @@ class ReleaseStudioCanonicalJsonTests(unittest.TestCase):
                     self.assertEqual(info.mode, 0o644)
 
         self.assertEqual(canonicalize("archive", first), first)
+        for unsafe_name in ("a\\b", "..\\escape", "C:\\escape", "C:/escape", "C:escape"):
+            with self.subTest(name=unsafe_name), self.assertRaises(ValueError):
+                write_deterministic_archive({unsafe_name: b"unsafe"})
 
 
 class ReleaseStudioGeneratedSemanticTests(unittest.TestCase):
@@ -662,18 +679,9 @@ class ReleaseStudioGeneratedSemanticTests(unittest.TestCase):
                 cleaned_payload = json.loads(
                     canonicalize("drc_erc_json", json.dumps(raw_payload).encode())
                 )
+                self.assertIn("date", raw_payload)
                 self.assertEqual(
-                    Counter(
-                        canonical_json(item)
-                        for item in raw_payload.get("violations", [])
-                    ),
-                    Counter(
-                        canonical_json(item)
-                        for item in cleaned_payload.get("violations", [])
-                    ),
-                )
-                self.assertEqual(
-                    _json_without_report_timestamps(raw_payload),
+                    _expected_report_without_top_level_date(raw_payload),
                     cleaned_payload,
                 )
 

@@ -25,7 +25,7 @@ Canonicalizer = Callable[[bytes], bytes]
 # This identifier is part of toolchain identity.  Bump it when the byte
 # contract changes, even when the Python API remains source-compatible.
 CANONICALIZER_REGISTRY_NAME = "release-studio"
-CANONICALIZER_REGISTRY_VERSION = "r4"
+CANONICALIZER_REGISTRY_VERSION = "r4.1"
 CANONICALIZER_VERSION = "1"
 
 STEP_FILE_NAME_SENTINEL = "PRISM-RELEASE-STUDIO"
@@ -56,18 +56,7 @@ _SVG_DATE_COMMENT = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _STEP_FILE_NAME = re.compile(r"\bFILE_NAME\s*\(", re.IGNORECASE)
-_REPORT_TIMESTAMP_KEYS = {
-    "date",
-    "timestamp",
-    "report_date",
-    "report_timestamp",
-    "created",
-    "created_at",
-    "generated",
-    "generated_at",
-    "report_time",
-}
-_REPORT_TIMESTAMP_CONTAINERS = {"metadata", "header", "report"}
+_REPORT_VIOLATION_LIST_KEYS = ("violations", "unconnected_items", "schematic_parity")
 
 
 def canonicalize_gerber(data: bytes) -> bytes:
@@ -171,13 +160,11 @@ def canonicalize_csv(data: bytes) -> bytes:
 
 
 def canonicalize_drc_erc_json(data: bytes) -> bytes:
-    """Drop report timestamps and deterministically order violations."""
+    """Drop KiCad's top-level report date and deterministically order violations."""
 
     payload = _json_object(data, "DRC/ERC report")
-    cleaned = _remove_report_timestamps(payload)
-    violations = cleaned.get("violations")
-    if isinstance(violations, list):
-        cleaned["violations"] = sorted(violations, key=_violation_sort_key)
+    cleaned = _remove_report_timestamp(payload)
+    cleaned = _sort_report_violations(cleaned)
     return _canonical_json_file(cleaned)
 
 
@@ -371,18 +358,39 @@ def _json_object(data: bytes, label: str) -> dict[str, object]:
     return payload
 
 
-def _remove_report_timestamps(payload: dict[str, object]) -> dict[str, object]:
+def _remove_report_timestamp(payload: dict[str, object]) -> dict[str, object]:
     cleaned = copy.deepcopy(payload)
-    for key in _REPORT_TIMESTAMP_KEYS:
-        cleaned.pop(key, None)
-    for container_name in _REPORT_TIMESTAMP_CONTAINERS:
-        container = cleaned.get(container_name)
-        if not isinstance(container, dict):
-            continue
-        container = dict(container)
-        for key in _REPORT_TIMESTAMP_KEYS:
-            container.pop(key, None)
-        cleaned[container_name] = container
+    # KiCad 10's RC_JSON REPORT_BASE serializes exactly one nondeterministic
+    # field, the top-level ``date`` shared by DRC_REPORT and ERC_REPORT.  Do not
+    # treat generic names such as ``created`` or ``generated`` as timestamps;
+    # they can be report data in a future schema or in an ignored-check record.
+    cleaned.pop("date", None)
+    return cleaned
+
+
+def _sort_report_violations(payload: dict[str, object]) -> dict[str, object]:
+    cleaned = copy.deepcopy(payload)
+    for key in _REPORT_VIOLATION_LIST_KEYS:
+        violations = cleaned.get(key)
+        if isinstance(violations, list):
+            cleaned[key] = sorted(violations, key=_violation_sort_key)
+
+    sheets = cleaned.get("sheets")
+    if isinstance(sheets, list):
+        updated_sheets: list[object] = []
+        for sheet in sheets:
+            if not isinstance(sheet, dict):
+                updated_sheets.append(sheet)
+                continue
+            updated_sheet = copy.deepcopy(sheet)
+            violations = updated_sheet.get("violations")
+            if isinstance(violations, list):
+                updated_sheet["violations"] = sorted(
+                    violations,
+                    key=_violation_sort_key,
+                )
+            updated_sheets.append(updated_sheet)
+        cleaned["sheets"] = updated_sheets
     return cleaned
 
 
@@ -474,6 +482,10 @@ def _quoted_step_argument_span(
 def _validate_archive_name(name: str) -> None:
     if not isinstance(name, str) or not name:
         raise ValueError("archive member names must be non-empty strings")
+    if "\\" in name:
+        raise ValueError(f"archive member names must use POSIX separators: {name!r}")
+    if re.match(r"^[A-Za-z]:", name):
+        raise ValueError(f"archive member name looks like a drive path: {name!r}")
     path = Path(name)
     if path.is_absolute() or ".." in path.parts:
         raise ValueError(f"unsafe archive member name: {name!r}")
