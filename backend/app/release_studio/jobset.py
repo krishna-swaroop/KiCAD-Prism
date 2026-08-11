@@ -4,36 +4,79 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
 
-# Stable Prism Workflow output ids from assets/Outputs.kicad_jobset.
-WORKFLOW_OUTPUT_IDS: dict[str, str] = {
-    "design": "28dab1d3-7bf2-4d8a-9723-bcdd14e1d814",
-    "manufacturing": "9e5c254b-cb26-4a49-beea-fa7af8a62903",
-    "render": "81c80ad4-e8b9-4c9a-8bed-df7864fdefc6",
-}
+# Stable Prism Workflow output ids from assets/Outputs.kicad_jobset.  Keep this
+# public mapping immutable: project_service intentionally aliases this object.
+WORKFLOW_OUTPUT_IDS: Mapping[str, str] = MappingProxyType(
+    {
+        "design": "28dab1d3-7bf2-4d8a-9723-bcdd14e1d814",
+        "manufacturing": "9e5c254b-cb26-4a49-beea-fa7af8a62903",
+        "render": "81c80ad4-e8b9-4c9a-8bed-df7864fdefc6",
+    }
+)
 
-# Step types that never invoke an arbitrary external process. Hermeticity of a
-# release output still also requires every referenced input to resolve into the
-# closure or a pinned toolchain resource (R2b); R1 only classifies step types.
+
+class StepTypeStatus(str, Enum):
+    """R1 status for a KiCad job type in the pinned toolchain."""
+
+    HERMETIC = "hermetic"
+    NON_HERMETIC = "non_hermetic"
+    UNSUPPORTED = "unsupported"
+
+
+# KiCad 10.0.4's common/jobs REGISTER_JOB and REGISTER_DEPRECATED_JOB entries
+# (tag f7414d419cae5df2d00e7eaacb16fc0e803799bc).  These types do not invoke an
+# arbitrary external process themselves.  R2b still has to prove that their
+# file and library inputs are inside the release closure or pinned toolchain.
 HERMETIC_STEP_TYPES: frozenset[str] = frozenset(
     {
-        "sch_export_plot_pdf",
-        "sch_export_bom",
-        "sch_export_netlist",
-        "pcb_export_gerbers",
-        "pcb_export_drill",
-        "pcb_export_pos",
-        "pcb_export_pdf",
+        "pcb_drc",
         "pcb_export_3d",
+        "pcb_export_drill",
+        "pcb_export_dxf",
+        "pcb_export_gencad",
+        "pcb_export_gerbers",
+        "pcb_export_hpgl",
+        "pcb_export_ipc2581",
         "pcb_export_ipcd356",
         "pcb_export_odb",
-        "pcb_drc",
+        "pcb_export_pdf",
+        "pcb_export_pos",
+        "pcb_export_ps",
+        "pcb_export_stats",
+        "pcb_export_svg",
         "pcb_render",
         "sch_erc",
+        "sch_export_bom",
+        "sch_export_netlist",
+        "sch_export_plot_dxf",
+        "sch_export_plot_hpgl",
+        "sch_export_plot_pdf",
+        "sch_export_plot_ps",
+        "sch_export_plot_svg",
     }
+)
+
+
+# This is deliberately a typed registry, not an allowlist inferred from the
+# reference jobset.  A type absent from this mapping is unsupported for the
+# pinned KiCad 10.0.4 executor and must never become hermetic by default.
+KICAD_10_0_4_STEP_TYPE_STATUS: Mapping[str, StepTypeStatus] = MappingProxyType(
+    {
+        **{step_type: StepTypeStatus.HERMETIC for step_type in HERMETIC_STEP_TYPES},
+        "special_copyfiles": StepTypeStatus.NON_HERMETIC,
+        "special_execute": StepTypeStatus.NON_HERMETIC,
+    }
+)
+
+
+KICAD_10_0_4_JOB_TYPES: frozenset[str] = frozenset(
+    KICAD_10_0_4_STEP_TYPE_STATUS
 )
 
 
@@ -78,11 +121,45 @@ class NonHermeticReason:
 
 
 @dataclass(frozen=True)
+class UnsupportedReason:
+    """A job or destination reference Prism cannot safely classify."""
+
+    step_id: str | None
+    step_type: str | None
+    message: str
+    reference: str | None = None
+
+
+@dataclass(frozen=True)
+class StepTypeClassification:
+    """The typed R1 classification of one job type."""
+
+    step_type: str
+    status: StepTypeStatus
+    message: str
+
+    @property
+    def reason(self) -> str:
+        """Compatibility spelling for consumers that call this a reason."""
+
+        return self.message
+
+
+@dataclass(frozen=True)
 class OutputClosure:
     output_id: str
     jobs: tuple[JobsetJob, ...]
     hermetic: bool
     non_hermetic_reasons: tuple[NonHermeticReason, ...]
+    status: StepTypeStatus = StepTypeStatus.HERMETIC
+    unsupported_reasons: tuple[UnsupportedReason, ...] = ()
+    unresolved_references: tuple[str, ...] = ()
+
+    @property
+    def classification(self) -> StepTypeStatus:
+        """Return the status consumed by later release gates."""
+
+        return self.status
 
 
 def load_jobset(path: Path | str) -> JobsetModel:
@@ -171,48 +248,17 @@ def load_jobset(path: Path | str) -> JobsetModel:
 
 
 def step_closure_for_output(model: JobsetModel, output_id: str) -> tuple[JobsetJob, ...]:
-    """Return jobs selected by an output, recursively expanding nested outputs.
+    """Return jobs selected by a KiCad destination.
 
-    Expansion follows each output's ``only`` list. Job ids resolve to jobs;
-    output ids resolve to that nested output's closure. Cycles and unknown ids
-    raise ``ValueError``.
+    KiCad 10.0.4 treats ``only`` as a flat list of job ids.  Missing or empty
+    ``only`` means every job, while an unknown id is skipped.  Prism mirrors
+    that execution selection here; :func:`classify_output_hermetic` separately
+    records skipped ids as ``unsupported`` so they cannot silently make a
+    release appear hermetic.
     """
 
-    jobs_by_id = model.job_by_id()
-    outputs_by_id = model.output_by_id()
-    if output_id not in outputs_by_id:
-        raise ValueError(f"unknown jobset output id: {output_id!r}")
-
-    ordered: list[JobsetJob] = []
-    seen_jobs: set[str] = set()
-    visiting_outputs: set[str] = set()
-
-    def visit_output(current_output_id: str) -> None:
-        if current_output_id in visiting_outputs:
-            raise ValueError(
-                f"cyclic jobset output closure involving {current_output_id!r}"
-            )
-        output = outputs_by_id.get(current_output_id)
-        if output is None:
-            raise ValueError(f"unknown jobset output id: {current_output_id!r}")
-        visiting_outputs.add(current_output_id)
-        for reference in output.only:
-            if reference in outputs_by_id:
-                visit_output(reference)
-                continue
-            job = jobs_by_id.get(reference)
-            if job is None:
-                raise ValueError(
-                    f"output {current_output_id!r} references unknown id {reference!r}"
-                )
-            if job.id in seen_jobs:
-                continue
-            seen_jobs.add(job.id)
-            ordered.append(job)
-        visiting_outputs.remove(current_output_id)
-
-    visit_output(output_id)
-    return tuple(ordered)
+    jobs, _ = _selected_jobs_for_output(model, output_id)
+    return jobs
 
 
 def classify_output_hermetic(
@@ -221,28 +267,127 @@ def classify_output_hermetic(
     *,
     hermetic_step_types: Iterable[str] = HERMETIC_STEP_TYPES,
 ) -> OutputClosure:
-    """Classify whether an output's recursively selected steps are hermetic."""
+    """Classify an output without conflating unsafe and unsupported inputs."""
 
     allowed = frozenset(hermetic_step_types)
-    jobs = step_closure_for_output(model, output_id)
+    jobs, unresolved_references = _selected_jobs_for_output(model, output_id)
     reasons: list[NonHermeticReason] = []
+    unsupported_reasons: list[UnsupportedReason] = [
+        UnsupportedReason(
+            step_id=None,
+            step_type=None,
+            reference=reference,
+            message=(
+                f"output {output_id!r} references unknown job id {reference!r}; "
+                "KiCad skips it, but Release Studio fails closed"
+            ),
+        )
+        for reference in unresolved_references
+    ]
     for job in jobs:
-        if job.type not in allowed:
+        classification = classify_step_type(job.type)
+        if classification.status is StepTypeStatus.UNSUPPORTED:
+            unsupported_reasons.append(
+                UnsupportedReason(
+                    step_id=job.id,
+                    step_type=job.type,
+                    message=classification.message,
+                )
+            )
+        elif classification.status is StepTypeStatus.NON_HERMETIC:
+            reasons.append(
+                NonHermeticReason(
+                    step_id=job.id,
+                    step_type=job.type,
+                    message=classification.message,
+                )
+            )
+        elif job.type not in allowed:
+            # Keep the old injectable allowlist seam for characterization and
+            # callers that intentionally narrow the safe set.  It can never
+            # expand the KiCad registry or turn special/unknown types safe.
             reasons.append(
                 NonHermeticReason(
                     step_id=job.id,
                     step_type=job.type,
                     message=(
-                        f"step type {job.type!r} is outside HERMETIC_STEP_TYPES"
+                        f"step type {job.type!r} is outside the supplied "
+                        "hermetic_step_types"
                     ),
                 )
             )
+
+    if unsupported_reasons:
+        status = StepTypeStatus.UNSUPPORTED
+    elif reasons:
+        status = StepTypeStatus.NON_HERMETIC
+    else:
+        status = StepTypeStatus.HERMETIC
+
     return OutputClosure(
         output_id=output_id,
         jobs=jobs,
-        hermetic=not reasons,
+        hermetic=status is StepTypeStatus.HERMETIC,
         non_hermetic_reasons=tuple(reasons),
+        status=status,
+        unsupported_reasons=tuple(unsupported_reasons),
+        unresolved_references=unresolved_references,
     )
+
+
+def classify_step_type(step_type: str) -> StepTypeClassification:
+    """Classify one KiCad 10.0.4 job type for downstream release gates."""
+
+    status = KICAD_10_0_4_STEP_TYPE_STATUS.get(
+        step_type, StepTypeStatus.UNSUPPORTED
+    )
+    if status is StepTypeStatus.HERMETIC:
+        message = f"step type {step_type!r} is process-free in KiCad 10.0.4"
+    elif status is StepTypeStatus.NON_HERMETIC:
+        if step_type == "special_execute":
+            message = (
+                "step type 'special_execute' invokes an arbitrary external command"
+            )
+        else:
+            message = (
+                "step type 'special_copyfiles' may read arbitrary input paths; "
+                "R2b must prove those paths before it can be hermetic"
+            )
+    else:
+        message = (
+            f"step type {step_type!r} is not registered by the pinned KiCad "
+            "10.0.4 job registry"
+        )
+    return StepTypeClassification(step_type=step_type, status=status, message=message)
+
+
+def _selected_jobs_for_output(
+    model: JobsetModel, output_id: str
+) -> tuple[tuple[JobsetJob, ...], tuple[str, ...]]:
+    """Return KiCad-compatible selected jobs and unresolved ``only`` ids."""
+
+    outputs_by_id = model.output_by_id()
+    output = outputs_by_id.get(output_id)
+    if output is None:
+        raise ValueError(f"unknown jobset output id: {output_id!r}")
+
+    # This is KiCad's explicit default in JOBSET::GetJobsForDestination: an
+    # omitted or empty `only` list runs every job, including special jobs.
+    if not output.only:
+        return model.jobs, ()
+
+    jobs_by_id = model.job_by_id()
+    selected: list[JobsetJob] = []
+    unresolved: list[str] = []
+    for reference in output.only:
+        # Jobs take precedence by construction. Output ids are not execution
+        # references in KiCad and must never trigger invented recursion.
+        job = jobs_by_id.get(reference)
+        if job is None:
+            unresolved.append(reference)
+            continue
+        selected.append(job)
+    return tuple(selected), tuple(unresolved)
 
 
 def workflow_output_id(workflow_type: str) -> str:

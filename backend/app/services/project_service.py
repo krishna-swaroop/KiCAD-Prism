@@ -11,6 +11,7 @@ from urllib.parse import quote
 from git import Repo
 from pydantic import BaseModel
 
+from app.release_studio.jobset import WORKFLOW_OUTPUT_IDS as _WORKFLOW_OUTPUT_IDS
 from app.services import kicad_jobset_service, path_config_service, semantic_index_service
 from app.services.workspace_service import workspace
 from app.services.job_artifact_service import job_artifacts
@@ -731,9 +732,6 @@ def run_semantic_index_job_v3(context: JobContext) -> JobResult:
             "generator": result.get("generator"),
         },
     )
-
-
-from app.release_studio.jobset import WORKFLOW_OUTPUT_IDS as _WORKFLOW_OUTPUT_IDS
 
 
 def run_kicad_workflow_job_v3(context: JobContext) -> JobResult:
