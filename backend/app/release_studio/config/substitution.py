@@ -7,8 +7,7 @@ from typing import Any, Mapping
 
 from .errors import SubstitutionError
 
-_TOKEN_RE = re.compile(r"\{\{([^{}]+)\}\}")
-_BARE_BRACE_RE = re.compile(r"(?<!\{)\{(?!\{)|(?<!\})\}(?!\})")
+_TOKEN_PATH_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
 
 
 def substitute_string(
@@ -27,34 +26,57 @@ def substitute_string(
     if not isinstance(text, str):
         raise SubstitutionError(f"substitution target must be a string, got {type(text).__name__}")
 
-    if _BARE_BRACE_RE.search(text):
-        where = f" in {source}" if source else ""
-        raise SubstitutionError(f"unbalanced braces{where}: {text!r}")
+    result: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        char = text[cursor]
+        if char == "}":
+            _raise_substitution_error("unbalanced braces", text, source=source)
+        if char != "{":
+            result.append(char)
+            cursor += 1
+            continue
 
-    def _replace(match: re.Match[str]) -> str:
-        path = match.group(1).strip()
-        if not path or any(ch.isspace() for ch in path):
-            where = f" in {source}" if source else ""
-            raise SubstitutionError(f"invalid substitution token{where}: {match.group(0)!r}")
+        if not text.startswith("{{", cursor):
+            _raise_substitution_error("unbalanced braces", text, source=source)
+        end = text.find("}}", cursor + 2)
+        if end < 0:
+            _raise_substitution_error("unbalanced braces", text, source=source)
+        body = text[cursor + 2 : end]
+        path = body.strip()
+        if "{" in body or "}" in body:
+            _raise_substitution_error("unbalanced braces", text, source=source)
+        if not path or _TOKEN_PATH_RE.fullmatch(path) is None:
+            _raise_substitution_error(
+                f"invalid substitution token {body!r}",
+                text,
+                source=source,
+            )
         try:
             value = _lookup(context, path)
         except KeyError as exc:
-            where = f" in {source}" if source else ""
             missing = str(exc).strip("'")
-            raise SubstitutionError(
-                f"missing substitution key {missing!r}{where}"
-            ) from None
-        if value is None:
-            where = f" in {source}" if source else ""
-            raise SubstitutionError(f"missing substitution key {path!r}{where}")
-        if isinstance(value, (dict, list)):
-            where = f" in {source}" if source else ""
-            raise SubstitutionError(
-                f"substitution key {path!r} resolved to {type(value).__name__}{where}"
+            _raise_substitution_error(
+                f"missing substitution key {missing!r}",
+                text,
+                source=source,
             )
-        return str(value)
+        if value is None:
+            _raise_substitution_error(
+                f"missing substitution key {path!r}",
+                text,
+                source=source,
+            )
+        if isinstance(value, (dict, list)):
+            _raise_substitution_error(
+                f"substitution key {path!r} resolved to {type(value).__name__}",
+                text,
+                source=source,
+            )
+        result.append(str(value))
+        cursor = end + 2
 
-    return _TOKEN_RE.sub(_replace, text)
+    return "".join(result)
 
 
 def substitute_value(
@@ -96,3 +118,13 @@ def _lookup(context: Mapping[str, Any], path: str) -> Any:
             raise KeyError(".".join(parts[: index + 1]))
         current = current[part]
     return current
+
+
+def _raise_substitution_error(
+    message: str,
+    text: str,
+    *,
+    source: str | None,
+) -> None:
+    where = f" in {source}" if source else ""
+    raise SubstitutionError(f"{message}{where}: {text!r}")
