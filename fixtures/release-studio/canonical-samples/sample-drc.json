@@ -1,7 +1,0 @@
-{
-  "date": "2026-01-02T03:04:05",
-  "violations": [
-    {"severity": "error", "type": "clearance", "description": "b"},
-    {"severity": "warning", "type": "silk", "description": "a"}
-  ]
-}

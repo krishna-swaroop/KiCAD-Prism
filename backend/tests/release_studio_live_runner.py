@@ -1,7 +1,8 @@
 """Strict unittest runner for Release Studio live executor gates.
 
 Exits nonzero when zero tests ran, any test was skipped, or any test failed
-or errored. Includes the R00a identity module and R0 fixture module.
+or errored. Includes the R00a identity module, R0 fixture module, and the R4
+semantic-null module so its live-generated tests cannot silently skip.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import unittest
 LIVE_MODULES: tuple[str, ...] = (
     "tests.test_release_studio_live_ci",
     "tests.test_release_studio_fixtures",
+    "tests.test_release_studio_canonicalization",
 )
 
 
