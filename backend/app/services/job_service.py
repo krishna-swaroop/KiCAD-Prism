@@ -47,6 +47,9 @@ class JobService:
     def initialize(self) -> None:
         workspace.initialize()
 
+    def _set_workspace_search_path(self, conn) -> None:
+        conn.execute("SET search_path TO workspace, public")
+
     @staticmethod
     def _connect():
         return database.connection()
@@ -1572,7 +1575,7 @@ class JobService:
 
         self.initialize()
         with self._connect() as conn:
-            conn.execute("SET search_path TO workspace, public")
+            self._set_workspace_search_path(conn)
             rows = conn.execute(
                 """
                 DELETE FROM ws_artifacts artifact
@@ -1653,7 +1656,7 @@ class JobService:
 
         self.initialize()
         with self._connect() as conn:
-            conn.execute("SET search_path TO workspace, public")
+            self._set_workspace_search_path(conn)
             rows = conn.execute(
                 """
                 SELECT object_path

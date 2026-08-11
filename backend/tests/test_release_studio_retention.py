@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover - dependency guard for host-only checks
 
 from app.services.job_artifact_service import JobArtifactService  # noqa: E402
 from app.services.job_service import JobService  # noqa: E402
+from app.services.workspace_schema_migrations import apply_workspace_migrations  # noqa: E402
 
 
 POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL", "").strip()
@@ -50,16 +51,23 @@ SHARED_APPLICATION_DATABASE = bool(
 class TestDatabaseJobService(JobService):
     """Run the production JobService SQL against the isolated test database."""
 
+    def __init__(self, schema: str) -> None:
+        self.schema = schema
+
     def initialize(self) -> None:
         # The fixture creates only the workspace tables needed by these methods.
         # In particular, never initialize the process-global application pool.
         return None
+
+    def _set_workspace_search_path(self, conn) -> None:
+        conn.execute(f'SET search_path TO "{self.schema}", public')
 
     @contextmanager
     def _connect(self):
         assert psycopg is not None
         dsn = POSTGRES_URL.replace("postgresql+psycopg://", "postgresql://", 1)
         with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            conn.execute(f'SET search_path TO "{self.schema}", public')
             yield conn
 
 
@@ -84,76 +92,54 @@ class ReleaseStudioRetentionPostgresTests(unittest.TestCase):
             POSTGRES_URL.replace("postgresql+psycopg://", "postgresql://", 1),
             row_factory=dict_row,
         )
-        self.conn.execute("CREATE SCHEMA IF NOT EXISTS workspace")
-        self.conn.execute("SET search_path TO workspace, public")
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ws_jobs (
-                id TEXT PRIMARY KEY,
-                kind TEXT NOT NULL DEFAULT 'test',
-                status TEXT NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                completed_at TIMESTAMPTZ
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ws_artifacts (
-                id TEXT PRIMARY KEY,
-                kind TEXT NOT NULL DEFAULT 'test',
-                artifact_key TEXT NOT NULL DEFAULT '',
-                digest TEXT NOT NULL DEFAULT '',
-                object_path TEXT NOT NULL,
-                media_type TEXT NOT NULL DEFAULT 'application/octet-stream',
-                size_bytes BIGINT NOT NULL DEFAULT 0,
-                schema_version TEXT NOT NULL DEFAULT '',
-                generator_version TEXT NOT NULL DEFAULT '',
-                readiness TEXT NOT NULL DEFAULT 'ready',
-                source_job_id TEXT REFERENCES ws_jobs(id) ON DELETE SET NULL,
-                source_fence BIGINT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                invalidated_at TIMESTAMPTZ
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ws_artifact_release_pins (
-                artifact_id TEXT PRIMARY KEY
-                            REFERENCES ws_artifacts(id) ON DELETE CASCADE,
-                pin_kind TEXT NOT NULL,
-                pin_ref TEXT NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            """
-        )
+        self.schema = f"release_r9_{uuid.uuid4().hex}"
+        self.conn.execute(f'CREATE SCHEMA "{self.schema}"')
+        self.conn.execute(f'SET search_path TO "{self.schema}", public')
+        self._create_base_workspace_tables()
+        apply_workspace_migrations(self.conn)
         self.conn.commit()
 
-        self.service = TestDatabaseJobService()
+        self.service = TestDatabaseJobService(self.schema)
         self.tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempdir.cleanup)
         self.artifacts = JobArtifactService(Path(self.tempdir.name))
         self.job_ids: list[str] = []
         self.artifact_ids: list[str] = []
 
+    def _create_base_workspace_tables(self) -> None:
+        self.conn.execute(
+            """
+            CREATE TABLE ws_repositories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE ws_folders (
+                id TEXT PRIMARY KEY
+            );
+            CREATE TABLE ws_projects (
+                id TEXT PRIMARY KEY,
+                repo_id TEXT NOT NULL REFERENCES ws_repositories(id)
+            );
+            CREATE TABLE ws_project_portfolio (
+                project_id TEXT PRIMARY KEY REFERENCES ws_projects(id)
+            );
+            CREATE TABLE ws_jobs (
+                id TEXT PRIMARY KEY,
+                kind TEXT NOT NULL,
+                status TEXT NOT NULL,
+                message TEXT NOT NULL DEFAULT '',
+                percent REAL NOT NULL DEFAULT 0,
+                payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+
     def tearDown(self) -> None:
         self.conn.rollback()
-        self.conn.execute("SET search_path TO workspace, public")
-        self.conn.execute(
-            "DELETE FROM ws_artifact_release_pins WHERE artifact_id = ANY(%s)",
-            (self.artifact_ids,),
-        )
-        self.conn.execute(
-            "DELETE FROM ws_artifacts WHERE id = ANY(%s)",
-            (self.artifact_ids,),
-        )
-        self.conn.execute(
-            "DELETE FROM ws_jobs WHERE id = ANY(%s)",
-            (self.job_ids,),
-        )
+        self.conn.execute("SET search_path TO public")
+        self.conn.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
         self.conn.commit()
         self.conn.close()
 
