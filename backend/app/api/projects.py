@@ -1556,6 +1556,45 @@ async def get_project_commit_summary(
     )
 
 
+@router.get("/{project_id}/commits/{commit_hash}/file")
+async def get_project_commit_file(
+    project_id: str,
+    commit_hash: str,
+    path: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """
+    Serve one file from a commit as inline content, keyed by the repo-relative
+    path the commit summary returns. Used to open non-CAD files (PDFs, images)
+    in the browser's own viewer rather than routing them to the visualizer.
+
+    The mime type is guessed from the name, so a PDF is served as
+    application/pdf and the browser opens it inline.
+    """
+    project = get_project_for_role_or_404(project_id, user.role)
+    repo_path, relative_path = _repo_context(project)
+
+    # The summary path is already repo-relative (it includes the subproject
+    # prefix for Type-2 projects), so read it against the repo root with no
+    # extra prefix. Confine it to the project's own subtree so one subproject
+    # cannot read a sibling's files out of the shared parent repo.
+    normalized = posixpath.normpath(path).lstrip("/")
+    if normalized.startswith("..") or normalized == ".":
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    if relative_path:
+        prefix = f"{posixpath.normpath(relative_path).strip('/')}/"
+        if not (normalized + "/").startswith(prefix):
+            raise HTTPException(status_code=404, detail="File not found")
+
+    commit_file = file_service.read_file_from_commit(
+        repo_path,
+        commit_hash,
+        normalized,
+        not_found_detail="File not found",
+    )
+    return _commit_file_response(commit_file, inline=True)
+
+
 @router.get("/{project_id}/schematic")
 async def get_project_schematic(
     project_id: str,
