@@ -576,7 +576,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
 
                   <div className="relative mt-6 min-h-0 flex-1 overflow-hidden">
                     <div
-                      className={`h-full overflow-y-auto pr-1 transition-[padding] duration-200 ${
+                      className={`h-full overflow-y-auto pr-1 ${
                         selectedProject !== null
                           ? "md:pr-[376px] lg:pr-[416px] xl:pr-[476px]"
                           : ""
