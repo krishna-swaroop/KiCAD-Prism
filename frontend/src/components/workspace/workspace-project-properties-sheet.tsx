@@ -308,7 +308,8 @@ export function WorkspaceProjectPropertiesSheet({
     <aside
       className={cn(
         "flex h-full min-w-0 shrink-0 flex-col border-l bg-background/95 backdrop-blur-sm shadow-2xl",
-        "w-[360px] lg:w-[400px] xl:w-[460px]"
+        "w-[360px] lg:w-[400px] xl:w-[460px]",
+        "animate-in slide-in-from-right duration-200 ease-out"
       )}
       aria-label="Project properties panel"
     >
