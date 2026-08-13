@@ -100,7 +100,13 @@ class JobArtifactService:
             # Callers may have populated the staging file with copy helpers rather
             # than an explicitly fsynced writer. Durability must be established
             # before the file can become the authoritative content-addressed object.
-            os.fsync(handle.fileno())
+            #
+            # Windows rejects fsync on a read-only handle ([Errno 9] Bad file
+            # descriptor), the same platform gap _fsync_directory guards against.
+            # Artifacts are content-addressed and re-derivable, so skipping the
+            # flush there costs at most a rebuild after an unclean shutdown.
+            if os.name != "nt":
+                os.fsync(handle.fileno())
         sha = digest.hexdigest()
         destination = self.objects / sha[:2] / sha[2:4] / sha
         destination.parent.mkdir(parents=True, exist_ok=True)
