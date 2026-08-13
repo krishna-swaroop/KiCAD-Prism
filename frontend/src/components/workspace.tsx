@@ -575,7 +575,13 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                   />
 
                   <div className="relative mt-6 min-h-0 flex-1 overflow-hidden">
-                    <div className="h-full overflow-y-auto pr-1">
+                    <div
+                      className={`h-full overflow-y-auto pr-1 transition-[padding] duration-200 ${
+                        selectedProject !== null
+                          ? "md:pr-[376px] lg:pr-[416px] xl:pr-[476px]"
+                          : ""
+                      }`}
+                    >
                       <div className="mb-4 flex items-center justify-between rounded-lg border bg-card/30 px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-xs text-muted-foreground">
