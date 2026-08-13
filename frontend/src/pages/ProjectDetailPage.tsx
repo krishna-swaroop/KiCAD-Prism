@@ -121,6 +121,12 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
         () => branches.find((branch) => branch.ref === selectedBranchRef) || null,
         [branches, selectedBranchRef]
     );
+    // The empty-value option means "the branch the repo is checked out to".
+    // Show that branch's name rather than the generic "Current checkout".
+    const currentBranch = useMemo(
+        () => branches.find((branch) => branch.is_current) || null,
+        [branches]
+    );
     const activeCommit = currentCommit || selectedBranch?.commit || null;
     const comparisonUrl = useMemo(
         () => readComparisonUrlState(searchParams),
@@ -420,9 +426,19 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         onChange={(event) => handleBranchChange(event.target.value)}
                         disabled={branchesLoading}
                         title={branchError || "View this project on another branch"}
-                        className="h-9 max-w-[260px] rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-9 max-w-[260px] appearance-none rounded-md border border-input bg-background bg-no-repeat py-0 pl-3 pr-8 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        style={{
+                            backgroundImage:
+                                "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+                            backgroundPosition: "right 0.5rem center",
+                            backgroundSize: "1rem",
+                        }}
                     >
-                        <option value="">{branchesLoading ? "Loading branches..." : "Current checkout"}</option>
+                        <option value="">
+                            {branchesLoading
+                                ? "Loading branches..."
+                                : currentBranch?.name || "Current checkout"}
+                        </option>
                         {branches.map((branch) => (
                             <option key={branch.ref} value={branch.ref}>
                                 {branch.source === "remote" ? branch.ref : branch.name}
