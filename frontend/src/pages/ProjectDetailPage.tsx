@@ -422,7 +422,15 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 <div className="hidden min-w-0 items-center gap-2 md:flex">
                     <GitBranch className="h-4 w-4 text-muted-foreground" />
                     <select
-                        value={selectedBranchRef || ""}
+                        // An explicit ?branch= for the current branch has no
+                        // option of its own (it lives in the default entry), so
+                        // map it back to the default value to keep the select
+                        // in sync rather than falling through to the first item.
+                        value={
+                            selectedBranchRef && selectedBranchRef !== currentBranch?.ref
+                                ? selectedBranchRef
+                                : ""
+                        }
                         onChange={(event) => handleBranchChange(event.target.value)}
                         disabled={branchesLoading}
                         title={branchError || "View this project on another branch"}
@@ -439,12 +447,16 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                 ? "Loading branches..."
                                 : currentBranch?.name || "Current checkout"}
                         </option>
-                        {branches.map((branch) => (
-                            <option key={branch.ref} value={branch.ref}>
-                                {branch.source === "remote" ? branch.ref : branch.name}
-                                {branch.is_current ? " (current)" : ""}
-                            </option>
-                        ))}
+                        {/* The default option above already represents the
+                            current branch by name, so skip it here rather than
+                            listing it a second time with a "(current)" suffix. */}
+                        {branches
+                            .filter((branch) => !branch.is_current)
+                            .map((branch) => (
+                                <option key={branch.ref} value={branch.ref}>
+                                    {branch.source === "remote" ? branch.ref : branch.name}
+                                </option>
+                            ))}
                     </select>
                 </div>
 
