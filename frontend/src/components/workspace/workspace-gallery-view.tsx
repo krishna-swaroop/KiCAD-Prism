@@ -108,7 +108,7 @@ export function WorkspaceGalleryView({
               {currentFolderId !== null && (
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Folders</h3>
               )}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
                 {visibleFolders.map((folder) => (
                   <div
                     key={folder.id}
