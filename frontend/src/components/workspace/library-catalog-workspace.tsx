@@ -450,7 +450,6 @@ export function LibraryCatalogWorkspace({
         <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
           <div>
             <div className="flex items-center gap-2"><Database className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Component Catalog</h2></div>
-            <p className="mt-1 text-xs text-muted-foreground">Server-indexed component identity, lifecycle, CAD readiness, and revision evidence.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" aria-label="Refresh component catalog" disabled={loading} onClick={() => setRefreshKey((value) => value + 1)}><RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh</Button>

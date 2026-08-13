@@ -487,7 +487,7 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
     <input ref={csvInputRef} className="hidden" type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void uploadCsv(file); }} />
     <header className="shrink-0 border-b bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div><div className="flex items-center gap-2"><FilePenLine className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Bulk Edit Metadata</h2></div><p className="mt-1 text-xs text-muted-foreground">Stage engineering metadata changes without altering CAD assets.</p></div>
+        <div><div className="flex items-center gap-2"><FilePenLine className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Bulk Edit Metadata</h2></div></div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => void exportCsv()}><Download className="h-3.5 w-3.5" /> Export CSV</Button>
           {canEdit ? <Button size="sm" variant="outline" onClick={() => csvInputRef.current?.click()}><Upload className="h-3.5 w-3.5" /> Import CSV</Button> : null}

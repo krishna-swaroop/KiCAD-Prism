@@ -188,7 +188,6 @@ export function LibraryReleaseQueue({ onOpenComponent }: { onOpenComponent: (com
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2"><FileCheck2 className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Release Queue</h2></div>
-            <p className="mt-1 text-xs text-muted-foreground">Review immutable component revisions, resolve blockers, and release with auditable decisions.</p>
           </div>
           <Button size="sm" variant="outline" aria-label="Refresh release queue" disabled={loading} onClick={() => setRefreshKey((value) => value + 1)}>
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh

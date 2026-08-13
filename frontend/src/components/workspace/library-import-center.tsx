@@ -408,7 +408,6 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Import Center</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Capture KiCad library folders or extract components from Prism projects. Every result remains staged for review.</p>
           </div>
           {/* One hint for the whole cluster: six identical tooltips on six
               adjacent buttons is noise, and the reason is the same for all. */}

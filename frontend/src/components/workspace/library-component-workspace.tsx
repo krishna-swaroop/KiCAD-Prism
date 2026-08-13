@@ -434,7 +434,6 @@ function AssetsPanel({
       <div className="flex flex-wrap items-center justify-between gap-3 border bg-card p-3">
         <div>
           <p className="text-sm font-medium">Revision assets and evidence</p>
-          <p className="mt-1 text-xs text-muted-foreground">Asset attachments and detachments create immutable component revisions. Downloads remain available while browsing released history.</p>
         </div>
         {canMutate ? (
           <div className="flex flex-wrap gap-2">
