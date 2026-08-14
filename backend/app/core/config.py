@@ -212,6 +212,30 @@ class Settings(BaseSettings):
         description="Sliding window for authentication attempt rate limiting."
     )
 
+    # Local username/password login, offered alongside or instead of OIDC. A
+    # deployment with AUTH_ENABLED=true must configure at least one method.
+    PASSWORD_AUTH_ENABLED: bool = Field(
+        default=False,
+        description="Enable local email/password login in addition to (or instead of) OIDC."
+    )
+
+    PASSWORD_MIN_LENGTH: int = Field(
+        default=12,
+        ge=8,
+        le=72,
+        description="Minimum length for a local password (bytes cap at 72, bcrypt's limit)."
+    )
+
+    # 'Remember me' session lifetime. A normal session lives SESSION_TTL_HOURS; a
+    # remembered one lives this long instead, for both the cookie and the stored
+    # session record so revocation still governs it.
+    SESSION_REMEMBER_ME_DAYS: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+        description="Lifetime (days) of a 'remember me' session."
+    )
+
     # Comma-separated browser origins allowed to make credentialed API requests.
     CORS_ORIGINS_STR: str = Field(
         default="http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8080,http://localhost:8080",
@@ -600,6 +624,25 @@ class Settings(BaseSettings):
         return self.OIDC_SCOPES.strip() or "openid profile email"
 
     @property
+    def OIDC_FULLY_CONFIGURED(self) -> bool:
+        """All three OIDC values are present, so OIDC is a usable login method."""
+        return bool(
+            self.EFFECTIVE_OIDC_ISSUER_URL
+            and self.EFFECTIVE_OIDC_CLIENT_ID
+            and self.EFFECTIVE_OIDC_CLIENT_SECRET
+        )
+
+    @property
+    def OIDC_PARTIALLY_CONFIGURED(self) -> bool:
+        """Some but not all OIDC values are present: a misconfiguration to flag."""
+        present = [
+            bool(self.EFFECTIVE_OIDC_ISSUER_URL),
+            bool(self.EFFECTIVE_OIDC_CLIENT_ID),
+            bool(self.EFFECTIVE_OIDC_CLIENT_SECRET),
+        ]
+        return any(present) and not all(present)
+
+    @property
     def KICAD_PROJECTS_ROOT(self) -> str:
         return os.environ.get(
             "KICAD_PROJECTS_ROOT",
@@ -702,15 +745,30 @@ class Settings(BaseSettings):
             return self._open_auth_errors()
 
         errors: List[str] = []
-        if not self.EFFECTIVE_OIDC_ISSUER_URL:
-            errors.append("OIDC_ISSUER_URL is required when AUTH_ENABLED=true")
-        elif not self.EFFECTIVE_OIDC_ISSUER_URL.startswith("https://"):
+
+        # At least one login method must be usable. Password auth alone is
+        # enough, so OIDC is no longer unconditionally required.
+        if not self.OIDC_FULLY_CONFIGURED and not self.PASSWORD_AUTH_ENABLED:
+            errors.append(
+                "AUTH_ENABLED=true requires a login method: configure OIDC "
+                "(OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET) or set "
+                "PASSWORD_AUTH_ENABLED=true."
+            )
+
+        # A half-configured OIDC is a mistake even when password auth covers the
+        # deployment: the operator clearly intended OIDC, so name what is missing.
+        if self.OIDC_PARTIALLY_CONFIGURED:
+            if not self.EFFECTIVE_OIDC_ISSUER_URL:
+                errors.append("OIDC_ISSUER_URL is required to enable OIDC")
+            if not self.EFFECTIVE_OIDC_CLIENT_ID:
+                errors.append("OIDC_CLIENT_ID is required to enable OIDC")
+            if not self.EFFECTIVE_OIDC_CLIENT_SECRET:
+                errors.append("OIDC_CLIENT_SECRET is required to enable OIDC")
+
+        # Validate the OIDC details whenever any OIDC config is present.
+        if self.EFFECTIVE_OIDC_ISSUER_URL and not self.EFFECTIVE_OIDC_ISSUER_URL.startswith("https://"):
             errors.append("OIDC_ISSUER_URL must use https://")
-        if not self.EFFECTIVE_OIDC_CLIENT_ID:
-            errors.append("OIDC_CLIENT_ID is required when AUTH_ENABLED=true")
-        if not self.EFFECTIVE_OIDC_CLIENT_SECRET:
-            errors.append("OIDC_CLIENT_SECRET is required when AUTH_ENABLED=true")
-        if self.OIDC_TOKEN_AUTH_METHOD.strip().lower() not in {"client_secret_post", "client_secret_basic"}:
+        if self.OIDC_FULLY_CONFIGURED and self.OIDC_TOKEN_AUTH_METHOD.strip().lower() not in {"client_secret_post", "client_secret_basic"}:
             errors.append("OIDC_TOKEN_AUTH_METHOD must be client_secret_post or client_secret_basic")
 
         secret = self.SESSION_SECRET.strip()

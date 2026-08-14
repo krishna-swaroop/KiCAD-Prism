@@ -6,6 +6,7 @@ pydantic-settings
 python-dotenv
 requests
 PyJWT[crypto]
+bcrypt>=4,<5
 kiutils
 python-multipart
 psycopg[binary]>=3.2,<4
