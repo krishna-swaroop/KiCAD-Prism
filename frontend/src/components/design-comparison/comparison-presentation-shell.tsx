@@ -1286,10 +1286,14 @@ export function ComparisonPresentationShell({
                         onOpenChange={setSchematicNavigatorOpen}
                     >
                         <PopoverTrigger asChild>
+                            {/* A primary-colored outline so the sheet selector
+                                reads as the main navigation control. Only the
+                                border is tinted; the text keeps its normal
+                                color so nothing competes with the board. */}
                             <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-8 max-w-56 shrink-0"
+                                className="h-8 max-w-56 shrink-0 border-primary/60 hover:bg-primary/10 aria-expanded:bg-primary/10 dark:border-primary/60 dark:hover:bg-primary/15"
                             >
                                 <FileText className="mr-2 h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate">
