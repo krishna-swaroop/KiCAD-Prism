@@ -1,4 +1,6 @@
+import { useState } from "react";
 import {
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     CircuitBoard,
@@ -128,6 +130,42 @@ function IntegrationRow({ icon: Icon, title, description }: {
     );
 }
 
+/**
+ * A card section whose body can be folded away. Cards with many fields get long
+ * fast, so each section collapses independently; the header stays as a compact
+ * row you can scan and click to expand. Defaults to open.
+ */
+function CollapsibleSection({
+    title,
+    icon: Icon,
+    defaultOpen = true,
+    children,
+}: {
+    title: string;
+    icon?: typeof CircuitBoard;
+    defaultOpen?: boolean;
+    children: React.ReactNode;
+}) {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <section>
+            <button
+                type="button"
+                className="flex w-full items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setOpen((value) => !value)}
+                aria-expanded={open}
+            >
+                <ChevronDown
+                    className={cn("h-3.5 w-3.5 shrink-0 transition-transform", !open && "-rotate-90")}
+                />
+                {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
+                <span>{title}</span>
+            </button>
+            {open && <div className="mt-1">{children}</div>}
+        </section>
+    );
+}
+
 function LibraryImportRow({ onImport, disabled, loading }: {
     onImport: () => void;
     disabled: boolean;
@@ -225,10 +263,7 @@ export function SelectionInspector({
             <ScrollArea className="themed-scrollbar min-h-0 flex-1">
                 <div className="space-y-5 p-4 text-xs">
                     {showLabelNav && (
-                        <section>
-                            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                Instances
-                            </h3>
+                        <CollapsibleSection title="Instances">
                             <div className="flex items-center justify-between gap-2 border bg-card/40 px-3 py-2">
                                 <Button
                                     type="button"
@@ -281,13 +316,10 @@ export function SelectionInspector({
                                     );
                                 })}
                             </ul>
-                        </section>
+                        </CollapsibleSection>
                     )}
 
-                    <section>
-                        <h3 className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            <CircuitBoard className="h-3.5 w-3.5" /> Identity
-                        </h3>
+                    <CollapsibleSection title="Identity" icon={CircuitBoard}>
                         <dl>
                             {selection.kind !== "net" && <PropertyRow label="Reference" value={selection.reference} />}
                             {selection.kind === "terminal" && <PropertyRow label="Pin / pad" value={selection.pin} />}
@@ -300,13 +332,12 @@ export function SelectionInspector({
                             <PropertyRow label="Page" value={selection.anchor?.page} />
                             <PropertyRow label="Layer" value={selection.anchor?.layer} />
                         </dl>
-                    </section>
+                    </CollapsibleSection>
 
                     {component && (
                         <>
                             <Separator />
-                            <section>
-                                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Component data</h3>
+                            <CollapsibleSection title="Component data">
                                 <dl>
                                     <PropertyRow label="Value" value={component.value} />
                                     <PropertyRow label="Footprint" value={component.footprint} />
@@ -314,16 +345,15 @@ export function SelectionInspector({
                                         .filter(([key, value]) => !["Reference", "Value", "Footprint"].includes(key) && !key.startsWith("_") && !key.startsWith("kicad_") && value !== "")
                                         .map(([key, value]) => <PropertyRow key={key} label={key} value={String(value)} />)}
                                 </dl>
-                            </section>
+                            </CollapsibleSection>
                         </>
                     )}
 
                     {selection.kind !== "net" && (
                         <>
                             <Separator />
-                            <section>
-                                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Library & sourcing</h3>
-                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                            <CollapsibleSection title="Library & sourcing">
+                                <p className="text-xs leading-relaxed text-muted-foreground">
                                     Stage this project component with commit-pinned provenance before release review.
                                 </p>
                                 <div className="mt-2 border bg-card/40 px-3">
@@ -338,15 +368,14 @@ export function SelectionInspector({
                                     )}
                                     <IntegrationRow icon={Database} title="Component database" description="Lifecycle, alternates, approved vendors, and organization metadata." />
                                 </div>
-                            </section>
+                            </CollapsibleSection>
                         </>
                     )}
 
                     {(terminal || net) && (
                         <>
                             <Separator />
-                            <section>
-                                <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Connectivity</h3>
+                            <CollapsibleSection title="Connectivity">
                                 <dl>
                                     <PropertyRow label="Net" value={terminal?.netName || net?.name} />
                                     <PropertyRow label="Net class" value={net?.netClass} />
@@ -354,7 +383,7 @@ export function SelectionInspector({
                                     <PropertyRow label="Schematic pin UUID" value={terminal?.schematicPinUuid} />
                                     <PropertyRow label="PCB pad UUID" value={terminal?.pcbPadUuid} />
                                 </dl>
-                            </section>
+                            </CollapsibleSection>
                         </>
                     )}
 
