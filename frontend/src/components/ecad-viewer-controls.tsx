@@ -139,7 +139,7 @@ export function EcadViewerControls({
         <aside
             ref={railRef}
             className={cn(
-                "absolute inset-y-0 left-0 z-30 flex w-80 flex-col border-r bg-background/95 shadow-lg backdrop-blur-sm transition-transform duration-200",
+                "absolute inset-y-0 left-0 z-30 flex w-64 flex-col border-r bg-background/95 shadow-lg backdrop-blur-sm transition-transform duration-200",
                 open ? "translate-x-0" : "-translate-x-[calc(100%_-_2.75rem)]",
             )}
             aria-label={context === "SCH" ? "Schematic pages" : "PCB display controls"}
