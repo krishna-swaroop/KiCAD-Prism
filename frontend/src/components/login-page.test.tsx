@@ -3,14 +3,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthConfig, User } from "@/types/auth";
 
-const startOidcLogin = vi.fn(async () => "https://sso.example.com/authorize");
-const loginWithPassword = vi.fn();
-const changeOwnPassword = vi.fn(async () => ({ success: true }));
+const startOidcLogin = vi.fn<() => Promise<string>>(async () => "https://sso.example.com/authorize");
+const loginWithPassword = vi.fn<(email: string, password: string, rememberMe: boolean) => Promise<unknown>>();
+const changeOwnPassword = vi.fn<(current: string, next: string) => Promise<{ success: boolean }>>(
+    async () => ({ success: true }),
+);
 
 vi.mock("@/lib/auth", () => ({
-    startOidcLogin: (...args: unknown[]) => startOidcLogin(...args),
-    loginWithPassword: (...args: unknown[]) => loginWithPassword(...args),
-    changeOwnPassword: (...args: unknown[]) => changeOwnPassword(...args),
+    startOidcLogin: () => startOidcLogin(),
+    loginWithPassword: (email: string, password: string, rememberMe: boolean) =>
+        loginWithPassword(email, password, rememberMe),
+    changeOwnPassword: (current: string, next: string) => changeOwnPassword(current, next),
 }));
 
 // Release-tag fetch on mount; keep it from making a real network call.
