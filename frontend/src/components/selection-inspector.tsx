@@ -419,8 +419,19 @@ export function SelectionInspector({
                                 <dl>
                                     <PropertyRow label="Value" value={component.value} />
                                     <PropertyRow label="Footprint" value={component.footprint} />
+                                    {/* DNP and BOM always show, as flags, right at
+                                        the top. Default to KiCad's defaults when
+                                        the parse did not carry the field. */}
+                                    <PropertyRow
+                                        label="DNP"
+                                        value={<FlagValue value={String(component.fields?.DNP ?? "No")} goodWhenYes={false} />}
+                                    />
+                                    <PropertyRow
+                                        label="BOM"
+                                        value={<FlagValue value={String(component.fields?.["In BOM"] ?? "Yes")} goodWhenYes={true} />}
+                                    />
                                     {Object.entries(component.fields || {})
-                                        .filter(([key, value]) => isDisplayableField(key, String(value)))
+                                        .filter(([key, value]) => key !== "DNP" && key !== "In BOM" && isDisplayableField(key, String(value)))
                                         .map(([key, value]) => (
                                             <PropertyRow key={key} label={key} value={renderFieldValue(key, String(value))} />
                                         ))}
