@@ -212,11 +212,6 @@ export function SelectionInspector({
                             <Badge variant="outline">{resolvedItemType(selection)}</Badge>
                         </div>
                         <h2 className="mt-2 truncate font-mono text-lg font-semibold" title={title}>{title}</h2>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            {selection.kind === "component" && "Component identity, sourcing, and library context"}
-                            {selection.kind === "terminal" && "Terminal identity and resolved connectivity"}
-                            {selection.kind === "net" && "Electrical connectivity across schematic, PCB, and 3D"}
-                        </p>
                     </div>
                 </div>
             </header>
