@@ -15,4 +15,16 @@ describe("RoleAuthorityPopover", () => {
     expect(within(matrix).getByLabelText("Review component QA: Component QA is allowed")).toBeInTheDocument();
     expect(within(matrix).getByLabelText("Manage projects: Component QA is not allowed")).toBeInTheDocument();
   });
+
+  it("renders a plain reference chart with no highlighted role when role is omitted", () => {
+    render(<RoleAuthorityPopover trigger="View role permissions" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show the role permission matrix" }));
+
+    const matrix = screen.getByRole("table", { name: "Role authority matrix" });
+    expect(
+      screen.getByText("What each role can do across projects and the component catalog."),
+    ).toBeInTheDocument();
+    expect(within(matrix).queryByText("Your role")).not.toBeInTheDocument();
+  });
 });

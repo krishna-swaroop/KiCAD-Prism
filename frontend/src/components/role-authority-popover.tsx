@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Check, Info, Minus } from "lucide-react";
 
 import {
@@ -18,21 +20,25 @@ import {
 import type { UserRole } from "@/types/auth";
 
 interface RoleAuthorityPopoverProps {
-  role: UserRole;
+  /** The role to highlight as "yours". Omit for a plain reference chart. */
+  role?: UserRole;
+  /** Overrides the trigger contents. Defaults to the role label. */
+  trigger?: ReactNode;
 }
 
-export function RoleAuthorityPopover({ role }: RoleAuthorityPopoverProps) {
+export function RoleAuthorityPopover({ role, trigger }: RoleAuthorityPopoverProps) {
   let previousCategory = "";
+  const triggerLabel = role ? `Show permissions for ${roleLabel(role)}` : "Show the role permission matrix";
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={`Show permissions for ${roleLabel(role)}`}
+          aria-label={triggerLabel}
           className="inline-flex items-center gap-1 rounded-sm font-medium text-foreground underline decoration-dotted underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
-          {roleLabel(role)}
+          {trigger ?? (role ? roleLabel(role) : "View role permissions")}
           <Info aria-hidden="true" className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
@@ -43,7 +49,9 @@ export function RoleAuthorityPopover({ role }: RoleAuthorityPopoverProps) {
         <PopoverHeader className="border-b p-4">
           <PopoverTitle>Role permissions</PopoverTitle>
           <PopoverDescription>
-            Your role is {roleLabel(role)}. The highlighted column shows what you can do.
+            {role
+              ? `Your role is ${roleLabel(role)}. The highlighted column shows what you can do.`
+              : "What each role can do across projects and the component catalog."}
           </PopoverDescription>
         </PopoverHeader>
 

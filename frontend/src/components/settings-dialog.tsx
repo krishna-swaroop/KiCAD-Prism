@@ -10,6 +10,7 @@ import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, KeyRound } from "lucid
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
 import { ROLE_OPTIONS, roleLabel } from "@/lib/roles";
+import { RoleAuthorityPopover } from "@/components/role-authority-popover";
 
 interface SettingsDialogProps {
     open: boolean;
@@ -638,11 +639,14 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h3 className="text-lg font-medium">Access Control</h3>
-                <p className="text-sm text-muted-foreground">
-                    Manage role assignments for workspace users.
-                </p>
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <h3 className="text-lg font-medium">Access Control</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Manage role assignments for workspace users.
+                    </p>
+                </div>
+                <RoleAuthorityPopover trigger="View role permissions" />
             </div>
 
             <div className="rounded-lg border p-4 space-y-3">
