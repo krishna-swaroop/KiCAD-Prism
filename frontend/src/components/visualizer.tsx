@@ -1150,7 +1150,9 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                     });
                     setShowCommentForm(true);
                 } else {
-                    setCommentMode(true);
+                    // No selection: C toggles commenting mode, so pressing it
+                    // again turns it back off.
+                    setCommentMode((enabled) => !enabled);
                 }
                 event.preventDefault();
                 return;
