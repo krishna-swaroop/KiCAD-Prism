@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { GitBranch, Copy, FileCode, Shield, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, KeyRound } from "lucide-react";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
 import { ROLE_OPTIONS, roleLabel } from "@/lib/roles";
@@ -23,6 +23,7 @@ interface RoleAssignment {
     email: string;
     role: UserRole;
     source: string;
+    has_password?: boolean;
 }
 
 export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps) {
@@ -579,6 +580,54 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
         }
     };
 
+    // Password provisioning. The admin sets a value the user must change on next
+    // login, so it is only ever a one-time credential.
+    const [passwordEmail, setPasswordEmail] = useState<string | null>(null);
+    const [passwordValue, setPasswordValue] = useState("");
+    const [savingPassword, setSavingPassword] = useState(false);
+
+    const submitPassword = async () => {
+        if (!passwordEmail) return;
+        setSavingPassword(true);
+        try {
+            const response = await fetchApi(
+                `/api/settings/access/users/${encodeURIComponent(passwordEmail)}/password`,
+                {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ password: passwordValue, must_change: true }),
+                },
+            );
+            if (!response.ok) {
+                throw new Error(await readApiError(response, "Failed to set password"));
+            }
+            toast.success("Password set. The user must change it on next sign-in.");
+            setPasswordEmail(null);
+            setPasswordValue("");
+            await loadAssignments();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to set password");
+        } finally {
+            setSavingPassword(false);
+        }
+    };
+
+    const removePassword = async (email: string) => {
+        try {
+            const response = await fetchApi(
+                `/api/settings/access/users/${encodeURIComponent(email)}/password`,
+                { method: "DELETE" },
+            );
+            if (!response.ok) {
+                throw new Error(await readApiError(response, "Failed to remove password"));
+            }
+            toast.success("Local password removed");
+            await loadAssignments();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to remove password");
+        }
+    };
+
     if (!isAdmin) {
         return (
             <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
@@ -652,7 +701,27 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
                                     ))}
                                 </select>
                                 <div className="text-sm text-muted-foreground">{assignment.source}</div>
-                                <div className="flex justify-end">
+                                <div className="flex justify-end gap-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => { setPasswordEmail(assignment.email); setPasswordValue(""); }}
+                                        aria-label={`Set password for ${assignment.email}`}
+                                        title={assignment.has_password ? "Reset password" : "Set password"}
+                                    >
+                                        <KeyRound className={`h-4 w-4 ${assignment.has_password ? "text-primary" : ""}`} />
+                                    </Button>
+                                    {assignment.has_password && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => void removePassword(assignment.email)}
+                                            aria-label={`Remove local password for ${assignment.email}`}
+                                            title="Remove local password"
+                                        >
+                                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -678,6 +747,37 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
                 requireHold
                 onConfirm={() => { if (removalTarget.target) void removeRole(removalTarget.target); }}
             />
+
+            <Dialog open={passwordEmail !== null} onOpenChange={(next) => { if (!next) { setPasswordEmail(null); setPasswordValue(""); } }}>
+                <DialogContent className="max-w-sm">
+                    <DialogTitle>Set a password</DialogTitle>
+                    <DialogDescription>
+                        {passwordEmail} will be required to change this password on their next sign-in.
+                        Their existing sessions are ended.
+                    </DialogDescription>
+                    <form
+                        className="mt-2 space-y-3"
+                        onSubmit={(e) => { e.preventDefault(); void submitPassword(); }}
+                    >
+                        <Input
+                            type="password"
+                            autoComplete="new-password"
+                            placeholder="Temporary password"
+                            value={passwordValue}
+                            onChange={(e) => setPasswordValue(e.target.value)}
+                            required
+                        />
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="outline" onClick={() => { setPasswordEmail(null); setPasswordValue(""); }}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={savingPassword || !passwordValue}>
+                                {savingPassword ? "Saving…" : "Set password"}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
