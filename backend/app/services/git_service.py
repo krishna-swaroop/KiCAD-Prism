@@ -505,17 +505,7 @@ def get_branches(repo_path: str, relative_path: str = None) -> dict[str, Any]:
             }
         )
 
-    # A local branch and its remote-tracking counterpart share a name
-    # (master / origin/master). When they point at the same commit the remote
-    # is redundant, so record each local branch's commit and drop a same-named
-    # remote that matches it. A diverged remote (ahead/behind) is kept so its
-    # distinct state can still be viewed.
-    local_commit_by_name: dict[str, str] = {}
     for branch in repo.heads:
-        try:
-            local_commit_by_name[branch.name] = repo.commit(branch.name).hexsha
-        except Exception:
-            pass
         add_branch(
             name=branch.name,
             ref=branch.name,
@@ -526,9 +516,6 @@ def get_branches(repo_path: str, relative_path: str = None) -> dict[str, Any]:
     for remote in repo.remotes:
         for remote_ref in remote.refs:
             if remote_ref.remote_head == "HEAD":
-                continue
-            local_commit = local_commit_by_name.get(remote_ref.remote_head)
-            if local_commit is not None and local_commit == _resolve_commit(repo, remote_ref.name).hexsha:
                 continue
             add_branch(
                 name=remote_ref.remote_head,
