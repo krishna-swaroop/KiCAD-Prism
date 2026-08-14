@@ -54,6 +54,12 @@ interface SelectionInspectorProps {
     embedded?: boolean;
     /** Layer name -> swatch color, so the Layer row can show the layer's color. */
     layerColors?: Record<string, string>;
+    /**
+     * The view currently on screen. When set, the card presents the (cross-
+     * probed) selection as it belongs to this view, overriding the context the
+     * selection was originally made in.
+     */
+    viewContext?: "SCH" | "PCB";
 }
 
 const atIndex = <T,>(items: T[], index: number | undefined): T | undefined =>
@@ -174,19 +180,35 @@ function renderFieldValue(key: string, value: string): ReactNode {
 const capitalizeFirst = (value: string): string =>
     value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
-const resolvedItemType = (selection: PrismSelection): string => {
+// The context to present the selection in. When the reviewer switches views,
+// the same (cross-probed) component should read as belonging to the active
+// view, so the caller passes viewContext to override the selection's original
+// sourceContext for display.
+const effectiveContext = (
+    selection: PrismSelection,
+    viewContext?: "SCH" | "PCB",
+): "SCH" | "PCB" | undefined => viewContext ?? selection.sourceContext;
+
+const resolvedItemType = (
+    selection: PrismSelection,
+    viewContext?: "SCH" | "PCB",
+): string => {
+    const context = effectiveContext(selection, viewContext);
+    // The anchor's own itemType is view-specific, so ignore it when presenting
+    // the selection in a different view than the one it was made in.
+    const anchorMatchesView = !viewContext || viewContext === selection.sourceContext;
     const raw = selection.anchor?.itemType?.trim();
-    if (raw && raw.toLocaleLowerCase() !== "unknown") return raw;
+    if (anchorMatchesView && raw && raw.toLocaleLowerCase() !== "unknown") return raw;
     if (selection.kind === "component") {
-        if (selection.sourceContext === "SCH") return "Schematic symbol";
-        if (selection.sourceContext === "PCB") return "PCB footprint";
+        if (context === "SCH") return "Schematic symbol";
+        if (context === "PCB") return "PCB footprint";
         return "Component";
     }
     if (selection.kind === "terminal") {
-        return selection.sourceContext === "SCH" ? "Schematic pin" : "PCB pad";
+        return context === "SCH" ? "Schematic pin" : "PCB pad";
     }
-    if (selection.sourceContext === "SCH") return "Schematic net item";
-    if (selection.sourceContext === "PCB") return "PCB copper net";
+    if (context === "SCH") return "Schematic net item";
+    if (context === "PCB") return "PCB copper net";
     return "Net geometry";
 };
 
@@ -342,6 +364,7 @@ export function SelectionInspector({
     navigatingLabelInstance = false,
     embedded = false,
     layerColors,
+    viewContext,
 }: SelectionInspectorProps) {
     // Resolve the component before any early return so the presence hook is
     // called unconditionally (rules of hooks). It is undefined for nets or when
@@ -418,7 +441,7 @@ export function SelectionInspector({
                             icon's bottom, without reflowing the icon or title. */}
                         <div className="mt-2 flex flex-wrap items-center gap-1.5 -translate-y-1.5">
                             <Badge variant="outline" className="px-2 py-0 text-[11px] font-medium">
-                                {capitalizeFirst(resolvedItemType(selection))}
+                                {capitalizeFirst(resolvedItemType(selection, viewContext))}
                             </Badge>
                         </div>
                     </div>
@@ -489,7 +512,7 @@ export function SelectionInspector({
                             {selection.kind !== "net" && <PropertyRow label="Reference" value={selection.reference} />}
                             {selection.kind === "terminal" && <PropertyRow label="Pin / pad" value={selection.pin} />}
                             {selection.kind === "net" && <PropertyRow label="Net" value={selection.netName} />}
-                            <PropertyRow label="Item type" value={resolvedItemType(selection)} />
+                            <PropertyRow label="Item type" value={resolvedItemType(selection, viewContext)} />
                             <PropertyRow label="Component UID" value={selection.kind !== "net" ? selection.componentUid : undefined} />
                             <PropertyRow label="Terminal UID" value={selection.kind === "terminal" ? selection.terminalUid : undefined} />
                             <PropertyRow label="Net UID" value={selection.kind !== "component" ? selection.netUid : undefined} />

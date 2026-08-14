@@ -1426,6 +1426,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 selection={globalSelection}
                                 semanticIndex={semanticIndex}
                                 layerColors={layerColors}
+                                viewContext={activeTab === "pcb" ? "PCB" : activeTab === "sch" ? "SCH" : undefined}
                                 onOpenChange={(open) => {
                                     if (!open) setRightRailTab(null);
                                 }}
