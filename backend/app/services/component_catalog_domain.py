@@ -2517,8 +2517,29 @@ class ComponentCatalogDomainService:
         if not name:
             return {"assetType": normalized_type, "inLibrary": False, "matches": []}
 
-        with self._connect() as conn:
-            if library:
+        # A 3D model is referenced by file name, and the same model exists in
+        # different formats (a project's .wrl vs a catalog .step). Match on the
+        # name without its extension so those line up. Other asset types keep
+        # their exact library:name identity.
+        if normalized_type == "3dmodel":
+            stem = re.sub(r"\.(wrl|step|stp|stpz|igs|iges|x3d)$", "", name)
+            like = f"{stem}.%"
+            with self._connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT a.id, a.name, a.target_library, a.target_name, a.sha256
+                    FROM assets a
+                    WHERE a.asset_type = '3dmodel'
+                      AND (
+                        lower(a.target_name) = %s OR lower(a.name) = %s
+                        OR lower(a.target_name) LIKE %s OR lower(a.name) LIKE %s
+                      )
+                    LIMIT 10
+                    """,
+                    (stem, stem, like, like),
+                ).fetchall()
+        elif library:
+            with self._connect() as conn:
                 rows = conn.execute(
                     """
                     SELECT a.id, a.name, a.target_library, a.target_name, a.sha256
@@ -2530,7 +2551,8 @@ class ComponentCatalogDomainService:
                     """,
                     (normalized_type, library, name, name),
                 ).fetchall()
-            else:
+        else:
+            with self._connect() as conn:
                 rows = conn.execute(
                     """
                     SELECT a.id, a.name, a.target_library, a.target_name, a.sha256
