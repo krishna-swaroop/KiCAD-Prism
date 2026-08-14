@@ -48,16 +48,46 @@ class AuthConfigurationFailClosedTests(unittest.TestCase):
         self.assertEqual(self._settings().auth_configuration_errors(), [])
 
     def test_missing_oidc_secret_blocks_startup_instead_of_disabling_auth(self) -> None:
+        # OIDC is partially configured (issuer + client id, no secret) and
+        # password auth is off, so this must fail closed rather than serve open.
         broken = self._settings(OIDC_CLIENT_SECRET="")
         # The old behaviour: AUTH_ENABLED silently became False and every caller
         # was served as an admin guest.
         self.assertTrue(broken.AUTH_ENABLED)
         self.assertIn(
-            "OIDC_CLIENT_SECRET is required when AUTH_ENABLED=true",
+            "OIDC_CLIENT_SECRET is required to enable OIDC",
             broken.auth_configuration_errors(),
         )
         with self.assertRaises(RuntimeError):
             broken.validate_auth_configuration()
+
+    def test_password_auth_alone_is_a_valid_method(self) -> None:
+        # No OIDC configured, password auth on: a complete, accepted deployment.
+        configured = self._settings(
+            OIDC_ISSUER_URL="",
+            OIDC_CLIENT_ID="",
+            OIDC_CLIENT_SECRET="",
+            PASSWORD_AUTH_ENABLED=True,
+        )
+        self.assertTrue(configured.AUTH_ENABLED)
+        self.assertEqual(configured.auth_configuration_errors(), [])
+
+    def test_no_method_at_all_blocks_startup(self) -> None:
+        # AUTH_ENABLED with neither OIDC nor password is the dangerous case.
+        broken = self._settings(
+            OIDC_ISSUER_URL="",
+            OIDC_CLIENT_ID="",
+            OIDC_CLIENT_SECRET="",
+            PASSWORD_AUTH_ENABLED=False,
+        )
+        errors = broken.auth_configuration_errors()
+        self.assertTrue(any("requires a login method" in error for error in errors))
+        with self.assertRaises(RuntimeError):
+            broken.validate_auth_configuration()
+
+    def test_password_and_oidc_can_coexist(self) -> None:
+        both = self._settings(PASSWORD_AUTH_ENABLED=True)
+        self.assertEqual(both.auth_configuration_errors(), [])
 
     def test_dev_mode_no_longer_disables_authentication(self) -> None:
         self.assertTrue(self._settings(DEV_MODE=True).AUTH_ENABLED)

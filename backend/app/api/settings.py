@@ -10,6 +10,7 @@ from app.core.security import AuthenticatedUser, require_admin
 from app.services import (
     access_service,
     git_access_service,
+    password_credential_service,
     project_import_service,
     session_store_service,
 )
@@ -40,10 +41,18 @@ class RoleAssignmentResponse(BaseModel):
     email: str
     role: Role
     source: str
+    has_password: bool = False
 
 
 class UpsertRoleRequest(BaseModel):
     role: str
+
+
+class SetPasswordRequest(BaseModel):
+    password: str
+    # When true (the default), the user must change this password on next login,
+    # so an admin's chosen value never becomes their lasting secret.
+    must_change: bool = True
 
 @router.get("/ssh-key", response_model=SSHKeyResponse)
 async def get_ssh_key():
@@ -225,7 +234,14 @@ async def forget_git_host_key(host: str):
 
 @router.get("/access/users", response_model=List[RoleAssignmentResponse])
 async def list_access_users():
-    return [RoleAssignmentResponse(**item) for item in access_service.list_role_assignments()]
+    credentialed = set(password_credential_service.list_credentialed_emails())
+    return [
+        RoleAssignmentResponse(
+            **item,
+            has_password=item["email"].strip().lower() in credentialed,
+        )
+        for item in access_service.list_role_assignments()
+    ]
 
 
 @router.put("/access/users/{email}", response_model=RoleAssignmentResponse)
@@ -261,3 +277,44 @@ async def delete_access_user(email: str, user: AuthenticatedUser = Depends(requi
     revoked = session_store_service.revoke_sessions_for_email(email, reason=f"access_revoked:{user.email}")
 
     return {"deleted": email.strip().lower(), "sessions_revoked": revoked}
+
+
+@router.put("/access/users/{email}/password")
+async def set_user_password(
+    email: str,
+    request: SetPasswordRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+):
+    """Set or reset a user's local password (admin only).
+
+    Resetting revokes the user's existing sessions, since the old password no
+    longer grants access. must_change defaults true, so the admin's value is a
+    one-time credential the user replaces on next login.
+    """
+    try:
+        password_credential_service.set_password(
+            email,
+            request.password,
+            updated_by=user.email,
+            must_change=request.must_change,
+        )
+    except password_credential_service.PasswordPolicyError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    revoked = session_store_service.revoke_sessions_for_email(
+        email, reason=f"password_reset:{user.email}"
+    )
+    return {
+        "email": email.strip().lower(),
+        "must_change": request.must_change,
+        "sessions_revoked": revoked,
+    }
+
+
+@router.delete("/access/users/{email}/password")
+async def remove_user_password(email: str, user: AuthenticatedUser = Depends(require_admin)):
+    """Remove a user's local password credential (e.g. they move to SSO-only)."""
+    removed = password_credential_service.delete_credential(email)
+    if not removed:
+        raise HTTPException(status_code=404, detail="No local password for this user")
+    return {"email": email.strip().lower(), "removed": True}

@@ -77,17 +77,19 @@ def _decode(token: str, *, purpose: str, version: str) -> dict[str, Any] | None:
     return data
 
 
-def create_session_token(session_id: str) -> str:
+def create_session_token(session_id: str, *, ttl_seconds: int | None = None) -> str:
     """Wrap an opaque session id in a signed, expiring envelope.
 
     Identity and revocation live in the session store; this token only proves the
     cookie was minted by this deployment and has not been tampered with.
+    ``ttl_seconds`` overrides the default lifetime for a 'remember me' session.
     """
     now = int(time.time())
+    lifetime = ttl_seconds if ttl_seconds else settings.SESSION_TTL_HOURS * 3600
     payload: SessionPayload = SessionPayload(
         sid=session_id,
         iat=now,
-        exp=now + (settings.SESSION_TTL_HOURS * 3600),
+        exp=now + lifetime,
     )
     return _encode(dict(payload), purpose="session", version="v2")
 
@@ -131,14 +133,14 @@ def decode_oidc_transaction_token(token: str) -> OidcTransaction | None:
         return None
 
 
-def set_session_cookie(response: Response, token: str) -> None:
+def set_session_cookie(response: Response, token: str, *, max_age_seconds: int | None = None) -> None:
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
         secure=settings.SESSION_COOKIE_SECURE,
         samesite=SESSION_COOKIE_SAMESITE,
-        max_age=settings.SESSION_TTL_HOURS * 3600,
+        max_age=max_age_seconds if max_age_seconds else settings.SESSION_TTL_HOURS * 3600,
         path="/",
     )
 

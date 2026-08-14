@@ -103,11 +103,18 @@ def create_session(
     picture: str,
     user_agent: str = "",
     client_ip: str = "",
+    ttl_seconds: int | None = None,
 ) -> tuple[str, SessionRecord]:
-    """Mint a new session and return its secret id alongside the stored record."""
+    """Mint a new session and return its secret id alongside the stored record.
+
+    ``ttl_seconds`` overrides the default lifetime, used for a 'remember me'
+    login. The store's expires_at is the revocation authority, so it must carry
+    the same lifetime the cookie does.
+    """
     initialize_session_store()
     session_id = secrets.token_urlsafe(32)
-    expires_at = _now() + timedelta(hours=settings.SESSION_TTL_HOURS)
+    lifetime = timedelta(seconds=ttl_seconds) if ttl_seconds else timedelta(hours=settings.SESSION_TTL_HOURS)
+    expires_at = _now() + lifetime
 
     with database.connection() as connection:
         connection.execute("SET search_path TO workspace, public")
