@@ -785,6 +785,48 @@ def search_catalog_assets(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _split_asset_ref(ref: str) -> tuple[str, str]:
+    """Split a "library:name" reference into (library, name).
+
+    A footprint is "EasyEDA:CAP-SMD", a symbol lib_id "Device:R". A bare 3D
+    model file name has no library qualifier, so the whole string is the name.
+    """
+    text = str(ref or "").strip()
+    if not text:
+        return "", ""
+    library, sep, name = text.partition(":")
+    return (library, name) if sep else ("", text)
+
+
+@router.get("/assets/presence")
+def check_library_asset_presence(
+    symbol: str = Query(default=""),
+    footprint: str = Query(default=""),
+    model: str = Query(default=""),
+    user: AuthenticatedUser = Depends(require_catalog_reader),
+):
+    """Report whether a component's symbol, footprint, and 3D model are already
+    in the library, so the inspector can show what still needs importing.
+
+    Name-based today; each identifier is "library:name" (the model may be a bare
+    file name). A content-hash check would be the exact-match upgrade.
+    """
+    result: dict[str, Any] = {}
+    for asset_type, ref in (("symbol", symbol), ("footprint", footprint), ("3dmodel", model)):
+        if not str(ref or "").strip():
+            continue
+        library, name = _split_asset_ref(ref)
+        try:
+            result[asset_type] = catalog_service.library_asset_presence(
+                asset_type=asset_type,
+                target_library=library,
+                target_name=name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
 @router.post("/import-proposals/{proposal_id}/reject")
 def reject_project_import_proposal(
     proposal_id: str,

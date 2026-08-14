@@ -880,6 +880,11 @@ def build_semantic_index(
             "reference": reference,
             "value": _string(raw.get("value")),
             "footprint": _string(raw.get("footprint")),
+            # The symbol's lib_id (library:part), so the inspector can check
+            # whether the symbol is already in the catalog. The 3D model name is
+            # filled in from the PCB footprint parse below.
+            "symbolLibId": _string(raw.get("library_ref")),
+            "modelName": "",
             "fields": _canonical_fields(raw),
             "schematicRefs": [
                 {
@@ -1063,6 +1068,17 @@ def build_semantic_index(
                 component_index = indexes["componentByReference"].get(reference)
                 if footprint_uuid and component_index is not None:
                     indexes["componentByPcbFootprintUuid"][footprint_uuid] = component_index
+                # The footprint's first 3D model file, so the inspector can check
+                # whether the model is already in the catalog. Store the basename
+                # (e.g. R_0805_2012Metric.wrl) from the model path.
+                if not component.get("modelName"):
+                    for model in getattr(footprint, "models", ()) or ():
+                        model_path = _string(getattr(model, "path", ""))
+                        if model_path:
+                            component["modelName"] = PurePosixPath(
+                                model_path.replace("\\", "/")
+                            ).name
+                            break
             for pad in getattr(footprint, "pads", ()) or ():
                 pad_uuid = _string(getattr(pad, "uuid", ""))
                 pin_number = _string(getattr(pad, "number", ""))

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Check,
     ChevronDown,
@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/lib/api";
 import { selectionLabel } from "@/lib/prism-selection";
 import type {
     PrismSelection,
@@ -270,6 +271,62 @@ function LibraryImportRow({ onImport, disabled, loading }: {
     );
 }
 
+type AssetPresence = { assetType: string; inLibrary: boolean; matches: unknown[] };
+type LibraryPresence = Record<"symbol" | "footprint" | "3dmodel", AssetPresence | undefined>;
+
+// The library-presence assets in display order, with their labels.
+const PRESENCE_ASSETS = [
+    ["symbol", "Symbol"],
+    ["footprint", "Footprint"],
+    ["3dmodel", "3D model"],
+] as const;
+
+/** Ask the catalog whether a component's symbol/footprint/model are in the library. */
+function useLibraryPresence(component: SemanticComponent | undefined) {
+    const [presence, setPresence] = useState<LibraryPresence | null>(null);
+    const symbol = component?.symbolLibId ?? "";
+    const footprint = component?.footprint ?? "";
+    const model = component?.modelName ?? "";
+
+    useEffect(() => {
+        setPresence(null);
+        if (!symbol && !footprint && !model) return;
+        const params = new URLSearchParams();
+        if (symbol) params.set("symbol", symbol);
+        if (footprint) params.set("footprint", footprint);
+        if (model) params.set("model", model);
+        let cancelled = false;
+        void fetchJson<LibraryPresence>(`/api/catalog/assets/presence?${params.toString()}`)
+            .then((data) => {
+                if (!cancelled) setPresence(data);
+            })
+            .catch(() => {
+                if (!cancelled) setPresence(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [symbol, footprint, model]);
+
+    return presence;
+}
+
+// A compact per-asset in-library badge: green when present, muted when missing.
+function PresenceBadge({ label, present }: { label: string; present: boolean }) {
+    return (
+        <Badge
+            variant="outline"
+            className={cn(
+                "gap-1 px-1.5 py-0 text-[10px] font-medium",
+                present ? "border-success/40 text-success" : "text-muted-foreground",
+            )}
+        >
+            {present ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+            {label}
+        </Badge>
+    );
+}
+
 export function SelectionInspector({
     open,
     selection,
@@ -286,8 +343,12 @@ export function SelectionInspector({
     embedded = false,
     layerColors,
 }: SelectionInspectorProps) {
+    // Resolve the component before any early return so the presence hook is
+    // called unconditionally (rules of hooks). It is undefined for nets or when
+    // the panel is closed, and the hook no-ops then.
+    const component = selection ? resolveComponent(selection, semanticIndex) : undefined;
+    const libraryPresence = useLibraryPresence(component);
     if (!open || !selection) return null;
-    const component = resolveComponent(selection, semanticIndex);
     const net = resolveNet(selection, semanticIndex);
     const terminal = resolveTerminal(selection, semanticIndex);
     const SelectionIcon = selection.kind === "component" ? Cpu : selection.kind === "terminal" ? Waypoints : Network;
@@ -298,6 +359,13 @@ export function SelectionInspector({
         : -1;
     const showLabelNav = labelInstances.length >= 2 && Boolean(onNavigateLabelInstance);
     const labelOrdinal = labelIndex >= 0 ? labelIndex + 1 : 1;
+
+    // Which assets the library check covered, and how many of them are present.
+    const presenceAssets = libraryPresence
+        ? PRESENCE_ASSETS.filter(([key]) => libraryPresence[key])
+        : [];
+    const presentCount = presenceAssets.filter(([key]) => libraryPresence?.[key]?.inLibrary).length;
+    const allInLibrary = presenceAssets.length > 0 && presentCount === presenceAssets.length;
 
     return (
         <aside
@@ -318,11 +386,27 @@ export function SelectionInspector({
                         <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate font-mono text-foreground">{title}</span>
                     </nav>
-                    {!embedded && (
-                        <Button variant="ghost" size="icon-sm" aria-label="Close selection inspector" onClick={() => onOpenChange(false)}>
-                            <X className="h-4 w-4" />
-                        </Button>
-                    )}
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        {/* Small right-aligned library indicator: fully in library
+                            reads as a green tick, otherwise the n-of-m count. */}
+                        {presenceAssets.length > 0 && (
+                            <span
+                                className={cn(
+                                    "inline-flex items-center gap-1 text-[11px] font-medium",
+                                    allInLibrary ? "text-success" : "text-muted-foreground",
+                                )}
+                                title={`${presentCount} of ${presenceAssets.length} assets in library`}
+                            >
+                                {allInLibrary ? <Check className="h-3.5 w-3.5" /> : <LibraryBig className="h-3.5 w-3.5" />}
+                                {allInLibrary ? "In library" : `${presentCount}/${presenceAssets.length} in library`}
+                            </span>
+                        )}
+                        {!embedded && (
+                            <Button variant="ghost" size="icon-sm" aria-label="Close selection inspector" onClick={() => onOpenChange(false)}>
+                                <X className="h-4 w-4" />
+                            </Button>
+                        )}
+                    </div>
                 </div>
                 <div className="mt-4 flex items-center gap-3">
                     <div className="border bg-primary/10 p-2.5 text-primary">
@@ -461,6 +545,20 @@ export function SelectionInspector({
                         <>
                             <Separator />
                             <CollapsibleSection title="Library & sourcing">
+                                {component && presenceAssets.length > 0 && (
+                                    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                                        <span className="mr-1 text-xs text-muted-foreground">
+                                            {presentCount} of {presenceAssets.length} in library
+                                        </span>
+                                        {presenceAssets.map(([key, label]) => (
+                                            <PresenceBadge
+                                                key={key}
+                                                label={label}
+                                                present={Boolean(libraryPresence?.[key]?.inLibrary)}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
                                 <div className="border bg-card/40 px-3">
                                     {onImportComponent ? (
                                         <LibraryImportRow

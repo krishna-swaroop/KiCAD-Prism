@@ -89,6 +89,10 @@ export interface SemanticComponent {
     reference: string;
     value?: string;
     footprint?: string;
+    /** Symbol lib_id (library:part), for checking library presence. */
+    symbolLibId?: string;
+    /** 3D model file name, for checking library presence. */
+    modelName?: string;
     fields?: Record<string, string | number | boolean | null>;
     schematicRefs?: SemanticSchematicRef[];
     pcbRefs?: SemanticPcbRef[];
