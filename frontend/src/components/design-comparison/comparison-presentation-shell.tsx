@@ -1249,14 +1249,14 @@ export function ComparisonPresentationShell({
                     // the switcher's "Old / New" otherwise collide on a bare
                     // /Old/ accessible-name query.
                     <div
-                        className="inline-flex shrink-0 items-center gap-0.5 rounded-md border bg-background p-0.5"
+                        className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-primary/60 bg-background p-0.5"
                         role="group"
                         aria-label="Revision side"
                     >
                         <Button
                             variant={oldNewSide === "base" ? "secondary" : "ghost"}
                             size="sm"
-                            className="h-7 text-xs"
+                            className="h-7 rounded-sm text-xs"
                             onClick={() => setOldNewSide("base")}
                             aria-label="Old revision"
                             aria-pressed={oldNewSide === "base"}
@@ -1264,9 +1264,16 @@ export function ComparisonPresentationShell({
                             Old
                         </Button>
                         <Button
-                            variant={oldNewSide === "compare" ? "secondary" : "ghost"}
+                            variant="ghost"
                             size="sm"
-                            className="h-7 text-xs"
+                            className={cn(
+                                "h-7 rounded-sm text-xs",
+                                // New reads in the theme's primary color when it
+                                // is the active side, matching the blue-outlined
+                                // sheet selector.
+                                oldNewSide === "compare" &&
+                                    "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+                            )}
                             onClick={() => setOldNewSide("compare")}
                             aria-label="New revision"
                             aria-pressed={oldNewSide === "compare"}
