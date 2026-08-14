@@ -39,6 +39,36 @@ Register:
 `localhost` and `127.0.0.1` are different redirect origins. Register the exact
 origin used during local testing.
 
+## Local password login
+
+For teams without an SSO provider, Prism can authenticate with an email and
+password. It coexists with OIDC: a deployment can enable either, or both.
+
+```env
+AUTH_ENABLED=true
+PASSWORD_AUTH_ENABLED=true
+PASSWORD_MIN_LENGTH=12          # default; the bcrypt limit of 72 bytes is enforced
+SESSION_REMEMBER_ME_DAYS=30    # lifetime of a "remember me" session
+SESSION_SECRET=<random-value>
+BOOTSTRAP_ADMIN_USERS_STR=admin@example.com
+```
+
+When `AUTH_ENABLED=true`, at least one method must be configured: OIDC (all three
+of issuer, client id, secret) or `PASSWORD_AUTH_ENABLED=true`. A half-configured
+OIDC still fails closed. Password and OIDC share the same role model
+(`ALLOWED_USERS_STR`, `ALLOWED_DOMAINS_STR`, role assignments) and the same
+session machinery.
+
+Accounts are provisioned by administrators, not self-registered. In Settings →
+Access, an admin assigns a role and sets a password. Admin-set passwords must be
+changed by the user on next sign-in and are stored only as bcrypt hashes.
+Resetting or removing a role revokes the user's sessions.
+
+Users can change their own password (which revokes their other sessions), and
+tick "Remember me" to extend their session to `SESSION_REMEMBER_ME_DAYS`. A
+failed sign-in returns a single generic error and is rate limited, so responses
+never reveal whether an email has an account.
+
 ## Sessions
 
 Prism stores session records in PostgreSQL and sends an opaque signed identifier
