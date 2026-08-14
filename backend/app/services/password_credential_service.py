@@ -209,3 +209,38 @@ def list_credentialed_emails() -> list[str]:
             "SELECT email FROM user_credentials ORDER BY email"
         ).fetchall()
     return [str(row["email"]) for row in rows]
+
+
+def seed_bootstrap_admins() -> list[str]:
+    """Seed a one-time password for bootstrap admins that have none yet.
+
+    This solves the first-login problem for a password-only deployment: without
+    it, a bootstrap admin holds the admin role but has no credential to sign in
+    with, and cannot reach the admin UI to create one.
+
+    It is deliberately conservative. It only runs when password auth is on and a
+    bootstrap password is set, only touches emails with no existing credential
+    (so a real password is never clobbered), and always seeds with must_change,
+    so the seeded value is a one-time key the admin replaces on first sign-in.
+    Returns the emails it seeded.
+    """
+    if not settings.PASSWORD_AUTH_ENABLED:
+        return []
+    seed_password = settings.BOOTSTRAP_ADMIN_PASSWORD.strip()
+    if not seed_password:
+        return []
+
+    admins = [email.strip().lower() for email in settings.BOOTSTRAP_ADMIN_USERS if email.strip()]
+    if not admins:
+        return []
+
+    # A weak seed defeats the purpose; enforce the same policy as any password.
+    validate_password_policy(seed_password)
+
+    seeded: list[str] = []
+    for email in admins:
+        if has_credential(email):
+            continue
+        set_password(email, seed_password, updated_by="bootstrap", must_change=True)
+        seeded.append(email)
+    return seeded

@@ -64,6 +64,25 @@ Access, an admin assigns a role and sets a password. Admin-set passwords must be
 changed by the user on next sign-in and are stored only as bcrypt hashes.
 Resetting or removing a role revokes the user's sessions.
 
+### First login on a password-only deployment
+
+Without OIDC there is no external identity to seed the first admin, so
+`BOOTSTRAP_ADMIN_USERS` alone grants the admin role but leaves no way to sign
+in. Set a one-time bootstrap password to break that cycle:
+
+```env
+PASSWORD_AUTH_ENABLED=true
+BOOTSTRAP_ADMIN_USERS_STR=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=<a strong one-time value>
+```
+
+On first startup Prism seeds this password for each bootstrap admin that has no
+credential yet, always flagged must-change. The admin signs in, is forced to set
+a real password, and then provisions everyone else. It never overwrites an
+existing password, so a restart cannot reset a changed one. Remove
+`BOOTSTRAP_ADMIN_PASSWORD` from the environment afterwards; the backend warns at
+startup while it is still set.
+
 Users can change their own password (which revokes their other sessions), and
 tick "Remember me" to extend their session to `SESSION_REMEMBER_ME_DAYS`. A
 failed sign-in returns a single generic error and is rate limited, so responses

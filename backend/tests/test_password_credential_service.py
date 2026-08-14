@@ -109,5 +109,64 @@ class PasswordCredentialStoreTests(unittest.TestCase):
         self.assertFalse(pcs.has_credential(self.EMAIL))
 
 
+@unittest.skipUnless(
+    os.environ.get("PRISM_DATABASE_URL"),
+    "PRISM_DATABASE_URL not set; skipping database-backed credential tests",
+)
+class BootstrapSeedTests(unittest.TestCase):
+    EMAIL = "bootstrap-admin@example.com"
+    SEED = "a bootstrap password"
+
+    def setUp(self) -> None:
+        pcs.initialize_credential_store()
+        pcs.delete_credential(self.EMAIL)
+
+    def tearDown(self) -> None:
+        pcs.delete_credential(self.EMAIL)
+
+    def _seed(self, **overrides):
+        from unittest.mock import patch
+
+        base = {
+            "PASSWORD_AUTH_ENABLED": True,
+            "BOOTSTRAP_ADMIN_PASSWORD": self.SEED,
+            "BOOTSTRAP_ADMIN_USERS_STR": self.EMAIL,
+        }
+        base.update(overrides)
+        with patch.object(pcs.settings, "PASSWORD_AUTH_ENABLED", base["PASSWORD_AUTH_ENABLED"]), \
+             patch.object(pcs.settings, "BOOTSTRAP_ADMIN_PASSWORD", base["BOOTSTRAP_ADMIN_PASSWORD"]), \
+             patch.object(pcs.settings, "BOOTSTRAP_ADMIN_USERS_STR", base["BOOTSTRAP_ADMIN_USERS_STR"]):
+            return pcs.seed_bootstrap_admins()
+
+    def test_seeds_a_must_change_credential(self) -> None:
+        seeded = self._seed()
+        self.assertEqual(seeded, [self.EMAIL])
+        result = pcs.verify_password(self.EMAIL, self.SEED)
+        self.assertTrue(result.ok)
+        self.assertTrue(result.must_change)  # forced change on first login
+
+    def test_is_idempotent_and_never_clobbers(self) -> None:
+        # The user changed their password after the first seed...
+        self._seed()
+        pcs.set_password(self.EMAIL, "user chosen password", updated_by=self.EMAIL, must_change=False)
+        # ...a restart must not reset it back to the seed.
+        seeded_again = self._seed()
+        self.assertEqual(seeded_again, [])
+        self.assertTrue(pcs.verify_password(self.EMAIL, "user chosen password").ok)
+        self.assertFalse(pcs.verify_password(self.EMAIL, self.SEED).ok)
+
+    def test_no_op_when_password_auth_disabled(self) -> None:
+        self.assertEqual(self._seed(PASSWORD_AUTH_ENABLED=False), [])
+        self.assertFalse(pcs.has_credential(self.EMAIL))
+
+    def test_no_op_when_no_seed_password(self) -> None:
+        self.assertEqual(self._seed(BOOTSTRAP_ADMIN_PASSWORD=""), [])
+        self.assertFalse(pcs.has_credential(self.EMAIL))
+
+    def test_weak_seed_is_rejected(self) -> None:
+        with self.assertRaises(pcs.PasswordPolicyError):
+            self._seed(BOOTSTRAP_ADMIN_PASSWORD="short")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -143,6 +143,19 @@ class Settings(BaseSettings):
         description="Comma-separated list of admin user emails provisioned from env"
     )
 
+    # A one-time password seeded for the bootstrap admins on first startup, so a
+    # password-only deployment has a way to sign in and create real accounts. It
+    # is only ever applied when the admin has no credential yet, and always with
+    # must-change set, so the first sign-in forces a replacement.
+    BOOTSTRAP_ADMIN_PASSWORD: str = Field(
+        default="",
+        description=(
+            "One-time password seeded for BOOTSTRAP_ADMIN_USERS on first startup "
+            "when password auth is enabled. The admin must change it on first "
+            "sign-in. Leave empty once real accounts exist."
+        ),
+    )
+
     # Comma-separated list of email domains that receive implicit viewer access.
     DEFAULT_VIEWER_DOMAINS_STR: str = Field(
         default="",
@@ -735,6 +748,13 @@ class Settings(BaseSettings):
                 "host a user names -- including addresses inside this network that the "
                 "browser cannot reach but the server can. Set it to the Git hosts this "
                 "installation is meant to reach."
+            )
+
+        if self.BOOTSTRAP_ADMIN_PASSWORD.strip():
+            warnings.append(
+                "BOOTSTRAP_ADMIN_PASSWORD is set. It seeds a one-time admin password "
+                "for first login; clear it once the admin has signed in and set a real "
+                "password, so a bootstrap secret is not left in the environment."
             )
 
         return warnings
