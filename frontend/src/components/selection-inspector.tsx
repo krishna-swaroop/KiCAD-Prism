@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { contextLabel, selectionLabel } from "@/lib/prism-selection";
+import { selectionLabel } from "@/lib/prism-selection";
 import type {
     PrismSelection,
     PrismSemanticIndex,
@@ -87,6 +87,9 @@ function PropertyRow({ label, value }: { label: string; value: string | number |
         </div>
     );
 }
+
+const capitalizeFirst = (value: string): string =>
+    value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
 const resolvedItemType = (selection: PrismSelection): string => {
     const raw = selection.anchor?.itemType?.trim();
@@ -202,16 +205,19 @@ export function SelectionInspector({
                         </Button>
                     )}
                 </div>
-                <div className="mt-4 flex items-start gap-3">
+                <div className="mt-4 flex items-center gap-3">
                     <div className="border bg-primary/10 p-2.5 text-primary">
                         <SelectionIcon className="h-5 w-5" />
                     </div>
-                    <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            <Badge variant="secondary">{contextLabel(selection.sourceContext)}</Badge>
-                            <Badge variant="outline">{resolvedItemType(selection)}</Badge>
+                    <div className="min-w-0 flex-1 leading-tight">
+                        <h2 className="truncate font-mono text-lg font-semibold" title={title}>{title}</h2>
+                        {/* Nudge just the tag up so its bottom lines up with the
+                            icon's bottom, without reflowing the icon or title. */}
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 -translate-y-1.5">
+                            <Badge variant="outline" className="px-2 py-0 text-[11px] font-medium">
+                                {capitalizeFirst(resolvedItemType(selection))}
+                            </Badge>
                         </div>
-                        <h2 className="mt-2 truncate font-mono text-lg font-semibold" title={title}>{title}</h2>
                     </div>
                 </div>
             </header>
