@@ -461,10 +461,7 @@ export function SelectionInspector({
                         <>
                             <Separator />
                             <CollapsibleSection title="Library & sourcing">
-                                <p className="text-xs leading-relaxed text-muted-foreground">
-                                    Stage this project component with commit-pinned provenance before release review.
-                                </p>
-                                <div className="mt-2 border bg-card/40 px-3">
+                                <div className="border bg-card/40 px-3">
                                     {onImportComponent ? (
                                         <LibraryImportRow
                                             onImport={onImportComponent}
