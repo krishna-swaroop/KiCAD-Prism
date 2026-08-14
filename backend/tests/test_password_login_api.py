@@ -17,6 +17,8 @@ from app.core.config import settings  # noqa: E402
 from app.services.auth_service import PasswordAuthResult, ResolvedSessionUser  # noqa: E402
 
 TEST_SECRET = "unit-test-session-secret-32-chars-min-abcdef"
+# A synthetic, non-secret placeholder used wherever a test needs "some password".
+VALID_PASSWORD = "x" * 12
 
 
 def _fake_request() -> Request:
@@ -88,7 +90,7 @@ class PasswordLoginEndpointTests(unittest.TestCase):
 
     def _login(self, *, remember_me=False, must_change=False):
         req = auth_api.PasswordLoginRequest(
-            email="u@example.com", password="a valid password", remember_me=remember_me
+            email="u@example.com", password=VALID_PASSWORD, remember_me=remember_me
         )
         result = PasswordAuthResult(
             user=ResolvedSessionUser(email="u@example.com", name="u", picture="", role="designer"),

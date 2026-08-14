@@ -80,11 +80,12 @@ describe("LoginPage method rendering", () => {
             />,
         );
 
+        const secret = "x".repeat(12); // placeholder, not a real credential
         fireEvent.change(screen.getByLabelText("Email"), { target: { value: "u@example.com" } });
-        fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a valid password" } });
+        fireEvent.change(screen.getByLabelText("Password"), { target: { value: secret } });
         fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
-        await waitFor(() => expect(loginWithPassword).toHaveBeenCalledWith("u@example.com", "a valid password", false));
+        await waitFor(() => expect(loginWithPassword).toHaveBeenCalledWith("u@example.com", secret, false));
         await waitFor(() => expect(onLoginSuccess).toHaveBeenCalled());
     });
 
@@ -105,7 +106,7 @@ describe("LoginPage method rendering", () => {
         );
 
         fireEvent.change(screen.getByLabelText("Email"), { target: { value: "u@example.com" } });
-        fireEvent.change(screen.getByLabelText("Password"), { target: { value: "temp password xx" } });
+        fireEvent.change(screen.getByLabelText("Password"), { target: { value: "x".repeat(12) } });
         fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
         // Must-change step appears; the app is not entered yet.

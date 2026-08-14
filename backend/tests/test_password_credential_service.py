@@ -10,6 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services import password_credential_service as pcs  # noqa: E402
 
+# Synthetic, non-secret placeholders used wherever a test needs "some password".
+VALID_PASSWORD = "x" * 12
+OTHER_PASSWORD = "y" * 12
+
 
 class PasswordPolicyTests(unittest.TestCase):
     """Policy and hashing checks that need no database."""
@@ -27,8 +31,8 @@ class PasswordPolicyTests(unittest.TestCase):
             pcs.validate_password_policy("a" * 73)
 
     def test_hash_round_trip(self) -> None:
-        digest = pcs._hash_password("correct horse battery staple")
-        self.assertNotIn("correct horse", digest)  # never store plaintext
+        digest = pcs._hash_password(VALID_PASSWORD)
+        self.assertNotIn(VALID_PASSWORD, digest)  # never store plaintext
         self.assertTrue(digest.startswith("$2"))  # a bcrypt hash
 
     def test_dummy_hash_verification_is_constant_time_shaped(self) -> None:
@@ -67,9 +71,9 @@ class PasswordCredentialStoreTests(unittest.TestCase):
         pcs.delete_credential(self.EMAIL)
 
     def test_set_and_verify(self) -> None:
-        pcs.set_password(self.EMAIL, "a valid password", updated_by="admin@x")
+        pcs.set_password(self.EMAIL, VALID_PASSWORD, updated_by="admin@x")
         self.assertTrue(pcs.has_credential(self.EMAIL))
-        self.assertTrue(pcs.verify_password(self.EMAIL, "a valid password").ok)
+        self.assertTrue(pcs.verify_password(self.EMAIL, VALID_PASSWORD).ok)
         self.assertFalse(pcs.verify_password(self.EMAIL, "wrong password").ok)
 
     def test_unknown_email_verifies_false_without_error(self) -> None:
@@ -78,27 +82,27 @@ class PasswordCredentialStoreTests(unittest.TestCase):
         self.assertFalse(result.must_change)
 
     def test_email_is_normalized(self) -> None:
-        pcs.set_password("  MixedCase@Example.COM  ", "a valid password", updated_by="admin@x")
-        self.assertTrue(pcs.verify_password("mixedcase@example.com", "a valid password").ok)
+        pcs.set_password("  MixedCase@Example.COM  ", VALID_PASSWORD, updated_by="admin@x")
+        self.assertTrue(pcs.verify_password("mixedcase@example.com", VALID_PASSWORD).ok)
         pcs.delete_credential("mixedcase@example.com")
 
     def test_must_change_flag_flows_through_and_clears(self) -> None:
-        pcs.set_password(self.EMAIL, "a valid password", updated_by="admin@x", must_change=True)
-        result = pcs.verify_password(self.EMAIL, "a valid password")
+        pcs.set_password(self.EMAIL, VALID_PASSWORD, updated_by="admin@x", must_change=True)
+        result = pcs.verify_password(self.EMAIL, VALID_PASSWORD)
         self.assertTrue(result.ok)
         self.assertTrue(result.must_change)
 
         pcs.clear_must_change(self.EMAIL)
-        self.assertFalse(pcs.verify_password(self.EMAIL, "a valid password").must_change)
+        self.assertFalse(pcs.verify_password(self.EMAIL, VALID_PASSWORD).must_change)
 
     def test_set_password_replaces_existing(self) -> None:
-        pcs.set_password(self.EMAIL, "first password value", updated_by="admin@x")
-        pcs.set_password(self.EMAIL, "second password value", updated_by="admin@x")
-        self.assertFalse(pcs.verify_password(self.EMAIL, "first password value").ok)
-        self.assertTrue(pcs.verify_password(self.EMAIL, "second password value").ok)
+        pcs.set_password(self.EMAIL, VALID_PASSWORD, updated_by="admin@x")
+        pcs.set_password(self.EMAIL, OTHER_PASSWORD, updated_by="admin@x")
+        self.assertFalse(pcs.verify_password(self.EMAIL, VALID_PASSWORD).ok)
+        self.assertTrue(pcs.verify_password(self.EMAIL, OTHER_PASSWORD).ok)
 
     def test_delete_removes_credential(self) -> None:
-        pcs.set_password(self.EMAIL, "a valid password", updated_by="admin@x")
+        pcs.set_password(self.EMAIL, VALID_PASSWORD, updated_by="admin@x")
         self.assertTrue(pcs.delete_credential(self.EMAIL))
         self.assertFalse(pcs.has_credential(self.EMAIL))
         self.assertFalse(pcs.delete_credential(self.EMAIL))  # already gone
@@ -115,7 +119,7 @@ class PasswordCredentialStoreTests(unittest.TestCase):
 )
 class BootstrapSeedTests(unittest.TestCase):
     EMAIL = "bootstrap-admin@example.com"
-    SEED = "a bootstrap password"
+    SEED = VALID_PASSWORD
 
     def setUp(self) -> None:
         pcs.initialize_credential_store()
@@ -148,11 +152,11 @@ class BootstrapSeedTests(unittest.TestCase):
     def test_is_idempotent_and_never_clobbers(self) -> None:
         # The user changed their password after the first seed...
         self._seed()
-        pcs.set_password(self.EMAIL, "user chosen password", updated_by=self.EMAIL, must_change=False)
+        pcs.set_password(self.EMAIL, OTHER_PASSWORD, updated_by=self.EMAIL, must_change=False)
         # ...a restart must not reset it back to the seed.
         seeded_again = self._seed()
         self.assertEqual(seeded_again, [])
-        self.assertTrue(pcs.verify_password(self.EMAIL, "user chosen password").ok)
+        self.assertTrue(pcs.verify_password(self.EMAIL, OTHER_PASSWORD).ok)
         self.assertFalse(pcs.verify_password(self.EMAIL, self.SEED).ok)
 
     def test_no_op_when_password_auth_disabled(self) -> None:

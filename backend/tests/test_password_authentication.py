@@ -12,6 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.services import auth_service  # noqa: E402
 from app.services.password_credential_service import PasswordVerification  # noqa: E402
 
+# A synthetic, non-secret placeholder used wherever a test needs "some password".
+VALID_PASSWORD = "x" * 12
+
 
 def _ok(must_change: bool = False) -> PasswordVerification:
     return PasswordVerification(ok=True, must_change=must_change)
@@ -32,7 +35,7 @@ class AuthenticatePasswordTests(unittest.TestCase):
         allowed_users: tuple[str, ...] = (),
         allowed_domains: tuple[str, ...] = (),
         email: str = "user@example.com",
-        password: str = "a valid password",
+        password: str = VALID_PASSWORD,
     ):
         with patch.object(auth_service.password_credential_service, "verify_password", return_value=verification), \
              patch.object(auth_service.access_service, "ensure_default_viewer_assignment"), \
@@ -106,7 +109,7 @@ class AuthenticatePasswordTests(unittest.TestCase):
              patch.object(auth_service.access_service, "resolve_user_role", return_value="viewer"), \
              patch.object(auth_service.settings, "ALLOWED_USERS_STR", ""), \
              patch.object(auth_service.settings, "ALLOWED_DOMAINS_STR", ""):
-            auth_service.authenticate_password("  MixedCase@Example.COM ", "a valid password")
+            auth_service.authenticate_password("  MixedCase@Example.COM ", VALID_PASSWORD)
         self.assertEqual(captured["email"], "mixedcase@example.com")
 
 
