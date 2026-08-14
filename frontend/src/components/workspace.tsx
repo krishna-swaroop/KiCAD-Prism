@@ -26,26 +26,6 @@ import { WorkspaceSection, ViewMode } from "./workspace/workspace-types";
 
 const WORKSPACE_PAGE_SIZE = 25;
 
-// The page numbers to show in the pager: always first and last, a window of
-// pages around the current one, and an ellipsis ("…") wherever a gap is
-// skipped. Keeps the control compact when there are many pages while still
-// letting you jump straight to one.
-function paginationRange(current: number, total: number): (number | "ellipsis")[] {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, index) => index + 1);
-  }
-  const pages = new Set<number>([1, total, current, current - 1, current + 1]);
-  const sorted = [...pages].filter((page) => page >= 1 && page <= total).sort((a, b) => a - b);
-  const result: (number | "ellipsis")[] = [];
-  let previous = 0;
-  for (const page of sorted) {
-    if (page - previous > 1) result.push("ellipsis");
-    result.push(page);
-    previous = page;
-  }
-  return result;
-}
-
 const ImportDialog = lazy(() =>
   import("./import-dialog").then((module) => ({ default: module.ImportDialog }))
 );
@@ -650,36 +630,14 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                           >
                             Previous
                           </Button>
-                          {paginationRange(currentPage, totalPages).map((page, index) =>
-                            page === "ellipsis" ? (
-                              <span
-                                key={`ellipsis-${index}`}
-                                className="px-1 text-[11px] text-muted-foreground"
-                                aria-hidden
-                              >
-                                …
-                              </span>
-                            ) : (
-                              <Button
-                                key={page}
-                                size="sm"
-                                variant={page === currentPage ? "default" : "outline"}
-                                className="h-7 min-w-7 px-2 text-[11px]"
-                                aria-current={page === currentPage ? "page" : undefined}
-                                onClick={() => setCurrentPage(page)}
-                              >
-                                {page}
-                              </Button>
-                            )
-                          )}
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 px-2 text-[11px]"
                             disabled={currentPage >= totalPages}
-                            onClick={() => setCurrentPage(totalPages)}
+                            onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
                           >
-                            Last
+                            Next
                           </Button>
                         </div>
                       </div>
