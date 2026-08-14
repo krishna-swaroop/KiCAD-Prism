@@ -639,14 +639,14 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <h3 className="text-lg font-medium">Access Control</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Manage role assignments for workspace users.
-                    </p>
+            <div>
+                <h3 className="text-lg font-medium">Access Control</h3>
+                <p className="text-sm text-muted-foreground">
+                    Manage role assignments for workspace users.
+                </p>
+                <div className="mt-1 text-xs">
+                    <RoleAuthorityPopover trigger="View role permissions" />
                 </div>
-                <RoleAuthorityPopover trigger="View role permissions" />
             </div>
 
             <div className="rounded-lg border p-4 space-y-3">
