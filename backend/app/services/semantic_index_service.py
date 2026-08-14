@@ -464,9 +464,14 @@ def _canonical_fields(component: dict[str, Any]) -> dict[str, str]:
         return ""
 
     dnp = _resolve_dnp(parameters, casefolded)
+    # KiCad's "in BOM" flag, parsed by kicad-monkey as kicad_in_bom. Surface it
+    # as a clean Yes/No field; absent flag defaults to Yes (KiCad's default).
+    in_bom_raw = casefolded.get("kicadinbom", "").strip()
+    in_bom = "No" if in_bom_raw and in_bom_raw.casefold() not in _TRUTHY_FLAGS else "Yes"
     required = {
         "Value": _string(component.get("value")) or pick("Value"),
         "DNP": dnp,
+        "In BOM": in_bom,
         "Description": _string(component.get("description")) or pick("Description"),
         "Datasheet": pick("Datasheet", "Data Sheet", "Datasheet URL", "Datasheet Link"),
         "Manufacturer": pick("Manufacturer", "MFR", "Mfr"),

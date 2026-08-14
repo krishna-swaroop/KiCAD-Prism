@@ -1,11 +1,14 @@
+import type { ReactNode } from "react";
 import { useState } from "react";
 import {
+    Check,
     ChevronDown,
     ChevronLeft,
     ChevronRight,
     CircuitBoard,
     Cpu,
     Database,
+    ExternalLink,
     LibraryBig,
     LoaderCircle,
     Network,
@@ -80,14 +83,76 @@ function resolveTerminal(selection: PrismSelection, index: PrismSemanticIndex | 
     return atIndex(index.terminals, index.indexes.terminalByReferencePin?.[`${selection.reference}:${selection.pin}`]);
 }
 
-function PropertyRow({ label, value }: { label: string; value: string | number | undefined }) {
-    if (value === undefined || value === "") return null;
+function PropertyRow({ label, value }: { label: string; value: ReactNode }) {
+    if (value === undefined || value === null || value === "") return null;
     return (
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-3 border-b py-2.5 last:border-b-0">
             <dt className="text-muted-foreground">{label}</dt>
-            <dd className="break-words text-right font-medium">{value}</dd>
+            <dd className="min-w-0 break-words text-right font-medium">{value}</dd>
         </div>
     );
+}
+
+// A Yes/No flag as a colored icon: green tick for the "good" state, red cross
+// for the other. `goodWhenYes` flips which value is the green one.
+function FlagValue({ value, goodWhenYes }: { value: string; goodWhenYes: boolean }) {
+    const yes = value.trim().toLowerCase() === "yes";
+    const good = goodWhenYes ? yes : !yes;
+    return (
+        <span className="inline-flex items-center justify-end gap-1.5">
+            {good ? (
+                <Check className="h-4 w-4 text-success" aria-hidden />
+            ) : (
+                <X className="h-4 w-4 text-destructive" aria-hidden />
+            )}
+            <span className="text-xs">{value}</span>
+        </span>
+    );
+}
+
+// A value that is a link: the text, followed by an external-link glyph, opening
+// in a new tab. Used for datasheet/other URLs and the formed LCSC part link.
+function LinkValue({ href, text }: { href: string; text: string }) {
+    return (
+        <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-w-0 items-center justify-end gap-1 text-primary hover:underline"
+            title={href}
+        >
+            <span className="truncate">{text}</span>
+            <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+        </a>
+    );
+}
+
+const URL_PATTERN = /^(https?:\/\/|www\.)\S+$/i;
+
+function normalizeUrl(value: string): string | null {
+    const trimmed = value.trim();
+    if (!URL_PATTERN.test(trimmed)) return null;
+    return trimmed.startsWith("www.") ? `https://${trimmed}` : trimmed;
+}
+
+// The LCSC catalog URL for a part code like "C125977".
+function lcscUrl(part: string): string | null {
+    const code = part.trim().match(/^C\d+$/i)?.[0];
+    return code ? `https://www.lcsc.com/product-detail/${code.toUpperCase()}.html` : null;
+}
+
+// Decide how one field's value should render: DNP/In BOM as flags, an LCSC part
+// as a formed link, a URL as a link, otherwise plain text.
+function renderFieldValue(key: string, value: string): ReactNode {
+    if (key === "DNP") return <FlagValue value={value} goodWhenYes={false} />;
+    if (key === "In BOM") return <FlagValue value={value} goodWhenYes={true} />;
+    if (key === "LCSC Part") {
+        const href = lcscUrl(value);
+        return href ? <LinkValue href={href} text={value} /> : value;
+    }
+    const url = normalizeUrl(value);
+    if (url) return <LinkValue href={url} text={value} />;
+    return value;
 }
 
 const capitalizeFirst = (value: string): string =>
@@ -343,7 +408,9 @@ export function SelectionInspector({
                                     <PropertyRow label="Footprint" value={component.footprint} />
                                     {Object.entries(component.fields || {})
                                         .filter(([key, value]) => !["Reference", "Value", "Footprint"].includes(key) && !key.startsWith("_") && !key.startsWith("kicad_") && value !== "")
-                                        .map(([key, value]) => <PropertyRow key={key} label={key} value={String(value)} />)}
+                                        .map(([key, value]) => (
+                                            <PropertyRow key={key} label={key} value={renderFieldValue(key, String(value))} />
+                                        ))}
                                 </dl>
                             </CollapsibleSection>
                         </>
