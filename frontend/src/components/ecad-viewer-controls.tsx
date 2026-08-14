@@ -207,7 +207,7 @@ export function EcadViewerControls({
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <ScrollArea className="min-h-0 flex-1">
+                            <ScrollArea className="themed-scrollbar min-h-0 flex-1">
                                 <div className="p-2">
                                     <PcbLayerList
                                         layers={pcbState?.layers ?? []}
