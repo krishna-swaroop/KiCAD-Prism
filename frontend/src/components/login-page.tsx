@@ -5,14 +5,18 @@ import prismLogoHorizontal from "@/assets/branding/kicad-prism/kicad-prism-logo-
 import prismLogoMark from "@/assets/branding/kicad-prism/kicad-prism-icon.svg";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { startOidcLogin } from "@/lib/auth";
-import type { AuthConfig } from "@/types/auth";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { changeOwnPassword, loginWithPassword, startOidcLogin } from "@/lib/auth";
+import type { AuthConfig, User } from "@/types/auth";
 
 interface LoginPageProps {
   authConfig: AuthConfig;
   devMode?: boolean;
   workspaceName?: string;
   initialError?: string | null;
+  onLoginSuccess?: (user: User) => void;
 }
 
 const RELEASE_CACHE_KEY = "kicad_prism_latest_release_tag";
@@ -25,10 +29,23 @@ export function LoginPage({
   devMode = false,
   workspaceName = "KiCAD Prism",
   initialError = null,
+  onLoginSuccess,
 }: LoginPageProps) {
   const [error, setError] = useState<string | null>(initialError);
   const [isLoading, setIsLoading] = useState(false);
   const [releaseTag, setReleaseTag] = useState("...");
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+
+  // When an admin-set password must be replaced, we keep the user on this page
+  // and swap the form to a "set a new password" step before entering the app.
+  const [mustChange, setMustChange] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pendingUser, setPendingUser] = useState<User | null>(null);
 
   useEffect(() => {
     setError(initialError);
@@ -91,6 +108,53 @@ export function LoginPage({
     }
   };
 
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordSubmitting(true);
+    setError(null);
+    try {
+      const result = await loginWithPassword(email, password, rememberMe);
+      const user: User = {
+        email: result.email,
+        name: result.name,
+        picture: result.picture,
+        role: result.role,
+      };
+      if (result.must_change_password) {
+        // Session is issued, but force a password change before entering. Keep
+        // the just-used password: the change call re-verifies it as "current".
+        setPendingUser(user);
+        setMustChange(true);
+      } else {
+        onLoginSuccess?.(user);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed");
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  };
+
+  const handleSetNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError("The new passwords do not match.");
+      return;
+    }
+    setPasswordSubmitting(true);
+    setError(null);
+    try {
+      // The session already authenticates this call; the current password is
+      // the one just used to sign in.
+      await changeOwnPassword(password, newPassword);
+      if (pendingUser) onLoginSuccess?.(pendingUser);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to set a new password");
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  };
+
   const handleDevBypass = () => {
     window.history.replaceState(null, "", "/");
     window.location.reload();
@@ -129,18 +193,103 @@ export function LoginPage({
           <Card className="relative overflow-hidden border-primary/40 bg-card ring-1 ring-primary/30">
             <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-border/80" />
             <CardHeader className="space-y-2 pb-7">
-              <CardTitle className="text-2xl">Sign In</CardTitle>
+              <CardTitle className="text-2xl">{mustChange ? "Set a new password" : "Sign In"}</CardTitle>
               <CardDescription>
-                Sign in with {authConfig.oidc_provider_name || "your organization SSO"}.
+                {mustChange
+                  ? "Your account requires a new password before you continue."
+                  : authConfig.oidc_enabled && authConfig.password_auth_enabled
+                    ? `Sign in with ${authConfig.oidc_provider_name || "SSO"} or your email and password.`
+                    : authConfig.password_auth_enabled
+                      ? "Sign in with your email and password."
+                      : `Sign in with ${authConfig.oidc_provider_name || "your organization SSO"}.`}
               </CardDescription>
             </CardHeader>
 
             <CardContent className="space-y-5 pb-7">
-              <Button className="w-full" onClick={() => void handleSignIn()} disabled={isLoading}>
-                {isLoading
-                  ? `Redirecting to ${authConfig.oidc_provider_name || "SSO"}...`
-                  : `Continue with ${authConfig.oidc_provider_name || "SSO"}`}
-              </Button>
+              {mustChange ? (
+                <form className="space-y-4" onSubmit={(e) => void handleSetNewPassword(e)}>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-password">New password</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirm-password">Confirm new password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={passwordSubmitting}>
+                    {passwordSubmitting ? "Saving…" : "Set password and continue"}
+                  </Button>
+                </form>
+              ) : (
+                <>
+                  {authConfig.oidc_enabled && (
+                    <Button className="w-full" onClick={() => void handleSignIn()} disabled={isLoading || passwordSubmitting}>
+                      {isLoading
+                        ? `Redirecting to ${authConfig.oidc_provider_name || "SSO"}...`
+                        : `Continue with ${authConfig.oidc_provider_name || "SSO"}`}
+                    </Button>
+                  )}
+
+                  {authConfig.oidc_enabled && authConfig.password_auth_enabled && (
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="h-px flex-1 bg-border" />
+                      <span>or</span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  )}
+
+                  {authConfig.password_auth_enabled && (
+                    <form className="space-y-4" onSubmit={(e) => void handlePasswordSignIn(e)}>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="email">Email</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          autoComplete="username"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="password">Password</Label>
+                        <Input
+                          id="password"
+                          type="password"
+                          autoComplete="current-password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                        <Checkbox
+                          checked={rememberMe}
+                          onCheckedChange={(checked) => setRememberMe(checked === true)}
+                        />
+                        Remember me on this device
+                      </label>
+                      <Button type="submit" className="w-full" disabled={passwordSubmitting || isLoading}>
+                        {passwordSubmitting ? "Signing in…" : "Sign in"}
+                      </Button>
+                    </form>
+                  )}
+                </>
+              )}
 
               {isLoading && (
                 <div className="flex items-center justify-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
@@ -155,7 +304,7 @@ export function LoginPage({
                 </div>
               )}
 
-              {devMode && (
+              {devMode && !mustChange && (
                 <Button variant="outline" className="w-full" onClick={handleDevBypass}>
                   <Binary className="mr-2 h-4 w-4" />
                   Skip Authentication (Dev Mode)

@@ -67,6 +67,36 @@ export function exchangeOidcAuthCode(code: string, state: string) {
   );
 }
 
+export interface PasswordLoginResult extends User {
+  must_change_password: boolean;
+}
+
+/** Sign in with a local email and password. */
+export function loginWithPassword(email: string, password: string, rememberMe: boolean) {
+  return fetchJson<PasswordLoginResult>(
+    "/api/auth/login/password",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, remember_me: rememberMe }),
+    },
+    "Sign-in failed"
+  );
+}
+
+/** Change the signed-in user's own password. */
+export function changeOwnPassword(currentPassword: string, newPassword: string) {
+  return fetchJson<{ success: boolean }>(
+    "/api/auth/password/change",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    },
+    "Failed to change password"
+  );
+}
+
 export function fetchActiveSessions(signal?: AbortSignal) {
   return fetchJson<ActiveSession[]>(
     "/api/auth/sessions",

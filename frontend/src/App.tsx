@@ -181,6 +181,7 @@ function App() {
                     devMode={authConfig.dev_mode}
                     workspaceName={authConfig.workspace_name}
                     initialError={authError}
+                    onLoginSuccess={handleAuthCodeSuccess}
                 />
             </Suspense>
         );
