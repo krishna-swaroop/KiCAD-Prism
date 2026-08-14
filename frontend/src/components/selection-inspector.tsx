@@ -113,18 +113,31 @@ function FlagValue({ value, goodWhenYes }: { value: string; goodWhenYes: boolean
 // A value that is a link: the text, followed by an external-link glyph, opening
 // in a new tab. Used for datasheet/other URLs and the formed LCSC part link.
 function LinkValue({ href, text }: { href: string; text: string }) {
+    // Wrap long URLs onto new lines instead of overflowing the card. break-all
+    // lets the URL break mid-string; the glyph trails the last line inline.
     return (
         <a
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-w-0 items-center justify-end gap-1 text-primary hover:underline"
+            className="break-all text-primary hover:underline"
             title={href}
         >
-            <span className="truncate">{text}</span>
-            <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+            {text}
+            <ExternalLink className="ml-1 inline-block h-3 w-3 shrink-0 align-text-bottom" aria-hidden />
         </a>
     );
+}
+
+// Fields shown separately or that are internal parser bookkeeping, not worth a
+// row on the component card: the reference/value/footprint (shown elsewhere),
+// KiCad's own attributes (kicad_*/ki_*/_source), and the sheet-location fields.
+const HIDDEN_FIELD_KEYS = new Set(["Reference", "Value", "Footprint", "Sheetfile", "Sheetname"]);
+
+function isDisplayableField(key: string, value: string): boolean {
+    if (HIDDEN_FIELD_KEYS.has(key)) return false;
+    if (key.startsWith("_") || key.startsWith("kicad_") || key.startsWith("ki_")) return false;
+    return value !== "";
 }
 
 const URL_PATTERN = /^(https?:\/\/|www\.)\S+$/i;
@@ -407,7 +420,7 @@ export function SelectionInspector({
                                     <PropertyRow label="Value" value={component.value} />
                                     <PropertyRow label="Footprint" value={component.footprint} />
                                     {Object.entries(component.fields || {})
-                                        .filter(([key, value]) => !["Reference", "Value", "Footprint"].includes(key) && !key.startsWith("_") && !key.startsWith("kicad_") && value !== "")
+                                        .filter(([key, value]) => isDisplayableField(key, String(value)))
                                         .map(([key, value]) => (
                                             <PropertyRow key={key} label={key} value={renderFieldValue(key, String(value))} />
                                         ))}
