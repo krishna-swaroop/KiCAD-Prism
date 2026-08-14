@@ -279,6 +279,9 @@ function EcadViewerHost({
 export function Visualizer({ projectId, user, commit, active: viewerActive = true }: VisualizerProps) {
     const [schematicViewerElement, setSchematicViewerElement] = useState<ECadViewerElement | null>(null);
     const [pcbViewerElement, setPcbViewerElement] = useState<ECadViewerElement | null>(null);
+    // Layer name -> swatch color, read from the PCB viewer so the inspector can
+    // show a layer's color the same way the layer menu does.
+    const [layerColors, setLayerColors] = useState<Record<string, string>>({});
     const schematicViewerRef = useRef<ECadViewerElement | null>(null);
     const pcbViewerRef = useRef<ECadViewerElement | null>(null);
 
@@ -812,6 +815,28 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             setRightRailTab((tab) => (tab === "selection" ? null : tab));
         }
     }, [globalSelection]);
+
+    // Refresh the layer color map when a selection carries a layer, so the
+    // inspector can show a swatch matching the layer menu. Read lazily from the
+    // PCB viewer; layer colors are stable for a board.
+    useEffect(() => {
+        if (!globalSelection?.anchor?.layer || !pcbViewerElement) return;
+        void customElements.whenDefined("ecad-viewer").then(() => {
+            const layers = pcbViewerElement.getPcbViewState?.()?.layers;
+            if (!layers?.length) return;
+            setLayerColors((previous) => {
+                const next: Record<string, string> = { ...previous };
+                let changed = false;
+                for (const layer of layers) {
+                    if (next[layer.name] !== layer.color) {
+                        next[layer.name] = layer.color;
+                        changed = true;
+                    }
+                }
+                return changed ? next : previous;
+            });
+        });
+    }, [globalSelection, pcbViewerElement]);
 
     useEffect(() => {
         const selection = globalSelection;
@@ -1398,6 +1423,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 open
                                 selection={globalSelection}
                                 semanticIndex={semanticIndex}
+                                layerColors={layerColors}
                                 onOpenChange={(open) => {
                                     if (!open) setRightRailTab(null);
                                 }}

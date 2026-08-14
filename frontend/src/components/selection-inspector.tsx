@@ -51,6 +51,8 @@ interface SelectionInspectorProps {
     onFocusLabelInstance?: (uuid: string) => void;
     navigatingLabelInstance?: boolean;
     embedded?: boolean;
+    /** Layer name -> swatch color, so the Layer row can show the layer's color. */
+    layerColors?: Record<string, string>;
 }
 
 const atIndex = <T,>(items: T[], index: number | undefined): T | undefined =>
@@ -282,6 +284,7 @@ export function SelectionInspector({
     onFocusLabelInstance,
     navigatingLabelInstance = false,
     embedded = false,
+    layerColors,
 }: SelectionInspectorProps) {
     if (!open || !selection) return null;
     const component = resolveComponent(selection, semanticIndex);
@@ -408,7 +411,21 @@ export function SelectionInspector({
                             <PropertyRow label="Net UID" value={selection.kind !== "component" ? selection.netUid : undefined} />
                             <PropertyRow label="Source UUID" value={selection.uuid || selection.anchor?.uuid} />
                             <PropertyRow label="Page" value={selection.anchor?.page} />
-                            <PropertyRow label="Layer" value={selection.anchor?.layer} />
+                            <PropertyRow
+                                label="Layer"
+                                value={selection.anchor?.layer && (
+                                    <span className="inline-flex items-center justify-end gap-1.5">
+                                        {layerColors?.[selection.anchor.layer] && (
+                                            <span
+                                                className="size-3 shrink-0 border"
+                                                style={{ backgroundColor: layerColors[selection.anchor.layer] }}
+                                                aria-hidden
+                                            />
+                                        )}
+                                        <span>{selection.anchor.layer}</span>
+                                    </span>
+                                )}
+                            />
                         </dl>
                     </CollapsibleSection>
 
