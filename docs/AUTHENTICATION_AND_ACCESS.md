@@ -120,6 +120,28 @@ first login, manage ordinary assignments in Settings. `DEFAULT_VIEWER_DOMAINS_ST
 can grant implicit viewer access to trusted domains; leave it empty when every
 user must be explicitly approved.
 
+## Restricting who can sign in
+
+Two settings gate which addresses are allowed to authenticate at all. They apply
+to both OIDC and password login on identical terms, so setting them once covers
+every method.
+
+```env
+ALLOWED_DOMAINS_STR=example.com,example.org   # only these email domains may sign in
+ALLOWED_USERS_STR=alice@example.com           # only these exact addresses may sign in
+```
+
+Each is empty by default, meaning no restriction. When set, an address must be in
+`ALLOWED_USERS_STR` if that list is non-empty, and its domain must be in
+`ALLOWED_DOMAINS_STR` if that list is non-empty; both apply together. A login that
+fails either check is rejected before any role is considered.
+
+This is a gate, not a grant. Passing it only lets the login proceed; the account
+still needs a role (an explicit assignment, or an implicit viewer role from
+`DEFAULT_VIEWER_DOMAINS_STR`) or access is denied. To let anyone from a trusted
+domain in as a viewer automatically, use `DEFAULT_VIEWER_DOMAINS_STR`; to allow a
+domain to sign in but still require an explicit role, use `ALLOWED_DOMAINS_STR`.
+
 ## Guest mode
 
 ```env
