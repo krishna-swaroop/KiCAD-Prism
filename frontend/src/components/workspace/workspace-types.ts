@@ -1,4 +1,4 @@
-export type WorkspaceSection = "projects" | "library-manager";
+export type WorkspaceSection = "projects" | "library-manager" | "manufacturing";
 export type ViewMode = "gallery" | "list";
 
 // auto-fill with a fixed minimum column width, so the number of columns is
