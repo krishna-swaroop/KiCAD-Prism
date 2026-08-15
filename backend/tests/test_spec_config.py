@@ -122,6 +122,60 @@ class SpecConfigParseTests(unittest.TestCase):
         self.assertIn("HDI & drilling", titles)
         self.assertIn("Impedance", titles)
 
+    def test_when_clause_equality(self) -> None:
+        parsed = parse_spec_config("[S]\nm: text\nx: int when m = FR-4\n")
+        self.assertEqual(parsed.errors, [])
+        field = parsed.sections[0].fields[1]
+        self.assertIsNotNone(field.when)
+        self.assertEqual(field.when.key, "m")
+        self.assertEqual(field.when.op, "=")
+        self.assertEqual(field.when.values, ["FR-4"])
+
+    def test_when_clause_operators_and_in_list(self) -> None:
+        parsed = parse_spec_config(
+            "[S]\n"
+            "layers: int\n"
+            "mat: text\n"
+            "a: int when layers > 2\n"
+            "b: int when mat != FR-4\n"
+            "c: int when mat in (Flex, Rigid-Flex)\n"
+        )
+        self.assertEqual(parsed.errors, [])
+        by_key = {f.key: f.when for f in parsed.sections[0].fields}
+        self.assertEqual((by_key["a"].op, by_key["a"].values), (">", ["2"]))
+        self.assertEqual((by_key["b"].op, by_key["b"].values), ("!=", ["FR-4"]))
+        self.assertEqual((by_key["c"].op, by_key["c"].values), ("in", ["Flex", "Rigid-Flex"]))
+
+    def test_when_coexists_with_default_and_label(self) -> None:
+        parsed = parse_spec_config(
+            "[S]\nm: text\ncolor: choice(A, B) = A when m = FR-4 | Mask color\n"
+        )
+        self.assertEqual(parsed.errors, [])
+        field = parsed.sections[0].fields[1]
+        self.assertEqual(field.default, "A")
+        self.assertEqual(field.label, "Mask color")
+        self.assertEqual(field.when.values, ["FR-4"])
+
+    def test_section_level_when(self) -> None:
+        parsed = parse_spec_config("[+Impedance] when imp = yes\nz: number\n")
+        self.assertEqual(parsed.errors, [])
+        section = parsed.sections[0]
+        self.assertTrue(section.optional)
+        self.assertIsNotNone(section.when)
+        self.assertEqual(section.when.key, "imp")
+
+    def test_malformed_when_is_an_error(self) -> None:
+        parsed = parse_spec_config("[S]\nx: int when\n")
+        # `when` with nothing after it leaves an empty body: reported, not crashed.
+        self.assertTrue(any("when" in e.lower() for e in parsed.errors))
+
+    def test_jlcpcb_gates_inner_copper_and_fr4_features(self) -> None:
+        parsed = parse_spec_config(JLCPCB_SPEC_CONFIG)
+        self.assertEqual(parsed.errors, [])
+        gated = {f.key: f.when for s in parsed.sections for f in s.fields if f.when}
+        self.assertEqual(gated["inner_copper_weight_oz"].op, ">")
+        self.assertEqual(gated["gold_fingers"].values, ["FR-4"])
+
     def test_builtin_templates_parse_cleanly(self) -> None:
         from app.services.spec_config_service import JLCPCB_ADVANCED_SPEC_CONFIG
 

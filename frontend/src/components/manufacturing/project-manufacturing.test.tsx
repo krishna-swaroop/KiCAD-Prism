@@ -36,9 +36,10 @@ const SCHEMA = {
         {
             title: "Stackup & physical",
             optional: false,
+            when: null,
             fields: [
-                { key: "layer_count", label: "Layer count", type: "int", options: [], default: null },
-                { key: "board_thickness_mm", label: "Board thickness", type: "number", options: [], default: null },
+                { key: "layer_count", label: "Layer count", type: "int", options: [], default: null, when: null },
+                { key: "board_thickness_mm", label: "Board thickness", type: "number", options: [], default: null, when: null },
             ],
         },
     ],
@@ -114,7 +115,8 @@ describe("ProjectManufacturing", () => {
                 {
                     title: "Assembly",
                     optional: true,
-                    fields: [{ key: "smt_parts", label: "SMT parts", type: "int", options: [], default: null }],
+                    when: null,
+                    fields: [{ key: "smt_parts", label: "SMT parts", type: "int", options: [], default: null, when: null }],
                 },
             ],
             errors: [],
@@ -136,7 +138,7 @@ describe("ProjectManufacturing", () => {
         const withOptional = {
             sections: [
                 ...SCHEMA.sections,
-                { title: "Assembly", optional: true, fields: [] },
+                { title: "Assembly", optional: true, when: null, fields: [] },
             ],
             errors: [],
         };
@@ -151,6 +153,43 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect(saveBoardSpec).toHaveBeenCalled());
         const activeSections = saveBoardSpec.mock.calls[0][3];
         expect(activeSections).toContain("Assembly");
+    });
+
+    it("gates a field on another field's value", async () => {
+        const gated = {
+            sections: [
+                {
+                    title: "Base",
+                    optional: false,
+                    when: null,
+                    fields: [
+                        { key: "material", label: "Material", type: "choice", options: ["FR-4", "Flex"], default: "Flex", when: null },
+                        {
+                            key: "inner_copper",
+                            label: "Inner copper",
+                            type: "choice",
+                            options: ["1", "2"],
+                            default: null,
+                            when: { key: "material", op: "=", values: ["FR-4"] },
+                        },
+                    ],
+                },
+            ],
+            errors: [],
+        };
+        getBoardSpec.mockResolvedValue({
+            project_id: "p1", specs: { material: "Flex" }, source: {}, active_sections: [], updated_at: null, updated_by: "",
+        });
+        getSpecConfig.mockResolvedValue({ spec_config: "x", parsed: gated });
+
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitFor(() => expect(screen.getByLabelText("Material")).toBeTruthy());
+        // material is Flex, so the FR-4-gated field is hidden.
+        expect(screen.queryByLabelText("Inner copper")).toBeNull();
+
+        // Switch material to FR-4 and the gated field appears.
+        fireEvent.change(screen.getByLabelText("Material"), { target: { value: "FR-4" } });
+        await waitFor(() => expect(screen.getByLabelText("Inner copper")).toBeTruthy());
     });
 
     it("saves the current values", async () => {

@@ -18,6 +18,7 @@ import {
 import {
     RUN_STATUS_LABELS,
     EXTRACTABLE_KEYS,
+    evaluateCondition,
     type ManufacturingRun,
     type ParsedSpecConfig,
     type SpecFieldDef,
@@ -197,27 +198,30 @@ export function ProjectManufacturing({
                                 The schema has {schema.errors.length} problem(s). Some fields may be missing until you fix it.
                             </div>
                         )}
-                        {schema.sections.map((section) => (
-                            <SpecSection
-                                key={section.title}
-                                section={section}
-                                collapsed={collapsed.has(section.title)}
-                                active={!section.optional || activeSections.has(section.title)}
-                                canEdit={canEdit}
-                                onToggleCollapsed={() => toggleCollapsed(section.title)}
-                                onToggleActive={(on) => toggleSectionActive(section.title, on)}
-                                renderField={(field) => (
-                                    <SpecFieldInput
-                                        key={field.key}
-                                        field={field}
-                                        value={values[field.key]}
-                                        provenance={source[field.key]}
-                                        disabled={!canEdit}
-                                        onChange={(v) => setField(field.key, v)}
-                                    />
-                                )}
-                            />
-                        ))}
+                        {schema.sections
+                            .filter((section) => evaluateCondition(section.when, values))
+                            .map((section) => (
+                                <SpecSection
+                                    key={section.title}
+                                    section={section}
+                                    values={values}
+                                    collapsed={collapsed.has(section.title)}
+                                    active={!section.optional || activeSections.has(section.title)}
+                                    canEdit={canEdit}
+                                    onToggleCollapsed={() => toggleCollapsed(section.title)}
+                                    onToggleActive={(on) => toggleSectionActive(section.title, on)}
+                                    renderField={(field) => (
+                                        <SpecFieldInput
+                                            key={field.key}
+                                            field={field}
+                                            value={values[field.key]}
+                                            provenance={source[field.key]}
+                                            disabled={!canEdit}
+                                            onChange={(v) => setField(field.key, v)}
+                                        />
+                                    )}
+                                />
+                            ))}
                     </div>
                 )}
             </section>
@@ -331,6 +335,7 @@ export function ProjectManufacturing({
 
 interface SpecSectionProps {
     section: SpecSectionDef;
+    values: SpecValues;
     collapsed: boolean;
     active: boolean;
     canEdit: boolean;
@@ -341,6 +346,7 @@ interface SpecSectionProps {
 
 function SpecSection({
     section,
+    values,
     collapsed,
     active,
     canEdit,
@@ -349,6 +355,9 @@ function SpecSection({
     renderField,
 }: SpecSectionProps) {
     const showBody = active && !collapsed;
+    // Fields whose gate is unsatisfied are hidden, so options only appear when
+    // their controlling field has the right value.
+    const visibleFields = section.fields.filter((f) => evaluateCondition(f.when, values));
     return (
         <div>
             <div className="flex items-center justify-between gap-3 px-4 py-2.5">
@@ -386,7 +395,7 @@ function SpecSection({
 
             {showBody && (
                 <div className={`px-4 pb-3 ${GROUP_GRID}`}>
-                    {section.fields.map((field) => (
+                    {visibleFields.map((field) => (
                         <div key={field.key} className={FIELD_WRAP}>
                             {renderField(field)}
                         </div>

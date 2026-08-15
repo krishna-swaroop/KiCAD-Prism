@@ -24,7 +24,8 @@ const PARSED: ParsedSpecConfig = {
         {
             title: "Stackup",
             optional: false,
-            fields: [{ key: "layer_count", label: "Layer count", type: "int", options: [], default: null }],
+            when: null,
+            fields: [{ key: "layer_count", label: "Layer count", type: "int", options: [], default: null, when: null }],
         },
     ],
     errors: [],

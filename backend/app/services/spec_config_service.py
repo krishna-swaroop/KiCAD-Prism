@@ -41,6 +41,27 @@ FIELD_TYPES = ("text", "int", "number", "bool", "choice")
 _SECTION_RE = re.compile(r"^\[(?P<name>.+)\]$")
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _CHOICE_RE = re.compile(r"^choice\((?P<opts>.*)\)$", re.IGNORECASE)
+# ` when <cond>` clause, split off before the label/default. Case-insensitive
+# keyword, bounded by whitespace so a value containing "when" is not caught.
+_WHEN_RE = re.compile(r"\swhen\s", re.IGNORECASE)
+_COND_IN_RE = re.compile(r"^(?P<key>\S+)\s+in\s*\((?P<opts>.*)\)$", re.IGNORECASE)
+_COND_OP_RE = re.compile(r"^(?P<key>\S+)\s*(?P<op>!=|>=|<=|=|>|<)\s*(?P<value>.+)$")
+
+
+@dataclass
+class SpecCondition:
+    """A gate: show the field/section only when ``key`` satisfies ``op``/``values``.
+
+    ``op`` is one of ``=``, ``!=``, ``>``, ``<``, ``>=``, ``<=`` (single value) or
+    ``in`` (any of ``values``). Comparisons are done on the live form value.
+    """
+
+    key: str
+    op: str
+    values: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"key": self.key, "op": self.op, "values": self.values}
 
 
 @dataclass
@@ -50,6 +71,7 @@ class SpecFieldDef:
     type: str
     options: list[str] = field(default_factory=list)
     default: Any = None
+    when: SpecCondition | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -58,6 +80,7 @@ class SpecFieldDef:
             "type": self.type,
             "options": self.options,
             "default": self.default,
+            "when": self.when.to_dict() if self.when else None,
         }
 
 
@@ -68,13 +91,48 @@ class SpecSectionDef:
     # ``[+Name]`` marks a section optional: off by default, switched on with a
     # toggle. A plain ``[Name]`` is always shown.
     optional: bool = False
+    when: SpecCondition | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "title": self.title,
             "optional": self.optional,
+            "when": self.when.to_dict() if self.when else None,
             "fields": [f.to_dict() for f in self.fields],
         }
+
+
+def _parse_condition(text: str, lineno: int, errors: list[str]) -> SpecCondition | None:
+    """Parse a ``when`` clause body into a SpecCondition, or None with an error.
+
+    Accepts ``key = value``, ``key != value``, ``key > n`` (and >=, <, <=), and
+    ``key in (a, b, c)``.
+    """
+    text = text.strip()
+
+    in_match = _COND_IN_RE.match(text)
+    if in_match:
+        key = in_match.group("key").strip()
+        options = [opt.strip() for opt in in_match.group("opts").split(",") if opt.strip()]
+        if not _KEY_RE.match(key) or not options:
+            errors.append(f"Line {lineno}: invalid `when {text}`.")
+            return None
+        return SpecCondition(key=key, op="in", values=options)
+
+    op_match = _COND_OP_RE.match(text)
+    if op_match:
+        key = op_match.group("key").strip()
+        value = op_match.group("value").strip()
+        if not _KEY_RE.match(key) or not value:
+            errors.append(f"Line {lineno}: invalid `when {text}`.")
+            return None
+        return SpecCondition(key=key, op=op_match.group("op"), values=[value])
+
+    errors.append(
+        f"Line {lineno}: could not read `when {text}`. "
+        "Use `when key = value`, `when key != value`, `when key > n`, or `when key in (a, b)`."
+    )
+    return None
 
 
 @dataclass
@@ -128,6 +186,28 @@ def parse_spec_config(text: str) -> ParsedSpecConfig:
         if not line or line.startswith("#"):
             continue
 
+        # Strip a trailing comment up front so it can never be mistaken for part of
+        # a `when` clause, a label, or a value.
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+
+        # A human label (`| Label`) is split off first so a label may contain the
+        # word "when" freely. The grammar is therefore:
+        #   key: type [= default] [when cond] | Label
+        # with the label always last.
+        label_override = None
+        if "|" in line:
+            line, label_override = (part.strip() for part in line.split("|", 1))
+
+        # Now split off a trailing `when ...` clause; it binds to the whole
+        # field/section.
+        when_cond: SpecCondition | None = None
+        when_split = _WHEN_RE.split(line, maxsplit=1)
+        if len(when_split) == 2:
+            line, when_body = when_split[0].strip(), when_split[1].strip()
+            when_cond = _parse_condition(when_body, lineno, errors)
+
         section_match = _SECTION_RE.match(line)
         if section_match:
             name = section_match.group("name").strip()
@@ -138,19 +218,11 @@ def parse_spec_config(text: str) -> ParsedSpecConfig:
             if not name:
                 errors.append(f"Line {lineno}: a section needs a name.")
                 continue
-            current = SpecSectionDef(title=name, optional=optional)
+            current = SpecSectionDef(title=name, optional=optional, when=when_cond)
             sections.append(current)
             continue
 
-        # A field line: `key: type [= default] [| Label]` plus an optional trailing comment.
-        line = line.split("#", 1)[0].strip()
-        if not line:
-            continue
-
-        label_override = None
-        if "|" in line:
-            line, label_override = (part.strip() for part in line.split("|", 1))
-
+        # A field line: `key: type [= default]` (label and when already split off).
         if ":" not in line:
             errors.append(f"Line {lineno}: expected `key: type`.")
             continue
@@ -181,6 +253,7 @@ def parse_spec_config(text: str) -> ParsedSpecConfig:
             field_def.label = label_override
         if default_raw is not None:
             field_def.default = _coerce_default(default_raw, field_def.type)
+        field_def.when = when_cond
 
         # Attach the default section to the tree the first time it gains a field.
         if current is default_section and default_section not in sections:
@@ -226,6 +299,8 @@ DEFAULT_SPEC_CONFIG = """\
 #          key: type | Nice Label     overrides the label
 #          [Section]                  a section header
 #          [+Section]                 an optional section (off until toggled on)
+#          key: type when other = x   show only when another field has a value
+#                                     (also: !=, >, <, >=, <=, or  in (a, b, c))
 
 [Stackup & physical]
 layer_count: int
@@ -255,6 +330,8 @@ ipc_class: choice(1, 2, 3)
 JLCPCB_SPEC_CONFIG = """\
 # Spec schema modelled on JLCPCB's PCB order options.
 # Values follow their quote form; edit freely for your board.
+# Some fields are gated: e.g. inner copper only shows for multilayer boards,
+# and several options only apply to FR-4, mirroring how the JLCPCB form reveals them.
 
 [Base]
 base_material: choice(FR-4, Aluminum, Copper Core, Rogers, PTFE) = FR-4
@@ -266,11 +343,15 @@ different_design_count: int = 1 | Different designs in panel
 [Stackup]
 board_thickness_mm: choice(0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0) = 1.6 | PCB thickness (mm)
 outer_copper_weight_oz: choice(1, 2, 2.5, 3.5, 4.5) = 1 | Outer copper (oz)
-inner_copper_weight_oz: choice(0.5, 1, 2) | Inner copper (oz)
-impedance_control: bool | Impedance control
+# Inner copper only exists on multilayer boards.
+inner_copper_weight_oz: choice(0.5, 1, 2) when layer_count > 2 | Inner copper (oz)
+# Impedance control is offered on FR-4 boards.
+impedance_control: bool when base_material = FR-4 | Impedance control
 
 [Finish & cosmetic]
-solder_mask_color: choice(Green, Purple, Red, Yellow, Blue, White, Black) = Green | PCB color
+# FR-4 offers the full colour range; metal-core boards are white/black only.
+solder_mask_color: choice(Green, Purple, Red, Yellow, Blue, White, Black) = Green when base_material = FR-4 | PCB color
+solder_mask_color_metal: choice(White, Black) = White when base_material in (Aluminum, Copper Core) | PCB color
 silkscreen_color: choice(White, Black) = White
 surface_finish: choice(HASL, Lead-free HASL, ENIG, OSP) = HASL
 via_covering: choice(Tented, Untented, Plugged, Epoxy filled & capped, Copper paste filled & capped) = Tented
@@ -279,9 +360,10 @@ via_covering: choice(Tented, Untented, Plugged, Epoxy filled & capped, Copper pa
 min_via_hole_mm: choice(0.3, 0.25, 0.2, 0.15) = 0.3 | Min via hole (mm)
 min_track_spacing: text | Min track/spacing (mil)
 board_outline_tolerance: choice(Regular ±0.2mm, Precision ±0.1mm) = Regular ±0.2mm
-gold_fingers: bool
-castellated_holes: bool
-edge_plating: bool
+# Gold fingers, castellated holes and edge plating are FR-4 features.
+gold_fingers: bool when base_material = FR-4
+castellated_holes: bool when base_material = FR-4
+edge_plating: bool when base_material = FR-4
 remove_order_number: choice(No, Yes - specify position, Yes - JLCPCB chooses) = No
 
 [Delivery]

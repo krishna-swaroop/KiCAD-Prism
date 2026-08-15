@@ -99,19 +99,69 @@ export function defectCategoryLabel(value: string): string {
 // the backend into these shapes. `type` mirrors the config's field types.
 export type SpecFieldType = "text" | "int" | "number" | "bool" | "choice";
 
+export type SpecConditionOp = "=" | "!=" | ">" | "<" | ">=" | "<=" | "in";
+
+export interface SpecCondition {
+    key: string;
+    op: SpecConditionOp;
+    values: string[];
+}
+
 export interface SpecFieldDef {
     key: string;
     label: string;
     type: SpecFieldType;
     options: string[];
     default: unknown;
+    /** Show this field only when the condition holds; null = always. */
+    when: SpecCondition | null;
 }
 
 export interface SpecSectionDef {
     title: string;
     /** Optional sections (written [+Name]) are off until toggled on. */
     optional: boolean;
+    /** Show this section only when the condition holds; null = always. */
+    when: SpecCondition | null;
     fields: SpecFieldDef[];
+}
+
+/**
+ * Evaluate a gate against the current form values. Missing/unset values compare
+ * as absent, so a gate on an unfilled field is simply not satisfied (except `!=`,
+ * where absent is "not equal" and so passes).
+ */
+export function evaluateCondition(
+    condition: SpecCondition | null | undefined,
+    values: Record<string, unknown>,
+): boolean {
+    if (!condition) return true;
+    const raw = values[condition.key];
+    const actual = raw === undefined || raw === null ? "" : String(raw);
+    const targets = condition.values;
+
+    switch (condition.op) {
+        case "=":
+            return actual === targets[0];
+        case "!=":
+            return actual !== targets[0];
+        case "in":
+            return targets.includes(actual);
+        case ">":
+        case "<":
+        case ">=":
+        case "<=": {
+            const a = Number(actual);
+            const b = Number(targets[0]);
+            if (Number.isNaN(a) || Number.isNaN(b)) return false;
+            if (condition.op === ">") return a > b;
+            if (condition.op === "<") return a < b;
+            if (condition.op === ">=") return a >= b;
+            return a <= b;
+        }
+        default:
+            return true;
+    }
 }
 
 export interface ParsedSpecConfig {
