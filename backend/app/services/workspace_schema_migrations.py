@@ -1639,6 +1639,29 @@ def _manufacturing_spec_config(conn: Any) -> None:
     )
 
 
+def _manufacturing_spec_templates(conn: Any) -> None:
+    """Add manufacturer-scoped, named spec templates.
+
+    Created idempotently so a fresh database (where _create_schema already made the
+    table) is a no-op, and an existing one gains it.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ws_spec_templates (
+            id              TEXT PRIMARY KEY,
+            manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            spec_config     TEXT NOT NULL DEFAULT '',
+            created_at      TIMESTAMPTZ NOT NULL,
+            updated_at      TIMESTAMPTZ NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ws_spec_templates_mfr ON ws_spec_templates(manufacturer_id)"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1656,6 +1679,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (18, "release_studio_source_defaults", _release_studio_source_defaults),
     (19, "release_studio_project_signoff", _release_studio_project_signoff),
     (20, "manufacturing_spec_config", _manufacturing_spec_config),
+    (21, "manufacturing_spec_templates", _manufacturing_spec_templates),
 )
 
 

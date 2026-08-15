@@ -6,6 +6,7 @@ import type {
     ManufacturingRun,
     ParsedSpecConfig,
     RunDefect,
+    SpecTemplate,
 } from "@/types/manufacturing";
 
 async function json<T>(response: Response, fallback: string): Promise<T> {
@@ -129,20 +130,64 @@ export async function previewSpecConfig(specConfig: string): Promise<ParsedSpecC
     );
 }
 
-export async function listSpecTemplates(): Promise<{ id: string; label: string }[]> {
-    const data = await json<{ templates: { id: string; label: string }[] }>(
-        await fetchApi("/api/manufacturing/spec-config/templates"),
-        "Failed to load templates.",
-    );
-    return data.templates;
+// -- spec templates (named, manufacturer-scoped) --
+
+export async function listTemplates(manufacturerId?: string): Promise<SpecTemplate[]> {
+    const query = manufacturerId ? `?manufacturer_id=${encodeURIComponent(manufacturerId)}` : "";
+    return json(await fetchApi(`/api/manufacturing/templates${query}`), "Failed to load templates.");
 }
 
-export async function getSpecTemplate(templateId: string): Promise<string> {
-    const data = await json<{ spec_config: string }>(
-        await fetchApi(`/api/manufacturing/spec-config/templates/${templateId}`),
-        "Failed to load template.",
+export async function getTemplate(templateId: string): Promise<SpecTemplate> {
+    return json(await fetchApi(`/api/manufacturing/templates/${templateId}`), "Failed to load template.");
+}
+
+export async function createTemplate(
+    manufacturerId: string,
+    body: { name: string; spec_config: string },
+): Promise<{ id: string }> {
+    return json(
+        await fetchApi(`/api/manufacturing/manufacturers/${manufacturerId}/templates`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to create template.",
     );
-    return data.spec_config;
+}
+
+export async function updateTemplate(
+    templateId: string,
+    body: Partial<{ name: string; spec_config: string }>,
+): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/templates/${templateId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to update template.",
+    );
+}
+
+export async function deleteTemplate(templateId: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/templates/${templateId}`, { method: "DELETE" }),
+        "Failed to delete template.",
+    );
+}
+
+export async function applyTemplate(
+    projectId: string,
+    templateId: string,
+): Promise<{ spec_config: string; parsed: ParsedSpecConfig }> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/spec-config/apply-template`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ template_id: templateId }),
+        }),
+        "Failed to apply template.",
+    );
 }
 
 // -- runs --

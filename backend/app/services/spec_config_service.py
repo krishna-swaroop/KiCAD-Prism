@@ -278,19 +278,57 @@ notes: text
 """
 
 
-# Named starter templates the editor offers. The first is applied to new projects.
-TEMPLATES: dict[str, dict[str, str]] = {
-    "default": {"label": "Prism default", "config": DEFAULT_SPEC_CONFIG},
-    "jlcpcb": {"label": "JLCPCB", "config": JLCPCB_SPEC_CONFIG},
-}
+# A ready-made schema mirroring PCBWay's standard PCB order options.
+PCBWAY_SPEC_CONFIG = """\
+# Spec schema modelled on PCBWay's standard PCB order options.
+# Values follow their order form; edit freely for your board.
+
+[Base]
+base_material: choice(FR-4, Aluminum, Copper Base, Rogers) = FR-4
+fr4_tg: choice(TG130, TG150, TG170) = TG130 | FR4 TG
+layer_count: int = 2
+board_width_mm: number | Board width (mm)
+board_height_mm: number | Board height (mm)
+
+[Stackup]
+board_thickness_mm: choice(0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0, 2.4, 2.6, 2.8, 3.0, 3.2) = 1.6 | PCB thickness (mm)
+outer_copper_weight_oz: choice(1, 2, 3, 4, 5, 6, 7, 8) = 1 | Outer copper (oz)
+inner_copper_weight_oz: choice(1, 2, 3, 4) | Inner copper (oz)
+min_track_spacing_mm: number = 0.1 | Min track/spacing (mm)
+min_via_hole_mm: number = 0.3 | Min via hole (mm)
+
+[Finish & cosmetic]
+solder_mask_color: choice(Green, Red, Yellow, Blue, White, Black, Purple, Matte Green, Matte Black) = Green
+silkscreen_color: choice(White, Black, Yellow, None) = White
+surface_finish: choice(HASL, Lead-free HASL, Immersion Gold (ENIG), Hard Gold, Immersion Silver, Immersion Tin, OSP, ENEPIG) = HASL
+via_process: choice(Tenting, Plugged, Untented) = Tenting
+
+[Advanced]
+impedance_control: bool
+gold_fingers: bool
+castellated_holes: bool | Castellated / half holes
+edge_plating: bool
+panelization: choice(None, V-scoring, Tab-routing, Perforation) = None
+
+[Delivery]
+lead_time: text
+notes: text
+"""
 
 
-def list_templates() -> list[dict[str, str]]:
-    """The named starter schemas, for the editor's template picker."""
-    return [{"id": key, "label": value["label"]} for key, value in TEMPLATES.items()]
-
-
-def get_template(template_id: str) -> str | None:
-    """The raw config text for a named template, or None if unknown."""
-    template = TEMPLATES.get(template_id)
-    return template["config"] if template else None
+# Built-in manufacturers seeded on first startup, each with a starting template. Users
+# own these once seeded and can edit or delete them freely.
+SEED_MANUFACTURERS: list[dict[str, Any]] = [
+    {
+        "name": "JLCPCB",
+        "website": "https://jlcpcb.com",
+        "template_name": "JLCPCB standard",
+        "template_config": JLCPCB_SPEC_CONFIG,
+    },
+    {
+        "name": "PCBWay",
+        "website": "https://www.pcbway.com",
+        "template_name": "PCBWay standard",
+        "template_config": PCBWAY_SPEC_CONFIG,
+    },
+]

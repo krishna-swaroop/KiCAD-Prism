@@ -202,6 +202,16 @@ class WorkspaceService:
             CREATE INDEX IF NOT EXISTS idx_ws_mfg_runs_project ON ws_manufacturing_runs(project_id);
             CREATE INDEX IF NOT EXISTS idx_ws_mfg_runs_status  ON ws_manufacturing_runs(status);
 
+            CREATE TABLE IF NOT EXISTS ws_spec_templates (
+                id              TEXT PRIMARY KEY,
+                manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
+                name            TEXT NOT NULL,
+                spec_config     TEXT NOT NULL DEFAULT '',
+                created_at      TIMESTAMPTZ NOT NULL,
+                updated_at      TIMESTAMPTZ NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ws_spec_templates_mfr ON ws_spec_templates(manufacturer_id);
+
             CREATE TABLE IF NOT EXISTS ws_run_defects (
                 id                TEXT PRIMARY KEY,
                 run_id            TEXT NOT NULL REFERENCES ws_manufacturing_runs(id) ON DELETE CASCADE,

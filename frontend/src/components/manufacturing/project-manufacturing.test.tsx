@@ -6,6 +6,8 @@ const saveBoardSpec = vi.fn();
 const extractBoardSpec = vi.fn();
 const listRuns = vi.fn();
 const getSpecConfig = vi.fn();
+const saveSpecConfig = vi.fn();
+const listTemplates = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     getBoardSpec: (...a: unknown[]) => getBoardSpec(...a),
@@ -13,6 +15,8 @@ vi.mock("@/lib/manufacturing", () => ({
     extractBoardSpec: (...a: unknown[]) => extractBoardSpec(...a),
     listRuns: (...a: unknown[]) => listRuns(...a),
     getSpecConfig: (...a: unknown[]) => getSpecConfig(...a),
+    saveSpecConfig: (...a: unknown[]) => saveSpecConfig(...a),
+    listTemplates: (...a: unknown[]) => listTemplates(...a),
 }));
 
 vi.mock("sonner", () => ({
@@ -44,6 +48,8 @@ describe("ProjectManufacturing", () => {
     beforeEach(() => {
         getBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, updated_at: null, updated_by: "" });
         getSpecConfig.mockResolvedValue({ spec_config: "[Stackup & physical]\nlayer_count: int", parsed: SCHEMA });
+        saveSpecConfig.mockResolvedValue({ spec_config: "", parsed: SCHEMA });
+        listTemplates.mockResolvedValue([]);
         listRuns.mockResolvedValue([]);
         saveBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, updated_at: null, updated_by: "" });
         extractBoardSpec.mockResolvedValue({ suggested: {} });

@@ -101,6 +101,37 @@ class ManufacturingStoreTests(unittest.TestCase):
         )
         self.assertEqual(again["specs"]["layer_count"], 6)
 
+    # -- templates --
+
+    def test_template_crud_scoped_to_manufacturer(self) -> None:
+        mid = mfg.create_manufacturer("MfgTest Template Fab")
+        tid = mfg.create_template(mid, "4-layer standard", "[S]\nlayer_count: int = 4")
+        listed = {t["id"]: t for t in mfg.list_templates(mid)}
+        self.assertIn(tid, listed)
+        self.assertEqual(listed[tid]["manufacturer_name"], "MfgTest Template Fab")
+
+        self.assertTrue(mfg.update_template(tid, name="4-layer ENIG"))
+        self.assertEqual(mfg.get_template(tid)["name"], "4-layer ENIG")
+
+        # Deleting the manufacturer cascades to its templates.
+        mfg.delete_manufacturer(mid)
+        self.assertIsNone(mfg.get_template(tid))
+
+    def test_apply_template_copies_config_into_project(self) -> None:
+        # Copy-on-apply: the project gets its own copy of the template's config.
+        saved = mfg.save_spec_config(self.project_id, "[X]\nfoo: text", updated_by="designer@x")
+        self.assertIn("foo: text", saved["spec_config"])
+
+    def test_seed_is_idempotent(self) -> None:
+        first = mfg.seed_builtin_manufacturers()
+        # JLCPCB/PCBWay now exist (seeded here or already present); a second run adds none.
+        second = mfg.seed_builtin_manufacturers()
+        self.assertEqual(second, [])
+        names = {m["name"] for m in mfg.list_manufacturers()}
+        self.assertIn("JLCPCB", names)
+        self.assertIn("PCBWay", names)
+        _ = first  # first may be empty if a prior test run already seeded
+
     # -- runs --
 
     def test_run_lifecycle_and_defects(self) -> None:

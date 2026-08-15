@@ -12,6 +12,8 @@ import {
     extractBoardSpec,
     listRuns,
     getSpecConfig,
+    saveSpecConfig,
+    listTemplates,
 } from "@/lib/manufacturing";
 import {
     RUN_STATUS_LABELS,
@@ -19,6 +21,7 @@ import {
     type ManufacturingRun,
     type ParsedSpecConfig,
     type SpecFieldDef,
+    type SpecTemplate,
 } from "@/types/manufacturing";
 import { SpecConfigEditor } from "./spec-config-editor";
 
@@ -46,19 +49,22 @@ export function ProjectManufacturing({
     const [extracting, setExtracting] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [editorOpen, setEditorOpen] = useState(false);
+    const [templates, setTemplates] = useState<SpecTemplate[]>([]);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [spec, config, runList] = await Promise.all([
+            const [spec, config, runList, tmpls] = await Promise.all([
                 getBoardSpec(projectId),
                 getSpecConfig(projectId),
                 listRuns(projectId),
+                listTemplates().catch(() => [] as SpecTemplate[]),
             ]);
             setValues(spec.specs ?? {});
             setSource(spec.source ?? {});
             setSchema(config.parsed);
             setRuns(runList);
+            setTemplates(tmpls);
             setDirty(false);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to load manufacturing data.");
@@ -245,7 +251,46 @@ export function ProjectManufacturing({
 
             {editorOpen && (
                 <SpecConfigEditor
-                    projectId={projectId}
+                    title="Edit spec schema"
+                    description="Define the fields the board-spec form shows, or apply a manufacturer template."
+                    saveLabel="Save schema"
+                    load={async () => {
+                        const { spec_config, parsed } = await getSpecConfig(projectId);
+                        return { text: spec_config, parsed };
+                    }}
+                    save={async (text) => {
+                        const { parsed } = await saveSpecConfig(projectId, text);
+                        return parsed;
+                    }}
+                    headerSlot={(setText) =>
+                        templates.length > 0 ? (
+                            <select
+                                aria-label="Apply a template"
+                                className="h-7 rounded-md border bg-background px-2 text-xs"
+                                value=""
+                                onChange={async (e) => {
+                                    const templateId = e.target.value;
+                                    e.target.value = "";
+                                    if (!templateId) return;
+                                    try {
+                                        // Copy-on-apply: fetch the template's config into the editor.
+                                        const { getTemplate } = await import("@/lib/manufacturing");
+                                        const tmpl = await getTemplate(templateId);
+                                        setText(tmpl.spec_config);
+                                    } catch (error) {
+                                        toast.error(error instanceof Error ? error.message : "Failed to load template.");
+                                    }
+                                }}
+                            >
+                                <option value="">Apply template…</option>
+                                {templates.map((t) => (
+                                    <option key={t.id} value={t.id}>
+                                        {t.manufacturer_name} — {t.name}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : null
+                    }
                     onClose={() => setEditorOpen(false)}
                     onSaved={() => {
                         setEditorOpen(false);

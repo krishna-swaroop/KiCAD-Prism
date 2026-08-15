@@ -1,18 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const getSpecConfig = vi.fn();
-const saveSpecConfig = vi.fn();
+import type { ParsedSpecConfig } from "@/types/manufacturing";
+
 const previewSpecConfig = vi.fn();
-const listSpecTemplates = vi.fn();
-const getSpecTemplate = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
-    getSpecConfig: (...a: unknown[]) => getSpecConfig(...a),
-    saveSpecConfig: (...a: unknown[]) => saveSpecConfig(...a),
     previewSpecConfig: (...a: unknown[]) => previewSpecConfig(...a),
-    listSpecTemplates: (...a: unknown[]) => listSpecTemplates(...a),
-    getSpecTemplate: (...a: unknown[]) => getSpecTemplate(...a),
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -25,7 +19,7 @@ vi.stubGlobal("ResizeObserver", class {
 
 import { SpecConfigEditor } from "./spec-config-editor";
 
-const PARSED = {
+const PARSED: ParsedSpecConfig = {
     sections: [
         {
             title: "Stackup",
@@ -35,15 +29,27 @@ const PARSED = {
     errors: [],
 };
 
+function renderEditor(overrides: Partial<Parameters<typeof SpecConfigEditor>[0]> = {}) {
+    const load = vi.fn(async () => ({ text: "[Stackup]\nlayer_count: int", parsed: PARSED }));
+    const save = vi.fn(async () => PARSED);
+    const onSaved = vi.fn();
+    render(
+        <SpecConfigEditor
+            title="Edit schema"
+            description="desc"
+            load={load}
+            save={save}
+            onClose={vi.fn()}
+            onSaved={onSaved}
+            {...overrides}
+        />,
+    );
+    return { load, save, onSaved };
+}
+
 describe("SpecConfigEditor", () => {
     beforeEach(() => {
-        getSpecConfig.mockResolvedValue({ spec_config: "[Stackup]\nlayer_count: int", parsed: PARSED });
-        saveSpecConfig.mockResolvedValue({ spec_config: "[Stackup]\nlayer_count: int", parsed: PARSED });
-        listSpecTemplates.mockResolvedValue([
-            { id: "default", label: "Prism default" },
-            { id: "jlcpcb", label: "JLCPCB" },
-        ]);
-        getSpecTemplate.mockResolvedValue("[JLCPCB]\nboard_thickness_mm: number");
+        previewSpecConfig.mockResolvedValue(PARSED);
     });
     afterEach(() => {
         cleanup();
@@ -51,15 +57,16 @@ describe("SpecConfigEditor", () => {
     });
 
     it("loads the config and previews its parsed fields", async () => {
-        render(<SpecConfigEditor projectId="p1" onClose={vi.fn()} onSaved={vi.fn()} />);
-        await waitFor(() => expect((screen.getByLabelText(".config") as HTMLTextAreaElement).value).toContain("layer_count"));
-        // Preview shows the parsed field and a valid badge.
+        renderEditor();
+        await waitFor(() =>
+            expect((screen.getByLabelText(".config") as HTMLTextAreaElement).value).toContain("layer_count"),
+        );
         expect(screen.getByText("Layer count")).toBeTruthy();
         expect(screen.getByText(/Schema is valid/)).toBeTruthy();
     });
 
     it("shows parse errors from the live preview", async () => {
-        render(<SpecConfigEditor projectId="p1" onClose={vi.fn()} onSaved={vi.fn()} />);
+        renderEditor();
         await waitFor(() => expect(screen.getByLabelText(".config")).toBeTruthy());
 
         previewSpecConfig.mockResolvedValue({
@@ -72,29 +79,22 @@ describe("SpecConfigEditor", () => {
         expect(screen.getByText(/1 problem/)).toBeTruthy();
     });
 
-    it("loads a template into the editor", async () => {
-        render(<SpecConfigEditor projectId="p1" onClose={vi.fn()} onSaved={vi.fn()} />);
-        await waitFor(() => expect(screen.getByLabelText("Load a template")).toBeTruthy());
-
-        // The current text is non-empty, so loading confirms first.
-        vi.stubGlobal("confirm", vi.fn(() => true));
-        fireEvent.change(screen.getByLabelText("Load a template"), { target: { value: "jlcpcb" } });
-
-        await waitFor(() => expect(getSpecTemplate).toHaveBeenCalledWith("jlcpcb"));
-        await waitFor(() =>
-            expect((screen.getByLabelText(".config") as HTMLTextAreaElement).value).toContain("board_thickness_mm"),
-        );
-    });
-
-    it("saves the edited schema", async () => {
-        const onSaved = vi.fn();
-        render(<SpecConfigEditor projectId="p1" onClose={vi.fn()} onSaved={onSaved} />);
+    it("saves the edited text through the save callback", async () => {
+        const { save, onSaved } = renderEditor();
         await waitFor(() => expect(screen.getByLabelText(".config")).toBeTruthy());
 
         fireEvent.change(screen.getByLabelText(".config"), { target: { value: "[S]\nx: text" } });
-        fireEvent.click(screen.getByRole("button", { name: "Save schema" }));
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-        await waitFor(() => expect(saveSpecConfig).toHaveBeenCalledWith("p1", "[S]\nx: text"));
+        await waitFor(() => expect(save).toHaveBeenCalledWith("[S]\nx: text"));
         await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    });
+
+    it("renders a header slot (e.g. a template picker)", async () => {
+        renderEditor({
+            headerSlot: () => <button type="button">Apply template…</button>,
+        });
+        await waitFor(() => expect(screen.getByLabelText(".config")).toBeTruthy());
+        expect(screen.getByRole("button", { name: "Apply template…" })).toBeTruthy();
     });
 });

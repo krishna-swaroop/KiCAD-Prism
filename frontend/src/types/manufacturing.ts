@@ -116,6 +116,16 @@ export interface ParsedSpecConfig {
     errors: string[];
 }
 
+export interface SpecTemplate {
+    id: string;
+    manufacturer_id: string;
+    manufacturer_name?: string;
+    name: string;
+    spec_config: string;
+    created_at: string;
+    updated_at: string;
+}
+
 // Keys the board extractor can fill, so the form can show a "from board" hint on
 // matching fields and the Extract button knows which values to expect.
 export const EXTRACTABLE_KEYS = new Set<string>([

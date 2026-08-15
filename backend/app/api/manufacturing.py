@@ -56,6 +56,20 @@ class SpecConfigRequest(BaseModel):
     spec_config: str = Field(default="", max_length=100_000)
 
 
+class TemplateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    spec_config: str = Field(default="", max_length=100_000)
+
+
+class TemplateUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    spec_config: str | None = Field(default=None, max_length=100_000)
+
+
+class ApplyTemplateRequest(BaseModel):
+    template_id: str = Field(min_length=1)
+
+
 class RunRequest(BaseModel):
     project_id: str = Field(min_length=1)
     manufacturer_id: str | None = None
@@ -205,19 +219,71 @@ async def preview_spec_config(request: SpecConfigRequest):
     return parsed.to_dict()
 
 
-@router.get("/spec-config/templates", dependencies=[Depends(require_viewer)])
-async def list_spec_templates():
-    """The named starter schemas (Prism default, JLCPCB) the editor can load."""
-    return {"templates": spec_config_service.list_templates()}
+# ---------------------------------------------------------------------------
+# Spec templates (named, manufacturer-scoped)
+# ---------------------------------------------------------------------------
 
 
-@router.get("/spec-config/templates/{template_id}", dependencies=[Depends(require_designer)])
-async def get_spec_template(template_id: str):
-    """The raw config text for a named starter schema."""
-    config = spec_config_service.get_template(template_id)
-    if config is None:
+@router.get("/templates", dependencies=[Depends(require_viewer)])
+async def list_templates(manufacturer_id: str | None = None):
+    """Templates for one manufacturer, or all. Names + metadata, not full config."""
+    return await asyncio.to_thread(mfg.list_templates, manufacturer_id)
+
+
+@router.get("/templates/{template_id}", dependencies=[Depends(require_viewer)])
+async def get_template(template_id: str):
+    """One template, including its full .config text."""
+    template = await asyncio.to_thread(mfg.get_template, template_id)
+    if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    return {"id": template_id, "spec_config": config}
+    return template
+
+
+@router.post("/manufacturers/{mfr_id}/templates", dependencies=[Depends(require_designer)])
+async def create_template(mfr_id: str, request: TemplateRequest):
+    template_id = await asyncio.to_thread(
+        _handle, mfg.create_template, mfr_id, request.name, request.spec_config
+    )
+    return {"id": template_id}
+
+
+@router.patch("/templates/{template_id}", dependencies=[Depends(require_designer)])
+async def update_template(template_id: str, request: TemplateUpdateRequest):
+    updated = await asyncio.to_thread(
+        _handle, mfg.update_template, template_id, **request.model_dump(exclude_none=True)
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Template not found or nothing to update")
+    return {"status": "success"}
+
+
+@router.delete("/templates/{template_id}", dependencies=[Depends(require_designer)])
+async def delete_template(template_id: str):
+    if not await asyncio.to_thread(mfg.delete_template, template_id):
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"status": "success"}
+
+
+@router.post("/projects/{project_id}/spec-config/apply-template")
+async def apply_template(
+    project_id: str,
+    request: ApplyTemplateRequest,
+    user: AuthenticatedUser = Depends(require_designer),
+):
+    """Copy a template's .config into the project's own schema (copy-on-apply).
+
+    The project then owns the copy and can edit it freely; later edits to the
+    template do not touch projects that already applied it.
+    """
+    template = await asyncio.to_thread(mfg.get_template, request.template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    saved = await asyncio.to_thread(
+        _handle, mfg.save_spec_config, project_id,
+        template.get("spec_config") or "", updated_by=user.email,
+    )
+    parsed = spec_config_service.parse_spec_config(saved.get("spec_config") or "")
+    return {"spec_config": saved.get("spec_config") or "", "parsed": parsed.to_dict()}
 
 
 # ---------------------------------------------------------------------------

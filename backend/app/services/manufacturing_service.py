@@ -120,6 +120,109 @@ def delete_manufacturer(mfr_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Spec templates (named, manufacturer-scoped)
+# ---------------------------------------------------------------------------
+
+
+def list_templates(manufacturer_id: str | None = None) -> List[Dict[str, Any]]:
+    """Templates for one manufacturer, or all of them, with the manufacturer name."""
+    query = """
+        SELECT t.*, m.name AS manufacturer_name
+        FROM ws_spec_templates t
+        JOIN ws_manufacturers m ON m.id = t.manufacturer_id
+    """
+    params: tuple[Any, ...] = ()
+    if manufacturer_id:
+        query += " WHERE t.manufacturer_id = %s"
+        params = (manufacturer_id,)
+    query += " ORDER BY m.name, t.name"
+    with _connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [_row(r) for r in rows]
+
+
+def get_template(template_id: str) -> Optional[Dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM ws_spec_templates WHERE id = %s", (template_id,)
+        ).fetchone()
+    return _row(row) if row else None
+
+
+def create_template(manufacturer_id: str, name: str, spec_config: str = "") -> str:
+    clean = name.strip()
+    if not clean:
+        raise ManufacturingError("A template name is required.")
+    with _connect() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM ws_manufacturers WHERE id = %s", (manufacturer_id,)
+        ).fetchone()
+        if not exists:
+            raise ManufacturingError("Manufacturer not found.")
+    template_id = _new_id("tpl_")
+    now = _now()
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO ws_spec_templates (id,manufacturer_id,name,spec_config,created_at,updated_at)
+               VALUES (%s,%s,%s,%s,%s,%s)""",
+            (template_id, manufacturer_id, clean, spec_config, now, now),
+        )
+        conn.commit()
+    return template_id
+
+
+def update_template(template_id: str, **fields: Any) -> bool:
+    allowed = {"name", "spec_config"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if "name" in updates:
+        updates["name"] = str(updates["name"]).strip()
+        if not updates["name"]:
+            raise ManufacturingError("A template name is required.")
+    if not updates:
+        return False
+    updates["updated_at"] = _now()
+    columns = ", ".join(f"{k} = %s" for k in updates)
+    with _connect() as conn:
+        result = conn.execute(
+            f"UPDATE ws_spec_templates SET {columns} WHERE id = %s",
+            (*updates.values(), template_id),
+        )
+        conn.commit()
+    return bool(result.rowcount)
+
+
+def delete_template(template_id: str) -> bool:
+    with _connect() as conn:
+        result = conn.execute("DELETE FROM ws_spec_templates WHERE id = %s", (template_id,))
+        conn.commit()
+    return bool(result.rowcount)
+
+
+def seed_builtin_manufacturers() -> list[str]:
+    """Create the built-in manufacturers and their starter templates, once.
+
+    Idempotent: a manufacturer that already exists (by name) is skipped entirely,
+    so a user who renamed or edited a seeded one is never clobbered. Returns the
+    names actually seeded.
+    """
+    from app.services.spec_config_service import SEED_MANUFACTURERS
+
+    seeded: list[str] = []
+    with _connect() as conn:
+        existing = {
+            str(row["name"]).strip().lower()
+            for row in conn.execute("SELECT name FROM ws_manufacturers").fetchall()
+        }
+    for entry in SEED_MANUFACTURERS:
+        if entry["name"].strip().lower() in existing:
+            continue
+        mfr_id = create_manufacturer(entry["name"], website=entry.get("website", ""))
+        create_template(mfr_id, entry["template_name"], entry["template_config"])
+        seeded.append(entry["name"])
+    return seeded
+
+
+# ---------------------------------------------------------------------------
 # Board specs (one row per project)
 # ---------------------------------------------------------------------------
 

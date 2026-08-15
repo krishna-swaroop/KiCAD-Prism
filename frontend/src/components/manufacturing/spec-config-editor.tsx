@@ -11,19 +11,21 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import {
-    getSpecConfig,
-    saveSpecConfig,
-    previewSpecConfig,
-    listSpecTemplates,
-    getSpecTemplate,
-} from "@/lib/manufacturing";
+import { previewSpecConfig } from "@/lib/manufacturing";
 import type { ParsedSpecConfig } from "@/types/manufacturing";
 
 interface SpecConfigEditorProps {
-    projectId: string;
+    title: string;
+    description: string;
+    /** Load the initial .config text and its parsed form. */
+    load: () => Promise<{ text: string; parsed: ParsedSpecConfig }>;
+    /** Persist the edited text; returns the re-parsed form. */
+    save: (text: string) => Promise<ParsedSpecConfig>;
+    /** Optional slot rendered next to the .config label (e.g. an apply-template picker). */
+    headerSlot?: (setText: (value: string) => void, currentText: string) => React.ReactNode;
     onClose: () => void;
     onSaved: () => void;
+    saveLabel?: string;
 }
 
 const SYNTAX_HELP = `# Comment lines start with #
@@ -36,26 +38,30 @@ field_key: type | Nice Label
 
 const EMPTY: ParsedSpecConfig = { sections: [], errors: [] };
 
-export function SpecConfigEditor({ projectId, onClose, onSaved }: SpecConfigEditorProps) {
+export function SpecConfigEditor({
+    title,
+    description,
+    load,
+    save,
+    headerSlot,
+    onClose,
+    onSaved,
+    saveLabel = "Save",
+}: SpecConfigEditorProps) {
     const [text, setText] = useState("");
     const [parsed, setParsed] = useState<ParsedSpecConfig>(EMPTY);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [templates, setTemplates] = useState<{ id: string; label: string }[]>([]);
     const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         let cancelled = false;
         void (async () => {
             try {
-                const [{ spec_config, parsed: initial }, tmpls] = await Promise.all([
-                    getSpecConfig(projectId),
-                    listSpecTemplates().catch(() => []),
-                ]);
+                const { text: initial, parsed: initialParsed } = await load();
                 if (cancelled) return;
-                setText(spec_config);
-                setParsed(initial);
-                setTemplates(tmpls);
+                setText(initial);
+                setParsed(initialParsed);
             } catch (error) {
                 toast.error(error instanceof Error ? error.message : "Failed to load the schema.");
             } finally {
@@ -65,44 +71,35 @@ export function SpecConfigEditor({ projectId, onClose, onSaved }: SpecConfigEdit
         return () => {
             cancelled = true;
         };
-    }, [projectId]);
+        // load is a stable closure from the caller; run once on mount.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    const handleLoadTemplate = async (templateId: string) => {
-        if (!templateId) return;
-        if (text.trim() && !window.confirm("Replace the current schema with this template?")) {
-            return;
-        }
-        try {
-            const config = await getSpecTemplate(templateId);
-            handleChange(config);
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to load template.");
-        }
-    };
-
-    // Re-parse as the user types, debounced, so errors and the field count update live.
     const runPreview = useCallback((value: string) => {
         if (debounce.current) clearTimeout(debounce.current);
         debounce.current = setTimeout(() => {
             void previewSpecConfig(value)
                 .then(setParsed)
                 .catch(() => {
-                    /* preview is best-effort; a failed parse just leaves the last good one */
+                    /* best-effort: keep the last good parse */
                 });
         }, 250);
     }, []);
 
-    const handleChange = (value: string) => {
-        setText(value);
-        runPreview(value);
-    };
+    const handleChange = useCallback(
+        (value: string) => {
+            setText(value);
+            runPreview(value);
+        },
+        [runPreview],
+    );
 
     const handleSave = async () => {
         setSaving(true);
         try {
-            const { parsed: saved } = await saveSpecConfig(projectId, text);
+            const saved = await save(text);
             setParsed(saved);
-            toast.success("Spec schema saved.");
+            toast.success("Saved.");
             onSaved();
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to save.");
@@ -117,40 +114,20 @@ export function SpecConfigEditor({ projectId, onClose, onSaved }: SpecConfigEdit
         <Dialog open onOpenChange={(next) => !next && onClose()}>
             <DialogContent className="w-[min(56rem,calc(100vw-2rem))] max-w-none">
                 <DialogHeader>
-                    <DialogTitle>Edit spec schema</DialogTitle>
-                    <DialogDescription>
-                        Define the fields the board-spec form shows, in a small config syntax.
-                    </DialogDescription>
+                    <DialogTitle>{title}</DialogTitle>
+                    <DialogDescription>{description}</DialogDescription>
                 </DialogHeader>
 
                 {loading ? (
                     <div className="p-6 text-sm text-muted-foreground">Loading…</div>
                 ) : (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        {/* Editor */}
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <label htmlFor="spec-config-text" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                                     .config
                                 </label>
-                                {templates.length > 0 && (
-                                    <select
-                                        aria-label="Load a template"
-                                        className="h-7 rounded-md border bg-background px-2 text-xs"
-                                        value=""
-                                        onChange={(e) => {
-                                            void handleLoadTemplate(e.target.value);
-                                            e.target.value = "";
-                                        }}
-                                    >
-                                        <option value="">Load template…</option>
-                                        {templates.map((t) => (
-                                            <option key={t.id} value={t.id}>
-                                                {t.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                )}
+                                {headerSlot?.(handleChange, text)}
                             </div>
                             <textarea
                                 id="spec-config-text"
@@ -166,7 +143,6 @@ export function SpecConfigEditor({ projectId, onClose, onSaved }: SpecConfigEdit
                             </details>
                         </div>
 
-                        {/* Live preview */}
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -181,10 +157,7 @@ export function SpecConfigEditor({ projectId, onClose, onSaved }: SpecConfigEdit
                                 {parsed.errors.length > 0 && (
                                     <ul className="mb-3 space-y-1">
                                         {parsed.errors.map((error, index) => (
-                                            <li
-                                                key={index}
-                                                className="flex items-start gap-1.5 text-xs text-destructive"
-                                            >
+                                            <li key={index} className="flex items-start gap-1.5 text-xs text-destructive">
                                                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                                                 {error}
                                             </li>
@@ -205,10 +178,7 @@ export function SpecConfigEditor({ projectId, onClose, onSaved }: SpecConfigEdit
                                                 </div>
                                                 <ul className="mt-1.5 space-y-1">
                                                     {section.fields.map((field) => (
-                                                        <li
-                                                            key={field.key}
-                                                            className="flex items-center justify-between gap-2 text-sm"
-                                                        >
+                                                        <li key={field.key} className="flex items-center justify-between gap-2 text-sm">
                                                             <span>{field.label}</span>
                                                             <Badge variant="outline" className="font-mono text-[10px]">
                                                                 {field.type === "choice"
@@ -245,7 +215,7 @@ export function SpecConfigEditor({ projectId, onClose, onSaved }: SpecConfigEdit
                             Cancel
                         </Button>
                         <Button onClick={() => void handleSave()} disabled={saving || loading}>
-                            {saving ? "Saving…" : "Save schema"}
+                            {saving ? "Saving…" : saveLabel}
                         </Button>
                     </div>
                 </div>

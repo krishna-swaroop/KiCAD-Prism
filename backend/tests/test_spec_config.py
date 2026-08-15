@@ -8,6 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.spec_config_service import (  # noqa: E402
     DEFAULT_SPEC_CONFIG,
+    JLCPCB_SPEC_CONFIG,
+    PCBWAY_SPEC_CONFIG,
+    SEED_MANUFACTURERS,
     parse_spec_config,
 )
 
@@ -92,6 +95,19 @@ class SpecConfigParseTests(unittest.TestCase):
         parsed = parse_spec_config("# just a comment\n")
         self.assertEqual(parsed.sections, [])
         self.assertEqual(parsed.errors, [])
+
+    def test_builtin_templates_parse_cleanly(self) -> None:
+        for config in (DEFAULT_SPEC_CONFIG, JLCPCB_SPEC_CONFIG, PCBWAY_SPEC_CONFIG):
+            parsed = parse_spec_config(config)
+            self.assertEqual(parsed.errors, [], msg=f"errors: {parsed.errors}")
+            self.assertGreater(sum(len(s.fields) for s in parsed.sections), 0)
+
+    def test_seed_manufacturers_are_named_and_configured(self) -> None:
+        names = {m["name"] for m in SEED_MANUFACTURERS}
+        self.assertEqual(names, {"JLCPCB", "PCBWay"})
+        for entry in SEED_MANUFACTURERS:
+            self.assertTrue(entry["template_name"])
+            self.assertTrue(entry["template_config"].strip())
 
 
 if __name__ == "__main__":
