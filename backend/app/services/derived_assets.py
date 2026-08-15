@@ -244,3 +244,96 @@ def purge_legacy_in_tree_thumbnails(project_path: str | Path, repo) -> list[str]
         except StopIteration:
             directory.rmdir()
     return removed
+
+
+# ---------------------------------------------------------------------------
+# Manufacturing defect evidence
+# ---------------------------------------------------------------------------
+#
+# Photos and reports attached to a defect. Unlike a thumbnail, a defect keeps
+# several files, and a PDF report cannot be re-encoded as an image, so evidence
+# is stored by content digest rather than as one replaceable file. It still
+# lives entirely in the derived store, never in a git checkout.
+
+MAX_EVIDENCE_BYTES = 25 * 1024 * 1024
+
+# What a defect may carry: photographs and PDF reports. The extension is derived
+# from the media type, never from the client-supplied filename, so a mislabelled
+# upload cannot land on disk as something it is not.
+EVIDENCE_MEDIA_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
+}
+
+
+class EvidenceError(ValueError):
+    """An uploaded file could not be stored as defect evidence."""
+
+
+def evidence_dir(run_id: str) -> Path:
+    """Where one run's defect evidence lives. ``run_id`` is server-minted."""
+    if not run_id or "/" in run_id or "\\" in run_id or ".." in run_id:
+        raise EvidenceError("Invalid run id.")
+    return derived_root() / "manufacturing" / run_id
+
+
+def store_evidence(run_id: str, data: bytes, media_type: str) -> tuple[str, str, int]:
+    """Store an evidence blob, returning (digest, media_type, size).
+
+    The bytes are written as received (a report or a photo is the artifact; unlike
+    a thumbnail there is nothing to normalise), but only after the media type is
+    checked against the allowlist and the size against the cap. The on-disk name is
+    the content digest plus an extension chosen from the media type.
+    """
+    if not data:
+        raise EvidenceError("The uploaded file is empty.")
+    if len(data) > MAX_EVIDENCE_BYTES:
+        raise EvidenceError(
+            f"The file is larger than {MAX_EVIDENCE_BYTES // (1024 * 1024)} MB."
+        )
+    extension = EVIDENCE_MEDIA_TYPES.get(media_type)
+    if extension is None:
+        raise EvidenceError("Only images (JPEG, PNG, WebP) and PDF reports are accepted.")
+
+    directory = evidence_dir(run_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(data).hexdigest()
+    target = directory / f"{digest[:24]}{extension}"
+    if not target.exists():
+        with tempfile.NamedTemporaryFile(
+            dir=directory, prefix=".evidence-", suffix=extension, delete=False
+        ) as handle:
+            staging = Path(handle.name)
+            handle.write(data)
+        staging.replace(target)
+        target.chmod(0o644)
+    return digest, media_type, len(data)
+
+
+def find_evidence(run_id: str, digest: str) -> Optional[Path]:
+    """The stored evidence file for a digest, or None. Digest is validated as hex."""
+    if not digest or not all(c in "0123456789abcdef" for c in digest.lower()):
+        return None
+    directory = evidence_dir(run_id)
+    if not directory.is_dir():
+        return None
+    for candidate in directory.glob(f"{digest[:24]}.*"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def delete_evidence(run_id: str, digest: str) -> bool:
+    """Remove one evidence blob. Returns whether a file was deleted."""
+    found = find_evidence(run_id, digest)
+    if found is None:
+        return False
+    found.unlink(missing_ok=True)
+    return True
+
+
+def discard_run_evidence(run_id: str) -> None:
+    """Drop every evidence file for a run (used when the run is deleted)."""
+    shutil.rmtree(evidence_dir(run_id), ignore_errors=True)
