@@ -29,7 +29,7 @@ import {
     type ManufacturingRun,
     type RunDefect,
 } from "@/types/manufacturing";
-import { SELECT_CLASS } from "./ui";
+import { CompactSelect } from "./ui";
 
 interface RunDetailProps {
     runId: string;
@@ -109,9 +109,9 @@ export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack
                         <Label htmlFor="run-status" className="text-sm text-muted-foreground">
                             Status
                         </Label>
-                        <select
+                        <CompactSelect
                             id="run-status"
-                            className={`h-8 w-auto ${SELECT_CLASS}`}
+                            widthClass="w-auto"
                             value={run.status}
                             disabled={!canEdit}
                             onChange={(e) => void patch({ status: e.target.value })}
@@ -121,7 +121,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack
                                     {RUN_STATUS_LABELS[status]}
                                 </option>
                             ))}
-                        </select>
+                        </CompactSelect>
                     </div>
                 </div>
             </div>
@@ -148,9 +148,9 @@ export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack
                 <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1">
                         <Label htmlFor="run-mfr-edit">Manufacturer</Label>
-                        <select
+                        <CompactSelect
                             id="run-mfr-edit"
-                            className={`h-8 w-full ${SELECT_CLASS}`}
+                            className="h-8"
                             value={run.manufacturer_id ?? ""}
                             onChange={(e) => void patch({ manufacturer_id: e.target.value || null })}
                         >
@@ -160,7 +160,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack
                                     {m.name}
                                 </option>
                             ))}
-                        </select>
+                        </CompactSelect>
                     </div>
                 </div>
             )}
@@ -481,9 +481,9 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                             <Label htmlFor="def-category">Category</Label>
-                            <select
+                            <CompactSelect
                                 id="def-category"
-                                className={`h-8 w-full ${SELECT_CLASS}`}
+                                className="h-8"
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
                             >
@@ -492,20 +492,20 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                                         {c.label}
                                     </option>
                                 ))}
-                            </select>
+                            </CompactSelect>
                         </div>
                         <div className="space-y-1">
                             <Label htmlFor="def-severity">Severity</Label>
-                            <select
+                            <CompactSelect
                                 id="def-severity"
-                                className={`h-8 w-full ${SELECT_CLASS}`}
+                                className="h-8"
                                 value={severity}
                                 onChange={(e) => setSeverity(e.target.value as DefectSeverity)}
                             >
                                 <option value="minor">Minor</option>
                                 <option value="major">Major</option>
                                 <option value="critical">Critical</option>
-                            </select>
+                            </CompactSelect>
                         </div>
                     </div>
                     <div className="space-y-1">

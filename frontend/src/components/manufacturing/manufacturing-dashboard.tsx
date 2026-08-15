@@ -18,7 +18,7 @@ import {
 import { NewRunWizard } from "./new-run-wizard";
 import { RunDetail } from "./run-detail";
 import { ManufacturersPanel } from "./manufacturers-panel";
-import { SELECT_CLASS } from "./ui";
+import { CompactSelect } from "./ui";
 
 interface ManufacturingDashboardProps {
     user: User | null;
@@ -168,8 +168,8 @@ function RunTable({ runs, totalCount, statusFilter, onStatusFilter, onOpen }: Ru
                 <span className="text-sm font-medium">{runs.length} run(s)</span>
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Filter className="h-3.5 w-3.5" />
-                    <select
-                        className={`h-8 w-auto ${SELECT_CLASS}`}
+                    <CompactSelect
+                        widthClass="w-auto"
                         value={statusFilter}
                         onChange={(e) => onStatusFilter(e.target.value as RunStatus | "all")}
                         aria-label="Filter by status"
@@ -180,7 +180,7 @@ function RunTable({ runs, totalCount, statusFilter, onStatusFilter, onOpen }: Ru
                                 {RUN_STATUS_LABELS[status]}
                             </option>
                         ))}
-                    </select>
+                    </CompactSelect>
                 </label>
             </div>
 

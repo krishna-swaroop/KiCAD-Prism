@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { createRun } from "@/lib/manufacturing";
 import type { Manufacturer } from "@/types/manufacturing";
-import { SELECT_CLASS } from "./ui";
+import { CompactSelect } from "./ui";
 
 interface NewRunWizardProps {
     open: boolean;
@@ -110,9 +110,9 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                     {step === 0 && (
                         <div className="space-y-2">
                             <Label htmlFor="run-project">Project</Label>
-                            <select
+                            <CompactSelect
                                 id="run-project"
-                                className={`h-9 w-full ${SELECT_CLASS}`}
+                                className="h-9"
                                 value={projectId}
                                 onChange={(e) => setProjectId(e.target.value)}
                             >
@@ -123,7 +123,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                                         {p.sub_path && p.sub_path !== "." ? ` (${p.sub_path})` : ""}
                                     </option>
                                 ))}
-                            </select>
+                            </CompactSelect>
                             <p className="text-xs text-muted-foreground">
                                 The board being fabricated. Its specs and history come along.
                             </p>
@@ -147,9 +147,9 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                     {step === 2 && (
                         <div className="space-y-2">
                             <Label htmlFor="run-mfr">Manufacturer</Label>
-                            <select
+                            <CompactSelect
                                 id="run-mfr"
-                                className={`h-9 w-full ${SELECT_CLASS}`}
+                                className="h-9"
                                 value={manufacturerId}
                                 onChange={(e) => setManufacturerId(e.target.value)}
                             >
@@ -159,7 +159,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                                         {m.name}
                                     </option>
                                 ))}
-                            </select>
+                            </CompactSelect>
                             <p className="text-xs text-muted-foreground">
                                 Optional. Manage the list from the Manufacturers tab.
                             </p>

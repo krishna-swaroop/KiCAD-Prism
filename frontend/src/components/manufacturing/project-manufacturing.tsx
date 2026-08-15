@@ -24,7 +24,7 @@ import {
     type SpecTemplate,
 } from "@/types/manufacturing";
 import { SpecConfigEditor } from "./spec-config-editor";
-import { SELECT_CLASS, FIELD_GAP, GROUP_GRID } from "./ui";
+import { CompactSelect, FIELD_GAP, GROUP_GRID } from "./ui";
 
 interface ProjectManufacturingProps {
     projectId: string;
@@ -265,9 +265,9 @@ export function ProjectManufacturing({
                     }}
                     headerSlot={(setText) =>
                         templates.length > 0 ? (
-                            <select
+                            <CompactSelect
                                 aria-label="Apply a template"
-                                className={`h-7 w-auto text-xs ${SELECT_CLASS}`}
+                                widthClass="w-auto"
                                 value=""
                                 onChange={async (e) => {
                                     const templateId = e.target.value;
@@ -289,7 +289,7 @@ export function ProjectManufacturing({
                                         {t.manufacturer_name} — {t.name}
                                     </option>
                                 ))}
-                            </select>
+                            </CompactSelect>
                         ) : null
                     }
                     onClose={() => setEditorOpen(false)}
@@ -317,8 +317,8 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
     const effective = value === undefined || value === null ? field.default : value;
 
     const labelRow = (
-        <div className="flex items-center gap-2">
-            <Label htmlFor={inputId} className="text-sm">
+        <div className="flex items-center gap-1.5">
+            <Label htmlFor={inputId} className="text-xs">
                 {field.label}
             </Label>
             {provenance === "extracted" && (
@@ -327,16 +327,17 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
                 </Badge>
             )}
             {provenance !== "extracted" && EXTRACTABLE_KEYS.has(field.key) && (
-                <span className="text-[10px] text-muted-foreground" title="Extract can fill this from the board">
-                    ⚡
-                </span>
+                <Sparkles
+                    aria-label="Extract from board can fill this field"
+                    className="h-3 w-3 text-muted-foreground"
+                />
             )}
         </div>
     );
 
     if (field.type === "bool") {
         return (
-            <label className="flex h-8 cursor-pointer items-center justify-between gap-2 rounded-md border px-2">
+            <label className="flex h-7 cursor-pointer items-center justify-between gap-2 rounded-md border px-2">
                 {labelRow}
                 <input
                     id={inputId}
@@ -353,9 +354,8 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
         return (
             <div className={FIELD_GAP}>
                 {labelRow}
-                <select
+                <CompactSelect
                     id={inputId}
-                    className={`h-8 w-full ${SELECT_CLASS}`}
                     value={typeof effective === "string" ? effective : ""}
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value || undefined)}
@@ -366,7 +366,7 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
                             {option}
                         </option>
                     ))}
-                </select>
+                </CompactSelect>
             </div>
         );
     }
@@ -379,7 +379,7 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
                 id={inputId}
                 type={isNumber ? "number" : "text"}
                 step={field.type === "int" ? 1 : "any"}
-                className="h-8"
+                className="h-7"
                 value={effective === undefined || effective === null ? "" : String(effective)}
                 disabled={disabled}
                 onChange={(e) => {
