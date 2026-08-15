@@ -35,6 +35,7 @@ const SCHEMA = {
     sections: [
         {
             title: "Stackup & physical",
+            optional: false,
             fields: [
                 { key: "layer_count", label: "Layer count", type: "int", options: [], default: null },
                 { key: "board_thickness_mm", label: "Board thickness", type: "number", options: [], default: null },
@@ -46,12 +47,12 @@ const SCHEMA = {
 
 describe("ProjectManufacturing", () => {
     beforeEach(() => {
-        getBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, updated_at: null, updated_by: "" });
+        getBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" });
         getSpecConfig.mockResolvedValue({ spec_config: "[Stackup & physical]\nlayer_count: int", parsed: SCHEMA });
         saveSpecConfig.mockResolvedValue({ spec_config: "", parsed: SCHEMA });
         listTemplates.mockResolvedValue([]);
         listRuns.mockResolvedValue([]);
-        saveBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, updated_at: null, updated_by: "" });
+        saveBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" });
         extractBoardSpec.mockResolvedValue({ suggested: {} });
     });
 
@@ -95,6 +96,61 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect((screen.getByLabelText(/Layer count/) as HTMLInputElement).value).toBe("6"));
         // "from board" provenance badge appears for extracted fields.
         expect(screen.getAllByText("from board").length).toBeGreaterThan(0);
+    });
+
+    it("collapses a section when its header is clicked", async () => {
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitFor(() => expect(screen.getByLabelText(/Layer count/)).toBeTruthy());
+
+        // Clicking the section header hides its fields.
+        fireEvent.click(screen.getByRole("button", { name: /Stackup & physical/ }));
+        await waitFor(() => expect(screen.queryByLabelText(/Layer count/)).toBeNull());
+    });
+
+    it("optional sections start off and their fields appear once toggled on", async () => {
+        const withOptional = {
+            sections: [
+                ...SCHEMA.sections,
+                {
+                    title: "Assembly",
+                    optional: true,
+                    fields: [{ key: "smt_parts", label: "SMT parts", type: "int", options: [], default: null }],
+                },
+            ],
+            errors: [],
+        };
+        getSpecConfig.mockResolvedValue({ spec_config: "x", parsed: withOptional });
+
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitFor(() => expect(screen.getByText("Assembly")).toBeTruthy());
+        // Off by default: its field is hidden.
+        expect(screen.queryByLabelText(/SMT parts/)).toBeNull();
+
+        // The On/Off toggle activates it.
+        const toggle = screen.getByRole("checkbox");
+        fireEvent.click(toggle);
+        await waitFor(() => expect(screen.getByLabelText(/SMT parts/)).toBeTruthy());
+    });
+
+    it("persists active sections when saving", async () => {
+        const withOptional = {
+            sections: [
+                ...SCHEMA.sections,
+                { title: "Assembly", optional: true, fields: [] },
+            ],
+            errors: [],
+        };
+        getSpecConfig.mockResolvedValue({ spec_config: "x", parsed: withOptional });
+
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitFor(() => expect(screen.getByText("Assembly")).toBeTruthy());
+
+        fireEvent.click(screen.getByRole("checkbox")); // turn Assembly on
+        fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+
+        await waitFor(() => expect(saveBoardSpec).toHaveBeenCalled());
+        const activeSections = saveBoardSpec.mock.calls[0][3];
+        expect(activeSections).toContain("Assembly");
     });
 
     it("saves the current values", async () => {

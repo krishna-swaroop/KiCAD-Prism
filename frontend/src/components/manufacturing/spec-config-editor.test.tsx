@@ -23,6 +23,7 @@ const PARSED: ParsedSpecConfig = {
     sections: [
         {
             title: "Stackup",
+            optional: false,
             fields: [{ key: "layer_count", label: "Layer count", type: "int", options: [], default: null }],
         },
     ],

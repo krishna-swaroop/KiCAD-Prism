@@ -177,12 +177,13 @@ class WorkspaceService:
             );
 
             CREATE TABLE IF NOT EXISTS ws_board_specs (
-                project_id  TEXT PRIMARY KEY REFERENCES ws_projects(id) ON DELETE CASCADE,
-                specs       JSONB NOT NULL DEFAULT '{}'::jsonb,
-                source      JSONB NOT NULL DEFAULT '{}'::jsonb,
-                spec_config TEXT NOT NULL DEFAULT '',
-                updated_at  TIMESTAMPTZ NOT NULL,
-                updated_by  TEXT NOT NULL DEFAULT ''
+                project_id      TEXT PRIMARY KEY REFERENCES ws_projects(id) ON DELETE CASCADE,
+                specs           JSONB NOT NULL DEFAULT '{}'::jsonb,
+                source          JSONB NOT NULL DEFAULT '{}'::jsonb,
+                spec_config     TEXT NOT NULL DEFAULT '',
+                active_sections JSONB NOT NULL DEFAULT '[]'::jsonb,
+                updated_at      TIMESTAMPTZ NOT NULL,
+                updated_by      TEXT NOT NULL DEFAULT ''
             );
 
             CREATE TABLE IF NOT EXISTS ws_manufacturing_runs (

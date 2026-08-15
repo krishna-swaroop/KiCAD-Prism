@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Factory, Sparkles, Save, PlusCircle, Settings2 } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Factory, Sparkles, Save, PlusCircle, Settings2, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,11 @@ import {
     type ManufacturingRun,
     type ParsedSpecConfig,
     type SpecFieldDef,
+    type SpecSectionDef,
     type SpecTemplate,
 } from "@/types/manufacturing";
 import { SpecConfigEditor } from "./spec-config-editor";
-import { CompactSelect, FIELD_GAP, GROUP_GRID } from "./ui";
+import { CompactSelect, FIELD_GAP, GROUP_GRID, FIELD_WRAP } from "./ui";
 
 interface ProjectManufacturingProps {
     projectId: string;
@@ -51,6 +52,10 @@ export function ProjectManufacturing({
     const [dirty, setDirty] = useState(false);
     const [editorOpen, setEditorOpen] = useState(false);
     const [templates, setTemplates] = useState<SpecTemplate[]>([]);
+    // Which optional sections are switched on (persisted with the spec).
+    const [activeSections, setActiveSections] = useState<Set<string>>(new Set());
+    // Which sections are collapsed in the UI (per-session, not persisted).
+    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -66,6 +71,7 @@ export function ProjectManufacturing({
             setSchema(config.parsed);
             setRuns(runList);
             setTemplates(tmpls);
+            setActiveSections(new Set(spec.active_sections ?? []));
             setDirty(false);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to load manufacturing data.");
@@ -111,9 +117,10 @@ export function ProjectManufacturing({
     const handleSave = async () => {
         setSaving(true);
         try {
-            const saved = await saveBoardSpec(projectId, values, source);
+            const saved = await saveBoardSpec(projectId, values, source, [...activeSections]);
             setValues(saved.specs ?? {});
             setSource(saved.source ?? {});
+            setActiveSections(new Set(saved.active_sections ?? []));
             setDirty(false);
             toast.success("Board specs saved.");
         } catch (error) {
@@ -121,6 +128,23 @@ export function ProjectManufacturing({
         } finally {
             setSaving(false);
         }
+    };
+
+    const toggleCollapsed = (title: string) => {
+        setCollapsed((prev) => {
+            const next = new Set(prev);
+            next.has(title) ? next.delete(title) : next.add(title);
+            return next;
+        });
+    };
+
+    const toggleSectionActive = (title: string, on: boolean) => {
+        setActiveSections((prev) => {
+            const next = new Set(prev);
+            on ? next.add(title) : next.delete(title);
+            return next;
+        });
+        setDirty(true);
     };
 
     if (loading) {
@@ -167,30 +191,32 @@ export function ProjectManufacturing({
                         </p>
                     </div>
                 ) : (
-                    <div className="space-y-4 p-4">
+                    <div className="divide-y">
                         {schema.errors.length > 0 && (
-                            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive">
+                            <div className="m-4 rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive">
                                 The schema has {schema.errors.length} problem(s). Some fields may be missing until you fix it.
                             </div>
                         )}
                         {schema.sections.map((section) => (
-                            <div key={section.title}>
-                                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                    {section.title}
-                                </h4>
-                                <div className={GROUP_GRID}>
-                                    {section.fields.map((field) => (
-                                        <SpecFieldInput
-                                            key={field.key}
-                                            field={field}
-                                            value={values[field.key]}
-                                            provenance={source[field.key]}
-                                            disabled={!canEdit}
-                                            onChange={(v) => setField(field.key, v)}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
+                            <SpecSection
+                                key={section.title}
+                                section={section}
+                                collapsed={collapsed.has(section.title)}
+                                active={!section.optional || activeSections.has(section.title)}
+                                canEdit={canEdit}
+                                onToggleCollapsed={() => toggleCollapsed(section.title)}
+                                onToggleActive={(on) => toggleSectionActive(section.title, on)}
+                                renderField={(field) => (
+                                    <SpecFieldInput
+                                        key={field.key}
+                                        field={field}
+                                        value={values[field.key]}
+                                        provenance={source[field.key]}
+                                        disabled={!canEdit}
+                                        onChange={(v) => setField(field.key, v)}
+                                    />
+                                )}
+                            />
                         ))}
                     </div>
                 )}
@@ -298,6 +324,74 @@ export function ProjectManufacturing({
                         void load();
                     }}
                 />
+            )}
+        </div>
+    );
+}
+
+interface SpecSectionProps {
+    section: SpecSectionDef;
+    collapsed: boolean;
+    active: boolean;
+    canEdit: boolean;
+    onToggleCollapsed: () => void;
+    onToggleActive: (on: boolean) => void;
+    renderField: (field: SpecFieldDef) => ReactNode;
+}
+
+function SpecSection({
+    section,
+    collapsed,
+    active,
+    canEdit,
+    onToggleCollapsed,
+    onToggleActive,
+    renderField,
+}: SpecSectionProps) {
+    const showBody = active && !collapsed;
+    return (
+        <div>
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <button
+                    type="button"
+                    onClick={onToggleCollapsed}
+                    className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                    aria-expanded={showBody}
+                >
+                    {showBody ? (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    <span className="truncate">{section.title}</span>
+                    {section.optional && (
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-muted-foreground">
+                            optional
+                        </span>
+                    )}
+                </button>
+
+                {section.optional && (
+                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                        <input
+                            type="checkbox"
+                            checked={active}
+                            disabled={!canEdit}
+                            onChange={(e) => onToggleActive(e.target.checked)}
+                        />
+                        {active ? "On" : "Off"}
+                    </label>
+                )}
+            </div>
+
+            {showBody && (
+                <div className={`px-4 pb-3 ${GROUP_GRID}`}>
+                    {section.fields.map((field) => (
+                        <div key={field.key} className={FIELD_WRAP}>
+                            {renderField(field)}
+                        </div>
+                    ))}
+                </div>
             )}
         </div>
     );

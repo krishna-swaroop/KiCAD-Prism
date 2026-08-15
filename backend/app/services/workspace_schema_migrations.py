@@ -1662,6 +1662,13 @@ def _manufacturing_spec_templates(conn: Any) -> None:
     )
 
 
+def _manufacturing_active_sections(conn: Any) -> None:
+    """Track which optional spec sections a project has switched on."""
+    conn.execute(
+        "ALTER TABLE ws_board_specs ADD COLUMN IF NOT EXISTS active_sections JSONB NOT NULL DEFAULT '[]'::jsonb"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1680,6 +1687,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (19, "release_studio_project_signoff", _release_studio_project_signoff),
     (20, "manufacturing_spec_config", _manufacturing_spec_config),
     (21, "manufacturing_spec_templates", _manufacturing_spec_templates),
+    (22, "manufacturing_active_sections", _manufacturing_active_sections),
 )
 
 

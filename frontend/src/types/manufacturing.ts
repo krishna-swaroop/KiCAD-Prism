@@ -12,6 +12,7 @@ export interface BoardSpec {
     project_id: string;
     specs: Record<string, unknown>;
     source: Record<string, string>;
+    active_sections: string[];
     updated_at: string | null;
     updated_by: string;
 }
@@ -108,6 +109,8 @@ export interface SpecFieldDef {
 
 export interface SpecSectionDef {
     title: string;
+    /** Optional sections (written [+Name]) are off until toggled on. */
+    optional: boolean;
     fields: SpecFieldDef[];
 }
 

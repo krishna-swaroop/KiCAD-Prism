@@ -36,4 +36,9 @@ export const CompactSelect = React.forwardRef<
 
 // Compact field spacing used throughout the spec form and dialogs.
 export const FIELD_GAP = "space-y-1";
-export const GROUP_GRID = "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3";
+
+// Fields flow and wrap, each sizing to its own content between sensible bounds,
+// rather than sitting in fixed columns. This keeps a short numeric field narrow
+// and lets a long choice grow, with the row reflowing to the available width.
+export const GROUP_GRID = "flex flex-wrap gap-x-4 gap-y-2";
+export const FIELD_WRAP = "min-w-[8rem] max-w-[16rem] flex-1 basis-[10rem]";

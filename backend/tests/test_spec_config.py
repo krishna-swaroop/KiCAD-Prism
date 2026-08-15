@@ -96,6 +96,22 @@ class SpecConfigParseTests(unittest.TestCase):
         self.assertEqual(parsed.sections, [])
         self.assertEqual(parsed.errors, [])
 
+    def test_optional_section_marked_with_leading_plus(self) -> None:
+        parsed = parse_spec_config(
+            "[Base]\nlayer_count: int\n[+Assembly]\nqty: int\n"
+        )
+        self.assertEqual(parsed.errors, [])
+        base, assembly = parsed.sections
+        self.assertFalse(base.optional)
+        self.assertEqual(base.title, "Base")
+        self.assertTrue(assembly.optional)
+        self.assertEqual(assembly.title, "Assembly")  # the + is stripped from the name
+
+    def test_jlcpcb_has_optional_assembly_and_technical(self) -> None:
+        parsed = parse_spec_config(JLCPCB_SPEC_CONFIG)
+        optional = {s.title for s in parsed.sections if s.optional}
+        self.assertEqual(optional, {"Assembly", "Technical"})
+
     def test_builtin_templates_parse_cleanly(self) -> None:
         for config in (DEFAULT_SPEC_CONFIG, JLCPCB_SPEC_CONFIG, PCBWAY_SPEC_CONFIG):
             parsed = parse_spec_config(config)

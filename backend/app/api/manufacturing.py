@@ -50,6 +50,7 @@ class ManufacturerRequest(BaseModel):
 class BoardSpecRequest(BaseModel):
     specs: dict = Field(default_factory=dict)
     source: dict = Field(default_factory=dict)
+    active_sections: list[str] | None = None
 
 
 class SpecConfigRequest(BaseModel):
@@ -167,7 +168,8 @@ async def save_board_spec(
 ):
     return await asyncio.to_thread(
         _handle, mfg.save_board_spec,
-        project_id, request.specs, request.source, updated_by=user.email,
+        project_id, request.specs, request.source,
+        updated_by=user.email, active_sections=request.active_sections,
     )
 
 

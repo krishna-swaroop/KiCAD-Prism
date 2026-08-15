@@ -72,12 +72,13 @@ export async function saveBoardSpec(
     projectId: string,
     specs: Record<string, unknown>,
     source: Record<string, string>,
+    activeSections?: string[],
 ): Promise<BoardSpec> {
     return json(
         await fetchApi(`/api/manufacturing/projects/${projectId}/board-spec`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ specs, source }),
+            body: JSON.stringify({ specs, source, active_sections: activeSections ?? null }),
         }),
         "Failed to save board specs.",
     );

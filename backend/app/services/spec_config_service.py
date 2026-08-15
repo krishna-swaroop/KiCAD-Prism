@@ -65,9 +65,16 @@ class SpecFieldDef:
 class SpecSectionDef:
     title: str
     fields: list[SpecFieldDef] = field(default_factory=list)
+    # ``[+Name]`` marks a section optional: off by default, switched on with a
+    # toggle. A plain ``[Name]`` is always shown.
+    optional: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {"title": self.title, "fields": [f.to_dict() for f in self.fields]}
+        return {
+            "title": self.title,
+            "optional": self.optional,
+            "fields": [f.to_dict() for f in self.fields],
+        }
 
 
 @dataclass
@@ -124,10 +131,14 @@ def parse_spec_config(text: str) -> ParsedSpecConfig:
         section_match = _SECTION_RE.match(line)
         if section_match:
             name = section_match.group("name").strip()
+            # A leading `+` marks the section optional (off by default).
+            optional = name.startswith("+")
+            if optional:
+                name = name[1:].strip()
             if not name:
                 errors.append(f"Line {lineno}: a section needs a name.")
                 continue
-            current = SpecSectionDef(title=name)
+            current = SpecSectionDef(title=name, optional=optional)
             sections.append(current)
             continue
 
@@ -213,6 +224,8 @@ DEFAULT_SPEC_CONFIG = """\
 # Syntax:  key: type   (types: text, int, number, bool, choice(a, b, c))
 #          key: type = default        adds a default value
 #          key: type | Nice Label     overrides the label
+#          [Section]                  a section header
+#          [+Section]                 an optional section (off until toggled on)
 
 [Stackup & physical]
 layer_count: int
@@ -275,6 +288,22 @@ remove_order_number: choice(No, Yes - specify position, Yes - JLCPCB chooses) = 
 material_type: text = FR-4 TG130
 lead_time: text
 notes: text
+
+[+Assembly]
+assembly_side: choice(Top side, Bottom side, Both sides) = Top side
+assembly_qty: int | Boards to assemble
+tooling_holes: choice(Added by JLCPCB, Added by customer) = Added by JLCPCB
+unique_parts: int | Unique part count
+smt_parts: int | SMT part count
+through_hole_parts: int | Through-hole part count
+confirm_parts_placement: bool
+
+[+Technical]
+via_in_pad: bool
+edge_rail: bool | Add edge rails for assembly
+paper_between_pcb: bool
+appearance_quality: choice(IPC Class 2, IPC Class 3) = IPC Class 2
+special_requests: text
 """
 
 

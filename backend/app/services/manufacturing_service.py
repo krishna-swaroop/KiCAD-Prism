@@ -245,12 +245,14 @@ def get_board_spec(project_id: str) -> Dict[str, Any]:
             "specs": {},
             "source": {},
             "spec_config": DEFAULT_SPEC_CONFIG,
+            "active_sections": [],
             "updated_at": None,
             "updated_by": "",
         }
     result = _row(row)
     if not (result.get("spec_config") or "").strip():
         result["spec_config"] = DEFAULT_SPEC_CONFIG
+    result.setdefault("active_sections", [])
     return result
 
 
@@ -274,24 +276,36 @@ def save_spec_config(project_id: str, spec_config: str, *, updated_by: str) -> D
 
 
 def save_board_spec(
-    project_id: str, specs: Dict[str, Any], source: Dict[str, Any], *, updated_by: str
+    project_id: str,
+    specs: Dict[str, Any],
+    source: Dict[str, Any],
+    *,
+    updated_by: str,
+    active_sections: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Create or replace a project's spec row. ``source`` records per-field provenance."""
+    """Create or replace a project's spec row.
+
+    ``source`` records per-field provenance; ``active_sections`` is the list of
+    optional sections the user has switched on (persisted so a mis-toggle or a
+    reload does not lose them). ``None`` leaves the stored activation untouched.
+    """
     if not workspace.get_project_by_id(project_id):
         raise ManufacturingError("Project not found.")
     import json
 
     now = _now()
+    sections_json = json.dumps(list(active_sections)) if active_sections is not None else None
     with _connect() as conn:
         conn.execute(
-            """INSERT INTO ws_board_specs (project_id,specs,source,updated_at,updated_by)
-               VALUES (%s,%s::jsonb,%s::jsonb,%s,%s)
+            """INSERT INTO ws_board_specs (project_id,specs,source,active_sections,updated_at,updated_by)
+               VALUES (%s,%s::jsonb,%s::jsonb,COALESCE(%s::jsonb,'[]'::jsonb),%s,%s)
                ON CONFLICT (project_id) DO UPDATE
                  SET specs = EXCLUDED.specs,
                      source = EXCLUDED.source,
+                     active_sections = COALESCE(%s::jsonb, ws_board_specs.active_sections),
                      updated_at = EXCLUDED.updated_at,
                      updated_by = EXCLUDED.updated_by""",
-            (project_id, json.dumps(specs), json.dumps(source), now, updated_by),
+            (project_id, json.dumps(specs), json.dumps(source), sections_json, now, updated_by, sections_json),
         )
         conn.commit()
     return get_board_spec(project_id)
