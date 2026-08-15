@@ -129,7 +129,7 @@ describe("ProjectManufacturing", () => {
         expect(screen.queryByLabelText(/SMT parts/)).toBeNull();
 
         // The On/Off toggle activates it.
-        const toggle = screen.getByRole("checkbox");
+        const toggle = screen.getByRole("switch");
         fireEvent.click(toggle);
         await waitFor(() => expect(screen.getByLabelText(/SMT parts/)).toBeTruthy());
     });
@@ -147,7 +147,7 @@ describe("ProjectManufacturing", () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText("Assembly")).toBeTruthy());
 
-        fireEvent.click(screen.getByRole("checkbox")); // turn Assembly on
+        fireEvent.click(screen.getByRole("switch")); // turn Assembly on
         fireEvent.click(screen.getByRole("button", { name: /Save/ }));
 
         await waitFor(() => expect(saveBoardSpec).toHaveBeenCalled());

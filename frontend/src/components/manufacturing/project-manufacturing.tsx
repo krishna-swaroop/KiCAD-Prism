@@ -381,15 +381,23 @@ function SpecSection({
                 </button>
 
                 {section.optional && (
-                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-                        <input
-                            type="checkbox"
-                            checked={active}
-                            disabled={!canEdit}
-                            onChange={(e) => onToggleActive(e.target.checked)}
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={active}
+                        aria-label={`Enable ${section.title}`}
+                        disabled={!canEdit}
+                        onClick={() => onToggleActive(!active)}
+                        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            active ? "bg-primary" : "bg-muted-foreground/30"
+                        }`}
+                    >
+                        <span
+                            className={`inline-block h-3 w-3 transform rounded-full bg-background shadow transition-transform ${
+                                active ? "translate-x-3.5" : "translate-x-0.5"
+                            }`}
                         />
-                        {active ? "On" : "Off"}
-                    </label>
+                    </button>
                 )}
             </div>
 
