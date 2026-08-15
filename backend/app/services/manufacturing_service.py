@@ -217,7 +217,8 @@ def seed_builtin_manufacturers() -> list[str]:
         if entry["name"].strip().lower() in existing:
             continue
         mfr_id = create_manufacturer(entry["name"], website=entry.get("website", ""))
-        create_template(mfr_id, entry["template_name"], entry["template_config"])
+        for template in entry.get("templates", []):
+            create_template(mfr_id, template["name"], template["config"])
         seeded.append(entry["name"])
     return seeded
 

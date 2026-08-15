@@ -290,20 +290,29 @@ lead_time: text
 notes: text
 
 [+Assembly]
+pcba_type: choice(Economic, Standard) = Standard | PCBA type
 assembly_side: choice(Top side, Bottom side, Both sides) = Top side
 assembly_qty: int | Boards to assemble
 tooling_holes: choice(Added by JLCPCB, Added by customer) = Added by JLCPCB
-unique_parts: int | Unique part count
-smt_parts: int | SMT part count
-through_hole_parts: int | Through-hole part count
+paste_type: choice(Leaded, Lead-free) = Leaded | Solder paste
+unique_parts: int | Unique part count (BOM lines)
+smt_parts: int | SMT joints
+through_hole_parts: int | Through-hole joints
+first_article_inspection: bool | First-article inspection (FAI)
+xray_bga: bool | X-ray inspection for BGAs
+conformal_coating: bool
+depanel: choice(No, By router, By V-cut) = No | Depanelize
 confirm_parts_placement: bool
+assembly_notes: text
 
-[+Technical]
-via_in_pad: bool
-edge_rail: bool | Add edge rails for assembly
-paper_between_pcb: bool
-appearance_quality: choice(IPC Class 2, IPC Class 3) = IPC Class 2
-special_requests: text
+[+Stencil]
+stencil_type: choice(Framework, Frameless) = Framework | Stencil type
+stencil_side: choice(Top, Bottom, Top & Bottom) = Top
+stencil_size: choice(380x380mm, 420x520mm, 550x650mm, 584x584mm, 736x736mm) = 420x520mm | Stencil size
+stencil_thickness_mm: choice(0.1, 0.12, 0.15, 0.2) = 0.12 | Stencil thickness (mm)
+stencil_fiducials: choice(None, Half lasered, Lasered through) = None | Fiducials
+electropolishing: bool
+custom_stencil_qty: int | Stencil quantity
 """
 
 
@@ -345,19 +354,72 @@ notes: text
 """
 
 
-# Built-in manufacturers seeded on first startup, each with a starting template. Users
-# own these once seeded and can edit or delete them freely.
+# A distinct schema for advanced / HDI PCBs, where the stackup, drilling and
+# controlled-impedance options are the whole point. Separate from the standard
+# template so an advanced board is not squeezed into standard-board fields.
+JLCPCB_ADVANCED_SPEC_CONFIG = """\
+# Spec schema for advanced / HDI PCBs.
+# Covers the extra stackup, drilling and impedance controls advanced boards need.
+
+[Base]
+base_material: choice(FR-4, Rogers, PTFE, Mixed dielectric) = FR-4
+layer_count: int = 6
+board_width_mm: number | Board width (mm)
+board_height_mm: number | Board height (mm)
+
+[Stackup]
+board_thickness_mm: number = 1.6 | Board thickness (mm)
+outer_copper_weight_oz: choice(0.5, 1, 2) = 1 | Outer copper (oz)
+inner_copper_weight_oz: choice(0.5, 1, 2) = 0.5 | Inner copper (oz)
+stackup_type: choice(JLCPCB defined, Customer defined) = JLCPCB defined
+dielectric_material: text | Core / prepreg
+symmetric_stackup: bool
+
+[HDI & drilling]
+hdi_type: choice(None, 1 stage (1+N+1), 2 stage (2+N+2), Any-layer) = None | HDI structure
+laser_via: bool | Laser-drilled microvias
+min_via_hole_mm: choice(0.15, 0.1, 0.075) = 0.15 | Min via / laser via (mm)
+min_track_spacing_mm: choice(0.1, 0.09, 0.075, 0.0635) = 0.1 | Min track/space (mm)
+via_in_pad: bool
+back_drilling: bool | Back-drill (remove stubs)
+blind_buried_vias: bool
+
+[Impedance]
+impedance_control: bool
+impedance_tolerance: choice(±10%, ±5%) = ±10%
+controlled_dielectric: bool | Specified Dk/Df
+
+[Finish & cosmetic]
+solder_mask_color: choice(Green, Black, White, Blue, Red) = Green | PCB color
+silkscreen_color: choice(White, Black) = White
+surface_finish: choice(ENIG, ENEPIG, Hard Gold, Immersion Silver, OSP) = ENIG
+gold_fingers: bool
+
+[Quality]
+ipc_class: choice(2, 3) = 2 | IPC class
+coupon: bool | Add test coupon
+cross_section_report: bool
+flying_probe_test: choice(Sample, 100%) = 100% | Electrical test
+special_requests: text
+"""
+
+
+# Built-in manufacturers seeded on first startup, each with one or more starting
+# templates. Users own these once seeded and can edit or delete them freely.
 SEED_MANUFACTURERS: list[dict[str, Any]] = [
     {
         "name": "JLCPCB",
         "website": "https://jlcpcb.com",
-        "template_name": "JLCPCB standard",
-        "template_config": JLCPCB_SPEC_CONFIG,
+        "templates": [
+            {"name": "JLCPCB standard", "config": JLCPCB_SPEC_CONFIG},
+            {"name": "JLCPCB advanced PCB", "config": JLCPCB_ADVANCED_SPEC_CONFIG},
+        ],
     },
     {
         "name": "PCBWay",
         "website": "https://www.pcbway.com",
-        "template_name": "PCBWay standard",
-        "template_config": PCBWAY_SPEC_CONFIG,
+        "templates": [
+            {"name": "PCBWay standard", "config": PCBWAY_SPEC_CONFIG},
+        ],
     },
 ]

@@ -107,13 +107,25 @@ class SpecConfigParseTests(unittest.TestCase):
         self.assertTrue(assembly.optional)
         self.assertEqual(assembly.title, "Assembly")  # the + is stripped from the name
 
-    def test_jlcpcb_has_optional_assembly_and_technical(self) -> None:
+    def test_jlcpcb_has_optional_assembly_and_stencil(self) -> None:
         parsed = parse_spec_config(JLCPCB_SPEC_CONFIG)
         optional = {s.title for s in parsed.sections if s.optional}
-        self.assertEqual(optional, {"Assembly", "Technical"})
+        self.assertEqual(optional, {"Assembly", "Stencil"})
+
+    def test_advanced_config_is_distinct_and_parses(self) -> None:
+        from app.services.spec_config_service import JLCPCB_ADVANCED_SPEC_CONFIG
+
+        parsed = parse_spec_config(JLCPCB_ADVANCED_SPEC_CONFIG)
+        self.assertEqual(parsed.errors, [])
+        titles = {s.title for s in parsed.sections}
+        # It carries the advanced-only groups that the standard config does not.
+        self.assertIn("HDI & drilling", titles)
+        self.assertIn("Impedance", titles)
 
     def test_builtin_templates_parse_cleanly(self) -> None:
-        for config in (DEFAULT_SPEC_CONFIG, JLCPCB_SPEC_CONFIG, PCBWAY_SPEC_CONFIG):
+        from app.services.spec_config_service import JLCPCB_ADVANCED_SPEC_CONFIG
+
+        for config in (DEFAULT_SPEC_CONFIG, JLCPCB_SPEC_CONFIG, PCBWAY_SPEC_CONFIG, JLCPCB_ADVANCED_SPEC_CONFIG):
             parsed = parse_spec_config(config)
             self.assertEqual(parsed.errors, [], msg=f"errors: {parsed.errors}")
             self.assertGreater(sum(len(s.fields) for s in parsed.sections), 0)
@@ -122,8 +134,13 @@ class SpecConfigParseTests(unittest.TestCase):
         names = {m["name"] for m in SEED_MANUFACTURERS}
         self.assertEqual(names, {"JLCPCB", "PCBWay"})
         for entry in SEED_MANUFACTURERS:
-            self.assertTrue(entry["template_name"])
-            self.assertTrue(entry["template_config"].strip())
+            self.assertTrue(entry["templates"])
+            for template in entry["templates"]:
+                self.assertTrue(template["name"])
+                self.assertTrue(template["config"].strip())
+        # JLCPCB ships both a standard and an advanced template.
+        jlcpcb = next(m for m in SEED_MANUFACTURERS if m["name"] == "JLCPCB")
+        self.assertEqual(len(jlcpcb["templates"]), 2)
 
 
 if __name__ == "__main__":
