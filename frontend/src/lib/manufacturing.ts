@@ -84,6 +84,22 @@ export async function saveBoardSpec(
     );
 }
 
+export async function downloadSpecSheet(projectId: string, filename: string): Promise<void> {
+    const response = await fetchApi(`/api/manufacturing/projects/${projectId}/spec-sheet.pdf`);
+    if (!response.ok) {
+        throw new Error(await readApiError(response, "Failed to generate the spec sheet."));
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
 export async function extractBoardSpec(
     projectId: string,
 ): Promise<{ suggested: Record<string, unknown>; reason?: string }> {

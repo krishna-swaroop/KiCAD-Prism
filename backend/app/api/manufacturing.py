@@ -173,6 +173,28 @@ async def save_board_spec(
     )
 
 
+@router.get("/projects/{project_id}/spec-sheet.pdf", dependencies=[Depends(require_viewer)])
+async def download_spec_sheet(project_id: str):
+    """A themed PDF spec sheet of the project's board specifications."""
+    from fastapi.responses import Response
+
+    from app.services import spec_sheet_pdf_service
+
+    try:
+        pdf = await asyncio.to_thread(spec_sheet_pdf_service.build_spec_sheet, project_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    project = await asyncio.to_thread(workspace.get_project_by_id, project_id)
+    name = (project or {}).get("name") or project_id
+    safe = "".join(c for c in str(name) if c.isalnum() or c in " ._-").strip() or "board"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe} - spec sheet.pdf"'},
+    )
+
+
 @router.post("/projects/{project_id}/board-spec/extract", dependencies=[Depends(require_designer)])
 async def extract_board_spec(project_id: str):
     """Suggest specs from the project's .kicad_pcb. Read-only; the caller decides

@@ -26,3 +26,5 @@ cairosvg>=2.7,<3
 pikepdf>=9,<11
 pypdf>=5,<7
 PyYAML>=6.0.1,<7
+# Board spec sheet PDF generation.
+reportlab>=4,<5

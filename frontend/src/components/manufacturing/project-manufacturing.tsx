@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Factory, Sparkles, Save, PlusCircle, Settings2, ChevronDown, ChevronRight } from "lucide-react";
+import { Factory, Sparkles, Save, PlusCircle, Settings2, ChevronDown, ChevronRight, FileDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
     getSpecConfig,
     saveSpecConfig,
     listTemplates,
+    downloadSpecSheet,
 } from "@/lib/manufacturing";
 import {
     RUN_STATUS_LABELS,
@@ -50,6 +51,7 @@ export function ProjectManufacturing({
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [extracting, setExtracting] = useState(false);
+    const [downloading, setDownloading] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [editorOpen, setEditorOpen] = useState(false);
     const [templates, setTemplates] = useState<SpecTemplate[]>([]);
@@ -148,6 +150,17 @@ export function ProjectManufacturing({
         setDirty(true);
     };
 
+    const handleDownloadPdf = async () => {
+        setDownloading(true);
+        try {
+            await downloadSpecSheet(projectId, "board spec sheet.pdf");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to download the spec sheet.");
+        } finally {
+            setDownloading(false);
+        }
+    };
+
     if (loading) {
         return <div className="text-sm text-muted-foreground">Loading manufacturing...</div>;
     }
@@ -165,22 +178,33 @@ export function ProjectManufacturing({
                             Fields come from this project&rsquo;s spec schema. Edit the schema to change them.
                         </p>
                     </div>
-                    {canEdit && (
-                        <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => setEditorOpen(true)}>
-                                <Settings2 className="mr-2 h-4 w-4" />
-                                Edit schema
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => void handleExtract()} disabled={extracting}>
-                                <Sparkles className="mr-2 h-4 w-4" />
-                                {extracting ? "Reading..." : "Extract from board"}
-                            </Button>
-                            <Button size="sm" onClick={() => void handleSave()} disabled={saving || !dirty}>
-                                <Save className="mr-2 h-4 w-4" />
-                                {saving ? "Saving..." : "Save"}
-                            </Button>
-                        </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleDownloadPdf()}
+                            disabled={downloading}
+                        >
+                            <FileDown className="mr-2 h-4 w-4" />
+                            {downloading ? "Preparing..." : "Download PDF"}
+                        </Button>
+                        {canEdit && (
+                            <>
+                                <Button variant="ghost" size="sm" onClick={() => setEditorOpen(true)}>
+                                    <Settings2 className="mr-2 h-4 w-4" />
+                                    Edit schema
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => void handleExtract()} disabled={extracting}>
+                                    <Sparkles className="mr-2 h-4 w-4" />
+                                    {extracting ? "Reading..." : "Extract from board"}
+                                </Button>
+                                <Button size="sm" onClick={() => void handleSave()} disabled={saving || !dirty}>
+                                    <Save className="mr-2 h-4 w-4" />
+                                    {saving ? "Saving..." : "Save"}
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </header>
 
                 {!hasFields ? (
