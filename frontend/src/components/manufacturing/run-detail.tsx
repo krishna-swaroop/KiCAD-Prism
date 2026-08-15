@@ -29,6 +29,7 @@ import {
     type ManufacturingRun,
     type RunDefect,
 } from "@/types/manufacturing";
+import { SELECT_CLASS } from "./ui";
 
 interface RunDetailProps {
     runId: string;
@@ -110,7 +111,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack
                         </Label>
                         <select
                             id="run-status"
-                            className="h-9 rounded-md border bg-background px-2 text-sm disabled:opacity-60"
+                            className={`h-8 w-auto ${SELECT_CLASS}`}
                             value={run.status}
                             disabled={!canEdit}
                             onChange={(e) => void patch({ status: e.target.value })}
@@ -145,11 +146,11 @@ export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack
             {/* Manufacturer + notes (editable) */}
             {canEdit && (
                 <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                         <Label htmlFor="run-mfr-edit">Manufacturer</Label>
                         <select
                             id="run-mfr-edit"
-                            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                            className={`h-8 w-full ${SELECT_CLASS}`}
                             value={run.manufacturer_id ?? ""}
                             onChange={(e) => void patch({ manufacturer_id: e.target.value || null })}
                         >
@@ -476,13 +477,13 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                     <DialogTitle>Log a defect</DialogTitle>
                     <DialogDescription>Record what went wrong and how many units it affected.</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-3 py-2">
+                <div className="space-y-2.5 py-1">
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                             <Label htmlFor="def-category">Category</Label>
                             <select
                                 id="def-category"
-                                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                                className={`h-8 w-full ${SELECT_CLASS}`}
                                 value={category}
                                 onChange={(e) => setCategory(e.target.value)}
                             >
@@ -493,11 +494,11 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                                 ))}
                             </select>
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                             <Label htmlFor="def-severity">Severity</Label>
                             <select
                                 id="def-severity"
-                                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                                className={`h-8 w-full ${SELECT_CLASS}`}
                                 value={severity}
                                 onChange={(e) => setSeverity(e.target.value as DefectSeverity)}
                             >
@@ -507,7 +508,7 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                             </select>
                         </div>
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                         <Label htmlFor="def-qty">Units affected</Label>
                         <Input
                             id="def-qty"
@@ -517,7 +518,7 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                             onChange={(e) => setQuantity(Number(e.target.value) || 1)}
                         />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                         <Label htmlFor="def-desc">Description</Label>
                         <Textarea
                             id="def-desc"

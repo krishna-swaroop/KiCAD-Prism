@@ -24,6 +24,7 @@ import {
     type SpecTemplate,
 } from "@/types/manufacturing";
 import { SpecConfigEditor } from "./spec-config-editor";
+import { SELECT_CLASS, FIELD_GAP, GROUP_GRID } from "./ui";
 
 interface ProjectManufacturingProps {
     projectId: string;
@@ -129,10 +130,10 @@ export function ProjectManufacturing({
     const hasFields = schema.sections.some((s) => s.fields.length > 0);
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-5">
             {/* Board specs */}
             <section className="rounded-lg border">
-                <header className="flex items-center justify-between gap-4 border-b p-4">
+                <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
                     <div>
                         <h3 className="text-lg font-medium">Board specifications</h3>
                         <p className="text-sm text-muted-foreground">
@@ -166,18 +167,18 @@ export function ProjectManufacturing({
                         </p>
                     </div>
                 ) : (
-                    <div className="space-y-6 p-4">
+                    <div className="space-y-4 p-4">
                         {schema.errors.length > 0 && (
-                            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive">
                                 The schema has {schema.errors.length} problem(s). Some fields may be missing until you fix it.
                             </div>
                         )}
                         {schema.sections.map((section) => (
                             <div key={section.title}>
-                                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                     {section.title}
                                 </h4>
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                <div className={GROUP_GRID}>
                                     {section.fields.map((field) => (
                                         <SpecFieldInput
                                             key={field.key}
@@ -197,7 +198,7 @@ export function ProjectManufacturing({
 
             {/* Runs for this project */}
             <section className="rounded-lg border">
-                <header className="flex items-center justify-between gap-4 border-b p-4">
+                <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
                     <div>
                         <h3 className="text-lg font-medium">Production runs</h3>
                         <p className="text-sm text-muted-foreground">
@@ -266,7 +267,7 @@ export function ProjectManufacturing({
                         templates.length > 0 ? (
                             <select
                                 aria-label="Apply a template"
-                                className="h-7 rounded-md border bg-background px-2 text-xs"
+                                className={`h-7 w-auto text-xs ${SELECT_CLASS}`}
                                 value=""
                                 onChange={async (e) => {
                                     const templateId = e.target.value;
@@ -335,7 +336,7 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
 
     if (field.type === "bool") {
         return (
-            <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border p-2">
+            <label className="flex h-8 cursor-pointer items-center justify-between gap-2 rounded-md border px-2">
                 {labelRow}
                 <input
                     id={inputId}
@@ -350,11 +351,11 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
 
     if (field.type === "choice") {
         return (
-            <div className="space-y-1.5">
+            <div className={FIELD_GAP}>
                 {labelRow}
                 <select
                     id={inputId}
-                    className="h-9 w-full rounded-md border bg-background px-2 text-sm disabled:opacity-60"
+                    className={`h-8 w-full ${SELECT_CLASS}`}
                     value={typeof effective === "string" ? effective : ""}
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value || undefined)}
@@ -372,12 +373,13 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
 
     const isNumber = field.type === "int" || field.type === "number";
     return (
-        <div className="space-y-1.5">
+        <div className={FIELD_GAP}>
             {labelRow}
             <Input
                 id={inputId}
                 type={isNumber ? "number" : "text"}
                 step={field.type === "int" ? 1 : "any"}
+                className="h-8"
                 value={effective === undefined || effective === null ? "" : String(effective)}
                 disabled={disabled}
                 onChange={(e) => {

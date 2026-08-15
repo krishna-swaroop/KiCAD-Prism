@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { createRun } from "@/lib/manufacturing";
 import type { Manufacturer } from "@/types/manufacturing";
+import { SELECT_CLASS } from "./ui";
 
 interface NewRunWizardProps {
     open: boolean;
@@ -111,7 +112,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                             <Label htmlFor="run-project">Project</Label>
                             <select
                                 id="run-project"
-                                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                                className={`h-9 w-full ${SELECT_CLASS}`}
                                 value={projectId}
                                 onChange={(e) => setProjectId(e.target.value)}
                             >
@@ -148,7 +149,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                             <Label htmlFor="run-mfr">Manufacturer</Label>
                             <select
                                 id="run-mfr"
-                                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                                className={`h-9 w-full ${SELECT_CLASS}`}
                                 value={manufacturerId}
                                 onChange={(e) => setManufacturerId(e.target.value)}
                             >
@@ -167,7 +168,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
 
                     {step === 3 && (
                         <div className="space-y-3">
-                            <div className="space-y-1.5">
+                            <div className="space-y-1">
                                 <Label htmlFor="run-commit">Commit (optional)</Label>
                                 <Input
                                     id="run-commit"
@@ -176,7 +177,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                                     onChange={(e) => setCommitSha(e.target.value)}
                                 />
                             </div>
-                            <div className="space-y-1.5">
+                            <div className="space-y-1">
                                 <Label htmlFor="run-notes">Notes (optional)</Label>
                                 <Textarea
                                     id="run-notes"

@@ -180,20 +180,20 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
                     <DialogTitle>{existing ? "Edit manufacturer" : "Add manufacturer"}</DialogTitle>
                     <DialogDescription>A reusable fab-house record you can pick when creating a run.</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-3 py-2">
-                    <div className="space-y-1.5">
+                <div className="space-y-2.5 py-1">
+                    <div className="space-y-1">
                         <Label htmlFor="mfr-name">Name</Label>
                         <Input id="mfr-name" value={name} onChange={(e) => setName(e.target.value)} />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                         <Label htmlFor="mfr-contact">Contact</Label>
                         <Input id="mfr-contact" value={contact} onChange={(e) => setContact(e.target.value)} />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                         <Label htmlFor="mfr-website">Website</Label>
                         <Input id="mfr-website" value={website} onChange={(e) => setWebsite(e.target.value)} />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                         <Label htmlFor="mfr-notes">Notes</Label>
                         <Textarea id="mfr-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>

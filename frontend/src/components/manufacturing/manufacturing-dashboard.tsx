@@ -18,6 +18,7 @@ import {
 import { NewRunWizard } from "./new-run-wizard";
 import { RunDetail } from "./run-detail";
 import { ManufacturersPanel } from "./manufacturers-panel";
+import { SELECT_CLASS } from "./ui";
 
 interface ManufacturingDashboardProps {
     user: User | null;
@@ -168,7 +169,7 @@ function RunTable({ runs, totalCount, statusFilter, onStatusFilter, onOpen }: Ru
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Filter className="h-3.5 w-3.5" />
                     <select
-                        className="h-8 rounded-md border bg-background px-2 text-sm"
+                        className={`h-8 w-auto ${SELECT_CLASS}`}
                         value={statusFilter}
                         onChange={(e) => onStatusFilter(e.target.value as RunStatus | "all")}
                         aria-label="Filter by status"
