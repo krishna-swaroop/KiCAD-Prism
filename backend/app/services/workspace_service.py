@@ -208,6 +208,14 @@ class WorkspaceService:
                 manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
                 name            TEXT NOT NULL,
                 spec_config     TEXT NOT NULL DEFAULT '',
+                -- Identifies a built-in template (e.g. 'jlcpcb:standard'); NULL for
+                -- user-created ones. seeded_hash is the sha256 of the source text it
+                -- was last seeded from, so startup can tell an untouched built-in
+                -- (safe to refresh) from one the user edited (leave alone). Both are
+                -- added by migration 23 as well, for databases predating them; the
+                -- builtin_key index lives there too so it never runs before the column.
+                builtin_key     TEXT,
+                seeded_hash     TEXT,
                 created_at      TIMESTAMPTZ NOT NULL,
                 updated_at      TIMESTAMPTZ NOT NULL
             );

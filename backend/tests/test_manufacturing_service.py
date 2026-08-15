@@ -123,14 +123,56 @@ class ManufacturingStoreTests(unittest.TestCase):
         self.assertIn("foo: text", saved["spec_config"])
 
     def test_seed_is_idempotent(self) -> None:
-        first = mfg.seed_builtin_manufacturers()
-        # JLCPCB/PCBWay now exist (seeded here or already present); a second run adds none.
-        second = mfg.seed_builtin_manufacturers()
-        self.assertEqual(second, [])
+        mfg.seed_builtin_manufacturers()
+        # Everything exists and is current now; a second run reports no changes.
+        self.assertEqual(mfg.seed_builtin_manufacturers(), [])
         names = {m["name"] for m in mfg.list_manufacturers()}
         self.assertIn("JLCPCB", names)
         self.assertIn("PCBWay", names)
-        _ = first  # first may be empty if a prior test run already seeded
+
+    def test_sync_refreshes_unedited_builtin_but_not_edited_one(self) -> None:
+        mfg.seed_builtin_manufacturers()
+        jlcpcb = next(m for m in mfg.list_manufacturers() if m["name"] == "JLCPCB")
+        templates = {t["name"]: t for t in mfg.list_templates(jlcpcb["id"])}
+        standard = templates["JLCPCB standard"]
+        advanced = templates["JLCPCB advanced PCB"]
+
+        # Simulate an old, out-of-date seed by overwriting the stored text AND its
+        # recorded seed hash to match (so it looks unedited, just stale).
+        import app.services.manufacturing_service as m
+
+        stale = "[Old]\nx: int"
+        with m._connect() as conn:
+            conn.execute(
+                "UPDATE ws_spec_templates SET spec_config = %s, seeded_hash = %s WHERE id = %s",
+                (stale, m._config_hash(stale), standard["id"]),
+            )
+            conn.commit()
+
+        # A user edits the advanced one (its text no longer matches its seed hash).
+        mfg.update_template(advanced["id"], spec_config="[Mine]\ny: text")
+
+        mfg.seed_builtin_manufacturers()
+
+        after = {t["name"]: mfg.get_template(t["id"]) for t in mfg.list_templates(jlcpcb["id"])}
+        # The unedited (just stale) standard template was refreshed back to source.
+        self.assertNotEqual(after["JLCPCB standard"]["spec_config"], stale)
+        self.assertIn("[Base]", after["JLCPCB standard"]["spec_config"])
+        # The user-edited advanced template was left exactly as the user left it.
+        self.assertEqual(after["JLCPCB advanced PCB"]["spec_config"], "[Mine]\ny: text")
+
+    def test_sync_creates_a_newly_added_builtin_template(self) -> None:
+        # Seed, then delete the advanced template to mimic an install predating it.
+        mfg.seed_builtin_manufacturers()
+        jlcpcb = next(m for m in mfg.list_manufacturers() if m["name"] == "JLCPCB")
+        advanced = next(
+            t for t in mfg.list_templates(jlcpcb["id"]) if t["name"] == "JLCPCB advanced PCB"
+        )
+        mfg.delete_template(advanced["id"])
+
+        mfg.seed_builtin_manufacturers()  # should recreate it
+        names = {t["name"] for t in mfg.list_templates(jlcpcb["id"])}
+        self.assertIn("JLCPCB advanced PCB", names)
 
     # -- runs --
 

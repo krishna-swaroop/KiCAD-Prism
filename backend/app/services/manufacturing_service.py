@@ -149,7 +149,20 @@ def get_template(template_id: str) -> Optional[Dict[str, Any]]:
     return _row(row) if row else None
 
 
-def create_template(manufacturer_id: str, name: str, spec_config: str = "") -> str:
+def _config_hash(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def create_template(
+    manufacturer_id: str,
+    name: str,
+    spec_config: str = "",
+    *,
+    builtin_key: Optional[str] = None,
+    seeded_hash: Optional[str] = None,
+) -> str:
     clean = name.strip()
     if not clean:
         raise ManufacturingError("A template name is required.")
@@ -163,9 +176,10 @@ def create_template(manufacturer_id: str, name: str, spec_config: str = "") -> s
     now = _now()
     with _connect() as conn:
         conn.execute(
-            """INSERT INTO ws_spec_templates (id,manufacturer_id,name,spec_config,created_at,updated_at)
-               VALUES (%s,%s,%s,%s,%s,%s)""",
-            (template_id, manufacturer_id, clean, spec_config, now, now),
+            """INSERT INTO ws_spec_templates
+               (id,manufacturer_id,name,spec_config,builtin_key,seeded_hash,created_at,updated_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (template_id, manufacturer_id, clean, spec_config, builtin_key, seeded_hash, now, now),
         )
         conn.commit()
     return template_id
@@ -182,6 +196,8 @@ def update_template(template_id: str, **fields: Any) -> bool:
         return False
     updates["updated_at"] = _now()
     columns = ", ".join(f"{k} = %s" for k in updates)
+    # A user edit detaches a built-in template from auto-sync: its stored text no
+    # longer matches the source, so seed sync will leave it alone from here on.
     with _connect() as conn:
         result = conn.execute(
             f"UPDATE ws_spec_templates SET {columns} WHERE id = %s",
@@ -199,28 +215,116 @@ def delete_template(template_id: str) -> bool:
 
 
 def seed_builtin_manufacturers() -> list[str]:
-    """Create the built-in manufacturers and their starter templates, once.
+    """Create and keep built-in manufacturers and their templates up to date.
 
-    Idempotent: a manufacturer that already exists (by name) is skipped entirely,
-    so a user who renamed or edited a seeded one is never clobbered. Returns the
-    names actually seeded.
+    Runs on every startup and is safe to repeat:
+
+      * A missing built-in manufacturer is created.
+      * A missing built-in template is created (this is how a newly added one, like
+        the advanced-PCB template, reaches an existing install).
+      * An existing built-in template is refreshed to the latest source ONLY if the
+        user has not edited it. "Not edited" means its stored text still matches the
+        source it was last seeded from, or -- for a row seeded before this tracking
+        existed -- that the row has never been updated since creation.
+
+    A user edit permanently detaches a template from this sync (its text no longer
+    matches the source), so nobody's customisation is ever clobbered. Returns a
+    short description of what changed, for the startup log.
     """
     from app.services.spec_config_service import SEED_MANUFACTURERS
 
-    seeded: list[str] = []
-    with _connect() as conn:
-        existing = {
-            str(row["name"]).strip().lower()
-            for row in conn.execute("SELECT name FROM ws_manufacturers").fetchall()
-        }
+    changes: list[str] = []
     for entry in SEED_MANUFACTURERS:
-        if entry["name"].strip().lower() in existing:
-            continue
-        mfr_id = create_manufacturer(entry["name"], website=entry.get("website", ""))
+        mfr_id = _ensure_manufacturer(entry["name"], entry.get("website", ""))
         for template in entry.get("templates", []):
-            create_template(mfr_id, template["name"], template["config"])
-        seeded.append(entry["name"])
-    return seeded
+            change = _sync_builtin_template(
+                mfr_id, template["key"], template["name"], template["config"]
+            )
+            if change:
+                changes.append(change)
+    return changes
+
+
+def _ensure_manufacturer(name: str, website: str) -> str:
+    """The id of the manufacturer with this name, creating it if absent."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM ws_manufacturers WHERE lower(name) = lower(%s)", (name,)
+        ).fetchone()
+    if row:
+        return str(row["id"])
+    return create_manufacturer(name, website=website)
+
+
+def _sync_builtin_template(mfr_id: str, key: str, name: str, config: str) -> Optional[str]:
+    """Create or refresh one built-in template. Returns a change description or None."""
+    source_hash = _config_hash(config)
+
+    with _connect() as conn:
+        # Prefer the row already claimed by this built-in key.
+        row = conn.execute(
+            "SELECT * FROM ws_spec_templates WHERE builtin_key = %s", (key,)
+        ).fetchone()
+        # Otherwise adopt a legacy row seeded by name before keys existed.
+        if not row:
+            row = conn.execute(
+                """SELECT * FROM ws_spec_templates
+                   WHERE manufacturer_id = %s AND lower(name) = lower(%s)
+                     AND builtin_key IS NULL""",
+                (mfr_id, name),
+            ).fetchone()
+
+    if not row:
+        create_template(mfr_id, name, config, builtin_key=key, seeded_hash=source_hash)
+        return f"created {name}"
+
+    template = _row(row)
+    stored = template.get("spec_config") or ""
+    seeded_hash = template.get("seeded_hash")
+    is_legacy = template.get("builtin_key") is None
+
+    # Unedited if the stored text still matches what it was last seeded from, or --
+    # for a legacy row with no recorded hash -- if it was never updated after
+    # creation. A user edit changes the text (and updated_at), failing both.
+    if seeded_hash is not None:
+        unedited = _config_hash(stored) == seeded_hash
+    else:
+        unedited = is_legacy and template.get("created_at") == template.get("updated_at")
+
+    if _config_hash(stored) == source_hash:
+        # Already current; just make sure it is claimed and its hash recorded.
+        if is_legacy or seeded_hash != source_hash:
+            _claim_builtin(template["id"], key, source_hash)
+        return None
+
+    if not unedited:
+        # The user has customised it; adopt the key so we can track future edits,
+        # but never overwrite their text.
+        if is_legacy:
+            _claim_builtin(template["id"], key, _config_hash(stored))
+        return None
+
+    # Untouched and out of date: refresh to the latest source.
+    now = _now()
+    with _connect() as conn:
+        conn.execute(
+            """UPDATE ws_spec_templates
+               SET spec_config = %s, builtin_key = %s, seeded_hash = %s, updated_at = %s
+               WHERE id = %s""",
+            (config, key, source_hash, now, template["id"]),
+        )
+        conn.commit()
+    return f"updated {name}"
+
+
+def _claim_builtin(template_id: str, key: str, seeded_hash: str) -> None:
+    """Mark a row as this built-in, recording the hash it currently matches."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE ws_spec_templates SET builtin_key = %s, seeded_hash = %s WHERE id = %s",
+            (key, seeded_hash, template_id),
+        )
+        conn.commit()
 
 
 # ---------------------------------------------------------------------------

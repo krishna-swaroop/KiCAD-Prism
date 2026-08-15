@@ -493,15 +493,15 @@ SEED_MANUFACTURERS: list[dict[str, Any]] = [
         "name": "JLCPCB",
         "website": "https://jlcpcb.com",
         "templates": [
-            {"name": "JLCPCB standard", "config": JLCPCB_SPEC_CONFIG},
-            {"name": "JLCPCB advanced PCB", "config": JLCPCB_ADVANCED_SPEC_CONFIG},
+            {"key": "jlcpcb:standard", "name": "JLCPCB standard", "config": JLCPCB_SPEC_CONFIG},
+            {"key": "jlcpcb:advanced", "name": "JLCPCB advanced PCB", "config": JLCPCB_ADVANCED_SPEC_CONFIG},
         ],
     },
     {
         "name": "PCBWay",
         "website": "https://www.pcbway.com",
         "templates": [
-            {"name": "PCBWay standard", "config": PCBWAY_SPEC_CONFIG},
+            {"key": "pcbway:standard", "name": "PCBWay standard", "config": PCBWAY_SPEC_CONFIG},
         ],
     },
 ]

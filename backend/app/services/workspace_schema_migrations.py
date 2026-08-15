@@ -1669,6 +1669,21 @@ def _manufacturing_active_sections(conn: Any) -> None:
     )
 
 
+def _manufacturing_builtin_templates(conn: Any) -> None:
+    """Track which spec templates are built-in and what source they were seeded from.
+
+    Lets startup refresh an untouched built-in template to the latest source while
+    leaving a user-edited one alone. Existing seeded rows get no key, so they are
+    treated as user templates until the backfill in seed_builtin_manufacturers
+    claims them by name+manufacturer.
+    """
+    conn.execute("ALTER TABLE ws_spec_templates ADD COLUMN IF NOT EXISTS builtin_key TEXT")
+    conn.execute("ALTER TABLE ws_spec_templates ADD COLUMN IF NOT EXISTS seeded_hash TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ws_spec_templates_builtin ON ws_spec_templates(builtin_key)"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1688,6 +1703,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (20, "manufacturing_spec_config", _manufacturing_spec_config),
     (21, "manufacturing_spec_templates", _manufacturing_spec_templates),
     (22, "manufacturing_active_sections", _manufacturing_active_sections),
+    (23, "manufacturing_builtin_templates", _manufacturing_builtin_templates),
 )
 
 

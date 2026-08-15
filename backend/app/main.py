@@ -169,16 +169,17 @@ async def lifespan(app: FastAPI):
     catalog_service.initialize()
     workspace.initialize()
     jobs.initialize()
-    # Seed the built-in manufacturers (JLCPCB, PCBWay) and their starter spec
-    # templates once. Idempotent and best-effort: never block startup on it.
+    # Create and refresh the built-in manufacturers (JLCPCB, PCBWay) and their spec
+    # templates. Runs every startup; refreshes only templates the user has not
+    # edited. Best-effort: never block startup on it.
     try:
         from app.services import manufacturing_service
 
-        seeded = manufacturing_service.seed_builtin_manufacturers()
-        if seeded:
-            logger.info("Seeded built-in manufacturers: %s", ", ".join(seeded))
+        changes = manufacturing_service.seed_builtin_manufacturers()
+        if changes:
+            logger.info("Built-in spec templates: %s", ", ".join(changes))
     except Exception:
-        logger.exception("Failed to seed built-in manufacturers")
+        logger.exception("Failed to sync built-in manufacturers")
     if settings.AUTH_ENABLED:
         session_store_service.initialize_session_store()
         session_store_service.prune_expired_sessions()
