@@ -4,6 +4,7 @@ import type {
     EvidenceDescriptor,
     Manufacturer,
     ManufacturingRun,
+    ParsedSpecConfig,
     RunDefect,
 } from "@/types/manufacturing";
 
@@ -90,6 +91,58 @@ export async function extractBoardSpec(
         }),
         "Failed to read the board.",
     );
+}
+
+// -- spec schema (.config) --
+
+export async function getSpecConfig(
+    projectId: string,
+): Promise<{ spec_config: string; parsed: ParsedSpecConfig }> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/spec-config`),
+        "Failed to load the spec schema.",
+    );
+}
+
+export async function saveSpecConfig(
+    projectId: string,
+    specConfig: string,
+): Promise<{ spec_config: string; parsed: ParsedSpecConfig }> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/spec-config`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ spec_config: specConfig }),
+        }),
+        "Failed to save the spec schema.",
+    );
+}
+
+export async function previewSpecConfig(specConfig: string): Promise<ParsedSpecConfig> {
+    return json(
+        await fetchApi("/api/manufacturing/spec-config/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ spec_config: specConfig }),
+        }),
+        "Failed to parse the spec schema.",
+    );
+}
+
+export async function listSpecTemplates(): Promise<{ id: string; label: string }[]> {
+    const data = await json<{ templates: { id: string; label: string }[] }>(
+        await fetchApi("/api/manufacturing/spec-config/templates"),
+        "Failed to load templates.",
+    );
+    return data.templates;
+}
+
+export async function getSpecTemplate(templateId: string): Promise<string> {
+    const data = await json<{ spec_config: string }>(
+        await fetchApi(`/api/manufacturing/spec-config/templates/${templateId}`),
+        "Failed to load template.",
+    );
+    return data.spec_config;
 }
 
 // -- runs --

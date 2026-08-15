@@ -5,23 +5,45 @@ const getBoardSpec = vi.fn();
 const saveBoardSpec = vi.fn();
 const extractBoardSpec = vi.fn();
 const listRuns = vi.fn();
+const getSpecConfig = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     getBoardSpec: (...a: unknown[]) => getBoardSpec(...a),
     saveBoardSpec: (...a: unknown[]) => saveBoardSpec(...a),
     extractBoardSpec: (...a: unknown[]) => extractBoardSpec(...a),
     listRuns: (...a: unknown[]) => listRuns(...a),
+    getSpecConfig: (...a: unknown[]) => getSpecConfig(...a),
 }));
 
 vi.mock("sonner", () => ({
     toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
+// The schema editor is a child; stub it so this suite stays focused on the form.
+vi.mock("./spec-config-editor", () => ({
+    SpecConfigEditor: () => null,
+}));
+
 import { ProjectManufacturing } from "./project-manufacturing";
+
+// A parsed schema with the two fields the tests exercise.
+const SCHEMA = {
+    sections: [
+        {
+            title: "Stackup & physical",
+            fields: [
+                { key: "layer_count", label: "Layer count", type: "int", options: [], default: null },
+                { key: "board_thickness_mm", label: "Board thickness", type: "number", options: [], default: null },
+            ],
+        },
+    ],
+    errors: [],
+};
 
 describe("ProjectManufacturing", () => {
     beforeEach(() => {
         getBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, updated_at: null, updated_by: "" });
+        getSpecConfig.mockResolvedValue({ spec_config: "[Stackup & physical]\nlayer_count: int", parsed: SCHEMA });
         listRuns.mockResolvedValue([]);
         saveBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, updated_at: null, updated_by: "" });
         extractBoardSpec.mockResolvedValue({ suggested: {} });

@@ -125,14 +125,49 @@ def delete_manufacturer(mfr_id: str) -> bool:
 
 
 def get_board_spec(project_id: str) -> Dict[str, Any]:
-    """The stored spec for a project, or an empty shell if none saved yet."""
+    """The stored spec for a project, or an empty shell if none saved yet.
+
+    ``spec_config`` is the raw schema text; an empty one falls back to the starter
+    config so a brand-new project already has a sensible form to fill in.
+    """
+    from app.services.spec_config_service import DEFAULT_SPEC_CONFIG
+
     with _connect() as conn:
         row = conn.execute(
             "SELECT * FROM ws_board_specs WHERE project_id = %s", (project_id,)
         ).fetchone()
     if not row:
-        return {"project_id": project_id, "specs": {}, "source": {}, "updated_at": None, "updated_by": ""}
-    return _row(row)
+        return {
+            "project_id": project_id,
+            "specs": {},
+            "source": {},
+            "spec_config": DEFAULT_SPEC_CONFIG,
+            "updated_at": None,
+            "updated_by": "",
+        }
+    result = _row(row)
+    if not (result.get("spec_config") or "").strip():
+        result["spec_config"] = DEFAULT_SPEC_CONFIG
+    return result
+
+
+def save_spec_config(project_id: str, spec_config: str, *, updated_by: str) -> Dict[str, Any]:
+    """Store a project's spec schema text without touching its saved values."""
+    if not workspace.get_project_by_id(project_id):
+        raise ManufacturingError("Project not found.")
+    now = _now()
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO ws_board_specs (project_id,specs,source,spec_config,updated_at,updated_by)
+               VALUES (%s,'{}'::jsonb,'{}'::jsonb,%s,%s,%s)
+               ON CONFLICT (project_id) DO UPDATE
+                 SET spec_config = EXCLUDED.spec_config,
+                     updated_at = EXCLUDED.updated_at,
+                     updated_by = EXCLUDED.updated_by""",
+            (project_id, spec_config, now, updated_by),
+        )
+        conn.commit()
+    return get_board_spec(project_id)
 
 
 def save_board_spec(

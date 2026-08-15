@@ -1627,6 +1627,18 @@ def _release_studio_project_signoff(conn: Any) -> None:
     )
 
 
+def _manufacturing_spec_config(conn: Any) -> None:
+    """Add the per-project spec-schema column to the board-specs table.
+
+    The manufacturing tables are created idempotently in _create_schema; this only
+    adds the column a database predating the config-driven form would lack. IF NOT
+    EXISTS keeps it a no-op on a fresh database where the column is already there.
+    """
+    conn.execute(
+        "ALTER TABLE ws_board_specs ADD COLUMN IF NOT EXISTS spec_config TEXT NOT NULL DEFAULT ''"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1643,6 +1655,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (17, "release_studio_terminal_and_identity_guards", _release_studio_terminal_and_identity_guards),
     (18, "release_studio_source_defaults", _release_studio_source_defaults),
     (19, "release_studio_project_signoff", _release_studio_project_signoff),
+    (20, "manufacturing_spec_config", _manufacturing_spec_config),
 )
 
 

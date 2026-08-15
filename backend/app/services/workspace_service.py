@@ -180,6 +180,7 @@ class WorkspaceService:
                 project_id  TEXT PRIMARY KEY REFERENCES ws_projects(id) ON DELETE CASCADE,
                 specs       JSONB NOT NULL DEFAULT '{}'::jsonb,
                 source      JSONB NOT NULL DEFAULT '{}'::jsonb,
+                spec_config TEXT NOT NULL DEFAULT '',
                 updated_at  TIMESTAMPTZ NOT NULL,
                 updated_by  TEXT NOT NULL DEFAULT ''
             );

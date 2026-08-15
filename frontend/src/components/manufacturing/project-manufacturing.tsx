@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Factory, Sparkles, Save, PlusCircle } from "lucide-react";
+import { Factory, Sparkles, Save, PlusCircle, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -11,13 +11,16 @@ import {
     saveBoardSpec,
     extractBoardSpec,
     listRuns,
+    getSpecConfig,
 } from "@/lib/manufacturing";
 import {
     RUN_STATUS_LABELS,
-    SPEC_GROUPS,
+    EXTRACTABLE_KEYS,
     type ManufacturingRun,
-    type SpecField,
+    type ParsedSpecConfig,
+    type SpecFieldDef,
 } from "@/types/manufacturing";
+import { SpecConfigEditor } from "./spec-config-editor";
 
 interface ProjectManufacturingProps {
     projectId: string;
@@ -36,21 +39,25 @@ export function ProjectManufacturing({
 }: ProjectManufacturingProps) {
     const [values, setValues] = useState<SpecValues>({});
     const [source, setSource] = useState<Record<string, string>>({});
+    const [schema, setSchema] = useState<ParsedSpecConfig>({ sections: [], errors: [] });
     const [runs, setRuns] = useState<ManufacturingRun[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [extracting, setExtracting] = useState(false);
     const [dirty, setDirty] = useState(false);
+    const [editorOpen, setEditorOpen] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [spec, runList] = await Promise.all([
+            const [spec, config, runList] = await Promise.all([
                 getBoardSpec(projectId),
+                getSpecConfig(projectId),
                 listRuns(projectId),
             ]);
             setValues(spec.specs ?? {});
             setSource(spec.source ?? {});
+            setSchema(config.parsed);
             setRuns(runList);
             setDirty(false);
         } catch (error) {
@@ -113,6 +120,8 @@ export function ProjectManufacturing({
         return <div className="text-sm text-muted-foreground">Loading manufacturing...</div>;
     }
 
+    const hasFields = schema.sections.some((s) => s.fields.length > 0);
+
     return (
         <div className="space-y-8">
             {/* Board specs */}
@@ -121,11 +130,15 @@ export function ProjectManufacturing({
                     <div>
                         <h3 className="text-lg font-medium">Board specifications</h3>
                         <p className="text-sm text-muted-foreground">
-                            The physical spec sent to the fab. Extract what the board file knows, fill the rest.
+                            Fields come from this project&rsquo;s spec schema. Edit the schema to change them.
                         </p>
                     </div>
                     {canEdit && (
                         <div className="flex items-center gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => setEditorOpen(true)}>
+                                <Settings2 className="mr-2 h-4 w-4" />
+                                Edit schema
+                            </Button>
                             <Button variant="outline" size="sm" onClick={() => void handleExtract()} disabled={extracting}>
                                 <Sparkles className="mr-2 h-4 w-4" />
                                 {extracting ? "Reading..." : "Extract from board"}
@@ -138,27 +151,42 @@ export function ProjectManufacturing({
                     )}
                 </header>
 
-                <div className="space-y-6 p-4">
-                    {SPEC_GROUPS.map((group) => (
-                        <div key={group.title}>
-                            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                {group.title}
-                            </h4>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {group.fields.map((field) => (
-                                    <SpecFieldInput
-                                        key={field.key}
-                                        field={field}
-                                        value={values[field.key]}
-                                        provenance={source[field.key]}
-                                        disabled={!canEdit}
-                                        onChange={(v) => setField(field.key, v)}
-                                    />
-                                ))}
+                {!hasFields ? (
+                    <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
+                        <Settings2 className="h-8 w-8 opacity-50" />
+                        <p className="text-sm">
+                            This schema defines no fields yet.
+                            {canEdit ? " Open “Edit schema” to add some." : ""}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-6 p-4">
+                        {schema.errors.length > 0 && (
+                            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                                The schema has {schema.errors.length} problem(s). Some fields may be missing until you fix it.
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        )}
+                        {schema.sections.map((section) => (
+                            <div key={section.title}>
+                                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                    {section.title}
+                                </h4>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    {section.fields.map((field) => (
+                                        <SpecFieldInput
+                                            key={field.key}
+                                            field={field}
+                                            value={values[field.key]}
+                                            provenance={source[field.key]}
+                                            disabled={!canEdit}
+                                            onChange={(v) => setField(field.key, v)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </section>
 
             {/* Runs for this project */}
@@ -214,12 +242,23 @@ export function ProjectManufacturing({
                     </ul>
                 )}
             </section>
+
+            {editorOpen && (
+                <SpecConfigEditor
+                    projectId={projectId}
+                    onClose={() => setEditorOpen(false)}
+                    onSaved={() => {
+                        setEditorOpen(false);
+                        void load();
+                    }}
+                />
+            )}
         </div>
     );
 }
 
 interface SpecFieldInputProps {
-    field: SpecField;
+    field: SpecFieldDef;
     value: unknown;
     provenance?: string;
     disabled: boolean;
@@ -228,28 +267,35 @@ interface SpecFieldInputProps {
 
 function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFieldInputProps) {
     const inputId = `spec-${field.key}`;
+    // A stored value wins; otherwise fall back to the schema's declared default.
+    const effective = value === undefined || value === null ? field.default : value;
+
     const labelRow = (
         <div className="flex items-center gap-2">
             <Label htmlFor={inputId} className="text-sm">
                 {field.label}
-                {field.unit ? <span className="text-muted-foreground"> ({field.unit})</span> : null}
             </Label>
             {provenance === "extracted" && (
                 <Badge variant="outline" className="text-[10px]">
                     from board
                 </Badge>
             )}
+            {provenance !== "extracted" && EXTRACTABLE_KEYS.has(field.key) && (
+                <span className="text-[10px] text-muted-foreground" title="Extract can fill this from the board">
+                    ⚡
+                </span>
+            )}
         </div>
     );
 
-    if (field.kind === "boolean") {
+    if (field.type === "bool") {
         return (
             <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border p-2">
                 {labelRow}
                 <input
                     id={inputId}
                     type="checkbox"
-                    checked={value === true}
+                    checked={effective === true}
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.checked)}
                 />
@@ -257,19 +303,19 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
         );
     }
 
-    if (field.kind === "select") {
+    if (field.type === "choice") {
         return (
             <div className="space-y-1.5">
                 {labelRow}
                 <select
                     id={inputId}
                     className="h-9 w-full rounded-md border bg-background px-2 text-sm disabled:opacity-60"
-                    value={typeof value === "string" ? value : ""}
+                    value={typeof effective === "string" ? effective : ""}
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value || undefined)}
                 >
                     <option value="">—</option>
-                    {field.options?.map((option) => (
+                    {field.options.map((option) => (
                         <option key={option} value={option}>
                             {option}
                         </option>
@@ -279,17 +325,19 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
         );
     }
 
+    const isNumber = field.type === "int" || field.type === "number";
     return (
         <div className="space-y-1.5">
             {labelRow}
             <Input
                 id={inputId}
-                type={field.kind === "number" ? "number" : "text"}
-                value={value === undefined || value === null ? "" : String(value)}
+                type={isNumber ? "number" : "text"}
+                step={field.type === "int" ? 1 : "any"}
+                value={effective === undefined || effective === null ? "" : String(effective)}
                 disabled={disabled}
                 onChange={(e) => {
                     const raw = e.target.value;
-                    if (field.kind === "number") {
+                    if (isNumber) {
                         onChange(raw === "" ? undefined : Number(raw));
                     } else {
                         onChange(raw || undefined);

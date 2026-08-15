@@ -24,7 +24,12 @@ from app.core.security import (
     require_project_release_actor,
     require_viewer,
 )
-from app.services import board_spec_service, derived_assets, manufacturing_service as mfg
+from app.services import (
+    board_spec_service,
+    derived_assets,
+    manufacturing_service as mfg,
+    spec_config_service,
+)
 from app.services.workspace_service import workspace
 
 router = APIRouter()
@@ -45,6 +50,10 @@ class ManufacturerRequest(BaseModel):
 class BoardSpecRequest(BaseModel):
     specs: dict = Field(default_factory=dict)
     source: dict = Field(default_factory=dict)
+
+
+class SpecConfigRequest(BaseModel):
+    spec_config: str = Field(default="", max_length=100_000)
 
 
 class RunRequest(BaseModel):
@@ -163,6 +172,52 @@ async def extract_board_spec(project_id: str):
     pcb_path = os.path.join(project.get("path", ""), pcb_rel)
     suggested = await asyncio.to_thread(board_spec_service.extract_board_spec, pcb_path)
     return {"suggested": suggested}
+
+
+@router.get("/projects/{project_id}/spec-config", dependencies=[Depends(require_viewer)])
+async def get_spec_config(project_id: str):
+    """The project's spec schema: the raw .config text plus its parsed form."""
+    spec = await asyncio.to_thread(mfg.get_board_spec, project_id)
+    config_text = spec.get("spec_config") or ""
+    parsed = spec_config_service.parse_spec_config(config_text)
+    return {"spec_config": config_text, "parsed": parsed.to_dict()}
+
+
+@router.put("/projects/{project_id}/spec-config")
+async def save_spec_config(
+    project_id: str,
+    request: SpecConfigRequest,
+    user: AuthenticatedUser = Depends(require_designer),
+):
+    """Save the project's spec schema text. The parsed form is returned so the
+    editor can show sections and any errors without a second call."""
+    saved = await asyncio.to_thread(
+        _handle, mfg.save_spec_config, project_id, request.spec_config, updated_by=user.email
+    )
+    parsed = spec_config_service.parse_spec_config(saved.get("spec_config") or "")
+    return {"spec_config": saved.get("spec_config") or "", "parsed": parsed.to_dict()}
+
+
+@router.post("/spec-config/preview", dependencies=[Depends(require_designer)])
+async def preview_spec_config(request: SpecConfigRequest):
+    """Parse spec-config text without saving, for live editor validation."""
+    parsed = spec_config_service.parse_spec_config(request.spec_config)
+    return parsed.to_dict()
+
+
+@router.get("/spec-config/templates", dependencies=[Depends(require_viewer)])
+async def list_spec_templates():
+    """The named starter schemas (Prism default, JLCPCB) the editor can load."""
+    return {"templates": spec_config_service.list_templates()}
+
+
+@router.get("/spec-config/templates/{template_id}", dependencies=[Depends(require_designer)])
+async def get_spec_template(template_id: str):
+    """The raw config text for a named starter schema."""
+    config = spec_config_service.get_template(template_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"id": template_id, "spec_config": config}
 
 
 # ---------------------------------------------------------------------------

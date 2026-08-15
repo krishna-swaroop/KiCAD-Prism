@@ -94,53 +94,36 @@ export function defectCategoryLabel(value: string): string {
     return DEFECT_CATEGORIES.find((c) => c.value === value)?.label ?? value;
 }
 
-// The board-spec fields the per-project form edits, grouped for layout. `auto`
-// marks a field the backend can suggest from the .kicad_pcb.
-export interface SpecField {
+// The board-spec form is generated from a user-defined schema (.config), parsed by
+// the backend into these shapes. `type` mirrors the config's field types.
+export type SpecFieldType = "text" | "int" | "number" | "bool" | "choice";
+
+export interface SpecFieldDef {
     key: string;
     label: string;
-    kind: "number" | "text" | "boolean" | "select";
-    unit?: string;
-    auto?: boolean;
-    options?: string[];
+    type: SpecFieldType;
+    options: string[];
+    default: unknown;
 }
 
-export const SPEC_GROUPS: { title: string; fields: SpecField[] }[] = [
-    {
-        title: "Stackup & physical",
-        fields: [
-            { key: "layer_count", label: "Layer count", kind: "number", auto: true },
-            { key: "board_thickness_mm", label: "Board thickness", kind: "number", unit: "mm", auto: true },
-            { key: "board_width_mm", label: "Board width", kind: "number", unit: "mm", auto: true },
-            { key: "board_height_mm", label: "Board height", kind: "number", unit: "mm", auto: true },
-            { key: "copper_weight_oz", label: "Copper weight", kind: "number", unit: "oz" },
-            { key: "min_track_mm", label: "Min track / space", kind: "number", unit: "mm" },
-            { key: "min_drill_mm", label: "Min drill", kind: "number", unit: "mm" },
-            { key: "material", label: "Material", kind: "text" },
-        ],
-    },
-    {
-        title: "Finish & cosmetic",
-        fields: [
-            { key: "solder_mask_color", label: "Solder-mask color", kind: "text" },
-            { key: "silkscreen_color", label: "Silkscreen color", kind: "text" },
-            {
-                key: "surface_finish",
-                label: "Surface finish",
-                kind: "select",
-                options: ["HASL", "Lead-free HASL", "ENIG", "OSP", "Immersion Silver", "Immersion Tin", "Hard Gold"],
-                auto: true,
-            },
-            { key: "mask_type", label: "Mask type", kind: "select", options: ["Glossy", "Matte"] },
-        ],
-    },
-    {
-        title: "Process",
-        fields: [
-            { key: "impedance_controlled", label: "Impedance controlled", kind: "boolean" },
-            { key: "castellated", label: "Castellated / edge plating", kind: "boolean", auto: true },
-            { key: "ipc_class", label: "IPC class", kind: "select", options: ["1", "2", "3"] },
-            { key: "panelization", label: "Panelization notes", kind: "text" },
-        ],
-    },
-];
+export interface SpecSectionDef {
+    title: string;
+    fields: SpecFieldDef[];
+}
+
+export interface ParsedSpecConfig {
+    sections: SpecSectionDef[];
+    errors: string[];
+}
+
+// Keys the board extractor can fill, so the form can show a "from board" hint on
+// matching fields and the Extract button knows which values to expect.
+export const EXTRACTABLE_KEYS = new Set<string>([
+    "layer_count",
+    "board_thickness_mm",
+    "board_width_mm",
+    "board_height_mm",
+    "surface_finish",
+    "castellated",
+    "edge_plating",
+]);
