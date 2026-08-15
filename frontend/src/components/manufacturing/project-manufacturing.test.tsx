@@ -99,6 +99,34 @@ describe("ProjectManufacturing", () => {
         expect(screen.getAllByText("from board").length).toBeGreaterThan(0);
     });
 
+    it("an extracted number selects its option in a choice field", async () => {
+        // layer_count is a choice; the extractor returns a number that must match.
+        const choiceSchema = {
+            sections: [
+                {
+                    title: "Base",
+                    optional: false,
+                    when: null,
+                    fields: [
+                        { key: "layer_count", label: "Layers", type: "choice", options: ["1", "2", "4", "6"], default: null, when: null },
+                    ],
+                },
+            ],
+            errors: [],
+        };
+        getSpecConfig.mockResolvedValue({ spec_config: "x", parsed: choiceSchema });
+        extractBoardSpec.mockResolvedValue({ suggested: { layer_count: 4 } });
+
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitFor(() => expect(screen.getByLabelText("Layers")).toBeTruthy());
+        // Nothing selected yet (the — placeholder).
+        expect((screen.getByLabelText("Layers") as HTMLSelectElement).value).toBe("");
+
+        fireEvent.click(screen.getByRole("button", { name: /Extract from board/ }));
+        // The numeric 4 selects the "4" option, not the — fallback.
+        await waitFor(() => expect((screen.getByLabelText("Layers") as HTMLSelectElement).value).toBe("4"));
+    });
+
     it("collapses a section when its header is clicked", async () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByLabelText(/Layer count/)).toBeTruthy());

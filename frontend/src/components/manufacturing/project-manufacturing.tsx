@@ -471,12 +471,15 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
     }
 
     if (field.type === "choice") {
+        // Coerce to a string so a number (e.g. an extracted layer count) matches its
+        // string option. An unset value stays "" (the — placeholder).
+        const selected = effective === undefined || effective === null ? "" : String(effective);
         return (
             <div className={FIELD_GAP}>
                 {labelRow}
                 <CompactSelect
                     id={inputId}
-                    value={typeof effective === "string" ? effective : ""}
+                    value={field.options.includes(selected) ? selected : ""}
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value || undefined)}
                 >
