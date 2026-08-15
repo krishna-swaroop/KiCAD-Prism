@@ -173,8 +173,19 @@ class SpecConfigParseTests(unittest.TestCase):
         parsed = parse_spec_config(JLCPCB_SPEC_CONFIG)
         self.assertEqual(parsed.errors, [])
         gated = {f.key: f.when for s in parsed.sections for f in s.fields if f.when}
-        self.assertEqual(gated["inner_copper_weight_oz"].op, ">")
+        # Inner copper is gated on layer count (multilayer only).
+        self.assertEqual(gated["inner_copper_weight_oz"].key, "layer_count")
         self.assertEqual(gated["gold_fingers"].values, ["FR-4"])
+        # ENIG thickness only shows when the finish is ENIG.
+        self.assertEqual(gated["enig_thickness"].key, "surface_finish")
+
+    def test_jlcpcb_layer_count_is_a_choice_and_delivery_is_carrier_only(self) -> None:
+        parsed = parse_spec_config(JLCPCB_SPEC_CONFIG)
+        by_key = {f.key: f for s in parsed.sections for f in s.fields}
+        self.assertEqual(by_key["layer_count"].type, "choice")
+        self.assertIn("4", by_key["layer_count"].options)
+        delivery = next(s for s in parsed.sections if s.title == "Delivery")
+        self.assertEqual([f.key for f in delivery.fields], ["carrier"])
 
     def test_builtin_templates_parse_cleanly(self) -> None:
         from app.services.spec_config_service import JLCPCB_ADVANCED_SPEC_CONFIG

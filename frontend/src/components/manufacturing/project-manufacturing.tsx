@@ -447,17 +447,26 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
     );
 
     if (field.type === "bool") {
+        // Same stacked shape as the other fields (label on top, control below) so a
+        // row of mixed fields lines up. The control slot is a fixed h-7 box holding
+        // the checkbox, matching the height of an input/select.
         return (
-            <label className="flex h-7 cursor-pointer items-center justify-between gap-2 rounded-md border px-2">
+            <div className={FIELD_GAP}>
                 {labelRow}
-                <input
-                    id={inputId}
-                    type="checkbox"
-                    checked={effective === true}
-                    disabled={disabled}
-                    onChange={(e) => onChange(e.target.checked)}
-                />
-            </label>
+                <label
+                    htmlFor={inputId}
+                    className="flex h-7 cursor-pointer items-center rounded-md border px-2"
+                >
+                    <input
+                        id={inputId}
+                        type="checkbox"
+                        className="h-3.5 w-3.5"
+                        checked={effective === true}
+                        disabled={disabled}
+                        onChange={(e) => onChange(e.target.checked)}
+                    />
+                </label>
+            </div>
         );
     }
 

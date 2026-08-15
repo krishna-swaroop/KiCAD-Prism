@@ -328,48 +328,60 @@ ipc_class: choice(1, 2, 3)
 # up with the board extractor's well-known names where they exist (layer_count,
 # board_thickness_mm, board dimensions, surface_finish) so Extract still fills them.
 JLCPCB_SPEC_CONFIG = """\
-# Spec schema modelled on JLCPCB's PCB order options.
-# Values follow their quote form; edit freely for your board.
-# Some fields are gated: e.g. inner copper only shows for multilayer boards,
-# and several options only apply to FR-4, mirroring how the JLCPCB form reveals them.
+# Spec schema modelled on the JLCPCB PCB quote form, field by field, in order.
+# Fields are gated to mirror how the site reveals them: e.g. inner copper and
+# min via only for multilayer, several options only for FR-4.
 
 [Base]
-base_material: choice(FR-4, Aluminum, Copper Core, Rogers, PTFE) = FR-4
-layer_count: int = 2
-board_width_mm: number | Board width (mm)
-board_height_mm: number | Board height (mm)
-different_design_count: int = 1 | Different designs in panel
+base_material: choice(FR-4, Flex, Aluminum, Copper Core, Rogers, PTFE Teflon) = FR-4 | Base material
+layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16, 20) = 2 | Layers
+board_width_mm: number | Dimension width (mm)
+board_height_mm: number | Dimension height (mm)
+pcb_qty: choice(5, 10, 15, 20, 25, 30, 50, 75, 100, 150, 200) = 5 | PCB Qty
+product_type: choice(Industrial/Consumer electronics, Aerospace/Military) = Industrial/Consumer electronics | Product type
+different_design: choice(1, 2, 3, 4, 5) = 1 | Different design
+delivery_format: choice(Single PCB, Panel by Customer, Panel by JLCPCB) = Single PCB | Delivery format
+# Panel fields only apply when the board is delivered as a panel.
+panel_columns: int when delivery_format != Single PCB | Panel columns
+panel_rows: int when delivery_format != Single PCB | Panel rows
 
 [Stackup]
 board_thickness_mm: choice(0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0) = 1.6 | PCB thickness (mm)
-outer_copper_weight_oz: choice(1, 2, 2.5, 3.5, 4.5) = 1 | Outer copper (oz)
+outer_copper_weight_oz: choice(1, 2) = 1 | Outer copper weight (oz)
 # Inner copper only exists on multilayer boards.
-inner_copper_weight_oz: choice(0.5, 1, 2) when layer_count > 2 | Inner copper (oz)
-# Impedance control is offered on FR-4 boards.
+inner_copper_weight_oz: choice(0.5, 1) = 0.5 when layer_count != 1 | Inner copper weight (oz)
+# Impedance control is offered on multilayer FR-4 boards.
 impedance_control: bool when base_material = FR-4 | Impedance control
 
 [Finish & cosmetic]
-# FR-4 offers the full colour range; metal-core boards are white/black only.
+# FR-4 offers the full colour range; other materials are more limited.
 solder_mask_color: choice(Green, Purple, Red, Yellow, Blue, White, Black) = Green when base_material = FR-4 | PCB color
-solder_mask_color_metal: choice(White, Black) = White when base_material in (Aluminum, Copper Core) | PCB color
-silkscreen_color: choice(White, Black) = White
-surface_finish: choice(HASL, Lead-free HASL, ENIG, OSP) = HASL
-via_covering: choice(Tented, Untented, Plugged, Epoxy filled & capped, Copper paste filled & capped) = Tented
+solder_mask_color_other: choice(White, Black) = White when base_material != FR-4 | PCB color
+silkscreen_color: choice(White, Black) = White | Silkscreen
+surface_finish: choice(HASL(with lead), LeadFree HASL, ENIG, OSP) = HASL(with lead) | Surface finish
+# ENIG lets you pick the gold thickness.
+enig_thickness: choice(1 micron, 2 micron) when surface_finish = ENIG | ENIG thickness
 
-[Advanced]
-min_via_hole_mm: choice(0.3, 0.25, 0.2, 0.15) = 0.3 | Min via hole (mm)
-min_track_spacing: text | Min track/spacing (mil)
-board_outline_tolerance: choice(Regular ±0.2mm, Precision ±0.1mm) = Regular ±0.2mm
-# Gold fingers, castellated holes and edge plating are FR-4 features.
-gold_fingers: bool when base_material = FR-4
-castellated_holes: bool when base_material = FR-4
-edge_plating: bool when base_material = FR-4
-remove_order_number: choice(No, Yes - specify position, Yes - JLCPCB chooses) = No
+[Options]
+via_covering: choice(Tented, Untented, Plugged, Epoxy Filled & Capped, Copper paste Filled & Capped) = Tented | Via covering
+min_via_hole: choice(0.3mm, 0.25mm, 0.2mm(0.15mm hole)) = 0.3mm when layer_count != 1 | Min via hole size / diameter
+board_outline_tolerance: choice(±0.2mm(Regular), ±0.1mm(Precision)) = ±0.2mm(Regular) | Board outline tolerance
+# These are FR-4 features.
+gold_fingers: bool when base_material = FR-4 | Gold fingers
+gold_fingers_bevel: bool when base_material = FR-4 | 30 degree finger bevel
+castellated_holes: bool when base_material = FR-4 | Castellated holes
+edge_plating: bool when base_material = FR-4 | Edge plating
+mark_jlcpcb_part: choice(Yes, No) = Yes | Mark JLCPCB part number
+remove_order_number: choice(No, Specify a location, JLCPCB adds anywhere) = No | Remove order number
+
+[Production & testing]
+flying_probe_test: choice(Fully test, Sample test) = Fully test | Electrical test
+gerber_file_verification: bool | Confirm production file
+silkscreen_technology: choice(Ink-jet/Screen printing, Precision - photo imaging) = Ink-jet/Screen printing | Silkscreen technology
+gold_fingers_chamfered: bool | Chamfered gold fingers
 
 [Delivery]
-material_type: text = FR-4 TG130
-lead_time: text
-notes: text
+carrier: text | Shipping carrier
 
 [+Assembly]
 pcba_type: choice(Economic, Standard) = Standard | PCBA type
