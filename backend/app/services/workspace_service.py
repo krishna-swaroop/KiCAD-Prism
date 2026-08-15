@@ -165,6 +165,56 @@ class WorkspaceService:
                 updated_at TIMESTAMPTZ NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_ws_jobs_kind_status ON ws_jobs(kind, status);
+
+            CREATE TABLE IF NOT EXISTS ws_manufacturers (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                contact     TEXT NOT NULL DEFAULT '',
+                website     TEXT NOT NULL DEFAULT '',
+                notes       TEXT NOT NULL DEFAULT '',
+                created_at  TIMESTAMPTZ NOT NULL,
+                updated_at  TIMESTAMPTZ NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS ws_board_specs (
+                project_id  TEXT PRIMARY KEY REFERENCES ws_projects(id) ON DELETE CASCADE,
+                specs       JSONB NOT NULL DEFAULT '{}'::jsonb,
+                source      JSONB NOT NULL DEFAULT '{}'::jsonb,
+                updated_at  TIMESTAMPTZ NOT NULL,
+                updated_by  TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS ws_manufacturing_runs (
+                id               TEXT PRIMARY KEY,
+                project_id       TEXT NOT NULL REFERENCES ws_projects(id) ON DELETE CASCADE,
+                manufacturer_id  TEXT REFERENCES ws_manufacturers(id) ON DELETE SET NULL,
+                commit_sha       TEXT NOT NULL DEFAULT '',
+                quantity_ordered INTEGER NOT NULL DEFAULT 0,
+                quantity_good    INTEGER NOT NULL DEFAULT 0,
+                status           TEXT NOT NULL DEFAULT 'draft',
+                notes            TEXT NOT NULL DEFAULT '',
+                spec_snapshot    JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_by       TEXT NOT NULL DEFAULT '',
+                created_at       TIMESTAMPTZ NOT NULL,
+                updated_at       TIMESTAMPTZ NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ws_mfg_runs_project ON ws_manufacturing_runs(project_id);
+            CREATE INDEX IF NOT EXISTS idx_ws_mfg_runs_status  ON ws_manufacturing_runs(status);
+
+            CREATE TABLE IF NOT EXISTS ws_run_defects (
+                id                TEXT PRIMARY KEY,
+                run_id            TEXT NOT NULL REFERENCES ws_manufacturing_runs(id) ON DELETE CASCADE,
+                category          TEXT NOT NULL DEFAULT 'other',
+                severity          TEXT NOT NULL DEFAULT 'minor',
+                quantity_affected INTEGER NOT NULL DEFAULT 1,
+                description       TEXT NOT NULL DEFAULT '',
+                status            TEXT NOT NULL DEFAULT 'open',
+                evidence          JSONB NOT NULL DEFAULT '[]'::jsonb,
+                logged_by         TEXT NOT NULL DEFAULT '',
+                created_at        TIMESTAMPTZ NOT NULL,
+                resolved_at       TIMESTAMPTZ
+            );
+            CREATE INDEX IF NOT EXISTS idx_ws_run_defects_run ON ws_run_defects(run_id);
         """, prepare=False)
 
     # ------------------------------------------------------------------
