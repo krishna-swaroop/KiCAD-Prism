@@ -328,57 +328,77 @@ ipc_class: choice(1, 2, 3)
 # up with the board extractor's well-known names where they exist (layer_count,
 # board_thickness_mm, board dimensions, surface_finish) so Extract still fills them.
 JLCPCB_SPEC_CONFIG = """\
-# Spec schema modelled on the JLCPCB PCB quote form, field by field, in order.
-# Fields are gated to mirror how the site reveals them: e.g. inner copper and
-# min via only for multilayer, several options only for FR-4.
+# Spec schema built from the JLCPCB PCB quote form, field by field, in order,
+# with the exact option values. Fields are gated to mirror how the site reveals
+# them (multilayer-only, FR-4-only, Flex-only, ENIG-only, panel-only, brand-only).
 
 [Base]
 base_material: choice(FR-4, Flex, Aluminum, Copper Core, Rogers, PTFE Teflon) = FR-4 | Base material
-layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16, 20) = 2 | Layers
+layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16) = 2 | Layers
 board_width_mm: number | Dimension width (mm)
 board_height_mm: number | Dimension height (mm)
-pcb_qty: choice(5, 10, 15, 20, 25, 30, 50, 75, 100, 150, 200) = 5 | PCB Qty
-product_type: choice(Industrial/Consumer electronics, Aerospace/Military) = Industrial/Consumer electronics | Product type
-different_design: choice(1, 2, 3, 4, 5) = 1 | Different design
+pcb_qty: choice(5, 10, 15, 20, 25, 30, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000) = 5 | PCB Qty
+product_type: choice(Industrial/Consumer electronics, Aerospace, Medical) = Industrial/Consumer electronics | Product type
+different_design: choice(1, 2, 3, 4) = 1 | Different design
 delivery_format: choice(Single PCB, Panel by Customer, Panel by JLCPCB) = Single PCB | Delivery format
-# Panel fields only apply when the board is delivered as a panel.
+# Panel layout only applies when the board is delivered as a panel.
 panel_columns: int when delivery_format != Single PCB | Panel columns
 panel_rows: int when delivery_format != Single PCB | Panel rows
 
 [Stackup]
 board_thickness_mm: choice(0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0) = 1.6 | PCB thickness (mm)
-outer_copper_weight_oz: choice(1, 2) = 1 | Outer copper weight (oz)
-# Inner copper only exists on multilayer boards.
-inner_copper_weight_oz: choice(0.5, 1) = 0.5 when layer_count != 1 | Inner copper weight (oz)
-# Impedance control is offered on multilayer FR-4 boards.
+outer_copper_weight_oz: choice(1 oz, 2 oz, 3.5 oz, 4.5 oz) = 1 oz | Outer copper weight
+# Inner copper only exists on multilayer boards (inner is 0.5 oz by default).
+inner_copper_weight_oz: choice(0.5 oz, 1 oz, 2 oz) = 0.5 oz when layer_count != 1 | Inner copper weight
+# FR-4 TG material grade.
+material_type: choice(FR4 TG135, KB6164 - TG135, Nan Ya NP-140F, S1141 TG140, S1000H TG155) = FR4 TG135 when base_material = FR-4 | Material Type
 impedance_control: bool when base_material = FR-4 | Impedance control
 
-[Finish & cosmetic]
-# FR-4 offers the full colour range; other materials are more limited.
+[Colour]
+# Green is the full-range default for FR-4; other materials print white/black.
 solder_mask_color: choice(Green, Purple, Red, Yellow, Blue, White, Black) = Green when base_material = FR-4 | PCB color
 solder_mask_color_other: choice(White, Black) = White when base_material != FR-4 | PCB color
 silkscreen_color: choice(White, Black) = White | Silkscreen
-surface_finish: choice(HASL(with lead), LeadFree HASL, ENIG, OSP) = HASL(with lead) | Surface finish
-# ENIG lets you pick the gold thickness.
-enig_thickness: choice(1 micron, 2 micron) when surface_finish = ENIG | ENIG thickness
+
+[Surface finish]
+surface_finish: choice(OSP, HASL(with lead), LeadFree HASL, ENIG) = HASL(with lead) | Surface finish
+
+[Flex]
+# Flex-only options, revealed when the material is Flex.
+eda_software: choice(EasyEDA Pro, Other) = Other when base_material = Flex | EDA software
+stiffener: choice(Without, Polyimide, FR4, Stainless Steel, 3M Tape) = Without when base_material = Flex | Stiffener
+emi_shielding_film: choice(Without, Both sides, Single side) = Without when base_material = Flex | EMI shielding film
+coverlay_thickness: choice(PI:12.5um/AD:15um, PI:25um/AD:25um) = PI:25um/AD:25um when base_material = Flex | Coverlay thickness
+cutting_method: choice(Laser Cutting, Punching) = Laser Cutting when base_material = Flex | Cutting method
+
+[Vias]
+via_covering: choice(Tented, Untented, Plugged, Epoxy Filled & Capped, Copper paste Filled & Capped) = Tented | Via covering
+via_plating_method: choice(Not Specified, Conductive Adhesive, Horizontal Electroless Copper Plating) = Not Specified | Via plating method
+# Via size only matters on boards that have vias (multilayer).
+min_via_hole: choice(0.3mm/(0.4/0.45mm), 0.25mm/(0.35/0.4mm), 0.2mm/(0.3/0.35mm), 0.15mm/(0.25/0.3mm)) = 0.3mm/(0.4/0.45mm) when layer_count != 1 | Min via hole size / diameter
 
 [Options]
-via_covering: choice(Tented, Untented, Plugged, Epoxy Filled & Capped, Copper paste Filled & Capped) = Tented | Via covering
-min_via_hole: choice(0.3mm, 0.25mm, 0.2mm(0.15mm hole)) = 0.3mm when layer_count != 1 | Min via hole size / diameter
 board_outline_tolerance: choice(±0.2mm(Regular), ±0.1mm(Precision)) = ±0.2mm(Regular) | Board outline tolerance
-# These are FR-4 features.
-gold_fingers: bool when base_material = FR-4 | Gold fingers
-gold_fingers_bevel: bool when base_material = FR-4 | 30 degree finger bevel
-castellated_holes: bool when base_material = FR-4 | Castellated holes
-edge_plating: bool when base_material = FR-4 | Edge plating
-mark_jlcpcb_part: choice(Yes, No) = Yes | Mark JLCPCB part number
-remove_order_number: choice(No, Specify a location, JLCPCB adds anywhere) = No | Remove order number
+# Gold fingers, castellation and edge plating are FR-4 features; edge plating and
+# gold fingers want ENIG.
+gold_fingers: choice(No, Yes) = No when base_material = FR-4 | Gold fingers
+castellated_holes: choice(No, Yes) = No when base_material = FR-4 | Castellated holes
+edge_plating: choice(No, Yes) = No when base_material = FR-4 | Edge plating
+blind_slots: choice(No, Yes) = No | Blind slots
+mark_on_pcb: choice(Order Number, 2D barcode, Remove Mark, 2D barcode (Serial Number)) = Order Number | Mark on PCB
+confirm_production_file: choice(No, Yes) = No | Confirm production file
 
-[Production & testing]
-flying_probe_test: choice(Fully test, Sample test) = Fully test | Electrical test
-gerber_file_verification: bool | Confirm production file
-silkscreen_technology: choice(Ink-jet/Screen printing, Precision - photo imaging) = Ink-jet/Screen printing | Silkscreen technology
-gold_fingers_chamfered: bool | Chamfered gold fingers
+[Testing & quality]
+electrical_test: choice(Flying Probe Fully Test, Sample test) = Flying Probe Fully Test | Electrical test
+appearance_quality: choice(IPC Class 2 Standard, Superb Quality) = IPC Class 2 Standard | Appearance quality
+silkscreen_technology: choice(Ink-jet Printing, High-precision Printing, High-definition Exposure) = Ink-jet Printing | Silkscreen technology
+paper_between_pcbs: choice(No, Yes) = No | Paper between PCBs
+ul_marking: choice(No, Yes (Any Position), Yes (Specify Position)) = No | UL marking
+humidity_indicator_card: choice(No, Yes) = No | Humidity indicator card
+kelvin_test: choice(No, Yes) = No | 4-Wire Kelvin test
+package_box: choice(With JLCPCB logo, Blank box) = With JLCPCB logo | Package box
+inspection_report: choice(No, Final Inspection Report, Electrical Test Report, ROHS Test Report) = No | Inspection report
+pcb_remark: text | PCB remark
 
 [Delivery]
 carrier: text | Shipping carrier
