@@ -1,0 +1,223 @@
+import { fetchApi, readApiError } from "@/lib/api";
+import type {
+    BoardSpec,
+    EvidenceDescriptor,
+    Manufacturer,
+    ManufacturingRun,
+    RunDefect,
+} from "@/types/manufacturing";
+
+async function json<T>(response: Response, fallback: string): Promise<T> {
+    if (!response.ok) {
+        throw new Error(await readApiError(response, fallback));
+    }
+    return (await response.json()) as T;
+}
+
+// -- manufacturers --
+
+export async function listManufacturers(): Promise<Manufacturer[]> {
+    return json(await fetchApi("/api/manufacturing/manufacturers"), "Failed to load manufacturers.");
+}
+
+export async function createManufacturer(body: {
+    name: string;
+    contact?: string;
+    website?: string;
+    notes?: string;
+}): Promise<{ id: string }> {
+    return json(
+        await fetchApi("/api/manufacturing/manufacturers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to create manufacturer.",
+    );
+}
+
+export async function updateManufacturer(
+    id: string,
+    body: { name: string; contact?: string; website?: string; notes?: string },
+): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/manufacturers/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to update manufacturer.",
+    );
+}
+
+export async function deleteManufacturer(id: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/manufacturers/${id}`, { method: "DELETE" }),
+        "Failed to delete manufacturer.",
+    );
+}
+
+// -- board specs --
+
+export async function getBoardSpec(projectId: string): Promise<BoardSpec> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/board-spec`),
+        "Failed to load board specs.",
+    );
+}
+
+export async function saveBoardSpec(
+    projectId: string,
+    specs: Record<string, unknown>,
+    source: Record<string, string>,
+): Promise<BoardSpec> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/board-spec`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ specs, source }),
+        }),
+        "Failed to save board specs.",
+    );
+}
+
+export async function extractBoardSpec(
+    projectId: string,
+): Promise<{ suggested: Record<string, unknown>; reason?: string }> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/board-spec/extract`, {
+            method: "POST",
+        }),
+        "Failed to read the board.",
+    );
+}
+
+// -- runs --
+
+export async function listRuns(projectId?: string): Promise<ManufacturingRun[]> {
+    const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+    return json(await fetchApi(`/api/manufacturing/runs${query}`), "Failed to load runs.");
+}
+
+export async function getRun(runId: string): Promise<ManufacturingRun> {
+    return json(await fetchApi(`/api/manufacturing/runs/${runId}`), "Failed to load run.");
+}
+
+export async function createRun(body: {
+    project_id: string;
+    manufacturer_id?: string | null;
+    commit_sha?: string;
+    quantity_ordered?: number;
+    notes?: string;
+    spec_snapshot?: Record<string, unknown>;
+}): Promise<{ id: string }> {
+    return json(
+        await fetchApi("/api/manufacturing/runs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to create run.",
+    );
+}
+
+export async function updateRun(
+    runId: string,
+    body: Partial<{
+        manufacturer_id: string | null;
+        commit_sha: string;
+        quantity_ordered: number;
+        quantity_good: number;
+        status: string;
+        notes: string;
+    }>,
+): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/runs/${runId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to update run.",
+    );
+}
+
+export async function deleteRun(runId: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/runs/${runId}`, { method: "DELETE" }),
+        "Failed to delete run.",
+    );
+}
+
+// -- defects --
+
+export async function logDefect(
+    runId: string,
+    body: { category: string; severity: string; quantity_affected: number; description: string },
+): Promise<{ id: string }> {
+    return json(
+        await fetchApi(`/api/manufacturing/runs/${runId}/defects`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to log defect.",
+    );
+}
+
+export async function updateDefect(
+    defectId: string,
+    body: Partial<{
+        category: string;
+        severity: string;
+        quantity_affected: number;
+        description: string;
+        status: string;
+    }>,
+): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/defects/${defectId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to update defect.",
+    );
+}
+
+export async function deleteDefect(defectId: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/defects/${defectId}`, { method: "DELETE" }),
+        "Failed to delete defect.",
+    );
+}
+
+// -- evidence --
+
+export async function uploadEvidence(defectId: string, file: File): Promise<EvidenceDescriptor> {
+    const form = new FormData();
+    form.append("file", file);
+    return json(
+        await fetchApi(`/api/manufacturing/defects/${defectId}/evidence`, {
+            method: "POST",
+            body: form,
+        }),
+        "Failed to upload evidence.",
+    );
+}
+
+export async function deleteEvidence(defectId: string, digest: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/defects/${defectId}/evidence/${digest}`, {
+            method: "DELETE",
+        }),
+        "Failed to delete evidence.",
+    );
+}
+
+export function evidenceUrl(runId: string, digest: string): string {
+    return `/api/manufacturing/runs/${runId}/evidence/${digest}`;
+}
+
+// Re-export types so consumers can import from one place.
+export type { BoardSpec, EvidenceDescriptor, Manufacturer, ManufacturingRun, RunDefect };
