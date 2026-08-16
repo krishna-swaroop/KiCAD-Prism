@@ -4,8 +4,18 @@ export interface Manufacturer {
     contact: string;
     website: string;
     notes: string;
+    /** Fabrication capabilities keyed by PcbRuleField.key (min track, drill, ...). */
+    capabilities: Record<string, unknown>;
     created_at: string;
     updated_at: string;
+}
+
+/** One PCB rule / manufacturer-capability field (the KiCad rule set). */
+export interface PcbRuleField {
+    key: string;
+    label: string;
+    type: "number" | "int" | "bool" | "text";
+    unit?: string;
 }
 
 export interface BoardSpec {

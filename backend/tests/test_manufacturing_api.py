@@ -75,6 +75,12 @@ class ManufacturingRequestValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.api.ProjectSpecCreateRequest(manufacturer_id="", name="Default")
 
+    def test_manufacturer_carries_capabilities(self) -> None:
+        req = self.api.ManufacturerRequest(name="JLCPCB", capabilities={"min_track_width": 0.127})
+        self.assertEqual(req.capabilities, {"min_track_width": 0.127})
+        # Defaults to an empty dict when omitted.
+        self.assertEqual(self.api.ManufacturerRequest(name="X").capabilities, {})
+
 
 class ManufacturingRouteTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -121,6 +127,32 @@ class ManufacturingRouteTests(unittest.TestCase):
         with patch.object(self.api.mfg, "get_project_spec", return_value=None):
             with self.assertRaises(HTTPException) as ctx:
                 _run(self.api.get_project_spec("spec_missing"))
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_create_manufacturer_forwards_capabilities(self) -> None:
+        with patch.object(self.api.mfg, "create_manufacturer", return_value="mfr_new") as create:
+            request = self.api.ManufacturerRequest(name="JLCPCB", capabilities={"min_track_width": 0.127})
+            _run(self.api.create_manufacturer(request))
+        # capabilities is the 5th positional arg to the service.
+        self.assertEqual(create.call_args.args[4], {"min_track_width": 0.127})
+
+    def test_pcb_rule_fields_endpoint_returns_the_schema(self) -> None:
+        result = _run(self.api.get_pcb_rule_fields())
+        keys = {f["key"] for f in result["fields"]}
+        self.assertIn("min_track_width", keys)
+
+    def test_extract_pcb_rules_reads_the_project_board(self) -> None:
+        project = {"pcb_rel": "board.kicad_pcb", "path": "/tmp/proj"}
+        with patch.object(self.api.workspace, "get_project_by_id", return_value=project), patch.object(
+            self.api.pcb_rules_service, "extract_pcb_rules", return_value={"min_track_width": 0.1}
+        ):
+            result = _run(self.api.extract_pcb_rules("prj_1"))
+        self.assertEqual(result, {"rules": {"min_track_width": 0.1}})
+
+    def test_extract_pcb_rules_404_for_unknown_project(self) -> None:
+        with patch.object(self.api.workspace, "get_project_by_id", return_value=None):
+            with self.assertRaises(HTTPException) as ctx:
+                _run(self.api.extract_pcb_rules("prj_missing"))
         self.assertEqual(ctx.exception.status_code, 404)
 
     def test_service_error_becomes_400(self) -> None:

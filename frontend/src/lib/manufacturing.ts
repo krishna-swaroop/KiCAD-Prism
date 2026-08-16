@@ -5,6 +5,7 @@ import type {
     Manufacturer,
     ManufacturingRun,
     ParsedSpecConfig,
+    PcbRuleField,
     ProjectManufacturer,
     ProjectSpec,
     RunDefect,
@@ -29,6 +30,7 @@ export async function createManufacturer(body: {
     contact?: string;
     website?: string;
     notes?: string;
+    capabilities?: Record<string, unknown>;
 }): Promise<{ id: string }> {
     return json(
         await fetchApi("/api/manufacturing/manufacturers", {
@@ -42,7 +44,13 @@ export async function createManufacturer(body: {
 
 export async function updateManufacturer(
     id: string,
-    body: { name: string; contact?: string; website?: string; notes?: string },
+    body: {
+        name: string;
+        contact?: string;
+        website?: string;
+        notes?: string;
+        capabilities?: Record<string, unknown>;
+    },
 ): Promise<void> {
     await json(
         await fetchApi(`/api/manufacturing/manufacturers/${id}`, {
@@ -51,6 +59,27 @@ export async function updateManufacturer(
             body: JSON.stringify(body),
         }),
         "Failed to update manufacturer.",
+    );
+}
+
+// -- PCB rules / capabilities --
+
+export async function getPcbRuleFields(): Promise<PcbRuleField[]> {
+    const data = await json<{ fields: PcbRuleField[] }>(
+        await fetchApi("/api/manufacturing/pcb-rule-fields"),
+        "Failed to load rule fields.",
+    );
+    return data.fields;
+}
+
+export async function extractPcbRules(
+    projectId: string,
+): Promise<{ rules: Record<string, unknown>; reason?: string }> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/pcb-rules/extract`, {
+            method: "POST",
+        }),
+        "Failed to read the board rules.",
     );
 }
 

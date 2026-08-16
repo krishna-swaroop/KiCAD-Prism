@@ -167,13 +167,16 @@ class WorkspaceService:
             CREATE INDEX IF NOT EXISTS idx_ws_jobs_kind_status ON ws_jobs(kind, status);
 
             CREATE TABLE IF NOT EXISTS ws_manufacturers (
-                id          TEXT PRIMARY KEY,
-                name        TEXT NOT NULL,
-                contact     TEXT NOT NULL DEFAULT '',
-                website     TEXT NOT NULL DEFAULT '',
-                notes       TEXT NOT NULL DEFAULT '',
-                created_at  TIMESTAMPTZ NOT NULL,
-                updated_at  TIMESTAMPTZ NOT NULL
+                id           TEXT PRIMARY KEY,
+                name         TEXT NOT NULL,
+                contact      TEXT NOT NULL DEFAULT '',
+                website      TEXT NOT NULL DEFAULT '',
+                notes        TEXT NOT NULL DEFAULT '',
+                -- Fabrication capabilities keyed by the KiCad rule fields
+                -- (min track, clearances, ...); added by migration 27 too.
+                capabilities JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at   TIMESTAMPTZ NOT NULL,
+                updated_at   TIMESTAMPTZ NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS ws_board_specs (

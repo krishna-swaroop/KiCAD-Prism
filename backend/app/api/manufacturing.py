@@ -29,6 +29,7 @@ from app.services import (
     board_spec_service,
     derived_assets,
     manufacturing_service as mfg,
+    pcb_rules_service,
     spec_config_service,
 )
 from app.services.workspace_service import workspace
@@ -46,6 +47,7 @@ class ManufacturerRequest(BaseModel):
     contact: str = ""
     website: str = ""
     notes: str = ""
+    capabilities: dict = Field(default_factory=dict)
 
 
 class BoardSpecRequest(BaseModel):
@@ -151,6 +153,7 @@ async def create_manufacturer(request: ManufacturerRequest):
     mfr_id = await asyncio.to_thread(
         _handle, mfg.create_manufacturer,
         request.name, request.contact, request.website, request.notes,
+        request.capabilities,
     )
     return {"id": mfr_id}
 
@@ -161,6 +164,7 @@ async def update_manufacturer(mfr_id: str, request: ManufacturerRequest):
         _handle, mfg.update_manufacturer, mfr_id,
         name=request.name, contact=request.contact,
         website=request.website, notes=request.notes,
+        capabilities=request.capabilities,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Manufacturer not found")
@@ -235,6 +239,28 @@ async def extract_board_spec(project_id: str):
     pcb_path = os.path.join(project.get("path", ""), pcb_rel)
     suggested = await asyncio.to_thread(board_spec_service.extract_board_spec, pcb_path)
     return {"suggested": suggested}
+
+
+@router.get("/pcb-rule-fields", dependencies=[Depends(require_viewer)])
+async def get_pcb_rule_fields():
+    """The canonical PCB rule/capability fields, so the UI need not hardcode them."""
+    return {"fields": pcb_rules_service.PCB_RULE_FIELDS}
+
+
+@router.post("/projects/{project_id}/pcb-rules/extract", dependencies=[Depends(require_designer)])
+async def extract_pcb_rules(project_id: str):
+    """Read the board's fabrication rules from its KiCad files. Read-only."""
+    project = await asyncio.to_thread(workspace.get_project_by_id, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    pcb_rel = project.get("pcb_rel")
+    if not pcb_rel:
+        return {"rules": {}, "reason": "This project has no board file to read."}
+    import os
+
+    pcb_path = os.path.join(project.get("path", ""), pcb_rel)
+    rules = await asyncio.to_thread(pcb_rules_service.extract_pcb_rules, pcb_path)
+    return {"rules": rules}
 
 
 @router.get("/projects/{project_id}/spec-config", dependencies=[Depends(require_viewer)])

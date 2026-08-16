@@ -78,7 +78,15 @@ def list_manufacturers() -> List[Dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
-def create_manufacturer(name: str, contact: str = "", website: str = "", notes: str = "") -> str:
+def create_manufacturer(
+    name: str,
+    contact: str = "",
+    website: str = "",
+    notes: str = "",
+    capabilities: Optional[Dict[str, Any]] = None,
+) -> str:
+    import json
+
     clean = name.strip()
     if not clean:
         raise ManufacturingError("A manufacturer name is required.")
@@ -86,27 +94,38 @@ def create_manufacturer(name: str, contact: str = "", website: str = "", notes: 
     now = _now()
     with _connect() as conn:
         conn.execute(
-            """INSERT INTO ws_manufacturers (id,name,contact,website,notes,created_at,updated_at)
-               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-            (mfr_id, clean, contact.strip(), website.strip(), notes.strip(), now, now),
+            """INSERT INTO ws_manufacturers (id,name,contact,website,notes,capabilities,created_at,updated_at)
+               VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s)""",
+            (mfr_id, clean, contact.strip(), website.strip(), notes.strip(),
+             json.dumps(capabilities or {}), now, now),
         )
         conn.commit()
     return mfr_id
 
 
 def update_manufacturer(mfr_id: str, **fields: Any) -> bool:
-    allowed = {"name", "contact", "website", "notes"}
-    updates = {k: (v.strip() if isinstance(v, str) else v) for k, v in fields.items() if k in allowed}
+    import json
+
+    allowed = {"name", "contact", "website", "notes", "capabilities"}
+    updates = {k: (v.strip() if isinstance(v, str) else v) for k, v in fields.items() if k in allowed and v is not None}
     if "name" in updates and not updates["name"]:
         raise ManufacturingError("A manufacturer name is required.")
     if not updates:
         return False
     updates["updated_at"] = _now()
-    columns = ", ".join(f"{k} = %s" for k in updates)
+    # capabilities is JSONB; everything else is a plain column.
+    sets, values = [], []
+    for key, value in updates.items():
+        if key == "capabilities":
+            sets.append("capabilities = %s::jsonb")
+            values.append(json.dumps(value or {}))
+        else:
+            sets.append(f"{key} = %s")
+            values.append(value)
     with _connect() as conn:
         result = conn.execute(
-            f"UPDATE ws_manufacturers SET {columns} WHERE id = %s",
-            (*updates.values(), mfr_id),
+            f"UPDATE ws_manufacturers SET {', '.join(sets)} WHERE id = %s",
+            (*values, mfr_id),
         )
         conn.commit()
     return bool(result.rowcount)

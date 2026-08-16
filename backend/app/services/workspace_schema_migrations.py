@@ -1749,6 +1749,13 @@ def _manufacturing_run_spec_id(conn: Any) -> None:
     )
 
 
+def _manufacturing_manufacturer_capabilities(conn: Any) -> None:
+    """Store a manufacturer's fabrication capabilities (KiCad rule fields) as JSONB."""
+    conn.execute(
+        "ALTER TABLE ws_manufacturers ADD COLUMN IF NOT EXISTS capabilities JSONB NOT NULL DEFAULT '{}'::jsonb"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1772,6 +1779,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (24, "manufacturing_run_release_tag", _manufacturing_run_release_tag),
     (25, "manufacturing_project_manufacturers_and_specs", _manufacturing_project_manufacturers_and_specs),
     (26, "manufacturing_run_spec_id", _manufacturing_run_spec_id),
+    (27, "manufacturing_manufacturer_capabilities", _manufacturing_manufacturer_capabilities),
 )
 
 

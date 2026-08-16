@@ -17,8 +17,9 @@ import {
     createTemplate,
     updateTemplate,
     deleteTemplate,
+    getPcbRuleFields,
 } from "@/lib/manufacturing";
-import type { Manufacturer, ParsedSpecConfig, SpecTemplate } from "@/types/manufacturing";
+import type { Manufacturer, ParsedSpecConfig, PcbRuleField, SpecTemplate } from "@/types/manufacturing";
 import { SpecConfigEditor } from "./spec-config-editor";
 
 interface ManufacturersPanelProps {
@@ -151,7 +152,24 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
     const [contact, setContact] = useState(existing?.contact ?? "");
     const [website, setWebsite] = useState(existing?.website ?? "");
     const [notes, setNotes] = useState(existing?.notes ?? "");
+    const [capabilities, setCapabilities] = useState<Record<string, unknown>>(existing?.capabilities ?? {});
+    const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
     const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        void getPcbRuleFields()
+            .then(setRuleFields)
+            .catch(() => setRuleFields([]));
+    }, []);
+
+    const setCap = (key: string, value: unknown) => {
+        setCapabilities((current) => {
+            const next = { ...current };
+            if (value === undefined || value === "") delete next[key];
+            else next[key] = value;
+            return next;
+        });
+    };
 
     const handleSave = async () => {
         if (!name.trim()) {
@@ -160,7 +178,7 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
         }
         setSaving(true);
         try {
-            const body = { name: name.trim(), contact, website, notes };
+            const body = { name: name.trim(), contact, website, notes, capabilities };
             if (existing) {
                 await updateManufacturer(existing.id, body);
             } else {
@@ -177,12 +195,12 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
 
     return (
         <Dialog open onOpenChange={(next) => !next && onClose()}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-lg">
                 <DialogHeader>
                     <DialogTitle>{existing ? "Edit manufacturer" : "Add manufacturer"}</DialogTitle>
                     <DialogDescription>A reusable fab-house record you can pick when creating a run.</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-2.5 py-1">
+                <div className="max-h-[70vh] space-y-2.5 overflow-y-auto py-1 pr-1">
                     <div className="space-y-1">
                         <Label htmlFor="mfr-name">Name</Label>
                         <Input id="mfr-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -199,6 +217,22 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
                         <Label htmlFor="mfr-notes">Notes</Label>
                         <Textarea id="mfr-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
+
+                    <div className="pt-1">
+                        <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Capabilities
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                            {ruleFields.map((field) => (
+                                <CapabilityInput
+                                    key={field.key}
+                                    field={field}
+                                    value={capabilities[field.key]}
+                                    onChange={(v) => setCap(field.key, v)}
+                                />
+                            ))}
+                        </div>
+                    </div>
                 </div>
                 <div className="flex justify-end gap-2">
                     <Button variant="ghost" onClick={onClose} disabled={saving}>
@@ -210,6 +244,54 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+function CapabilityInput({
+    field,
+    value,
+    onChange,
+}: {
+    field: PcbRuleField;
+    value: unknown;
+    onChange: (value: unknown) => void;
+}) {
+    const id = `cap-${field.key}`;
+    const label = field.unit ? `${field.label} (${field.unit})` : field.label;
+
+    if (field.type === "bool") {
+        return (
+            <label htmlFor={id} className="col-span-2 flex items-center gap-2 text-sm">
+                <input
+                    id={id}
+                    type="checkbox"
+                    className="h-3.5 w-3.5"
+                    checked={value === true}
+                    onChange={(e) => onChange(e.target.checked ? true : undefined)}
+                />
+                {label}
+            </label>
+        );
+    }
+    const isNumber = field.type === "number" || field.type === "int";
+    return (
+        <div className="space-y-1">
+            <Label htmlFor={id} className="text-xs">
+                {label}
+            </Label>
+            <Input
+                id={id}
+                type={isNumber ? "number" : "text"}
+                step={field.type === "int" ? 1 : "any"}
+                className="h-7"
+                value={value === undefined || value === null ? "" : String(value)}
+                onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === "") onChange(undefined);
+                    else onChange(isNumber ? Number(raw) : raw);
+                }}
+            />
+        </div>
     );
 }
 

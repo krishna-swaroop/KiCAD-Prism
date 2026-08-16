@@ -15,6 +15,8 @@ const deleteProjectSpec = vi.fn();
 const listTemplates = vi.fn();
 const downloadSpecSheet = vi.fn();
 const getTemplate = vi.fn();
+const getPcbRuleFields = vi.fn();
+const extractPcbRules = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     extractBoardSpec: (...a: unknown[]) => extractBoardSpec(...a),
@@ -31,6 +33,8 @@ vi.mock("@/lib/manufacturing", () => ({
     getTemplate: (...a: unknown[]) => getTemplate(...a),
     listTemplates: (...a: unknown[]) => listTemplates(...a),
     downloadSpecSheet: (...a: unknown[]) => downloadSpecSheet(...a),
+    getPcbRuleFields: (...a: unknown[]) => getPcbRuleFields(...a),
+    extractPcbRules: (...a: unknown[]) => extractPcbRules(...a),
     previewSpecConfig: vi.fn(),
 }));
 
@@ -98,6 +102,8 @@ describe("ProjectManufacturing", () => {
         listRuns.mockResolvedValue([]);
         updateProjectSpec.mockResolvedValue(undefined);
         extractBoardSpec.mockResolvedValue({ suggested: {} });
+        getPcbRuleFields.mockResolvedValue([]);
+        extractPcbRules.mockResolvedValue({ rules: {} });
     });
 
     afterEach(() => {
@@ -120,6 +126,27 @@ describe("ProjectManufacturing", () => {
         listProjectManufacturers.mockResolvedValue([]);
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText(/No manufacturers yet/)).toBeTruthy());
+    });
+
+    it("shows the selected manufacturer's capabilities read-only", async () => {
+        getPcbRuleFields.mockResolvedValue([
+            { key: "min_track_width", label: "Min track width", type: "number", unit: "mm" },
+            { key: "allow_microvias", label: "Microvias", type: "bool" },
+        ]);
+        listProjectManufacturers.mockResolvedValue([
+            {
+                id: "m1", name: "Acme Fab", contact: "", website: "", notes: "",
+                capabilities: { min_track_width: 0.127, allow_microvias: true },
+                created_at: "", updated_at: "", attached_at: "",
+            },
+        ]);
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitFor(() => expect(screen.getByText("Capabilities")).toBeTruthy());
+
+        // The stored capability values render in the read-only table.
+        expect(await screen.findByText("Min track width")).toBeTruthy();
+        expect(screen.getByText("0.127 mm")).toBeTruthy();
+        expect(screen.getByText("Yes")).toBeTruthy();
     });
 
     it("quick-adds a spec from a manufacturer schema, named after it", async () => {

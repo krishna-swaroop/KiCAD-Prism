@@ -21,6 +21,8 @@ import {
     getTemplate,
     listTemplates,
     downloadSpecSheet,
+    getPcbRuleFields,
+    extractPcbRules,
 } from "@/lib/manufacturing";
 import {
     RUN_STATUS_LABELS,
@@ -29,6 +31,7 @@ import {
     type Manufacturer,
     type ManufacturingRun,
     type ParsedSpecConfig,
+    type PcbRuleField,
     type ProjectManufacturer,
     type ProjectSpec,
     type SpecFieldDef,
@@ -73,10 +76,35 @@ export function ProjectManufacturing({
     const [editorOpen, setEditorOpen] = useState(false);
     const [templates, setTemplates] = useState<SpecTemplate[]>([]);
     const [allManufacturers, setAllManufacturers] = useState<Manufacturer[]>([]);
+    const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
+    // The board's own extracted rules, shown next to a manufacturer's capabilities.
+    const [boardRules, setBoardRules] = useState<Record<string, unknown> | null>(null);
+    const [extractingRules, setExtractingRules] = useState(false);
     // Which optional sections are switched on (persisted with the spec).
     const [activeSections, setActiveSections] = useState<Set<string>>(new Set());
     // Which sections are collapsed in the UI (per-session, not persisted).
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        void getPcbRuleFields()
+            .then(setRuleFields)
+            .catch(() => setRuleFields([]));
+    }, []);
+
+    const handleExtractRules = async () => {
+        setExtractingRules(true);
+        try {
+            const { rules, reason } = await extractPcbRules(projectId);
+            setBoardRules(rules);
+            if (Object.keys(rules).length === 0) {
+                toast.info(reason ?? "No rules could be read from the board.");
+            }
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to read board rules.");
+        } finally {
+            setExtractingRules(false);
+        }
+    };
 
     // Load the project-level pieces: attached manufacturers, the runs, templates,
     // and the global directory (for the "add manufacturer" picker).
@@ -474,6 +502,38 @@ export function ProjectManufacturing({
                 )}
             </section>
 
+            {/* Manufacturer capabilities (read-only), with the board's own rules
+                alongside for an at-a-glance comparison. */}
+            {selectedManufacturer && (
+                <section className="rounded-lg border">
+                    <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                        <div>
+                            <h3 className="text-lg font-medium">Capabilities</h3>
+                            <p className="text-sm text-muted-foreground">
+                                What {selectedManufacturer.name} can build. Edit these from the main
+                                Manufacturing page.
+                            </p>
+                        </div>
+                        {canEdit && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleExtractRules()}
+                                disabled={extractingRules}
+                            >
+                                <Sparkles className="mr-2 h-4 w-4" />
+                                {extractingRules ? "Reading..." : "Extract PCB rules"}
+                            </Button>
+                        )}
+                    </header>
+                    <CapabilitiesTable
+                        fields={ruleFields}
+                        capabilities={selectedManufacturer.capabilities ?? {}}
+                        boardRules={boardRules}
+                    />
+                </section>
+            )}
+
             {/* Board specs for the selected spec */}
             {selectedManufacturer && (
             <section className="rounded-lg border">
@@ -689,6 +749,71 @@ export function ProjectManufacturing({
                     }}
                 />
             )}
+        </div>
+    );
+}
+
+function formatCapability(field: PcbRuleField, raw: unknown): string {
+    if (raw === undefined || raw === null || raw === "") return "—";
+    if (field.type === "bool") return raw === true || raw === "true" ? "Yes" : "No";
+    return field.unit ? `${raw} ${field.unit}` : String(raw);
+}
+
+// Read-only table of a manufacturer's capabilities. When board rules have been
+// extracted, a third column shows the board's own value for the same field so a
+// user can eyeball whether the fab can build it. Rows with nothing on either side
+// are hidden to keep the table short.
+function CapabilitiesTable({
+    fields,
+    capabilities,
+    boardRules,
+}: {
+    fields: PcbRuleField[];
+    capabilities: Record<string, unknown>;
+    boardRules: Record<string, unknown> | null;
+}) {
+    const rows = fields.filter((f) => {
+        const hasCap = capabilities[f.key] !== undefined && capabilities[f.key] !== "";
+        const hasBoard = boardRules != null && boardRules[f.key] !== undefined;
+        return hasCap || hasBoard;
+    });
+
+    if (rows.length === 0) {
+        return (
+            <p className="px-4 py-6 text-sm text-muted-foreground">
+                No capabilities set for this manufacturer yet.
+            </p>
+        );
+    }
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                        <th className="px-4 py-2 text-left font-medium">Rule</th>
+                        <th className="px-4 py-2 text-right font-medium">Manufacturer</th>
+                        {boardRules != null && (
+                            <th className="px-4 py-2 text-right font-medium">This board</th>
+                        )}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((field, i) => (
+                        <tr key={field.key} className={i % 2 === 1 ? "bg-muted/20" : ""}>
+                            <td className="px-4 py-1.5 text-muted-foreground">{field.label}</td>
+                            <td className="px-4 py-1.5 text-right font-medium tabular-nums">
+                                {formatCapability(field, capabilities[field.key])}
+                            </td>
+                            {boardRules != null && (
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                    {formatCapability(field, boardRules[field.key])}
+                                </td>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -246,6 +247,23 @@ class ManufacturingStoreTests(unittest.TestCase):
         # Moving the live spec on does not touch the run's frozen copy.
         mfg.save_board_spec(self.project_id, {"layers": "2"}, {}, updated_by="d@x")
         self.assertEqual(mfg.get_run(run_id)["spec_snapshot"]["specs"], {"layers": "4"})
+
+    def test_manufacturer_capabilities_round_trip(self) -> None:
+        mid = mfg.create_manufacturer(
+            "Caps Fab " + uuid.uuid4().hex[:5], capabilities={"min_track_width": 0.127}
+        )
+        created = next(m for m in mfg.list_manufacturers() if m["id"] == mid)
+        self.assertEqual(created["capabilities"], {"min_track_width": 0.127})
+
+        mfg.update_manufacturer(mid, capabilities={"min_track_width": 0.09, "allow_microvias": True})
+        updated = next(m for m in mfg.list_manufacturers() if m["id"] == mid)
+        self.assertEqual(updated["capabilities"], {"min_track_width": 0.09, "allow_microvias": True})
+
+        # Editing another field leaves capabilities untouched.
+        mfg.update_manufacturer(mid, notes="fast turnaround")
+        kept = next(m for m in mfg.list_manufacturers() if m["id"] == mid)
+        self.assertEqual(kept["capabilities"], {"min_track_width": 0.09, "allow_microvias": True})
+        mfg.delete_manufacturer(mid)
 
     def test_create_run_unknown_project_rejected(self) -> None:
         with self.assertRaises(mfg.ManufacturingError):
