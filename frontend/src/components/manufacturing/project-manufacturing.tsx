@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Factory, Sparkles, Save, PlusCircle, Settings2, ChevronDown, ChevronRight, FileDown, Trash2 } from "lucide-react";
+import { Factory, Sparkles, Save, PlusCircle, Settings2, ChevronDown, ChevronRight, FileDown, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -440,18 +440,24 @@ export function ProjectManufacturing({
                     <div className="flex items-center gap-2">
                         <Button
                             variant="outline"
-                            size="sm"
+                            size="icon-lg"
+                            aria-label="Download PDF spec sheet"
+                            title="Download PDF spec sheet"
                             onClick={() => void handleDownloadPdf()}
                             disabled={downloading}
                         >
-                            <FileDown className="mr-2 h-4 w-4" />
-                            {downloading ? "Preparing..." : "Download PDF"}
+                            <FileDown className="h-5 w-5" />
                         </Button>
                         {canEdit && specId && (
                             <>
-                                <Button variant="ghost" size="sm" onClick={() => setEditorOpen(true)}>
-                                    <Settings2 className="mr-2 h-4 w-4" />
-                                    Edit schema
+                                <Button
+                                    variant="outline"
+                                    size="icon-lg"
+                                    aria-label="Edit schema"
+                                    title="Edit schema"
+                                    onClick={() => setEditorOpen(true)}
+                                >
+                                    <Pencil className="h-5 w-5" />
                                 </Button>
                                 <Button variant="outline" size="sm" onClick={() => void handleExtract()} disabled={extracting}>
                                     <Sparkles className="mr-2 h-4 w-4" />

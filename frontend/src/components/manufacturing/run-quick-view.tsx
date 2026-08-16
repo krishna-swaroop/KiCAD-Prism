@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CircleAlert, Loader2, Maximize2, Tag, Trash2, X } from "lucide-react";
+import { CircleAlert, FileDown, Loader2, Maximize2, Tag, Trash2, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { deleteRun, getRun } from "@/lib/manufacturing";
+import { deleteRun, downloadRunReport, getRun } from "@/lib/manufacturing";
 import {
     RUN_STATUS_LABELS,
     defectCategoryLabel,
@@ -42,6 +42,18 @@ export function RunQuickView({
     const [error, setError] = useState("");
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [downloading, setDownloading] = useState(false);
+
+    const handleDownloadReport = useCallback(async () => {
+        setDownloading(true);
+        try {
+            await downloadRunReport(runId);
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Failed to download the report.");
+        } finally {
+            setDownloading(false);
+        }
+    }, [runId]);
 
     const handleDelete = useCallback(async () => {
         setDeleting(true);
@@ -180,22 +192,34 @@ export function RunQuickView({
                         </div>
                     </ScrollArea>
 
-                    <div className="flex shrink-0 items-center gap-2 border-t p-3">
-                        <Button size="sm" className="flex-1" onClick={onOpenFull}>
-                            <Maximize2 className="mr-2 h-4 w-4" />
-                            Open full view
-                        </Button>
-                        {canDelete && (
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-destructive hover:text-destructive"
-                                aria-label="Delete run"
-                                onClick={() => setConfirmDelete(true)}
-                            >
-                                <Trash2 className="h-4 w-4" />
+                    <div className="flex shrink-0 flex-col gap-2 border-t p-3">
+                        <div className="flex items-center gap-2">
+                            <Button size="sm" className="flex-1" onClick={onOpenFull}>
+                                <Maximize2 className="mr-2 h-4 w-4" />
+                                Open full view
                             </Button>
-                        )}
+                            {canDelete && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-destructive hover:text-destructive"
+                                    aria-label="Delete run"
+                                    onClick={() => setConfirmDelete(true)}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            )}
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => void handleDownloadReport()}
+                            disabled={downloading}
+                        >
+                            <FileDown className="mr-2 h-4 w-4" />
+                            {downloading ? "Preparing report..." : "Download report"}
+                        </Button>
                     </div>
                 </>
             ) : null}

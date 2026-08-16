@@ -25,6 +25,7 @@ vi.mock("@/lib/manufacturing", () => ({
     uploadEvidence: (...a: unknown[]) => uploadEvidence(...a),
     deleteEvidence: (...a: unknown[]) => deleteEvidence(...a),
     previewSpecConfig: (...a: unknown[]) => previewSpecConfig(...a),
+    downloadRunReport: vi.fn(),
     evidenceUrl: (runId: string, digest: string) => `/api/x/${runId}/${digest}`,
 }));
 

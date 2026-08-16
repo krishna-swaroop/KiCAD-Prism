@@ -11,6 +11,7 @@ const deleteRun = vi.fn();
 vi.mock("@/lib/manufacturing", () => ({
     getRun: (...a: unknown[]) => getRun(...a),
     deleteRun: (...a: unknown[]) => deleteRun(...a),
+    downloadRunReport: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));

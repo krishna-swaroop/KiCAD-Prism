@@ -456,6 +456,29 @@ async def get_run(run_id: str):
     return run
 
 
+@router.get("/runs/{run_id}/report.pdf", dependencies=[Depends(require_viewer)])
+async def download_run_report(run_id: str):
+    """A themed PDF report of a run: info, spec snapshot, defects, and evidence."""
+    from fastapi.responses import Response
+
+    from app.services import run_report_pdf_service
+
+    try:
+        pdf = await asyncio.to_thread(run_report_pdf_service.build_run_report, run_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    run = await asyncio.to_thread(mfg.get_run, run_id)
+    name = (run or {}).get("project_name") or (run or {}).get("project_id") or run_id
+    safe = "".join(c for c in str(name) if c.isalnum() or c in " ._-").strip() or "run"
+    filename = f"{safe} run report.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.patch("/runs/{run_id}", dependencies=[Depends(require_designer)])
 async def update_run(run_id: str, request: RunUpdateRequest):
     updated = await asyncio.to_thread(

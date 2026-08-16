@@ -7,6 +7,7 @@ import {
     Paperclip,
     Trash2,
     FileText,
+    FileDown,
     CheckCircle2,
     ClipboardList,
     ListChecks,
@@ -34,6 +35,7 @@ import {
     deleteEvidence,
     evidenceUrl,
     previewSpecConfig,
+    downloadRunReport,
 } from "@/lib/manufacturing";
 import {
     DEFECT_CATEGORIES,
@@ -74,6 +76,18 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
     const [tab, setTab] = useState<"overview" | "defects">("overview");
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [downloading, setDownloading] = useState(false);
+
+    const handleDownloadReport = async () => {
+        setDownloading(true);
+        try {
+            await downloadRunReport(runId);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to download the report.");
+        } finally {
+            setDownloading(false);
+        }
+    };
 
     const handleDelete = async () => {
         setDeleting(true);
@@ -177,6 +191,15 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                             </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void handleDownloadReport()}
+                                disabled={downloading}
+                            >
+                                <FileDown className="mr-1.5 h-4 w-4" />
+                                {downloading ? "Preparing..." : "Download report"}
+                            </Button>
                             {canChangeStatus ? (
                                 <CompactSelect
                                     aria-label="Status"

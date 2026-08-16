@@ -108,6 +108,27 @@ export async function downloadSpecSheet(projectId: string): Promise<void> {
     URL.revokeObjectURL(url);
 }
 
+export async function downloadRunReport(runId: string): Promise<void> {
+    const response = await fetchApi(`/api/manufacturing/runs/${runId}/report.pdf`);
+    if (!response.ok) {
+        throw new Error(await readApiError(response, "Failed to generate the run report."));
+    }
+    // The server names the file (project name + "run report"); read it from the header.
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = match ? match[1] : "run report.pdf";
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
 export async function extractBoardSpec(
     projectId: string,
 ): Promise<{ suggested: Record<string, unknown>; reason?: string }> {
