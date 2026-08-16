@@ -33,14 +33,18 @@ import {
     uploadEvidence,
     deleteEvidence,
     evidenceUrl,
+    previewSpecConfig,
 } from "@/lib/manufacturing";
 import {
     DEFECT_CATEGORIES,
     RUN_STATUSES,
     RUN_STATUS_LABELS,
     defectCategoryLabel,
+    evaluateCondition,
     type DefectSeverity,
     type ManufacturingRun,
+    type ParsedSpecConfig,
+    type SpecFieldDef,
     type RunDefect,
 } from "@/types/manufacturing";
 import { CompactSelect } from "./ui";
@@ -244,6 +248,8 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                                 <Stat label="Defects" value={defects.length} />
                                 <Stat label="Affected units" value={affected} />
                             </div>
+
+                            <SpecSnapshot snapshot={run.spec_snapshot} />
                         </div>
                     ) : null}
 
@@ -317,6 +323,95 @@ function Stat({ label, value }: { label: string; value: number }) {
         <div className="border p-3">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+        </div>
+    );
+}
+
+/** Render one field's stored value the way it read on the form: booleans as
+ *  Yes/No, everything else as its text, and blanks as a dash. */
+function displaySpecValue(field: SpecFieldDef, raw: unknown): string {
+    if (field.type === "bool") {
+        return raw === true || raw === "true" ? "Yes" : "No";
+    }
+    if (raw === undefined || raw === null || raw === "") return "—";
+    return String(raw);
+}
+
+/**
+ * The board spec as it stood when the run was created, read-only. It reuses the
+ * run's frozen schema text and values so it stays a faithful picture even after
+ * the project's live spec moves on.
+ */
+function SpecSnapshot({ snapshot }: { snapshot: Record<string, unknown> | null | undefined }) {
+    const specConfig = typeof snapshot?.spec_config === "string" ? snapshot.spec_config : "";
+    const values = (snapshot?.specs as Record<string, unknown> | undefined) ?? {};
+    const activeSections = new Set(
+        Array.isArray(snapshot?.active_sections) ? (snapshot.active_sections as string[]) : [],
+    );
+    const [schema, setSchema] = useState<ParsedSpecConfig | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!specConfig.trim()) {
+            setSchema({ sections: [], errors: [] });
+            return;
+        }
+        void previewSpecConfig(specConfig)
+            .then((parsed) => !cancelled && setSchema(parsed))
+            .catch(() => !cancelled && setSchema({ sections: [], errors: [] }));
+        return () => {
+            cancelled = true;
+        };
+    }, [specConfig]);
+
+    // Sections in play: always-on sections whose gate is met, plus optional ones
+    // that were switched on for this run.
+    const sections = (schema?.sections ?? []).filter(
+        (s) => (s.optional ? activeSections.has(s.title) : true) && evaluateCondition(s.when, values),
+    );
+
+    return (
+        <div className="border">
+            <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2.5">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Manufacturer spec at time of run
+                </h3>
+            </div>
+            {schema === null ? (
+                <p className="px-4 py-6 text-sm text-muted-foreground">Loading spec…</p>
+            ) : sections.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-muted-foreground">
+                    No spec was recorded for this run.
+                </p>
+            ) : (
+                <div className="divide-y">
+                    {sections.map((section) => {
+                        const fields = section.fields.filter((f) => evaluateCondition(f.when, values));
+                        if (fields.length === 0) return null;
+                        return (
+                            <div key={section.title} className="px-4 py-3">
+                                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                    {section.title}
+                                </div>
+                                <dl className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                                    {fields.map((field) => (
+                                        <div
+                                            key={field.key}
+                                            className="flex items-baseline justify-between gap-3 border-b py-1 last:border-b-0 sm:border-b-0"
+                                        >
+                                            <dt className="text-xs text-muted-foreground">{field.label}</dt>
+                                            <dd className="text-right text-xs font-medium tabular-nums">
+                                                {displaySpecValue(field, values[field.key])}
+                                            </dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }

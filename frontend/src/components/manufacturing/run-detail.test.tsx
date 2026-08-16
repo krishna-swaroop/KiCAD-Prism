@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ManufacturingRun, RunDefect } from "@/types/manufacturing";
 
@@ -11,16 +11,20 @@ const updateDefect = vi.fn();
 const deleteDefect = vi.fn();
 const uploadEvidence = vi.fn();
 const deleteEvidence = vi.fn();
+const deleteRun = vi.fn();
+const previewSpecConfig = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     getRun: (...a: unknown[]) => getRun(...a),
     updateRun: (...a: unknown[]) => updateRun(...a),
     updateRunStatus: (...a: unknown[]) => updateRunStatus(...a),
+    deleteRun: (...a: unknown[]) => deleteRun(...a),
     logDefect: (...a: unknown[]) => logDefect(...a),
     updateDefect: (...a: unknown[]) => updateDefect(...a),
     deleteDefect: (...a: unknown[]) => deleteDefect(...a),
     uploadEvidence: (...a: unknown[]) => uploadEvidence(...a),
     deleteEvidence: (...a: unknown[]) => deleteEvidence(...a),
+    previewSpecConfig: (...a: unknown[]) => previewSpecConfig(...a),
     evidenceUrl: (runId: string, digest: string) => `/api/x/${runId}/${digest}`,
 }));
 
@@ -73,6 +77,9 @@ function makeDefect(overrides: Partial<RunDefect> = {}): RunDefect {
 }
 
 describe("RunDetail", () => {
+    beforeEach(() => {
+        previewSpecConfig.mockResolvedValue({ sections: [], errors: [] });
+    });
     afterEach(() => {
         cleanup();
         vi.clearAllMocks();
@@ -87,6 +94,37 @@ describe("RunDetail", () => {
         await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
         goToDefects();
         expect(screen.getByText(/No defects logged/)).toBeTruthy();
+    });
+
+    it("shows the frozen manufacturer spec on Overview", async () => {
+        getRun.mockResolvedValue({
+            ...makeRun(),
+            spec_snapshot: {
+                spec_config: "[Stackup]\nlayers: choice(2,4) | Layer count",
+                specs: { layers: "4" },
+                active_sections: [],
+            },
+        });
+        previewSpecConfig.mockResolvedValue({
+            sections: [
+                {
+                    title: "Stackup",
+                    optional: false,
+                    when: null,
+                    fields: [
+                        { key: "layers", label: "Layer count", type: "choice", options: ["2", "4"], default: "", when: null },
+                    ],
+                },
+            ],
+            errors: [],
+        });
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus onBack={vi.fn()} />);
+        await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
+
+        expect(await screen.findByText("Manufacturer spec at time of run")).toBeTruthy();
+        expect(screen.getByText("Layer count")).toBeTruthy();
+        expect(screen.getByText("4")).toBeTruthy();
+        expect(previewSpecConfig).toHaveBeenCalledWith("[Stackup]\nlayers: choice(2,4) | Layer count");
     });
 
     it("logs a defect through the dialog", async () => {

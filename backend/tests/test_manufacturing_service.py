@@ -233,6 +233,20 @@ class ManufacturingStoreTests(unittest.TestCase):
         self.assertTrue(mfg.set_defect_evidence(def_id, evidence))
         self.assertEqual(mfg.get_defect(def_id)["evidence"][0]["digest"], "abc123")
 
+    def test_create_run_freezes_current_board_spec(self) -> None:
+        # Save a spec, create a run, then change the spec: the run keeps a picture.
+        mfg.save_spec_config(self.project_id, "[Stackup]\nlayers: choice(2,4) | Layer count", updated_by="d@x")
+        mfg.save_board_spec(self.project_id, {"layers": "4"}, {}, updated_by="d@x")
+        run_id = mfg.create_run(self.project_id, quantity_ordered=5)
+
+        snap = mfg.get_run(run_id)["spec_snapshot"]
+        self.assertEqual(snap["specs"], {"layers": "4"})
+        self.assertIn("Layer count", snap["spec_config"])
+
+        # Moving the live spec on does not touch the run's frozen copy.
+        mfg.save_board_spec(self.project_id, {"layers": "2"}, {}, updated_by="d@x")
+        self.assertEqual(mfg.get_run(run_id)["spec_snapshot"]["specs"], {"layers": "4"})
+
     def test_create_run_unknown_project_rejected(self) -> None:
         with self.assertRaises(mfg.ManufacturingError):
             mfg.create_run("prj_does_not_exist", quantity_ordered=1)

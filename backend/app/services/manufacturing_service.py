@@ -493,6 +493,16 @@ def create_run(
         raise ManufacturingError("Project not found.")
     import json
 
+    # Freeze the project's board spec as it stands now, so the run keeps a
+    # picture of the settings it was ordered against even if they change later.
+    if spec_snapshot is None:
+        spec = get_board_spec(project_id)
+        spec_snapshot = {
+            "specs": spec.get("specs") or {},
+            "spec_config": spec.get("spec_config") or "",
+            "active_sections": spec.get("active_sections") or [],
+        }
+
     run_id = _new_id("run_")
     now = _now()
     with _connect() as conn:
