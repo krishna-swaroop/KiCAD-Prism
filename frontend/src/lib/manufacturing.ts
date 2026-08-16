@@ -3,6 +3,8 @@ import type {
     BoardSpec,
     EvidenceDescriptor,
     Manufacturer,
+    CapabilityCheckRow,
+    CapabilityOperator,
     ManufacturingRun,
     ParsedSpecConfig,
     PcbRuleField,
@@ -62,12 +64,14 @@ export async function updateManufacturer(
 
 // -- PCB rules / capabilities --
 
-export async function getPcbRuleFields(): Promise<PcbRuleField[]> {
-    const data = await json<{ fields: PcbRuleField[] }>(
+export async function getPcbRuleFields(): Promise<{
+    fields: PcbRuleField[];
+    operators: CapabilityOperator[];
+}> {
+    return json(
         await fetchApi("/api/manufacturing/pcb-rule-fields"),
         "Failed to load rule fields.",
     );
-    return data.fields;
 }
 
 export async function extractPcbRules(
@@ -78,6 +82,20 @@ export async function extractPcbRules(
             method: "POST",
         }),
         "Failed to read the board rules.",
+    );
+}
+
+export async function checkPcbRules(
+    projectId: string,
+    specId: string,
+): Promise<{ checks: CapabilityCheckRow[] }> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/pcb-rules/check`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ spec_id: specId }),
+        }),
+        "Failed to check the board.",
     );
 }
 

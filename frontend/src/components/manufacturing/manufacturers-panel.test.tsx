@@ -42,8 +42,13 @@ if (!Element.prototype.scrollIntoView) {
 import { ManufacturersPanel } from "./manufacturers-panel";
 
 const RULE_FIELDS = [
-    { key: "min_track_width", label: "Min track width", type: "number", unit: "mm" },
-    { key: "allow_microvias", label: "Microvias", type: "bool" },
+    { key: "min_track_width", label: "Min track width", type: "number", unit: "mm", compare: "gte", operators: ["gte", "between"] },
+    { key: "allow_microvias", label: "Microvias", type: "bool", compare: "bool", operators: ["bool"] },
+];
+const OPERATORS = [
+    { op: "gte", label: "at least (≥)" },
+    { op: "between", label: "between" },
+    { op: "bool", label: "supported" },
 ];
 
 const acme: Manufacturer = {
@@ -59,7 +64,7 @@ const flexTemplate = {
 describe("ManufacturersPanel", () => {
     beforeEach(() => {
         listTemplates.mockResolvedValue([flexTemplate]);
-        getPcbRuleFields.mockResolvedValue(RULE_FIELDS);
+        getPcbRuleFields.mockResolvedValue({ fields: RULE_FIELDS, operators: OPERATORS });
         updateManufacturer.mockResolvedValue(undefined);
         updateTemplate.mockResolvedValue(undefined);
         createManufacturer.mockResolvedValue({ id: "m_new" });
@@ -69,7 +74,7 @@ describe("ManufacturersPanel", () => {
         vi.clearAllMocks();
     });
 
-    it("saves a template's capabilities per fabrication method", async () => {
+    it("saves a template's capabilities as typed constraints", async () => {
         render(<ManufacturersPanel manufacturers={[acme]} canEdit onChanged={vi.fn()} />);
 
         // Expand the manufacturer's templates.
@@ -78,14 +83,19 @@ describe("ManufacturersPanel", () => {
 
         // Open the "flex" template's capabilities dialog.
         fireEvent.click(await screen.findByRole("button", { name: "Capabilities" }));
-        const track = await screen.findByLabelText("Min track width (mm)");
+        // Numeric field: default operator (gte) + a value.
+        const track = await screen.findByLabelText("Min track width");
         fireEvent.change(track, { target: { value: "0.09" } });
-        fireEvent.click(screen.getByLabelText("Microvias"));
+        // Bool field: the "supported" toggle.
+        fireEvent.click(screen.getByLabelText(/supported/i));
         fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
         await waitFor(() => expect(updateTemplate).toHaveBeenCalled());
         const [id, body] = updateTemplate.mock.calls[0];
         expect(id).toBe("tpl_1");
-        expect(body.capabilities).toEqual({ min_track_width: 0.09, allow_microvias: true });
+        expect(body.capabilities).toEqual({
+            min_track_width: { op: "gte", value: 0.09 },
+            allow_microvias: { op: "bool", value: true },
+        });
     });
 });

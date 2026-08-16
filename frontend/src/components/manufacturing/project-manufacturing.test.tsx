@@ -16,7 +16,7 @@ const listTemplates = vi.fn();
 const downloadSpecSheet = vi.fn();
 const getTemplate = vi.fn();
 const getPcbRuleFields = vi.fn();
-const extractPcbRules = vi.fn();
+const checkPcbRules = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     extractBoardSpec: (...a: unknown[]) => extractBoardSpec(...a),
@@ -34,7 +34,7 @@ vi.mock("@/lib/manufacturing", () => ({
     listTemplates: (...a: unknown[]) => listTemplates(...a),
     downloadSpecSheet: (...a: unknown[]) => downloadSpecSheet(...a),
     getPcbRuleFields: (...a: unknown[]) => getPcbRuleFields(...a),
-    extractPcbRules: (...a: unknown[]) => extractPcbRules(...a),
+    checkPcbRules: (...a: unknown[]) => checkPcbRules(...a),
     previewSpecConfig: vi.fn(),
 }));
 
@@ -102,8 +102,8 @@ describe("ProjectManufacturing", () => {
         listRuns.mockResolvedValue([]);
         updateProjectSpec.mockResolvedValue(undefined);
         extractBoardSpec.mockResolvedValue({ suggested: {} });
-        getPcbRuleFields.mockResolvedValue([]);
-        extractPcbRules.mockResolvedValue({ rules: {} });
+        getPcbRuleFields.mockResolvedValue({ fields: [], operators: [] });
+        checkPcbRules.mockResolvedValue({ checks: [] });
     });
 
     afterEach(() => {
@@ -128,24 +128,42 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect(screen.getByText(/No manufacturers yet/)).toBeTruthy());
     });
 
-    it("shows the selected spec's linked-template capabilities read-only", async () => {
-        getPcbRuleFields.mockResolvedValue([
-            { key: "min_track_width", label: "Min track width", type: "number", unit: "mm" },
-            { key: "allow_microvias", label: "Microvias", type: "bool" },
-        ]);
-        // The spec carries its linked template's capabilities (from getProjectSpec).
+    it("lists the spec's capability constraints and checks them against the board", async () => {
+        getPcbRuleFields.mockResolvedValue({
+            fields: [
+                { key: "min_track_width", label: "Min track width", type: "number", unit: "mm", compare: "gte", operators: ["gte", "between"] },
+                { key: "layer_count", label: "Layer count", type: "int", compare: "between", operators: ["between"] },
+            ],
+            operators: [],
+        });
+        // The spec carries its linked template's typed capabilities (from getProjectSpec).
         getProjectSpec.mockResolvedValue({
             ...makeSpec(),
             template_name: "flex",
-            template_capabilities: { min_track_width: 0.127, allow_microvias: true },
+            template_capabilities: {
+                min_track_width: { op: "gte", value: 0.09 },
+                layer_count: { op: "between", min: 1, max: 4 },
+            },
         });
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText("Capabilities")).toBeTruthy());
 
-        // The linked template's capability values render in the read-only table.
-        expect(await screen.findByText("Min track width")).toBeTruthy();
-        expect(screen.getByText("0.127 mm")).toBeTruthy();
-        expect(screen.getByText("Yes")).toBeTruthy();
+        // Constraints render as expressions before a check.
+        expect(await screen.findByText("≥ 0.09 mm")).toBeTruthy();
+        expect(screen.getByText("1 – 4")).toBeTruthy();
+
+        // Running the check shows board values and verdicts.
+        checkPcbRules.mockResolvedValue({
+            checks: [
+                { key: "min_track_width", label: "Min track width", unit: "mm", capability: { op: "gte", value: 0.09 }, board_value: 0.1, verdict: "pass" },
+                { key: "layer_count", label: "Layer count", unit: null, capability: { op: "between", min: 1, max: 4 }, board_value: 6, verdict: "fail" },
+            ],
+        });
+        fireEvent.click(screen.getByRole("button", { name: /Check against board/ }));
+        await waitFor(() => expect(checkPcbRules).toHaveBeenCalledWith("p1", "spec_1"));
+        expect(await screen.findByText("✓ Pass")).toBeTruthy();
+        expect(screen.getByText("✗ Fail")).toBeTruthy();
+        expect(screen.getByText(/1 of 2 checked rule/)).toBeTruthy();
     });
 
     it("quick-adds a spec from a manufacturer schema, named after it", async () => {

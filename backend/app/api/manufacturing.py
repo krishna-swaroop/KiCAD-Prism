@@ -79,6 +79,13 @@ class AttachManufacturerRequest(BaseModel):
     manufacturer_id: str = Field(min_length=1)
 
 
+class PcbRulesCheckRequest(BaseModel):
+    # Either a spec (whose linked template capabilities are used) or a raw
+    # capability set. spec_id wins when both are given.
+    spec_id: str | None = None
+    capabilities: dict = Field(default_factory=dict)
+
+
 class ProjectSpecCreateRequest(BaseModel):
     manufacturer_id: str = Field(min_length=1)
     name: str = Field(min_length=1, max_length=200)
@@ -243,24 +250,57 @@ async def extract_board_spec(project_id: str):
 
 @router.get("/pcb-rule-fields", dependencies=[Depends(require_viewer)])
 async def get_pcb_rule_fields():
-    """The canonical PCB rule/capability fields, so the UI need not hardcode them."""
-    return {"fields": pcb_rules_service.PCB_RULE_FIELDS}
+    """The canonical PCB rule/capability fields and operators, so the UI need not
+    hardcode them."""
+    return {
+        "fields": pcb_rules_service.PCB_RULE_FIELDS,
+        "operators": pcb_rules_service.CAPABILITY_OPERATORS,
+    }
+
+
+def _project_pcb_path(project_id: str) -> tuple[dict | None, str | None]:
+    """Resolve a project and its .kicad_pcb path, or (project, None) when absent."""
+    project = workspace.get_project_by_id(project_id)
+    if not project:
+        return None, None
+    pcb_rel = project.get("pcb_rel")
+    if not pcb_rel:
+        return project, None
+    import os
+
+    return project, os.path.join(project.get("path", ""), pcb_rel)
 
 
 @router.post("/projects/{project_id}/pcb-rules/extract", dependencies=[Depends(require_designer)])
 async def extract_pcb_rules(project_id: str):
     """Read the board's fabrication rules from its KiCad files. Read-only."""
-    project = await asyncio.to_thread(workspace.get_project_by_id, project_id)
+    project, pcb_path = await asyncio.to_thread(_project_pcb_path, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    pcb_rel = project.get("pcb_rel")
-    if not pcb_rel:
+    if not pcb_path:
         return {"rules": {}, "reason": "This project has no board file to read."}
-    import os
-
-    pcb_path = os.path.join(project.get("path", ""), pcb_rel)
     rules = await asyncio.to_thread(pcb_rules_service.extract_pcb_rules, pcb_path)
     return {"rules": rules}
+
+
+@router.post("/projects/{project_id}/pcb-rules/check", dependencies=[Depends(require_designer)])
+async def check_pcb_rules(project_id: str, request: PcbRulesCheckRequest):
+    """Evaluate the board's rules against a spec's fabrication-method capabilities.
+    Returns a verdict (pass/fail/unknown) per field."""
+    project, pcb_path = await asyncio.to_thread(_project_pcb_path, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    capabilities: dict = request.capabilities or {}
+    if request.spec_id:
+        spec = await asyncio.to_thread(mfg.get_project_spec, request.spec_id)
+        if not spec or spec.get("project_id") != project_id:
+            raise HTTPException(status_code=404, detail="Spec not found for this project")
+        capabilities = spec.get("template_capabilities") or {}
+
+    rules = await asyncio.to_thread(pcb_rules_service.extract_pcb_rules, pcb_path) if pcb_path else {}
+    checks = pcb_rules_service.evaluate_rules(capabilities, rules)
+    return {"checks": checks}
 
 
 @router.get("/projects/{project_id}/spec-config", dependencies=[Depends(require_viewer)])
