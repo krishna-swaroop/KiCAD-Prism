@@ -6,10 +6,14 @@ import type { ReactNode } from "react";
 import type { ManufacturingRun } from "@/types/manufacturing";
 
 const getRun = vi.fn();
+const deleteRun = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     getRun: (...a: unknown[]) => getRun(...a),
+    deleteRun: (...a: unknown[]) => deleteRun(...a),
 }));
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.stubGlobal("ResizeObserver", class {
     observe() {}
@@ -84,6 +88,19 @@ describe("RunQuickView", () => {
         inRouter(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
         await waitFor(() => expect(screen.getByText(/Could not load run/)).toBeTruthy());
         expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+
+    it("hides delete unless allowed, and opens a confirm when it is", async () => {
+        getRun.mockResolvedValue(makeRun());
+        const { unmount } = inRouter(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
+        await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
+        expect(screen.queryByRole("button", { name: "Delete run" })).toBeNull();
+        unmount();
+
+        inRouter(<RunQuickView runId="run_1" canDelete onClose={vi.fn()} onOpenFull={vi.fn()} onDeleted={vi.fn()} />);
+        await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
+        fireEvent.click(screen.getByRole("button", { name: "Delete run" }));
+        expect(await screen.findByText("Delete run?")).toBeTruthy();
     });
 
     it("links a release to the project History at its commit", async () => {

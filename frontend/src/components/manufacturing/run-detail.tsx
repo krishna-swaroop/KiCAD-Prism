@@ -26,6 +26,7 @@ import {
     getRun,
     updateRun,
     updateRunStatus,
+    deleteRun,
     logDefect,
     updateDefect,
     deleteDefect,
@@ -51,6 +52,8 @@ interface RunDetailProps {
     /** QA/admin only: advance the run through its status lifecycle. */
     canChangeStatus: boolean;
     onBack: () => void;
+    /** Called after the run is deleted, so the caller can leave this view. */
+    onDeleted?: () => void;
 }
 
 const SEVERITY_VARIANT: Record<DefectSeverity, "secondary" | "outline" | "default" | "destructive"> = {
@@ -60,11 +63,27 @@ const SEVERITY_VARIANT: Record<DefectSeverity, "secondary" | "outline" | "defaul
     critical: "destructive",
 };
 
-export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBack }: RunDetailProps) {
+export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBack, onDeleted }: RunDetailProps) {
     const [run, setRun] = useState<ManufacturingRun | null>(null);
     const [loading, setLoading] = useState(true);
     const [addDefectOpen, setAddDefectOpen] = useState(false);
     const [tab, setTab] = useState<"overview" | "defects">("overview");
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+
+    const handleDelete = async () => {
+        setDeleting(true);
+        try {
+            await deleteRun(runId);
+            toast.success("Run deleted.");
+            setConfirmDelete(false);
+            (onDeleted ?? onBack)();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to delete run.");
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     const load = useCallback(async () => {
         try {
@@ -170,6 +189,16 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                                 // Only QA/Admin can advance status; others see it read-only.
                                 <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
                             )}
+                            {canEdit && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => setConfirmDelete(true)}
+                                >
+                                    <Trash2 className="mr-1.5 h-4 w-4" /> Delete run
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -264,6 +293,21 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                     }}
                 />
             )}
+
+            <ConfirmDialog
+                open={confirmDelete}
+                onOpenChange={setConfirmDelete}
+                title="Delete run?"
+                description={
+                    <>
+                        This run and its defects and evidence will be permanently removed. This cannot be undone.
+                    </>
+                }
+                confirmLabel="Delete run"
+                requireHold
+                busy={deleting}
+                onConfirm={() => void handleDelete()}
+            />
         </div>
     );
 }

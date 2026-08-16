@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CircleAlert, Loader2, Maximize2, Tag, X } from "lucide-react";
+import { CircleAlert, Loader2, Maximize2, Tag, Trash2, X } from "lucide-react";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getRun } from "@/lib/manufacturing";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { deleteRun, getRun } from "@/lib/manufacturing";
 import {
     RUN_STATUS_LABELS,
     defectCategoryLabel,
@@ -24,16 +26,36 @@ function DefinitionRow({ label, value }: { label: string; value?: ReactNode }) {
 
 export function RunQuickView({
     runId,
+    canDelete = false,
     onClose,
     onOpenFull,
+    onDeleted,
 }: {
     runId: string;
+    canDelete?: boolean;
     onClose: () => void;
     onOpenFull: () => void;
+    onDeleted?: () => void;
 }) {
     const [run, setRun] = useState<ManufacturingRun | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+
+    const handleDelete = useCallback(async () => {
+        setDeleting(true);
+        try {
+            await deleteRun(runId);
+            toast.success("Run deleted.");
+            setConfirmDelete(false);
+            onDeleted?.();
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Failed to delete run.");
+        } finally {
+            setDeleting(false);
+        }
+    }, [runId, onDeleted]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -158,14 +180,40 @@ export function RunQuickView({
                         </div>
                     </ScrollArea>
 
-                    <div className="shrink-0 border-t p-3">
-                        <Button size="sm" className="w-full" onClick={onOpenFull}>
+                    <div className="flex shrink-0 items-center gap-2 border-t p-3">
+                        <Button size="sm" className="flex-1" onClick={onOpenFull}>
                             <Maximize2 className="mr-2 h-4 w-4" />
                             Open full view
                         </Button>
+                        {canDelete && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-destructive hover:text-destructive"
+                                aria-label="Delete run"
+                                onClick={() => setConfirmDelete(true)}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        )}
                     </div>
                 </>
             ) : null}
+
+            <ConfirmDialog
+                open={confirmDelete}
+                onOpenChange={setConfirmDelete}
+                title="Delete run?"
+                description={
+                    <>
+                        This run and its defects and evidence will be permanently removed. This cannot be undone.
+                    </>
+                }
+                confirmLabel="Delete run"
+                requireHold
+                busy={deleting}
+                onConfirm={() => void handleDelete()}
+            />
         </aside>
     );
 }

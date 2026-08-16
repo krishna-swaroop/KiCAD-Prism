@@ -87,6 +87,11 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                     setOpenRunId(null);
                     void load();
                 }}
+                onDeleted={() => {
+                    setQuickRunId(null);
+                    setOpenRunId(null);
+                    void load();
+                }}
             />
         );
     }
@@ -156,8 +161,13 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                         {quickRunId && (
                             <RunQuickView
                                 runId={quickRunId}
+                                canDelete={canEdit}
                                 onClose={() => setQuickRunId(null)}
                                 onOpenFull={() => setOpenRunId(quickRunId)}
+                                onDeleted={() => {
+                                    setQuickRunId(null);
+                                    void load();
+                                }}
                             />
                         )}
                     </div>
