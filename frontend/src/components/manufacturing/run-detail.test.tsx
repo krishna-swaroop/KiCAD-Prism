@@ -77,10 +77,14 @@ describe("RunDetail", () => {
         vi.clearAllMocks();
     });
 
+    // Defects live under the Defects tab in the full-view layout.
+    const goToDefects = () => fireEvent.click(screen.getByRole("button", { name: /Defects/ }));
+
     it("shows quantities and an empty defect state", async () => {
         getRun.mockResolvedValue(makeRun());
         render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
-        await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
+        goToDefects();
         expect(screen.getByText(/No defects logged/)).toBeTruthy();
     });
 
@@ -88,12 +92,13 @@ describe("RunDetail", () => {
         getRun.mockResolvedValue(makeRun());
         logDefect.mockResolvedValue({ id: "def_new" });
         render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
-        await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
+        goToDefects();
 
-        fireEvent.click(screen.getByRole("button", { name: /Log defect/ }));
+        fireEvent.click(screen.getByRole("button", { name: /^Log defect$/ }));
         fireEvent.change(screen.getByLabelText("Units affected"), { target: { value: "3" } });
         fireEvent.change(screen.getByLabelText("Description"), { target: { value: "bridge on U2" } });
-        fireEvent.click(screen.getByRole("button", { name: "Log defect" }));
+        fireEvent.click(screen.getAllByRole("button", { name: "Log defect" }).at(-1)!);
 
         await waitFor(() => expect(logDefect).toHaveBeenCalled());
         const [runId, body] = logDefect.mock.calls[0];
@@ -106,7 +111,9 @@ describe("RunDetail", () => {
         getRun.mockResolvedValue(makeRun([makeDefect()]));
         updateDefect.mockResolvedValue(undefined);
         render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
-        await waitFor(() => expect(screen.getByText("Soldering / assembly")).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
+        goToDefects();
+        expect(screen.getByText("Soldering / assembly")).toBeTruthy();
         expect(screen.getByText("cold joints")).toBeTruthy();
 
         fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
@@ -126,9 +133,8 @@ describe("RunDetail", () => {
                 onBack={vi.fn()}
             />,
         );
-        await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
-        // QA can log defects and edit the status via its dedicated endpoint.
-        expect(screen.getByRole("button", { name: /Log defect/ })).toBeTruthy();
+        await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
+        // Status editor lives in the header, editable by QA.
         fireEvent.change(screen.getByLabelText("Status"), { target: { value: "closed" } });
         await waitFor(() => expect(updateRunStatus).toHaveBeenCalledWith("run_1", "closed"));
     });
@@ -145,7 +151,7 @@ describe("RunDetail", () => {
                 onBack={vi.fn()}
             />,
         );
-        await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
+        await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
         // No status editor; the status shows as a static badge instead.
         expect(screen.queryByLabelText("Status")).toBeNull();
         expect(screen.getByText("Received")).toBeTruthy();

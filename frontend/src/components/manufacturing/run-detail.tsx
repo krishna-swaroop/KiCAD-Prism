@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Plus, Paperclip, Trash2, FileText, CheckCircle2 } from "lucide-react";
+import {
+    ArrowLeft,
+    ChevronRight,
+    Factory,
+    Plus,
+    Paperclip,
+    Trash2,
+    FileText,
+    CheckCircle2,
+    ClipboardList,
+    ListChecks,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -7,8 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { cn } from "@/lib/utils";
 import {
     getRun,
     updateRun,
@@ -53,6 +66,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, manu
     const [run, setRun] = useState<ManufacturingRun | null>(null);
     const [loading, setLoading] = useState(true);
     const [addDefectOpen, setAddDefectOpen] = useState(false);
+    const [tab, setTab] = useState<"overview" | "defects">("overview");
 
     const load = useCallback(async () => {
         try {
@@ -101,117 +115,168 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, manu
     }
 
     const defects = run.defects ?? [];
+    const affected = defects.reduce((sum, d) => sum + d.quantity_affected, 0);
+
+    const TABS = [
+        { id: "overview" as const, label: "Overview", icon: ClipboardList },
+        { id: "defects" as const, label: "Defects", icon: ListChecks },
+    ];
 
     return (
-        <div className="flex h-full min-h-0 flex-col p-6">
-            <div>
-                <Button variant="ghost" size="sm" onClick={onBack} className="mb-3 -ml-2">
-                    <ArrowLeft className="mr-2 h-4 w-4" /> All runs
-                </Button>
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold">{run.project_name || run.project_id}</h1>
-                        <p className="text-sm text-muted-foreground">
-                            {run.manufacturer_name || "No manufacturer"}
-                            {run.commit_sha ? ` · ${run.commit_sha.slice(0, 7)}` : ""}
-                            {" · "}
-                            {new Date(run.created_at).toLocaleDateString()}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Label htmlFor="run-status" className="text-sm text-muted-foreground">
-                            Status
-                        </Label>
-                        {canChangeStatus ? (
-                            <CompactSelect
-                                id="run-status"
-                                widthClass="w-auto"
-                                value={run.status}
-                                onChange={(e) => void changeStatus(e.target.value)}
-                            >
-                                {RUN_STATUSES.map((status) => (
-                                    <option key={status} value={status}>
-                                        {RUN_STATUS_LABELS[status]}
-                                    </option>
-                                ))}
-                            </CompactSelect>
-                        ) : (
-                            // Only QA/Admin can advance status; others see it read-only.
-                            <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Quantities */}
-            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Stat label="Ordered" value={run.quantity_ordered} />
-                <EditableStat
-                    label="Good"
-                    value={run.quantity_good}
-                    max={run.quantity_ordered}
-                    canEdit={canEdit}
-                    onCommit={(v) => void patch({ quantity_good: v })}
-                />
-                <Stat label="Defects" value={defects.length} />
-                <Stat
-                    label="Affected units"
-                    value={defects.reduce((sum, d) => sum + d.quantity_affected, 0)}
-                />
-            </div>
-
-            {/* Manufacturer + notes (editable) */}
-            {canEdit && (
-                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-1">
-                        <Label htmlFor="run-mfr-edit">Manufacturer</Label>
-                        <CompactSelect
-                            id="run-mfr-edit"
-                            className="h-8"
-                            value={run.manufacturer_id ?? ""}
-                            onChange={(e) => void patch({ manufacturer_id: e.target.value || null })}
-                        >
-                            <option value="">No manufacturer</option>
-                            {manufacturers.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                    {m.name}
-                                </option>
-                            ))}
-                        </CompactSelect>
-                    </div>
-                </div>
-            )}
-
-            {/* Defects */}
-            <section className="mt-8 min-h-0 flex-1">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-medium">Defects</h2>
-                    {canLogDefects && (
-                        <Button size="sm" onClick={() => setAddDefectOpen(true)}>
-                            <Plus className="mr-1.5 h-4 w-4" /> Log defect
+        <div className="flex h-full min-h-0 flex-col bg-background">
+            {/* Header, matching the Library component full-view. */}
+            <header className="shrink-0 border-b bg-card">
+                <div className="px-4 py-3">
+                    <div className="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
+                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={onBack}>
+                            <ArrowLeft className="h-3 w-3" /> All runs
                         </Button>
-                    )}
+                        <ChevronRight className="h-3 w-3" />
+                        <span className="truncate">{run.manufacturer_name || "No manufacturer"}</span>
+                        <ChevronRight className="h-3 w-3" />
+                        <span className="truncate text-foreground">{run.project_name || run.project_id}</span>
+                    </div>
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Factory className="h-5 w-5 text-primary" />
+                                <h2 className="text-xl font-semibold tracking-tight">
+                                    {run.project_name || run.project_id}
+                                </h2>
+                                {run.relative_path && run.relative_path !== "." && (
+                                    <Badge variant="outline">{run.relative_path}</Badge>
+                                )}
+                            </div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                {run.manufacturer_name || "No manufacturer"}
+                                {run.commit_sha ? ` · ${run.commit_sha.slice(0, 7)}` : ""}
+                                {" · "}
+                                {new Date(run.created_at).toLocaleDateString()}
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {canChangeStatus ? (
+                                <CompactSelect
+                                    aria-label="Status"
+                                    widthClass="w-auto"
+                                    value={run.status}
+                                    onChange={(e) => void changeStatus(e.target.value)}
+                                >
+                                    {RUN_STATUSES.map((status) => (
+                                        <option key={status} value={status}>
+                                            {RUN_STATUS_LABELS[status]}
+                                        </option>
+                                    ))}
+                                </CompactSelect>
+                            ) : (
+                                // Only QA/Admin can advance status; others see it read-only.
+                                <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
-                {defects.length === 0 ? (
-                    <div className="mt-4 flex flex-col items-center gap-2 rounded-lg border p-10 text-center text-muted-foreground">
-                        <CheckCircle2 className="h-8 w-8 text-success opacity-70" />
-                        <p className="text-sm">No defects logged. Mark units good above as they pass.</p>
-                    </div>
-                ) : (
-                    <ul className="mt-4 space-y-3">
-                        {defects.map((defect) => (
-                            <DefectCard
-                                key={defect.id}
-                                runId={run.id}
-                                defect={defect}
-                                canEdit={canLogDefects}
-                                onChanged={() => void load()}
-                            />
-                        ))}
-                    </ul>
-                )}
-            </section>
+                <nav className="flex overflow-x-auto border-t px-3" aria-label="Run sections">
+                    {TABS.map(({ id, label, icon: Icon }) => (
+                        <button
+                            key={id}
+                            type="button"
+                            className={cn(
+                                "flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                tab === id && "border-primary text-foreground",
+                            )}
+                            aria-current={tab === id ? "page" : undefined}
+                            onClick={() => setTab(id)}
+                        >
+                            <Icon className="h-3.5 w-3.5" />
+                            {label}
+                            {id === "defects" && defects.length > 0 && (
+                                <Badge variant="outline" className="px-1 text-[10px]">
+                                    {defects.length}
+                                </Badge>
+                            )}
+                        </button>
+                    ))}
+                </nav>
+            </header>
+
+            <ScrollArea className="min-h-0 flex-1">
+                <main className="mx-auto w-full max-w-screen-2xl p-4">
+                    {tab === "overview" ? (
+                        <div className="space-y-6">
+                            {/* Quantities */}
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                                <Stat label="Ordered" value={run.quantity_ordered} />
+                                <EditableStat
+                                    label="Good"
+                                    value={run.quantity_good}
+                                    max={run.quantity_ordered}
+                                    canEdit={canEdit}
+                                    onCommit={(v) => void patch({ quantity_good: v })}
+                                />
+                                <Stat label="Defects" value={defects.length} />
+                                <Stat label="Affected units" value={affected} />
+                            </div>
+
+                            {/* Manufacturer (editable) */}
+                            {canEdit && (
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="run-mfr-edit">Manufacturer</Label>
+                                        <CompactSelect
+                                            id="run-mfr-edit"
+                                            className="h-8"
+                                            value={run.manufacturer_id ?? ""}
+                                            onChange={(e) => void patch({ manufacturer_id: e.target.value || null })}
+                                        >
+                                            <option value="">No manufacturer</option>
+                                            {manufacturers.map((m) => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.name}
+                                                </option>
+                                            ))}
+                                        </CompactSelect>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
+
+                    {tab === "defects" ? (
+                        <div>
+                            <div className="mb-4 flex items-center justify-between">
+                                <h3 className="text-sm font-medium">
+                                    {defects.length} defect(s){affected ? ` · ${affected} unit(s) affected` : ""}
+                                </h3>
+                                {canLogDefects && (
+                                    <Button size="sm" onClick={() => setAddDefectOpen(true)}>
+                                        <Plus className="mr-1.5 h-4 w-4" /> Log defect
+                                    </Button>
+                                )}
+                            </div>
+
+                            {defects.length === 0 ? (
+                                <div className="flex flex-col items-center gap-2 border border-dashed p-10 text-center text-muted-foreground">
+                                    <CheckCircle2 className="h-8 w-8 text-success opacity-70" />
+                                    <p className="text-sm">No defects logged. Mark units good in Overview as they pass.</p>
+                                </div>
+                            ) : (
+                                <ul className="space-y-3">
+                                    {defects.map((defect) => (
+                                        <DefectCard
+                                            key={defect.id}
+                                            runId={run.id}
+                                            defect={defect}
+                                            canEdit={canLogDefects}
+                                            onChanged={() => void load()}
+                                        />
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    ) : null}
+                </main>
+            </ScrollArea>
 
             {addDefectOpen && (
                 <AddDefectDialog
@@ -229,7 +294,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, manu
 
 function Stat({ label, value }: { label: string; value: number }) {
     return (
-        <div className="rounded-lg border p-3">
+        <div className="border p-3">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
         </div>
@@ -256,7 +321,7 @@ function EditableStat({
         return <Stat label={label} value={value} />;
     }
     return (
-        <div className="rounded-lg border p-3">
+        <div className="border p-3">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
             <Input
                 type="number"
@@ -308,7 +373,7 @@ function DefectCard({ runId, defect, canEdit, onChanged }: DefectCardProps) {
     };
 
     return (
-        <li className="rounded-lg border">
+        <li className="border">
             <div className="flex items-start justify-between gap-4 p-4">
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
