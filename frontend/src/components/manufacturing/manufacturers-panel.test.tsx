@@ -7,6 +7,7 @@ const createManufacturer = vi.fn();
 const updateManufacturer = vi.fn();
 const deleteManufacturer = vi.fn();
 const listTemplates = vi.fn();
+const updateTemplate = vi.fn();
 const getPcbRuleFields = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
@@ -14,10 +15,10 @@ vi.mock("@/lib/manufacturing", () => ({
     updateManufacturer: (...a: unknown[]) => updateManufacturer(...a),
     deleteManufacturer: (...a: unknown[]) => deleteManufacturer(...a),
     listTemplates: (...a: unknown[]) => listTemplates(...a),
+    updateTemplate: (...a: unknown[]) => updateTemplate(...a),
     getPcbRuleFields: (...a: unknown[]) => getPcbRuleFields(...a),
     getTemplate: vi.fn(),
     createTemplate: vi.fn(),
-    updateTemplate: vi.fn(),
     deleteTemplate: vi.fn(),
 }));
 
@@ -47,14 +48,20 @@ const RULE_FIELDS = [
 
 const acme: Manufacturer = {
     id: "m1", name: "Acme Fab", contact: "", website: "", notes: "",
-    capabilities: {}, created_at: "", updated_at: "",
+    created_at: "", updated_at: "",
+};
+
+const flexTemplate = {
+    id: "tpl_1", manufacturer_id: "m1", manufacturer_name: "Acme Fab", name: "flex",
+    spec_config: "", capabilities: {}, created_at: "", updated_at: "",
 };
 
 describe("ManufacturersPanel", () => {
     beforeEach(() => {
-        listTemplates.mockResolvedValue([]);
+        listTemplates.mockResolvedValue([flexTemplate]);
         getPcbRuleFields.mockResolvedValue(RULE_FIELDS);
         updateManufacturer.mockResolvedValue(undefined);
+        updateTemplate.mockResolvedValue(undefined);
         createManufacturer.mockResolvedValue({ id: "m_new" });
     });
     afterEach(() => {
@@ -62,19 +69,23 @@ describe("ManufacturersPanel", () => {
         vi.clearAllMocks();
     });
 
-    it("saves a manufacturer's capabilities", async () => {
+    it("saves a template's capabilities per fabrication method", async () => {
         render(<ManufacturersPanel manufacturers={[acme]} canEdit onChanged={vi.fn()} />);
 
-        fireEvent.click(screen.getByRole("button", { name: "Edit Acme Fab" }));
-        // The capability fields load from getPcbRuleFields.
+        // Expand the manufacturer's templates.
+        fireEvent.click(screen.getByRole("button", { name: /Spec templates/ }));
+        await waitFor(() => expect(listTemplates).toHaveBeenCalledWith("m1"));
+
+        // Open the "flex" template's capabilities dialog.
+        fireEvent.click(await screen.findByRole("button", { name: "Capabilities" }));
         const track = await screen.findByLabelText("Min track width (mm)");
-        fireEvent.change(track, { target: { value: "0.127" } });
+        fireEvent.change(track, { target: { value: "0.09" } });
         fireEvent.click(screen.getByLabelText("Microvias"));
         fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-        await waitFor(() => expect(updateManufacturer).toHaveBeenCalled());
-        const [id, body] = updateManufacturer.mock.calls[0];
-        expect(id).toBe("m1");
-        expect(body.capabilities).toEqual({ min_track_width: 0.127, allow_microvias: true });
+        await waitFor(() => expect(updateTemplate).toHaveBeenCalled());
+        const [id, body] = updateTemplate.mock.calls[0];
+        expect(id).toBe("tpl_1");
+        expect(body.capabilities).toEqual({ min_track_width: 0.09, allow_microvias: true });
     });
 });

@@ -4,8 +4,6 @@ export interface Manufacturer {
     contact: string;
     website: string;
     notes: string;
-    /** Fabrication capabilities keyed by PcbRuleField.key (min track, drill, ...). */
-    capabilities: Record<string, unknown>;
     created_at: string;
     updated_at: string;
 }
@@ -38,6 +36,11 @@ export interface ProjectSpec {
     project_id: string;
     manufacturer_id: string;
     manufacturer_name?: string;
+    /** The template this spec was built from, if any. */
+    template_id?: string | null;
+    template_name?: string | null;
+    /** The linked template's capabilities, read live (from getProjectSpec). */
+    template_capabilities?: Record<string, unknown>;
     name: string;
     spec_config: string;
     specs: Record<string, unknown>;
@@ -208,6 +211,8 @@ export interface SpecTemplate {
     manufacturer_name?: string;
     name: string;
     spec_config: string;
+    /** Fabrication capabilities for this method, keyed by PcbRuleField.key. */
+    capabilities: Record<string, unknown>;
     created_at: string;
     updated_at: string;
 }

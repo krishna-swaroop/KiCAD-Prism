@@ -75,11 +75,13 @@ class ManufacturingRequestValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.api.ProjectSpecCreateRequest(manufacturer_id="", name="Default")
 
-    def test_manufacturer_carries_capabilities(self) -> None:
-        req = self.api.ManufacturerRequest(name="JLCPCB", capabilities={"min_track_width": 0.127})
-        self.assertEqual(req.capabilities, {"min_track_width": 0.127})
-        # Defaults to an empty dict when omitted.
-        self.assertEqual(self.api.ManufacturerRequest(name="X").capabilities, {})
+    def test_template_carries_capabilities(self) -> None:
+        req = self.api.TemplateRequest(name="flex", capabilities={"min_track_width": 0.09})
+        self.assertEqual(req.capabilities, {"min_track_width": 0.09})
+        self.assertEqual(self.api.TemplateRequest(name="std").capabilities, {})
+
+    def test_project_spec_create_carries_template_id(self) -> None:
+        self.assertIn("template_id", self.api.ProjectSpecCreateRequest.model_fields)
 
 
 class ManufacturingRouteTests(unittest.TestCase):
@@ -129,12 +131,17 @@ class ManufacturingRouteTests(unittest.TestCase):
                 _run(self.api.get_project_spec("spec_missing"))
         self.assertEqual(ctx.exception.status_code, 404)
 
-    def test_create_manufacturer_forwards_capabilities(self) -> None:
-        with patch.object(self.api.mfg, "create_manufacturer", return_value="mfr_new") as create:
-            request = self.api.ManufacturerRequest(name="JLCPCB", capabilities={"min_track_width": 0.127})
-            _run(self.api.create_manufacturer(request))
-        # capabilities is the 5th positional arg to the service.
-        self.assertEqual(create.call_args.args[4], {"min_track_width": 0.127})
+    def test_create_template_forwards_capabilities(self) -> None:
+        with patch.object(self.api.mfg, "create_template", return_value="tpl_new") as create:
+            request = self.api.TemplateRequest(name="flex", capabilities={"min_track_width": 0.09})
+            _run(self.api.create_template("mfr_1", request))
+        self.assertEqual(create.call_args.kwargs["capabilities"], {"min_track_width": 0.09})
+
+    def test_create_project_spec_forwards_template_id(self) -> None:
+        with patch.object(self.api.mfg, "create_project_spec", return_value="spec_new") as create:
+            request = self.api.ProjectSpecCreateRequest(manufacturer_id="m1", name="flex", template_id="tpl_1")
+            _run(self.api.create_project_spec("prj_1", request, user=_User()))
+        self.assertEqual(create.call_args.kwargs["template_id"], "tpl_1")
 
     def test_pcb_rule_fields_endpoint_returns_the_schema(self) -> None:
         result = _run(self.api.get_pcb_rule_fields())

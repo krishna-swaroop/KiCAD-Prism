@@ -128,22 +128,21 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect(screen.getByText(/No manufacturers yet/)).toBeTruthy());
     });
 
-    it("shows the selected manufacturer's capabilities read-only", async () => {
+    it("shows the selected spec's linked-template capabilities read-only", async () => {
         getPcbRuleFields.mockResolvedValue([
             { key: "min_track_width", label: "Min track width", type: "number", unit: "mm" },
             { key: "allow_microvias", label: "Microvias", type: "bool" },
         ]);
-        listProjectManufacturers.mockResolvedValue([
-            {
-                id: "m1", name: "Acme Fab", contact: "", website: "", notes: "",
-                capabilities: { min_track_width: 0.127, allow_microvias: true },
-                created_at: "", updated_at: "", attached_at: "",
-            },
-        ]);
+        // The spec carries its linked template's capabilities (from getProjectSpec).
+        getProjectSpec.mockResolvedValue({
+            ...makeSpec(),
+            template_name: "flex",
+            template_capabilities: { min_track_width: 0.127, allow_microvias: true },
+        });
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText("Capabilities")).toBeTruthy());
 
-        // The stored capability values render in the read-only table.
+        // The linked template's capability values render in the read-only table.
         expect(await screen.findByText("Min track width")).toBeTruthy();
         expect(screen.getByText("0.127 mm")).toBeTruthy();
         expect(screen.getByText("Yes")).toBeTruthy();

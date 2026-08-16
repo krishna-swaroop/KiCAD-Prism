@@ -78,15 +78,7 @@ def list_manufacturers() -> List[Dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
-def create_manufacturer(
-    name: str,
-    contact: str = "",
-    website: str = "",
-    notes: str = "",
-    capabilities: Optional[Dict[str, Any]] = None,
-) -> str:
-    import json
-
+def create_manufacturer(name: str, contact: str = "", website: str = "", notes: str = "") -> str:
     clean = name.strip()
     if not clean:
         raise ManufacturingError("A manufacturer name is required.")
@@ -94,38 +86,27 @@ def create_manufacturer(
     now = _now()
     with _connect() as conn:
         conn.execute(
-            """INSERT INTO ws_manufacturers (id,name,contact,website,notes,capabilities,created_at,updated_at)
-               VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s)""",
-            (mfr_id, clean, contact.strip(), website.strip(), notes.strip(),
-             json.dumps(capabilities or {}), now, now),
+            """INSERT INTO ws_manufacturers (id,name,contact,website,notes,created_at,updated_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+            (mfr_id, clean, contact.strip(), website.strip(), notes.strip(), now, now),
         )
         conn.commit()
     return mfr_id
 
 
 def update_manufacturer(mfr_id: str, **fields: Any) -> bool:
-    import json
-
-    allowed = {"name", "contact", "website", "notes", "capabilities"}
-    updates = {k: (v.strip() if isinstance(v, str) else v) for k, v in fields.items() if k in allowed and v is not None}
+    allowed = {"name", "contact", "website", "notes"}
+    updates = {k: (v.strip() if isinstance(v, str) else v) for k, v in fields.items() if k in allowed}
     if "name" in updates and not updates["name"]:
         raise ManufacturingError("A manufacturer name is required.")
     if not updates:
         return False
     updates["updated_at"] = _now()
-    # capabilities is JSONB; everything else is a plain column.
-    sets, values = [], []
-    for key, value in updates.items():
-        if key == "capabilities":
-            sets.append("capabilities = %s::jsonb")
-            values.append(json.dumps(value or {}))
-        else:
-            sets.append(f"{key} = %s")
-            values.append(value)
+    columns = ", ".join(f"{k} = %s" for k in updates)
     with _connect() as conn:
         result = conn.execute(
-            f"UPDATE ws_manufacturers SET {', '.join(sets)} WHERE id = %s",
-            (*values, mfr_id),
+            f"UPDATE ws_manufacturers SET {columns} WHERE id = %s",
+            (*updates.values(), mfr_id),
         )
         conn.commit()
     return bool(result.rowcount)
@@ -196,9 +177,12 @@ def create_template(
     name: str,
     spec_config: str = "",
     *,
+    capabilities: Optional[Dict[str, Any]] = None,
     builtin_key: Optional[str] = None,
     seeded_hash: Optional[str] = None,
 ) -> str:
+    import json
+
     clean = name.strip()
     if not clean:
         raise ManufacturingError("A template name is required.")
@@ -213,16 +197,19 @@ def create_template(
     with _connect() as conn:
         conn.execute(
             """INSERT INTO ws_spec_templates
-               (id,manufacturer_id,name,spec_config,builtin_key,seeded_hash,created_at,updated_at)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (template_id, manufacturer_id, clean, spec_config, builtin_key, seeded_hash, now, now),
+               (id,manufacturer_id,name,spec_config,capabilities,builtin_key,seeded_hash,created_at,updated_at)
+               VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)""",
+            (template_id, manufacturer_id, clean, spec_config,
+             json.dumps(capabilities or {}), builtin_key, seeded_hash, now, now),
         )
         conn.commit()
     return template_id
 
 
 def update_template(template_id: str, **fields: Any) -> bool:
-    allowed = {"name", "spec_config"}
+    import json
+
+    allowed = {"name", "spec_config", "capabilities"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if "name" in updates:
         updates["name"] = str(updates["name"]).strip()
@@ -231,13 +218,21 @@ def update_template(template_id: str, **fields: Any) -> bool:
     if not updates:
         return False
     updates["updated_at"] = _now()
-    columns = ", ".join(f"{k} = %s" for k in updates)
+    # capabilities is JSONB; name/spec_config/updated_at are plain columns.
+    sets, values = [], []
+    for key, value in updates.items():
+        if key == "capabilities":
+            sets.append("capabilities = %s::jsonb")
+            values.append(json.dumps(value or {}))
+        else:
+            sets.append(f"{key} = %s")
+            values.append(value)
     # A user edit detaches a built-in template from auto-sync: its stored text no
     # longer matches the source, so seed sync will leave it alone from here on.
     with _connect() as conn:
         result = conn.execute(
-            f"UPDATE ws_spec_templates SET {columns} WHERE id = %s",
-            (*updates.values(), template_id),
+            f"UPDATE ws_spec_templates SET {', '.join(sets)} WHERE id = %s",
+            (*values, template_id),
         )
         conn.commit()
     return bool(result.rowcount)
@@ -512,9 +507,10 @@ def list_project_specs(project_id: str, manufacturer_id: Optional[str] = None) -
     """Named specs for a project, optionally scoped to one manufacturer. Includes
     the manufacturer name for display; excludes nothing (specs are small)."""
     query = """
-        SELECT s.*, m.name AS manufacturer_name
+        SELECT s.*, m.name AS manufacturer_name, t.name AS template_name
         FROM ws_project_specs s
         JOIN ws_manufacturers m ON m.id = s.manufacturer_id
+        LEFT JOIN ws_spec_templates t ON t.id = s.template_id
         WHERE s.project_id = %s
     """
     params: tuple[Any, ...] = (project_id,)
@@ -532,9 +528,12 @@ def get_project_spec(spec_id: str) -> Optional[Dict[str, Any]]:
 
     with _connect() as conn:
         row = conn.execute(
-            """SELECT s.*, m.name AS manufacturer_name
+            """SELECT s.*, m.name AS manufacturer_name,
+                      t.name AS template_name,
+                      t.capabilities AS template_capabilities
                FROM ws_project_specs s
                JOIN ws_manufacturers m ON m.id = s.manufacturer_id
+               LEFT JOIN ws_spec_templates t ON t.id = s.template_id
                WHERE s.id = %s""",
             (spec_id,),
         ).fetchone()
@@ -544,6 +543,8 @@ def get_project_spec(spec_id: str) -> Optional[Dict[str, Any]]:
     if not (result.get("spec_config") or "").strip():
         result["spec_config"] = DEFAULT_SPEC_CONFIG
     result.setdefault("active_sections", [])
+    # The linked template's capabilities, read live. None when the spec is blank.
+    result["template_capabilities"] = result.get("template_capabilities") or {}
     return result
 
 
@@ -552,6 +553,7 @@ def create_project_spec(
     manufacturer_id: str,
     name: str,
     *,
+    template_id: Optional[str] = None,
     spec_config: str = "",
     specs: Optional[Dict[str, Any]] = None,
     source: Optional[Dict[str, Any]] = None,
@@ -559,7 +561,8 @@ def create_project_spec(
     updated_by: str = "",
 ) -> str:
     """Create a named spec under a project+manufacturer. Empty schema text seeds
-    from the starter config so the form is usable at once."""
+    from the starter config so the form is usable at once. ``template_id`` links
+    the spec to the template it was built from, so its capabilities read live."""
     from app.services.spec_config_service import DEFAULT_SPEC_CONFIG
     import json
 
@@ -575,6 +578,14 @@ def create_project_spec(
             "SELECT 1 FROM ws_manufacturers WHERE id = %s", (manufacturer_id,)
         ).fetchone():
             raise ManufacturingError("Manufacturer not found.")
+        # A template link is only kept if it belongs to this manufacturer.
+        if template_id:
+            owns = conn.execute(
+                "SELECT 1 FROM ws_spec_templates WHERE id = %s AND manufacturer_id = %s",
+                (template_id, manufacturer_id),
+            ).fetchone()
+            if not owns:
+                template_id = None
         clash = conn.execute(
             """SELECT 1 FROM ws_project_specs
                WHERE project_id = %s AND manufacturer_id = %s AND lower(name) = lower(%s)""",
@@ -584,10 +595,10 @@ def create_project_spec(
             raise ManufacturingError("A spec with that name already exists for this manufacturer.")
         conn.execute(
             """INSERT INTO ws_project_specs
-               (id,project_id,manufacturer_id,name,spec_config,specs,source,active_sections,updated_at,updated_by)
-               VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb,%s,%s)""",
+               (id,project_id,manufacturer_id,template_id,name,spec_config,specs,source,active_sections,updated_at,updated_by)
+               VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb,%s,%s)""",
             (
-                spec_id, project_id, manufacturer_id, clean,
+                spec_id, project_id, manufacturer_id, template_id or None, clean,
                 spec_config.strip() or DEFAULT_SPEC_CONFIG,
                 json.dumps(specs or {}), json.dumps(source or {}),
                 json.dumps(list(active_sections or [])), now, updated_by,

@@ -172,9 +172,6 @@ class WorkspaceService:
                 contact      TEXT NOT NULL DEFAULT '',
                 website      TEXT NOT NULL DEFAULT '',
                 notes        TEXT NOT NULL DEFAULT '',
-                -- Fabrication capabilities keyed by the KiCad rule fields
-                -- (min track, clearances, ...); added by migration 27 too.
-                capabilities JSONB NOT NULL DEFAULT '{}'::jsonb,
                 created_at   TIMESTAMPTZ NOT NULL,
                 updated_at   TIMESTAMPTZ NOT NULL
             );
@@ -217,6 +214,9 @@ class WorkspaceService:
                 manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
                 name            TEXT NOT NULL,
                 spec_config     TEXT NOT NULL DEFAULT '',
+                -- Fabrication capabilities for this method (KiCad rule fields);
+                -- added by migration 28 too.
+                capabilities    JSONB NOT NULL DEFAULT '{}'::jsonb,
                 -- Identifies a built-in template (e.g. 'jlcpcb:standard'); NULL for
                 -- user-created ones. seeded_hash is the sha256 of the source text it
                 -- was last seeded from, so startup can tell an untouched built-in
@@ -260,6 +260,10 @@ class WorkspaceService:
                 id              TEXT PRIMARY KEY,
                 project_id      TEXT NOT NULL REFERENCES ws_projects(id) ON DELETE CASCADE,
                 manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
+                -- The template this spec was created from, if any. Capabilities are
+                -- read live from it. Added by migration 28 too. ON DELETE SET NULL so
+                -- deleting a template does not delete project specs built from it.
+                template_id     TEXT REFERENCES ws_spec_templates(id) ON DELETE SET NULL,
                 name            TEXT NOT NULL,
                 spec_config     TEXT NOT NULL DEFAULT '',
                 specs           JSONB NOT NULL DEFAULT '{}'::jsonb,

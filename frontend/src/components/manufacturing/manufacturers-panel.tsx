@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Building2, Pencil, Plus, Trash2, FileCode2, ChevronDown, ChevronRight } from "lucide-react";
+import { Building2, Pencil, Plus, Trash2, FileCode2, ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -152,24 +152,7 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
     const [contact, setContact] = useState(existing?.contact ?? "");
     const [website, setWebsite] = useState(existing?.website ?? "");
     const [notes, setNotes] = useState(existing?.notes ?? "");
-    const [capabilities, setCapabilities] = useState<Record<string, unknown>>(existing?.capabilities ?? {});
-    const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
     const [saving, setSaving] = useState(false);
-
-    useEffect(() => {
-        void getPcbRuleFields()
-            .then(setRuleFields)
-            .catch(() => setRuleFields([]));
-    }, []);
-
-    const setCap = (key: string, value: unknown) => {
-        setCapabilities((current) => {
-            const next = { ...current };
-            if (value === undefined || value === "") delete next[key];
-            else next[key] = value;
-            return next;
-        });
-    };
 
     const handleSave = async () => {
         if (!name.trim()) {
@@ -178,7 +161,7 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
         }
         setSaving(true);
         try {
-            const body = { name: name.trim(), contact, website, notes, capabilities };
+            const body = { name: name.trim(), contact, website, notes };
             if (existing) {
                 await updateManufacturer(existing.id, body);
             } else {
@@ -195,12 +178,12 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
 
     return (
         <Dialog open onOpenChange={(next) => !next && onClose()}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-md">
                 <DialogHeader>
                     <DialogTitle>{existing ? "Edit manufacturer" : "Add manufacturer"}</DialogTitle>
                     <DialogDescription>A reusable fab-house record you can pick when creating a run.</DialogDescription>
                 </DialogHeader>
-                <div className="max-h-[70vh] space-y-2.5 overflow-y-auto py-1 pr-1">
+                <div className="space-y-2.5 py-1">
                     <div className="space-y-1">
                         <Label htmlFor="mfr-name">Name</Label>
                         <Input id="mfr-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -216,22 +199,6 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
                     <div className="space-y-1">
                         <Label htmlFor="mfr-notes">Notes</Label>
                         <Textarea id="mfr-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-                    </div>
-
-                    <div className="pt-1">
-                        <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Capabilities
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                            {ruleFields.map((field) => (
-                                <CapabilityInput
-                                    key={field.key}
-                                    field={field}
-                                    value={capabilities[field.key]}
-                                    onChange={(v) => setCap(field.key, v)}
-                                />
-                            ))}
-                        </div>
                     </div>
                 </div>
                 <div className="flex justify-end gap-2">
@@ -310,6 +277,7 @@ function ManufacturerTemplates({ manufacturer, canEdit }: ManufacturerTemplatesP
     const [templates, setTemplates] = useState<SpecTemplate[]>([]);
     const [loaded, setLoaded] = useState(false);
     const [editing, setEditing] = useState<TemplateEdit>(null);
+    const [capsTarget, setCapsTarget] = useState<SpecTemplate | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<SpecTemplate | null>(null);
 
     const load = useCallback(async () => {
@@ -349,6 +317,15 @@ function ManufacturerTemplates({ manufacturer, canEdit }: ManufacturerTemplatesP
                                 <div className="flex gap-1">
                                     <Button
                                         variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-2 text-xs"
+                                        onClick={() => setCapsTarget(t)}
+                                    >
+                                        <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+                                        Capabilities
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
                                         size="icon"
                                         className="h-7 w-7"
                                         aria-label={`Edit ${t.name}`}
@@ -385,6 +362,17 @@ function ManufacturerTemplates({ manufacturer, canEdit }: ManufacturerTemplatesP
                     onClose={() => setEditing(null)}
                     onSaved={() => {
                         setEditing(null);
+                        void load();
+                    }}
+                />
+            )}
+
+            {capsTarget && (
+                <TemplateCapabilitiesDialog
+                    template={capsTarget}
+                    onClose={() => setCapsTarget(null)}
+                    onSaved={() => {
+                        setCapsTarget(null);
                         void load();
                     }}
                 />
@@ -458,5 +446,78 @@ function TemplateEditorDialog({ manufacturer, edit, onClose, onSaved }: Template
             onClose={onClose}
             onSaved={onSaved}
         />
+    );
+}
+
+interface TemplateCapabilitiesDialogProps {
+    template: SpecTemplate;
+    onClose: () => void;
+    onSaved: () => void;
+}
+
+// Edit a fabrication method's capabilities: a grid of the PCB rule fields bound
+// to the template's capabilities. Reused live by every project spec built from it.
+function TemplateCapabilitiesDialog({ template, onClose, onSaved }: TemplateCapabilitiesDialogProps) {
+    const [capabilities, setCapabilities] = useState<Record<string, unknown>>(template.capabilities ?? {});
+    const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        void getPcbRuleFields()
+            .then(setRuleFields)
+            .catch(() => setRuleFields([]));
+    }, []);
+
+    const setCap = (key: string, value: unknown) => {
+        setCapabilities((current) => {
+            const next = { ...current };
+            if (value === undefined || value === "") delete next[key];
+            else next[key] = value;
+            return next;
+        });
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await updateTemplate(template.id, { capabilities });
+            toast.success("Capabilities saved.");
+            onSaved();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to save.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open onOpenChange={(next) => !next && !saving && onClose()}>
+            <DialogContent className="max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Capabilities: {template.name}</DialogTitle>
+                    <DialogDescription>
+                        What this fabrication method can build. Projects using it see these live.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid max-h-[70vh] grid-cols-2 gap-x-3 gap-y-2 overflow-y-auto py-1 pr-1">
+                    {ruleFields.map((field) => (
+                        <CapabilityInput
+                            key={field.key}
+                            field={field}
+                            value={capabilities[field.key]}
+                            onChange={(v) => setCap(field.key, v)}
+                        />
+                    ))}
+                </div>
+                <div className="flex justify-end gap-2">
+                    <Button variant="ghost" onClick={onClose} disabled={saving}>
+                        Cancel
+                    </Button>
+                    <Button onClick={() => void handleSave()} disabled={saving}>
+                        {saving ? "Saving…" : "Save"}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }

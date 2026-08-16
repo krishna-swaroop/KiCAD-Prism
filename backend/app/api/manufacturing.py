@@ -47,7 +47,6 @@ class ManufacturerRequest(BaseModel):
     contact: str = ""
     website: str = ""
     notes: str = ""
-    capabilities: dict = Field(default_factory=dict)
 
 
 class BoardSpecRequest(BaseModel):
@@ -63,11 +62,13 @@ class SpecConfigRequest(BaseModel):
 class TemplateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     spec_config: str = Field(default="", max_length=100_000)
+    capabilities: dict = Field(default_factory=dict)
 
 
 class TemplateUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     spec_config: str | None = Field(default=None, max_length=100_000)
+    capabilities: dict | None = None
 
 
 class ApplyTemplateRequest(BaseModel):
@@ -82,6 +83,7 @@ class ProjectSpecCreateRequest(BaseModel):
     manufacturer_id: str = Field(min_length=1)
     name: str = Field(min_length=1, max_length=200)
     spec_config: str = Field(default="", max_length=100_000)
+    template_id: str | None = None
 
 
 class ProjectSpecUpdateRequest(BaseModel):
@@ -153,7 +155,6 @@ async def create_manufacturer(request: ManufacturerRequest):
     mfr_id = await asyncio.to_thread(
         _handle, mfg.create_manufacturer,
         request.name, request.contact, request.website, request.notes,
-        request.capabilities,
     )
     return {"id": mfr_id}
 
@@ -164,7 +165,6 @@ async def update_manufacturer(mfr_id: str, request: ManufacturerRequest):
         _handle, mfg.update_manufacturer, mfr_id,
         name=request.name, contact=request.contact,
         website=request.website, notes=request.notes,
-        capabilities=request.capabilities,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Manufacturer not found")
@@ -330,7 +330,7 @@ async def create_project_spec(
 ):
     spec_id = await asyncio.to_thread(
         _handle, mfg.create_project_spec, project_id, request.manufacturer_id, request.name,
-        spec_config=request.spec_config, updated_by=user.email,
+        template_id=request.template_id, spec_config=request.spec_config, updated_by=user.email,
     )
     return {"id": spec_id}
 
@@ -402,7 +402,8 @@ async def get_template(template_id: str):
 @router.post("/manufacturers/{mfr_id}/templates", dependencies=[Depends(require_designer)])
 async def create_template(mfr_id: str, request: TemplateRequest):
     template_id = await asyncio.to_thread(
-        _handle, mfg.create_template, mfr_id, request.name, request.spec_config
+        _handle, mfg.create_template, mfr_id, request.name, request.spec_config,
+        capabilities=request.capabilities,
     )
     return {"id": template_id}
 

@@ -30,7 +30,6 @@ export async function createManufacturer(body: {
     contact?: string;
     website?: string;
     notes?: string;
-    capabilities?: Record<string, unknown>;
 }): Promise<{ id: string }> {
     return json(
         await fetchApi("/api/manufacturing/manufacturers", {
@@ -49,7 +48,6 @@ export async function updateManufacturer(
         contact?: string;
         website?: string;
         notes?: string;
-        capabilities?: Record<string, unknown>;
     },
 ): Promise<void> {
     await json(
@@ -219,7 +217,7 @@ export async function getProjectSpec(
 
 export async function createProjectSpec(
     projectId: string,
-    body: { manufacturer_id: string; name: string; spec_config?: string },
+    body: { manufacturer_id: string; name: string; spec_config?: string; template_id?: string | null },
 ): Promise<{ id: string }> {
     return json(
         await fetchApi(`/api/manufacturing/projects/${projectId}/specs`, {
@@ -318,7 +316,7 @@ export async function getTemplate(templateId: string): Promise<SpecTemplate> {
 
 export async function createTemplate(
     manufacturerId: string,
-    body: { name: string; spec_config: string },
+    body: { name: string; spec_config: string; capabilities?: Record<string, unknown> },
 ): Promise<{ id: string }> {
     return json(
         await fetchApi(`/api/manufacturing/manufacturers/${manufacturerId}/templates`, {
@@ -332,7 +330,7 @@ export async function createTemplate(
 
 export async function updateTemplate(
     templateId: string,
-    body: Partial<{ name: string; spec_config: string }>,
+    body: Partial<{ name: string; spec_config: string; capabilities: Record<string, unknown> }>,
 ): Promise<void> {
     await json(
         await fetchApi(`/api/manufacturing/templates/${templateId}`, {

@@ -248,22 +248,43 @@ class ManufacturingStoreTests(unittest.TestCase):
         mfg.save_board_spec(self.project_id, {"layers": "2"}, {}, updated_by="d@x")
         self.assertEqual(mfg.get_run(run_id)["spec_snapshot"]["specs"], {"layers": "4"})
 
-    def test_manufacturer_capabilities_round_trip(self) -> None:
-        mid = mfg.create_manufacturer(
-            "Caps Fab " + uuid.uuid4().hex[:5], capabilities={"min_track_width": 0.127}
+    def test_template_capabilities_and_spec_live_link(self) -> None:
+        mid = mfg.create_manufacturer("Caps Fab " + uuid.uuid4().hex[:5])
+        mfg.attach_manufacturer(self.project_id, mid)
+        tid = mfg.create_template(mid, "flex", capabilities={"min_track_width": 0.09})
+        self.assertEqual(mfg.get_template(tid)["capabilities"], {"min_track_width": 0.09})
+
+        # A spec built from the template links to it and reads its capabilities live.
+        sid = mfg.create_project_spec(self.project_id, mid, "flex-spec", template_id=tid)
+        spec = mfg.get_project_spec(sid)
+        self.assertEqual(spec["template_id"], tid)
+        self.assertEqual(spec["template_name"], "flex")
+        self.assertEqual(spec["template_capabilities"], {"min_track_width": 0.09})
+
+        # Editing the template's capabilities is reflected in the linked spec.
+        mfg.update_template(tid, capabilities={"min_track_width": 0.05, "allow_microvias": True})
+        self.assertEqual(
+            mfg.get_project_spec(sid)["template_capabilities"],
+            {"min_track_width": 0.05, "allow_microvias": True},
         )
-        created = next(m for m in mfg.list_manufacturers() if m["id"] == mid)
-        self.assertEqual(created["capabilities"], {"min_track_width": 0.127})
 
-        mfg.update_manufacturer(mid, capabilities={"min_track_width": 0.09, "allow_microvias": True})
-        updated = next(m for m in mfg.list_manufacturers() if m["id"] == mid)
-        self.assertEqual(updated["capabilities"], {"min_track_width": 0.09, "allow_microvias": True})
+        # A blank spec (no template) has no capabilities.
+        blank = mfg.create_project_spec(self.project_id, mid, "blank-spec")
+        self.assertIsNone(mfg.get_project_spec(blank)["template_id"])
+        self.assertEqual(mfg.get_project_spec(blank)["template_capabilities"], {})
 
-        # Editing another field leaves capabilities untouched.
-        mfg.update_manufacturer(mid, notes="fast turnaround")
-        kept = next(m for m in mfg.list_manufacturers() if m["id"] == mid)
-        self.assertEqual(kept["capabilities"], {"min_track_width": 0.09, "allow_microvias": True})
+        # A template from a different manufacturer is not linked.
+        other = mfg.create_manufacturer("Other Fab " + uuid.uuid4().hex[:5])
+        other_tid = mfg.create_template(other, "std")
+        mfg.attach_manufacturer(self.project_id, other)
+        cross = mfg.create_project_spec(self.project_id, mid, "cross-spec", template_id=other_tid)
+        self.assertIsNone(mfg.get_project_spec(cross)["template_id"])
+
+        for s in (sid, blank, cross):
+            mfg.delete_project_spec(s)
+        mfg.delete_template(tid)
         mfg.delete_manufacturer(mid)
+        mfg.delete_manufacturer(other)
 
     def test_create_run_unknown_project_rejected(self) -> None:
         with self.assertRaises(mfg.ManufacturingError):

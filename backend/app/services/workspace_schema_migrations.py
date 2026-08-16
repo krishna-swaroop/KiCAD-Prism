@@ -1756,6 +1756,21 @@ def _manufacturing_manufacturer_capabilities(conn: Any) -> None:
     )
 
 
+def _manufacturing_capabilities_per_template(conn: Any) -> None:
+    """Move capabilities from the vendor to the fabrication method: each spec
+    template carries its own capabilities, and a project spec links to the
+    template it was created from. The vendor-level column is dropped."""
+    conn.execute(
+        "ALTER TABLE ws_spec_templates ADD COLUMN IF NOT EXISTS capabilities JSONB NOT NULL DEFAULT '{}'::jsonb"
+    )
+    conn.execute(
+        "ALTER TABLE ws_project_specs ADD COLUMN IF NOT EXISTS template_id TEXT REFERENCES ws_spec_templates(id) ON DELETE SET NULL"
+    )
+    conn.execute(
+        "ALTER TABLE ws_manufacturers DROP COLUMN IF EXISTS capabilities"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1780,6 +1795,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (25, "manufacturing_project_manufacturers_and_specs", _manufacturing_project_manufacturers_and_specs),
     (26, "manufacturing_run_spec_id", _manufacturing_run_spec_id),
     (27, "manufacturing_manufacturer_capabilities", _manufacturing_manufacturer_capabilities),
+    (28, "manufacturing_capabilities_per_template", _manufacturing_capabilities_per_template),
 )
 
 

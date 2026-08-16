@@ -77,7 +77,10 @@ export function ProjectManufacturing({
     const [templates, setTemplates] = useState<SpecTemplate[]>([]);
     const [allManufacturers, setAllManufacturers] = useState<Manufacturer[]>([]);
     const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
-    // The board's own extracted rules, shown next to a manufacturer's capabilities.
+    // The selected spec's linked-template capabilities (read live from getProjectSpec).
+    const [templateCapabilities, setTemplateCapabilities] = useState<Record<string, unknown>>({});
+    const [templateName, setTemplateName] = useState<string | null>(null);
+    // The board's own extracted rules, shown next to the spec's capabilities.
     const [boardRules, setBoardRules] = useState<Record<string, unknown> | null>(null);
     const [extractingRules, setExtractingRules] = useState(false);
     // Which optional sections are switched on (persisted with the spec).
@@ -171,6 +174,9 @@ export function ProjectManufacturing({
             setSource({});
             setSchema({ sections: [], errors: [] });
             setActiveSections(new Set());
+            setTemplateCapabilities({});
+            setTemplateName(null);
+            setBoardRules(null);
             setDirty(false);
             return;
         }
@@ -184,6 +190,9 @@ export function ProjectManufacturing({
                 setSource(spec.source ?? {});
                 setSchema(spec.parsed);
                 setActiveSections(new Set(spec.active_sections ?? []));
+                setTemplateCapabilities(spec.template_capabilities ?? {});
+                setTemplateName(spec.template_name ?? null);
+                setBoardRules(null);
                 setDirty(false);
             } catch (error) {
                 if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load the spec.");
@@ -319,6 +328,7 @@ export function ProjectManufacturing({
                 manufacturer_id: manufacturerId,
                 name: uniqueSpecName(base),
                 spec_config,
+                template_id: templateId || null,
             });
             setSpecs(await listProjectSpecs(projectId, manufacturerId));
             setSpecId(id);
@@ -502,19 +512,20 @@ export function ProjectManufacturing({
                 )}
             </section>
 
-            {/* Manufacturer capabilities (read-only), with the board's own rules
-                alongside for an at-a-glance comparison. */}
-            {selectedManufacturer && (
+            {/* Capabilities of the selected spec's fabrication method (read-only),
+                with the board's own rules alongside for an at-a-glance comparison. */}
+            {selectedManufacturer && specId && (
                 <section className="rounded-lg border">
                     <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                         <div>
                             <h3 className="text-lg font-medium">Capabilities</h3>
                             <p className="text-sm text-muted-foreground">
-                                What {selectedManufacturer.name} can build. Edit these from the main
-                                Manufacturing page.
+                                {templateName
+                                    ? `What the "${templateName}" method can build. Edit these from the main Manufacturing page.`
+                                    : "This spec has no linked schema, so no capabilities to show."}
                             </p>
                         </div>
-                        {canEdit && (
+                        {canEdit && templateName && (
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -526,11 +537,17 @@ export function ProjectManufacturing({
                             </Button>
                         )}
                     </header>
-                    <CapabilitiesTable
-                        fields={ruleFields}
-                        capabilities={selectedManufacturer.capabilities ?? {}}
-                        boardRules={boardRules}
-                    />
+                    {templateName ? (
+                        <CapabilitiesTable
+                            fields={ruleFields}
+                            capabilities={templateCapabilities}
+                            boardRules={boardRules}
+                        />
+                    ) : (
+                        <p className="px-4 py-6 text-sm text-muted-foreground">
+                            Add a spec from one of this manufacturer&rsquo;s schemas to see its capabilities.
+                        </p>
+                    )}
                 </section>
             )}
 
