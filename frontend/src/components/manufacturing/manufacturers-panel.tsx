@@ -50,9 +50,10 @@ export function ManufacturersPanel({ manufacturers, canEdit, onChanged }: Manufa
     };
 
     return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{manufacturers.length} manufacturer(s).</p>
+        <div className="flex min-h-0 flex-1 flex-col border">
+            {/* Count / action bar, matching the catalog panel header. */}
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-card px-3 py-2">
+                <span className="text-sm font-medium">{manufacturers.length} manufacturer(s)</span>
                 {canEdit && (
                     <Button size="sm" onClick={() => setEditing({ mode: "create" })}>
                         <Plus className="mr-1.5 h-4 w-4" />
@@ -62,14 +63,14 @@ export function ManufacturersPanel({ manufacturers, canEdit, onChanged }: Manufa
             </div>
 
             {manufacturers.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border p-12 text-center text-muted-foreground">
+                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-2 border-t border-dashed p-8 text-center text-muted-foreground">
                     <Building2 className="h-8 w-8 opacity-50" />
                     <p className="text-sm">No manufacturers yet. Add the fab houses you order from.</p>
                 </div>
             ) : (
-                <ul className="divide-y rounded-lg border">
+                <ul className="min-h-0 flex-1 divide-y overflow-auto">
                     {manufacturers.map((m) => (
-                        <li key={m.id} className="p-4">
+                        <li key={m.id} className="px-3 py-4 transition-colors hover:bg-muted/30">
                             <div className="flex items-start justify-between gap-4">
                                 <div className="min-w-0">
                                     <div className="font-medium">{m.name}</div>

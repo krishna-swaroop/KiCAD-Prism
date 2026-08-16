@@ -100,35 +100,35 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                 </Tabs>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-6">
-                {view === "manufacturers" ? (
+            {view === "manufacturers" ? (
+                <div className="flex min-h-0 flex-1 flex-col p-6">
                     <ManufacturersPanel
                         manufacturers={manufacturers}
                         canEdit={canEdit}
                         onChanged={() => void load()}
                     />
-                ) : loading ? (
-                    <div className="text-sm text-muted-foreground">Loading runs...</div>
-                ) : (
-                    <div className="space-y-4">
-                        {canEdit && (
-                            <div className="flex justify-end">
-                                <Button size="sm" onClick={() => setWizardOpen(true)}>
-                                    <Plus className="mr-1.5 h-4 w-4" />
-                                    New run
-                                </Button>
-                            </div>
-                        )}
-                        <RunTable
-                            runs={filtered}
-                            totalCount={runs.length}
-                            statusFilter={statusFilter}
-                            onStatusFilter={setStatusFilter}
-                            onOpen={(id) => setOpenRunId(id)}
-                        />
-                    </div>
-                )}
-            </div>
+                </div>
+            ) : loading ? (
+                <div className="p-6 text-sm text-muted-foreground">Loading runs...</div>
+            ) : (
+                <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
+                    {canEdit && (
+                        <div className="flex shrink-0 justify-end">
+                            <Button size="sm" onClick={() => setWizardOpen(true)}>
+                                <Plus className="mr-1.5 h-4 w-4" />
+                                New run
+                            </Button>
+                        </div>
+                    )}
+                    <RunTable
+                        runs={filtered}
+                        totalCount={runs.length}
+                        statusFilter={statusFilter}
+                        onStatusFilter={setStatusFilter}
+                        onOpen={(id) => setOpenRunId(id)}
+                    />
+                </div>
+            )}
 
             {wizardOpen && (
                 <NewRunWizard
@@ -155,10 +155,14 @@ interface RunTableProps {
     onOpen: (runId: string) => void;
 }
 
+// Column widths for the runs table, matching the Library catalog's grid idiom.
+const RUN_GRID = "minmax(0,2fr) minmax(0,1.4fr) minmax(0,1fr) 7rem 5rem 7rem";
+
 function RunTable({ runs, totalCount, statusFilter, onStatusFilter, onOpen }: RunTableProps) {
     return (
-        <div className="rounded-lg border">
-            <div className="flex items-center justify-between gap-3 border-b bg-muted/30 p-3">
+        <div className="flex min-h-0 flex-1 flex-col border">
+            {/* Filter / count bar */}
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-card px-3 py-2">
                 <span className="text-sm font-medium">{runs.length} run(s)</span>
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Filter className="h-3.5 w-3.5" />
@@ -179,54 +183,64 @@ function RunTable({ runs, totalCount, statusFilter, onStatusFilter, onOpen }: Ru
             </div>
 
             {totalCount === 0 ? (
-                <div className="flex flex-col items-center gap-3 p-12 text-center text-muted-foreground">
+                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-2 border-t border-dashed p-8 text-center text-muted-foreground">
                     <Factory className="h-8 w-8 opacity-50" />
                     <p className="text-sm">No production runs yet. Start one with &ldquo;New run&rdquo;.</p>
                 </div>
             ) : runs.length === 0 ? (
-                <div className="p-12 text-center text-sm text-muted-foreground">
+                <div className="flex min-h-64 flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
                     No runs match this filter.
                 </div>
             ) : (
-                <table className="w-full text-sm">
-                    <thead>
-                        <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                            <th className="p-3 font-medium">Project</th>
-                            <th className="p-3 font-medium">Manufacturer</th>
-                            <th className="p-3 font-medium">Status</th>
-                            <th className="p-3 text-right font-medium">Good / Ordered</th>
-                            <th className="p-3 text-right font-medium">Defects</th>
-                            <th className="p-3 font-medium">Created</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                <>
+                    {/* Column-header row */}
+                    <div
+                        className="hidden shrink-0 gap-3 border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground lg:grid"
+                        style={{ gridTemplateColumns: RUN_GRID }}
+                    >
+                        <span className="min-w-0">Project / Board</span>
+                        <span className="min-w-0">Manufacturer</span>
+                        <span className="min-w-0">Status</span>
+                        <span className="min-w-0 text-right">Good / Ordered</span>
+                        <span className="min-w-0 text-right">Defects</span>
+                        <span className="min-w-0">Created</span>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-auto">
                         {runs.map((run) => (
-                            <tr
+                            <button
                                 key={run.id}
-                                className="cursor-pointer border-b last:border-b-0 hover:bg-muted/40"
+                                type="button"
                                 onClick={() => onOpen(run.id)}
+                                className="grid h-16 w-full items-center gap-3 border-b px-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                style={{ gridTemplateColumns: RUN_GRID }}
                             >
-                                <td className="p-3">
-                                    <div className="font-medium">{run.project_name || run.project_id}</div>
-                                    {run.relative_path && run.relative_path !== "." && (
-                                        <div className="text-xs text-muted-foreground">{run.relative_path}</div>
-                                    )}
-                                </td>
-                                <td className="p-3">{run.manufacturer_name || "—"}</td>
-                                <td className="p-3">
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium">{run.project_name || run.project_id}</p>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                        {run.relative_path && run.relative_path !== "." ? run.relative_path : "—"}
+                                    </p>
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="truncate text-xs">{run.manufacturer_name || "—"}</p>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                        {run.commit_sha ? run.commit_sha.slice(0, 7) : ""}
+                                    </p>
+                                </div>
+                                <div className="flex min-w-0">
                                     <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
-                                </td>
-                                <td className="p-3 text-right tabular-nums">
+                                </div>
+                                <div className="min-w-0 text-right text-sm tabular-nums">
                                     {run.quantity_good}/{run.quantity_ordered}
-                                </td>
-                                <td className="p-3 text-right tabular-nums">{run.defect_count ?? 0}</td>
-                                <td className="p-3 text-muted-foreground">
+                                </div>
+                                <div className="min-w-0 text-right text-sm tabular-nums">{run.defect_count ?? 0}</div>
+                                <div className="min-w-0 truncate text-xs text-muted-foreground">
                                     {new Date(run.created_at).toLocaleDateString()}
-                                </td>
-                            </tr>
+                                </div>
+                            </button>
                         ))}
-                    </tbody>
-                </table>
+                    </div>
+                </>
             )}
         </div>
     );
