@@ -14,6 +14,7 @@ const updateProjectSpec = vi.fn();
 const deleteProjectSpec = vi.fn();
 const listTemplates = vi.fn();
 const downloadSpecSheet = vi.fn();
+const getTemplate = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     extractBoardSpec: (...a: unknown[]) => extractBoardSpec(...a),
@@ -27,15 +28,28 @@ vi.mock("@/lib/manufacturing", () => ({
     createProjectSpec: (...a: unknown[]) => createProjectSpec(...a),
     updateProjectSpec: (...a: unknown[]) => updateProjectSpec(...a),
     deleteProjectSpec: (...a: unknown[]) => deleteProjectSpec(...a),
+    getTemplate: (...a: unknown[]) => getTemplate(...a),
     listTemplates: (...a: unknown[]) => listTemplates(...a),
     downloadSpecSheet: (...a: unknown[]) => downloadSpecSheet(...a),
     previewSpecConfig: vi.fn(),
-    getTemplate: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
     toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
+
+// Radix Dialog (the Add-spec dialog) needs these in jsdom.
+vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+});
+if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+}
+if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+}
 
 // The schema editor is a child; stub it so this suite stays focused on the form.
 vi.mock("./spec-config-editor", () => ({
@@ -106,6 +120,27 @@ describe("ProjectManufacturing", () => {
         listProjectManufacturers.mockResolvedValue([]);
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText(/No manufacturers yet/)).toBeTruthy());
+    });
+
+    it("creates a spec seeded from a chosen manufacturer template", async () => {
+        listTemplates.mockResolvedValue([
+            { id: "tmpl_1", manufacturer_id: "m1", manufacturer_name: "Acme Fab", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" },
+        ]);
+        getTemplate.mockResolvedValue({ id: "tmpl_1", manufacturer_id: "m1", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" });
+        createProjectSpec.mockResolvedValue({ id: "spec_2" });
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitForForm();
+
+        fireEvent.click(screen.getByRole("button", { name: /Add spec/ }));
+        fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "4L ENIG" } });
+        fireEvent.change(screen.getByLabelText("Schema"), { target: { value: "tmpl_1" } });
+        fireEvent.click(screen.getByRole("button", { name: "Create spec" }));
+
+        await waitFor(() => expect(createProjectSpec).toHaveBeenCalled());
+        expect(getTemplate).toHaveBeenCalledWith("tmpl_1");
+        const [projectId, body] = createProjectSpec.mock.calls[0];
+        expect(projectId).toBe("p1");
+        expect(body).toMatchObject({ manufacturer_id: "m1", name: "4L ENIG", spec_config: "[X]\nk: int | K" });
     });
 
     it("hides edit controls when canEdit is false", async () => {

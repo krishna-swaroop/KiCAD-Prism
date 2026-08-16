@@ -150,7 +150,7 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
 
     return (
         <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-xl">
                 <DialogHeader>
                     <DialogTitle>New production run</DialogTitle>
                     <DialogDescription>
@@ -158,13 +158,13 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* Step rail */}
-                <ol className="flex items-center gap-1 text-xs">
+                {/* Step rail: wraps so all steps fit without overflowing the card. */}
+                <ol className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs">
                     {STEPS.map((name, index) => (
                         <li key={name} className="flex items-center gap-1">
                             <span
                                 className={
-                                    "flex h-6 items-center gap-1.5 rounded-full px-2 " +
+                                    "flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2 " +
                                     (index === step
                                         ? "bg-primary text-primary-foreground"
                                         : index < step
@@ -172,10 +172,10 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
                                           : "text-muted-foreground")
                                 }
                             >
-                                {index < step ? <Check className="h-3 w-3" /> : null}
+                                {index < step ? <Check className="h-3 w-3 shrink-0" /> : null}
                                 {name}
                             </span>
-                            {index < STEPS.length - 1 && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                            {index < STEPS.length - 1 && <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
                         </li>
                     ))}
                 </ol>
