@@ -90,9 +90,15 @@ def _display_value(field: dict[str, Any], values: dict[str, Any]) -> str:
 def _styles() -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
     return {
+        "eyebrow": ParagraphStyle(
+            "Eyebrow", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=8, textColor=_PRIMARY, spaceAfter=2, leading=10,
+            # A little letter-spacing to read as a label.
+            wordSpace=0,
+        ),
         "title": ParagraphStyle(
             "SheetTitle", parent=base["Title"], fontName="Helvetica-Bold",
-            fontSize=20, textColor=_INK, spaceAfter=2, leading=24,
+            fontSize=22, textColor=_INK, spaceAfter=3, leading=26, alignment=TA_LEFT,
         ),
         "subtitle": ParagraphStyle(
             "SheetSubtitle", parent=base["Normal"], fontName="Helvetica",
@@ -118,7 +124,19 @@ def _styles() -> dict[str, ParagraphStyle]:
     }
 
 
-def _header(project_name: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
+def _esc(text: str) -> str:
+    """Escape the few characters that matter to ReportLab's mini-markup."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _header(
+    project_name: str,
+    *,
+    board: str | None,
+    manufacturer: str | None,
+    schema: str | None,
+    styles: dict[str, ParagraphStyle],
+) -> list[Any]:
     flow: list[Any] = []
     if _LOGO.is_file():
         img = Image(str(_LOGO))
@@ -127,11 +145,24 @@ def _header(project_name: str, styles: dict[str, ParagraphStyle]) -> list[Any]:
         img.hAlign = "LEFT"
         flow.append(img)
         flow.append(Spacer(1, 6 * mm))
-    flow.append(Paragraph("Board specification sheet", styles["title"]))
+
+    # Eyebrow, then the project name as the document title.
+    flow.append(Paragraph("FABRICATION SPEC SHEET", styles["eyebrow"]))
+    flow.append(Paragraph(_esc(project_name), styles["title"]))
+
+    # A metadata line: board, manufacturer, schema, generation time.
+    bits: list[str] = []
+    if board:
+        bits.append(f"<b>Board:</b> {_esc(board)}")
+    if manufacturer:
+        bits.append(f"<b>Manufacturer:</b> {_esc(manufacturer)}")
+    if schema:
+        bits.append(f"<b>Schema:</b> {_esc(schema)}")
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    flow.append(Paragraph(f"{project_name} &nbsp;·&nbsp; generated {generated}", styles["subtitle"]))
+    bits.append(f"<b>Generated:</b> {generated}")
+    flow.append(Paragraph(" &nbsp;·&nbsp; ".join(bits), styles["subtitle"]))
+
     flow.append(Spacer(1, 3 * mm))
-    # A primary rule under the header.
     rule = Table([[""]], colWidths=[170 * mm], rowHeights=[1.4])
     rule.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), _PRIMARY)]))
     flow.append(rule)
@@ -170,11 +201,31 @@ def build_spec_sheet(project_id: str) -> bytes:
     spec = mfg.get_board_spec(project_id)
     values = spec.get("specs") or {}
     active = set(spec.get("active_sections") or [])
-    parsed: ParsedSpecConfig = parse_spec_config(spec.get("spec_config") or "")
+    spec_config = spec.get("spec_config") or ""
+    parsed: ParsedSpecConfig = parse_spec_config(spec_config)
 
     styles = _styles()
-    project_name = project.get("display_name") or project.get("name") or project_id
-    flow: list[Any] = _header(str(project_name), styles)
+    project_name = str(project.get("display_name") or project.get("name") or project_id)
+
+    # Board within the repo: the subdirectory for a multi-board repo, else the board
+    # name itself. Prefixed with the parent repo so a sibling board is identifiable.
+    relative_path = str(project.get("relative_path") or ".")
+    parent_repo = str(project.get("parent_repo") or "")
+    if relative_path not in ("", "."):
+        board = f"{parent_repo}/{relative_path}" if parent_repo else relative_path
+    else:
+        board = project.get("name") and str(project["name"])
+
+    # Manufacturer and schema recovered by matching the spec config to a template.
+    identity = mfg.identify_schema(spec_config)
+
+    flow: list[Any] = _header(
+        project_name,
+        board=board,
+        manufacturer=identity.get("manufacturer"),
+        schema=identity.get("schema"),
+        styles=styles,
+    )
 
     any_section = False
     for section in parsed.to_dict()["sections"]:

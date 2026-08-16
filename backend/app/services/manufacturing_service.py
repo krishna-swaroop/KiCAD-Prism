@@ -149,6 +149,23 @@ def get_template(template_id: str) -> Optional[Dict[str, Any]]:
     return _row(row) if row else None
 
 
+def identify_schema(spec_config: str) -> Dict[str, Optional[str]]:
+    """Best-effort match of a spec's config text back to a manufacturer template.
+
+    A project's spec is a copy of a template (copy-on-apply), so the link is not
+    stored. An exact text match recovers the schema and manufacturer names; no match
+    means the schema has been customised. Returns {manufacturer, schema}.
+    """
+    target = _config_hash(spec_config or "")
+    for template in list_templates():
+        if _config_hash(template.get("spec_config") or "") == target:
+            return {
+                "manufacturer": template.get("manufacturer_name"),
+                "schema": template.get("name"),
+            }
+    return {"manufacturer": None, "schema": None}
+
+
 def _config_hash(text: str) -> str:
     import hashlib
 

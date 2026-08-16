@@ -84,11 +84,17 @@ export async function saveBoardSpec(
     );
 }
 
-export async function downloadSpecSheet(projectId: string, filename: string): Promise<void> {
+export async function downloadSpecSheet(projectId: string): Promise<void> {
     const response = await fetchApi(`/api/manufacturing/projects/${projectId}/spec-sheet.pdf`);
     if (!response.ok) {
         throw new Error(await readApiError(response, "Failed to generate the spec sheet."));
     }
+    // The server names the file (project name + "fab spec"); read it from the header,
+    // falling back to a generic name if it is not present.
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = match ? match[1] : "fab spec.pdf";
+
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

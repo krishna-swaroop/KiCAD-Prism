@@ -186,12 +186,13 @@ async def download_spec_sheet(project_id: str):
         raise HTTPException(status_code=404, detail=str(error)) from error
 
     project = await asyncio.to_thread(workspace.get_project_by_id, project_id)
-    name = (project or {}).get("name") or project_id
+    name = (project or {}).get("display_name") or (project or {}).get("name") or project_id
     safe = "".join(c for c in str(name) if c.isalnum() or c in " ._-").strip() or "board"
+    filename = f"{safe} fab spec.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{safe} - spec sheet.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

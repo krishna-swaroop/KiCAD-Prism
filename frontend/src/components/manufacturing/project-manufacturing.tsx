@@ -153,7 +153,7 @@ export function ProjectManufacturing({
     const handleDownloadPdf = async () => {
         setDownloading(true);
         try {
-            await downloadSpecSheet(projectId, "board spec sheet.pdf");
+            await downloadSpecSheet(projectId);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to download the spec sheet.");
         } finally {
