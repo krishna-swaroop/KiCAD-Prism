@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
     extractBoardSpec,
     listRuns,
@@ -72,7 +71,6 @@ export function ProjectManufacturing({
     const [downloading, setDownloading] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [editorOpen, setEditorOpen] = useState(false);
-    const [addSpecOpen, setAddSpecOpen] = useState(false);
     const [templates, setTemplates] = useState<SpecTemplate[]>([]);
     const [allManufacturers, setAllManufacturers] = useState<Manufacturer[]>([]);
     // Which optional sections are switched on (persisted with the spec).
@@ -261,12 +259,27 @@ export function ProjectManufacturing({
         }
     };
 
-    // Create a spec, optionally seeding its schema from a manufacturer template
-    // (copy-on-apply). An empty templateId leaves the starter schema in place.
-    const createSpecWith = async (name: string, templateId: string) => {
+    // Give a new spec a distinct name based on a starting label, so adding the same
+    // template twice does not collide ("JLCPCB", "JLCPCB 2", ...).
+    const uniqueSpecName = (base: string) => {
+        const taken = new Set(specs.map((s) => s.name.toLowerCase()));
+        if (!taken.has(base.toLowerCase())) return base;
+        for (let n = 2; ; n += 1) {
+            const candidate = `${base} ${n}`;
+            if (!taken.has(candidate.toLowerCase())) return candidate;
+        }
+    };
+
+    // Add a spec for the selected manufacturer. A template seeds its schema and
+    // names the spec after the template; the blank option names it "Custom". No
+    // naming step: the spec is created immediately and can be renamed later.
+    const addSpecFromTemplate = async (templateId: string) => {
         if (!manufacturerId) return;
         let spec_config: string | undefined;
+        let base = "Custom";
         if (templateId) {
+            const tmpl = templates.find((t) => t.id === templateId);
+            base = tmpl?.name || "Spec";
             try {
                 spec_config = (await getTemplate(templateId)).spec_config;
             } catch {
@@ -276,14 +289,13 @@ export function ProjectManufacturing({
         try {
             const { id } = await createProjectSpec(projectId, {
                 manufacturer_id: manufacturerId,
-                name: name.trim(),
+                name: uniqueSpecName(base),
                 spec_config,
             });
             setSpecs(await listProjectSpecs(projectId, manufacturerId));
             setSpecId(id);
-            setAddSpecOpen(false);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to create spec.");
+            toast.error(error instanceof Error ? error.message : "Failed to add spec.");
         }
     };
 
@@ -322,6 +334,7 @@ export function ProjectManufacturing({
     const attachedIds = new Set(manufacturers.map((m) => m.id));
     const attachable = allManufacturers.filter((m) => !attachedIds.has(m.id));
     const selectedManufacturer = manufacturers.find((m) => m.id === manufacturerId) ?? null;
+    const manufacturerTemplates = templates.filter((t) => t.manufacturer_id === manufacturerId);
 
     return (
         <div className="space-y-5">
@@ -416,9 +429,30 @@ export function ProjectManufacturing({
                         )}
                         {canEdit && (
                             <>
-                                <Button variant="outline" size="sm" onClick={() => setAddSpecOpen(true)}>
-                                    <PlusCircle className="mr-1.5 h-4 w-4" /> Add spec
-                                </Button>
+                                {/* Quick-add: pick a schema for this manufacturer and the spec is
+                                    created at once, named after it. No naming step. */}
+                                <CompactSelect
+                                    aria-label="Add a schema"
+                                    widthClass="w-auto"
+                                    value=""
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        e.target.value = "";
+                                        if (id === "__blank__") {
+                                            void addSpecFromTemplate("");
+                                        } else if (id) {
+                                            void addSpecFromTemplate(id);
+                                        }
+                                    }}
+                                >
+                                    <option value="">Add schema…</option>
+                                    {manufacturerTemplates.map((t) => (
+                                        <option key={t.id} value={t.id}>
+                                            {t.name}
+                                        </option>
+                                    ))}
+                                    <option value="__blank__">Blank (starter schema)</option>
+                                </CompactSelect>
                                 {specId && (
                                     <>
                                         <Button variant="ghost" size="sm" onClick={() => void handleRenameSpec()}>
@@ -655,99 +689,7 @@ export function ProjectManufacturing({
                     }}
                 />
             )}
-
-            {addSpecOpen && selectedManufacturer && (
-                <AddSpecDialog
-                    manufacturerName={selectedManufacturer.name}
-                    templates={templates.filter((t) => t.manufacturer_id === manufacturerId)}
-                    onClose={() => setAddSpecOpen(false)}
-                    onCreate={createSpecWith}
-                />
-            )}
         </div>
-    );
-}
-
-interface AddSpecDialogProps {
-    manufacturerName: string;
-    templates: SpecTemplate[];
-    onClose: () => void;
-    onCreate: (name: string, templateId: string) => Promise<void>;
-}
-
-// Create a named spec, picking its starting schema up front: one of the
-// manufacturer's templates (JLCPCB standard, PCBWay, ...) or the blank starter.
-function AddSpecDialog({ manufacturerName, templates, onClose, onCreate }: AddSpecDialogProps) {
-    const [name, setName] = useState("");
-    const [templateId, setTemplateId] = useState("");
-    const [saving, setSaving] = useState(false);
-
-    const submit = async () => {
-        if (!name.trim()) return;
-        setSaving(true);
-        try {
-            await onCreate(name.trim(), templateId);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <Dialog open onOpenChange={(next) => !next && !saving && onClose()}>
-            <DialogContent className="max-w-md">
-                <DialogHeader>
-                    <DialogTitle>New spec for {manufacturerName}</DialogTitle>
-                    <DialogDescription>
-                        Pick a starting schema. You can edit its fields afterward.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-3">
-                    <div className="space-y-1">
-                        <Label htmlFor="new-spec-name">Name</Label>
-                        <Input
-                            id="new-spec-name"
-                            autoFocus
-                            placeholder="e.g. Prototype, 4L ENIG"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") void submit();
-                            }}
-                        />
-                    </div>
-                    <div className="space-y-1">
-                        <Label htmlFor="new-spec-schema">Schema</Label>
-                        <CompactSelect
-                            id="new-spec-schema"
-                            className="h-9"
-                            value={templateId}
-                            onChange={(e) => setTemplateId(e.target.value)}
-                        >
-                            <option value="">Blank (starter schema)</option>
-                            {templates.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                    {t.name}
-                                </option>
-                            ))}
-                        </CompactSelect>
-                        {templates.length === 0 && (
-                            <p className="text-xs text-muted-foreground">
-                                No templates for {manufacturerName}. Manage templates from the main
-                                Manufacturing page.
-                            </p>
-                        )}
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={onClose} disabled={saving}>
-                        Cancel
-                    </Button>
-                    <Button onClick={() => void submit()} disabled={saving || !name.trim()}>
-                        {saving ? "Creating..." : "Create spec"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
     );
 }
 

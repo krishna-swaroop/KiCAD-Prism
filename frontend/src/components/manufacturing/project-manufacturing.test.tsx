@@ -122,7 +122,7 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect(screen.getByText(/No manufacturers yet/)).toBeTruthy());
     });
 
-    it("creates a spec seeded from a chosen manufacturer template", async () => {
+    it("quick-adds a spec from a manufacturer schema, named after it", async () => {
         listTemplates.mockResolvedValue([
             { id: "tmpl_1", manufacturer_id: "m1", manufacturer_name: "Acme Fab", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" },
         ]);
@@ -131,16 +131,15 @@ describe("ProjectManufacturing", () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitForForm();
 
-        fireEvent.click(screen.getByRole("button", { name: /Add spec/ }));
-        fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "4L ENIG" } });
-        fireEvent.change(screen.getByLabelText("Schema"), { target: { value: "tmpl_1" } });
-        fireEvent.click(screen.getByRole("button", { name: "Create spec" }));
+        // Picking the schema from the "Add schema" dropdown creates the spec at once,
+        // no naming step.
+        fireEvent.change(screen.getByLabelText("Add a schema"), { target: { value: "tmpl_1" } });
 
         await waitFor(() => expect(createProjectSpec).toHaveBeenCalled());
         expect(getTemplate).toHaveBeenCalledWith("tmpl_1");
         const [projectId, body] = createProjectSpec.mock.calls[0];
         expect(projectId).toBe("p1");
-        expect(body).toMatchObject({ manufacturer_id: "m1", name: "4L ENIG", spec_config: "[X]\nk: int | K" });
+        expect(body).toMatchObject({ manufacturer_id: "m1", name: "Acme standard", spec_config: "[X]\nk: int | K" });
     });
 
     it("hides edit controls when canEdit is false", async () => {
