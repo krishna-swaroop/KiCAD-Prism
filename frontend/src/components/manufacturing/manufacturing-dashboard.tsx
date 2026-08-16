@@ -81,7 +81,6 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                 canEdit={canEdit}
                 canLogDefects={canLogDefects}
                 canChangeStatus={canChangeStatus}
-                manufacturers={manufacturers}
                 onBack={() => {
                     setQuickRunId(openRunId);
                     setOpenRunId(null);

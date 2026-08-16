@@ -39,7 +39,6 @@ import {
     RUN_STATUS_LABELS,
     defectCategoryLabel,
     type DefectSeverity,
-    type Manufacturer,
     type ManufacturingRun,
     type RunDefect,
 } from "@/types/manufacturing";
@@ -51,7 +50,6 @@ interface RunDetailProps {
     canLogDefects: boolean;
     /** QA/admin only: advance the run through its status lifecycle. */
     canChangeStatus: boolean;
-    manufacturers: Manufacturer[];
     onBack: () => void;
 }
 
@@ -62,7 +60,7 @@ const SEVERITY_VARIANT: Record<DefectSeverity, "secondary" | "outline" | "defaul
     critical: "destructive",
 };
 
-export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, manufacturers, onBack }: RunDetailProps) {
+export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBack }: RunDetailProps) {
     const [run, setRun] = useState<ManufacturingRun | null>(null);
     const [loading, setLoading] = useState(true);
     const [addDefectOpen, setAddDefectOpen] = useState(false);
@@ -217,28 +215,6 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, manu
                                 <Stat label="Defects" value={defects.length} />
                                 <Stat label="Affected units" value={affected} />
                             </div>
-
-                            {/* Manufacturer (editable) */}
-                            {canEdit && (
-                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                    <div className="space-y-1">
-                                        <Label htmlFor="run-mfr-edit">Manufacturer</Label>
-                                        <CompactSelect
-                                            id="run-mfr-edit"
-                                            className="h-8"
-                                            value={run.manufacturer_id ?? ""}
-                                            onChange={(e) => void patch({ manufacturer_id: e.target.value || null })}
-                                        >
-                                            <option value="">No manufacturer</option>
-                                            {manufacturers.map((m) => (
-                                                <option key={m.id} value={m.id}>
-                                                    {m.name}
-                                                </option>
-                                            ))}
-                                        </CompactSelect>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     ) : null}
 

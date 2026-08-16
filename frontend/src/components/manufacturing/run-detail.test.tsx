@@ -82,7 +82,7 @@ describe("RunDetail", () => {
 
     it("shows quantities and an empty defect state", async () => {
         getRun.mockResolvedValue(makeRun());
-        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus onBack={vi.fn()} />);
         await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
         goToDefects();
         expect(screen.getByText(/No defects logged/)).toBeTruthy();
@@ -91,7 +91,7 @@ describe("RunDetail", () => {
     it("logs a defect through the dialog", async () => {
         getRun.mockResolvedValue(makeRun());
         logDefect.mockResolvedValue({ id: "def_new" });
-        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus onBack={vi.fn()} />);
         await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
         goToDefects();
 
@@ -110,7 +110,7 @@ describe("RunDetail", () => {
     it("renders an existing defect and its resolve action", async () => {
         getRun.mockResolvedValue(makeRun([makeDefect()]));
         updateDefect.mockResolvedValue(undefined);
-        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus onBack={vi.fn()} />);
         await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
         goToDefects();
         expect(screen.getByText("Soldering / assembly")).toBeTruthy();
@@ -129,7 +129,6 @@ describe("RunDetail", () => {
                 canEdit={false}
                 canLogDefects
                 canChangeStatus
-                manufacturers={[]}
                 onBack={vi.fn()}
             />,
         );
@@ -147,7 +146,6 @@ describe("RunDetail", () => {
                 canEdit
                 canLogDefects={false}
                 canChangeStatus={false}
-                manufacturers={[]}
                 onBack={vi.fn()}
             />,
         );
