@@ -76,6 +76,7 @@ class RunRequest(BaseModel):
     project_id: str = Field(min_length=1)
     manufacturer_id: str | None = None
     commit_sha: str = ""
+    release_tag: str = ""
     quantity_ordered: int = Field(default=0, ge=0)
     notes: str = ""
     spec_snapshot: dict = Field(default_factory=dict)
@@ -331,6 +332,7 @@ async def create_run(request: RunRequest, user: AuthenticatedUser = Depends(requ
         _handle, mfg.create_run, request.project_id,
         manufacturer_id=request.manufacturer_id,
         commit_sha=request.commit_sha,
+        release_tag=request.release_tag,
         quantity_ordered=request.quantity_ordered,
         notes=request.notes,
         spec_snapshot=request.spec_snapshot,

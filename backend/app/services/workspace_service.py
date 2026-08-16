@@ -191,6 +191,7 @@ class WorkspaceService:
                 project_id       TEXT NOT NULL REFERENCES ws_projects(id) ON DELETE CASCADE,
                 manufacturer_id  TEXT REFERENCES ws_manufacturers(id) ON DELETE SET NULL,
                 commit_sha       TEXT NOT NULL DEFAULT '',
+                release_tag      TEXT NOT NULL DEFAULT '',
                 quantity_ordered INTEGER NOT NULL DEFAULT 0,
                 quantity_good    INTEGER NOT NULL DEFAULT 0,
                 status           TEXT NOT NULL DEFAULT 'draft',

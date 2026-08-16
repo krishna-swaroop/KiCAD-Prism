@@ -136,7 +136,7 @@ describe("NewRunWizard", () => {
         await waitFor(() => expect(createRun).toHaveBeenCalled());
         const body = createRun.mock.calls[0][0];
         expect(body.commit_sha).toBe("abc1234def");
-        expect(body.notes).toContain("Release: v1.2.0");
+        expect(body.release_tag).toBe("v1.2.0");
         await waitFor(() => expect(onCreated).toHaveBeenCalled());
     });
 

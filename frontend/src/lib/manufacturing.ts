@@ -228,6 +228,7 @@ export async function createRun(body: {
     project_id: string;
     manufacturer_id?: string | null;
     commit_sha?: string;
+    release_tag?: string;
     quantity_ordered?: number;
     notes?: string;
     spec_snapshot?: Record<string, unknown>;

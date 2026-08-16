@@ -42,6 +42,7 @@ function makeRun(defects: RunDefect[] = []): ManufacturingRun {
         manufacturer_id: null,
         manufacturer_name: null,
         commit_sha: "",
+        release_tag: "",
         quantity_ordered: 100,
         quantity_good: 90,
         status: "received",

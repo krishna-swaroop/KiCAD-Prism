@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { CircleAlert, Loader2, Maximize2, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CircleAlert, Loader2, Maximize2, Tag, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +101,23 @@ export function RunQuickView({
                                 <DefinitionRow label="Good units" value={`${run.quantity_good} / ${run.quantity_ordered}`} />
                                 <DefinitionRow label="Defects" value={defects.length} />
                                 <DefinitionRow label="Units affected" value={affected} />
+                                <DefinitionRow
+                                    label="Release"
+                                    value={
+                                        run.release_tag && run.commit_sha ? (
+                                            <Link
+                                                to={`/project/${run.project_id}?section=history&commit=${encodeURIComponent(run.commit_sha)}`}
+                                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                                                title={`Open ${run.release_tag} in History`}
+                                            >
+                                                <Tag className="h-3 w-3" />
+                                                {run.release_tag}
+                                            </Link>
+                                        ) : (
+                                            run.release_tag || "—"
+                                        )
+                                    }
+                                />
                                 <DefinitionRow
                                     label="Commit"
                                     value={run.commit_sha ? run.commit_sha.slice(0, 7) : "—"}

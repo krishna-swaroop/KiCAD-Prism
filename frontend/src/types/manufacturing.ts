@@ -27,6 +27,7 @@ export interface ManufacturingRun {
     manufacturer_id: string | null;
     manufacturer_name?: string | null;
     commit_sha: string;
+    release_tag: string;
     quantity_ordered: number;
     quantity_good: number;
     status: RunStatus;

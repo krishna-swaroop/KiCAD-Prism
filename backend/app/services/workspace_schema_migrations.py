@@ -1684,6 +1684,13 @@ def _manufacturing_builtin_templates(conn: Any) -> None:
     )
 
 
+def _manufacturing_run_release_tag(conn: Any) -> None:
+    """Record the tagged release a run was built from, as a first-class field."""
+    conn.execute(
+        "ALTER TABLE ws_manufacturing_runs ADD COLUMN IF NOT EXISTS release_tag TEXT NOT NULL DEFAULT ''"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1704,6 +1711,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (21, "manufacturing_spec_templates", _manufacturing_spec_templates),
     (22, "manufacturing_active_sections", _manufacturing_active_sections),
     (23, "manufacturing_builtin_templates", _manufacturing_builtin_templates),
+    (24, "manufacturing_run_release_tag", _manufacturing_run_release_tag),
 )
 
 

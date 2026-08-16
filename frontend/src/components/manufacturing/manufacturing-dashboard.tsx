@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Factory, Plus, Building2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Factory, Plus, Building2, Tag } from "lucide-react";
 import { toast } from "sonner";
 
 import type { User } from "@/types/auth";
@@ -188,7 +189,7 @@ interface RunTableProps {
 }
 
 // Column widths for the runs table, matching the Library catalog's grid idiom.
-const RUN_GRID = "minmax(0,2fr) minmax(0,1.4fr) minmax(0,1fr) 7rem 5rem 7rem";
+const RUN_GRID = "minmax(0,2fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) 7rem 5rem 7rem";
 
 function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
     return (
@@ -211,6 +212,7 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
                     >
                         <span className="min-w-0">Project / Board</span>
                         <span className="min-w-0">Manufacturer</span>
+                        <span className="min-w-0">Release</span>
                         <span className="min-w-0">Status</span>
                         <span className="min-w-0 text-right">Good / Ordered</span>
                         <span className="min-w-0 text-right">Defects</span>
@@ -219,13 +221,20 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
 
                     <div className="min-h-0 flex-1 overflow-auto">
                         {runs.map((run) => (
-                            <button
+                            <div
                                 key={run.id}
-                                type="button"
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => onOpen(run.id)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        onOpen(run.id);
+                                    }
+                                }}
                                 aria-pressed={selectedId === run.id}
                                 className={cn(
-                                    "grid h-16 w-full items-center gap-3 border-b px-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                    "grid h-16 w-full cursor-pointer items-center gap-3 border-b px-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                                     selectedId === run.id && "bg-secondary",
                                 )}
                                 style={{ gridTemplateColumns: RUN_GRID }}
@@ -242,6 +251,22 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
                                         {run.commit_sha ? run.commit_sha.slice(0, 7) : ""}
                                     </p>
                                 </div>
+                                <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+                                    {run.release_tag && run.commit_sha ? (
+                                        <Link
+                                            to={`/project/${run.project_id}?section=history&commit=${encodeURIComponent(run.commit_sha)}`}
+                                            className="inline-flex items-center gap-1 truncate text-xs font-medium text-primary hover:underline"
+                                            title={`Open ${run.release_tag} in History`}
+                                        >
+                                            <Tag className="h-3 w-3 shrink-0" />
+                                            <span className="truncate">{run.release_tag}</span>
+                                        </Link>
+                                    ) : run.release_tag ? (
+                                        <span className="truncate text-xs text-muted-foreground">{run.release_tag}</span>
+                                    ) : (
+                                        <span className="text-xs text-muted-foreground">—</span>
+                                    )}
+                                </div>
                                 <div className="flex min-w-0">
                                     <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
                                 </div>
@@ -252,7 +277,7 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
                                 <div className="min-w-0 truncate text-xs text-muted-foreground">
                                     {new Date(run.created_at).toLocaleDateString()}
                                 </div>
-                            </button>
+                            </div>
                         ))}
                     </div>
                 </>

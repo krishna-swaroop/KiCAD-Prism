@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactNode } from "react";
 
 import type { ManufacturingRun } from "@/types/manufacturing";
 
@@ -17,6 +19,8 @@ vi.stubGlobal("ResizeObserver", class {
 
 import { RunQuickView } from "./run-quick-view";
 
+const inRouter = (node: ReactNode) => render(<MemoryRouter>{node}</MemoryRouter>);
+
 function makeRun(): ManufacturingRun {
     return {
         id: "run_1",
@@ -25,6 +29,7 @@ function makeRun(): ManufacturingRun {
         manufacturer_id: "m1",
         manufacturer_name: "Acme Fab",
         commit_sha: "abc1234def",
+        release_tag: "",
         quantity_ordered: 100,
         quantity_good: 90,
         status: "received",
@@ -51,7 +56,7 @@ describe("RunQuickView", () => {
 
     it("shows a run summary with project, manufacturer, quantities and defects", async () => {
         getRun.mockResolvedValue(makeRun());
-        render(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
+        inRouter(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
 
         await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
         // Appears in both the header subtitle and the Manufacturer row.
@@ -64,7 +69,7 @@ describe("RunQuickView", () => {
         getRun.mockResolvedValue(makeRun());
         const onOpenFull = vi.fn();
         const onClose = vi.fn();
-        render(<RunQuickView runId="run_1" onClose={onClose} onOpenFull={onOpenFull} />);
+        inRouter(<RunQuickView runId="run_1" onClose={onClose} onOpenFull={onOpenFull} />);
         await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
 
         fireEvent.click(screen.getByRole("button", { name: /Open full view/ }));
@@ -76,8 +81,17 @@ describe("RunQuickView", () => {
 
     it("shows an error with retry when the run fails to load", async () => {
         getRun.mockRejectedValue(new Error("boom"));
-        render(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
+        inRouter(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
         await waitFor(() => expect(screen.getByText(/Could not load run/)).toBeTruthy());
         expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+
+    it("links a release to the project History at its commit", async () => {
+        getRun.mockResolvedValue({ ...makeRun(), release_tag: "v1.2.0" });
+        inRouter(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
+        await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
+
+        const link = screen.getByRole("link", { name: /v1.2.0/ });
+        expect(link.getAttribute("href")).toBe("/project/p1?section=history&commit=abc1234def");
     });
 });

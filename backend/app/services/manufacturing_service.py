@@ -481,6 +481,7 @@ def create_run(
     *,
     manufacturer_id: Optional[str] = None,
     commit_sha: str = "",
+    release_tag: str = "",
     quantity_ordered: int = 0,
     notes: str = "",
     spec_snapshot: Optional[Dict[str, Any]] = None,
@@ -497,12 +498,12 @@ def create_run(
     with _connect() as conn:
         conn.execute(
             """INSERT INTO ws_manufacturing_runs
-               (id,project_id,manufacturer_id,commit_sha,quantity_ordered,quantity_good,
+               (id,project_id,manufacturer_id,commit_sha,release_tag,quantity_ordered,quantity_good,
                 status,notes,spec_snapshot,created_by,created_at,updated_at)
-               VALUES (%s,%s,%s,%s,%s,0,'draft',%s,%s::jsonb,%s,%s,%s)""",
+               VALUES (%s,%s,%s,%s,%s,%s,0,'draft',%s,%s::jsonb,%s,%s,%s)""",
             (
                 run_id, project_id, manufacturer_id or None, commit_sha.strip(),
-                int(quantity_ordered), notes.strip(),
+                release_tag.strip(), int(quantity_ordered), notes.strip(),
                 json.dumps(spec_snapshot or {}), created_by, now, now,
             ),
         )
@@ -512,7 +513,7 @@ def create_run(
 
 def update_run(run_id: str, **fields: Any) -> bool:
     """Update a run's mutable fields. Status must be a known value; good <= ordered."""
-    allowed = {"manufacturer_id", "commit_sha", "quantity_ordered", "quantity_good", "status", "notes"}
+    allowed = {"manufacturer_id", "commit_sha", "release_tag", "quantity_ordered", "quantity_good", "status", "notes"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
         return False
@@ -521,7 +522,7 @@ def update_run(run_id: str, **fields: Any) -> bool:
     for qty_key in ("quantity_ordered", "quantity_good"):
         if qty_key in updates and int(updates[qty_key]) < 0:
             raise ManufacturingError("Quantity cannot be negative.")
-    for str_key in ("commit_sha", "notes"):
+    for str_key in ("commit_sha", "release_tag", "notes"):
         if str_key in updates and isinstance(updates[str_key], str):
             updates[str_key] = updates[str_key].strip()
     updates["updated_at"] = _now()

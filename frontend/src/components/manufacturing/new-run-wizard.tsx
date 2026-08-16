@@ -91,16 +91,13 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
     const handleCreate = async () => {
         setSubmitting(true);
         try {
-            // Record the release tag in notes for traceability; the commit holds the sha.
-            const runNotes = releaseTag
-                ? [`Release: ${releaseTag}`, notes.trim()].filter(Boolean).join("\n")
-                : notes.trim();
             const { id } = await createRun({
                 project_id: projectId,
                 manufacturer_id: manufacturerId || null,
                 commit_sha: commitSha.trim(),
+                release_tag: releaseTag,
                 quantity_ordered: quantity,
-                notes: runNotes,
+                notes: notes.trim(),
             });
             toast.success("Run created.");
             onCreated(id);
