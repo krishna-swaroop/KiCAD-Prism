@@ -1,22 +1,36 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const getBoardSpec = vi.fn();
-const saveBoardSpec = vi.fn();
 const extractBoardSpec = vi.fn();
 const listRuns = vi.fn();
-const getSpecConfig = vi.fn();
-const saveSpecConfig = vi.fn();
+const listManufacturers = vi.fn();
+const listProjectManufacturers = vi.fn();
+const attachManufacturer = vi.fn();
+const detachManufacturer = vi.fn();
+const listProjectSpecs = vi.fn();
+const getProjectSpec = vi.fn();
+const createProjectSpec = vi.fn();
+const updateProjectSpec = vi.fn();
+const deleteProjectSpec = vi.fn();
 const listTemplates = vi.fn();
+const downloadSpecSheet = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
-    getBoardSpec: (...a: unknown[]) => getBoardSpec(...a),
-    saveBoardSpec: (...a: unknown[]) => saveBoardSpec(...a),
     extractBoardSpec: (...a: unknown[]) => extractBoardSpec(...a),
     listRuns: (...a: unknown[]) => listRuns(...a),
-    getSpecConfig: (...a: unknown[]) => getSpecConfig(...a),
-    saveSpecConfig: (...a: unknown[]) => saveSpecConfig(...a),
+    listManufacturers: (...a: unknown[]) => listManufacturers(...a),
+    listProjectManufacturers: (...a: unknown[]) => listProjectManufacturers(...a),
+    attachManufacturer: (...a: unknown[]) => attachManufacturer(...a),
+    detachManufacturer: (...a: unknown[]) => detachManufacturer(...a),
+    listProjectSpecs: (...a: unknown[]) => listProjectSpecs(...a),
+    getProjectSpec: (...a: unknown[]) => getProjectSpec(...a),
+    createProjectSpec: (...a: unknown[]) => createProjectSpec(...a),
+    updateProjectSpec: (...a: unknown[]) => updateProjectSpec(...a),
+    deleteProjectSpec: (...a: unknown[]) => deleteProjectSpec(...a),
     listTemplates: (...a: unknown[]) => listTemplates(...a),
+    downloadSpecSheet: (...a: unknown[]) => downloadSpecSheet(...a),
+    previewSpecConfig: vi.fn(),
+    getTemplate: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -46,14 +60,29 @@ const SCHEMA = {
     errors: [],
 };
 
+// Build a project spec payload (what getProjectSpec returns) with a given schema/values.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeSpec(parsed: any = SCHEMA, specs: Record<string, unknown> = {}, active_sections: string[] = []) {
+    return {
+        id: "spec_1", project_id: "p1", manufacturer_id: "m1", manufacturer_name: "Acme Fab",
+        name: "Default", spec_config: "x", specs, source: {}, active_sections,
+        updated_at: null, updated_by: "", parsed,
+    };
+}
+
 describe("ProjectManufacturing", () => {
     beforeEach(() => {
-        getBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" });
-        getSpecConfig.mockResolvedValue({ spec_config: "[Stackup & physical]\nlayer_count: int", parsed: SCHEMA });
-        saveSpecConfig.mockResolvedValue({ spec_config: "", parsed: SCHEMA });
+        listManufacturers.mockResolvedValue([{ id: "m1", name: "Acme Fab", contact: "", website: "", notes: "", created_at: "", updated_at: "" }]);
+        listProjectManufacturers.mockResolvedValue([
+            { id: "m1", name: "Acme Fab", contact: "", website: "", notes: "", created_at: "", updated_at: "", attached_at: "" },
+        ]);
+        listProjectSpecs.mockResolvedValue([
+            { id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "Default", spec_config: "x", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" },
+        ]);
+        getProjectSpec.mockResolvedValue(makeSpec());
         listTemplates.mockResolvedValue([]);
         listRuns.mockResolvedValue([]);
-        saveBoardSpec.mockResolvedValue({ project_id: "p1", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" });
+        updateProjectSpec.mockResolvedValue(undefined);
         extractBoardSpec.mockResolvedValue({ suggested: {} });
     });
 
@@ -62,43 +91,50 @@ describe("ProjectManufacturing", () => {
         vi.clearAllMocks();
     });
 
-    it("shows spec groups and an empty runs state once loaded", async () => {
+    // The form appears once the first manufacturer + spec auto-select and load.
+    const waitForForm = () => waitFor(() => expect(screen.getByLabelText(/Layer count/)).toBeTruthy());
+
+    it("shows the manufacturer, its spec, and an empty runs state", async () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
-        await waitFor(() => expect(screen.getByText("Board specifications")).toBeTruthy());
+        await waitFor(() => expect(screen.getByText("Manufacturers")).toBeTruthy());
+        await waitForForm();
         expect(screen.getByText("Stackup & physical")).toBeTruthy();
         expect(screen.getByText(/No runs yet/)).toBeTruthy();
     });
 
+    it("shows an empty state when the project has no manufacturers", async () => {
+        listProjectManufacturers.mockResolvedValue([]);
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitFor(() => expect(screen.getByText(/No manufacturers yet/)).toBeTruthy());
+    });
+
     it("hides edit controls when canEdit is false", async () => {
         render(<ProjectManufacturing projectId="p1" canEdit={false} />);
-        await waitFor(() => expect(screen.getByText("Board specifications")).toBeTruthy());
+        await waitForForm();
         expect(screen.queryByRole("button", { name: /Extract from board/ })).toBeNull();
         expect(screen.queryByRole("button", { name: /^Save$/ })).toBeNull();
     });
 
     it("Save is disabled until a field changes", async () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
-        await waitFor(() => expect(screen.getByText("Board specifications")).toBeTruthy());
+        await waitForForm();
         const save = screen.getByRole("button", { name: /Save/ });
         expect(save).toHaveProperty("disabled", true);
 
-        const layerCount = screen.getByLabelText(/Layer count/);
-        fireEvent.change(layerCount, { target: { value: "4" } });
+        fireEvent.change(screen.getByLabelText(/Layer count/), { target: { value: "4" } });
         expect(save).toHaveProperty("disabled", false);
     });
 
     it("extract fills fields from the board", async () => {
         extractBoardSpec.mockResolvedValue({ suggested: { layer_count: 6, board_thickness_mm: 1.6 } });
         render(<ProjectManufacturing projectId="p1" canEdit />);
-        await waitFor(() => expect(screen.getByText("Board specifications")).toBeTruthy());
+        await waitForForm();
 
         fireEvent.click(screen.getByRole("button", { name: /Extract from board/ }));
-
         await waitFor(() => expect((screen.getByLabelText(/Layer count/) as HTMLInputElement).value).toBe("6"));
     });
 
     it("an extracted number selects its option in a choice field", async () => {
-        // layer_count is a choice; the extractor returns a number that must match.
         const choiceSchema = {
             sections: [
                 {
@@ -112,24 +148,21 @@ describe("ProjectManufacturing", () => {
             ],
             errors: [],
         };
-        getSpecConfig.mockResolvedValue({ spec_config: "x", parsed: choiceSchema });
+        getProjectSpec.mockResolvedValue(makeSpec(choiceSchema));
         extractBoardSpec.mockResolvedValue({ suggested: { layer_count: 4 } });
 
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByLabelText("Layers")).toBeTruthy());
-        // Nothing selected yet (the — placeholder).
         expect((screen.getByLabelText("Layers") as HTMLSelectElement).value).toBe("");
 
         fireEvent.click(screen.getByRole("button", { name: /Extract from board/ }));
-        // The numeric 4 selects the "4" option, not the — fallback.
         await waitFor(() => expect((screen.getByLabelText("Layers") as HTMLSelectElement).value).toBe("4"));
     });
 
     it("collapses a section when its header is clicked", async () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
-        await waitFor(() => expect(screen.getByLabelText(/Layer count/)).toBeTruthy());
+        await waitForForm();
 
-        // Clicking the section header hides its fields.
         fireEvent.click(screen.getByRole("button", { name: /Stackup & physical/ }));
         await waitFor(() => expect(screen.queryByLabelText(/Layer count/)).toBeNull());
     });
@@ -147,28 +180,22 @@ describe("ProjectManufacturing", () => {
             ],
             errors: [],
         };
-        getSpecConfig.mockResolvedValue({ spec_config: "x", parsed: withOptional });
+        getProjectSpec.mockResolvedValue(makeSpec(withOptional));
 
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText("Assembly")).toBeTruthy());
-        // Off by default: its field is hidden.
         expect(screen.queryByLabelText(/SMT parts/)).toBeNull();
 
-        // The On/Off toggle activates it.
-        const toggle = screen.getByRole("switch");
-        fireEvent.click(toggle);
+        fireEvent.click(screen.getByRole("switch"));
         await waitFor(() => expect(screen.getByLabelText(/SMT parts/)).toBeTruthy());
     });
 
     it("persists active sections when saving", async () => {
         const withOptional = {
-            sections: [
-                ...SCHEMA.sections,
-                { title: "Assembly", optional: true, when: null, fields: [] },
-            ],
+            sections: [...SCHEMA.sections, { title: "Assembly", optional: true, when: null, fields: [] }],
             errors: [],
         };
-        getSpecConfig.mockResolvedValue({ spec_config: "x", parsed: withOptional });
+        getProjectSpec.mockResolvedValue(makeSpec(withOptional));
 
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText("Assembly")).toBeTruthy());
@@ -176,9 +203,10 @@ describe("ProjectManufacturing", () => {
         fireEvent.click(screen.getByRole("switch")); // turn Assembly on
         fireEvent.click(screen.getByRole("button", { name: /Save/ }));
 
-        await waitFor(() => expect(saveBoardSpec).toHaveBeenCalled());
-        const activeSections = saveBoardSpec.mock.calls[0][3];
-        expect(activeSections).toContain("Assembly");
+        await waitFor(() => expect(updateProjectSpec).toHaveBeenCalled());
+        const [specId, body] = updateProjectSpec.mock.calls[0];
+        expect(specId).toBe("spec_1");
+        expect(body.active_sections).toContain("Assembly");
     });
 
     it("gates a field on another field's value", async () => {
@@ -203,31 +231,26 @@ describe("ProjectManufacturing", () => {
             ],
             errors: [],
         };
-        getBoardSpec.mockResolvedValue({
-            project_id: "p1", specs: { material: "Flex" }, source: {}, active_sections: [], updated_at: null, updated_by: "",
-        });
-        getSpecConfig.mockResolvedValue({ spec_config: "x", parsed: gated });
+        getProjectSpec.mockResolvedValue(makeSpec(gated, { material: "Flex" }));
 
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByLabelText("Material")).toBeTruthy());
-        // material is Flex, so the FR-4-gated field is hidden.
         expect(screen.queryByLabelText("Inner copper")).toBeNull();
 
-        // Switch material to FR-4 and the gated field appears.
         fireEvent.change(screen.getByLabelText("Material"), { target: { value: "FR-4" } });
         await waitFor(() => expect(screen.getByLabelText("Inner copper")).toBeTruthy());
     });
 
-    it("saves the current values", async () => {
+    it("saves the current values to the selected spec", async () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
-        await waitFor(() => expect(screen.getByText("Board specifications")).toBeTruthy());
+        await waitForForm();
 
         fireEvent.change(screen.getByLabelText(/Layer count/), { target: { value: "2" } });
         fireEvent.click(screen.getByRole("button", { name: /Save/ }));
 
-        await waitFor(() => expect(saveBoardSpec).toHaveBeenCalled());
-        const [projectId, specs] = saveBoardSpec.mock.calls[0];
-        expect(projectId).toBe("p1");
-        expect(specs.layer_count).toBe(2);
+        await waitFor(() => expect(updateProjectSpec).toHaveBeenCalled());
+        const [specId, body] = updateProjectSpec.mock.calls[0];
+        expect(specId).toBe("spec_1");
+        expect((body.specs as Record<string, unknown>).layer_count).toBe(2);
     });
 });

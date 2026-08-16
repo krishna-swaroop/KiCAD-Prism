@@ -251,6 +251,55 @@ class ManufacturingStoreTests(unittest.TestCase):
         with self.assertRaises(mfg.ManufacturingError):
             mfg.create_run("prj_does_not_exist", quantity_ordered=1)
 
+    # -- project manufacturers and named specs --
+
+    def test_attach_manufacturers_and_named_specs(self) -> None:
+        m1 = mfg.create_manufacturer("Named Specs Fab A")
+        m2 = mfg.create_manufacturer("Named Specs Fab B")
+        mfg.attach_manufacturer(self.project_id, m1)
+        mfg.attach_manufacturer(self.project_id, m2)
+        mfg.attach_manufacturer(self.project_id, m1)  # idempotent
+        attached = {m["id"] for m in mfg.list_project_manufacturers(self.project_id)}
+        self.assertIn(m1, attached)
+        self.assertIn(m2, attached)
+
+        # Several named specs per (project, manufacturer).
+        s1 = mfg.create_project_spec(self.project_id, m1, "Prototype", spec_config="[S]\nk: int | K")
+        s2 = mfg.create_project_spec(self.project_id, m1, "4L ENIG")
+        for_m1 = {s["id"] for s in mfg.list_project_specs(self.project_id, m1)}
+        self.assertEqual(for_m1, {s1, s2})
+        # A different manufacturer sees none of them.
+        self.assertEqual(mfg.list_project_specs(self.project_id, m2), [])
+
+        # Name collision (case-insensitive) is rejected.
+        with self.assertRaises(mfg.ManufacturingError):
+            mfg.create_project_spec(self.project_id, m1, "prototype")
+
+        # Update values, then a run frozen against the named spec keeps the picture.
+        mfg.update_project_spec(s1, specs={"k": 3}, updated_by="d@x")
+        run_id = mfg.create_run(self.project_id, manufacturer_id=m1, spec_id=s1, quantity_ordered=2)
+        run = mfg.get_run(run_id)
+        self.assertEqual(run["spec_id"], s1)
+        self.assertEqual(run["spec_name"], "Prototype")
+        self.assertEqual(run["spec_snapshot"]["specs"], {"k": 3})
+
+        # A spec from the wrong manufacturer is rejected for the run.
+        with self.assertRaises(mfg.ManufacturingError):
+            mfg.create_run(self.project_id, manufacturer_id=m2, spec_id=s1, quantity_ordered=1)
+
+        # Detach is forgiving: the spec survives and re-attaching resurfaces it.
+        mfg.detach_manufacturer(self.project_id, m1)
+        self.assertNotIn(m1, {m["id"] for m in mfg.list_project_manufacturers(self.project_id)})
+        self.assertIsNotNone(mfg.get_project_spec(s1))
+        mfg.attach_manufacturer(self.project_id, m1)
+        self.assertIn(s1, {s["id"] for s in mfg.list_project_specs(self.project_id, m1)})
+
+        mfg.delete_project_spec(s1)
+        mfg.delete_project_spec(s2)
+        mfg.delete_run(run_id)
+        mfg.delete_manufacturer(m1)
+        mfg.delete_manufacturer(m2)
+
 
 if __name__ == "__main__":
     unittest.main()

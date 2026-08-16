@@ -5,6 +5,8 @@ import type {
     Manufacturer,
     ManufacturingRun,
     ParsedSpecConfig,
+    ProjectManufacturer,
+    ProjectSpec,
     RunDefect,
     SpecTemplate,
 } from "@/types/manufacturing";
@@ -114,6 +116,106 @@ export async function extractBoardSpec(
             method: "POST",
         }),
         "Failed to read the board.",
+    );
+}
+
+// -- project manufacturers (attachments) --
+
+export async function listProjectManufacturers(projectId: string): Promise<ProjectManufacturer[]> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/manufacturers`),
+        "Failed to load the project's manufacturers.",
+    );
+}
+
+export async function attachManufacturer(projectId: string, manufacturerId: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/manufacturers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ manufacturer_id: manufacturerId }),
+        }),
+        "Failed to add the manufacturer.",
+    );
+}
+
+export async function detachManufacturer(projectId: string, manufacturerId: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/manufacturers/${manufacturerId}`, {
+            method: "DELETE",
+        }),
+        "Failed to remove the manufacturer.",
+    );
+}
+
+// -- named specs (per project + manufacturer) --
+
+export async function listProjectSpecs(
+    projectId: string,
+    manufacturerId?: string,
+): Promise<ProjectSpec[]> {
+    const query = manufacturerId ? `?manufacturer_id=${encodeURIComponent(manufacturerId)}` : "";
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/specs${query}`),
+        "Failed to load specs.",
+    );
+}
+
+export async function getProjectSpec(
+    specId: string,
+): Promise<ProjectSpec & { parsed: ParsedSpecConfig }> {
+    return json(await fetchApi(`/api/manufacturing/specs/${specId}`), "Failed to load the spec.");
+}
+
+export async function createProjectSpec(
+    projectId: string,
+    body: { manufacturer_id: string; name: string; spec_config?: string },
+): Promise<{ id: string }> {
+    return json(
+        await fetchApi(`/api/manufacturing/projects/${projectId}/specs`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to create the spec.",
+    );
+}
+
+export async function updateProjectSpec(
+    specId: string,
+    body: Partial<{
+        name: string;
+        spec_config: string;
+        specs: Record<string, unknown>;
+        source: Record<string, string>;
+        active_sections: string[];
+    }>,
+): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/specs/${specId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }),
+        "Failed to save the spec.",
+    );
+}
+
+export async function deleteProjectSpec(specId: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/specs/${specId}`, { method: "DELETE" }),
+        "Failed to delete the spec.",
+    );
+}
+
+export async function applyTemplateToSpec(specId: string, templateId: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/specs/${specId}/apply-template`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ template_id: templateId }),
+        }),
+        "Failed to apply the template.",
     );
 }
 
@@ -227,6 +329,7 @@ export async function getRun(runId: string): Promise<ManufacturingRun> {
 export async function createRun(body: {
     project_id: string;
     manufacturer_id?: string | null;
+    spec_id?: string | null;
     commit_sha?: string;
     release_tag?: string;
     quantity_ordered?: number;

@@ -167,6 +167,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                                 {run.relative_path && run.relative_path !== "." && (
                                     <Badge variant="outline">{run.relative_path}</Badge>
                                 )}
+                                {run.spec_name && <Badge variant="secondary">{run.spec_name}</Badge>}
                             </div>
                             <p className="mt-1 text-sm text-muted-foreground">
                                 {run.manufacturer_name || "No manufacturer"}

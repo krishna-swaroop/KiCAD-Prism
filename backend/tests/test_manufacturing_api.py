@@ -62,6 +62,19 @@ class ManufacturingRequestValidationTests(unittest.TestCase):
         self.assertNotIn("status", self.api.RunUpdateRequest.model_fields)
         self.assertIn("status", self.api.RunStatusRequest.model_fields)
 
+    def test_run_carries_an_optional_spec_id(self) -> None:
+        self.assertIn("spec_id", self.api.RunRequest.model_fields)
+
+    def test_attach_requires_a_manufacturer_id(self) -> None:
+        with self.assertRaises(ValidationError):
+            self.api.AttachManufacturerRequest(manufacturer_id="")
+
+    def test_project_spec_create_requires_name_and_manufacturer(self) -> None:
+        with self.assertRaises(ValidationError):
+            self.api.ProjectSpecCreateRequest(manufacturer_id="m1", name="")
+        with self.assertRaises(ValidationError):
+            self.api.ProjectSpecCreateRequest(manufacturer_id="", name="Default")
+
 
 class ManufacturingRouteTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -75,6 +88,40 @@ class ManufacturingRouteTests(unittest.TestCase):
             result = _run(self.api.create_run(request, user=_User(email="me@x")))
         self.assertEqual(result, {"id": "run_new"})
         self.assertEqual(create.call_args.kwargs["created_by"], "me@x")
+
+    def test_create_run_forwards_spec_id_and_lets_service_freeze(self) -> None:
+        with patch.object(self.api.mfg, "create_run", return_value="run_new") as create:
+            request = self.api.RunRequest(project_id="prj_1", manufacturer_id="m1", spec_id="spec_1", quantity_ordered=5)
+            _run(self.api.create_run(request, user=_User()))
+        self.assertEqual(create.call_args.kwargs["spec_id"], "spec_1")
+        # An empty snapshot becomes None so the service freezes the chosen spec.
+        self.assertIsNone(create.call_args.kwargs["spec_snapshot"])
+
+    def test_attach_manufacturer_calls_through(self) -> None:
+        with patch.object(self.api.mfg, "attach_manufacturer", return_value=True) as attach:
+            request = self.api.AttachManufacturerRequest(manufacturer_id="m1")
+            result = _run(self.api.attach_manufacturer("prj_1", request))
+        self.assertEqual(result, {"status": "success"})
+        self.assertEqual(attach.call_args.args, ("prj_1", "m1"))
+
+    def test_detach_missing_link_404(self) -> None:
+        with patch.object(self.api.mfg, "detach_manufacturer", return_value=False):
+            with self.assertRaises(HTTPException) as ctx:
+                _run(self.api.detach_manufacturer("prj_1", "m1"))
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_create_project_spec_records_the_author(self) -> None:
+        with patch.object(self.api.mfg, "create_project_spec", return_value="spec_new") as create:
+            request = self.api.ProjectSpecCreateRequest(manufacturer_id="m1", name="Default")
+            result = _run(self.api.create_project_spec("prj_1", request, user=_User(email="d@x")))
+        self.assertEqual(result, {"id": "spec_new"})
+        self.assertEqual(create.call_args.kwargs["updated_by"], "d@x")
+
+    def test_get_project_spec_404_when_absent(self) -> None:
+        with patch.object(self.api.mfg, "get_project_spec", return_value=None):
+            with self.assertRaises(HTTPException) as ctx:
+                _run(self.api.get_project_spec("spec_missing"))
+        self.assertEqual(ctx.exception.status_code, 404)
 
     def test_service_error_becomes_400(self) -> None:
         from app.services import manufacturing_service as mfg

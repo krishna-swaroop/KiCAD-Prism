@@ -178,7 +178,6 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                 <NewRunWizard
                     open={wizardOpen}
                     projects={projects}
-                    manufacturers={manufacturers}
                     onClose={() => setWizardOpen(false)}
                     onCreated={(runId) => {
                         setWizardOpen(false);

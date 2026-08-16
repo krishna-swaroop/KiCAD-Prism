@@ -15,14 +15,13 @@ import {
     DialogTitle,
     DialogDescription,
 } from "@/components/ui/dialog";
-import { createRun } from "@/lib/manufacturing";
-import type { Manufacturer } from "@/types/manufacturing";
+import { createRun, listProjectManufacturers, listProjectSpecs } from "@/lib/manufacturing";
+import type { ProjectManufacturer, ProjectSpec } from "@/types/manufacturing";
 import { CompactSelect } from "./ui";
 
 interface NewRunWizardProps {
     open: boolean;
     projects: Project[];
-    manufacturers: Manufacturer[];
     onClose: () => void;
     onCreated: (runId: string) => void;
 }
@@ -37,13 +36,16 @@ interface Release {
 
 // The guided steps, in order. Each is only reachable once the ones before it are
 // satisfied, so a run can never be created with no project or a zero quantity.
-const STEPS = ["Project", "Quantity", "Manufacturer", "Details", "Confirm"] as const;
+const STEPS = ["Project", "Quantity", "Manufacturer", "Spec", "Details", "Confirm"] as const;
 
-export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated }: NewRunWizardProps) {
+export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizardProps) {
     const [step, setStep] = useState(0);
     const [projectId, setProjectId] = useState("");
     const [quantity, setQuantity] = useState<number>(0);
     const [manufacturerId, setManufacturerId] = useState<string>("");
+    const [manufacturers, setManufacturers] = useState<ProjectManufacturer[]>([]);
+    const [specId, setSpecId] = useState<string>("");
+    const [specs, setSpecs] = useState<ProjectSpec[]>([]);
     const [commitSha, setCommitSha] = useState("");
     const [releaseTag, setReleaseTag] = useState("");
     const [releases, setReleases] = useState<Release[]>([]);
@@ -55,12 +57,17 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
         [projects, projectId],
     );
 
-    // Load the project's releases so a run can be tied to one rather than a raw sha.
+    // Load the project's releases so a run can be tied to one rather than a raw sha,
+    // and the manufacturers attached to it (a run can only go to one of those).
     useEffect(() => {
         if (!projectId) {
             setReleases([]);
+            setManufacturers([]);
             return;
         }
+        // A new project invalidates the manufacturer and spec picks.
+        setManufacturerId("");
+        setSpecId("");
         let cancelled = false;
         void (async () => {
             try {
@@ -72,10 +79,39 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                 if (!cancelled) setReleases([]);
             }
         })();
+        void (async () => {
+            try {
+                const list = await listProjectManufacturers(projectId);
+                if (!cancelled) setManufacturers(list);
+            } catch {
+                if (!cancelled) setManufacturers([]);
+            }
+        })();
         return () => {
             cancelled = true;
         };
     }, [projectId]);
+
+    // Load the chosen manufacturer's named specs for this project.
+    useEffect(() => {
+        setSpecId("");
+        if (!projectId || !manufacturerId) {
+            setSpecs([]);
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const list = await listProjectSpecs(projectId, manufacturerId);
+                if (!cancelled) setSpecs(list);
+            } catch {
+                if (!cancelled) setSpecs([]);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId, manufacturerId]);
 
     const canAdvance = useMemo(() => {
         switch (step) {
@@ -83,10 +119,13 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                 return Boolean(projectId);
             case 1:
                 return quantity > 0;
+            case 2:
+                // A run must go to one of the project's manufacturers.
+                return Boolean(manufacturerId);
             default:
                 return true;
         }
-    }, [step, projectId, quantity]);
+    }, [step, projectId, quantity, manufacturerId]);
 
     const handleCreate = async () => {
         setSubmitting(true);
@@ -94,6 +133,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
             const { id } = await createRun({
                 project_id: projectId,
                 manufacturer_id: manufacturerId || null,
+                spec_id: specId || null,
                 commit_sha: commitSha.trim(),
                 release_tag: releaseTag,
                 quantity_ordered: quantity,
@@ -181,26 +221,66 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                     {step === 2 && (
                         <div className="space-y-2">
                             <Label htmlFor="run-mfr">Manufacturer</Label>
-                            <CompactSelect
-                                id="run-mfr"
-                                className="h-9"
-                                value={manufacturerId}
-                                onChange={(e) => setManufacturerId(e.target.value)}
-                            >
-                                <option value="">No manufacturer</option>
-                                {manufacturers.map((m) => (
-                                    <option key={m.id} value={m.id}>
-                                        {m.name}
-                                    </option>
-                                ))}
-                            </CompactSelect>
-                            <p className="text-xs text-muted-foreground">
-                                Optional. Manage the list from the Manufacturers tab.
-                            </p>
+                            {manufacturers.length === 0 ? (
+                                <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                                    This project has no manufacturers yet. Add one from the project&rsquo;s
+                                    Manufacturing tab, then start the run.
+                                </p>
+                            ) : (
+                                <>
+                                    <CompactSelect
+                                        id="run-mfr"
+                                        className="h-9"
+                                        value={manufacturerId}
+                                        onChange={(e) => setManufacturerId(e.target.value)}
+                                    >
+                                        <option value="">Select a manufacturer…</option>
+                                        {manufacturers.map((m) => (
+                                            <option key={m.id} value={m.id}>
+                                                {m.name}
+                                            </option>
+                                        ))}
+                                    </CompactSelect>
+                                    <p className="text-xs text-muted-foreground">
+                                        Only manufacturers attached to this project.
+                                    </p>
+                                </>
+                            )}
                         </div>
                     )}
 
                     {step === 3 && (
+                        <div className="space-y-2">
+                            <Label htmlFor="run-spec">Spec (optional)</Label>
+                            {specs.length === 0 ? (
+                                <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                                    No specs set for this manufacturer yet. The run will freeze the
+                                    project&rsquo;s board profile instead. Add a spec from the Manufacturing tab.
+                                </p>
+                            ) : (
+                                <>
+                                    <CompactSelect
+                                        id="run-spec"
+                                        className="h-9"
+                                        value={specId}
+                                        onChange={(e) => setSpecId(e.target.value)}
+                                    >
+                                        <option value="">No spec (use board profile)</option>
+                                        {specs.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                {s.name}
+                                            </option>
+                                        ))}
+                                    </CompactSelect>
+                                    <p className="text-xs text-muted-foreground">
+                                        The fabrication spec this run is ordered against. It is frozen onto the run.
+                                    </p>
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    {step === 4 && (
                         <div className="space-y-3">
                             {releases.length > 0 && (
                                 <div className="space-y-1">
@@ -254,7 +334,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                         </div>
                     )}
 
-                    {step === 4 && (
+                    {step === 5 && (
                         <dl className="divide-y rounded-md border text-sm">
                             <Row label="Project" value={project ? project.display_name || project.name : "—"} />
                             <Row label="Quantity" value={String(quantity)} />
@@ -262,6 +342,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                                 label="Manufacturer"
                                 value={manufacturers.find((m) => m.id === manufacturerId)?.name || "None"}
                             />
+                            <Row label="Spec" value={specs.find((s) => s.id === specId)?.name || "Board profile"} />
                             {releaseTag && <Row label="Release" value={releaseTag} />}
                             <Row label="Commit" value={commitSha.trim() ? commitSha.trim().slice(0, 7) : "—"} />
                         </dl>

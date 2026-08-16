@@ -192,6 +192,11 @@ class WorkspaceService:
                 manufacturer_id  TEXT REFERENCES ws_manufacturers(id) ON DELETE SET NULL,
                 commit_sha       TEXT NOT NULL DEFAULT '',
                 release_tag      TEXT NOT NULL DEFAULT '',
+                -- Which named spec the run was ordered against. The FK to
+                -- ws_project_specs is added by migration 26 (that table is created
+                -- below/after this one), so it is a plain column here; the frozen
+                -- spec_snapshot is the durable picture either way.
+                spec_id          TEXT,
                 quantity_ordered INTEGER NOT NULL DEFAULT 0,
                 quantity_good    INTEGER NOT NULL DEFAULT 0,
                 status           TEXT NOT NULL DEFAULT 'draft',
@@ -236,6 +241,33 @@ class WorkspaceService:
                 resolved_at       TIMESTAMPTZ
             );
             CREATE INDEX IF NOT EXISTS idx_ws_run_defects_run ON ws_run_defects(run_id);
+
+            -- A project's attached manufacturers (from the global directory), and
+            -- the named fabrication specs each (project, manufacturer) holds. A run
+            -- picks a manufacturer scoped to its project, then one of these specs.
+            CREATE TABLE IF NOT EXISTS ws_project_manufacturers (
+                project_id      TEXT NOT NULL REFERENCES ws_projects(id) ON DELETE CASCADE,
+                manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
+                created_at      TIMESTAMPTZ NOT NULL,
+                PRIMARY KEY (project_id, manufacturer_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ws_project_mfrs_project ON ws_project_manufacturers(project_id);
+
+            CREATE TABLE IF NOT EXISTS ws_project_specs (
+                id              TEXT PRIMARY KEY,
+                project_id      TEXT NOT NULL REFERENCES ws_projects(id) ON DELETE CASCADE,
+                manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
+                name            TEXT NOT NULL,
+                spec_config     TEXT NOT NULL DEFAULT '',
+                specs           JSONB NOT NULL DEFAULT '{}'::jsonb,
+                source          JSONB NOT NULL DEFAULT '{}'::jsonb,
+                active_sections JSONB NOT NULL DEFAULT '[]'::jsonb,
+                updated_at      TIMESTAMPTZ NOT NULL,
+                updated_by      TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_ws_project_specs_scope ON ws_project_specs(project_id, manufacturer_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_project_specs_name
+                ON ws_project_specs(project_id, manufacturer_id, lower(name));
         """, prepare=False)
 
     # ------------------------------------------------------------------

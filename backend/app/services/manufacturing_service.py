@@ -434,6 +434,217 @@ def save_board_spec(
 
 
 # ---------------------------------------------------------------------------
+# Project manufacturers (attachments from the global directory)
+# ---------------------------------------------------------------------------
+
+
+def list_project_manufacturers(project_id: str) -> List[Dict[str, Any]]:
+    """The manufacturers attached to a project, with their directory details."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT m.*, pm.created_at AS attached_at
+               FROM ws_project_manufacturers pm
+               JOIN ws_manufacturers m ON m.id = pm.manufacturer_id
+               WHERE pm.project_id = %s
+               ORDER BY m.name""",
+            (project_id,),
+        ).fetchall()
+    return [_row(r) for r in rows]
+
+
+def attach_manufacturer(project_id: str, manufacturer_id: str) -> bool:
+    """Add a manufacturer to a project's list. Idempotent; no spec is created."""
+    if not workspace.get_project_by_id(project_id):
+        raise ManufacturingError("Project not found.")
+    with _connect() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM ws_manufacturers WHERE id = %s", (manufacturer_id,)
+        ).fetchone()
+        if not exists:
+            raise ManufacturingError("Manufacturer not found.")
+        conn.execute(
+            """INSERT INTO ws_project_manufacturers (project_id, manufacturer_id, created_at)
+               VALUES (%s, %s, %s)
+               ON CONFLICT (project_id, manufacturer_id) DO NOTHING""",
+            (project_id, manufacturer_id, _now()),
+        )
+        conn.commit()
+    return True
+
+
+def detach_manufacturer(project_id: str, manufacturer_id: str) -> bool:
+    """Remove a manufacturer from a project's list. Its named specs and runs are
+    left intact, so re-attaching resurfaces them."""
+    with _connect() as conn:
+        result = conn.execute(
+            "DELETE FROM ws_project_manufacturers WHERE project_id = %s AND manufacturer_id = %s",
+            (project_id, manufacturer_id),
+        )
+        conn.commit()
+    return bool(result.rowcount)
+
+
+# ---------------------------------------------------------------------------
+# Named specs (per project + manufacturer)
+# ---------------------------------------------------------------------------
+
+
+def list_project_specs(project_id: str, manufacturer_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Named specs for a project, optionally scoped to one manufacturer. Includes
+    the manufacturer name for display; excludes nothing (specs are small)."""
+    query = """
+        SELECT s.*, m.name AS manufacturer_name
+        FROM ws_project_specs s
+        JOIN ws_manufacturers m ON m.id = s.manufacturer_id
+        WHERE s.project_id = %s
+    """
+    params: tuple[Any, ...] = (project_id,)
+    if manufacturer_id:
+        query += " AND s.manufacturer_id = %s"
+        params = (project_id, manufacturer_id)
+    query += " ORDER BY m.name, lower(s.name)"
+    with _connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [_row(r) for r in rows]
+
+
+def get_project_spec(spec_id: str) -> Optional[Dict[str, Any]]:
+    from app.services.spec_config_service import DEFAULT_SPEC_CONFIG
+
+    with _connect() as conn:
+        row = conn.execute(
+            """SELECT s.*, m.name AS manufacturer_name
+               FROM ws_project_specs s
+               JOIN ws_manufacturers m ON m.id = s.manufacturer_id
+               WHERE s.id = %s""",
+            (spec_id,),
+        ).fetchone()
+    if not row:
+        return None
+    result = _row(row)
+    if not (result.get("spec_config") or "").strip():
+        result["spec_config"] = DEFAULT_SPEC_CONFIG
+    result.setdefault("active_sections", [])
+    return result
+
+
+def create_project_spec(
+    project_id: str,
+    manufacturer_id: str,
+    name: str,
+    *,
+    spec_config: str = "",
+    specs: Optional[Dict[str, Any]] = None,
+    source: Optional[Dict[str, Any]] = None,
+    active_sections: Optional[List[str]] = None,
+    updated_by: str = "",
+) -> str:
+    """Create a named spec under a project+manufacturer. Empty schema text seeds
+    from the starter config so the form is usable at once."""
+    from app.services.spec_config_service import DEFAULT_SPEC_CONFIG
+    import json
+
+    clean = name.strip()
+    if not clean:
+        raise ManufacturingError("A spec name is required.")
+    if not workspace.get_project_by_id(project_id):
+        raise ManufacturingError("Project not found.")
+    spec_id = _new_id("spec_")
+    now = _now()
+    with _connect() as conn:
+        if not conn.execute(
+            "SELECT 1 FROM ws_manufacturers WHERE id = %s", (manufacturer_id,)
+        ).fetchone():
+            raise ManufacturingError("Manufacturer not found.")
+        clash = conn.execute(
+            """SELECT 1 FROM ws_project_specs
+               WHERE project_id = %s AND manufacturer_id = %s AND lower(name) = lower(%s)""",
+            (project_id, manufacturer_id, clean),
+        ).fetchone()
+        if clash:
+            raise ManufacturingError("A spec with that name already exists for this manufacturer.")
+        conn.execute(
+            """INSERT INTO ws_project_specs
+               (id,project_id,manufacturer_id,name,spec_config,specs,source,active_sections,updated_at,updated_by)
+               VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s::jsonb,%s,%s)""",
+            (
+                spec_id, project_id, manufacturer_id, clean,
+                spec_config.strip() or DEFAULT_SPEC_CONFIG,
+                json.dumps(specs or {}), json.dumps(source or {}),
+                json.dumps(list(active_sections or [])), now, updated_by,
+            ),
+        )
+        conn.commit()
+    return spec_id
+
+
+def update_project_spec(spec_id: str, **fields: Any) -> bool:
+    """Update a named spec's mutable fields. A rename that collides is rejected."""
+    import json
+
+    allowed = {"name", "spec_config", "specs", "source", "active_sections"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return False
+    if "name" in updates:
+        updates["name"] = str(updates["name"]).strip()
+        if not updates["name"]:
+            raise ManufacturingError("A spec name is required.")
+    updated_by = fields.get("updated_by")
+    with _connect() as conn:
+        if "name" in updates:
+            row = conn.execute(
+                "SELECT project_id, manufacturer_id FROM ws_project_specs WHERE id = %s", (spec_id,)
+            ).fetchone()
+            if row:
+                clash = conn.execute(
+                    """SELECT 1 FROM ws_project_specs
+                       WHERE project_id = %s AND manufacturer_id = %s
+                         AND lower(name) = lower(%s) AND id <> %s""",
+                    (row["project_id"], row["manufacturer_id"], updates["name"], spec_id),
+                ).fetchone()
+                if clash:
+                    raise ManufacturingError("A spec with that name already exists for this manufacturer.")
+        # JSONB columns need a cast; text columns go straight in.
+        sets, values = [], []
+        for key, value in updates.items():
+            if key in ("specs", "source", "active_sections"):
+                sets.append(f"{key} = %s::jsonb")
+                values.append(json.dumps(value))
+            else:
+                sets.append(f"{key} = %s")
+                values.append(value)
+        sets.append("updated_at = %s")
+        values.append(_now())
+        if isinstance(updated_by, str):
+            sets.append("updated_by = %s")
+            values.append(updated_by)
+        result = conn.execute(
+            f"UPDATE ws_project_specs SET {', '.join(sets)} WHERE id = %s",
+            (*values, spec_id),
+        )
+        conn.commit()
+    return bool(result.rowcount)
+
+
+def delete_project_spec(spec_id: str) -> bool:
+    with _connect() as conn:
+        result = conn.execute("DELETE FROM ws_project_specs WHERE id = %s", (spec_id,))
+        conn.commit()
+    return bool(result.rowcount)
+
+
+def apply_template_to_spec(spec_id: str, template_id: str, *, updated_by: str = "") -> bool:
+    """Copy a manufacturer template's schema text into a named spec (copy-on-apply)."""
+    template = get_template(template_id)
+    if not template:
+        raise ManufacturingError("Template not found.")
+    return update_project_spec(
+        spec_id, spec_config=template.get("spec_config") or "", updated_by=updated_by
+    )
+
+
+# ---------------------------------------------------------------------------
 # Runs
 # ---------------------------------------------------------------------------
 
@@ -442,11 +653,12 @@ def list_runs(project_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Every run, or the runs for one project, newest first, with joined names."""
     query = """
         SELECT run.*, p.name AS project_name, p.relative_path,
-               m.name AS manufacturer_name,
+               m.name AS manufacturer_name, s.name AS spec_name,
                (SELECT COUNT(*) FROM ws_run_defects d WHERE d.run_id = run.id) AS defect_count
         FROM ws_manufacturing_runs run
         JOIN ws_projects p ON p.id = run.project_id
         LEFT JOIN ws_manufacturers m ON m.id = run.manufacturer_id
+        LEFT JOIN ws_project_specs s ON s.id = run.spec_id
     """
     params: tuple[Any, ...] = ()
     if project_id:
@@ -462,10 +674,11 @@ def get_run(run_id: str) -> Optional[Dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute(
             """SELECT run.*, p.name AS project_name, p.relative_path,
-                      m.name AS manufacturer_name
+                      m.name AS manufacturer_name, s.name AS spec_name
                FROM ws_manufacturing_runs run
                JOIN ws_projects p ON p.id = run.project_id
                LEFT JOIN ws_manufacturers m ON m.id = run.manufacturer_id
+               LEFT JOIN ws_project_specs s ON s.id = run.spec_id
                WHERE run.id = %s""",
             (run_id,),
         ).fetchone()
@@ -480,6 +693,7 @@ def create_run(
     project_id: str,
     *,
     manufacturer_id: Optional[str] = None,
+    spec_id: Optional[str] = None,
     commit_sha: str = "",
     release_tag: str = "",
     quantity_ordered: int = 0,
@@ -493,10 +707,21 @@ def create_run(
         raise ManufacturingError("Project not found.")
     import json
 
-    # Freeze the project's board spec as it stands now, so the run keeps a
-    # picture of the settings it was ordered against even if they change later.
+    # Resolve the named spec, if one was chosen, and make sure it belongs to this
+    # run's project and manufacturer.
+    named_spec = None
+    if spec_id:
+        named_spec = get_project_spec(spec_id)
+        if not named_spec or named_spec.get("project_id") != project_id:
+            raise ManufacturingError("Spec not found for this project.")
+        if manufacturer_id and named_spec.get("manufacturer_id") != manufacturer_id:
+            raise ManufacturingError("That spec belongs to a different manufacturer.")
+
+    # Freeze the spec as it stands now, so the run keeps a picture of the settings
+    # it was ordered against even if they change later. Prefer the chosen named
+    # spec; fall back to the project board profile.
     if spec_snapshot is None:
-        spec = get_board_spec(project_id)
+        spec = named_spec or get_board_spec(project_id)
         spec_snapshot = {
             "specs": spec.get("specs") or {},
             "spec_config": spec.get("spec_config") or "",
@@ -508,12 +733,12 @@ def create_run(
     with _connect() as conn:
         conn.execute(
             """INSERT INTO ws_manufacturing_runs
-               (id,project_id,manufacturer_id,commit_sha,release_tag,quantity_ordered,quantity_good,
+               (id,project_id,manufacturer_id,spec_id,commit_sha,release_tag,quantity_ordered,quantity_good,
                 status,notes,spec_snapshot,created_by,created_at,updated_at)
-               VALUES (%s,%s,%s,%s,%s,%s,0,'draft',%s,%s::jsonb,%s,%s,%s)""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,0,'draft',%s,%s::jsonb,%s,%s,%s)""",
             (
-                run_id, project_id, manufacturer_id or None, commit_sha.strip(),
-                release_tag.strip(), int(quantity_ordered), notes.strip(),
+                run_id, project_id, manufacturer_id or None, spec_id or None,
+                commit_sha.strip(), release_tag.strip(), int(quantity_ordered), notes.strip(),
                 json.dumps(spec_snapshot or {}), created_by, now, now,
             ),
         )

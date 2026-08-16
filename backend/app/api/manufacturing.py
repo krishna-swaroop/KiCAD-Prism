@@ -72,9 +72,28 @@ class ApplyTemplateRequest(BaseModel):
     template_id: str = Field(min_length=1)
 
 
+class AttachManufacturerRequest(BaseModel):
+    manufacturer_id: str = Field(min_length=1)
+
+
+class ProjectSpecCreateRequest(BaseModel):
+    manufacturer_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=200)
+    spec_config: str = Field(default="", max_length=100_000)
+
+
+class ProjectSpecUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    spec_config: str | None = Field(default=None, max_length=100_000)
+    specs: dict | None = None
+    source: dict | None = None
+    active_sections: list[str] | None = None
+
+
 class RunRequest(BaseModel):
     project_id: str = Field(min_length=1)
     manufacturer_id: str | None = None
+    spec_id: str | None = None
     commit_sha: str = ""
     release_tag: str = ""
     quantity_ordered: int = Field(default=0, ge=0)
@@ -250,6 +269,91 @@ async def preview_spec_config(request: SpecConfigRequest):
 
 
 # ---------------------------------------------------------------------------
+# Project manufacturers (attachments) and named specs
+# ---------------------------------------------------------------------------
+
+
+@router.get("/projects/{project_id}/manufacturers", dependencies=[Depends(require_viewer)])
+async def list_project_manufacturers(project_id: str):
+    return await asyncio.to_thread(mfg.list_project_manufacturers, project_id)
+
+
+@router.post("/projects/{project_id}/manufacturers", dependencies=[Depends(require_designer)])
+async def attach_manufacturer(project_id: str, request: AttachManufacturerRequest):
+    await asyncio.to_thread(_handle, mfg.attach_manufacturer, project_id, request.manufacturer_id)
+    return {"status": "success"}
+
+
+@router.delete("/projects/{project_id}/manufacturers/{mfr_id}", dependencies=[Depends(require_designer)])
+async def detach_manufacturer(project_id: str, mfr_id: str):
+    if not await asyncio.to_thread(mfg.detach_manufacturer, project_id, mfr_id):
+        raise HTTPException(status_code=404, detail="Manufacturer not attached to this project")
+    return {"status": "success"}
+
+
+@router.get("/projects/{project_id}/specs", dependencies=[Depends(require_viewer)])
+async def list_project_specs(project_id: str, manufacturer_id: str | None = None):
+    return await asyncio.to_thread(mfg.list_project_specs, project_id, manufacturer_id)
+
+
+@router.post("/projects/{project_id}/specs")
+async def create_project_spec(
+    project_id: str,
+    request: ProjectSpecCreateRequest,
+    user: AuthenticatedUser = Depends(require_designer),
+):
+    spec_id = await asyncio.to_thread(
+        _handle, mfg.create_project_spec, project_id, request.manufacturer_id, request.name,
+        spec_config=request.spec_config, updated_by=user.email,
+    )
+    return {"id": spec_id}
+
+
+@router.get("/specs/{spec_id}", dependencies=[Depends(require_viewer)])
+async def get_project_spec(spec_id: str):
+    spec = await asyncio.to_thread(mfg.get_project_spec, spec_id)
+    if not spec:
+        raise HTTPException(status_code=404, detail="Spec not found")
+    parsed = spec_config_service.parse_spec_config(spec.get("spec_config") or "")
+    return {**spec, "parsed": parsed.to_dict()}
+
+
+@router.patch("/specs/{spec_id}")
+async def update_project_spec(
+    spec_id: str,
+    request: ProjectSpecUpdateRequest,
+    user: AuthenticatedUser = Depends(require_designer),
+):
+    updated = await asyncio.to_thread(
+        _handle, mfg.update_project_spec, spec_id,
+        updated_by=user.email, **request.model_dump(exclude_none=True),
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Spec not found or nothing to update")
+    return {"status": "success"}
+
+
+@router.delete("/specs/{spec_id}", dependencies=[Depends(require_designer)])
+async def delete_project_spec(spec_id: str):
+    if not await asyncio.to_thread(mfg.delete_project_spec, spec_id):
+        raise HTTPException(status_code=404, detail="Spec not found")
+    return {"status": "success"}
+
+
+@router.post("/specs/{spec_id}/apply-template")
+async def apply_template_to_spec(
+    spec_id: str,
+    request: ApplyTemplateRequest,
+    user: AuthenticatedUser = Depends(require_designer),
+):
+    if not await asyncio.to_thread(
+        _handle, mfg.apply_template_to_spec, spec_id, request.template_id, updated_by=user.email
+    ):
+        raise HTTPException(status_code=404, detail="Spec not found")
+    return {"status": "success"}
+
+
+# ---------------------------------------------------------------------------
 # Spec templates (named, manufacturer-scoped)
 # ---------------------------------------------------------------------------
 
@@ -331,11 +435,14 @@ async def create_run(request: RunRequest, user: AuthenticatedUser = Depends(requ
     run_id = await asyncio.to_thread(
         _handle, mfg.create_run, request.project_id,
         manufacturer_id=request.manufacturer_id,
+        spec_id=request.spec_id,
         commit_sha=request.commit_sha,
         release_tag=request.release_tag,
         quantity_ordered=request.quantity_ordered,
         notes=request.notes,
-        spec_snapshot=request.spec_snapshot,
+        # An empty snapshot means "freeze the chosen spec for me"; only an
+        # explicit non-empty one overrides that.
+        spec_snapshot=request.spec_snapshot or None,
         created_by=user.email,
     )
     return {"id": run_id}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Factory, Sparkles, Save, PlusCircle, Settings2, ChevronDown, ChevronRight, FileDown } from "lucide-react";
+import { Factory, Sparkles, Save, PlusCircle, Settings2, ChevronDown, ChevronRight, FileDown, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -7,12 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-    getBoardSpec,
-    saveBoardSpec,
     extractBoardSpec,
     listRuns,
-    getSpecConfig,
-    saveSpecConfig,
+    listManufacturers,
+    listProjectManufacturers,
+    attachManufacturer,
+    detachManufacturer,
+    listProjectSpecs,
+    getProjectSpec,
+    createProjectSpec,
+    updateProjectSpec,
+    deleteProjectSpec,
     listTemplates,
     downloadSpecSheet,
 } from "@/lib/manufacturing";
@@ -20,8 +25,11 @@ import {
     RUN_STATUS_LABELS,
     EXTRACTABLE_KEYS,
     evaluateCondition,
+    type Manufacturer,
     type ManufacturingRun,
     type ParsedSpecConfig,
+    type ProjectManufacturer,
+    type ProjectSpec,
     type SpecFieldDef,
     type SpecSectionDef,
     type SpecTemplate,
@@ -44,38 +52,50 @@ export function ProjectManufacturing({
     onOpenRun,
     onNewRun,
 }: ProjectManufacturingProps) {
+    // Navigation: which attached manufacturer and named spec are selected.
+    const [manufacturers, setManufacturers] = useState<ProjectManufacturer[]>([]);
+    const [manufacturerId, setManufacturerId] = useState<string>("");
+    const [specs, setSpecs] = useState<ProjectSpec[]>([]);
+    const [specId, setSpecId] = useState<string>("");
+
+    // The selected spec's form state.
     const [values, setValues] = useState<SpecValues>({});
     const [source, setSource] = useState<Record<string, string>>({});
     const [schema, setSchema] = useState<ParsedSpecConfig>({ sections: [], errors: [] });
     const [runs, setRuns] = useState<ManufacturingRun[]>([]);
     const [loading, setLoading] = useState(true);
+    const [specLoading, setSpecLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [extracting, setExtracting] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [editorOpen, setEditorOpen] = useState(false);
     const [templates, setTemplates] = useState<SpecTemplate[]>([]);
+    const [allManufacturers, setAllManufacturers] = useState<Manufacturer[]>([]);
     // Which optional sections are switched on (persisted with the spec).
     const [activeSections, setActiveSections] = useState<Set<string>>(new Set());
     // Which sections are collapsed in the UI (per-session, not persisted).
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
+    // Load the project-level pieces: attached manufacturers, the runs, templates,
+    // and the global directory (for the "add manufacturer" picker).
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [spec, config, runList, tmpls] = await Promise.all([
-                getBoardSpec(projectId),
-                getSpecConfig(projectId),
+            const [attached, runList, tmpls, all] = await Promise.all([
+                listProjectManufacturers(projectId),
                 listRuns(projectId),
                 listTemplates().catch(() => [] as SpecTemplate[]),
+                listManufacturers().catch(() => [] as Manufacturer[]),
             ]);
-            setValues(spec.specs ?? {});
-            setSource(spec.source ?? {});
-            setSchema(config.parsed);
+            setManufacturers(attached);
             setRuns(runList);
             setTemplates(tmpls);
-            setActiveSections(new Set(spec.active_sections ?? []));
-            setDirty(false);
+            setAllManufacturers(all);
+            // Keep the current manufacturer selection if still attached, else pick the first.
+            setManufacturerId((current) =>
+                attached.some((m) => m.id === current) ? current : (attached[0]?.id ?? ""),
+            );
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to load manufacturing data.");
         } finally {
@@ -86,6 +106,66 @@ export function ProjectManufacturing({
     useEffect(() => {
         void load();
     }, [load]);
+
+    // When the manufacturer changes, load its specs and select the first.
+    useEffect(() => {
+        if (!manufacturerId) {
+            setSpecs([]);
+            setSpecId("");
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const list = await listProjectSpecs(projectId, manufacturerId);
+                if (cancelled) return;
+                setSpecs(list);
+                setSpecId((current) =>
+                    list.some((s) => s.id === current) ? current : (list[0]?.id ?? ""),
+                );
+            } catch {
+                if (!cancelled) {
+                    setSpecs([]);
+                    setSpecId("");
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId, manufacturerId]);
+
+    // When the selected spec changes, load its schema and values into the form.
+    useEffect(() => {
+        if (!specId) {
+            setValues({});
+            setSource({});
+            setSchema({ sections: [], errors: [] });
+            setActiveSections(new Set());
+            setDirty(false);
+            return;
+        }
+        let cancelled = false;
+        setSpecLoading(true);
+        void (async () => {
+            try {
+                const spec = await getProjectSpec(specId);
+                if (cancelled) return;
+                setValues(spec.specs ?? {});
+                setSource(spec.source ?? {});
+                setSchema(spec.parsed);
+                setActiveSections(new Set(spec.active_sections ?? []));
+                setDirty(false);
+            } catch (error) {
+                if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load the spec.");
+            } finally {
+                if (!cancelled) setSpecLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [specId]);
 
     const setField = (key: string, value: unknown, provenance: string = "manual") => {
         setValues((current) => ({ ...current, [key]: value }));
@@ -118,14 +198,12 @@ export function ProjectManufacturing({
     };
 
     const handleSave = async () => {
+        if (!specId) return;
         setSaving(true);
         try {
-            const saved = await saveBoardSpec(projectId, values, source, [...activeSections]);
-            setValues(saved.specs ?? {});
-            setSource(saved.source ?? {});
-            setActiveSections(new Set(saved.active_sections ?? []));
+            await updateProjectSpec(specId, { specs: values, source, active_sections: [...activeSections] });
             setDirty(false);
-            toast.success("Board specs saved.");
+            toast.success("Spec saved.");
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Failed to save.");
         } finally {
@@ -161,21 +239,202 @@ export function ProjectManufacturing({
         }
     };
 
+    const handleAttach = async (id: string) => {
+        try {
+            await attachManufacturer(projectId, id);
+            await load();
+            setManufacturerId(id);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to add manufacturer.");
+        }
+    };
+
+    const handleDetach = async (id: string) => {
+        try {
+            await detachManufacturer(projectId, id);
+            await load();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to remove manufacturer.");
+        }
+    };
+
+    const handleAddSpec = async () => {
+        if (!manufacturerId) return;
+        const name = window.prompt("Name this spec (e.g. 'Prototype', '4L ENIG')");
+        if (!name || !name.trim()) return;
+        try {
+            const { id } = await createProjectSpec(projectId, { manufacturer_id: manufacturerId, name: name.trim() });
+            const list = await listProjectSpecs(projectId, manufacturerId);
+            setSpecs(list);
+            setSpecId(id);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to create spec.");
+        }
+    };
+
+    const handleRenameSpec = async () => {
+        if (!specId) return;
+        const current = specs.find((s) => s.id === specId)?.name ?? "";
+        const name = window.prompt("Rename spec", current);
+        if (!name || !name.trim() || name.trim() === current) return;
+        try {
+            await updateProjectSpec(specId, { name: name.trim() });
+            setSpecs(await listProjectSpecs(projectId, manufacturerId));
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to rename spec.");
+        }
+    };
+
+    const handleDeleteSpec = async () => {
+        if (!specId) return;
+        const name = specs.find((s) => s.id === specId)?.name ?? "this spec";
+        if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+        try {
+            await deleteProjectSpec(specId);
+            const list = await listProjectSpecs(projectId, manufacturerId);
+            setSpecs(list);
+            setSpecId(list[0]?.id ?? "");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to delete spec.");
+        }
+    };
+
     if (loading) {
         return <div className="text-sm text-muted-foreground">Loading manufacturing...</div>;
     }
 
     const hasFields = schema.sections.some((s) => s.fields.length > 0);
+    const attachedIds = new Set(manufacturers.map((m) => m.id));
+    const attachable = allManufacturers.filter((m) => !attachedIds.has(m.id));
+    const selectedManufacturer = manufacturers.find((m) => m.id === manufacturerId) ?? null;
 
     return (
         <div className="space-y-5">
-            {/* Board specs */}
+            {/* Manufacturers + named specs navigator */}
+            <section className="rounded-lg border">
+                <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                    <div>
+                        <h3 className="text-lg font-medium">Manufacturers</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Each manufacturer holds its own named fabrication specs for this board.
+                        </p>
+                    </div>
+                    {canEdit && attachable.length > 0 && (
+                        <CompactSelect
+                            aria-label="Add a manufacturer"
+                            widthClass="w-auto"
+                            value=""
+                            onChange={(e) => {
+                                const id = e.target.value;
+                                e.target.value = "";
+                                if (id) void handleAttach(id);
+                            }}
+                        >
+                            <option value="">Add manufacturer…</option>
+                            {attachable.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                    {m.name}
+                                </option>
+                            ))}
+                        </CompactSelect>
+                    )}
+                </header>
+
+                {manufacturers.length === 0 ? (
+                    <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
+                        <Factory className="h-8 w-8 opacity-50" />
+                        <p className="text-sm">
+                            No manufacturers yet.
+                            {canEdit ? " Add one above to set its fabrication specs." : ""}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="flex flex-wrap items-center gap-2 p-3">
+                        {manufacturers.map((m) => (
+                            <div
+                                key={m.id}
+                                className={`flex items-center gap-1 rounded-full border px-1 ${
+                                    m.id === manufacturerId ? "border-primary bg-secondary" : ""
+                                }`}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => setManufacturerId(m.id)}
+                                    className="px-2 py-1 text-sm"
+                                >
+                                    {m.name}
+                                </button>
+                                {canEdit && (
+                                    <button
+                                        type="button"
+                                        aria-label={`Remove ${m.name}`}
+                                        title={`Remove ${m.name} from this project`}
+                                        onClick={() => void handleDetach(m.id)}
+                                        className="rounded-full p-1 text-muted-foreground hover:text-destructive"
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {selectedManufacturer && (
+                    <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Spec
+                        </span>
+                        {specs.length > 0 && (
+                            <CompactSelect
+                                aria-label="Select a spec"
+                                widthClass="w-auto"
+                                value={specId}
+                                onChange={(e) => setSpecId(e.target.value)}
+                            >
+                                {specs.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.name}
+                                    </option>
+                                ))}
+                            </CompactSelect>
+                        )}
+                        {canEdit && (
+                            <>
+                                <Button variant="outline" size="sm" onClick={() => void handleAddSpec()}>
+                                    <PlusCircle className="mr-1.5 h-4 w-4" /> Add spec
+                                </Button>
+                                {specId && (
+                                    <>
+                                        <Button variant="ghost" size="sm" onClick={() => void handleRenameSpec()}>
+                                            Rename
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-destructive hover:text-destructive"
+                                            onClick={() => void handleDeleteSpec()}
+                                        >
+                                            Delete
+                                        </Button>
+                                    </>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+            </section>
+
+            {/* Board specs for the selected spec */}
+            {selectedManufacturer && (
             <section className="rounded-lg border">
                 <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
                     <div>
-                        <h3 className="text-lg font-medium">Board specifications</h3>
+                        <h3 className="text-lg font-medium">
+                            {specs.find((s) => s.id === specId)?.name || "Fabrication spec"}
+                        </h3>
                         <p className="text-sm text-muted-foreground">
-                            Fields come from this project&rsquo;s spec schema. Edit the schema to change them.
+                            {selectedManufacturer.name} · fields come from this spec&rsquo;s schema.
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -188,7 +447,7 @@ export function ProjectManufacturing({
                             <FileDown className="mr-2 h-4 w-4" />
                             {downloading ? "Preparing..." : "Download PDF"}
                         </Button>
-                        {canEdit && (
+                        {canEdit && specId && (
                             <>
                                 <Button variant="ghost" size="sm" onClick={() => setEditorOpen(true)}>
                                     <Settings2 className="mr-2 h-4 w-4" />
@@ -207,7 +466,17 @@ export function ProjectManufacturing({
                     </div>
                 </header>
 
-                {!hasFields ? (
+                {!specId ? (
+                    <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
+                        <Settings2 className="h-8 w-8 opacity-50" />
+                        <p className="text-sm">
+                            No specs for {selectedManufacturer.name} yet.
+                            {canEdit ? " Use “Add spec” above to create one." : ""}
+                        </p>
+                    </div>
+                ) : specLoading ? (
+                    <div className="p-10 text-center text-sm text-muted-foreground">Loading spec...</div>
+                ) : !hasFields ? (
                     <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
                         <Settings2 className="h-8 w-8 opacity-50" />
                         <p className="text-sm">
@@ -248,6 +517,7 @@ export function ProjectManufacturing({
                     </div>
                 )}
             </section>
+            )}
 
             {/* Runs for this project */}
             <section className="rounded-lg border">
@@ -303,21 +573,25 @@ export function ProjectManufacturing({
                 )}
             </section>
 
-            {editorOpen && (
+            {editorOpen && specId && (
                 <SpecConfigEditor
                     title="Edit spec schema"
-                    description="Define the fields the board-spec form shows, or apply a manufacturer template."
+                    description="Define the fields this spec's form shows, or apply a manufacturer template."
                     saveLabel="Save schema"
                     load={async () => {
-                        const { spec_config, parsed } = await getSpecConfig(projectId);
-                        return { text: spec_config, parsed };
+                        const spec = await getProjectSpec(specId);
+                        return { text: spec.spec_config, parsed: spec.parsed };
                     }}
                     save={async (text) => {
-                        const { parsed } = await saveSpecConfig(projectId, text);
-                        return parsed;
+                        await updateProjectSpec(specId, { spec_config: text });
+                        const { previewSpecConfig } = await import("@/lib/manufacturing");
+                        return previewSpecConfig(text);
                     }}
-                    headerSlot={(setText) =>
-                        templates.length > 0 ? (
+                    headerSlot={(setText) => {
+                        // Prefer templates for the selected manufacturer; fall back to all.
+                        const forMfr = templates.filter((t) => t.manufacturer_id === manufacturerId);
+                        const options = forMfr.length > 0 ? forMfr : templates;
+                        return options.length > 0 ? (
                             <CompactSelect
                                 aria-label="Apply a template"
                                 widthClass="w-auto"
@@ -337,18 +611,26 @@ export function ProjectManufacturing({
                                 }}
                             >
                                 <option value="">Apply template…</option>
-                                {templates.map((t) => (
+                                {options.map((t) => (
                                     <option key={t.id} value={t.id}>
                                         {t.manufacturer_name} — {t.name}
                                     </option>
                                 ))}
                             </CompactSelect>
-                        ) : null
-                    }
+                        ) : null;
+                    }}
                     onClose={() => setEditorOpen(false)}
                     onSaved={() => {
                         setEditorOpen(false);
-                        void load();
+                        // Reload the spec into the form so new fields appear.
+                        setSpecId((id) => id);
+                        void (async () => {
+                            const spec = await getProjectSpec(specId);
+                            setValues(spec.specs ?? {});
+                            setSource(spec.source ?? {});
+                            setSchema(spec.parsed);
+                            setActiveSections(new Set(spec.active_sections ?? []));
+                        })();
                     }}
                 />
             )}

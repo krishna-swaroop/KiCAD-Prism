@@ -1691,6 +1691,64 @@ def _manufacturing_run_release_tag(conn: Any) -> None:
     )
 
 
+def _manufacturing_project_manufacturers_and_specs(conn: Any) -> None:
+    """Attach manufacturers to projects and give each (project, manufacturer) its
+    own named fabrication specs.
+
+    A board is quoted by several manufacturers, each needing its own spec. These
+    tables replace the "one board spec per project" assumption for run purposes;
+    ws_board_specs stays as the project board profile the extractor/PDF use.
+    Created idempotently so a fresh database (where _create_schema already made
+    them) is a no-op.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ws_project_manufacturers (
+            project_id      TEXT NOT NULL REFERENCES ws_projects(id) ON DELETE CASCADE,
+            manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
+            created_at      TIMESTAMPTZ NOT NULL,
+            PRIMARY KEY (project_id, manufacturer_id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ws_project_mfrs_project ON ws_project_manufacturers(project_id)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ws_project_specs (
+            id              TEXT PRIMARY KEY,
+            project_id      TEXT NOT NULL REFERENCES ws_projects(id) ON DELETE CASCADE,
+            manufacturer_id TEXT NOT NULL REFERENCES ws_manufacturers(id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            spec_config     TEXT NOT NULL DEFAULT '',
+            specs           JSONB NOT NULL DEFAULT '{}'::jsonb,
+            source          JSONB NOT NULL DEFAULT '{}'::jsonb,
+            active_sections JSONB NOT NULL DEFAULT '[]'::jsonb,
+            updated_at      TIMESTAMPTZ NOT NULL,
+            updated_by      TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ws_project_specs_scope ON ws_project_specs(project_id, manufacturer_id)"
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_project_specs_name
+            ON ws_project_specs(project_id, manufacturer_id, lower(name))
+        """
+    )
+
+
+def _manufacturing_run_spec_id(conn: Any) -> None:
+    """Link a run to the named spec it was ordered against (nullable; the frozen
+    spec_snapshot remains the durable picture)."""
+    conn.execute(
+        "ALTER TABLE ws_manufacturing_runs ADD COLUMN IF NOT EXISTS spec_id TEXT REFERENCES ws_project_specs(id) ON DELETE SET NULL"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1712,6 +1770,8 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (22, "manufacturing_active_sections", _manufacturing_active_sections),
     (23, "manufacturing_builtin_templates", _manufacturing_builtin_templates),
     (24, "manufacturing_run_release_tag", _manufacturing_run_release_tag),
+    (25, "manufacturing_project_manufacturers_and_specs", _manufacturing_project_manufacturers_and_specs),
+    (26, "manufacturing_run_spec_id", _manufacturing_run_spec_id),
 )
 
 

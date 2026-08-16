@@ -17,6 +17,26 @@ export interface BoardSpec {
     updated_by: string;
 }
 
+/** A manufacturer attached to a project (from the global directory). */
+export interface ProjectManufacturer extends Manufacturer {
+    attached_at: string;
+}
+
+/** A named fabrication spec scoped to one project + manufacturer. */
+export interface ProjectSpec {
+    id: string;
+    project_id: string;
+    manufacturer_id: string;
+    manufacturer_name?: string;
+    name: string;
+    spec_config: string;
+    specs: Record<string, unknown>;
+    source: Record<string, string>;
+    active_sections: string[];
+    updated_at: string | null;
+    updated_by: string;
+}
+
 export type RunStatus = "draft" | "ordered" | "in_production" | "received" | "closed";
 
 export interface ManufacturingRun {
@@ -26,6 +46,8 @@ export interface ManufacturingRun {
     relative_path?: string;
     manufacturer_id: string | null;
     manufacturer_name?: string | null;
+    spec_id?: string | null;
+    spec_name?: string | null;
     commit_sha: string;
     release_tag: string;
     quantity_ordered: number;
