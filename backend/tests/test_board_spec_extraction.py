@@ -97,6 +97,38 @@ class BoardSpecExtractionTests(unittest.TestCase):
         self._paths.append(handle.name)
         self.assertEqual(bss.extract_board_spec(handle.name), {})
 
+    def _write_raw(self, text: str) -> str:
+        handle = tempfile.NamedTemporaryFile("w", suffix=".kicad_pcb", delete=False, encoding="utf-8")
+        handle.write(text)
+        handle.close()
+        self._paths.append(handle.name)
+        return handle.name
+
+    def test_header_fields_survive_a_board_kiutils_cannot_parse(self) -> None:
+        # A valid header, then a footprint pad with a nameless (net 1) that the
+        # vendored kiutils raises on (the real satnogs board's failure mode). The
+        # header fields must still come through instead of an empty result.
+        board = (
+            '(kicad_pcb (version 20240108)\n'
+            '  (general (thickness 1.6))\n'
+            '  (layers\n'
+            '    (0 "F.Cu" signal)\n'
+            '    (4 "In1.Cu" power "GND")\n'
+            '    (6 "In2.Cu" signal)\n'
+            '    (31 "B.Cu" signal)\n'
+            '    (32 "B.Mask" user)\n'
+            '  )\n'
+            '  (setup (stackup (copper_finish "ENIG") (castellated_pads yes)))\n'
+            '  (footprint "X" (pad "1" smd rect (net 1))\n'
+            '  )\n'
+            ')\n'
+        )
+        spec = bss.extract_board_spec(self._write_raw(board))
+        self.assertEqual(spec["layer_count"], 4)
+        self.assertEqual(spec["board_thickness_mm"], 1.6)
+        self.assertEqual(spec["surface_finish"], "ENIG")
+        self.assertTrue(spec["castellated"])
+
 
 if __name__ == "__main__":
     unittest.main()
