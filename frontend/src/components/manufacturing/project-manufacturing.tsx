@@ -239,7 +239,6 @@ export function ProjectManufacturing({
                                             key={field.key}
                                             field={field}
                                             value={values[field.key]}
-                                            provenance={source[field.key]}
                                             disabled={!canEdit}
                                             onChange={(v) => setField(field.key, v)}
                                         />
@@ -441,12 +440,11 @@ function SpecSection({
 interface SpecFieldInputProps {
     field: SpecFieldDef;
     value: unknown;
-    provenance?: string;
     disabled: boolean;
     onChange: (value: unknown) => void;
 }
 
-function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFieldInputProps) {
+function SpecFieldInput({ field, value, disabled, onChange }: SpecFieldInputProps) {
     const inputId = `spec-${field.key}`;
     // A stored value wins; otherwise fall back to the schema's declared default.
     const effective = value === undefined || value === null ? field.default : value;
@@ -456,12 +454,7 @@ function SpecFieldInput({ field, value, provenance, disabled, onChange }: SpecFi
             <Label htmlFor={inputId} className="text-xs">
                 {field.label}
             </Label>
-            {provenance === "extracted" && (
-                <Badge variant="outline" className="text-[10px]">
-                    from board
-                </Badge>
-            )}
-            {provenance !== "extracted" && EXTRACTABLE_KEYS.has(field.key) && (
+            {EXTRACTABLE_KEYS.has(field.key) && (
                 <Sparkles
                     aria-label="Extract from board can fill this field"
                     className="h-3 w-3 text-muted-foreground"

@@ -87,7 +87,7 @@ describe("ProjectManufacturing", () => {
         expect(save).toHaveProperty("disabled", false);
     });
 
-    it("extract fills fields and marks them as from the board", async () => {
+    it("extract fills fields from the board", async () => {
         extractBoardSpec.mockResolvedValue({ suggested: { layer_count: 6, board_thickness_mm: 1.6 } });
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText("Board specifications")).toBeTruthy());
@@ -95,8 +95,6 @@ describe("ProjectManufacturing", () => {
         fireEvent.click(screen.getByRole("button", { name: /Extract from board/ }));
 
         await waitFor(() => expect((screen.getByLabelText(/Layer count/) as HTMLInputElement).value).toBe("6"));
-        // "from board" provenance badge appears for extracted fields.
-        expect(screen.getAllByText("from board").length).toBeGreaterThan(0);
     });
 
     it("an extracted number selects its option in a choice field", async () => {
