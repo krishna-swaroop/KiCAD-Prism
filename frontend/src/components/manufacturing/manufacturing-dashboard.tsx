@@ -80,19 +80,9 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="px-6 pt-6">
-                <h1 className="flex items-center gap-2 text-2xl font-bold">
-                    <Factory className="h-6 w-6" />
-                    Manufacturing
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                    Track production runs, defects, and manufacturers across every project.
-                </p>
-            </div>
-
             {/* Same shadcn Tabs "line" variant the Library Manager uses, so switching
                 sections is marked the way tabs are everywhere else in the design system. */}
-            <div className="mt-4 flex shrink-0 items-center justify-between border-b bg-card px-6">
+            <div className="shrink-0 border-b bg-card px-6">
                 <Tabs value={view} onValueChange={(next) => setView(next as View)}>
                     <TabsList variant="line" className="h-10 gap-2" aria-label="Manufacturing sections">
                         <TabsTrigger value="runs" className="gap-2 px-2 text-sm">
@@ -105,12 +95,6 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>
-                {view === "runs" && canEdit && (
-                    <Button size="sm" onClick={() => setWizardOpen(true)}>
-                        <Plus className="mr-1.5 h-4 w-4" />
-                        New run
-                    </Button>
-                )}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -123,13 +107,23 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                 ) : loading ? (
                     <div className="text-sm text-muted-foreground">Loading runs...</div>
                 ) : (
-                    <RunTable
-                        runs={filtered}
-                        totalCount={runs.length}
-                        statusFilter={statusFilter}
-                        onStatusFilter={setStatusFilter}
-                        onOpen={(id) => setOpenRunId(id)}
-                    />
+                    <div className="space-y-4">
+                        {canEdit && (
+                            <div className="flex justify-end">
+                                <Button size="sm" onClick={() => setWizardOpen(true)}>
+                                    <Plus className="mr-1.5 h-4 w-4" />
+                                    New run
+                                </Button>
+                            </div>
+                        )}
+                        <RunTable
+                            runs={filtered}
+                            totalCount={runs.length}
+                            statusFilter={statusFilter}
+                            onStatusFilter={setStatusFilter}
+                            onOpen={(id) => setOpenRunId(id)}
+                        />
+                    </div>
                 )}
             </div>
 
