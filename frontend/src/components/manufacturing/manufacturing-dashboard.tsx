@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Factory, Plus, Building2, Filter } from "lucide-react";
+import { Factory, Plus, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { User } from "@/types/auth";
@@ -7,6 +7,13 @@ import type { Project } from "@/types/project";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { canManageProjects } from "@/lib/roles";
 import { listRuns, listManufacturers } from "@/lib/manufacturing";
 import {
@@ -19,7 +26,6 @@ import {
 import { NewRunWizard } from "./new-run-wizard";
 import { RunDetail } from "./run-detail";
 import { ManufacturersPanel } from "./manufacturers-panel";
-import { CompactSelect } from "./ui";
 
 interface ManufacturingDashboardProps {
     user: User | null;
@@ -111,20 +117,34 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
             ) : loading ? (
                 <div className="p-6 text-sm text-muted-foreground">Loading runs...</div>
             ) : (
-                <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
-                    {canEdit && (
-                        <div className="flex shrink-0 justify-end">
+                <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-6 pt-3">
+                    <div className="flex shrink-0 items-center gap-2">
+                        {canEdit && (
                             <Button size="sm" onClick={() => setWizardOpen(true)}>
                                 <Plus className="mr-1.5 h-4 w-4" />
                                 New run
                             </Button>
-                        </div>
-                    )}
+                        )}
+                        <Select
+                            value={statusFilter}
+                            onValueChange={(value) => setStatusFilter(value as RunStatus | "all")}
+                        >
+                            <SelectTrigger size="sm" aria-label="Filter by status">
+                                <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All statuses</SelectItem>
+                                {RUN_STATUSES.map((status) => (
+                                    <SelectItem key={status} value={status}>
+                                        {RUN_STATUS_LABELS[status]}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <RunTable
                         runs={filtered}
                         totalCount={runs.length}
-                        statusFilter={statusFilter}
-                        onStatusFilter={setStatusFilter}
                         onOpen={(id) => setOpenRunId(id)}
                     />
                 </div>
@@ -150,40 +170,17 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
 interface RunTableProps {
     runs: ManufacturingRun[];
     totalCount: number;
-    statusFilter: RunStatus | "all";
-    onStatusFilter: (status: RunStatus | "all") => void;
     onOpen: (runId: string) => void;
 }
 
 // Column widths for the runs table, matching the Library catalog's grid idiom.
 const RUN_GRID = "minmax(0,2fr) minmax(0,1.4fr) minmax(0,1fr) 7rem 5rem 7rem";
 
-function RunTable({ runs, totalCount, statusFilter, onStatusFilter, onOpen }: RunTableProps) {
+function RunTable({ runs, totalCount, onOpen }: RunTableProps) {
     return (
         <div className="flex min-h-0 flex-1 flex-col border">
-            {/* Filter / count bar */}
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-card px-3 py-2">
-                <span className="text-sm font-medium">{runs.length} run(s)</span>
-                <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Filter className="h-3.5 w-3.5" />
-                    <CompactSelect
-                        widthClass="w-auto"
-                        value={statusFilter}
-                        onChange={(e) => onStatusFilter(e.target.value as RunStatus | "all")}
-                        aria-label="Filter by status"
-                    >
-                        <option value="all">All statuses</option>
-                        {RUN_STATUSES.map((status) => (
-                            <option key={status} value={status}>
-                                {RUN_STATUS_LABELS[status]}
-                            </option>
-                        ))}
-                    </CompactSelect>
-                </label>
-            </div>
-
             {totalCount === 0 ? (
-                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-2 border-t border-dashed p-8 text-center text-muted-foreground">
+                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
                     <Factory className="h-8 w-8 opacity-50" />
                     <p className="text-sm">No production runs yet. Start one with &ldquo;New run&rdquo;.</p>
                 </div>
