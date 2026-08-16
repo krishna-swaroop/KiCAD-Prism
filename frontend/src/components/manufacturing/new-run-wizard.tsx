@@ -258,7 +258,7 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                     )}
 
                     {step === 4 && (
-                        <dl className="space-y-2 text-sm">
+                        <dl className="divide-y rounded-md border text-sm">
                             <Row label="Project" value={project ? project.display_name || project.name : "—"} />
                             <Row label="Quantity" value={String(quantity)} />
                             <Row
@@ -296,9 +296,9 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
 
 function Row({ label, value }: { label: string; value: string }) {
     return (
-        <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">{label}</dt>
-            <dd className="font-medium">{value}</dd>
+        <div className="flex items-center justify-between gap-6 px-3 py-2">
+            <dt className="shrink-0 text-muted-foreground">{label}</dt>
+            <dd className="truncate text-right font-medium">{value}</dd>
         </div>
     );
 }

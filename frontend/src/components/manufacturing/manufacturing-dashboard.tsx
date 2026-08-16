@@ -32,6 +32,8 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
     const canEdit = canManageProjects(user?.role);
     // QA can act on defects even though it can't create runs.
     const canLogDefects = canEdit || user?.role === "qa";
+    // Advancing a run's status is a QA/Admin act, mirroring component QA.
+    const canChangeStatus = user?.role === "qa" || user?.role === "admin";
 
     const [view, setView] = useState<View>("runs");
     const [runs, setRuns] = useState<ManufacturingRun[]>([]);
@@ -69,6 +71,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                 runId={openRunId}
                 canEdit={canEdit}
                 canLogDefects={canLogDefects}
+                canChangeStatus={canChangeStatus}
                 manufacturers={manufacturers}
                 onBack={() => {
                     setOpenRunId(null);

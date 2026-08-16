@@ -54,8 +54,13 @@ class ManufacturingRequestValidationTests(unittest.TestCase):
 
     def test_run_update_omits_unset_fields(self) -> None:
         # exclude_none is how the router avoids overwriting untouched columns.
-        payload = self.api.RunUpdateRequest(status="received").model_dump(exclude_none=True)
-        self.assertEqual(payload, {"status": "received"})
+        payload = self.api.RunUpdateRequest(notes="ordered").model_dump(exclude_none=True)
+        self.assertEqual(payload, {"notes": "ordered"})
+
+    def test_status_is_not_part_of_the_general_run_update(self) -> None:
+        # Status moved to its own QA-gated endpoint, so it is not a general edit field.
+        self.assertNotIn("status", self.api.RunUpdateRequest.model_fields)
+        self.assertIn("status", self.api.RunStatusRequest.model_fields)
 
 
 class ManufacturingRouteTests(unittest.TestCase):

@@ -5,6 +5,7 @@ import type { ManufacturingRun, RunDefect } from "@/types/manufacturing";
 
 const getRun = vi.fn();
 const updateRun = vi.fn();
+const updateRunStatus = vi.fn();
 const logDefect = vi.fn();
 const updateDefect = vi.fn();
 const deleteDefect = vi.fn();
@@ -14,6 +15,7 @@ const deleteEvidence = vi.fn();
 vi.mock("@/lib/manufacturing", () => ({
     getRun: (...a: unknown[]) => getRun(...a),
     updateRun: (...a: unknown[]) => updateRun(...a),
+    updateRunStatus: (...a: unknown[]) => updateRunStatus(...a),
     logDefect: (...a: unknown[]) => logDefect(...a),
     updateDefect: (...a: unknown[]) => updateDefect(...a),
     deleteDefect: (...a: unknown[]) => deleteDefect(...a),
@@ -77,7 +79,7 @@ describe("RunDetail", () => {
 
     it("shows quantities and an empty defect state", async () => {
         getRun.mockResolvedValue(makeRun());
-        render(<RunDetail runId="run_1" canEdit canLogDefects manufacturers={[]} onBack={vi.fn()} />);
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
         await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
         expect(screen.getByText(/No defects logged/)).toBeTruthy();
     });
@@ -85,7 +87,7 @@ describe("RunDetail", () => {
     it("logs a defect through the dialog", async () => {
         getRun.mockResolvedValue(makeRun());
         logDefect.mockResolvedValue({ id: "def_new" });
-        render(<RunDetail runId="run_1" canEdit canLogDefects manufacturers={[]} onBack={vi.fn()} />);
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
         await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
 
         fireEvent.click(screen.getByRole("button", { name: /Log defect/ }));
@@ -103,7 +105,7 @@ describe("RunDetail", () => {
     it("renders an existing defect and its resolve action", async () => {
         getRun.mockResolvedValue(makeRun([makeDefect()]));
         updateDefect.mockResolvedValue(undefined);
-        render(<RunDetail runId="run_1" canEdit canLogDefects manufacturers={[]} onBack={vi.fn()} />);
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus manufacturers={[]} onBack={vi.fn()} />);
         await waitFor(() => expect(screen.getByText("Soldering / assembly")).toBeTruthy());
         expect(screen.getByText("cold joints")).toBeTruthy();
 
@@ -111,13 +113,41 @@ describe("RunDetail", () => {
         await waitFor(() => expect(updateDefect).toHaveBeenCalledWith("def_1", { status: "resolved" }));
     });
 
-    it("a QA user without edit can still log defects but sees no status editor", async () => {
+    it("a QA user can change status even without run-edit rights", async () => {
         getRun.mockResolvedValue(makeRun());
-        render(<RunDetail runId="run_1" canEdit={false} canLogDefects manufacturers={[]} onBack={vi.fn()} />);
+        updateRunStatus.mockResolvedValue(undefined);
+        render(
+            <RunDetail
+                runId="run_1"
+                canEdit={false}
+                canLogDefects
+                canChangeStatus
+                manufacturers={[]}
+                onBack={vi.fn()}
+            />,
+        );
         await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
-        // Log defect available (QA can act)...
+        // QA can log defects and edit the status via its dedicated endpoint.
         expect(screen.getByRole("button", { name: /Log defect/ })).toBeTruthy();
-        // ...but the run status select is disabled for a non-editor.
-        expect(screen.getByLabelText("Status")).toHaveProperty("disabled", true);
+        fireEvent.change(screen.getByLabelText("Status"), { target: { value: "closed" } });
+        await waitFor(() => expect(updateRunStatus).toHaveBeenCalledWith("run_1", "closed"));
+    });
+
+    it("a user without QA rights sees status read-only", async () => {
+        getRun.mockResolvedValue(makeRun());
+        render(
+            <RunDetail
+                runId="run_1"
+                canEdit
+                canLogDefects={false}
+                canChangeStatus={false}
+                manufacturers={[]}
+                onBack={vi.fn()}
+            />,
+        );
+        await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
+        // No status editor; the status shows as a static badge instead.
+        expect(screen.queryByLabelText("Status")).toBeNull();
+        expect(screen.getByText("Received")).toBeTruthy();
     });
 });

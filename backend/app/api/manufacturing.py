@@ -22,6 +22,7 @@ from app.core.security import (
     AuthenticatedUser,
     require_designer,
     require_project_release_actor,
+    require_run_status_actor,
     require_viewer,
 )
 from app.services import (
@@ -85,8 +86,11 @@ class RunUpdateRequest(BaseModel):
     commit_sha: str | None = None
     quantity_ordered: int | None = Field(default=None, ge=0)
     quantity_good: int | None = Field(default=None, ge=0)
-    status: str | None = None
     notes: str | None = None
+
+
+class RunStatusRequest(BaseModel):
+    status: str = Field(min_length=1)
 
 
 class DefectRequest(BaseModel):
@@ -350,6 +354,15 @@ async def update_run(run_id: str, request: RunUpdateRequest):
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Run not found or nothing to update")
+    return {"status": "success"}
+
+
+@router.patch("/runs/{run_id}/status", dependencies=[Depends(require_run_status_actor)])
+async def update_run_status(run_id: str, request: RunStatusRequest):
+    """Advance a run's status. QA/Admin only, mirroring component QA."""
+    updated = await asyncio.to_thread(_handle, mfg.update_run, run_id, status=request.status)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Run not found")
     return {"status": "success"}
 
 

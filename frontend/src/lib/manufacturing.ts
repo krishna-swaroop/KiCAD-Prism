@@ -249,7 +249,6 @@ export async function updateRun(
         commit_sha: string;
         quantity_ordered: number;
         quantity_good: number;
-        status: string;
         notes: string;
     }>,
 ): Promise<void> {
@@ -260,6 +259,18 @@ export async function updateRun(
             body: JSON.stringify(body),
         }),
         "Failed to update run.",
+    );
+}
+
+// Status changes are QA/admin only, so they go to a separate endpoint.
+export async function updateRunStatus(runId: string, status: string): Promise<void> {
+    await json(
+        await fetchApi(`/api/manufacturing/runs/${runId}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+        }),
+        "Failed to change run status.",
     );
 }
 

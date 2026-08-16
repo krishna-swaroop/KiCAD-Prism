@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
     getRun,
     updateRun,
+    updateRunStatus,
     logDefect,
     updateDefect,
     deleteDefect,
@@ -35,6 +36,8 @@ interface RunDetailProps {
     runId: string;
     canEdit: boolean;
     canLogDefects: boolean;
+    /** QA/admin only: advance the run through its status lifecycle. */
+    canChangeStatus: boolean;
     manufacturers: Manufacturer[];
     onBack: () => void;
 }
@@ -46,7 +49,7 @@ const SEVERITY_VARIANT: Record<DefectSeverity, "secondary" | "outline" | "defaul
     critical: "destructive",
 };
 
-export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack }: RunDetailProps) {
+export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, manufacturers, onBack }: RunDetailProps) {
     const [run, setRun] = useState<ManufacturingRun | null>(null);
     const [loading, setLoading] = useState(true);
     const [addDefectOpen, setAddDefectOpen] = useState(false);
@@ -64,6 +67,15 @@ export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack
     useEffect(() => {
         void load();
     }, [load]);
+
+    const changeStatus = async (status: string) => {
+        try {
+            await updateRunStatus(runId, status);
+            await load();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to change status.");
+        }
+    };
 
     const patch = async (body: Parameters<typeof updateRun>[1]) => {
         try {
@@ -110,19 +122,23 @@ export function RunDetail({ runId, canEdit, canLogDefects, manufacturers, onBack
                         <Label htmlFor="run-status" className="text-sm text-muted-foreground">
                             Status
                         </Label>
-                        <CompactSelect
-                            id="run-status"
-                            widthClass="w-auto"
-                            value={run.status}
-                            disabled={!canEdit}
-                            onChange={(e) => void patch({ status: e.target.value })}
-                        >
-                            {RUN_STATUSES.map((status) => (
-                                <option key={status} value={status}>
-                                    {RUN_STATUS_LABELS[status]}
-                                </option>
-                            ))}
-                        </CompactSelect>
+                        {canChangeStatus ? (
+                            <CompactSelect
+                                id="run-status"
+                                widthClass="w-auto"
+                                value={run.status}
+                                onChange={(e) => void changeStatus(e.target.value)}
+                            >
+                                {RUN_STATUSES.map((status) => (
+                                    <option key={status} value={status}>
+                                        {RUN_STATUS_LABELS[status]}
+                                    </option>
+                                ))}
+                            </CompactSelect>
+                        ) : (
+                            // Only QA/Admin can advance status; others see it read-only.
+                            <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
+                        )}
                     </div>
                 </div>
             </div>
