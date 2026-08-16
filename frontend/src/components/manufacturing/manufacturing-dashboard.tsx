@@ -6,6 +6,7 @@ import type { User } from "@/types/auth";
 import type { Project } from "@/types/project";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { canManageProjects } from "@/lib/roles";
 import { listRuns, listManufacturers } from "@/lib/manufacturing";
 import {
@@ -78,45 +79,41 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
     }
 
     return (
-        <div className="flex h-full min-h-0 flex-col p-6">
-            <header className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="flex items-center gap-2 text-2xl font-bold">
-                        <Factory className="h-6 w-6" />
-                        Manufacturing
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                        Track production runs, defects, and manufacturers across every project.
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="flex rounded-md border p-0.5">
-                        <Button
-                            variant={view === "runs" ? "secondary" : "ghost"}
-                            size="sm"
-                            onClick={() => setView("runs")}
-                        >
-                            Runs
-                        </Button>
-                        <Button
-                            variant={view === "manufacturers" ? "secondary" : "ghost"}
-                            size="sm"
-                            onClick={() => setView("manufacturers")}
-                        >
-                            <Building2 className="mr-1.5 h-4 w-4" />
-                            Manufacturers
-                        </Button>
-                    </div>
-                    {view === "runs" && canEdit && (
-                        <Button size="sm" onClick={() => setWizardOpen(true)}>
-                            <Plus className="mr-1.5 h-4 w-4" />
-                            New run
-                        </Button>
-                    )}
-                </div>
-            </header>
+        <div className="flex h-full min-h-0 flex-col">
+            <div className="px-6 pt-6">
+                <h1 className="flex items-center gap-2 text-2xl font-bold">
+                    <Factory className="h-6 w-6" />
+                    Manufacturing
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                    Track production runs, defects, and manufacturers across every project.
+                </p>
+            </div>
 
-            <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
+            {/* Same shadcn Tabs "line" variant the Library Manager uses, so switching
+                sections is marked the way tabs are everywhere else in the design system. */}
+            <div className="mt-4 flex shrink-0 items-center justify-between border-b bg-card px-6">
+                <Tabs value={view} onValueChange={(next) => setView(next as View)}>
+                    <TabsList variant="line" className="h-10 gap-2" aria-label="Manufacturing sections">
+                        <TabsTrigger value="runs" className="gap-2 px-2 text-sm">
+                            <Factory className="h-4 w-4" />
+                            Runs
+                        </TabsTrigger>
+                        <TabsTrigger value="manufacturers" className="gap-2 px-2 text-sm">
+                            <Building2 className="h-4 w-4" />
+                            Manufacturers
+                        </TabsTrigger>
+                    </TabsList>
+                </Tabs>
+                {view === "runs" && canEdit && (
+                    <Button size="sm" onClick={() => setWizardOpen(true)}>
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        New run
+                    </Button>
+                )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
                 {view === "manufacturers" ? (
                     <ManufacturersPanel
                         manufacturers={manufacturers}
