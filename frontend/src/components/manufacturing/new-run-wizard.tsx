@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import type { Project } from "@/types/project";
+import { fetchApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,14 @@ interface NewRunWizardProps {
     onCreated: (runId: string) => void;
 }
 
+interface Release {
+    tag: string;
+    commit_hash: string;
+    full_hash: string;
+    date: string;
+    message: string;
+}
+
 // The guided steps, in order. Each is only reachable once the ones before it are
 // satisfied, so a run can never be created with no project or a zero quantity.
 const STEPS = ["Project", "Quantity", "Manufacturer", "Details", "Confirm"] as const;
@@ -36,6 +45,8 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
     const [quantity, setQuantity] = useState<number>(0);
     const [manufacturerId, setManufacturerId] = useState<string>("");
     const [commitSha, setCommitSha] = useState("");
+    const [releaseTag, setReleaseTag] = useState("");
+    const [releases, setReleases] = useState<Release[]>([]);
     const [notes, setNotes] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
@@ -43,6 +54,28 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
         () => projects.find((p) => p.id === projectId) ?? null,
         [projects, projectId],
     );
+
+    // Load the project's releases so a run can be tied to one rather than a raw sha.
+    useEffect(() => {
+        if (!projectId) {
+            setReleases([]);
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const res = await fetchApi(`/api/projects/${projectId}/releases?limit=100`);
+                if (!res.ok) throw new Error();
+                const data = (await res.json()) as { releases?: Release[] };
+                if (!cancelled) setReleases(data.releases ?? []);
+            } catch {
+                if (!cancelled) setReleases([]);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId]);
 
     const canAdvance = useMemo(() => {
         switch (step) {
@@ -58,12 +91,16 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
     const handleCreate = async () => {
         setSubmitting(true);
         try {
+            // Record the release tag in notes for traceability; the commit holds the sha.
+            const runNotes = releaseTag
+                ? [`Release: ${releaseTag}`, notes.trim()].filter(Boolean).join("\n")
+                : notes.trim();
             const { id } = await createRun({
                 project_id: projectId,
                 manufacturer_id: manufacturerId || null,
                 commit_sha: commitSha.trim(),
                 quantity_ordered: quantity,
-                notes: notes.trim(),
+                notes: runNotes,
             });
             toast.success("Run created.");
             onCreated(id);
@@ -168,13 +205,44 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
 
                     {step === 3 && (
                         <div className="space-y-3">
+                            {releases.length > 0 && (
+                                <div className="space-y-1">
+                                    <Label htmlFor="run-release">Release (optional)</Label>
+                                    <CompactSelect
+                                        id="run-release"
+                                        className="h-9"
+                                        value={releaseTag}
+                                        onChange={(e) => {
+                                            const tag = e.target.value;
+                                            setReleaseTag(tag);
+                                            // Picking a release fills the commit with its revision.
+                                            const rel = releases.find((r) => r.tag === tag);
+                                            setCommitSha(rel ? rel.full_hash : "");
+                                        }}
+                                    >
+                                        <option value="">No release</option>
+                                        {releases.map((r) => (
+                                            <option key={r.tag} value={r.tag}>
+                                                {r.tag} ({r.commit_hash})
+                                            </option>
+                                        ))}
+                                    </CompactSelect>
+                                    <p className="text-xs text-muted-foreground">
+                                        Tie this run to a tagged release of the board.
+                                    </p>
+                                </div>
+                            )}
                             <div className="space-y-1">
                                 <Label htmlFor="run-commit">Commit (optional)</Label>
                                 <Input
                                     id="run-commit"
                                     placeholder="The revision that was built"
                                     value={commitSha}
-                                    onChange={(e) => setCommitSha(e.target.value)}
+                                    onChange={(e) => {
+                                        setCommitSha(e.target.value);
+                                        // Editing the sha by hand detaches it from the picked release.
+                                        setReleaseTag("");
+                                    }}
                                 />
                             </div>
                             <div className="space-y-1">
@@ -197,7 +265,8 @@ export function NewRunWizard({ open, projects, manufacturers, onClose, onCreated
                                 label="Manufacturer"
                                 value={manufacturers.find((m) => m.id === manufacturerId)?.name || "None"}
                             />
-                            <Row label="Commit" value={commitSha.trim() || "—"} />
+                            {releaseTag && <Row label="Release" value={releaseTag} />}
+                            <Row label="Commit" value={commitSha.trim() ? commitSha.trim().slice(0, 7) : "—"} />
                         </dl>
                     )}
                 </div>

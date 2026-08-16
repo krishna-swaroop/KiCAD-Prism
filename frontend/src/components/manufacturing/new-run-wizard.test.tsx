@@ -5,9 +5,14 @@ import type { Project } from "@/types/project";
 import type { Manufacturer } from "@/types/manufacturing";
 
 const createRun = vi.fn();
+const fetchApi = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     createRun: (...a: unknown[]) => createRun(...a),
+}));
+
+vi.mock("@/lib/api", () => ({
+    fetchApi: (...a: unknown[]) => fetchApi(...a),
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -52,6 +57,8 @@ function renderWizard() {
 describe("NewRunWizard", () => {
     beforeEach(() => {
         createRun.mockResolvedValue({ id: "run_1" });
+        // Default: no releases for the project.
+        fetchApi.mockResolvedValue({ ok: true, json: async () => ({ releases: [] }) });
     });
     afterEach(() => {
         cleanup();
@@ -96,6 +103,41 @@ describe("NewRunWizard", () => {
         expect(body.quantity_ordered).toBe(50);
         expect(body.manufacturer_id).toBe("m1");
         await waitFor(() => expect(onCreated).toHaveBeenCalledWith("run_1"));
+    });
+
+    it("offers the project's releases and records the chosen one", async () => {
+        fetchApi.mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                releases: [
+                    { tag: "v1.2.0", commit_hash: "abc1234", full_hash: "abc1234def", date: "", message: "" },
+                ],
+            }),
+        });
+        const { onCreated } = renderWizard();
+        fireEvent.change(screen.getByLabelText("Project"), { target: { value: "p1" } });
+        // Releases load for the chosen project.
+        await waitFor(() => expect(fetchApi).toHaveBeenCalledWith("/api/projects/p1/releases?limit=100"));
+
+        fireEvent.click(screen.getByRole("button", { name: "Next" }));
+        fireEvent.change(screen.getByLabelText("Quantity ordered"), { target: { value: "10" } });
+        fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> manufacturer
+        fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> details
+
+        // The release picker is present; pick the tag.
+        const picker = await screen.findByLabelText("Release (optional)");
+        fireEvent.change(picker, { target: { value: "v1.2.0" } });
+        // Its commit fills in.
+        expect((screen.getByLabelText("Commit (optional)") as HTMLInputElement).value).toBe("abc1234def");
+
+        fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> confirm
+        fireEvent.click(screen.getByRole("button", { name: "Create run" }));
+
+        await waitFor(() => expect(createRun).toHaveBeenCalled());
+        const body = createRun.mock.calls[0][0];
+        expect(body.commit_sha).toBe("abc1234def");
+        expect(body.notes).toContain("Release: v1.2.0");
+        await waitFor(() => expect(onCreated).toHaveBeenCalled());
     });
 
     it("first step's Back button cancels", () => {
