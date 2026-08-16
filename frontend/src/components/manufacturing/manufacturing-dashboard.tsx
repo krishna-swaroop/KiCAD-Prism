@@ -15,6 +15,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { canManageProjects } from "@/lib/roles";
+import { cn } from "@/lib/utils";
 import { listRuns, listManufacturers } from "@/lib/manufacturing";
 import {
     RUN_STATUS_LABELS,
@@ -25,6 +26,7 @@ import {
 } from "@/types/manufacturing";
 import { NewRunWizard } from "./new-run-wizard";
 import { RunDetail } from "./run-detail";
+import { RunQuickView } from "./run-quick-view";
 import { ManufacturersPanel } from "./manufacturers-panel";
 
 interface ManufacturingDashboardProps {
@@ -46,6 +48,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
     const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<RunStatus | "all">("all");
+    const [quickRunId, setQuickRunId] = useState<string | null>(null);
     const [openRunId, setOpenRunId] = useState<string | null>(null);
     const [wizardOpen, setWizardOpen] = useState(false);
 
@@ -80,6 +83,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                 canChangeStatus={canChangeStatus}
                 manufacturers={manufacturers}
                 onBack={() => {
+                    setQuickRunId(openRunId);
                     setOpenRunId(null);
                     void load();
                 }}
@@ -142,11 +146,21 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                             </SelectContent>
                         </Select>
                     </div>
-                    <RunTable
-                        runs={filtered}
-                        totalCount={runs.length}
-                        onOpen={(id) => setOpenRunId(id)}
-                    />
+                    <div className="flex min-h-0 flex-1">
+                        <RunTable
+                            runs={filtered}
+                            totalCount={runs.length}
+                            selectedId={quickRunId}
+                            onOpen={(id) => setQuickRunId(id)}
+                        />
+                        {quickRunId && (
+                            <RunQuickView
+                                runId={quickRunId}
+                                onClose={() => setQuickRunId(null)}
+                                onOpenFull={() => setOpenRunId(quickRunId)}
+                            />
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -170,13 +184,14 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
 interface RunTableProps {
     runs: ManufacturingRun[];
     totalCount: number;
+    selectedId: string | null;
     onOpen: (runId: string) => void;
 }
 
 // Column widths for the runs table, matching the Library catalog's grid idiom.
 const RUN_GRID = "minmax(0,2fr) minmax(0,1.4fr) minmax(0,1fr) 7rem 5rem 7rem";
 
-function RunTable({ runs, totalCount, onOpen }: RunTableProps) {
+function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
     return (
         <div className="flex min-h-0 flex-1 flex-col border">
             {totalCount === 0 ? (
@@ -209,7 +224,11 @@ function RunTable({ runs, totalCount, onOpen }: RunTableProps) {
                                 key={run.id}
                                 type="button"
                                 onClick={() => onOpen(run.id)}
-                                className="grid h-16 w-full items-center gap-3 border-b px-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                aria-pressed={selectedId === run.id}
+                                className={cn(
+                                    "grid h-16 w-full items-center gap-3 border-b px-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                    selectedId === run.id && "bg-secondary",
+                                )}
                                 style={{ gridTemplateColumns: RUN_GRID }}
                             >
                                 <div className="min-w-0">
