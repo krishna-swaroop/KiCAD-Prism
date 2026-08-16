@@ -107,7 +107,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
             </div>
 
             {view === "manufacturers" ? (
-                <div className="flex min-h-0 flex-1 flex-col p-6">
+                <div className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-3">
                     <ManufacturersPanel
                         manufacturers={manufacturers}
                         canEdit={canEdit}

@@ -50,20 +50,20 @@ export function ManufacturersPanel({ manufacturers, canEdit, onChanged }: Manufa
     };
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col border">
-            {/* Count / action bar, matching the catalog panel header. */}
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-card px-3 py-2">
-                <span className="text-sm font-medium">{manufacturers.length} manufacturer(s)</span>
-                {canEdit && (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+            {/* Action bar, positioned like the Runs "New run" bar. */}
+            {canEdit && (
+                <div className="flex shrink-0 items-center gap-2">
                     <Button size="sm" onClick={() => setEditing({ mode: "create" })}>
                         <Plus className="mr-1.5 h-4 w-4" />
                         Add manufacturer
                     </Button>
-                )}
-            </div>
+                </div>
+            )}
 
+            <div className="flex min-h-0 flex-1 flex-col border">
             {manufacturers.length === 0 ? (
-                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-2 border-t border-dashed p-8 text-center text-muted-foreground">
+                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
                     <Building2 className="h-8 w-8 opacity-50" />
                     <p className="text-sm">No manufacturers yet. Add the fab houses you order from.</p>
                 </div>
@@ -108,6 +108,7 @@ export function ManufacturersPanel({ manufacturers, canEdit, onChanged }: Manufa
                     ))}
                 </ul>
             )}
+            </div>
 
             {editing && (
                 <ManufacturerDialog
