@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Run lifecycle, in order. A run only ever moves forward through these.
 RUN_STATUSES = ("draft", "ordered", "in_production", "received", "closed")
 
-DEFECT_SEVERITIES = ("minor", "major", "critical")
+DEFECT_SEVERITIES = ("aesthetic", "minor", "major", "critical")
 DEFECT_STATUSES = ("open", "resolved", "accepted")
 
 # Open-ended, but these are the categories the UI offers.

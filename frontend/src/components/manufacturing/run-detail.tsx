@@ -39,7 +39,8 @@ interface RunDetailProps {
     onBack: () => void;
 }
 
-const SEVERITY_VARIANT: Record<DefectSeverity, "secondary" | "default" | "destructive"> = {
+const SEVERITY_VARIANT: Record<DefectSeverity, "secondary" | "outline" | "default" | "destructive"> = {
+    aesthetic: "outline",
     minor: "secondary",
     major: "default",
     critical: "destructive",
@@ -502,6 +503,7 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                                 value={severity}
                                 onChange={(e) => setSeverity(e.target.value as DefectSeverity)}
                             >
+                                <option value="aesthetic">Aesthetic</option>
                                 <option value="minor">Minor</option>
                                 <option value="major">Major</option>
                                 <option value="critical">Critical</option>

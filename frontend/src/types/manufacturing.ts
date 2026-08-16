@@ -39,7 +39,7 @@ export interface ManufacturingRun {
     defects?: RunDefect[];
 }
 
-export type DefectSeverity = "minor" | "major" | "critical";
+export type DefectSeverity = "aesthetic" | "minor" | "major" | "critical";
 export type DefectStatus = "open" | "resolved" | "accepted";
 
 export interface EvidenceDescriptor {
