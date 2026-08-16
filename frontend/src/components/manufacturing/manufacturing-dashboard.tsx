@@ -257,15 +257,12 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
                                 </div>
                                 <div className="min-w-0">
                                     <p className="truncate text-xs">{run.manufacturer_name || "—"}</p>
-                                    <p className="truncate text-xs text-muted-foreground">
-                                        {run.commit_sha ? run.commit_sha.slice(0, 7) : ""}
-                                    </p>
                                 </div>
-                                <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex min-w-0" onClick={(e) => e.stopPropagation()}>
                                     {run.release_tag && run.commit_sha ? (
                                         <Link
                                             to={`/project/${run.project_id}?section=history&commit=${encodeURIComponent(run.commit_sha)}`}
-                                            className="inline-flex items-center gap-1 truncate text-xs font-medium text-primary hover:underline"
+                                            className="inline-flex min-w-0 max-w-full items-center gap-1 text-xs font-medium text-primary hover:underline"
                                             title={`Open ${run.release_tag} in History`}
                                         >
                                             <Tag className="h-3 w-3 shrink-0" />
