@@ -1771,6 +1771,39 @@ def _manufacturing_capabilities_per_template(conn: Any) -> None:
     )
 
 
+def _manufacturing_run_job_number(conn: Any) -> None:
+    """Give each production run a human-readable job number (JOB-YYYY-NNNN).
+
+    A workspace-wide sequence supplies the running count; the year comes from the
+    run's creation date. Existing rows are backfilled in creation order so numbers
+    are stable and unique. New rows get theirs at insert time in the service.
+    """
+    conn.execute("ALTER TABLE ws_manufacturing_runs ADD COLUMN IF NOT EXISTS job_number TEXT")
+    conn.execute("CREATE SEQUENCE IF NOT EXISTS ws_manufacturing_job_seq")
+    # Backfill: number rows without one, oldest first, using each row's own year.
+    conn.execute(
+        """
+        WITH ordered AS (
+            SELECT id, created_at,
+                   nextval('ws_manufacturing_job_seq') AS seq
+            FROM (
+                SELECT id, created_at FROM ws_manufacturing_runs
+                WHERE job_number IS NULL OR job_number = ''
+                ORDER BY created_at, id
+            ) q
+        )
+        UPDATE ws_manufacturing_runs r
+        SET job_number = 'JOB-' || to_char(o.created_at, 'YYYY') || '-'
+                         || lpad(o.seq::text, 4, '0')
+        FROM ordered o
+        WHERE r.id = o.id
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_mfg_runs_job_number ON ws_manufacturing_runs(job_number)"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1796,6 +1829,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (26, "manufacturing_run_spec_id", _manufacturing_run_spec_id),
     (27, "manufacturing_manufacturer_capabilities", _manufacturing_manufacturer_capabilities),
     (28, "manufacturing_capabilities_per_template", _manufacturing_capabilities_per_template),
+    (29, "manufacturing_run_job_number", _manufacturing_run_job_number),
 )
 
 

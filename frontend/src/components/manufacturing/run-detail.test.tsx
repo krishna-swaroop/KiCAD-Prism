@@ -122,7 +122,7 @@ describe("RunDetail", () => {
         render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus onBack={vi.fn()} />);
         await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
 
-        expect(await screen.findByText("Manufacturer spec at time of run")).toBeTruthy();
+        expect(await screen.findByText("Manufacturing Specifications")).toBeTruthy();
         expect(screen.getByText("Layer count")).toBeTruthy();
         expect(screen.getByText("4")).toBeTruthy();
         expect(previewSpecConfig).toHaveBeenCalledWith("[Stackup]\nlayers: choice(2,4) | Layer count");

@@ -92,6 +92,9 @@ export function RunQuickView({
         <aside className="flex h-full w-96 shrink-0 flex-col border-l bg-card" aria-label="Production quick view">
             <div className="flex shrink-0 items-start justify-between gap-3 border-b p-4">
                 <div className="min-w-0">
+                    {run?.job_number && (
+                        <p className="truncate font-mono text-[11px] text-muted-foreground">{run.job_number}</p>
+                    )}
                     <h3 className="truncate text-base font-semibold">
                         {run?.project_name || run?.project_id || "Production"}
                     </h3>

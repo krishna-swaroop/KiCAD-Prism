@@ -178,6 +178,9 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                                 <h2 className="text-xl font-semibold tracking-tight">
                                     {run.project_name || run.project_id}
                                 </h2>
+                                {run.job_number && (
+                                    <Badge variant="outline" className="font-mono">{run.job_number}</Badge>
+                                )}
                                 {run.relative_path && run.relative_path !== "." && (
                                     <Badge variant="outline">{run.relative_path}</Badge>
                                 )}
@@ -414,7 +417,7 @@ function SpecSnapshot({ snapshot }: { snapshot: Record<string, unknown> | null |
             <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2.5">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Manufacturer spec at time of run
+                    Manufacturing Specifications
                 </h3>
             </div>
             {schema === null ? (

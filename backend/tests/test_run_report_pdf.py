@@ -13,6 +13,7 @@ from app.services import run_report_pdf_service as svc  # noqa: E402
 def _run(**overrides):
     run = {
         "id": "run_1",
+        "job_number": "JOB-2026-0007",
         "project_id": "prj_1",
         "project_name": "Test Board",
         "relative_path": ".",

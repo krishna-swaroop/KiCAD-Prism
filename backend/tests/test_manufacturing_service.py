@@ -232,6 +232,21 @@ class ManufacturingStoreTests(unittest.TestCase):
         self.assertIsNotNone(mfg.get_run(run_id))
         self.assertIsNone(mfg.get_run(run_id)["manufacturer_id"])
 
+    def test_runs_get_a_unique_job_number(self) -> None:
+        import re
+
+        r1 = mfg.create_run(self.project_id, quantity_ordered=1)
+        r2 = mfg.create_run(self.project_id, quantity_ordered=1)
+        j1 = mfg.get_run(r1)["job_number"]
+        j2 = mfg.get_run(r2)["job_number"]
+        self.assertRegex(j1, r"^JOB-\d{4}-\d{4}$")
+        self.assertRegex(j2, r"^JOB-\d{4}-\d{4}$")
+        self.assertNotEqual(j1, j2)
+        # Sequential within the same year.
+        self.assertLess(int(j1.split("-")[-1]), int(j2.split("-")[-1]))
+        mfg.delete_run(r1)
+        mfg.delete_run(r2)
+
     def test_deleting_run_cascades_to_defects(self) -> None:
         run_id = mfg.create_run(self.project_id, quantity_ordered=10)
         def_id = mfg.log_defect(run_id, description="scratch")

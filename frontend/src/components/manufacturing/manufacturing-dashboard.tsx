@@ -292,6 +292,9 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
                                 style={{ gridTemplateColumns: RUN_GRID }}
                             >
                                 <div className="min-w-0">
+                                    {run.job_number && (
+                                        <p className="truncate font-mono text-[10px] text-muted-foreground">{run.job_number}</p>
+                                    )}
                                     <p className="truncate text-sm font-medium">{run.project_name || run.project_id}</p>
                                     <p className="truncate text-xs text-muted-foreground">{boardName(run)}</p>
                                 </div>

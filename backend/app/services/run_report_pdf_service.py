@@ -168,10 +168,14 @@ def _header(run: dict[str, Any], *, board: str | None, styles: dict[str, Paragra
         flow.append(Spacer(1, 6 * mm))
 
     project_name = str(run.get("project_name") or run.get("project_id") or "Run")
-    flow.append(Paragraph("PRODUCTION REPORT", styles["eyebrow"]))
+    job_number = run.get("job_number")
+    eyebrow = f"PRODUCTION REPORT · {_esc(job_number)}" if job_number else "PRODUCTION REPORT"
+    flow.append(Paragraph(eyebrow, styles["eyebrow"]))
     flow.append(Paragraph(_esc(project_name), styles["title"]))
 
     bits: list[str] = []
+    if job_number:
+        bits.append(f"<b>Job:</b> {_esc(job_number)}")
     if board:
         bits.append(f"<b>Board:</b> {_esc(board)}")
     if run.get("manufacturer_name"):
@@ -367,7 +371,7 @@ def build_run_report(run_id: str) -> bytes:
     # The frozen spec the run was ordered against.
     snapshot = _snapshot_sections(run, styles)
     if snapshot:
-        flow.append(Paragraph("MANUFACTURER SPEC AT TIME OF RUN", styles["section"]))
+        flow.append(Paragraph("MANUFACTURING SPECIFICATIONS", styles["section"]))
         flow.extend(snapshot)
 
     # Defects and their evidence.

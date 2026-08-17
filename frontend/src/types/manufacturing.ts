@@ -55,6 +55,8 @@ export type RunStatus = "draft" | "ordered" | "in_production" | "received" | "cl
 
 export interface ManufacturingRun {
     id: string;
+    /** Human-readable job number, e.g. "JOB-2026-0042". */
+    job_number?: string | null;
     project_id: string;
     project_name?: string;
     relative_path?: string;

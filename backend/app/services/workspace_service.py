@@ -197,6 +197,9 @@ class WorkspaceService:
                 -- below/after this one), so it is a plain column here; the frozen
                 -- spec_snapshot is the durable picture either way.
                 spec_id          TEXT,
+                -- Human-readable job number (JOB-YYYY-NNNN); assigned at insert
+                -- from the sequence below. Migration 29 adds both for existing DBs.
+                job_number       TEXT,
                 quantity_ordered INTEGER NOT NULL DEFAULT 0,
                 quantity_good    INTEGER NOT NULL DEFAULT 0,
                 status           TEXT NOT NULL DEFAULT 'draft',
@@ -206,8 +209,11 @@ class WorkspaceService:
                 created_at       TIMESTAMPTZ NOT NULL,
                 updated_at       TIMESTAMPTZ NOT NULL
             );
+            CREATE SEQUENCE IF NOT EXISTS ws_manufacturing_job_seq;
             CREATE INDEX IF NOT EXISTS idx_ws_mfg_runs_project ON ws_manufacturing_runs(project_id);
             CREATE INDEX IF NOT EXISTS idx_ws_mfg_runs_status  ON ws_manufacturing_runs(status);
+            -- The job_number unique index lives in migration 29, so it never runs
+            -- against an existing table before that migration adds the column.
 
             CREATE TABLE IF NOT EXISTS ws_spec_templates (
                 id              TEXT PRIMARY KEY,

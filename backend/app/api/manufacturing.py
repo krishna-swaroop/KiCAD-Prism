@@ -507,7 +507,9 @@ async def download_run_report(run_id: str):
     run = await asyncio.to_thread(mfg.get_run, run_id)
     name = (run or {}).get("project_name") or (run or {}).get("project_id") or run_id
     safe = "".join(c for c in str(name) if c.isalnum() or c in " ._-").strip() or "run"
-    filename = f"{safe} production report.pdf"
+    # Include the job number so each report file is uniquely named.
+    job = (run or {}).get("job_number")
+    filename = f"{safe} {job} production report.pdf" if job else f"{safe} production report.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",

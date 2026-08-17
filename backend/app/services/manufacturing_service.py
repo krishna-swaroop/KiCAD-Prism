@@ -781,13 +781,19 @@ def create_run(
     run_id = _new_id("run_")
     now = _now()
     with _connect() as conn:
+        # A human-readable job number, JOB-<year>-<seq>, from the workspace sequence.
+        job_number = conn.execute(
+            "SELECT 'JOB-' || to_char(%s::timestamptz, 'YYYY') || '-' "
+            "|| lpad(nextval('ws_manufacturing_job_seq')::text, 4, '0') AS jn",
+            (now,),
+        ).fetchone()["jn"]
         conn.execute(
             """INSERT INTO ws_manufacturing_runs
-               (id,project_id,manufacturer_id,spec_id,commit_sha,release_tag,quantity_ordered,quantity_good,
+               (id,project_id,manufacturer_id,spec_id,job_number,commit_sha,release_tag,quantity_ordered,quantity_good,
                 status,notes,spec_snapshot,created_by,created_at,updated_at)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,0,'draft',%s,%s::jsonb,%s,%s,%s)""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,0,'draft',%s,%s::jsonb,%s,%s,%s)""",
             (
-                run_id, project_id, manufacturer_id or None, spec_id or None,
+                run_id, project_id, manufacturer_id or None, spec_id or None, job_number,
                 commit_sha.strip(), release_tag.strip(), int(quantity_ordered), notes.strip(),
                 json.dumps(spec_snapshot or {}), created_by, now, now,
             ),
