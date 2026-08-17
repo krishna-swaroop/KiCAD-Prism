@@ -719,6 +719,20 @@ def get_run(run_id: str) -> Optional[Dict[str, Any]]:
     return run
 
 
+def _schema_defaults(spec_config: str) -> Dict[str, Any]:
+    """Every field's declared default from a spec config, as ``{key: default}``.
+    Fields without a default are included as None so the run records them too."""
+    if not (spec_config or "").strip():
+        return {}
+    from app.services.spec_config_service import parse_spec_config
+
+    defaults: Dict[str, Any] = {}
+    for section in parse_spec_config(spec_config).sections:
+        for field in section.fields:
+            defaults[field.key] = field.default
+    return defaults
+
+
 def create_run(
     project_id: str,
     *,
@@ -749,12 +763,16 @@ def create_run(
 
     # Freeze the spec as it stands now, so the run keeps a picture of the settings
     # it was ordered against even if they change later. Prefer the chosen named
-    # spec; fall back to the project board profile.
+    # spec; fall back to the project board profile. Schema defaults are filled in
+    # under the saved values, so every field the schema declares is captured (and
+    # gating evaluates against a complete set), not just the few that were edited.
     if spec_snapshot is None:
         spec = named_spec or get_board_spec(project_id)
+        spec_config = spec.get("spec_config") or ""
+        merged = {**_schema_defaults(spec_config), **(spec.get("specs") or {})}
         spec_snapshot = {
-            "specs": spec.get("specs") or {},
-            "spec_config": spec.get("spec_config") or "",
+            "specs": merged,
+            "spec_config": spec_config,
             "active_sections": spec.get("active_sections") or [],
         }
 

@@ -248,6 +248,24 @@ class ManufacturingStoreTests(unittest.TestCase):
         mfg.save_board_spec(self.project_id, {"layers": "2"}, {}, updated_by="d@x")
         self.assertEqual(mfg.get_run(run_id)["spec_snapshot"]["specs"], {"layers": "4"})
 
+    def test_run_snapshot_captures_all_fields_with_defaults(self) -> None:
+        # A spec with defaults and one edited value: the run's snapshot should carry
+        # every field (defaults filled in), not just the edited one.
+        cfg = (
+            "[Base]\n"
+            "material: choice(FR-4, Flex) = FR-4 | Material\n"
+            "finish: choice(HASL, ENIG) = HASL | Finish\n"
+            "notes: text | Notes\n"
+        )
+        mfg.save_spec_config(self.project_id, cfg, updated_by="d@x")
+        mfg.save_board_spec(self.project_id, {"finish": "ENIG"}, {}, updated_by="d@x")
+        run_id = mfg.create_run(self.project_id, quantity_ordered=1)
+
+        specs = mfg.get_run(run_id)["spec_snapshot"]["specs"]
+        self.assertEqual(specs["material"], "FR-4")   # from the schema default
+        self.assertEqual(specs["finish"], "ENIG")     # the edited value wins
+        self.assertIn("notes", specs)                  # a value-less field is present too
+
     def test_template_capabilities_and_spec_live_link(self) -> None:
         mid = mfg.create_manufacturer("Caps Fab " + uuid.uuid4().hex[:5])
         mfg.attach_manufacturer(self.project_id, mid)

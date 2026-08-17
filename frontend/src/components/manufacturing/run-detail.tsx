@@ -368,7 +368,7 @@ function displaySpecValue(field: SpecFieldDef, raw: unknown): string {
  */
 function SpecSnapshot({ snapshot }: { snapshot: Record<string, unknown> | null | undefined }) {
     const specConfig = typeof snapshot?.spec_config === "string" ? snapshot.spec_config : "";
-    const values = (snapshot?.specs as Record<string, unknown> | undefined) ?? {};
+    const stored = (snapshot?.specs as Record<string, unknown> | undefined) ?? {};
     const activeSections = new Set(
         Array.isArray(snapshot?.active_sections) ? (snapshot.active_sections as string[]) : [],
     );
@@ -387,6 +387,21 @@ function SpecSnapshot({ snapshot }: { snapshot: Record<string, unknown> | null |
             cancelled = true;
         };
     }, [specConfig]);
+
+    // Fill each field's schema default under the stored value, so gating and
+    // display see the effective spec (the form's behaviour). This also completes
+    // older runs whose snapshot only froze the few edited values.
+    const values: Record<string, unknown> = {};
+    for (const section of schema?.sections ?? []) {
+        for (const field of section.fields) {
+            const raw = stored[field.key];
+            values[field.key] = raw === undefined || raw === null || raw === "" ? field.default : raw;
+        }
+    }
+    // Keep any stored keys not present in the schema too.
+    for (const [key, val] of Object.entries(stored)) {
+        if (!(key in values)) values[key] = val;
+    }
 
     // Sections in play: always-on sections whose gate is met, plus optional ones
     // that were switched on for this run.

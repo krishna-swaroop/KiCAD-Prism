@@ -128,6 +128,39 @@ describe("RunDetail", () => {
         expect(previewSpecConfig).toHaveBeenCalledWith("[Stackup]\nlayers: choice(2,4) | Layer count");
     });
 
+    it("fills a field's schema default when the snapshot didn't store its value", async () => {
+        // An older run whose snapshot froze only one value; the other field falls
+        // back to its schema default rather than showing blank.
+        getRun.mockResolvedValue({
+            ...makeRun(),
+            spec_snapshot: {
+                spec_config: "x",
+                specs: { finish: "ENIG" },
+                active_sections: [],
+            },
+        });
+        previewSpecConfig.mockResolvedValue({
+            sections: [
+                {
+                    title: "Base",
+                    optional: false,
+                    when: null,
+                    fields: [
+                        { key: "material", label: "Material", type: "choice", options: ["FR-4", "Flex"], default: "FR-4", when: null },
+                        { key: "finish", label: "Finish", type: "choice", options: ["HASL", "ENIG"], default: "HASL", when: null },
+                    ],
+                },
+            ],
+            errors: [],
+        });
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus onBack={vi.fn()} />);
+        await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
+
+        expect(await screen.findByText("Material")).toBeTruthy();
+        expect(screen.getByText("FR-4")).toBeTruthy(); // schema default, not blank
+        expect(screen.getByText("ENIG")).toBeTruthy(); // stored value wins over default
+    });
+
     it("logs a defect through the dialog", async () => {
         getRun.mockResolvedValue(makeRun());
         logDefect.mockResolvedValue({ id: "def_new" });
