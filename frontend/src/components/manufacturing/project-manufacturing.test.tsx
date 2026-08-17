@@ -16,7 +16,7 @@ const listTemplates = vi.fn();
 const downloadSpecSheet = vi.fn();
 const getTemplate = vi.fn();
 const getPcbRuleFields = vi.fn();
-const checkPcbRules = vi.fn();
+const extractPcbRules = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     extractBoardSpec: (...a: unknown[]) => extractBoardSpec(...a),
@@ -34,7 +34,7 @@ vi.mock("@/lib/manufacturing", () => ({
     listTemplates: (...a: unknown[]) => listTemplates(...a),
     downloadSpecSheet: (...a: unknown[]) => downloadSpecSheet(...a),
     getPcbRuleFields: (...a: unknown[]) => getPcbRuleFields(...a),
-    checkPcbRules: (...a: unknown[]) => checkPcbRules(...a),
+    extractPcbRules: (...a: unknown[]) => extractPcbRules(...a),
     previewSpecConfig: vi.fn(),
 }));
 
@@ -102,8 +102,8 @@ describe("ProjectManufacturing", () => {
         listRuns.mockResolvedValue([]);
         updateProjectSpec.mockResolvedValue(undefined);
         extractBoardSpec.mockResolvedValue({ suggested: {} });
-        getPcbRuleFields.mockResolvedValue({ fields: [], operators: [] });
-        checkPcbRules.mockResolvedValue({ checks: [] });
+        getPcbRuleFields.mockResolvedValue({ fields: [] });
+        extractPcbRules.mockResolvedValue({ rules: {} });
     });
 
     afterEach(() => {
@@ -128,42 +128,32 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect(screen.getByText(/No manufacturers yet/)).toBeTruthy());
     });
 
-    it("lists the spec's capability constraints and checks them against the board", async () => {
+    it("lists the spec's min capabilities and shows the board's values on extract", async () => {
         getPcbRuleFields.mockResolvedValue({
             fields: [
-                { key: "min_track_width", label: "Min track width", type: "number", unit: "mm", compare: "gte", operators: ["gte", "between"] },
-                { key: "layer_count", label: "Layer count", type: "int", compare: "between", operators: ["between"] },
+                { key: "min_track_width", label: "Min track width", type: "number", unit: "mm" },
+                { key: "min_via_diameter", label: "Min via diameter", type: "number", unit: "mm" },
             ],
-            operators: [],
         });
-        // The spec carries its linked template's typed capabilities (from getProjectSpec).
+        // The spec carries its linked template's scalar minimums (from getProjectSpec).
         getProjectSpec.mockResolvedValue({
             ...makeSpec(),
             template_name: "flex",
-            template_capabilities: {
-                min_track_width: { op: "gte", value: 0.09 },
-                layer_count: { op: "between", min: 1, max: 4 },
-            },
+            template_capabilities: { min_track_width: 0.09, min_via_diameter: 0.25 },
         });
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText("Capabilities")).toBeTruthy());
 
-        // Constraints render as expressions before a check.
+        // Minimums render as "≥ value" before extraction.
         expect(await screen.findByText("≥ 0.09 mm")).toBeTruthy();
-        expect(screen.getByText("1 – 4")).toBeTruthy();
+        expect(screen.getByText("≥ 0.25 mm")).toBeTruthy();
 
-        // Running the check shows board values and verdicts.
-        checkPcbRules.mockResolvedValue({
-            checks: [
-                { key: "min_track_width", label: "Min track width", unit: "mm", capability: { op: "gte", value: 0.09 }, board_value: 0.1, verdict: "pass" },
-                { key: "layer_count", label: "Layer count", unit: null, capability: { op: "between", min: 1, max: 4 }, board_value: 6, verdict: "fail" },
-            ],
-        });
-        fireEvent.click(screen.getByRole("button", { name: /Check against board/ }));
-        await waitFor(() => expect(checkPcbRules).toHaveBeenCalledWith("p1", "spec_1"));
-        expect(await screen.findByText("✓ Pass")).toBeTruthy();
-        expect(screen.getByText("✗ Fail")).toBeTruthy();
-        expect(screen.getByText(/1 of 2 checked rule/)).toBeTruthy();
+        // Extracting shows the board's own values alongside, no verdict.
+        extractPcbRules.mockResolvedValue({ rules: { min_track_width: 0.1 } });
+        fireEvent.click(screen.getByRole("button", { name: /Extract PCB rules/ }));
+        await waitFor(() => expect(extractPcbRules).toHaveBeenCalledWith("p1"));
+        expect(await screen.findByText("0.1 mm")).toBeTruthy();
+        expect(screen.getByText("This board")).toBeTruthy();
     });
 
     it("quick-adds a spec from a manufacturer schema, named after it", async () => {

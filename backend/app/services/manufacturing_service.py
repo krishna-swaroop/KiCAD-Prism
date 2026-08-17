@@ -269,7 +269,8 @@ def seed_builtin_manufacturers() -> list[str]:
         mfr_id = _ensure_manufacturer(entry["name"], entry.get("website", ""))
         for template in entry.get("templates", []):
             change = _sync_builtin_template(
-                mfr_id, template["key"], template["name"], template["config"]
+                mfr_id, template["key"], template["name"], template["config"],
+                template.get("capabilities") or {},
             )
             if change:
                 changes.append(change)
@@ -287,9 +288,20 @@ def _ensure_manufacturer(name: str, website: str) -> str:
     return create_manufacturer(name, website=website)
 
 
-def _sync_builtin_template(mfr_id: str, key: str, name: str, config: str) -> Optional[str]:
-    """Create or refresh one built-in template. Returns a change description or None."""
+def _sync_builtin_template(
+    mfr_id: str, key: str, name: str, config: str, capabilities: Optional[Dict[str, Any]] = None
+) -> Optional[str]:
+    """Create or refresh one built-in template. Returns a change description or None.
+
+    Capabilities ride along with the config: seeded on create, refreshed when the
+    built-in is unedited, and backfilled onto an unedited row that has none yet
+    (so existing installs gain them). A user who edited the config keeps their
+    capabilities untouched, same as their schema text.
+    """
+    import json
+
     source_hash = _config_hash(config)
+    capabilities = capabilities or {}
 
     with _connect() as conn:
         # Prefer the row already claimed by this built-in key.
@@ -306,13 +318,15 @@ def _sync_builtin_template(mfr_id: str, key: str, name: str, config: str) -> Opt
             ).fetchone()
 
     if not row:
-        create_template(mfr_id, name, config, builtin_key=key, seeded_hash=source_hash)
+        create_template(mfr_id, name, config, capabilities=capabilities,
+                        builtin_key=key, seeded_hash=source_hash)
         return f"created {name}"
 
     template = _row(row)
     stored = template.get("spec_config") or ""
     seeded_hash = template.get("seeded_hash")
     is_legacy = template.get("builtin_key") is None
+    has_caps = bool(template.get("capabilities"))
 
     # Unedited if the stored text still matches what it was last seeded from, or --
     # for a legacy row with no recorded hash -- if it was never updated after
@@ -322,27 +336,44 @@ def _sync_builtin_template(mfr_id: str, key: str, name: str, config: str) -> Opt
     else:
         unedited = is_legacy and template.get("created_at") == template.get("updated_at")
 
+    def _set_caps(template_id: str) -> None:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE ws_spec_templates SET capabilities = %s::jsonb, updated_at = %s WHERE id = %s",
+                (json.dumps(capabilities), _now(), template_id),
+            )
+            conn.commit()
+
+    # Backfill capabilities onto any built-in row that has none yet, even one whose
+    # config the user has customised: a row that never had capabilities has none to
+    # clobber, and this is how existing installs gain the seeded values.
+    caps_backfilled = False
+    if capabilities and not has_caps:
+        _set_caps(template["id"])
+        caps_backfilled = True
+
     if _config_hash(stored) == source_hash:
-        # Already current; just make sure it is claimed and its hash recorded.
+        # Config already current; claim/record hash.
         if is_legacy or seeded_hash != source_hash:
             _claim_builtin(template["id"], key, source_hash)
-        return None
+        return f"seeded {name} capabilities" if caps_backfilled else None
 
     if not unedited:
-        # The user has customised it; adopt the key so we can track future edits,
-        # but never overwrite their text.
+        # The user has customised the config; adopt the key so we can track future
+        # edits, but never overwrite their text.
         if is_legacy:
             _claim_builtin(template["id"], key, _config_hash(stored))
-        return None
+        return f"seeded {name} capabilities" if caps_backfilled else None
 
-    # Untouched and out of date: refresh to the latest source.
+    # Untouched and out of date: refresh config and capabilities to the latest source.
     now = _now()
     with _connect() as conn:
         conn.execute(
             """UPDATE ws_spec_templates
-               SET spec_config = %s, builtin_key = %s, seeded_hash = %s, updated_at = %s
+               SET spec_config = %s, capabilities = %s::jsonb, builtin_key = %s,
+                   seeded_hash = %s, updated_at = %s
                WHERE id = %s""",
-            (config, key, source_hash, now, template["id"]),
+            (config, json.dumps(capabilities), key, source_hash, now, template["id"]),
         )
         conn.commit()
     return f"updated {name}"

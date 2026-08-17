@@ -37,7 +37,6 @@ class PcbRulesExtractionTests(unittest.TestCase):
             "min_clearance": 0.1,
             "min_via_diameter": 0.4,
             "min_resolved_spokes": 2,
-            "allow_microvias": False,
             "min_connection": 0.0,  # placeholder 0 -> dropped
         }}}}
         rules = rs.extract_pcb_rules(self._pcb(pro=pro))
@@ -45,7 +44,6 @@ class PcbRulesExtractionTests(unittest.TestCase):
         self.assertEqual(rules["min_via_diameter"], 0.4)
         self.assertEqual(rules["min_resolved_spokes"], 2)
         self.assertIsInstance(rules["min_resolved_spokes"], int)
-        self.assertFalse(rules["allow_microvias"])
         self.assertNotIn("min_connection", rules)  # the 0 is "no constraint"
 
     def test_copper_finish_comes_from_the_board_setup(self) -> None:
@@ -79,9 +77,9 @@ class PcbRulesExtractionTests(unittest.TestCase):
     def test_rule_fields_are_well_formed(self) -> None:
         keys = {f["key"] for f in rs.PCB_RULE_FIELDS}
         self.assertIn("min_track_width", keys)
-        self.assertIn("copper_finish", keys)
+        # Every capability field is a numeric minimum.
         for f in rs.PCB_RULE_FIELDS:
-            self.assertIn(f["type"], ("number", "int", "bool", "text"))
+            self.assertIn(f["type"], ("number", "int"))
             self.assertTrue(f["label"])
 
 

@@ -175,6 +175,28 @@ class ManufacturingStoreTests(unittest.TestCase):
         names = {t["name"] for t in mfg.list_templates(jlcpcb["id"])}
         self.assertIn("JLCPCB advanced PCB", names)
 
+    def test_builtin_jlcpcb_templates_carry_capabilities(self) -> None:
+        mfg.seed_builtin_manufacturers()
+        jlcpcb = next(m for m in mfg.list_manufacturers() if m["name"] == "JLCPCB")
+        by_name = {t["name"]: mfg.get_template(t["id"]) for t in mfg.list_templates(jlcpcb["id"])}
+
+        std = by_name["JLCPCB standard"]["capabilities"]
+        self.assertEqual(std["min_track_width"], 0.1)
+        self.assertEqual(std["min_via_diameter"], 0.25)
+
+        # The advanced process reaches finer features.
+        adv = by_name["JLCPCB advanced PCB"]["capabilities"]
+        self.assertLess(adv["min_track_width"], std["min_track_width"])
+
+    def test_capability_backfill_does_not_clobber_user_capabilities(self) -> None:
+        mfg.seed_builtin_manufacturers()
+        jlcpcb = next(m for m in mfg.list_manufacturers() if m["name"] == "JLCPCB")
+        std = next(t for t in mfg.list_templates(jlcpcb["id"]) if t["name"] == "JLCPCB standard")
+        # A user tightens a capability.
+        mfg.update_template(std["id"], capabilities={"min_track_width": 0.2})
+        mfg.seed_builtin_manufacturers()  # must not overwrite it
+        self.assertEqual(mfg.get_template(std["id"])["capabilities"]["min_track_width"], 0.2)
+
     # -- runs --
 
     def test_run_lifecycle_and_defects(self) -> None:

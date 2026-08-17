@@ -520,13 +520,39 @@ special_requests: text
 
 # Built-in manufacturers seeded on first startup, each with one or more starting
 # templates. Users own these once seeded and can edit or delete them freely.
+# JLCPCB standard-process minimums, from jlcpcb.com/capabilities/pcb-capabilities
+# (1 oz outer copper figures). Each is the smallest feature the fab can build, mm.
+JLCPCB_STANDARD_CAPABILITIES: dict[str, Any] = {
+    "min_track_width": 0.1,
+    "min_clearance": 0.1,
+    "min_via_diameter": 0.25,
+    "min_through_hole_diameter": 0.15,
+    "min_via_annular_width": 0.15,
+    "min_copper_edge_clearance": 0.2,
+    "min_text_height": 1.0,
+    "min_text_thickness": 0.15,
+}
+
+# The advanced (HDI) process reaches finer features.
+JLCPCB_ADVANCED_CAPABILITIES: dict[str, Any] = {
+    **JLCPCB_STANDARD_CAPABILITIES,
+    "min_track_width": 0.0635,   # 2.5 mil
+    "min_clearance": 0.0635,
+    "min_via_diameter": 0.15,
+    "min_through_hole_diameter": 0.1,
+    "min_microvia_diameter": 0.25,
+    "min_microvia_drill": 0.1,
+}
+
 SEED_MANUFACTURERS: list[dict[str, Any]] = [
     {
         "name": "JLCPCB",
         "website": "https://jlcpcb.com",
         "templates": [
-            {"key": "jlcpcb:standard", "name": "JLCPCB standard", "config": JLCPCB_SPEC_CONFIG},
-            {"key": "jlcpcb:advanced", "name": "JLCPCB advanced PCB", "config": JLCPCB_ADVANCED_SPEC_CONFIG},
+            {"key": "jlcpcb:standard", "name": "JLCPCB standard", "config": JLCPCB_SPEC_CONFIG,
+             "capabilities": JLCPCB_STANDARD_CAPABILITIES},
+            {"key": "jlcpcb:advanced", "name": "JLCPCB advanced PCB", "config": JLCPCB_ADVANCED_SPEC_CONFIG,
+             "capabilities": JLCPCB_ADVANCED_CAPABILITIES},
         ],
     },
     {

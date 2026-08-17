@@ -27,36 +27,14 @@ logger = logging.getLogger(__name__)
 _SETUP_SCAN_BYTES = 200_000
 
 
-# The operators a capability constraint can use. ``op`` is stored; ``label`` is
-# shown. A capability is {op, value} (gte/lte/bool), {op, min, max} (between), or
-# {op, values} (in).
-CAPABILITY_OPERATORS: list[dict[str, str]] = [
-    {"op": "gte", "label": "at least (≥)"},
-    {"op": "lte", "label": "at most (≤)"},
-    {"op": "between", "label": "between"},
-    {"op": "in", "label": "one of"},
-    {"op": "bool", "label": "supported"},
-]
-
-# Numeric length fields default to their sensible operator sets.
-_MIN_OPS = ["gte", "between"]      # a fab minimum: board must be >= it (or in range)
-_MAX_OPS = ["lte", "between"]      # a fab maximum: board must be <= it (or in range)
-_RANGE_OPS = ["between", "gte", "lte"]
+def _num(key: str, label: str) -> dict[str, Any]:
+    return {"key": key, "label": label, "type": "number", "unit": "mm"}
 
 
-def _num(key: str, label: str, *, compare: str = "gte", operators: list[str] | None = None) -> dict[str, Any]:
-    return {
-        "key": key, "label": label, "type": "number", "unit": "mm",
-        "compare": compare, "operators": operators or _MIN_OPS,
-    }
-
-
-# The canonical rule/capability fields. ``key`` matches the .kicad_pro rules key
-# where one exists, so extraction is a direct copy. ``type`` is "number" (mm),
-# "int", "bool" or "text". ``unit`` is shown in the UI. ``compare`` is the field's
-# default operator and encodes the board-check direction; ``operators`` are the
-# operators the editor offers. Single source of truth for the extractor, the
-# capability editor, its display, and evaluation.
+# The canonical rule/capability fields. Every one is a manufacturer *minimum* the
+# board must meet, stored as a single number (mm), so no operator is needed.
+# ``key`` matches the .kicad_pro rules key so extraction is a direct copy. Single
+# source of truth for the extractor, the capability editor and its display.
 PCB_RULE_FIELDS: list[dict[str, Any]] = [
     _num("min_track_width", "Min track width"),
     _num("min_clearance", "Min clearance"),
@@ -74,31 +52,11 @@ PCB_RULE_FIELDS: list[dict[str, Any]] = [
     _num("min_text_thickness", "Min text thickness"),
     _num("min_groove_width", "Min groove width"),
     _num("solder_mask_to_copper_clearance", "Mask to copper clearance"),
-    {"key": "min_resolved_spokes", "label": "Min thermal spokes", "type": "int",
-     "compare": "gte", "operators": _MIN_OPS},
-    # A supported layer-count range, and a supported thickness range: both are
-    # checked against the board's own extracted layer count / thickness.
-    {"key": "layer_count", "label": "Layer count", "type": "int",
-     "compare": "between", "operators": _RANGE_OPS},
-    {"key": "board_thickness_mm", "label": "Board thickness", "type": "number", "unit": "mm",
-     "compare": "between", "operators": _RANGE_OPS},
-    {"key": "allow_blind_buried_vias", "label": "Blind/buried vias", "type": "bool",
-     "compare": "bool", "operators": ["bool"]},
-    {"key": "allow_microvias", "label": "Microvias", "type": "bool",
-     "compare": "bool", "operators": ["bool"]},
-    {"key": "copper_finish", "label": "Copper finish", "type": "text",
-     "compare": "in", "operators": ["in"]},
+    {"key": "min_resolved_spokes", "label": "Min thermal spokes", "type": "int"},
 ]
 
-_FIELDS_BY_KEY = {f["key"]: f for f in PCB_RULE_FIELDS}
-
-# The subset copied straight from .kicad_pro board.design_settings.rules (i.e. not
-# the board-spec-sourced or capability-only fields).
-_PRO_RULE_KEYS = {
-    f["key"]
-    for f in PCB_RULE_FIELDS
-    if f["key"] not in ("layer_count", "board_thickness_mm", "copper_finish")
-}
+# All rule keys are copied straight from .kicad_pro board.design_settings.rules.
+_PRO_RULE_KEYS = {f["key"] for f in PCB_RULE_FIELDS}
 
 # Fields whose value is a whole number.
 _INT_KEYS = {f["key"] for f in PCB_RULE_FIELDS if f["type"] == "int"}
@@ -206,123 +164,10 @@ def extract_pcb_rules(pcb_path: str | Path) -> dict[str, Any]:
             rules.setdefault(key, value)  # pro wins; dru fills gaps
     except Exception:
         logger.debug("dru rule extraction failed for %s", path, exc_info=True)
+    # The stackup copper finish is not a min-rule, but it is a useful board fact to
+    # show; keep it out of the min-capability set but leave extraction here harmless.
     try:
         rules.update(_finish_from_setup(path))
     except Exception:
         logger.debug("setup finish extraction failed for %s", path, exc_info=True)
-    # Layer count and thickness come from the board-spec extractor (which reads the
-    # header robustly), so those capability ranges have a board value to check.
-    try:
-        from app.services import board_spec_service
-
-        spec = board_spec_service.extract_board_spec(path)
-        if "layer_count" in spec:
-            rules["layer_count"] = spec["layer_count"]
-        if "board_thickness_mm" in spec:
-            rules["board_thickness_mm"] = spec["board_thickness_mm"]
-    except Exception:
-        logger.debug("board-spec extraction for rules failed for %s", path, exc_info=True)
     return rules
-
-
-# ---------------------------------------------------------------------------
-# Capabilities: normalisation and evaluation
-# ---------------------------------------------------------------------------
-
-
-def normalize_capability(key: str, raw: Any) -> dict[str, Any] | None:
-    """Coerce a stored capability into ``{op, ...}``. A legacy bare scalar is
-    wrapped with the field's default operator; ``None``/empty returns None."""
-    if raw is None or raw == "":
-        return None
-    field = _FIELDS_BY_KEY.get(key)
-    default_op = (field or {}).get("compare", "gte")
-    if isinstance(raw, dict):
-        op = raw.get("op") or default_op
-        return {**raw, "op": op}
-    # Legacy scalar / bool.
-    if isinstance(raw, bool) or default_op == "bool":
-        return {"op": "bool", "value": bool(raw)}
-    if default_op == "in":
-        values = raw if isinstance(raw, list) else [raw]
-        return {"op": "in", "values": [str(v) for v in values]}
-    return {"op": default_op, "value": raw}
-
-
-def _as_number(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def evaluate_capability(key: str, capability: Any, board_value: Any) -> str:
-    """Compare one board value against one capability. Returns
-    ``"pass" | "fail" | "unknown"``. Unknown when either side is absent or a
-    number cannot be parsed for a numeric operator."""
-    cap = normalize_capability(key, capability)
-    if cap is None:
-        return "unknown"
-    op = cap.get("op")
-
-    if op == "bool":
-        # The board "needs" the feature when its extracted flag is true. A fab that
-        # supports it always passes; one that does not fails only if the board needs it.
-        supported = bool(cap.get("value"))
-        if board_value is None:
-            return "unknown"
-        needs = bool(board_value)
-        if supported:
-            return "pass"
-        return "fail" if needs else "pass"
-
-    if op == "in":
-        allowed = [str(v).strip().lower() for v in (cap.get("values") or [])]
-        if not allowed:
-            return "unknown"
-        if board_value is None or str(board_value) == "":
-            return "unknown"
-        return "pass" if str(board_value).strip().lower() in allowed else "fail"
-
-    b = _as_number(board_value)
-    if b is None:
-        return "unknown"
-    if op == "gte":
-        v = _as_number(cap.get("value"))
-        return "unknown" if v is None else ("pass" if b >= v else "fail")
-    if op == "lte":
-        v = _as_number(cap.get("value"))
-        return "unknown" if v is None else ("pass" if b <= v else "fail")
-    if op == "between":
-        lo, hi = _as_number(cap.get("min")), _as_number(cap.get("max"))
-        if lo is None and hi is None:
-            return "unknown"
-        if lo is not None and b < lo:
-            return "fail"
-        if hi is not None and b > hi:
-            return "fail"
-        return "pass"
-    return "unknown"
-
-
-def evaluate_rules(capabilities: dict[str, Any], board_rules: dict[str, Any]) -> list[dict[str, Any]]:
-    """A full comparison row per field that has a capability or a board value, in
-    the canonical field order."""
-    rows: list[dict[str, Any]] = []
-    for field in PCB_RULE_FIELDS:
-        key = field["key"]
-        cap = capabilities.get(key)
-        board_value = board_rules.get(key)
-        has_cap = cap is not None and cap != ""
-        has_board = key in board_rules and board_value is not None
-        if not has_cap and not has_board:
-            continue
-        rows.append({
-            "key": key,
-            "label": field["label"],
-            "unit": field.get("unit"),
-            "capability": normalize_capability(key, cap) if has_cap else None,
-            "board_value": board_value if has_board else None,
-            "verdict": evaluate_capability(key, cap, board_value),
-        })
-    return rows

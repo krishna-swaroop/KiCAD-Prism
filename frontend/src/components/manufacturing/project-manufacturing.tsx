@@ -22,14 +22,12 @@ import {
     listTemplates,
     downloadSpecSheet,
     getPcbRuleFields,
-    checkPcbRules,
+    extractPcbRules,
 } from "@/lib/manufacturing";
 import {
     RUN_STATUS_LABELS,
     EXTRACTABLE_KEYS,
     evaluateCondition,
-    type Capability,
-    type CapabilityCheckRow,
     type Manufacturer,
     type ManufacturingRun,
     type ParsedSpecConfig,
@@ -80,11 +78,11 @@ export function ProjectManufacturing({
     const [allManufacturers, setAllManufacturers] = useState<Manufacturer[]>([]);
     const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
     // The selected spec's linked-template capabilities (read live from getProjectSpec).
-    const [templateCapabilities, setTemplateCapabilities] = useState<Record<string, Capability>>({});
+    const [templateCapabilities, setTemplateCapabilities] = useState<Record<string, number>>({});
     const [templateName, setTemplateName] = useState<string | null>(null);
-    // The board-vs-capability check results for the selected spec, when run.
-    const [checks, setChecks] = useState<CapabilityCheckRow[] | null>(null);
-    const [checking, setChecking] = useState(false);
+    // The board's own extracted rules, shown next to the capabilities on demand.
+    const [boardRules, setBoardRules] = useState<Record<string, unknown> | null>(null);
+    const [extractingRules, setExtractingRules] = useState(false);
     // Which optional sections are switched on (persisted with the spec).
     const [activeSections, setActiveSections] = useState<Set<string>>(new Set());
     // Which sections are collapsed in the UI (per-session, not persisted).
@@ -96,19 +94,18 @@ export function ProjectManufacturing({
             .catch(() => setRuleFields([]));
     }, []);
 
-    const handleCheckBoard = async () => {
-        if (!specId) return;
-        setChecking(true);
+    const handleExtractRules = async () => {
+        setExtractingRules(true);
         try {
-            const { checks: rows } = await checkPcbRules(projectId, specId);
-            setChecks(rows);
-            if (rows.length === 0) {
-                toast.info("Nothing to check: no capabilities set and no board rules found.");
+            const { rules, reason } = await extractPcbRules(projectId);
+            setBoardRules(rules);
+            if (Object.keys(rules).length === 0) {
+                toast.info(reason ?? "No rules could be read from the board.");
             }
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to check the board.");
+            toast.error(error instanceof Error ? error.message : "Failed to read board rules.");
         } finally {
-            setChecking(false);
+            setExtractingRules(false);
         }
     };
 
@@ -179,7 +176,7 @@ export function ProjectManufacturing({
             setActiveSections(new Set());
             setTemplateCapabilities({});
             setTemplateName(null);
-            setChecks(null);
+            setBoardRules(null);
             setDirty(false);
             return;
         }
@@ -195,7 +192,7 @@ export function ProjectManufacturing({
                 setActiveSections(new Set(spec.active_sections ?? []));
                 setTemplateCapabilities(spec.template_capabilities ?? {});
                 setTemplateName(spec.template_name ?? null);
-                setChecks(null);
+                setBoardRules(null);
                 setDirty(false);
             } catch (error) {
                 if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load the spec.");
@@ -532,11 +529,11 @@ export function ProjectManufacturing({
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => void handleCheckBoard()}
-                                disabled={checking}
+                                onClick={() => void handleExtractRules()}
+                                disabled={extractingRules}
                             >
                                 <Sparkles className="mr-2 h-4 w-4" />
-                                {checking ? "Checking..." : "Check against board"}
+                                {extractingRules ? "Reading..." : "Extract PCB rules"}
                             </Button>
                         )}
                     </header>
@@ -544,7 +541,7 @@ export function ProjectManufacturing({
                         <CapabilitiesTable
                             fields={ruleFields}
                             capabilities={templateCapabilities}
-                            checks={checks}
+                            boardRules={boardRules}
                         />
                     ) : (
                         <p className="px-4 py-6 text-sm text-muted-foreground">
@@ -773,29 +770,9 @@ export function ProjectManufacturing({
     );
 }
 
-// Render a capability constraint as a compact expression: "≥ 0.089 mm",
-// "4 – 20", "one of ENIG, HASL", "supported".
-function formatConstraint(cap: Capability | null | undefined, unit?: string | null): string {
-    if (!cap) return "—";
-    const u = unit ? ` ${unit}` : "";
-    switch (cap.op) {
-        case "gte":
-            return cap.value === undefined ? "—" : `≥ ${cap.value}${u}`;
-        case "lte":
-            return cap.value === undefined ? "—" : `≤ ${cap.value}${u}`;
-        case "between": {
-            const lo = cap.min ?? "";
-            const hi = cap.max ?? "";
-            if (lo === "" && hi === "") return "—";
-            return `${lo} – ${hi}${u}`.trim();
-        }
-        case "in":
-            return (cap.values ?? []).length ? `one of ${(cap.values ?? []).join(", ")}` : "—";
-        case "bool":
-            return cap.value ? "supported" : "not supported";
-        default:
-            return "—";
-    }
+function formatMinCapability(value: number | undefined, unit?: string | null): string {
+    if (value === undefined || value === null) return "—";
+    return unit ? `≥ ${value} ${unit}` : `≥ ${value}`;
 }
 
 function formatBoardValue(value: unknown, unit?: string | null): string {
@@ -805,41 +782,24 @@ function formatBoardValue(value: unknown, unit?: string | null): string {
     return unit ? `${value} ${unit}` : String(value);
 }
 
-const VERDICT_STYLE: Record<string, string> = {
-    pass: "text-success",
-    fail: "text-destructive",
-    unknown: "text-muted-foreground",
-};
-const VERDICT_LABEL: Record<string, string> = { pass: "✓ Pass", fail: "✗ Fail", unknown: "—" };
-
-// Read-only table of the fabrication method's capabilities. Before a check, it
-// lists the constraints; after "Check against board" it adds the board's value
-// and a pass/fail verdict per field, with a summary.
+// Read-only table of the fabrication method's minimum capabilities. "Extract PCB
+// rules" adds a column with the board's own value for each field so a user can
+// eyeball whether the board meets the minimums. Rows with nothing on either side
+// are hidden.
 function CapabilitiesTable({
     fields,
     capabilities,
-    checks,
+    boardRules,
 }: {
     fields: PcbRuleField[];
-    capabilities: Record<string, Capability>;
-    checks: CapabilityCheckRow[] | null;
+    capabilities: Record<string, number>;
+    boardRules: Record<string, unknown> | null;
 }) {
-    const unitByKey = new Map(fields.map((f) => [f.key, f.unit]));
-
-    // After a check, use the returned rows (they carry board values + verdicts).
-    // Before, list the fields that have a capability set.
-    const rows: CapabilityCheckRow[] = checks
-        ? checks
-        : fields
-              .filter((f) => capabilities[f.key])
-              .map((f) => ({
-                  key: f.key,
-                  label: f.label,
-                  unit: f.unit,
-                  capability: capabilities[f.key],
-                  board_value: null,
-                  verdict: "unknown" as const,
-              }));
+    const rows = fields.filter((f) => {
+        const hasCap = capabilities[f.key] !== undefined;
+        const hasBoard = boardRules != null && boardRules[f.key] !== undefined;
+        return hasCap || hasBoard;
+    });
 
     if (rows.length === 0) {
         return (
@@ -849,54 +809,34 @@ function CapabilitiesTable({
         );
     }
 
-    const failed = checks ? checks.filter((r) => r.verdict === "fail").length : 0;
-    const evaluated = checks ? checks.filter((r) => r.verdict !== "unknown").length : 0;
-
     return (
-        <div>
-            {checks && (
-                <div className="border-b px-4 py-2 text-sm">
-                    {failed === 0 ? (
-                        <span className="text-success">All {evaluated} checked rule(s) pass.</span>
-                    ) : (
-                        <span className="text-destructive">
-                            {failed} of {evaluated} checked rule(s) fail.
-                        </span>
-                    )}
-                </div>
-            )}
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead>
-                        <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
-                            <th className="px-4 py-2 text-left font-medium">Rule</th>
-                            <th className="px-4 py-2 text-right font-medium">Capability</th>
-                            {checks && <th className="px-4 py-2 text-right font-medium">This board</th>}
-                            {checks && <th className="px-4 py-2 text-right font-medium">Result</th>}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map((row, i) => (
-                            <tr key={row.key} className={i % 2 === 1 ? "bg-muted/20" : ""}>
-                                <td className="px-4 py-1.5 text-muted-foreground">{row.label}</td>
-                                <td className="px-4 py-1.5 text-right font-medium tabular-nums">
-                                    {formatConstraint(row.capability, row.unit ?? unitByKey.get(row.key))}
+        <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                        <th className="px-4 py-2 text-left font-medium">Rule</th>
+                        <th className="px-4 py-2 text-right font-medium">Manufacturer min</th>
+                        {boardRules != null && (
+                            <th className="px-4 py-2 text-right font-medium">This board</th>
+                        )}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((field, i) => (
+                        <tr key={field.key} className={i % 2 === 1 ? "bg-muted/20" : ""}>
+                            <td className="px-4 py-1.5 text-muted-foreground">{field.label}</td>
+                            <td className="px-4 py-1.5 text-right font-medium tabular-nums">
+                                {formatMinCapability(capabilities[field.key], field.unit)}
+                            </td>
+                            {boardRules != null && (
+                                <td className="px-4 py-1.5 text-right tabular-nums">
+                                    {formatBoardValue(boardRules[field.key], field.unit)}
                                 </td>
-                                {checks && (
-                                    <td className="px-4 py-1.5 text-right tabular-nums">
-                                        {formatBoardValue(row.board_value, row.unit ?? unitByKey.get(row.key))}
-                                    </td>
-                                )}
-                                {checks && (
-                                    <td className={`px-4 py-1.5 text-right font-medium ${VERDICT_STYLE[row.verdict]}`}>
-                                        {VERDICT_LABEL[row.verdict]}
-                                    </td>
-                                )}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+                            )}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }

@@ -143,31 +143,12 @@ class ManufacturingRouteTests(unittest.TestCase):
             _run(self.api.create_project_spec("prj_1", request, user=_User()))
         self.assertEqual(create.call_args.kwargs["template_id"], "tpl_1")
 
-    def test_pcb_rule_fields_endpoint_returns_fields_and_operators(self) -> None:
+    def test_pcb_rule_fields_endpoint_returns_the_min_fields(self) -> None:
         result = _run(self.api.get_pcb_rule_fields())
         keys = {f["key"] for f in result["fields"]}
         self.assertIn("min_track_width", keys)
-        ops = {o["op"] for o in result["operators"]}
-        self.assertIn("between", ops)
-
-    def test_check_pcb_rules_evaluates_a_spec(self) -> None:
-        project = {"pcb_rel": "board.kicad_pcb", "path": "/tmp/proj"}
-        spec = {"project_id": "prj_1", "template_capabilities": {"layer_count": {"op": "between", "min": 1, "max": 4}}}
-        with patch.object(self.api.workspace, "get_project_by_id", return_value=project), patch.object(
-            self.api.mfg, "get_project_spec", return_value=spec
-        ), patch.object(self.api.pcb_rules_service, "extract_pcb_rules", return_value={"layer_count": 6}):
-            request = self.api.PcbRulesCheckRequest(spec_id="spec_1")
-            result = _run(self.api.check_pcb_rules("prj_1", request))
-        rows = {r["key"]: r for r in result["checks"]}
-        self.assertEqual(rows["layer_count"]["verdict"], "fail")
-
-    def test_check_pcb_rules_404_when_spec_not_in_project(self) -> None:
-        with patch.object(self.api.workspace, "get_project_by_id", return_value={"pcb_rel": "b.kicad_pcb", "path": "/x"}), patch.object(
-            self.api.mfg, "get_project_spec", return_value={"project_id": "other"}
-        ):
-            with self.assertRaises(HTTPException) as ctx:
-                _run(self.api.check_pcb_rules("prj_1", self.api.PcbRulesCheckRequest(spec_id="spec_1")))
-        self.assertEqual(ctx.exception.status_code, 404)
+        # All fields are numeric minimums (no operators, no bool/text fields).
+        self.assertTrue(all(f["type"] in ("number", "int") for f in result["fields"]))
 
     def test_extract_pcb_rules_reads_the_project_board(self) -> None:
         project = {"pcb_rel": "board.kicad_pcb", "path": "/tmp/proj"}

@@ -19,9 +19,8 @@ import {
     deleteTemplate,
     getPcbRuleFields,
 } from "@/lib/manufacturing";
-import type { Capability, Manufacturer, ParsedSpecConfig, PcbRuleField, SpecTemplate } from "@/types/manufacturing";
+import type { Manufacturer, ParsedSpecConfig, PcbRuleField, SpecTemplate } from "@/types/manufacturing";
 import { SpecConfigEditor } from "./spec-config-editor";
-import { CompactSelect } from "./ui";
 
 interface ManufacturersPanelProps {
     manufacturers: Manufacturer[];
@@ -215,132 +214,38 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
     );
 }
 
-const OP_LABELS: Record<string, string> = {
-    gte: "≥",
-    lte: "≤",
-    between: "between",
-    in: "one of",
-    bool: "supported",
-};
-
-// Edit one capability: an operator select plus operator-dependent value inputs.
-// Writes a {op, ...} object, or undefined to clear the field.
+// Edit one capability: a single number = the manufacturer minimum (mm). The board
+// must meet it. Empty clears the field.
 function CapabilityInput({
     field,
     value,
     onChange,
 }: {
     field: PcbRuleField;
-    value: Capability | undefined;
-    onChange: (value: Capability | undefined) => void;
+    value: number | undefined;
+    onChange: (value: number | undefined) => void;
 }) {
     const id = `cap-${field.key}`;
     const label = field.unit ? `${field.label} (${field.unit})` : field.label;
-    const step = field.type === "int" ? 1 : "any";
-    const op = value?.op ?? field.compare;
-    const numOps = field.operators.filter((o) => o !== "bool" && o !== "in");
-    const showOpSelect = field.operators.length > 1 && numOps.length > 1;
-
-    const num = (v: string): number | undefined => (v === "" ? undefined : Number(v));
-
     return (
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
             <Label htmlFor={id} className="text-xs text-muted-foreground">
                 {label}
             </Label>
             <div className="flex items-center gap-1.5">
-                {field.compare === "bool" ? (
-                    <label htmlFor={id} className="flex items-center gap-1.5 text-xs">
-                        <input
-                            id={id}
-                            type="checkbox"
-                            className="h-3.5 w-3.5"
-                            checked={value?.value === true}
-                            onChange={(e) => onChange(e.target.checked ? { op: "bool", value: true } : undefined)}
-                        />
-                        supported
-                    </label>
-                ) : field.compare === "in" ? (
-                    <Input
-                        id={id}
-                        className="h-7 w-52 text-xs"
-                        placeholder="ENIG, HASL, OSP"
-                        value={(value?.values ?? []).join(", ")}
-                        onChange={(e) => {
-                            const items = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-                            onChange(items.length ? { op: "in", values: items } : undefined);
-                        }}
-                    />
-                ) : (
-                    <>
-                        {showOpSelect && (
-                            <CompactSelect
-                                aria-label={`${field.label} operator`}
-                                widthClass="w-auto"
-                                value={op}
-                                onChange={(e) => {
-                                    const nextOp = e.target.value;
-                                    // Carry the value across gte/lte; between keeps min/max.
-                                    if (nextOp === "between") onChange({ op: "between", min: value?.min, max: value?.max });
-                                    else onChange({ op: nextOp as Capability["op"], value: value?.value ?? value?.min });
-                                }}
-                            >
-                                {numOps.map((o) => (
-                                    <option key={o} value={o}>
-                                        {OP_LABELS[o] ?? o}
-                                    </option>
-                                ))}
-                            </CompactSelect>
-                        )}
-                        {op === "between" ? (
-                            <>
-                                <Input
-                                    aria-label={`${field.label} min`}
-                                    type="number"
-                                    step={step}
-                                    className="h-7 w-20 text-xs"
-                                    placeholder="min"
-                                    value={value?.min ?? ""}
-                                    onChange={(e) => {
-                                        const min = num(e.target.value);
-                                        const max = value?.max;
-                                        onChange(min === undefined && max === undefined ? undefined : { op: "between", min, max });
-                                    }}
-                                />
-                                <span className="text-xs text-muted-foreground">–</span>
-                                <Input
-                                    aria-label={`${field.label} max`}
-                                    type="number"
-                                    step={step}
-                                    className="h-7 w-20 text-xs"
-                                    placeholder="max"
-                                    value={value?.max ?? ""}
-                                    onChange={(e) => {
-                                        const max = num(e.target.value);
-                                        const min = value?.min;
-                                        onChange(min === undefined && max === undefined ? undefined : { op: "between", min, max });
-                                    }}
-                                />
-                            </>
-                        ) : (
-                            <>
-                                {!showOpSelect && <span className="text-xs text-muted-foreground">{OP_LABELS[op] ?? op}</span>}
-                                <Input
-                                    id={id}
-                                    aria-label={field.label}
-                                    type="number"
-                                    step={step}
-                                    className="h-7 w-24 text-xs"
-                                    value={typeof value?.value === "number" ? value.value : ""}
-                                    onChange={(e) => {
-                                        const v = num(e.target.value);
-                                        onChange(v === undefined ? undefined : { op: op as Capability["op"], value: v });
-                                    }}
-                                />
-                            </>
-                        )}
-                    </>
-                )}
+                <span className="text-xs text-muted-foreground">≥</span>
+                <Input
+                    id={id}
+                    aria-label={field.label}
+                    type="number"
+                    step={field.type === "int" ? 1 : "any"}
+                    className="h-7 w-24 text-xs"
+                    value={value ?? ""}
+                    onChange={(e) => {
+                        const v = e.target.value;
+                        onChange(v === "" ? undefined : Number(v));
+                    }}
+                />
             </div>
         </div>
     );
@@ -542,7 +447,7 @@ interface TemplateCapabilitiesDialogProps {
 // Edit a fabrication method's capabilities: a grid of the PCB rule fields bound
 // to the template's capabilities. Reused live by every project spec built from it.
 function TemplateCapabilitiesDialog({ template, onClose, onSaved }: TemplateCapabilitiesDialogProps) {
-    const [capabilities, setCapabilities] = useState<Record<string, Capability>>(template.capabilities ?? {});
+    const [capabilities, setCapabilities] = useState<Record<string, number>>(template.capabilities ?? {});
     const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
     const [saving, setSaving] = useState(false);
 
@@ -552,7 +457,7 @@ function TemplateCapabilitiesDialog({ template, onClose, onSaved }: TemplateCapa
             .catch(() => setRuleFields([]));
     }, []);
 
-    const setCap = (key: string, value: Capability | undefined) => {
+    const setCap = (key: string, value: number | undefined) => {
         setCapabilities((current) => {
             const next = { ...current };
             if (value === undefined) delete next[key];

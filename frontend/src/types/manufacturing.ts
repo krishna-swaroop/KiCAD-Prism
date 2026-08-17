@@ -8,42 +8,13 @@ export interface Manufacturer {
     updated_at: string;
 }
 
-/** One PCB rule / manufacturer-capability field (the KiCad rule set). */
+/** One PCB rule / manufacturer-capability field (the KiCad rule set). Each is a
+ *  manufacturer minimum, stored as a single number (mm). */
 export interface PcbRuleField {
     key: string;
     label: string;
-    type: "number" | "int" | "bool" | "text";
+    type: "number" | "int";
     unit?: string;
-    /** The field's default operator / board-check direction. */
-    compare: string;
-    /** Operators the editor offers for this field. */
-    operators: string[];
-}
-
-export type CapabilityOp = "gte" | "lte" | "between" | "in" | "bool";
-
-/** A typed capability constraint: {op, value} | {op, min, max} | {op, values}. */
-export interface Capability {
-    op: CapabilityOp;
-    value?: number | string | boolean;
-    min?: number;
-    max?: number;
-    values?: string[];
-}
-
-export interface CapabilityOperator {
-    op: string;
-    label: string;
-}
-
-/** One row of a board-vs-capability check. */
-export interface CapabilityCheckRow {
-    key: string;
-    label: string;
-    unit?: string | null;
-    capability: Capability | null;
-    board_value: unknown;
-    verdict: "pass" | "fail" | "unknown";
 }
 
 export interface BoardSpec {
@@ -70,7 +41,7 @@ export interface ProjectSpec {
     template_id?: string | null;
     template_name?: string | null;
     /** The linked template's capabilities, read live (from getProjectSpec). */
-    template_capabilities?: Record<string, Capability>;
+    template_capabilities?: Record<string, number>;
     name: string;
     spec_config: string;
     specs: Record<string, unknown>;
@@ -242,7 +213,7 @@ export interface SpecTemplate {
     name: string;
     spec_config: string;
     /** Fabrication capabilities for this method, keyed by PcbRuleField.key. */
-    capabilities: Record<string, Capability>;
+    capabilities: Record<string, number>;
     created_at: string;
     updated_at: string;
 }
