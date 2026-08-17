@@ -139,10 +139,10 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
                 quantity_ordered: quantity,
                 notes: notes.trim(),
             });
-            toast.success("Run created.");
+            toast.success("Production created.");
             onCreated(id);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to create run.");
+            toast.error(error instanceof Error ? error.message : "Failed to create production.");
         } finally {
             setSubmitting(false);
         }
@@ -152,9 +152,9 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
         <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
             <DialogContent className="max-w-xl">
                 <DialogHeader>
-                    <DialogTitle>New production run</DialogTitle>
+                    <DialogTitle>New production</DialogTitle>
                     <DialogDescription>
-                        Record a fabrication run against a project and board.
+                        Record a production against a project and board.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -363,7 +363,7 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
                         </Button>
                     ) : (
                         <Button onClick={() => void handleCreate()} disabled={submitting}>
-                            {submitting ? "Creating…" : "Create run"}
+                            {submitting ? "Creating…" : "Create production"}
                         </Button>
                     )}
                 </div>

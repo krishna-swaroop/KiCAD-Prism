@@ -168,7 +168,7 @@ def _header(run: dict[str, Any], *, board: str | None, styles: dict[str, Paragra
         flow.append(Spacer(1, 6 * mm))
 
     project_name = str(run.get("project_name") or run.get("project_id") or "Run")
-    flow.append(Paragraph("PRODUCTION RUN REPORT", styles["eyebrow"]))
+    flow.append(Paragraph("PRODUCTION REPORT", styles["eyebrow"]))
     flow.append(Paragraph(_esc(project_name), styles["title"]))
 
     bits: list[str] = []
@@ -387,7 +387,7 @@ def build_run_report(run_id: str) -> bytes:
         rightMargin=20 * mm,
         topMargin=18 * mm,
         bottomMargin=16 * mm,
-        title=f"{project_name} — Run report",
+        title=f"{project_name} — Production report",
         author="KiCAD Prism",
     )
 
@@ -397,7 +397,7 @@ def build_run_report(run_id: str) -> bytes:
         canvas.setFillColor(_MUTED)
         canvas.drawRightString(
             A4[0] - 20 * mm, 10 * mm,
-            f"KiCAD Prism · {project_name} · run report · page {doc_.page}",
+            f"KiCAD Prism · {project_name} · production report · page {doc_.page}",
         )
         canvas.restoreState()
 

@@ -59,11 +59,11 @@ export function RunQuickView({
         setDeleting(true);
         try {
             await deleteRun(runId);
-            toast.success("Run deleted.");
+            toast.success("Production deleted.");
             setConfirmDelete(false);
             onDeleted?.();
         } catch (e) {
-            toast.error(e instanceof Error ? e.message : "Failed to delete run.");
+            toast.error(e instanceof Error ? e.message : "Failed to delete production.");
         } finally {
             setDeleting(false);
         }
@@ -75,7 +75,7 @@ export function RunQuickView({
         try {
             setRun(await getRun(runId));
         } catch (e) {
-            setError(e instanceof Error ? e.message : "Failed to load run.");
+            setError(e instanceof Error ? e.message : "Failed to load production.");
         } finally {
             setLoading(false);
         }
@@ -89,18 +89,18 @@ export function RunQuickView({
     const affected = defects.reduce((sum, d) => sum + d.quantity_affected, 0);
 
     return (
-        <aside className="flex h-full w-96 shrink-0 flex-col border-l bg-card" aria-label="Run quick view">
+        <aside className="flex h-full w-96 shrink-0 flex-col border-l bg-card" aria-label="Production quick view">
             <div className="flex shrink-0 items-start justify-between gap-3 border-b p-4">
                 <div className="min-w-0">
                     <h3 className="truncate text-base font-semibold">
-                        {run?.project_name || run?.project_id || "Run"}
+                        {run?.project_name || run?.project_id || "Production"}
                     </h3>
                     <p className="truncate text-xs text-muted-foreground">
                         {run?.manufacturer_name || "No manufacturer"}
                         {run?.relative_path && run.relative_path !== "." ? ` · ${run.relative_path}` : ""}
                     </p>
                 </div>
-                <Button size="icon-sm" variant="ghost" aria-label="Close run quick view" onClick={onClose}>
+                <Button size="icon-sm" variant="ghost" aria-label="Close production quick view" onClick={onClose}>
                     <X className="h-4 w-4" />
                 </Button>
             </div>
@@ -112,7 +112,7 @@ export function RunQuickView({
             ) : error ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
                     <CircleAlert className="h-6 w-6 text-destructive" />
-                    <p className="text-sm font-medium">Could not load run</p>
+                    <p className="text-sm font-medium">Could not load production</p>
                     <p className="text-xs text-muted-foreground">{error}</p>
                     <Button size="sm" variant="outline" className="mt-2" onClick={() => void load()}>
                         Retry
@@ -203,7 +203,7 @@ export function RunQuickView({
                                     size="sm"
                                     variant="outline"
                                     className="text-destructive hover:text-destructive"
-                                    aria-label="Delete run"
+                                    aria-label="Delete production"
                                     onClick={() => setConfirmDelete(true)}
                                 >
                                     <Trash2 className="h-4 w-4" />
@@ -227,13 +227,13 @@ export function RunQuickView({
             <ConfirmDialog
                 open={confirmDelete}
                 onOpenChange={setConfirmDelete}
-                title="Delete run?"
+                title="Delete production?"
                 description={
                     <>
-                        This run and its defects and evidence will be permanently removed. This cannot be undone.
+                        This production and its defects and evidence will be permanently removed. This cannot be undone.
                     </>
                 }
-                confirmLabel="Delete run"
+                confirmLabel="Delete production"
                 requireHold
                 busy={deleting}
                 onConfirm={() => void handleDelete()}

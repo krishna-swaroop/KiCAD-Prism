@@ -80,14 +80,14 @@ describe("RunQuickView", () => {
         fireEvent.click(screen.getByRole("button", { name: /Open full view/ }));
         expect(onOpenFull).toHaveBeenCalled();
 
-        fireEvent.click(screen.getByRole("button", { name: /Close run quick view/ }));
+        fireEvent.click(screen.getByRole("button", { name: /Close production quick view/ }));
         expect(onClose).toHaveBeenCalled();
     });
 
     it("shows an error with retry when the run fails to load", async () => {
         getRun.mockRejectedValue(new Error("boom"));
         inRouter(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
-        await waitFor(() => expect(screen.getByText(/Could not load run/)).toBeTruthy());
+        await waitFor(() => expect(screen.getByText(/Could not load production/)).toBeTruthy());
         expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     });
 
@@ -95,13 +95,13 @@ describe("RunQuickView", () => {
         getRun.mockResolvedValue(makeRun());
         const { unmount } = inRouter(<RunQuickView runId="run_1" onClose={vi.fn()} onOpenFull={vi.fn()} />);
         await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
-        expect(screen.queryByRole("button", { name: "Delete run" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Delete production" })).toBeNull();
         unmount();
 
         inRouter(<RunQuickView runId="run_1" canDelete onClose={vi.fn()} onOpenFull={vi.fn()} onDeleted={vi.fn()} />);
         await waitFor(() => expect(screen.getByText("Board One")).toBeTruthy());
-        fireEvent.click(screen.getByRole("button", { name: "Delete run" }));
-        expect(await screen.findByText("Delete run?")).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Delete production" }));
+        expect(await screen.findByText("Delete production?")).toBeTruthy();
     });
 
     it("links a release to the project History at its commit", async () => {

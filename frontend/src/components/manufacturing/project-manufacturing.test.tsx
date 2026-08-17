@@ -119,7 +119,7 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect(screen.getByText("Manufacturers")).toBeTruthy());
         await waitForForm();
         expect(screen.getByText("Stackup & physical")).toBeTruthy();
-        expect(screen.getByText(/No runs yet/)).toBeTruthy();
+        expect(screen.getByText(/No production yet/)).toBeTruthy();
     });
 
     it("shows an empty state when the project has no manufacturers", async () => {

@@ -93,11 +93,11 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
         setDeleting(true);
         try {
             await deleteRun(runId);
-            toast.success("Run deleted.");
+            toast.success("Production deleted.");
             setConfirmDelete(false);
             (onDeleted ?? onBack)();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to delete run.");
+            toast.error(error instanceof Error ? error.message : "Failed to delete production.");
         } finally {
             setDeleting(false);
         }
@@ -107,7 +107,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
         try {
             setRun(await getRun(runId));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to load run.");
+            toast.error(error instanceof Error ? error.message : "Failed to load production.");
         } finally {
             setLoading(false);
         }
@@ -131,12 +131,12 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
             await updateRun(runId, body);
             await load();
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to update run.");
+            toast.error(error instanceof Error ? error.message : "Failed to update production.");
         }
     };
 
     if (loading) {
-        return <div className="p-6 text-sm text-muted-foreground">Loading run...</div>;
+        return <div className="p-6 text-sm text-muted-foreground">Loading production...</div>;
     }
     if (!run) {
         return (
@@ -144,7 +144,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                 <Button variant="ghost" onClick={onBack}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back
                 </Button>
-                <p className="mt-4 text-sm text-muted-foreground">Run not found.</p>
+                <p className="mt-4 text-sm text-muted-foreground">Production not found.</p>
             </div>
         );
     }
@@ -164,7 +164,7 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                 <div className="px-4 py-3">
                     <div className="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
                         <Button size="sm" variant="ghost" className="h-7 px-2" onClick={onBack}>
-                            <ArrowLeft className="h-3 w-3" /> All runs
+                            <ArrowLeft className="h-3 w-3" /> All production
                         </Button>
                         <ChevronRight className="h-3 w-3" />
                         <span className="truncate">{run.manufacturer_name || "No manufacturer"}</span>
@@ -224,14 +224,14 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
                                     className="text-destructive hover:text-destructive"
                                     onClick={() => setConfirmDelete(true)}
                                 >
-                                    <Trash2 className="mr-1.5 h-4 w-4" /> Delete run
+                                    <Trash2 className="mr-1.5 h-4 w-4" /> Delete production
                                 </Button>
                             )}
                         </div>
                     </div>
                 </div>
 
-                <nav className="flex overflow-x-auto border-t px-3" aria-label="Run sections">
+                <nav className="flex overflow-x-auto border-t px-3" aria-label="Production sections">
                     {TABS.map(({ id, label, icon: Icon }) => (
                         <button
                             key={id}
@@ -327,13 +327,13 @@ export function RunDetail({ runId, canEdit, canLogDefects, canChangeStatus, onBa
             <ConfirmDialog
                 open={confirmDelete}
                 onOpenChange={setConfirmDelete}
-                title="Delete run?"
+                title="Delete production?"
                 description={
                     <>
-                        This run and its defects and evidence will be permanently removed. This cannot be undone.
+                        This production and its defects and evidence will be permanently removed. This cannot be undone.
                     </>
                 }
-                confirmLabel="Delete run"
+                confirmLabel="Delete production"
                 requireHold
                 busy={deleting}
                 onConfirm={() => void handleDelete()}

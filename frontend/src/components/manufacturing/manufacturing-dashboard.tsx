@@ -105,7 +105,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                     <TabsList variant="line" className="h-10 gap-2" aria-label="Manufacturing sections">
                         <TabsTrigger value="runs" className="gap-2 px-2 text-sm">
                             <Factory className="h-4 w-4" />
-                            Runs
+                            Production
                         </TabsTrigger>
                         <TabsTrigger value="manufacturers" className="gap-2 px-2 text-sm">
                             <Building2 className="h-4 w-4" />
@@ -124,14 +124,14 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                     />
                 </div>
             ) : loading ? (
-                <div className="p-6 text-sm text-muted-foreground">Loading runs...</div>
+                <div className="p-6 text-sm text-muted-foreground">Loading production...</div>
             ) : (
                 <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-6 pt-3">
                     <div className="flex shrink-0 items-center gap-2">
                         {canEdit && (
                             <Button size="sm" onClick={() => setWizardOpen(true)}>
                                 <Plus className="mr-1.5 h-4 w-4" />
-                                New run
+                                New production
                             </Button>
                         )}
                         <Select
@@ -217,11 +217,11 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
             {totalCount === 0 ? (
                 <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
                     <Factory className="h-8 w-8 opacity-50" />
-                    <p className="text-sm">No production runs yet. Start one with &ldquo;New run&rdquo;.</p>
+                    <p className="text-sm">No production yet. Start one with &ldquo;New production&rdquo;.</p>
                 </div>
             ) : runs.length === 0 ? (
                 <div className="flex min-h-64 flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground">
-                    No runs match this filter.
+                    No production matches this filter.
                 </div>
             ) : (
                 <>

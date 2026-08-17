@@ -137,12 +137,12 @@ export async function downloadSpecSheet(projectId: string): Promise<void> {
 export async function downloadRunReport(runId: string): Promise<void> {
     const response = await fetchApi(`/api/manufacturing/runs/${runId}/report.pdf`);
     if (!response.ok) {
-        throw new Error(await readApiError(response, "Failed to generate the run report."));
+        throw new Error(await readApiError(response, "Failed to generate the production report."));
     }
     // The server names the file (project name + "run report"); read it from the header.
     const disposition = response.headers.get("content-disposition") || "";
     const match = /filename="?([^"]+)"?/.exec(disposition);
-    const filename = match ? match[1] : "run report.pdf";
+    const filename = match ? match[1] : "production report.pdf";
 
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -370,7 +370,7 @@ export async function listRuns(projectId?: string): Promise<ManufacturingRun[]> 
 }
 
 export async function getRun(runId: string): Promise<ManufacturingRun> {
-    return json(await fetchApi(`/api/manufacturing/runs/${runId}`), "Failed to load run.");
+    return json(await fetchApi(`/api/manufacturing/runs/${runId}`), "Failed to load production.");
 }
 
 export async function createRun(body: {
@@ -389,7 +389,7 @@ export async function createRun(body: {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         }),
-        "Failed to create run.",
+        "Failed to create production.",
     );
 }
 
@@ -409,7 +409,7 @@ export async function updateRun(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         }),
-        "Failed to update run.",
+        "Failed to update production.",
     );
 }
 
@@ -421,14 +421,14 @@ export async function updateRunStatus(runId: string, status: string): Promise<vo
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status }),
         }),
-        "Failed to change run status.",
+        "Failed to change production status.",
     );
 }
 
 export async function deleteRun(runId: string): Promise<void> {
     await json(
         await fetchApi(`/api/manufacturing/runs/${runId}`, { method: "DELETE" }),
-        "Failed to delete run.",
+        "Failed to delete production.",
     );
 }
 

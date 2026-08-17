@@ -128,8 +128,8 @@ export function ManufacturersPanel({ manufacturers, canEdit, onChanged }: Manufa
                 title="Delete manufacturer?"
                 description={
                     <>
-                        {deleteTarget?.name} will be removed. Runs that reference it keep their history but
-                        show no manufacturer.
+                        {deleteTarget?.name} will be removed. Production that references it keeps its history but
+                        shows no manufacturer.
                     </>
                 }
                 confirmLabel="Delete"
@@ -181,7 +181,7 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
             <DialogContent className="max-w-md">
                 <DialogHeader>
                     <DialogTitle>{existing ? "Edit manufacturer" : "Add manufacturer"}</DialogTitle>
-                    <DialogDescription>A reusable fab-house record you can pick when creating a run.</DialogDescription>
+                    <DialogDescription>A reusable fab-house record you can pick when creating a production.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-2.5 py-1">
                     <div className="space-y-1">

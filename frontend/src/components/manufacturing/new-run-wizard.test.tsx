@@ -101,7 +101,7 @@ describe("NewRunWizard", () => {
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> details
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> confirm
 
-        fireEvent.click(screen.getByRole("button", { name: "Create run" }));
+        fireEvent.click(screen.getByRole("button", { name: "Create production" }));
 
         await waitFor(() => expect(createRun).toHaveBeenCalled());
         const body = createRun.mock.calls[0][0];
@@ -127,7 +127,7 @@ describe("NewRunWizard", () => {
         fireEvent.change(specPicker, { target: { value: "spec_1" } });
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> details
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> confirm
-        fireEvent.click(screen.getByRole("button", { name: "Create run" }));
+        fireEvent.click(screen.getByRole("button", { name: "Create production" }));
 
         await waitFor(() => expect(createRun).toHaveBeenCalled());
         const body = createRun.mock.calls[0][0];

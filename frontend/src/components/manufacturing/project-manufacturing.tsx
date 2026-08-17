@@ -655,15 +655,15 @@ export function ProjectManufacturing({
             <section className="rounded-lg border">
                 <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
                     <div>
-                        <h3 className="text-lg font-medium">Production runs</h3>
+                        <h3 className="text-lg font-medium">Production</h3>
                         <p className="text-sm text-muted-foreground">
-                            {runs.length === 0 ? "No runs yet for this board." : `${runs.length} run(s).`}
+                            {runs.length === 0 ? "No production yet for this board." : `${runs.length} production run(s).`}
                         </p>
                     </div>
                     {canEdit && onNewRun && (
                         <Button size="sm" onClick={onNewRun}>
                             <PlusCircle className="mr-2 h-4 w-4" />
-                            New run
+                            New production
                         </Button>
                     )}
                 </header>
@@ -671,7 +671,7 @@ export function ProjectManufacturing({
                 {runs.length === 0 ? (
                     <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
                         <Factory className="h-8 w-8 opacity-50" />
-                        <p className="text-sm">Track a fabrication run to record quantity, manufacturer, and defects.</p>
+                        <p className="text-sm">Track a production to record quantity, manufacturer, and defects.</p>
                     </div>
                 ) : (
                     <ul className="divide-y">
