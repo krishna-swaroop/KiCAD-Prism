@@ -197,6 +197,17 @@ interface RunTableProps {
     onOpen: (runId: string) => void;
 }
 
+// The board a run is for: the .kicad_pcb file name (without extension), else the
+// board's sub-path for a multi-board repo, else a dash.
+function boardName(run: ManufacturingRun): string {
+    if (run.pcb_rel) {
+        const base = run.pcb_rel.split(/[\\/]/).pop() ?? run.pcb_rel;
+        return base.replace(/\.kicad_pcb$/i, "");
+    }
+    if (run.relative_path && run.relative_path !== ".") return run.relative_path;
+    return "—";
+}
+
 // Column widths for the runs table, matching the Library catalog's grid idiom.
 const RUN_GRID = "minmax(0,2fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) 7rem 5rem 7rem";
 
@@ -250,9 +261,7 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
                             >
                                 <div className="min-w-0">
                                     <p className="truncate text-sm font-medium">{run.project_name || run.project_id}</p>
-                                    <p className="truncate text-xs text-muted-foreground">
-                                        {run.relative_path && run.relative_path !== "." ? run.relative_path : "—"}
-                                    </p>
+                                    <p className="truncate text-xs text-muted-foreground">{boardName(run)}</p>
                                 </div>
                                 <div className="min-w-0">
                                     <p className="truncate text-xs">{run.manufacturer_name || "—"}</p>

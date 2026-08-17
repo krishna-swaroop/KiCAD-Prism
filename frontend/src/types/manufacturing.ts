@@ -58,6 +58,8 @@ export interface ManufacturingRun {
     project_id: string;
     project_name?: string;
     relative_path?: string;
+    /** The project's board file, e.g. "satnogs-comms.kicad_pcb". */
+    pcb_rel?: string | null;
     manufacturer_id: string | null;
     manufacturer_name?: string | null;
     spec_id?: string | null;

@@ -713,7 +713,7 @@ def apply_template_to_spec(spec_id: str, template_id: str, *, updated_by: str = 
 def list_runs(project_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Every run, or the runs for one project, newest first, with joined names."""
     query = """
-        SELECT run.*, p.name AS project_name, p.relative_path,
+        SELECT run.*, p.name AS project_name, p.relative_path, p.pcb_rel,
                m.name AS manufacturer_name, s.name AS spec_name,
                (SELECT COUNT(*) FROM ws_run_defects d WHERE d.run_id = run.id) AS defect_count
         FROM ws_manufacturing_runs run
@@ -734,7 +734,7 @@ def list_runs(project_id: Optional[str] = None) -> List[Dict[str, Any]]:
 def get_run(run_id: str) -> Optional[Dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute(
-            """SELECT run.*, p.name AS project_name, p.relative_path,
+            """SELECT run.*, p.name AS project_name, p.relative_path, p.pcb_rel,
                       m.name AS manufacturer_name, s.name AS spec_name
                FROM ws_manufacturing_runs run
                JOIN ws_projects p ON p.id = run.project_id
