@@ -122,6 +122,16 @@ describe("ProjectManufacturing", () => {
         expect(screen.getByText(/Track a production/)).toBeTruthy();
     });
 
+    it("collapses the Production panel from its header", async () => {
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitForForm();
+        expect(screen.getByText(/Track a production/)).toBeTruthy();
+
+        // Clicking the panel's header hides its body.
+        fireEvent.click(screen.getByRole("button", { name: /^Production/ }));
+        await waitFor(() => expect(screen.queryByText(/Track a production/)).toBeNull());
+    });
+
     it("shows an empty state when the project has no manufacturers", async () => {
         listProjectManufacturers.mockResolvedValue([]);
         render(<ProjectManufacturing projectId="p1" canEdit />);

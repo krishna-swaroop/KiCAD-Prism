@@ -94,6 +94,15 @@ export function ProjectManufacturing({
     const [activeSections, setActiveSections] = useState<Set<string>>(new Set());
     // Which sections are collapsed in the UI (per-session, not persisted).
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+    // Which top-level panels (Capabilities / spec / Production) are collapsed.
+    const [panelCollapsed, setPanelCollapsed] = useState<Set<string>>(new Set());
+
+    const togglePanel = (id: string) =>
+        setPanelCollapsed((prev) => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
 
     useEffect(() => {
         void getPcbRuleFields()
@@ -520,70 +529,71 @@ export function ProjectManufacturing({
                 board's own extracted rules shown alongside for comparison. */}
             {selectedManufacturer && specId && (
                 <section className="border">
-                    <div className="border-b bg-muted/30 px-3 py-2">
-                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Capabilities
-                        </span>
-                    </div>
-                    {templateName ? (
-                        <CapabilitiesTable
-                            fields={ruleFields}
-                            capabilities={templateCapabilities}
-                            boardRules={boardRules}
-                        />
-                    ) : (
-                        <p className="px-4 py-6 text-sm text-muted-foreground">
-                            Add a spec from one of this manufacturer&rsquo;s schemas to see its capabilities.
-                        </p>
-                    )}
+                    <PanelHeader
+                        label="Capabilities"
+                        collapsed={panelCollapsed.has("capabilities")}
+                        onToggle={() => togglePanel("capabilities")}
+                    />
+                    {!panelCollapsed.has("capabilities") &&
+                        (templateName ? (
+                            <CapabilitiesTable
+                                fields={ruleFields}
+                                capabilities={templateCapabilities}
+                                boardRules={boardRules}
+                            />
+                        ) : (
+                            <p className="px-4 py-6 text-sm text-muted-foreground">
+                                Add a spec from one of this manufacturer&rsquo;s schemas to see its capabilities.
+                            </p>
+                        ))}
                 </section>
             )}
 
             {/* Board specs for the selected spec */}
             {selectedManufacturer && (
             <section className="border">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
-                    <div className="min-w-0">
-                        <span className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            {specs.find((s) => s.id === specId)?.name || "Fabrication spec"}
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <Button
-                            variant="outline"
-                            size="icon-sm"
-                            aria-label="Download PDF spec sheet"
-                            title="Download PDF spec sheet"
-                            onClick={() => void handleDownloadPdf()}
-                            disabled={downloading}
-                        >
-                            <FileDown className="h-4 w-4" />
-                        </Button>
-                        {canEdit && specId && (
-                            <>
-                                <Button
-                                    variant="outline"
-                                    size="icon-sm"
-                                    aria-label="Edit schema"
-                                    title="Edit schema"
-                                    onClick={() => setEditorOpen(true)}
-                                >
-                                    <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => void handleExtract()} disabled={extracting}>
-                                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                                    {extracting ? "Reading..." : "Extract from board"}
-                                </Button>
-                                <Button size="sm" onClick={() => void handleSave()} disabled={saving || !dirty}>
-                                    <Save className="mr-1.5 h-3.5 w-3.5" />
-                                    {saving ? "Saving..." : "Save"}
-                                </Button>
-                            </>
-                        )}
-                    </div>
-                </div>
+                <PanelHeader
+                    label={specs.find((s) => s.id === specId)?.name || "Fabrication spec"}
+                    collapsed={panelCollapsed.has("spec")}
+                    onToggle={() => togglePanel("spec")}
+                    actions={
+                        <>
+                            <Button
+                                variant="outline"
+                                size="icon-sm"
+                                aria-label="Download PDF spec sheet"
+                                title="Download PDF spec sheet"
+                                onClick={() => void handleDownloadPdf()}
+                                disabled={downloading}
+                            >
+                                <FileDown className="h-4 w-4" />
+                            </Button>
+                            {canEdit && specId && (
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        size="icon-sm"
+                                        aria-label="Edit schema"
+                                        title="Edit schema"
+                                        onClick={() => setEditorOpen(true)}
+                                    >
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="outline" size="sm" onClick={() => void handleExtract()} disabled={extracting}>
+                                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                                        {extracting ? "Reading..." : "Extract from board"}
+                                    </Button>
+                                    <Button size="sm" onClick={() => void handleSave()} disabled={saving || !dirty}>
+                                        <Save className="mr-1.5 h-3.5 w-3.5" />
+                                        {saving ? "Saving..." : "Save"}
+                                    </Button>
+                                </>
+                            )}
+                        </>
+                    }
+                />
 
-                {!specId ? (
+                {panelCollapsed.has("spec") ? null : !specId ? (
                     <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
                         <Settings2 className="h-8 w-8 opacity-50" />
                         <p className="text-sm">
@@ -638,20 +648,21 @@ export function ProjectManufacturing({
 
             {/* Production for this project */}
             <section className="border">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Production
-                        {runs.length > 0 ? ` (${runs.length})` : ""}
-                    </span>
-                    {canEdit && onNewRun && (
-                        <Button size="sm" onClick={onNewRun}>
-                            <PlusCircle className="mr-1.5 h-3.5 w-3.5" />
-                            New production
-                        </Button>
-                    )}
-                </div>
+                <PanelHeader
+                    label={`Production${runs.length > 0 ? ` (${runs.length})` : ""}`}
+                    collapsed={panelCollapsed.has("production")}
+                    onToggle={() => togglePanel("production")}
+                    actions={
+                        canEdit && onNewRun ? (
+                            <Button size="sm" onClick={onNewRun}>
+                                <PlusCircle className="mr-1.5 h-3.5 w-3.5" />
+                                New production
+                            </Button>
+                        ) : undefined
+                    }
+                />
 
-                {runs.length === 0 ? (
+                {panelCollapsed.has("production") ? null : runs.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
                         <Factory className="h-8 w-8 opacity-50" />
                         <p className="text-sm">Track a production to record quantity, manufacturer, and defects.</p>
@@ -762,6 +773,39 @@ function formatBoardValue(value: unknown, unit?: string | null): string {
     if (value === true) return "yes";
     if (value === false) return "no";
     return unit ? `${value} ${unit}` : String(value);
+}
+
+// A collapsible panel header band: a chevron + label toggles the panel, and any
+// action buttons sit on the right (their clicks do not toggle the panel).
+function PanelHeader({
+    label,
+    collapsed,
+    onToggle,
+    actions,
+}: {
+    label: ReactNode;
+    collapsed: boolean;
+    onToggle: () => void;
+    actions?: ReactNode;
+}) {
+    return (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={!collapsed}
+                className="flex min-w-0 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+            >
+                {collapsed ? (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <span className="truncate">{label}</span>
+            </button>
+            {actions && <div className="flex items-center gap-1.5">{actions}</div>}
+        </div>
+    );
 }
 
 // Read-only table of the fabrication method's minimum capabilities, with the
