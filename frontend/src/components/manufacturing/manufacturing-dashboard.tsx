@@ -98,9 +98,13 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            {/* Same shadcn Tabs "line" variant the Library Manager uses, so switching
-                sections is marked the way tabs are everywhere else in the design system. */}
+            {/* Title + tabs, matching the Library Manager's header: a blue section
+                icon and title, then the shadcn Tabs "line" variant below it. */}
             <div className="shrink-0 border-b bg-card px-6">
+                <div className="flex items-center gap-2 pt-3">
+                    <Factory className="h-5 w-5 text-primary" />
+                    <h2 className="text-lg font-semibold">Manufacturing</h2>
+                </div>
                 <Tabs value={view} onValueChange={(next) => setView(next as View)}>
                     <TabsList variant="line" className="h-10 gap-2" aria-label="Manufacturing sections">
                         <TabsTrigger value="runs" className="gap-2 px-2 text-sm">
