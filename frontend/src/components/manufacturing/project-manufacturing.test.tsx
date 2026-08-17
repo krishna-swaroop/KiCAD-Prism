@@ -128,7 +128,7 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect(screen.getByText(/No manufacturers yet/)).toBeTruthy());
     });
 
-    it("lists the spec's min capabilities and shows the board's values on extract", async () => {
+    it("lists the spec's min capabilities and auto-extracts the board's values", async () => {
         getPcbRuleFields.mockResolvedValue({
             fields: [
                 { key: "min_track_width", label: "Min track width", type: "number", unit: "mm" },
@@ -141,19 +141,19 @@ describe("ProjectManufacturing", () => {
             template_name: "flex",
             template_capabilities: { min_track_width: 0.09, min_via_diameter: 0.25 },
         });
+        // The board's rules are extracted automatically on load, no button.
+        extractPcbRules.mockResolvedValue({ rules: { min_track_width: 0.1 } });
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitFor(() => expect(screen.getByText("Capabilities")).toBeTruthy());
-
-        // Minimums render as "≥ value" before extraction.
-        expect(await screen.findByText("≥ 0.09 mm")).toBeTruthy();
-        expect(screen.getByText("≥ 0.25 mm")).toBeTruthy();
-
-        // Extracting shows the board's own values alongside, no verdict.
-        extractPcbRules.mockResolvedValue({ rules: { min_track_width: 0.1 } });
-        fireEvent.click(screen.getByRole("button", { name: /Extract PCB rules/ }));
         await waitFor(() => expect(extractPcbRules).toHaveBeenCalledWith("p1"));
-        expect(await screen.findByText("0.1 mm")).toBeTruthy();
+
+        // Minimums render as a plain value (no ≥), with the board's value alongside.
+        expect(await screen.findByText("0.09 mm")).toBeTruthy();
+        expect(screen.getByText("0.25 mm")).toBeTruthy();
+        expect(screen.getByText("0.1 mm")).toBeTruthy();
         expect(screen.getByText("This board")).toBeTruthy();
+        // There is no manual extract button.
+        expect(screen.queryByRole("button", { name: /Extract PCB rules/ })).toBeNull();
     });
 
     it("quick-adds a spec from a manufacturer schema, named after it", async () => {

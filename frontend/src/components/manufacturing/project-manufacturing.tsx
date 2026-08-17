@@ -80,9 +80,8 @@ export function ProjectManufacturing({
     // The selected spec's linked-template capabilities (read live from getProjectSpec).
     const [templateCapabilities, setTemplateCapabilities] = useState<Record<string, number>>({});
     const [templateName, setTemplateName] = useState<string | null>(null);
-    // The board's own extracted rules, shown next to the capabilities on demand.
+    // The board's own extracted rules, read automatically for the capability comparison.
     const [boardRules, setBoardRules] = useState<Record<string, unknown> | null>(null);
-    const [extractingRules, setExtractingRules] = useState(false);
     // Which optional sections are switched on (persisted with the spec).
     const [activeSections, setActiveSections] = useState<Set<string>>(new Set());
     // Which sections are collapsed in the UI (per-session, not persisted).
@@ -94,20 +93,18 @@ export function ProjectManufacturing({
             .catch(() => setRuleFields([]));
     }, []);
 
-    const handleExtractRules = async () => {
-        setExtractingRules(true);
-        try {
-            const { rules, reason } = await extractPcbRules(projectId);
-            setBoardRules(rules);
-            if (Object.keys(rules).length === 0) {
-                toast.info(reason ?? "No rules could be read from the board.");
-            }
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to read board rules.");
-        } finally {
-            setExtractingRules(false);
-        }
-    };
+    // Auto-extract the board's PCB rules once, so the capability table can show the
+    // board's values without the user having to ask. Silent: a board with no
+    // readable rules just leaves the column empty.
+    useEffect(() => {
+        let cancelled = false;
+        void extractPcbRules(projectId)
+            .then(({ rules }) => !cancelled && setBoardRules(rules))
+            .catch(() => !cancelled && setBoardRules(null));
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId]);
 
     // Load the project-level pieces: attached manufacturers, the runs, templates,
     // and the global directory (for the "add manufacturer" picker).
@@ -176,7 +173,6 @@ export function ProjectManufacturing({
             setActiveSections(new Set());
             setTemplateCapabilities({});
             setTemplateName(null);
-            setBoardRules(null);
             setDirty(false);
             return;
         }
@@ -192,7 +188,6 @@ export function ProjectManufacturing({
                 setActiveSections(new Set(spec.active_sections ?? []));
                 setTemplateCapabilities(spec.template_capabilities ?? {});
                 setTemplateName(spec.template_name ?? null);
-                setBoardRules(null);
                 setDirty(false);
             } catch (error) {
                 if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load the spec.");
@@ -512,8 +507,8 @@ export function ProjectManufacturing({
                 )}
             </section>
 
-            {/* Capabilities of the selected spec's fabrication method, with a
-                "Check against board" action that evaluates the board's rules. */}
+            {/* Capabilities of the selected spec's fabrication method, with the
+                board's own extracted rules shown alongside for comparison. */}
             {selectedManufacturer && specId && (
                 <section className="rounded-lg border">
                     <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
@@ -525,17 +520,6 @@ export function ProjectManufacturing({
                                     : "This spec has no linked schema, so no capabilities to show."}
                             </p>
                         </div>
-                        {templateName && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => void handleExtractRules()}
-                                disabled={extractingRules}
-                            >
-                                <Sparkles className="mr-2 h-4 w-4" />
-                                {extractingRules ? "Reading..." : "Extract PCB rules"}
-                            </Button>
-                        )}
                     </header>
                     {templateName ? (
                         <CapabilitiesTable
@@ -772,7 +756,7 @@ export function ProjectManufacturing({
 
 function formatMinCapability(value: number | undefined, unit?: string | null): string {
     if (value === undefined || value === null) return "—";
-    return unit ? `≥ ${value} ${unit}` : `≥ ${value}`;
+    return unit ? `${value} ${unit}` : String(value);
 }
 
 function formatBoardValue(value: unknown, unit?: string | null): string {
@@ -782,10 +766,9 @@ function formatBoardValue(value: unknown, unit?: string | null): string {
     return unit ? `${value} ${unit}` : String(value);
 }
 
-// Read-only table of the fabrication method's minimum capabilities. "Extract PCB
-// rules" adds a column with the board's own value for each field so a user can
-// eyeball whether the board meets the minimums. Rows with nothing on either side
-// are hidden.
+// Read-only table of the fabrication method's minimum capabilities, with the
+// board's own extracted value for each field alongside so a user can eyeball
+// whether the board meets the minimums. Rows with nothing on either side are hidden.
 function CapabilitiesTable({
     fields,
     capabilities,
