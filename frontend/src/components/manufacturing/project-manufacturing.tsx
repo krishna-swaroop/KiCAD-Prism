@@ -524,11 +524,6 @@ export function ProjectManufacturing({
                         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                             Capabilities
                         </span>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                            {templateName
-                                ? `What the "${templateName}" method can build. Edit these from the main Manufacturing page.`
-                                : "This spec has no linked schema, so no capabilities to show."}
-                        </p>
                     </div>
                     {templateName ? (
                         <CapabilitiesTable
@@ -552,9 +547,6 @@ export function ProjectManufacturing({
                         <span className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
                             {specs.find((s) => s.id === specId)?.name || "Fabrication spec"}
                         </span>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {selectedManufacturer.name} · fields come from this spec&rsquo;s schema.
-                        </p>
                     </div>
                     <div className="flex items-center gap-1.5">
                         <Button
