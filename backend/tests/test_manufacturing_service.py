@@ -131,36 +131,20 @@ class ManufacturingStoreTests(unittest.TestCase):
         self.assertIn("JLCPCB", names)
         self.assertIn("PCBWay", names)
 
-    def test_sync_refreshes_unedited_builtin_but_not_edited_one(self) -> None:
+    def test_sync_never_overwrites_an_existing_template(self) -> None:
+        # Templates are fully mutable: an edit must always persist across seeding.
         mfg.seed_builtin_manufacturers()
         jlcpcb = next(m for m in mfg.list_manufacturers() if m["name"] == "JLCPCB")
         templates = {t["name"]: t for t in mfg.list_templates(jlcpcb["id"])}
-        standard = templates["JLCPCB standard"]
-        advanced = templates["JLCPCB advanced PCB"]
 
-        # Simulate an old, out-of-date seed by overwriting the stored text AND its
-        # recorded seed hash to match (so it looks unedited, just stale).
-        import app.services.manufacturing_service as m
+        mfg.update_template(templates["JLCPCB standard"]["id"], spec_config="[Mine]\ny: text")
+        mfg.update_template(templates["JLCPCB advanced PCB"]["id"], capabilities={"min_track_width": 0.5})
 
-        stale = "[Old]\nx: int"
-        with m._connect() as conn:
-            conn.execute(
-                "UPDATE ws_spec_templates SET spec_config = %s, seeded_hash = %s WHERE id = %s",
-                (stale, m._config_hash(stale), standard["id"]),
-            )
-            conn.commit()
-
-        # A user edits the advanced one (its text no longer matches its seed hash).
-        mfg.update_template(advanced["id"], spec_config="[Mine]\ny: text")
-
-        mfg.seed_builtin_manufacturers()
+        mfg.seed_builtin_manufacturers()  # a restart must not revert anything
 
         after = {t["name"]: mfg.get_template(t["id"]) for t in mfg.list_templates(jlcpcb["id"])}
-        # The unedited (just stale) standard template was refreshed back to source.
-        self.assertNotEqual(after["JLCPCB standard"]["spec_config"], stale)
-        self.assertIn("[Base]", after["JLCPCB standard"]["spec_config"])
-        # The user-edited advanced template was left exactly as the user left it.
-        self.assertEqual(after["JLCPCB advanced PCB"]["spec_config"], "[Mine]\ny: text")
+        self.assertEqual(after["JLCPCB standard"]["spec_config"], "[Mine]\ny: text")
+        self.assertEqual(after["JLCPCB advanced PCB"]["capabilities"], {"min_track_width": 0.5})
 
     def test_sync_creates_a_newly_added_builtin_template(self) -> None:
         # Seed, then delete the advanced template to mimic an install predating it.
@@ -176,10 +160,16 @@ class ManufacturingStoreTests(unittest.TestCase):
         self.assertIn("JLCPCB advanced PCB", names)
 
     def test_builtin_jlcpcb_templates_carry_capabilities(self) -> None:
+        # Delete first so the seed recreates the templates with pristine values;
+        # the seed never overwrites an existing (possibly edited) row.
         mfg.seed_builtin_manufacturers()
         jlcpcb = next(m for m in mfg.list_manufacturers() if m["name"] == "JLCPCB")
-        by_name = {t["name"]: mfg.get_template(t["id"]) for t in mfg.list_templates(jlcpcb["id"])}
+        for t in mfg.list_templates(jlcpcb["id"]):
+            if t["name"].startswith("JLCPCB"):
+                mfg.delete_template(t["id"])
+        mfg.seed_builtin_manufacturers()
 
+        by_name = {t["name"]: mfg.get_template(t["id"]) for t in mfg.list_templates(jlcpcb["id"])}
         std = by_name["JLCPCB standard"]["capabilities"]
         self.assertEqual(std["min_track_width"], 0.1)
         self.assertEqual(std["min_via_diameter"], 0.25)
