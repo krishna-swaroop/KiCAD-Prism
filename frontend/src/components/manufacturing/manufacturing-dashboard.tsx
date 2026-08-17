@@ -264,7 +264,10 @@ function RunTable({ runs, totalCount, selectedId, onOpen }: RunTableProps) {
                                     <p className="truncate text-xs text-muted-foreground">{boardName(run)}</p>
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="truncate text-xs">{run.manufacturer_name || "—"}</p>
+                                    <p className="truncate text-sm font-medium">{run.manufacturer_name || "—"}</p>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                        {run.spec_name || "—"}
+                                    </p>
                                 </div>
                                 <div className="flex min-w-0" onClick={(e) => e.stopPropagation()}>
                                     {run.release_tag && run.commit_sha ? (
