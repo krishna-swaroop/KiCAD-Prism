@@ -401,7 +401,7 @@ inspection_report: choice(No, Final Inspection Report, Electrical Test Report, R
 pcb_remark: text | PCB remark
 
 [Delivery]
-carrier: text | Shipping carrier
+carrier: choice(DHL Express, DHL Express (DDP), UPS Worldwide Express Saver, FedEx Express, EuroPacket, Global Standard Direct Line, Sea Shipment, My UPS Account, My DHL Account, My FedEx Account) | Shipping carrier
 
 [+Assembly]
 pcba_type: choice(Economic, Standard) = Standard | PCBA type
