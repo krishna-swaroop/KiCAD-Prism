@@ -1782,6 +1782,16 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 (17, "release_studio_terminal_and_identity_guards"),
                 (18, "release_studio_source_defaults"),
                 (19, "release_studio_project_signoff"),
+                (20, "manufacturing_spec_config"),
+                (21, "manufacturing_spec_templates"),
+                (22, "manufacturing_active_sections"),
+                (23, "manufacturing_builtin_templates"),
+                (24, "manufacturing_run_release_tag"),
+                (25, "manufacturing_project_manufacturers_and_specs"),
+                (26, "manufacturing_run_spec_id"),
+                (27, "manufacturing_manufacturer_capabilities"),
+                (28, "manufacturing_capabilities_per_template"),
+                (29, "manufacturing_run_job_number"),
             ],
         )
 

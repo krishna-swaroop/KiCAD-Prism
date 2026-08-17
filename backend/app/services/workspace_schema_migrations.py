@@ -1628,23 +1628,68 @@ def _release_studio_project_signoff(conn: Any) -> None:
 
 
 def _manufacturing_spec_config(conn: Any) -> None:
-    """Add the per-project spec-schema column to the board-specs table.
+    """Create the board-specs table (if absent) and add its spec-schema column.
 
-    The manufacturing tables are created idempotently in _create_schema; this only
-    adds the column a database predating the config-driven form would lack. IF NOT
-    EXISTS keeps it a no-op on a fresh database where the column is already there.
+    The manufacturing tables are also created in _create_schema; creating the base
+    table here too makes this migration self-contained, so a database that runs
+    the migration ladder without _create_schema (some test harnesses) does not
+    fail on the ALTER. IF NOT EXISTS keeps everything a no-op on a fresh database.
     """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ws_board_specs (
+            project_id      TEXT PRIMARY KEY REFERENCES ws_projects(id) ON DELETE CASCADE,
+            specs           JSONB NOT NULL DEFAULT '{}'::jsonb,
+            source          JSONB NOT NULL DEFAULT '{}'::jsonb,
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_by      TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
     conn.execute(
         "ALTER TABLE ws_board_specs ADD COLUMN IF NOT EXISTS spec_config TEXT NOT NULL DEFAULT ''"
     )
 
 
 def _manufacturing_spec_templates(conn: Any) -> None:
-    """Add manufacturer-scoped, named spec templates.
+    """Add the manufacturers, runs and manufacturer-scoped spec-template tables.
 
-    Created idempotently so a fresh database (where _create_schema already made the
-    table) is a no-op, and an existing one gains it.
+    ws_manufacturers and ws_manufacturing_runs are created here too (as well as in
+    _create_schema) so the later manufacturing migrations, which ALTER them, are
+    self-contained for a database that runs the ladder without _create_schema.
+    All IF NOT EXISTS, so a fresh database is a no-op.
     """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ws_manufacturers (
+            id           TEXT PRIMARY KEY,
+            name         TEXT NOT NULL,
+            contact      TEXT NOT NULL DEFAULT '',
+            website      TEXT NOT NULL DEFAULT '',
+            notes        TEXT NOT NULL DEFAULT '',
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ws_manufacturing_runs (
+            id               TEXT PRIMARY KEY,
+            project_id       TEXT NOT NULL REFERENCES ws_projects(id) ON DELETE CASCADE,
+            manufacturer_id  TEXT REFERENCES ws_manufacturers(id) ON DELETE SET NULL,
+            commit_sha       TEXT NOT NULL DEFAULT '',
+            quantity_ordered INTEGER NOT NULL DEFAULT 0,
+            quantity_good    INTEGER NOT NULL DEFAULT 0,
+            status           TEXT NOT NULL DEFAULT 'draft',
+            notes            TEXT NOT NULL DEFAULT '',
+            spec_snapshot    JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_by       TEXT NOT NULL DEFAULT '',
+            created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS ws_spec_templates (

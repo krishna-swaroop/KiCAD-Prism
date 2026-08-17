@@ -100,7 +100,8 @@ export function ProjectManufacturing({
     const togglePanel = (id: string) =>
         setPanelCollapsed((prev) => {
             const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
             return next;
         });
 
@@ -264,7 +265,8 @@ export function ProjectManufacturing({
     const toggleCollapsed = (title: string) => {
         setCollapsed((prev) => {
             const next = new Set(prev);
-            next.has(title) ? next.delete(title) : next.add(title);
+            if (next.has(title)) next.delete(title);
+            else next.add(title);
             return next;
         });
     };
@@ -272,7 +274,8 @@ export function ProjectManufacturing({
     const toggleSectionActive = (title: string, on: boolean) => {
         setActiveSections((prev) => {
             const next = new Set(prev);
-            on ? next.add(title) : next.delete(title);
+            if (on) next.add(title);
+            else next.delete(title);
             return next;
         });
         setDirty(true);

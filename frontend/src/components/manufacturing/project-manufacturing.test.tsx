@@ -79,8 +79,7 @@ const SCHEMA = {
 };
 
 // Build a project spec payload (what getProjectSpec returns) with a given schema/values.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeSpec(parsed: any = SCHEMA, specs: Record<string, unknown> = {}, active_sections: string[] = []) {
+function makeSpec(parsed: unknown = SCHEMA, specs: Record<string, unknown> = {}, active_sections: string[] = []) {
     return {
         id: "spec_1", project_id: "p1", manufacturer_id: "m1", manufacturer_name: "Acme Fab",
         name: "Default", spec_config: "x", specs, source: {}, active_sections,
