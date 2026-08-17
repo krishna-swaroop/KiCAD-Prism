@@ -112,8 +112,9 @@ export async function saveBoardSpec(
     );
 }
 
-export async function downloadSpecSheet(projectId: string): Promise<void> {
-    const response = await fetchApi(`/api/manufacturing/projects/${projectId}/spec-sheet.pdf`);
+export async function downloadSpecSheet(projectId: string, specId?: string): Promise<void> {
+    const query = specId ? `?spec_id=${encodeURIComponent(specId)}` : "";
+    const response = await fetchApi(`/api/manufacturing/projects/${projectId}/spec-sheet.pdf${query}`);
     if (!response.ok) {
         throw new Error(await readApiError(response, "Failed to generate the spec sheet."));
     }

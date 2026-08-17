@@ -42,6 +42,31 @@ class SpecSheetPdfTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 svc.build_spec_sheet("prj_missing")
 
+    def test_spec_id_renders_the_named_spec_not_the_board_profile(self) -> None:
+        # With a spec_id, the sheet reads that named spec (so schema edits show),
+        # and never touches the project board profile.
+        named = {
+            "project_id": "prj_test",
+            "specs": {"material": "Flex"},
+            "active_sections": [],
+            "spec_config": self.CONFIG,
+            "manufacturer_name": "JLCPCB",
+            "template_name": "JLCPCB standard",
+        }
+        project = {"name": "Test Board", "display_name": "Test Board"}
+        with patch.object(svc.workspace, "get_project_by_id", return_value=project), patch.object(
+            svc.mfg, "get_project_spec", return_value=named
+        ), patch.object(svc.mfg, "get_board_spec", side_effect=AssertionError("must not read board profile")):
+            pdf = svc.build_spec_sheet("prj_test", "spec_1")
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+
+    def test_spec_id_from_another_project_raises(self) -> None:
+        with patch.object(svc.workspace, "get_project_by_id", return_value={"name": "B"}), patch.object(
+            svc.mfg, "get_project_spec", return_value={"project_id": "other"}
+        ):
+            with self.assertRaises(ValueError):
+                svc.build_spec_sheet("prj_test", "spec_1")
+
     def test_gate_evaluation_matches_the_form(self) -> None:
         # inner_copper is gated on layer_count != 1.
         self.assertTrue(svc._satisfied({"key": "layer_count", "op": "!=", "values": ["1"]},

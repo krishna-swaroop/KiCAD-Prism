@@ -192,13 +192,23 @@ def _section_table(rows: list[tuple[str, str]], styles: dict[str, ParagraphStyle
     return table
 
 
-def build_spec_sheet(project_id: str) -> bytes:
-    """Render the project's spec sheet to PDF bytes. Raises if the project is unknown."""
+def build_spec_sheet(project_id: str, spec_id: str | None = None) -> bytes:
+    """Render a spec sheet to PDF bytes. Raises if the project (or spec) is unknown.
+
+    When ``spec_id`` is given, the sheet reflects that named spec exactly as it is
+    now (its schema, values and active sections), so schema edits are picked up.
+    Without one it falls back to the project board profile.
+    """
     project = workspace.get_project_by_id(project_id)
     if not project:
         raise ValueError("Project not found.")
 
-    spec = mfg.get_board_spec(project_id)
+    if spec_id:
+        spec = mfg.get_project_spec(spec_id)
+        if not spec or spec.get("project_id") != project_id:
+            raise ValueError("Spec not found for this project.")
+    else:
+        spec = mfg.get_board_spec(project_id)
     values = spec.get("specs") or {}
     active = set(spec.get("active_sections") or [])
     spec_config = spec.get("spec_config") or ""
@@ -216,14 +226,21 @@ def build_spec_sheet(project_id: str) -> bytes:
     else:
         board = project.get("name") and str(project["name"])
 
-    # Manufacturer and schema recovered by matching the spec config to a template.
-    identity = mfg.identify_schema(spec_config)
+    # A named spec knows its manufacturer and schema directly; the board profile
+    # recovers them by matching the config text to a template.
+    if spec_id:
+        manufacturer = spec.get("manufacturer_name")
+        schema = spec.get("template_name") or spec.get("name")
+    else:
+        identity = mfg.identify_schema(spec_config)
+        manufacturer = identity.get("manufacturer")
+        schema = identity.get("schema")
 
     flow: list[Any] = _header(
         project_name,
         board=board,
-        manufacturer=identity.get("manufacturer"),
-        schema=identity.get("schema"),
+        manufacturer=manufacturer,
+        schema=schema,
         styles=styles,
     )
 

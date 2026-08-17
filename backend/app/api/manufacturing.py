@@ -202,14 +202,15 @@ async def save_board_spec(
 
 
 @router.get("/projects/{project_id}/spec-sheet.pdf", dependencies=[Depends(require_viewer)])
-async def download_spec_sheet(project_id: str):
-    """A themed PDF spec sheet of the project's board specifications."""
+async def download_spec_sheet(project_id: str, spec_id: str | None = None):
+    """A themed PDF spec sheet. With ``spec_id`` it reflects that named spec as it
+    stands now (so schema edits show); otherwise the project board profile."""
     from fastapi.responses import Response
 
     from app.services import spec_sheet_pdf_service
 
     try:
-        pdf = await asyncio.to_thread(spec_sheet_pdf_service.build_spec_sheet, project_id)
+        pdf = await asyncio.to_thread(spec_sheet_pdf_service.build_spec_sheet, project_id, spec_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
