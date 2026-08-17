@@ -85,6 +85,23 @@ class RunReportPdfTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 svc.build_run_report("run_missing")
 
+    def test_embeds_the_board_thumbnail_when_present(self) -> None:
+        # A repo-committed thumbnail (the logo file stands in as any image).
+        project = {
+            "name": "Test Board",
+            "path": str(svc._LOGO.parent),
+            "thumbnail_rel": svc._LOGO.name,
+            "thumbnail_source": "repository",
+        }
+        with patch.object(svc.mfg, "get_run", return_value=_run()), patch.object(
+            svc.workspace, "get_project_by_id", return_value=project
+        ), patch.object(svc.derived_assets, "find_evidence", return_value=None):
+            with_thumb = svc.build_run_report("run_1")
+        without_thumb = _render(_run())  # project has no thumbnail_rel
+        self.assertTrue(with_thumb.startswith(b"%PDF"))
+        # Embedding the image makes the report meaningfully larger.
+        self.assertGreater(len(with_thumb), len(without_thumb))
+
 
 if __name__ == "__main__":
     unittest.main()

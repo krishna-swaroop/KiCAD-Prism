@@ -274,7 +274,30 @@ def seed_builtin_manufacturers() -> list[str]:
             )
             if change:
                 changes.append(change)
+    relinked = _relink_orphaned_specs()
+    if relinked:
+        changes.append(f"relinked {relinked} spec(s) to their template")
     return changes
+
+
+def _relink_orphaned_specs() -> int:
+    """Reconnect project specs whose template link was lost (e.g. a built-in
+    template was recreated with a new id) to the template of the same name under
+    the same manufacturer. Returns how many were relinked. Only heals NULL links,
+    so it never overrides a deliberate choice."""
+    with _connect() as conn:
+        result = conn.execute(
+            """
+            UPDATE ws_project_specs s
+            SET template_id = t.id
+            FROM ws_spec_templates t
+            WHERE s.template_id IS NULL
+              AND t.manufacturer_id = s.manufacturer_id
+              AND lower(t.name) = lower(s.name)
+            """
+        )
+        conn.commit()
+    return int(result.rowcount or 0)
 
 
 def _ensure_manufacturer(name: str, website: str) -> str:

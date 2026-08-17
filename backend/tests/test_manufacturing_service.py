@@ -148,6 +148,30 @@ class ManufacturingStoreTests(unittest.TestCase):
         self.assertEqual(after["capabilities"], {"min_track_width": 0.5})
         mfg.delete_manufacturer(mid)
 
+    def test_seed_relinks_an_orphaned_spec_to_its_template(self) -> None:
+        # A spec whose template link was lost (e.g. the template was recreated) is
+        # reconnected on the next seed by matching name + manufacturer.
+        mid = mfg.create_manufacturer("Relink Fab " + uuid.uuid4().hex[:5])
+        mfg.attach_manufacturer(self.project_id, mid)
+        tid = mfg.create_template(mid, "Std", capabilities={"min_track_width": 0.1})
+        sid = mfg.create_project_spec(self.project_id, mid, "Std", template_id=tid)
+
+        # Orphan the link.
+        import app.services.manufacturing_service as m
+        with m._connect() as conn:
+            conn.execute("UPDATE ws_project_specs SET template_id = NULL WHERE id = %s", (sid,))
+            conn.commit()
+        self.assertIsNone(mfg.get_project_spec(sid)["template_id"])
+
+        mfg.seed_builtin_manufacturers()  # heals the orphan
+        healed = mfg.get_project_spec(sid)
+        self.assertEqual(healed["template_id"], tid)
+        self.assertEqual(healed["template_capabilities"], {"min_track_width": 0.1})
+
+        mfg.delete_project_spec(sid)
+        mfg.delete_template(tid)
+        mfg.delete_manufacturer(mid)
+
     def test_sync_creates_a_newly_added_builtin_template(self) -> None:
         # Seed, then delete the advanced template to mimic an install predating it.
         mfg.seed_builtin_manufacturers()

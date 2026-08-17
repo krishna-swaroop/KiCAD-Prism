@@ -157,7 +157,31 @@ def _styles() -> dict[str, ParagraphStyle]:
     }
 
 
-def _header(run: dict[str, Any], *, board: str | None, styles: dict[str, ParagraphStyle]) -> list[Any]:
+def _board_thumbnail(project: dict[str, Any]) -> Path | None:
+    """The project's board thumbnail image, wherever it is kept: a repo-committed
+    one resolves inside the checkout; a Prism-rendered/uploaded one lives in the
+    derived-asset store. Returns None when there is no thumbnail."""
+    rel = project.get("thumbnail_rel")
+    path = project.get("path")
+    if not rel or not path:
+        return None
+    source = str(project.get("thumbnail_source") or "generated")
+    try:
+        if source in ("generated", "custom"):
+            return derived_assets.find_thumbnail(path, kind=source)
+        candidate = (Path(path) / str(rel)).resolve()
+        # Keep the resolved path inside the checkout.
+        if Path(path).resolve() not in candidate.parents and candidate != Path(path).resolve():
+            return None
+        return candidate if candidate.is_file() else None
+    except Exception:
+        logger.debug("thumbnail resolution failed for %s", path, exc_info=True)
+        return None
+
+
+def _header(
+    run: dict[str, Any], *, board: str | None, thumbnail: Path | None, styles: dict[str, ParagraphStyle]
+) -> list[Any]:
     flow: list[Any] = []
     if _LOGO.is_file():
         img = Image(str(_LOGO))
@@ -170,8 +194,6 @@ def _header(run: dict[str, Any], *, board: str | None, styles: dict[str, Paragra
     project_name = str(run.get("project_name") or run.get("project_id") or "Run")
     job_number = run.get("job_number")
     eyebrow = f"PRODUCTION REPORT · {_esc(job_number)}" if job_number else "PRODUCTION REPORT"
-    flow.append(Paragraph(eyebrow, styles["eyebrow"]))
-    flow.append(Paragraph(_esc(project_name), styles["title"]))
 
     bits: list[str] = []
     if job_number:
@@ -184,7 +206,41 @@ def _header(run: dict[str, Any], *, board: str | None, styles: dict[str, Paragra
         bits.append(f"<b>Spec:</b> {_esc(run['spec_name'])}")
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     bits.append(f"<b>Generated:</b> {generated}")
-    flow.append(Paragraph(" &nbsp;·&nbsp; ".join(bits), styles["subtitle"]))
+
+    title_flow = [
+        Paragraph(eyebrow, styles["eyebrow"]),
+        Paragraph(_esc(project_name), styles["title"]),
+        Paragraph(" &nbsp;·&nbsp; ".join(bits), styles["subtitle"]),
+    ]
+
+    # The board thumbnail, boxed, to the right of the title block.
+    thumb_flowable = None
+    if thumbnail is not None:
+        try:
+            reader = ImageReader(str(thumbnail))
+            iw, ih = reader.getSize()
+            box = 32 * mm
+            w = box if iw >= ih else box * (iw / ih)
+            h = box if ih >= iw else box * (ih / iw)
+            thumb_flowable = Image(str(thumbnail), width=w, height=h)
+        except Exception:
+            logger.debug("could not embed board thumbnail %s", thumbnail, exc_info=True)
+
+    if thumb_flowable is not None:
+        head = Table([[title_flow, thumb_flowable]], colWidths=[132 * mm, 38 * mm])
+        head.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (0, 0), "TOP"),
+            ("VALIGN", (1, 0), (1, 0), "MIDDLE"),
+            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("BOX", (1, 0), (1, 0), 0.6, _HAIRLINE),
+        ]))
+        flow.append(head)
+    else:
+        flow.extend(title_flow)
 
     flow.append(Spacer(1, 3 * mm))
     rule = Table([[""]], colWidths=[170 * mm], rowHeights=[1.4])
@@ -342,7 +398,7 @@ def build_run_report(run_id: str) -> bytes:
         board = project.get("name") and str(project["name"])
 
     styles = _styles()
-    flow: list[Any] = _header(run, board=board, styles=styles)
+    flow: list[Any] = _header(run, board=board, thumbnail=_board_thumbnail(project), styles=styles)
 
     # Run summary.
     defects = run.get("defects") or []
