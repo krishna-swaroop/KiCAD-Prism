@@ -25,15 +25,28 @@ import { SpecConfigEditor } from "./spec-config-editor";
 interface ManufacturersPanelProps {
     manufacturers: Manufacturer[];
     canEdit: boolean;
+    /** The "Add manufacturer" action lives in the parent header; it drives this. */
+    addOpen?: boolean;
+    onAddOpenChange?: (open: boolean) => void;
     onChanged: () => void;
 }
 
 type EditTarget = { mode: "create" } | { mode: "edit"; manufacturer: Manufacturer } | null;
 
-export function ManufacturersPanel({ manufacturers, canEdit, onChanged }: ManufacturersPanelProps) {
+export function ManufacturersPanel({ manufacturers, canEdit, addOpen, onAddOpenChange, onChanged }: ManufacturersPanelProps) {
     const [editing, setEditing] = useState<EditTarget>(null);
     const [deleteTarget, setDeleteTarget] = useState<Manufacturer | null>(null);
     const [deleting, setDeleting] = useState(false);
+
+    // The add action is triggered from the parent header.
+    useEffect(() => {
+        if (addOpen) setEditing({ mode: "create" });
+    }, [addOpen]);
+
+    const closeEditing = () => {
+        setEditing(null);
+        onAddOpenChange?.(false);
+    };
 
     const handleDelete = async () => {
         if (!deleteTarget) return;
@@ -51,17 +64,7 @@ export function ManufacturersPanel({ manufacturers, canEdit, onChanged }: Manufa
     };
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-            {/* Action bar, positioned like the Runs "New run" bar. */}
-            {canEdit && (
-                <div className="flex shrink-0 items-center gap-2">
-                    <Button size="sm" onClick={() => setEditing({ mode: "create" })}>
-                        <Plus className="mr-1.5 h-4 w-4" />
-                        Add manufacturer
-                    </Button>
-                </div>
-            )}
-
+        <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex min-h-0 flex-1 flex-col border">
             {manufacturers.length === 0 ? (
                 <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
@@ -114,9 +117,9 @@ export function ManufacturersPanel({ manufacturers, canEdit, onChanged }: Manufa
             {editing && (
                 <ManufacturerDialog
                     target={editing}
-                    onClose={() => setEditing(null)}
+                    onClose={closeEditing}
                     onSaved={() => {
-                        setEditing(null);
+                        closeEditing();
                         onChanged();
                     }}
                 />

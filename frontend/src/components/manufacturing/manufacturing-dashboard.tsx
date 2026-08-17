@@ -52,6 +52,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
     const [quickRunId, setQuickRunId] = useState<string | null>(null);
     const [openRunId, setOpenRunId] = useState<string | null>(null);
     const [wizardOpen, setWizardOpen] = useState(false);
+    const [addManufacturer, setAddManufacturer] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -117,7 +118,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                 </TabsList>
             </Tabs>
 
-            <div className="shrink-0 border-b bg-card px-6 py-3">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-card px-6 py-3">
                 <div className="flex items-center gap-2">
                     {view === "manufacturers" ? (
                         <>
@@ -131,6 +132,41 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                         </>
                     )}
                 </div>
+                <div className="flex items-center gap-2">
+                    {view === "manufacturers" ? (
+                        canEdit && (
+                            <Button size="sm" onClick={() => setAddManufacturer(true)}>
+                                <Plus className="mr-1.5 h-4 w-4" />
+                                Add manufacturer
+                            </Button>
+                        )
+                    ) : (
+                        <>
+                            <Select
+                                value={statusFilter}
+                                onValueChange={(value) => setStatusFilter(value as RunStatus | "all")}
+                            >
+                                <SelectTrigger size="sm" aria-label="Filter by status">
+                                    <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All statuses</SelectItem>
+                                    {RUN_STATUSES.map((status) => (
+                                        <SelectItem key={status} value={status}>
+                                            {RUN_STATUS_LABELS[status]}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            {canEdit && (
+                                <Button size="sm" onClick={() => setWizardOpen(true)}>
+                                    <Plus className="mr-1.5 h-4 w-4" />
+                                    New production
+                                </Button>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
 
             {view === "manufacturers" ? (
@@ -138,6 +174,8 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                     <ManufacturersPanel
                         manufacturers={manufacturers}
                         canEdit={canEdit}
+                        addOpen={addManufacturer}
+                        onAddOpenChange={setAddManufacturer}
                         onChanged={() => void load()}
                     />
                 </div>
@@ -145,30 +183,6 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                 <div className="p-6 text-sm text-muted-foreground">Loading production...</div>
             ) : (
                 <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-6 pt-3">
-                    <div className="flex shrink-0 items-center gap-2">
-                        {canEdit && (
-                            <Button size="sm" onClick={() => setWizardOpen(true)}>
-                                <Plus className="mr-1.5 h-4 w-4" />
-                                New production
-                            </Button>
-                        )}
-                        <Select
-                            value={statusFilter}
-                            onValueChange={(value) => setStatusFilter(value as RunStatus | "all")}
-                        >
-                            <SelectTrigger size="sm" aria-label="Filter by status">
-                                <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All statuses</SelectItem>
-                                {RUN_STATUSES.map((status) => (
-                                    <SelectItem key={status} value={status}>
-                                        {RUN_STATUS_LABELS[status]}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
                     <div className="flex min-h-0 flex-1">
                         <RunTable
                             runs={filtered}
