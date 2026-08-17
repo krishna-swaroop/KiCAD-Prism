@@ -133,18 +133,20 @@ class ManufacturingStoreTests(unittest.TestCase):
 
     def test_sync_never_overwrites_an_existing_template(self) -> None:
         # Templates are fully mutable: an edit must always persist across seeding.
-        mfg.seed_builtin_manufacturers()
-        jlcpcb = next(m for m in mfg.list_manufacturers() if m["name"] == "JLCPCB")
-        templates = {t["name"]: t for t in mfg.list_templates(jlcpcb["id"])}
+        # Use a scratch manufacturer so the shared JLCPCB built-ins are never touched.
+        mid = mfg.create_manufacturer("Sync Fab " + uuid.uuid4().hex[:5])
+        key = "synctest:" + uuid.uuid4().hex[:6]
+        mfg._sync_builtin_template(mid, key, "Sync tpl", "[Src]\na: int", {"min_track_width": 0.1})
+        tid = next(t["id"] for t in mfg.list_templates(mid) if t["name"] == "Sync tpl")
 
-        mfg.update_template(templates["JLCPCB standard"]["id"], spec_config="[Mine]\ny: text")
-        mfg.update_template(templates["JLCPCB advanced PCB"]["id"], capabilities={"min_track_width": 0.5})
+        mfg.update_template(tid, spec_config="[Mine]\ny: text", capabilities={"min_track_width": 0.5})
+        # Re-sync from the same source: a restart must not revert the user's edit.
+        mfg._sync_builtin_template(mid, key, "Sync tpl", "[Src]\na: int", {"min_track_width": 0.1})
 
-        mfg.seed_builtin_manufacturers()  # a restart must not revert anything
-
-        after = {t["name"]: mfg.get_template(t["id"]) for t in mfg.list_templates(jlcpcb["id"])}
-        self.assertEqual(after["JLCPCB standard"]["spec_config"], "[Mine]\ny: text")
-        self.assertEqual(after["JLCPCB advanced PCB"]["capabilities"], {"min_track_width": 0.5})
+        after = mfg.get_template(tid)
+        self.assertEqual(after["spec_config"], "[Mine]\ny: text")
+        self.assertEqual(after["capabilities"], {"min_track_width": 0.5})
+        mfg.delete_manufacturer(mid)
 
     def test_sync_creates_a_newly_added_builtin_template(self) -> None:
         # Seed, then delete the advanced template to mimic an install predating it.
@@ -179,13 +181,17 @@ class ManufacturingStoreTests(unittest.TestCase):
         self.assertLess(adv["min_track_width"], std["min_track_width"])
 
     def test_capability_backfill_does_not_clobber_user_capabilities(self) -> None:
-        mfg.seed_builtin_manufacturers()
-        jlcpcb = next(m for m in mfg.list_manufacturers() if m["name"] == "JLCPCB")
-        std = next(t for t in mfg.list_templates(jlcpcb["id"]) if t["name"] == "JLCPCB standard")
-        # A user tightens a capability.
-        mfg.update_template(std["id"], capabilities={"min_track_width": 0.2})
-        mfg.seed_builtin_manufacturers()  # must not overwrite it
-        self.assertEqual(mfg.get_template(std["id"])["capabilities"]["min_track_width"], 0.2)
+        # Scratch data, so the shared JLCPCB built-ins are never modified.
+        mid = mfg.create_manufacturer("Backfill Fab " + uuid.uuid4().hex[:5])
+        key = "backfill:" + uuid.uuid4().hex[:6]
+        mfg._sync_builtin_template(mid, key, "BF tpl", "[Src]\na: int", {"min_track_width": 0.1})
+        tid = next(t["id"] for t in mfg.list_templates(mid) if t["name"] == "BF tpl")
+
+        # A user tightens the capability; a re-sync must not overwrite it.
+        mfg.update_template(tid, capabilities={"min_track_width": 0.2})
+        mfg._sync_builtin_template(mid, key, "BF tpl", "[Src]\na: int", {"min_track_width": 0.1})
+        self.assertEqual(mfg.get_template(tid)["capabilities"]["min_track_width"], 0.2)
+        mfg.delete_manufacturer(mid)
 
     # -- runs --
 
