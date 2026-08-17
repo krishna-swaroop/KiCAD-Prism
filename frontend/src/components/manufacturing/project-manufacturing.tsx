@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Factory, Sparkles, Save, PlusCircle, Settings2, ChevronDown, ChevronRight, FileDown, Trash2, Pencil } from "lucide-react";
+import { Factory, Sparkles, Save, Plus, PlusCircle, Settings2, ChevronDown, ChevronRight, FileDown, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import {
     extractBoardSpec,
     listRuns,
@@ -370,39 +378,37 @@ export function ProjectManufacturing({
     const manufacturerTemplates = templates.filter((t) => t.manufacturer_id === manufacturerId);
 
     return (
-        <div className="space-y-5">
+        <div className="flex flex-col gap-4">
             {/* Manufacturers + named specs navigator */}
-            <section className="rounded-lg border">
-                <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-                    <div>
-                        <h3 className="text-lg font-medium">Manufacturers</h3>
-                        <p className="text-sm text-muted-foreground">
-                            Each manufacturer holds its own named fabrication specs for this board.
-                        </p>
-                    </div>
+            <section className="border">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Manufacturers
+                    </span>
                     {canEdit && attachable.length > 0 && (
-                        <CompactSelect
-                            aria-label="Add a manufacturer"
-                            widthClass="w-auto"
+                        <Select
                             value=""
-                            onChange={(e) => {
-                                const id = e.target.value;
-                                e.target.value = "";
+                            onValueChange={(id) => {
                                 if (id) void handleAttach(id);
                             }}
                         >
-                            <option value="">Add manufacturer…</option>
-                            {attachable.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                    {m.name}
-                                </option>
-                            ))}
-                        </CompactSelect>
+                            <SelectTrigger size="sm" aria-label="Add a manufacturer" className="w-auto">
+                                <Plus className="h-3.5 w-3.5" />
+                                <SelectValue placeholder="Add manufacturer" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {attachable.map((m) => (
+                                    <SelectItem key={m.id} value={m.id}>
+                                        {m.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     )}
-                </header>
+                </div>
 
                 {manufacturers.length === 0 ? (
-                    <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
                         <Factory className="h-8 w-8 opacity-50" />
                         <p className="text-sm">
                             No manufacturers yet.
@@ -410,18 +416,23 @@ export function ProjectManufacturing({
                         </p>
                     </div>
                 ) : (
-                    <div className="flex flex-wrap items-center gap-2 p-3">
+                    // Square, tab-like chips matching the design system's sharp corners.
+                    <div className="flex flex-wrap gap-px bg-border p-px">
                         {manufacturers.map((m) => (
                             <div
                                 key={m.id}
-                                className={`flex items-center gap-1 rounded-full border px-1 ${
-                                    m.id === manufacturerId ? "border-primary bg-secondary" : ""
-                                }`}
+                                className={cn(
+                                    "flex items-center gap-1 bg-card px-1 transition-colors",
+                                    m.id === manufacturerId ? "bg-secondary" : "hover:bg-muted/40",
+                                )}
                             >
                                 <button
                                     type="button"
                                     onClick={() => setManufacturerId(m.id)}
-                                    className="px-2 py-1 text-sm"
+                                    className={cn(
+                                        "px-2 py-1.5 text-sm",
+                                        m.id === manufacturerId && "font-medium",
+                                    )}
                                 >
                                     {m.name}
                                 </button>
@@ -431,7 +442,7 @@ export function ProjectManufacturing({
                                         aria-label={`Remove ${m.name}`}
                                         title={`Remove ${m.name} from this project`}
                                         onClick={() => void handleDetach(m.id)}
-                                        className="rounded-full p-1 text-muted-foreground hover:text-destructive"
+                                        className="p-1 text-muted-foreground hover:text-destructive"
                                     >
                                         <Trash2 className="h-3 w-3" />
                                     </button>
@@ -447,45 +458,43 @@ export function ProjectManufacturing({
                             Spec
                         </span>
                         {specs.length > 0 && (
-                            <CompactSelect
-                                aria-label="Select a spec"
-                                widthClass="w-auto"
-                                value={specId}
-                                onChange={(e) => setSpecId(e.target.value)}
-                            >
-                                {specs.map((s) => (
-                                    <option key={s.id} value={s.id}>
-                                        {s.name}
-                                    </option>
-                                ))}
-                            </CompactSelect>
+                            <Select value={specId} onValueChange={setSpecId}>
+                                <SelectTrigger size="sm" aria-label="Select a spec" className="w-auto">
+                                    <SelectValue placeholder="Spec" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {specs.map((s) => (
+                                        <SelectItem key={s.id} value={s.id}>
+                                            {s.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         )}
                         {canEdit && (
                             <>
                                 {/* Quick-add: pick a schema for this manufacturer and the spec is
                                     created at once, named after it. No naming step. */}
-                                <CompactSelect
-                                    aria-label="Add a schema"
-                                    widthClass="w-auto"
+                                <Select
                                     value=""
-                                    onChange={(e) => {
-                                        const id = e.target.value;
-                                        e.target.value = "";
-                                        if (id === "__blank__") {
-                                            void addSpecFromTemplate("");
-                                        } else if (id) {
-                                            void addSpecFromTemplate(id);
-                                        }
+                                    onValueChange={(id) => {
+                                        if (id === "__blank__") void addSpecFromTemplate("");
+                                        else if (id) void addSpecFromTemplate(id);
                                     }}
                                 >
-                                    <option value="">Add schema…</option>
-                                    {manufacturerTemplates.map((t) => (
-                                        <option key={t.id} value={t.id}>
-                                            {t.name}
-                                        </option>
-                                    ))}
-                                    <option value="__blank__">Blank (starter schema)</option>
-                                </CompactSelect>
+                                    <SelectTrigger size="sm" aria-label="Add a schema" className="w-auto">
+                                        <Plus className="h-3.5 w-3.5" />
+                                        <SelectValue placeholder="Add schema" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {manufacturerTemplates.map((t) => (
+                                            <SelectItem key={t.id} value={t.id}>
+                                                {t.name}
+                                            </SelectItem>
+                                        ))}
+                                        <SelectItem value="__blank__">Blank (starter schema)</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 {specId && (
                                     <>
                                         <Button variant="ghost" size="sm" onClick={() => void handleRenameSpec()}>
@@ -510,17 +519,17 @@ export function ProjectManufacturing({
             {/* Capabilities of the selected spec's fabrication method, with the
                 board's own extracted rules shown alongside for comparison. */}
             {selectedManufacturer && specId && (
-                <section className="rounded-lg border">
-                    <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-                        <div>
-                            <h3 className="text-lg font-medium">Capabilities</h3>
-                            <p className="text-sm text-muted-foreground">
-                                {templateName
-                                    ? `What the "${templateName}" method can build. Edit these from the main Manufacturing page.`
-                                    : "This spec has no linked schema, so no capabilities to show."}
-                            </p>
-                        </div>
-                    </header>
+                <section className="border">
+                    <div className="border-b bg-muted/30 px-3 py-2">
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Capabilities
+                        </span>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                            {templateName
+                                ? `What the "${templateName}" method can build. Edit these from the main Manufacturing page.`
+                                : "This spec has no linked schema, so no capabilities to show."}
+                        </p>
+                    </div>
                     {templateName ? (
                         <CapabilitiesTable
                             fields={ruleFields}
@@ -537,50 +546,50 @@ export function ProjectManufacturing({
 
             {/* Board specs for the selected spec */}
             {selectedManufacturer && (
-            <section className="rounded-lg border">
-                <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
-                    <div>
-                        <h3 className="text-lg font-medium">
+            <section className="border">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
+                    <div className="min-w-0">
+                        <span className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
                             {specs.find((s) => s.id === specId)?.name || "Fabrication spec"}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
+                        </span>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                             {selectedManufacturer.name} · fields come from this spec&rsquo;s schema.
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                         <Button
                             variant="outline"
-                            size="icon-lg"
+                            size="icon-sm"
                             aria-label="Download PDF spec sheet"
                             title="Download PDF spec sheet"
                             onClick={() => void handleDownloadPdf()}
                             disabled={downloading}
                         >
-                            <FileDown className="h-5 w-5" />
+                            <FileDown className="h-4 w-4" />
                         </Button>
                         {canEdit && specId && (
                             <>
                                 <Button
                                     variant="outline"
-                                    size="icon-lg"
+                                    size="icon-sm"
                                     aria-label="Edit schema"
                                     title="Edit schema"
                                     onClick={() => setEditorOpen(true)}
                                 >
-                                    <Pencil className="h-5 w-5" />
+                                    <Pencil className="h-4 w-4" />
                                 </Button>
                                 <Button variant="outline" size="sm" onClick={() => void handleExtract()} disabled={extracting}>
-                                    <Sparkles className="mr-2 h-4 w-4" />
+                                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                                     {extracting ? "Reading..." : "Extract from board"}
                                 </Button>
                                 <Button size="sm" onClick={() => void handleSave()} disabled={saving || !dirty}>
-                                    <Save className="mr-2 h-4 w-4" />
+                                    <Save className="mr-1.5 h-3.5 w-3.5" />
                                     {saving ? "Saving..." : "Save"}
                                 </Button>
                             </>
                         )}
                     </div>
-                </header>
+                </div>
 
                 {!specId ? (
                     <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
@@ -603,7 +612,7 @@ export function ProjectManufacturing({
                 ) : (
                     <div className="divide-y">
                         {schema.errors.length > 0 && (
-                            <div className="m-4 rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive">
+                            <div className="m-4 border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive">
                                 The schema has {schema.errors.length} problem(s). Some fields may be missing until you fix it.
                             </div>
                         )}
@@ -635,57 +644,54 @@ export function ProjectManufacturing({
             </section>
             )}
 
-            {/* Runs for this project */}
-            <section className="rounded-lg border">
-                <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
-                    <div>
-                        <h3 className="text-lg font-medium">Production</h3>
-                        <p className="text-sm text-muted-foreground">
-                            {runs.length === 0 ? "No production yet for this board." : `${runs.length} production run(s).`}
-                        </p>
-                    </div>
+            {/* Production for this project */}
+            <section className="border">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Production
+                        {runs.length > 0 ? ` (${runs.length})` : ""}
+                    </span>
                     {canEdit && onNewRun && (
                         <Button size="sm" onClick={onNewRun}>
-                            <PlusCircle className="mr-2 h-4 w-4" />
+                            <PlusCircle className="mr-1.5 h-3.5 w-3.5" />
                             New production
                         </Button>
                     )}
-                </header>
+                </div>
 
                 {runs.length === 0 ? (
-                    <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
                         <Factory className="h-8 w-8 opacity-50" />
                         <p className="text-sm">Track a production to record quantity, manufacturer, and defects.</p>
                     </div>
                 ) : (
-                    <ul className="divide-y">
+                    <div>
                         {runs.map((run) => (
-                            <li key={run.id}>
-                                <button
-                                    type="button"
-                                    onClick={() => onOpenRun?.(run.id)}
-                                    className="grid w-full grid-cols-[1fr_auto] items-center gap-3 p-4 text-left hover:bg-muted/40"
-                                >
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium">
-                                                {run.manufacturer_name || "No manufacturer"}
-                                            </span>
-                                            <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
-                                        </div>
-                                        <div className="mt-0.5 text-sm text-muted-foreground">
-                                            {run.quantity_good}/{run.quantity_ordered} good
-                                            {run.defect_count ? ` · ${run.defect_count} defect(s)` : ""}
-                                            {run.commit_sha ? ` · ${run.commit_sha.slice(0, 7)}` : ""}
-                                        </div>
+                            <button
+                                key={run.id}
+                                type="button"
+                                onClick={() => onOpenRun?.(run.id)}
+                                className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                            >
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <span className="truncate text-sm font-medium">
+                                            {run.manufacturer_name || "No manufacturer"}
+                                        </span>
+                                        <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
                                     </div>
-                                    <span className="text-xs text-muted-foreground">
-                                        {new Date(run.created_at).toLocaleDateString()}
-                                    </span>
-                                </button>
-                            </li>
+                                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                                        {run.quantity_good}/{run.quantity_ordered} good
+                                        {run.defect_count ? ` · ${run.defect_count} defect(s)` : ""}
+                                        {run.commit_sha ? ` · ${run.commit_sha.slice(0, 7)}` : ""}
+                                    </div>
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                    {new Date(run.created_at).toLocaleDateString()}
+                                </span>
+                            </button>
                         ))}
-                    </ul>
+                    </div>
                 )}
             </section>
 
@@ -851,7 +857,7 @@ function SpecSection({
     const visibleFields = section.fields.filter((f) => evaluateCondition(f.when, values));
     return (
         <div>
-            <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+            <div className="flex items-center justify-between gap-3 bg-muted/20 px-4 py-2">
                 <button
                     type="button"
                     onClick={onToggleCollapsed}
@@ -865,7 +871,7 @@ function SpecSection({
                     )}
                     <span className="truncate">{section.title}</span>
                     {section.optional && (
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-muted-foreground">
+                        <span className="rounded-none bg-muted px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-muted-foreground">
                             optional
                         </span>
                     )}
@@ -940,7 +946,7 @@ function SpecFieldInput({ field, value, disabled, onChange }: SpecFieldInputProp
                 {labelRow}
                 <label
                     htmlFor={inputId}
-                    className="flex h-7 cursor-pointer items-center rounded-md border px-2"
+                    className="flex h-7 cursor-pointer items-center rounded-none border px-2"
                 >
                     <input
                         id={inputId}

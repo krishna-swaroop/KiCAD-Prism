@@ -119,7 +119,7 @@ describe("ProjectManufacturing", () => {
         await waitFor(() => expect(screen.getByText("Manufacturers")).toBeTruthy());
         await waitForForm();
         expect(screen.getByText("Stackup & physical")).toBeTruthy();
-        expect(screen.getByText(/No production yet/)).toBeTruthy();
+        expect(screen.getByText(/Track a production/)).toBeTruthy();
     });
 
     it("shows an empty state when the project has no manufacturers", async () => {
@@ -166,8 +166,9 @@ describe("ProjectManufacturing", () => {
         await waitForForm();
 
         // Picking the schema from the "Add schema" dropdown creates the spec at once,
-        // no naming step.
-        fireEvent.change(screen.getByLabelText("Add a schema"), { target: { value: "tmpl_1" } });
+        // no naming step. (Radix Select: open the trigger, then choose the option.)
+        fireEvent.click(screen.getByRole("combobox", { name: "Add a schema" }));
+        fireEvent.click(await screen.findByRole("option", { name: "Acme standard" }));
 
         await waitFor(() => expect(createProjectSpec).toHaveBeenCalled());
         expect(getTemplate).toHaveBeenCalledWith("tmpl_1");

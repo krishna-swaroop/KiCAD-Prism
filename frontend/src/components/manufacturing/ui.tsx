@@ -18,7 +18,7 @@ export const CompactSelect = React.forwardRef<
             <select
                 ref={ref}
                 className={cn(
-                    "h-7 w-full appearance-none rounded-md border bg-background pl-2 pr-7 text-xs",
+                    "h-7 w-full appearance-none rounded-none border bg-background pl-2 pr-7 text-xs",
                     "disabled:cursor-not-allowed disabled:opacity-60",
                     className,
                 )}
