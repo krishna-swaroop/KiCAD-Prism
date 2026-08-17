@@ -98,25 +98,39 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            {/* Title + tabs, matching the Library Manager's header: a blue section
-                icon and title, then the shadcn Tabs "line" variant below it. */}
-            <div className="shrink-0 border-b bg-card px-6">
-                <div className="flex items-center gap-2 pt-3">
-                    <Factory className="h-5 w-5 text-primary" />
-                    <h2 className="text-lg font-semibold">Manufacturing</h2>
+            {/* Selection bar: the shadcn Tabs "line" variant, matching the Library
+                Manager. The active section's title with a blue icon sits below it. */}
+            <Tabs
+                value={view}
+                onValueChange={(next) => setView(next as View)}
+                className="shrink-0 gap-0 border-b bg-card px-6"
+            >
+                <TabsList variant="line" className="h-10 gap-2" aria-label="Manufacturing sections">
+                    <TabsTrigger value="runs" className="gap-2 px-2 text-sm">
+                        <Factory className="h-4 w-4" />
+                        Production
+                    </TabsTrigger>
+                    <TabsTrigger value="manufacturers" className="gap-2 px-2 text-sm">
+                        <Building2 className="h-4 w-4" />
+                        Manufacturers
+                    </TabsTrigger>
+                </TabsList>
+            </Tabs>
+
+            <div className="shrink-0 border-b bg-card px-6 py-3">
+                <div className="flex items-center gap-2">
+                    {view === "manufacturers" ? (
+                        <>
+                            <Building2 className="h-5 w-5 text-primary" />
+                            <h2 className="text-lg font-semibold">Manufacturers</h2>
+                        </>
+                    ) : (
+                        <>
+                            <Factory className="h-5 w-5 text-primary" />
+                            <h2 className="text-lg font-semibold">Production</h2>
+                        </>
+                    )}
                 </div>
-                <Tabs value={view} onValueChange={(next) => setView(next as View)}>
-                    <TabsList variant="line" className="h-10 gap-2" aria-label="Manufacturing sections">
-                        <TabsTrigger value="runs" className="gap-2 px-2 text-sm">
-                            <Factory className="h-4 w-4" />
-                            Production
-                        </TabsTrigger>
-                        <TabsTrigger value="manufacturers" className="gap-2 px-2 text-sm">
-                            <Building2 className="h-4 w-4" />
-                            Manufacturers
-                        </TabsTrigger>
-                    </TabsList>
-                </Tabs>
             </div>
 
             {view === "manufacturers" ? (
