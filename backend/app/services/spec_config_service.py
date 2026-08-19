@@ -48,6 +48,33 @@ _COND_IN_RE = re.compile(r"^(?P<key>\S+)\s+in\s*\((?P<opts>.*)\)$", re.IGNORECAS
 _COND_OP_RE = re.compile(r"^(?P<key>\S+)\s*(?P<op>!=|>=|<=|=|>|<)\s*(?P<value>.+)$")
 
 
+def _split_options(text: str) -> list[str]:
+    """Split a comma-separated option list, ignoring commas inside parentheses.
+
+    Option values are real product labels that can carry their own commas and
+    parentheses, e.g. ``HASL(with lead)``, ``Both sides ( Black ,18um )``, or
+    ``Top + Bottom(On Single Stencil)``. A plain ``split(",")`` tore those apart
+    and dropped half of an option, so a nested comma stays part of its option.
+    """
+    options: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for char in text:
+        if char == "(":
+            depth += 1
+            current.append(char)
+        elif char == ")":
+            depth = max(0, depth - 1)
+            current.append(char)
+        elif char == "," and depth == 0:
+            options.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    options.append("".join(current).strip())
+    return [opt for opt in options if opt]
+
+
 @dataclass
 class SpecCondition:
     """A gate: show the field/section only when ``key`` satisfies ``op``/``values``.
@@ -113,7 +140,7 @@ def _parse_condition(text: str, lineno: int, errors: list[str]) -> SpecCondition
     in_match = _COND_IN_RE.match(text)
     if in_match:
         key = in_match.group("key").strip()
-        options = [opt.strip() for opt in in_match.group("opts").split(",") if opt.strip()]
+        options = _split_options(in_match.group("opts"))
         if not _KEY_RE.match(key) or not options:
             errors.append(f"Line {lineno}: invalid `when {text}`.")
             return None
@@ -273,7 +300,7 @@ def _parse_type(key: str, type_text: str, lineno: int, errors: list[str]) -> Spe
 
     choice_match = _CHOICE_RE.match(type_text)
     if choice_match:
-        options = [opt.strip() for opt in choice_match.group("opts").split(",") if opt.strip()]
+        options = _split_options(choice_match.group("opts"))
         if not options:
             errors.append(f"Line {lineno}: `choice(...)` needs at least one option.")
             return None

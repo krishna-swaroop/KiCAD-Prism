@@ -41,6 +41,30 @@ class SpecConfigParseTests(unittest.TestCase):
         self.assertEqual(fields["finish"].type, "choice")
         self.assertEqual(fields["finish"].options, ["ENIG", "HASL"])
 
+    def test_choice_options_keep_commas_and_parentheses(self) -> None:
+        # Real JLCPCB labels carry their own commas and parentheses; a naive
+        # split on "," tore these apart and dropped half of an option.
+        parsed = parse_spec_config(
+            "[S]\n"
+            "finish: choice(OSP, HASL(with lead), LeadFree HASL, ENIG) = ENIG | Surface finish\n"
+            "emi: choice(Without, Both sides ( Black ,18um ), Single side ( Black ,18um )) | EMI film\n"
+            "side: choice(Top only, Top + Bottom(On Single Stencil)) | Stencil side\n"
+        )
+        self.assertEqual(parsed.errors, [])
+        fields = {f.key: f for f in parsed.sections[0].fields}
+        self.assertEqual(
+            fields["finish"].options,
+            ["OSP", "HASL(with lead)", "LeadFree HASL", "ENIG"],
+        )
+        self.assertEqual(
+            fields["emi"].options,
+            ["Without", "Both sides ( Black ,18um )", "Single side ( Black ,18um )"],
+        )
+        self.assertEqual(
+            fields["side"].options,
+            ["Top only", "Top + Bottom(On Single Stencil)"],
+        )
+
     def test_defaults_are_coerced_to_the_field_type(self) -> None:
         parsed = parse_spec_config(
             "[S]\n"
