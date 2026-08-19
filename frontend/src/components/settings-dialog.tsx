@@ -551,8 +551,8 @@ function ViewerSettings({ user }: { user: User | null }) {
                 <div className="space-y-0.5">
                     <Label className="text-base cursor-pointer">Show all changes in comparisons</Label>
                     <p className="text-sm text-muted-foreground">
-                        Include follow-on writes normally hidden as noise. They appear under
-                        the comparison's layout and documentation section. Off by default.
+                        Show changes previously hidden, such as a pins, a
+                        renamed auto-generated net, or labels.
                     </p>
                 </div>
             </label>
