@@ -42,6 +42,8 @@ import {
     RUN_STATUS_LABELS,
     EXTRACTABLE_KEYS,
     evaluateCondition,
+    mergeCapabilityRows,
+    type CapabilityMeta,
     type Manufacturer,
     type ManufacturingRun,
     type ParsedSpecConfig,
@@ -93,6 +95,7 @@ export function ProjectManufacturing({
     const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
     // The selected spec's linked-template capabilities (read live from getProjectSpec).
     const [templateCapabilities, setTemplateCapabilities] = useState<Record<string, number>>({});
+    const [templateCapabilityMeta, setTemplateCapabilityMeta] = useState<Record<string, CapabilityMeta>>({});
     const [templateName, setTemplateName] = useState<string | null>(null);
     // The board's own extracted rules, read automatically for the capability comparison.
     const [boardRules, setBoardRules] = useState<Record<string, unknown> | null>(null);
@@ -196,6 +199,7 @@ export function ProjectManufacturing({
             setSchema({ sections: [], errors: [] });
             setActiveSections(new Set());
             setTemplateCapabilities({});
+            setTemplateCapabilityMeta({});
             setTemplateName(null);
             setDirty(false);
             return;
@@ -211,6 +215,7 @@ export function ProjectManufacturing({
                 setSchema(spec.parsed);
                 setActiveSections(new Set(spec.active_sections ?? []));
                 setTemplateCapabilities(spec.template_capabilities ?? {});
+                setTemplateCapabilityMeta(spec.template_capability_meta ?? {});
                 setTemplateName(spec.template_name ?? null);
                 setDirty(false);
             } catch (error) {
@@ -552,6 +557,7 @@ export function ProjectManufacturing({
                             <CapabilitiesTable
                                 fields={ruleFields}
                                 capabilities={templateCapabilities}
+                                meta={templateCapabilityMeta}
                                 boardRules={boardRules}
                             />
                         ) : (
@@ -823,58 +829,86 @@ function PanelHeader({
 
 // Read-only table of the fabrication method's minimum capabilities, with the
 // board's own extracted value for each field alongside so a user can eyeball
-// whether the board meets the minimums. Rows with nothing on either side are hidden.
+// whether the board meets the minimums. A toggle limits the view to the
+// KiCad-tracked rule fields (the only ones with a board value) versus all,
+// including the fab's custom capabilities. Rows with nothing to show are hidden.
 function CapabilitiesTable({
     fields,
     capabilities,
+    meta,
     boardRules,
 }: {
     fields: PcbRuleField[];
     capabilities: Record<string, number>;
+    meta: Record<string, CapabilityMeta>;
     boardRules: Record<string, unknown> | null;
 }) {
-    const rows = fields.filter((f) => {
-        const hasCap = capabilities[f.key] !== undefined;
-        const hasBoard = boardRules != null && boardRules[f.key] !== undefined;
+    const [showAll, setShowAll] = useState(false);
+    const allRows = mergeCapabilityRows(fields, capabilities, meta);
+    const rows = allRows.filter((r) => {
+        if (!showAll && !r.kicad) return false;
+        const hasCap = r.value !== undefined;
+        const hasBoard = r.kicad && boardRules != null && boardRules[r.key] !== undefined;
         return hasCap || hasBoard;
     });
-
-    if (rows.length === 0) {
-        return (
-            <p className="px-4 py-6 text-sm text-muted-foreground">
-                No capabilities set for this method yet. Set them from the main Manufacturing page.
-            </p>
-        );
-    }
+    const hasCustom = allRows.some((r) => !r.kicad && r.value !== undefined);
 
     return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
-                        <th className="px-4 py-2 text-left font-medium">Rule</th>
-                        <th className="px-4 py-2 text-right font-medium">Manufacturer min</th>
-                        {boardRules != null && (
-                            <th className="px-4 py-2 text-right font-medium">This board</th>
-                        )}
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((field, i) => (
-                        <tr key={field.key} className={i % 2 === 1 ? "bg-muted/20" : ""}>
-                            <td className="px-4 py-1.5 text-muted-foreground">{field.label}</td>
-                            <td className="px-4 py-1.5 text-right font-medium tabular-nums">
-                                {formatMinCapability(capabilities[field.key], field.unit)}
-                            </td>
-                            {boardRules != null && (
-                                <td className="px-4 py-1.5 text-right tabular-nums">
-                                    {formatBoardValue(boardRules[field.key], field.unit)}
-                                </td>
-                            )}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+        <div>
+            {hasCustom && (
+                <div className="flex justify-end px-4 pt-2">
+                    <div className="inline-flex border text-xs">
+                        <button
+                            type="button"
+                            className={`px-2.5 py-1 ${!showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            onClick={() => setShowAll(false)}
+                        >
+                            KiCad-tracked
+                        </button>
+                        <button
+                            type="button"
+                            className={`px-2.5 py-1 ${showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            onClick={() => setShowAll(true)}
+                        >
+                            All
+                        </button>
+                    </div>
+                </div>
+            )}
+            {rows.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-muted-foreground">
+                    No capabilities set for this method yet. Set them from the main Manufacturing page.
+                </p>
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                                <th className="px-4 py-2 text-left font-medium">Rule</th>
+                                <th className="px-4 py-2 text-right font-medium">Manufacturer min</th>
+                                {boardRules != null && (
+                                    <th className="px-4 py-2 text-right font-medium">This board</th>
+                                )}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((row, i) => (
+                                <tr key={row.key} className={i % 2 === 1 ? "bg-muted/20" : ""}>
+                                    <td className="px-4 py-1.5 text-muted-foreground">{row.label}</td>
+                                    <td className="px-4 py-1.5 text-right font-medium tabular-nums">
+                                        {formatMinCapability(row.value, row.unit)}
+                                    </td>
+                                    {boardRules != null && (
+                                        <td className="px-4 py-1.5 text-right tabular-nums">
+                                            {row.kicad ? formatBoardValue(boardRules[row.key], row.unit) : "—"}
+                                        </td>
+                                    )}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 }

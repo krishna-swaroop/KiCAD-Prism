@@ -118,6 +118,45 @@ class ManufacturingStoreTests(unittest.TestCase):
         mfg.delete_manufacturer(mid)
         self.assertIsNone(mfg.get_template(tid))
 
+    def test_template_round_trips_custom_capability_metadata(self) -> None:
+        mid = mfg.create_manufacturer("MfgTest Caps Fab")
+        tid = mfg.create_template(
+            mid, "flex", "[S]\nlayer_count: int = 2",
+            capabilities={"min_track_width": 0.1, "max_board_width_mm": 234.0},
+            capability_meta={"max_board_width_mm": {"label": "Max board width", "unit": "mm"}},
+        )
+        stored = mfg.get_template(tid)
+        self.assertEqual(stored["capabilities"]["max_board_width_mm"], 234.0)
+        self.assertEqual(stored["capability_meta"]["max_board_width_mm"]["label"], "Max board width")
+
+        # An update replaces both maps.
+        mfg.update_template(
+            tid,
+            capabilities={"max_board_width_mm": 300.0},
+            capability_meta={"max_board_width_mm": {"label": "Max width", "unit": "mm"}},
+        )
+        stored = mfg.get_template(tid)
+        self.assertEqual(stored["capabilities"]["max_board_width_mm"], 300.0)
+        self.assertEqual(stored["capability_meta"]["max_board_width_mm"]["label"], "Max width")
+        mfg.delete_manufacturer(mid)
+
+    def test_seed_backfills_capability_metadata_without_clobbering(self) -> None:
+        mid = mfg.create_manufacturer("MfgTest Meta Backfill")
+        key = f"scratch:meta:{mid}"
+        # A row seeded before custom capabilities existed: caps but no meta.
+        mfg._sync_builtin_template(mid, key, "Meta tpl", "[S]\na: int", {"min_track_width": 0.1})
+        tid = mfg.list_templates(mid)[0]["id"]
+        self.assertEqual(mfg.get_template(tid)["capability_meta"], {})
+        # Re-seeding with metadata backfills it additively.
+        mfg._sync_builtin_template(
+            mid, key, "Meta tpl", "[S]\na: int", {"min_track_width": 0.1},
+            {"custom_x": {"label": "Custom X", "unit": "mm"}},
+        )
+        self.assertEqual(
+            mfg.get_template(tid)["capability_meta"]["custom_x"]["label"], "Custom X"
+        )
+        mfg.delete_manufacturer(mid)
+
     def test_apply_template_copies_config_into_project(self) -> None:
         # Copy-on-apply: the project gets its own copy of the template's config.
         saved = mfg.save_spec_config(self.project_id, "[X]\nfoo: text", updated_by="designer@x")

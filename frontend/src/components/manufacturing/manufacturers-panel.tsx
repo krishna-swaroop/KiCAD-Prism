@@ -19,7 +19,15 @@ import {
     deleteTemplate,
     getPcbRuleFields,
 } from "@/lib/manufacturing";
-import type { Manufacturer, ParsedSpecConfig, PcbRuleField, SpecTemplate } from "@/types/manufacturing";
+import type {
+    CapabilityMeta,
+    CapabilityRow,
+    Manufacturer,
+    ParsedSpecConfig,
+    PcbRuleField,
+    SpecTemplate,
+} from "@/types/manufacturing";
+import { mergeCapabilityRows } from "@/types/manufacturing";
 import { SpecConfigEditor } from "./spec-config-editor";
 
 interface ManufacturersPanelProps {
@@ -217,39 +225,77 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
     );
 }
 
-// Edit one capability: a single number = the manufacturer minimum (mm). The board
-// must meet it. Empty clears the field.
+// Edit one capability: a single number = the manufacturer minimum. The board
+// must meet it. Empty clears the value. A custom (non KiCad-tracked) row also
+// lets you rename it, set a unit, and delete it.
 function CapabilityInput({
-    field,
-    value,
+    row,
     onChange,
+    onRename,
+    onDelete,
 }: {
-    field: PcbRuleField;
-    value: number | undefined;
+    row: CapabilityRow;
     onChange: (value: number | undefined) => void;
+    onRename?: (label: string, unit: string) => void;
+    onDelete?: () => void;
 }) {
-    const id = `cap-${field.key}`;
-    const label = field.unit ? `${field.label} (${field.unit})` : field.label;
-    return (
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-            <Label htmlFor={id} className="text-xs text-muted-foreground">
-                {label}
-            </Label>
-            <div className="flex items-center gap-1.5">
-                <span className="text-xs text-muted-foreground">≥</span>
-                <Input
-                    id={id}
-                    aria-label={field.label}
-                    type="number"
-                    step={field.type === "int" ? 1 : "any"}
-                    className="h-7 w-24 text-xs"
-                    value={value ?? ""}
-                    onChange={(e) => {
-                        const v = e.target.value;
-                        onChange(v === "" ? undefined : Number(v));
-                    }}
-                />
+    const id = `cap-${row.key}`;
+    if (row.kicad) {
+        const label = row.unit ? `${row.label} (${row.unit})` : row.label;
+        return (
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                <Label htmlFor={id} className="text-xs text-muted-foreground">
+                    {label}
+                </Label>
+                <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">≥</span>
+                    <Input
+                        id={id}
+                        aria-label={row.label}
+                        type="number"
+                        step="any"
+                        className="h-7 w-24 text-xs"
+                        value={row.value ?? ""}
+                        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+                    />
+                </div>
             </div>
+        );
+    }
+    // Custom capability: label + unit are editable, and it can be removed.
+    return (
+        <div className="flex items-center gap-1.5">
+            <Input
+                aria-label={`${row.label} name`}
+                className="h-7 flex-1 text-xs"
+                value={row.label}
+                onChange={(e) => onRename?.(e.target.value, row.unit ?? "")}
+            />
+            <span className="text-xs text-muted-foreground">≥</span>
+            <Input
+                id={id}
+                aria-label={row.label}
+                type="number"
+                step="any"
+                className="h-7 w-20 text-xs"
+                value={row.value ?? ""}
+                onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+            />
+            <Input
+                aria-label={`${row.label} unit`}
+                className="h-7 w-16 text-xs"
+                placeholder="unit"
+                value={row.unit ?? ""}
+                onChange={(e) => onRename?.(row.label, e.target.value)}
+            />
+            <button
+                type="button"
+                aria-label={`Remove ${row.label}`}
+                className="p-1 text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete?.()}
+            >
+                <Trash2 className="h-3.5 w-3.5" />
+            </button>
         </div>
     );
 }
@@ -447,11 +493,19 @@ interface TemplateCapabilitiesDialogProps {
     onSaved: () => void;
 }
 
-// Edit a fabrication method's capabilities: a grid of the PCB rule fields bound
-// to the template's capabilities. Reused live by every project spec built from it.
+function slugifyKey(label: string): string {
+    return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+        || `custom_${Date.now()}`;
+}
+
+// Edit a fabrication method's capabilities: the KiCad-tracked rule fields plus any
+// custom capabilities the fab lists. A toggle limits the view to KiCad-tracked
+// ones. Reused live by every project spec built from this template.
 function TemplateCapabilitiesDialog({ template, onClose, onSaved }: TemplateCapabilitiesDialogProps) {
     const [capabilities, setCapabilities] = useState<Record<string, number>>(template.capabilities ?? {});
+    const [meta, setMeta] = useState<Record<string, CapabilityMeta>>(template.capability_meta ?? {});
     const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
+    const [showAll, setShowAll] = useState(false);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -459,6 +513,9 @@ function TemplateCapabilitiesDialog({ template, onClose, onSaved }: TemplateCapa
             .then(({ fields }) => setRuleFields(fields))
             .catch(() => setRuleFields([]));
     }, []);
+
+    const rows = mergeCapabilityRows(ruleFields, capabilities, meta);
+    const visibleRows = showAll ? rows : rows.filter((r) => r.kicad);
 
     const setCap = (key: string, value: number | undefined) => {
         setCapabilities((current) => {
@@ -469,10 +526,33 @@ function TemplateCapabilitiesDialog({ template, onClose, onSaved }: TemplateCapa
         });
     };
 
+    const renameCustom = (key: string, label: string, unit: string) => {
+        setMeta((current) => ({ ...current, [key]: { label, unit: unit || undefined } }));
+    };
+
+    const deleteCustom = (key: string) => {
+        setCapabilities((current) => {
+            const next = { ...current };
+            delete next[key];
+            return next;
+        });
+        setMeta((current) => {
+            const next = { ...current };
+            delete next[key];
+            return next;
+        });
+    };
+
+    const addCustom = () => {
+        const key = slugifyKey(`custom ${Object.keys(meta).length + 1}`);
+        setMeta((current) => ({ ...current, [key]: { label: "New capability", unit: "mm" } }));
+        setShowAll(true);
+    };
+
     const handleSave = async () => {
         setSaving(true);
         try {
-            await updateTemplate(template.id, { capabilities });
+            await updateTemplate(template.id, { capabilities, capability_meta: meta });
             toast.success("Capabilities saved.");
             onSaved();
         } catch (error) {
@@ -491,13 +571,38 @@ function TemplateCapabilitiesDialog({ template, onClose, onSaved }: TemplateCapa
                         What this fabrication method can build. Projects using it see these live.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="max-h-[70vh] space-y-1.5 overflow-y-auto py-1 pr-1">
-                    {ruleFields.map((field) => (
+
+                <div className="flex items-center justify-between">
+                    <div className="inline-flex border text-xs">
+                        <button
+                            type="button"
+                            className={`px-2.5 py-1 ${!showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            onClick={() => setShowAll(false)}
+                        >
+                            KiCad-tracked
+                        </button>
+                        <button
+                            type="button"
+                            className={`px-2.5 py-1 ${showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            onClick={() => setShowAll(true)}
+                        >
+                            All
+                        </button>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={addCustom}>
+                        <Plus className="mr-1 h-3.5 w-3.5" />
+                        Add capability
+                    </Button>
+                </div>
+
+                <div className="max-h-[60vh] space-y-1.5 overflow-y-auto py-1 pr-1">
+                    {visibleRows.map((row) => (
                         <CapabilityInput
-                            key={field.key}
-                            field={field}
-                            value={capabilities[field.key]}
-                            onChange={(v) => setCap(field.key, v)}
+                            key={row.key}
+                            row={row}
+                            onChange={(v) => setCap(row.key, v)}
+                            onRename={(label, unit) => renameCustom(row.key, label, unit)}
+                            onDelete={() => deleteCustom(row.key)}
                         />
                     ))}
                 </div>

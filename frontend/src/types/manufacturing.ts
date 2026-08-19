@@ -17,6 +17,54 @@ export interface PcbRuleField {
     unit?: string;
 }
 
+/** Display metadata for a custom capability KiCad does not track. */
+export interface CapabilityMeta {
+    label: string;
+    unit?: string;
+}
+
+/** One capability row for display: a KiCad-tracked rule field or a custom entry. */
+export interface CapabilityRow {
+    key: string;
+    label: string;
+    unit?: string;
+    /** True when KiCad can extract this from the board (a PCB_RULE_FIELDS key). */
+    kicad: boolean;
+    /** The manufacturer minimum, if set. */
+    value?: number;
+}
+
+/**
+ * Merge the KiCad-tracked rule fields with a template's custom capabilities into
+ * one ordered display list: tracked fields first (in their canonical order),
+ * then custom entries. Used by both the capability editor and the project view.
+ */
+export function mergeCapabilityRows(
+    ruleFields: PcbRuleField[],
+    capabilities: Record<string, number>,
+    meta: Record<string, CapabilityMeta> = {},
+): CapabilityRow[] {
+    const trackedKeys = new Set(ruleFields.map((f) => f.key));
+    const tracked: CapabilityRow[] = ruleFields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        unit: f.unit,
+        kicad: true,
+        value: capabilities[f.key],
+    }));
+    const custom: CapabilityRow[] = Object.keys(capabilities)
+        .concat(Object.keys(meta))
+        .filter((key, i, all) => all.indexOf(key) === i && !trackedKeys.has(key))
+        .map((key) => ({
+            key,
+            label: meta[key]?.label ?? key,
+            unit: meta[key]?.unit,
+            kicad: false,
+            value: capabilities[key],
+        }));
+    return [...tracked, ...custom];
+}
+
 export interface BoardSpec {
     project_id: string;
     specs: Record<string, unknown>;
@@ -42,6 +90,8 @@ export interface ProjectSpec {
     template_name?: string | null;
     /** The linked template's capabilities, read live (from getProjectSpec). */
     template_capabilities?: Record<string, number>;
+    /** Label/unit for the linked template's custom (non KiCad-tracked) capabilities. */
+    template_capability_meta?: Record<string, CapabilityMeta>;
     name: string;
     spec_config: string;
     specs: Record<string, unknown>;
@@ -216,8 +266,11 @@ export interface SpecTemplate {
     manufacturer_name?: string;
     name: string;
     spec_config: string;
-    /** Fabrication capabilities for this method, keyed by PcbRuleField.key. */
+    /** Fabrication capabilities for this method, keyed by PcbRuleField.key or a
+        custom key (see capability_meta). */
     capabilities: Record<string, number>;
+    /** Label/unit for custom (non KiCad-tracked) capability keys. */
+    capability_meta?: Record<string, CapabilityMeta>;
     created_at: string;
     updated_at: string;
 }

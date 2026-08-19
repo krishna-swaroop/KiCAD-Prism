@@ -87,4 +87,49 @@ describe("ManufacturersPanel", () => {
         expect(id).toBe("tpl_1");
         expect(body.capabilities).toEqual({ min_track_width: 0.09, min_via_diameter: 0.25 });
     });
+
+    it("hides custom capabilities behind the All toggle", async () => {
+        listTemplates.mockResolvedValue([
+            {
+                ...flexTemplate,
+                capabilities: { min_track_width: 0.09, max_board_width_mm: 234 },
+                capability_meta: { max_board_width_mm: { label: "Max board width", unit: "mm" } },
+            },
+        ]);
+        render(<ManufacturersPanel manufacturers={[acme]} canEdit onChanged={vi.fn()} />);
+        fireEvent.click(screen.getByRole("button", { name: /Spec templates/ }));
+        await waitFor(() => expect(listTemplates).toHaveBeenCalledWith("m1"));
+        fireEvent.click(await screen.findByRole("button", { name: "Capabilities" }));
+
+        // KiCad-tracked view (default): the custom capability is hidden.
+        await screen.findByLabelText("Min track width");
+        expect(screen.queryByDisplayValue("Max board width")).toBeNull();
+
+        // Switch to All: the custom capability row appears and is editable.
+        fireEvent.click(screen.getByRole("button", { name: "All" }));
+        expect(await screen.findByDisplayValue("Max board width")).toBeTruthy();
+    });
+
+    it("adds a custom capability and saves both maps", async () => {
+        render(<ManufacturersPanel manufacturers={[acme]} canEdit onChanged={vi.fn()} />);
+        fireEvent.click(screen.getByRole("button", { name: /Spec templates/ }));
+        await waitFor(() => expect(listTemplates).toHaveBeenCalledWith("m1"));
+        fireEvent.click(await screen.findByRole("button", { name: "Capabilities" }));
+        await screen.findByLabelText("Min track width");
+
+        // Add a custom capability, name it, and give it a value. The key is
+        // stable (slugged when added); renaming updates only the display label.
+        fireEvent.click(screen.getByRole("button", { name: /Add capability/ }));
+        const nameInput = await screen.findByDisplayValue("New capability");
+        fireEvent.change(nameInput, { target: { value: "Max board width" } });
+        fireEvent.change(screen.getByLabelText("Max board width"), { target: { value: "234" } });
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+        await waitFor(() => expect(updateTemplate).toHaveBeenCalled());
+        const [, body] = updateTemplate.mock.calls[0];
+        // One custom capability key was written to both maps with the same value/label.
+        const customKey = Object.keys(body.capability_meta)[0];
+        expect(body.capabilities[customKey]).toBe(234);
+        expect(body.capability_meta[customKey]).toEqual({ label: "Max board width", unit: "mm" });
+    });
 });

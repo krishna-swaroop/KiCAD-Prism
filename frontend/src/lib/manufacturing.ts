@@ -316,7 +316,12 @@ export async function getTemplate(templateId: string): Promise<SpecTemplate> {
 
 export async function createTemplate(
     manufacturerId: string,
-    body: { name: string; spec_config: string; capabilities?: Record<string, unknown> },
+    body: {
+        name: string;
+        spec_config: string;
+        capabilities?: Record<string, unknown>;
+        capability_meta?: Record<string, unknown>;
+    },
 ): Promise<{ id: string }> {
     return json(
         await fetchApi(`/api/manufacturing/manufacturers/${manufacturerId}/templates`, {
@@ -330,7 +335,12 @@ export async function createTemplate(
 
 export async function updateTemplate(
     templateId: string,
-    body: Partial<{ name: string; spec_config: string; capabilities: Record<string, unknown> }>,
+    body: Partial<{
+        name: string;
+        spec_config: string;
+        capabilities: Record<string, unknown>;
+        capability_meta: Record<string, unknown>;
+    }>,
 ): Promise<void> {
     await json(
         await fetchApi(`/api/manufacturing/templates/${templateId}`, {

@@ -165,6 +165,30 @@ describe("ProjectManufacturing", () => {
         expect(screen.queryByRole("button", { name: /Extract PCB rules/ })).toBeNull();
     });
 
+    it("shows custom capabilities only under the All toggle, with no board value", async () => {
+        getPcbRuleFields.mockResolvedValue({
+            fields: [{ key: "min_track_width", label: "Min track width", type: "number", unit: "mm" }],
+        });
+        getProjectSpec.mockResolvedValue({
+            ...makeSpec(),
+            template_name: "flex",
+            template_capabilities: { min_track_width: 0.09, max_board_width_mm: 234 },
+            template_capability_meta: { max_board_width_mm: { label: "Max board width", unit: "mm" } },
+        });
+        extractPcbRules.mockResolvedValue({ rules: { min_track_width: 0.1 } });
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitFor(() => expect(screen.getByText("Capabilities")).toBeTruthy());
+
+        // KiCad-tracked (default): the custom capability is not shown.
+        expect(await screen.findByText("Min track width")).toBeTruthy();
+        expect(screen.queryByText("Max board width")).toBeNull();
+
+        // All: the custom capability appears; its board cell is empty.
+        fireEvent.click(screen.getByRole("button", { name: "All" }));
+        expect(await screen.findByText("Max board width")).toBeTruthy();
+        expect(screen.getByText("234 mm")).toBeTruthy();
+    });
+
     it("quick-adds a spec from a manufacturer schema, named after it", async () => {
         listTemplates.mockResolvedValue([
             { id: "tmpl_1", manufacturer_id: "m1", manufacturer_name: "Acme Fab", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" },

@@ -698,6 +698,72 @@ JLCPCB_ADVANCED_CAPABILITIES: dict[str, Any] = {
     "min_microvia_drill": 0.1,
 }
 
+# JLCPCB flex (FPC) process, from jlcpcb.com/capabilities/flex-pcb-capabilities.
+# KiCad-tracked minimums (mm); 4 mil = 0.1016 mm.
+JLCPCB_FLEX_CAPABILITIES: dict[str, Any] = {
+    "min_track_width": 0.1016,           # 4 mil
+    "min_clearance": 0.1016,             # 4 mil
+    "min_through_hole_diameter": 0.1,    # hole range 0.1-6.5 mm
+    "min_via_diameter": 0.55,
+    "min_via_annular_width": 0.18,
+    "min_copper_edge_clearance": 0.3,
+    "min_hole_clearance": 0.2,           # NPTH to copper
+    "min_text_height": 1.0,
+    "min_text_thickness": 0.15,
+    "min_silk_clearance": 0.15,          # character to pad
+    # Flex-only capabilities KiCad does not track (custom); see FLEX_META below.
+    "max_board_width_mm": 234.0,
+    "max_board_height_mm": 490.0,
+    "board_outline_tolerance_mm": 0.1,
+    "min_finished_thickness_mm": 0.07,
+    "max_finished_thickness_mm": 0.45,
+    "bend_radius_factor_single_layer": 6.0,
+    "bend_radius_factor_multi_layer": 10.0,
+}
+
+# Labels/units for the custom (non KiCad-tracked) flex capabilities above.
+JLCPCB_FLEX_META: dict[str, Any] = {
+    "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "board_outline_tolerance_mm": {"label": "Outline tolerance (±)", "unit": "mm"},
+    "min_finished_thickness_mm": {"label": "Min finished thickness", "unit": "mm"},
+    "max_finished_thickness_mm": {"label": "Max finished thickness", "unit": "mm"},
+    "bend_radius_factor_single_layer": {"label": "Bend radius (single layer)", "unit": "× thickness"},
+    "bend_radius_factor_multi_layer": {"label": "Bend radius (multi-layer)", "unit": "× thickness"},
+}
+
+# PCBWay standard process, from pcbway.com/capabilities.html. KiCad-tracked
+# minimums (mm); 16 mil = 0.4064 mm, 6 mil = 0.1524 mm.
+PCBWAY_STANDARD_CAPABILITIES: dict[str, Any] = {
+    "min_track_width": 0.1,              # 4 mil
+    "min_clearance": 0.1,                # 4 mil
+    "min_through_hole_diameter": 0.15,
+    "min_via_annular_width": 0.15,       # 6 mil
+    "min_copper_edge_clearance": 0.25,   # CNC routing
+    "min_hole_to_hole": 0.4064,          # 16 mil
+    "min_text_thickness": 0.15,
+    "min_text_height": 0.8,
+    # PCBWay capabilities KiCad does not track (custom); see PCBWAY_META below.
+    "max_board_width_mm": 560.0,
+    "max_board_height_mm": 1150.0,
+    "min_board_size_mm": 3.0,
+    "hole_size_tolerance_mm": 0.08,
+    "min_half_hole_diameter_mm": 0.4,
+    "min_board_thickness_mm": 0.2,
+    "max_board_thickness_mm": 3.2,
+}
+
+# Labels/units for the custom (non KiCad-tracked) PCBWay capabilities above.
+PCBWAY_META: dict[str, Any] = {
+    "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "min_board_size_mm": {"label": "Min board size", "unit": "mm"},
+    "hole_size_tolerance_mm": {"label": "PTH hole tolerance (±)", "unit": "mm"},
+    "min_half_hole_diameter_mm": {"label": "Min half-hole diameter", "unit": "mm"},
+    "min_board_thickness_mm": {"label": "Min board thickness", "unit": "mm"},
+    "max_board_thickness_mm": {"label": "Max board thickness", "unit": "mm"},
+}
+
 SEED_MANUFACTURERS: list[dict[str, Any]] = [
     {
         "name": "JLCPCB",
@@ -707,13 +773,16 @@ SEED_MANUFACTURERS: list[dict[str, Any]] = [
              "capabilities": JLCPCB_STANDARD_CAPABILITIES},
             {"key": "jlcpcb:advanced", "name": "JLCPCB advanced PCB", "config": JLCPCB_ADVANCED_SPEC_CONFIG,
              "capabilities": JLCPCB_ADVANCED_CAPABILITIES},
+            {"key": "jlcpcb:flex", "name": "JLCPCB flexible PCB", "config": JLCPCB_SPEC_CONFIG,
+             "capabilities": JLCPCB_FLEX_CAPABILITIES, "capability_meta": JLCPCB_FLEX_META},
         ],
     },
     {
         "name": "PCBWay",
         "website": "https://www.pcbway.com",
         "templates": [
-            {"key": "pcbway:standard", "name": "PCBWay standard", "config": PCBWAY_SPEC_CONFIG},
+            {"key": "pcbway:standard", "name": "PCBWay standard", "config": PCBWAY_SPEC_CONFIG,
+             "capabilities": PCBWAY_STANDARD_CAPABILITIES, "capability_meta": PCBWAY_META},
             {"key": "pcbway:advanced", "name": "PCBWay advanced PCB", "config": PCBWAY_ADVANCED_SPEC_CONFIG},
             {"key": "pcbway:flex", "name": "PCBWay flexible PCB", "config": PCBWAY_FLEX_SPEC_CONFIG},
         ],

@@ -1849,6 +1849,18 @@ def _manufacturing_run_job_number(conn: Any) -> None:
     )
 
 
+def _manufacturing_capability_meta(conn: Any) -> None:
+    """Label/unit metadata for custom capabilities a template records beyond the
+    KiCad-tracked rule fields. Keyed by capability key; KiCad-tracked keys get
+    their label/unit from PCB_RULE_FIELDS and need no entry here."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ws_spec_templates (id TEXT PRIMARY KEY)"
+    )
+    conn.execute(
+        "ALTER TABLE ws_spec_templates ADD COLUMN IF NOT EXISTS capability_meta JSONB NOT NULL DEFAULT '{}'::jsonb"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1875,6 +1887,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (27, "manufacturing_manufacturer_capabilities", _manufacturing_manufacturer_capabilities),
     (28, "manufacturing_capabilities_per_template", _manufacturing_capabilities_per_template),
     (29, "manufacturing_run_job_number", _manufacturing_run_job_number),
+    (30, "manufacturing_capability_meta", _manufacturing_capability_meta),
 )
 
 

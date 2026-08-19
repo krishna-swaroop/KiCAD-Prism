@@ -63,12 +63,14 @@ class TemplateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     spec_config: str = Field(default="", max_length=100_000)
     capabilities: dict = Field(default_factory=dict)
+    capability_meta: dict = Field(default_factory=dict)
 
 
 class TemplateUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     spec_config: str | None = Field(default=None, max_length=100_000)
     capabilities: dict | None = None
+    capability_meta: dict | None = None
 
 
 class ApplyTemplateRequest(BaseModel):
@@ -413,7 +415,7 @@ async def get_template(template_id: str):
 async def create_template(mfr_id: str, request: TemplateRequest):
     template_id = await asyncio.to_thread(
         _handle, mfg.create_template, mfr_id, request.name, request.spec_config,
-        capabilities=request.capabilities,
+        capabilities=request.capabilities, capability_meta=request.capability_meta,
     )
     return {"id": template_id}
 

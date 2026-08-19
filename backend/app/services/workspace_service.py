@@ -223,6 +223,9 @@ class WorkspaceService:
                 -- Fabrication capabilities for this method (KiCad rule fields);
                 -- added by migration 28 too.
                 capabilities    JSONB NOT NULL DEFAULT '{}'::jsonb,
+                -- Label/unit metadata for custom capabilities beyond the KiCad
+                -- rule fields; keyed by capability key. Added by migration 30 too.
+                capability_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
                 -- Identifies a built-in template (e.g. 'jlcpcb:standard'); NULL for
                 -- user-created ones. seeded_hash is the sha256 of the source text it
                 -- was last seeded from, so startup can tell an untouched built-in

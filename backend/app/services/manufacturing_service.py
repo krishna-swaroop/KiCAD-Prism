@@ -178,6 +178,7 @@ def create_template(
     spec_config: str = "",
     *,
     capabilities: Optional[Dict[str, Any]] = None,
+    capability_meta: Optional[Dict[str, Any]] = None,
     builtin_key: Optional[str] = None,
     seeded_hash: Optional[str] = None,
 ) -> str:
@@ -197,10 +198,11 @@ def create_template(
     with _connect() as conn:
         conn.execute(
             """INSERT INTO ws_spec_templates
-               (id,manufacturer_id,name,spec_config,capabilities,builtin_key,seeded_hash,created_at,updated_at)
-               VALUES (%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)""",
+               (id,manufacturer_id,name,spec_config,capabilities,capability_meta,builtin_key,seeded_hash,created_at,updated_at)
+               VALUES (%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s,%s)""",
             (template_id, manufacturer_id, clean, spec_config,
-             json.dumps(capabilities or {}), builtin_key, seeded_hash, now, now),
+             json.dumps(capabilities or {}), json.dumps(capability_meta or {}),
+             builtin_key, seeded_hash, now, now),
         )
         conn.commit()
     return template_id
@@ -209,7 +211,7 @@ def create_template(
 def update_template(template_id: str, **fields: Any) -> bool:
     import json
 
-    allowed = {"name", "spec_config", "capabilities"}
+    allowed = {"name", "spec_config", "capabilities", "capability_meta"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if "name" in updates:
         updates["name"] = str(updates["name"]).strip()
@@ -221,8 +223,8 @@ def update_template(template_id: str, **fields: Any) -> bool:
     # capabilities is JSONB; name/spec_config/updated_at are plain columns.
     sets, values = [], []
     for key, value in updates.items():
-        if key == "capabilities":
-            sets.append("capabilities = %s::jsonb")
+        if key in ("capabilities", "capability_meta"):
+            sets.append(f"{key} = %s::jsonb")
             values.append(json.dumps(value or {}))
         else:
             sets.append(f"{key} = %s")
@@ -271,6 +273,7 @@ def seed_builtin_manufacturers() -> list[str]:
             change = _sync_builtin_template(
                 mfr_id, template["key"], template["name"], template["config"],
                 template.get("capabilities") or {},
+                template.get("capability_meta") or {},
             )
             if change:
                 changes.append(change)
@@ -312,7 +315,9 @@ def _ensure_manufacturer(name: str, website: str) -> str:
 
 
 def _sync_builtin_template(
-    mfr_id: str, key: str, name: str, config: str, capabilities: Optional[Dict[str, Any]] = None
+    mfr_id: str, key: str, name: str, config: str,
+    capabilities: Optional[Dict[str, Any]] = None,
+    capability_meta: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     """Ensure a starter template exists, without ever overwriting a stored one.
 
@@ -321,8 +326,8 @@ def _sync_builtin_template(
 
       * creates a template that is missing (a fresh install, or a newly added
         built-in reaching an existing install), and
-      * backfills capabilities onto a row that has none yet (additive, so it
-        cannot revert anything).
+      * backfills capabilities (and their custom-capability metadata) onto a row
+        that has none yet (additive, so it cannot revert anything).
 
     Returns a short change description, or None when nothing changed.
     """
@@ -330,6 +335,7 @@ def _sync_builtin_template(
 
     source_hash = _config_hash(config)
     capabilities = capabilities or {}
+    capability_meta = capability_meta or {}
 
     with _connect() as conn:
         # Prefer the row already claimed by this built-in key.
@@ -347,28 +353,44 @@ def _sync_builtin_template(
 
     if not row:
         create_template(mfr_id, name, config, capabilities=capabilities,
+                        capability_meta=capability_meta,
                         builtin_key=key, seeded_hash=source_hash)
         return f"created {name}"
 
     template = _row(row)
     is_legacy = template.get("builtin_key") is None
     has_caps = bool(template.get("capabilities"))
+    has_meta = bool(template.get("capability_meta"))
 
     # Claim a legacy row so we can find it by key next time; this never changes its
     # schema text or capabilities.
     if is_legacy:
         _claim_builtin(template["id"], key, _config_hash(template.get("spec_config") or ""))
 
-    # Backfill capabilities onto a row that has none yet. A row with no capabilities
-    # has nothing to clobber, so this cannot revert a user's edit.
+    # Backfill capabilities (and their metadata) onto a row that has none yet. A
+    # row with no capabilities has nothing to clobber, so this cannot revert a
+    # user's edit.
     if capabilities and not has_caps:
         with _connect() as conn:
             conn.execute(
-                "UPDATE ws_spec_templates SET capabilities = %s::jsonb, updated_at = %s WHERE id = %s",
-                (json.dumps(capabilities), _now(), template["id"]),
+                """UPDATE ws_spec_templates
+                   SET capabilities = %s::jsonb, capability_meta = %s::jsonb, updated_at = %s
+                   WHERE id = %s""",
+                (json.dumps(capabilities), json.dumps(capability_meta), _now(), template["id"]),
             )
             conn.commit()
         return f"seeded {name} capabilities"
+
+    # Backfill just the metadata onto a row that has capabilities but no meta yet
+    # (e.g. a template seeded before custom capabilities existed).
+    if capability_meta and has_caps and not has_meta:
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE ws_spec_templates SET capability_meta = %s::jsonb, updated_at = %s WHERE id = %s",
+                (json.dumps(capability_meta), _now(), template["id"]),
+            )
+            conn.commit()
+        return f"seeded {name} capability metadata"
 
     return None
 
@@ -555,7 +577,8 @@ def get_project_spec(spec_id: str) -> Optional[Dict[str, Any]]:
         row = conn.execute(
             """SELECT s.*, m.name AS manufacturer_name,
                       t.name AS template_name,
-                      t.capabilities AS template_capabilities
+                      t.capabilities AS template_capabilities,
+                      t.capability_meta AS template_capability_meta
                FROM ws_project_specs s
                JOIN ws_manufacturers m ON m.id = s.manufacturer_id
                LEFT JOIN ws_spec_templates t ON t.id = s.template_id
@@ -568,8 +591,10 @@ def get_project_spec(spec_id: str) -> Optional[Dict[str, Any]]:
     if not (result.get("spec_config") or "").strip():
         result["spec_config"] = DEFAULT_SPEC_CONFIG
     result.setdefault("active_sections", [])
-    # The linked template's capabilities, read live. None when the spec is blank.
+    # The linked template's capabilities and custom-capability metadata, read
+    # live. None when the spec is blank (no linked template).
     result["template_capabilities"] = result.get("template_capabilities") or {}
+    result["template_capability_meta"] = result.get("template_capability_meta") or {}
     return result
 
 

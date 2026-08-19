@@ -256,9 +256,37 @@ class SpecConfigParseTests(unittest.TestCase):
             for template in entry["templates"]:
                 self.assertTrue(template["name"])
                 self.assertTrue(template["config"].strip())
-        # JLCPCB ships both a standard and an advanced template.
+        # JLCPCB ships standard, advanced, and flexible templates.
         jlcpcb = next(m for m in SEED_MANUFACTURERS if m["name"] == "JLCPCB")
-        self.assertEqual(len(jlcpcb["templates"]), 2)
+        keys = {t["key"] for t in jlcpcb["templates"]}
+        self.assertEqual(keys, {"jlcpcb:standard", "jlcpcb:advanced", "jlcpcb:flex"})
+        # The flex template carries custom-capability metadata beyond KiCad's
+        # tracked rule fields.
+        flex = next(t for t in jlcpcb["templates"] if t["key"] == "jlcpcb:flex")
+        self.assertIn("capability_meta", flex)
+        self.assertIn("max_board_width_mm", flex["capability_meta"])
+
+    def test_capabilities_split_into_kicad_tracked_and_custom(self) -> None:
+        from app.services.pcb_rules_service import is_kicad_tracked
+        from app.services.spec_config_service import (
+            JLCPCB_FLEX_CAPABILITIES,
+            JLCPCB_FLEX_META,
+            PCBWAY_STANDARD_CAPABILITIES,
+            PCBWAY_META,
+        )
+
+        for caps, meta in (
+            (JLCPCB_FLEX_CAPABILITIES, JLCPCB_FLEX_META),
+            (PCBWAY_STANDARD_CAPABILITIES, PCBWAY_META),
+        ):
+            tracked = {k for k in caps if is_kicad_tracked(k)}
+            custom = {k for k in caps if not is_kicad_tracked(k)}
+            self.assertTrue(tracked, "expected some KiCad-tracked minimums")
+            self.assertTrue(custom, "expected some custom capabilities")
+            # Every custom capability has display metadata; tracked ones do not need it.
+            self.assertEqual(custom, set(meta.keys()))
+            for entry in meta.values():
+                self.assertIn("label", entry)
 
 
 if __name__ == "__main__":

@@ -58,6 +58,12 @@ PCB_RULE_FIELDS: list[dict[str, Any]] = [
 # All rule keys are copied straight from .kicad_pro board.design_settings.rules.
 _PRO_RULE_KEYS = {f["key"] for f in PCB_RULE_FIELDS}
 
+
+def is_kicad_tracked(key: str) -> bool:
+    """Whether a capability key is one KiCad can extract from the board, versus a
+    custom capability the fab lists but KiCad does not track."""
+    return key in _PRO_RULE_KEYS
+
 # Fields whose value is a whole number.
 _INT_KEYS = {f["key"] for f in PCB_RULE_FIELDS if f["type"] == "int"}
 
