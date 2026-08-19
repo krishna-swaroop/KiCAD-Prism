@@ -141,10 +141,16 @@ class SpecConfigParseTests(unittest.TestCase):
 
         parsed = parse_spec_config(JLCPCB_ADVANCED_SPEC_CONFIG)
         self.assertEqual(parsed.errors, [])
-        titles = {s.title for s in parsed.sections}
-        # It carries the advanced-only groups that the standard config does not.
-        self.assertIn("HDI & drilling", titles)
-        self.assertIn("Impedance", titles)
+        keys = {f.key for s in parsed.sections for f in s.fields}
+        # It carries advanced-only fields the standard config does not.
+        self.assertIn("specify_stackup", keys)
+        self.assertIn("backdrill", keys)
+        self.assertIn("press_fit_hole", keys)
+        # And its richer material grades come straight from the advanced form.
+        material = next(
+            f for s in parsed.sections for f in s.fields if f.key == "material_type"
+        )
+        self.assertIn("Shengyi S1000-2M - TG170", material.options)
 
     def test_when_clause_equality(self) -> None:
         parsed = parse_spec_config("[S]\nm: text\nx: int when m = FR-4\n")

@@ -355,16 +355,16 @@ ipc_class: choice(1, 2, 3)
 # up with the board extractor's well-known names where they exist (layer_count,
 # board_thickness_mm, board dimensions, surface_finish) so Extract still fills them.
 JLCPCB_SPEC_CONFIG = """\
-# Spec schema built from the JLCPCB PCB quote form, field by field, in order,
-# with the exact option values. Fields are gated to mirror how the site reveals
-# them (multilayer-only, FR-4-only, Flex-only, ENIG-only, panel-only, brand-only).
+# Spec schema built field by field from the JLCPCB PCB quote form, with the
+# exact option values from the site. Fields are gated to mirror how the form
+# reveals them (FR-4-only, Flex-only, multilayer-only, panel-only).
 
 [Base]
-base_material: choice(FR-4, Flex, Aluminum, Copper Core, Rogers, PTFE Teflon) = FR-4 | Base material
+base_material: choice(FR-4, Flex) = FR-4 | Base material
 layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16) = 2 | Layers
 board_width_mm: number | Dimension width (mm)
 board_height_mm: number | Dimension height (mm)
-pcb_qty: choice(5, 10, 15, 20, 25, 30, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000) = 5 | PCB Qty
+pcb_qty: choice(5, 10, 15, 20, 25, 30, 50, 75, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 750, 800, 900, 1000, 1200, 1250, 1400, 1500, 1600, 1750, 1800, 2000, 2400, 2500, 2800, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 11000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 25000, 30000, 40000, 50000, 60000, 70000) = 5 | PCB Qty
 product_type: choice(Industrial/Consumer electronics, Aerospace, Medical) = Industrial/Consumer electronics | Product type
 different_design: choice(1, 2, 3, 4) = 1 | Different design
 delivery_format: choice(Single PCB, Panel by Customer, Panel by JLCPCB) = Single PCB | Delivery format
@@ -373,19 +373,16 @@ panel_columns: int when delivery_format != Single PCB | Panel columns
 panel_rows: int when delivery_format != Single PCB | Panel rows
 
 [Stackup]
-board_thickness_mm: choice(0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0) = 1.6 | PCB thickness (mm)
+board_thickness_mm: choice(0.4mm, 0.6mm, 0.8mm, 1.0mm, 1.2mm, 1.6mm, 2.0mm) = 1.6mm | PCB thickness
 outer_copper_weight_oz: choice(1 oz, 2 oz, 3.5 oz, 4.5 oz) = 1 oz | Outer copper weight
-# Inner copper only exists on multilayer boards (inner is 0.5 oz by default).
+# Inner copper only exists on multilayer boards.
 inner_copper_weight_oz: choice(0.5 oz, 1 oz, 2 oz) = 0.5 oz when layer_count != 1 | Inner copper weight
 # FR-4 TG material grade.
 material_type: choice(FR4 TG135, KB6164 - TG135, Nan Ya NP-140F, S1141 TG140, S1000H TG155) = FR4 TG135 when base_material = FR-4 | Material Type
-impedance_control: bool when base_material = FR-4 | Impedance control
 
 [Colour]
-# Green is the full-range default for FR-4; other materials print white/black.
-solder_mask_color: choice(Green, Purple, Red, Yellow, Blue, White, Black) = Green when base_material = FR-4 | PCB color
-solder_mask_color_other: choice(White, Black) = White when base_material != FR-4 | PCB color
-silkscreen_color: choice(White, Black) = White | Silkscreen
+solder_mask_color: choice(Green, Purple, Red, Yellow, Blue, White, Black) = Green | PCB color
+silkscreen_color: choice(White) = White | Silkscreen
 
 [Surface finish]
 surface_finish: choice(OSP, HASL(with lead), LeadFree HASL, ENIG) = HASL(with lead) | Surface finish
@@ -394,7 +391,7 @@ surface_finish: choice(OSP, HASL(with lead), LeadFree HASL, ENIG) = HASL(with le
 # Flex-only options, revealed when the material is Flex.
 eda_software: choice(EasyEDA Pro, Other) = Other when base_material = Flex | EDA software
 stiffener: choice(Without, Polyimide, FR4, Stainless Steel, 3M Tape) = Without when base_material = Flex | Stiffener
-emi_shielding_film: choice(Without, Both sides, Single side) = Without when base_material = Flex | EMI shielding film
+emi_shielding_film: choice(Without, Both sides ( Black ,18um ), Single side ( Black ,18um )) = Without when base_material = Flex | EMI shielding film
 coverlay_thickness: choice(PI:12.5um/AD:15um, PI:25um/AD:25um) = PI:25um/AD:25um when base_material = Flex | Coverlay thickness
 cutting_method: choice(Laser Cutting, Punching) = Laser Cutting when base_material = Flex | Cutting method
 
@@ -406,19 +403,18 @@ min_via_hole: choice(0.3mm/(0.4/0.45mm), 0.25mm/(0.35/0.4mm), 0.2mm/(0.3/0.35mm)
 
 [Options]
 board_outline_tolerance: choice(±0.2mm(Regular), ±0.1mm(Precision)) = ±0.2mm(Regular) | Board outline tolerance
-# Gold fingers, castellation and edge plating are FR-4 features; edge plating and
-# gold fingers want ENIG.
+# Gold fingers, castellation and edge plating are FR-4 features.
 gold_fingers: choice(No, Yes) = No when base_material = FR-4 | Gold fingers
 castellated_holes: choice(No, Yes) = No when base_material = FR-4 | Castellated holes
 edge_plating: choice(No, Yes) = No when base_material = FR-4 | Edge plating
 blind_slots: choice(No, Yes) = No | Blind slots
-mark_on_pcb: choice(Order Number, 2D barcode, Remove Mark, 2D barcode (Serial Number)) = Order Number | Mark on PCB
+mark_on_pcb: choice(Remove Mark, 2D barcode (Serial Number)) = Remove Mark | Mark on PCB
 confirm_production_file: choice(No, Yes) = No | Confirm production file
 
 [Testing & quality]
-electrical_test: choice(Flying Probe Fully Test, Sample test) = Flying Probe Fully Test | Electrical test
+electrical_test: choice(Flying Probe Fully Test) = Flying Probe Fully Test | Electrical test
 appearance_quality: choice(IPC Class 2 Standard, Superb Quality) = IPC Class 2 Standard | Appearance quality
-silkscreen_technology: choice(Ink-jet Printing, High-precision Printing, High-definition Exposure) = Ink-jet Printing | Silkscreen technology
+silkscreen_technology: choice(Ink-jet Printing Silkscreen, High-precision Printing Silkscreen, EasyEDA multi-color silkscreen, High-definition Exposure Silkscreen) = Ink-jet Printing Silkscreen | Silkscreen technology
 paper_between_pcbs: choice(No, Yes) = No | Paper between PCBs
 ul_marking: choice(No, Yes (Any Position), Yes (Specify Position)) = No | UL marking
 humidity_indicator_card: choice(No, Yes) = No | Humidity indicator card
@@ -431,29 +427,32 @@ pcb_remark: text | PCB remark
 carrier: choice(DHL Express, DHL Express (DDP), UPS Worldwide Express Saver, FedEx Express, EuroPacket, Global Standard Direct Line, Sea Shipment, My UPS Account, My DHL Account, My FedEx Account) | Shipping carrier
 
 [+Assembly]
+# JLCPCB PCB Assembly (PCBA) options, from the assembly quote form.
 pcba_type: choice(Economic, Standard) = Standard | PCBA type
-assembly_side: choice(Top side, Bottom side, Both sides) = Top side
+assembly_side: choice(Top Side, Bottom Side, Both Sides) = Top Side | Assembly side
 assembly_qty: int | Boards to assemble
-tooling_holes: choice(Added by JLCPCB, Added by customer) = Added by JLCPCB
-paste_type: choice(Leaded, Lead-free) = Leaded | Solder paste
+edge_rails_fiducials: choice(Added by JLCPCB, Added by Customer) = Added by JLCPCB | Edge rails / fiducials
+parts_selection: choice(By Customer (Self-Service), By JLCPCB (Manual Match)) = By Customer (Self-Service) | Parts selection
+confirm_parts_placement: choice(No, Yes) = No | Confirm parts placement
+stencil_storage: choice(No, Yes) = No | Stencil storage
+fixture_storage: choice(No, Yes) = No | Fixture storage
 unique_parts: int | Unique part count (BOM lines)
 smt_parts: int | SMT joints
 through_hole_parts: int | Through-hole joints
-first_article_inspection: bool | First-article inspection (FAI)
-xray_bga: bool | X-ray inspection for BGAs
-conformal_coating: bool
-depanel: choice(No, By router, By V-cut) = No | Depanelize
-confirm_parts_placement: bool
-assembly_notes: text
+assembly_notes: text | Assembly notes
 
 [+Stencil]
-stencil_type: choice(Framework, Frameless) = Framework | Stencil type
-stencil_side: choice(Top, Bottom, Top & Bottom) = Top
-stencil_size: choice(380x380mm, 420x520mm, 550x650mm, 584x584mm, 736x736mm) = 420x520mm | Stencil size
-stencil_thickness_mm: choice(0.1, 0.12, 0.15, 0.2) = 0.12 | Stencil thickness (mm)
-stencil_fiducials: choice(None, Half lasered, Lasered through) = None | Fiducials
-electropolishing: bool
-custom_stencil_qty: int | Stencil quantity
+# JLCPCB Stencil options, from the stencil quote form.
+stencil_side: choice(Top only, Bottom only, Top + Bottom(On Single Stencil), Top + Bottom(On Separate Stencils)) = Top only | Stencil side
+stencil_dimensions: choice(Standard Size, Custom Size) = Standard Size | Stencil size
+stencil_thickness: choice(Select by JLCPCB, Select by Customer) = Select by JLCPCB | Stencil thickness
+stencil_process_type: choice(Solder paste stencil, Red glue stencil) = Solder paste stencil | Stencil process
+polishing_process: choice(Sanding, Etching, Electropolishing) = Sanding | Polishing process
+stencil_fiducials: choice(No Fiducial, Etched Through, Etched Half into board) = No Fiducial | Fiducials
+stencil_framework: choice(No, Yes) = No | Framework
+step_stencil: choice(No, Yes) = No | Step stencil
+nano_coating: choice(No, Yes) = No | Nano-coating
+engrave_text: choice(No, Yes) = No | Engrave text
 """
 
 
@@ -499,49 +498,64 @@ notes: text
 # controlled-impedance options are the whole point. Separate from the standard
 # template so an advanced board is not squeezed into standard-board fields.
 JLCPCB_ADVANCED_SPEC_CONFIG = """\
-# Spec schema for advanced / HDI PCBs.
-# Covers the extra stackup, drilling and impedance controls advanced boards need.
+# Spec schema for advanced / HDI JLCPCB boards, field by field from the
+# advanced quote form with the exact option values. The extra stackup,
+# drilling and impedance controls are the point of this schema.
 
 [Base]
-base_material: choice(FR-4, Rogers, PTFE, Mixed dielectric) = FR-4
-layer_count: int = 6
-board_width_mm: number | Board width (mm)
-board_height_mm: number | Board height (mm)
+base_material: choice(FR-4, Flex, Copper Core) = FR-4 | Base material
+layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16) = 6 | Layers
+board_width_mm: number | Dimension width (mm)
+board_height_mm: number | Dimension height (mm)
+pcb_qty: choice(5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100, 110, 120, 125, 140, 150, 160, 175, 180, 200, 220, 240, 250, 270, 280, 300, 320, 350, 360, 400, 450, 500, 550, 600, 650, 700, 750, 800, 900, 1000, 1200, 1250, 1400, 1500, 1600, 1750, 1800, 2000, 2400, 2500, 2800, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 11000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 25000, 30000, 40000, 50000, 60000, 70000) = 5 | PCB Qty
+product_type: choice(Industrial/Consumer electronics, Aerospace, Medical) = Industrial/Consumer electronics | Product type
+different_design: choice(1, 2, 3, 4) = 1 | Different design
+delivery_format: choice(Single PCB, Panel by Customer, Panel by JLCPCB) = Single PCB | Delivery format
 
 [Stackup]
-board_thickness_mm: number = 1.6 | Board thickness (mm)
-outer_copper_weight_oz: choice(0.5, 1, 2) = 1 | Outer copper (oz)
-inner_copper_weight_oz: choice(0.5, 1, 2) = 0.5 | Inner copper (oz)
-stackup_type: choice(JLCPCB defined, Customer defined) = JLCPCB defined
-dielectric_material: text | Core / prepreg
-symmetric_stackup: bool
+board_thickness_mm: choice(0.4mm, 0.6mm, 0.8mm, 1.0mm, 1.2mm, 1.6mm, 2.0mm) = 1.6mm | PCB thickness
+outer_copper_weight_oz: choice(1 oz, 2 oz) = 1 oz | Outer copper weight
+inner_copper_weight_oz: choice(0.5 oz, 1 oz, 2 oz) = 0.5 oz when layer_count != 1 | Inner copper weight
+material_type: choice(FR4 TG135, FR4 TG155, Nan Ya NP-140F, Nan Ya NP-155F, KB-6165 - TG155, S1000H TG155, Shengyi S1000-2M - TG170) = FR4 TG135 when base_material = FR-4 | Material Type
+specify_layer_sequence: choice(No, Yes) = No | Specify layer sequence
+specify_stackup: choice(No, Yes) = No | Specify stackup
 
-[HDI & drilling]
-hdi_type: choice(None, 1 stage (1+N+1), 2 stage (2+N+2), Any-layer) = None | HDI structure
-laser_via: bool | Laser-drilled microvias
-min_via_hole_mm: choice(0.15, 0.1, 0.075) = 0.15 | Min via / laser via (mm)
-min_track_spacing_mm: choice(0.1, 0.09, 0.075, 0.0635) = 0.1 | Min track/space (mm)
-via_in_pad: bool
-back_drilling: bool | Back-drill (remove stubs)
-blind_buried_vias: bool
+[Colour]
+solder_mask_color: choice(Green, Purple, Red, Yellow, Blue, White, Black) = Green | PCB color
+silkscreen_color: choice(White) = White | Silkscreen
 
-[Impedance]
-impedance_control: bool
-impedance_tolerance: choice(±10%, ±5%) = ±10%
-controlled_dielectric: bool | Specified Dk/Df
+[Surface finish]
+surface_finish: choice(OSP, ENIG, HASL(with lead), LeadFree HASL) = ENIG | Surface finish
 
-[Finish & cosmetic]
-solder_mask_color: choice(Green, Black, White, Blue, Red) = Green | PCB color
-silkscreen_color: choice(White, Black) = White
-surface_finish: choice(ENIG, ENEPIG, Hard Gold, Immersion Silver, OSP) = ENIG
-gold_fingers: bool
+[Vias & drilling]
+via_covering: choice(Tented, Epoxy Filled & Untented, Plugged, Epoxy Filled & Capped, Copper paste Filled & Capped) = Tented | Via covering
+min_via_hole: choice(0.3mm/(0.4/0.45mm), 0.25mm/(0.35/0.4mm), 0.2mm/(0.3/0.35mm), 0.15mm/(0.25/0.3mm)) = 0.3mm/(0.4/0.45mm) | Min via hole size / diameter
+press_fit_hole: choice(No, Yes (Tolerance +/-0.05mm)) = No | Press-fit hole
+backdrill: choice(No, Yes) = No | Back-drill
 
-[Quality]
-ipc_class: choice(2, 3) = 2 | IPC class
-coupon: bool | Add test coupon
-cross_section_report: bool
-flying_probe_test: choice(Sample, 100%) = 100% | Electrical test
-special_requests: text
+[Options]
+board_outline_tolerance: choice(±0.2mm(Regular), ±0.1mm(Precision)) = ±0.2mm(Regular) | Board outline tolerance
+gold_fingers: choice(No, Yes) = No | Gold fingers
+castellated_holes: choice(No, Yes) = No | Castellated holes
+edge_plating: choice(No, Yes) = No | Edge plating
+blind_slots: choice(No, Yes) = No | Blind slots
+mark_on_pcb: choice(Remove Mark, 2D barcode (Serial Number)) = Remove Mark | Mark on PCB
+ul_marking: choice(No, Yes (Any Position), Yes (Specify Position)) = No | UL marking
+confirm_production_file: choice(No, Yes) = No | Confirm production file
+
+[Testing & quality]
+electrical_test: choice(Flying Probe Fully Test) = Flying Probe Fully Test | Electrical test
+appearance_quality: choice(IPC Class 2 Standard, Superb Quality) = IPC Class 2 Standard | Appearance quality
+silkscreen_technology: choice(Ink-jet Printing Silkscreen, High-precision Printing Silkscreen, High-definition Exposure Silkscreen) = Ink-jet Printing Silkscreen | Silkscreen technology
+kelvin_test: choice(No, Yes) = No | 4-Wire Kelvin test
+paper_between_pcbs: choice(No, Yes) = No | Paper between PCBs
+humidity_indicator_card: choice(No, Yes) = No | Humidity indicator card
+package_box: choice(With JLCPCB logo, Blank box) = With JLCPCB logo | Package box
+inspection_report: choice(No, Final Inspection Report, Electrical Test Report, ROHS Test Report) = No | Inspection report
+pcb_remark: text | PCB remark
+
+[Delivery]
+carrier: choice(DHL Express, DHL Express (DDP), UPS Worldwide Express Saver, FedEx Express, EuroPacket, Global Standard Direct Line, Sea Shipment, My UPS Account, My DHL Account, My FedEx Account) | Shipping carrier
 """
 
 
