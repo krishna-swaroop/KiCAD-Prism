@@ -523,8 +523,8 @@ function ViewerSettings({ user }: { user: User | null }) {
             <div>
                 <h3 className="text-lg font-medium">Viewer</h3>
                 <p className="text-sm text-muted-foreground">
-                    How boards and schematics render for you. These preferences are saved to this
-                    browser.
+                    How boards, schematics, and comparisons show up for you. These preferences are
+                    saved to this browser.
                 </p>
             </div>
 
@@ -538,6 +538,21 @@ function ViewerSettings({ user }: { user: User | null }) {
                     <Label className="text-base cursor-pointer">Make all views greyscale</Label>
                     <p className="text-sm text-muted-foreground">
                         Render every viewer without colour. Off by default.
+                    </p>
+                </div>
+            </label>
+
+            <label className="flex items-start gap-3 border rounded-lg p-4 bg-card cursor-pointer">
+                <Checkbox
+                    className="mt-0.5"
+                    checked={settings.showAllChanges}
+                    onCheckedChange={(checked) => update({ showAllChanges: checked === true })}
+                />
+                <div className="space-y-0.5">
+                    <Label className="text-base cursor-pointer">Show all changes in comparisons</Label>
+                    <p className="text-sm text-muted-foreground">
+                        Include follow-on writes normally hidden as noise. They appear under
+                        the comparison's layout and documentation section. Off by default.
                     </p>
                 </div>
             </label>

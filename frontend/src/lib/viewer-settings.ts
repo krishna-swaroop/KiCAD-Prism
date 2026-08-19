@@ -11,10 +11,17 @@ import { useCallback, useEffect, useState } from "react";
 export interface ViewerSettings {
     /** Render every viewer in greyscale instead of full colour. */
     greyscale: boolean;
+    /**
+     * Show every change in the comparison listing, including follow-on writes
+     * normally dropped as noise. They run through the same review steps as any
+     * other change and appear behind the layout section.
+     */
+    showAllChanges: boolean;
 }
 
 const DEFAULTS: ViewerSettings = {
     greyscale: false,
+    showAllChanges: false,
 };
 
 const STORAGE_PREFIX = "prism.viewer-settings";
