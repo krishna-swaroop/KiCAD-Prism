@@ -15,6 +15,7 @@ import { fetchApi, readApiError } from "@/lib/api";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
 import { canWriteCatalog } from "@/lib/roles";
 import { crossProbeRequestForSelection, normalizeEcadSelection } from "@/lib/prism-selection";
+import { useViewerSettings } from "@/lib/viewer-settings";
 import { usePrismCrossProbe } from "@/hooks/use-prism-cross-probe";
 import type { User } from "@/types/auth";
 import type {
@@ -173,6 +174,10 @@ function EcadViewerHost({
 }: EcadViewerHostProps) {
     const hostRef = useRef<ECadViewerElement | null>(null);
     const replaceReadyRef = useRef<Promise<void>>(Promise.resolve());
+    // Per-user greyscale preference, mirrored onto the `grayscale` attribute so
+    // this view honours the same global setting as the comparison viewer.
+    const { settings } = useViewerSettings(undefined);
+    const greyscale = settings.greyscale;
     const rootSource = sources[0];
     const appendedSources = useMemo(() => sources.slice(1), [sources]);
     const viewportLeft = viewportInsets.left ?? 0;
@@ -264,6 +269,16 @@ function EcadViewerHost({
         });
         return () => { cancelled = true; };
     }, [viewportBottom, viewportLeft, viewportRight, viewportTop]);
+
+    useEffect(() => {
+        const viewer = hostRef.current;
+        if (!viewer) return;
+        if (greyscale) {
+            viewer.setAttribute("grayscale", "true");
+        } else {
+            viewer.removeAttribute("grayscale");
+        }
+    }, [greyscale]);
 
     return (
         <ecad-viewer

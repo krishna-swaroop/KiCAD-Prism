@@ -9,6 +9,7 @@ import type {
     ECadViewerElement,
     EcadViewportInsets,
 } from "@/types/ecad-viewer";
+import { useViewerSettings } from "@/lib/viewer-settings";
 
 type ComparisonViewerHostProps = {
     viewerKey: string;
@@ -27,6 +28,12 @@ export function ComparisonViewerHost({
 }: ComparisonViewerHostProps) {
     const [viewer, setViewer] = useState<ECadViewerElement | null>(null);
     const latestViewerRef = useRef<ECadViewerElement | null>(null);
+    // Per-user greyscale preference. Read here (rather than prop-drilled) via the
+    // active-user fallback, so the deep viewer stays decoupled from auth. The
+    // vendored viewer reads the `grayscale` attribute; the companion ecad-viewer
+    // branch acts on it. Off by default, so full colour is the current behaviour.
+    const { settings } = useViewerSettings(undefined);
+    const greyscale = settings.greyscale;
     const viewportLeft = viewportInsets.left ?? 0;
     const viewportRight = viewportInsets.right ?? 0;
     const viewportTop = viewportInsets.top ?? 0;
@@ -101,6 +108,17 @@ export function ComparisonViewerHost({
             cancelled = true;
         };
     }, [active, viewer]);
+
+    useEffect(() => {
+        if (!viewer) return;
+        // Reflect the preference as an attribute so a viewer that mounts later,
+        // or a preference toggled while mounted, both land on the same state.
+        if (greyscale) {
+            viewer.setAttribute("grayscale", "true");
+        } else {
+            viewer.removeAttribute("grayscale");
+        }
+    }, [greyscale, viewer]);
 
     useLayoutEffect(() => {
         if (!viewer) return;
