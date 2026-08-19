@@ -92,6 +92,8 @@ export interface ProjectSpec {
     template_capabilities?: Record<string, number>;
     /** Label/unit for the linked template's custom (non KiCad-tracked) capabilities. */
     template_capability_meta?: Record<string, CapabilityMeta>;
+    /** The linked template's editable capability .config text. */
+    template_capability_config?: string;
     name: string;
     spec_config: string;
     specs: Record<string, unknown>;
@@ -267,10 +269,12 @@ export interface SpecTemplate {
     name: string;
     spec_config: string;
     /** Fabrication capabilities for this method, keyed by PcbRuleField.key or a
-        custom key (see capability_meta). */
+        custom key (see capability_meta). Derived from capability_config. */
     capabilities: Record<string, number>;
     /** Label/unit for custom (non KiCad-tracked) capability keys. */
     capability_meta?: Record<string, CapabilityMeta>;
+    /** Editable .config text for the capabilities; the source of truth. */
+    capability_config?: string;
     created_at: string;
     updated_at: string;
 }

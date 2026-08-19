@@ -1861,6 +1861,18 @@ def _manufacturing_capability_meta(conn: Any) -> None:
     )
 
 
+def _manufacturing_capability_config(conn: Any) -> None:
+    """The editable source of a template's capabilities: the same .config text as
+    a spec schema, where each capability is a field whose default is the minimum.
+    The capabilities/capability_meta maps are derived from this on save."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ws_spec_templates (id TEXT PRIMARY KEY)"
+    )
+    conn.execute(
+        "ALTER TABLE ws_spec_templates ADD COLUMN IF NOT EXISTS capability_config TEXT NOT NULL DEFAULT ''"
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1888,6 +1900,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (28, "manufacturing_capabilities_per_template", _manufacturing_capabilities_per_template),
     (29, "manufacturing_run_job_number", _manufacturing_run_job_number),
     (30, "manufacturing_capability_meta", _manufacturing_capability_meta),
+    (31, "manufacturing_capability_config", _manufacturing_capability_config),
 )
 
 

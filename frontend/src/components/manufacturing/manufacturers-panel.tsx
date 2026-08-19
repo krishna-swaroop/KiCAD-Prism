@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Building2, Pencil, Plus, Trash2, FileCode2, ChevronDown, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { Building2, Pencil, Plus, Trash2, FileCode2, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,18 +17,9 @@ import {
     createTemplate,
     updateTemplate,
     deleteTemplate,
-    getPcbRuleFields,
 } from "@/lib/manufacturing";
-import type {
-    CapabilityMeta,
-    CapabilityRow,
-    Manufacturer,
-    ParsedSpecConfig,
-    PcbRuleField,
-    SpecTemplate,
-} from "@/types/manufacturing";
-import { mergeCapabilityRows } from "@/types/manufacturing";
-import { SpecConfigEditor } from "./spec-config-editor";
+import type { Manufacturer, SpecTemplate } from "@/types/manufacturing";
+import { SchemaCapabilitiesDialog, type ConfigTab } from "./spec-config-editor";
 
 interface ManufacturersPanelProps {
     manufacturers: Manufacturer[];
@@ -225,81 +216,6 @@ function ManufacturerDialog({ target, onClose, onSaved }: ManufacturerDialogProp
     );
 }
 
-// Edit one capability: a single number = the manufacturer minimum. The board
-// must meet it. Empty clears the value. A custom (non KiCad-tracked) row also
-// lets you rename it, set a unit, and delete it.
-function CapabilityInput({
-    row,
-    onChange,
-    onRename,
-    onDelete,
-}: {
-    row: CapabilityRow;
-    onChange: (value: number | undefined) => void;
-    onRename?: (label: string, unit: string) => void;
-    onDelete?: () => void;
-}) {
-    const id = `cap-${row.key}`;
-    if (row.kicad) {
-        const label = row.unit ? `${row.label} (${row.unit})` : row.label;
-        return (
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                <Label htmlFor={id} className="text-xs text-muted-foreground">
-                    {label}
-                </Label>
-                <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-muted-foreground">≥</span>
-                    <Input
-                        id={id}
-                        aria-label={row.label}
-                        type="number"
-                        step="any"
-                        className="h-7 w-24 text-xs"
-                        value={row.value ?? ""}
-                        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                    />
-                </div>
-            </div>
-        );
-    }
-    // Custom capability: label + unit are editable, and it can be removed.
-    return (
-        <div className="flex items-center gap-1.5">
-            <Input
-                aria-label={`${row.label} name`}
-                className="h-7 flex-1 text-xs"
-                value={row.label}
-                onChange={(e) => onRename?.(e.target.value, row.unit ?? "")}
-            />
-            <span className="text-xs text-muted-foreground">≥</span>
-            <Input
-                id={id}
-                aria-label={row.label}
-                type="number"
-                step="any"
-                className="h-7 w-20 text-xs"
-                value={row.value ?? ""}
-                onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-            />
-            <Input
-                aria-label={`${row.label} unit`}
-                className="h-7 w-16 text-xs"
-                placeholder="unit"
-                value={row.unit ?? ""}
-                onChange={(e) => onRename?.(row.label, e.target.value)}
-            />
-            <button
-                type="button"
-                aria-label={`Remove ${row.label}`}
-                className="p-1 text-muted-foreground hover:text-destructive"
-                onClick={() => onDelete?.()}
-            >
-                <Trash2 className="h-3.5 w-3.5" />
-            </button>
-        </div>
-    );
-}
-
 interface ManufacturerTemplatesProps {
     manufacturer: Manufacturer;
     canEdit: boolean;
@@ -315,7 +231,6 @@ function ManufacturerTemplates({ manufacturer, canEdit }: ManufacturerTemplatesP
     const [templates, setTemplates] = useState<SpecTemplate[]>([]);
     const [loaded, setLoaded] = useState(false);
     const [editing, setEditing] = useState<TemplateEdit>(null);
-    const [capsTarget, setCapsTarget] = useState<SpecTemplate | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<SpecTemplate | null>(null);
 
     const load = useCallback(async () => {
@@ -353,15 +268,6 @@ function ManufacturerTemplates({ manufacturer, canEdit }: ManufacturerTemplatesP
                             <span className="text-sm">{t.name}</span>
                             {canEdit && (
                                 <div className="flex gap-1">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 px-2 text-xs"
-                                        onClick={() => setCapsTarget(t)}
-                                    >
-                                        <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
-                                        Capabilities
-                                    </Button>
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -405,17 +311,6 @@ function ManufacturerTemplates({ manufacturer, canEdit }: ManufacturerTemplatesP
                 />
             )}
 
-            {capsTarget && (
-                <TemplateCapabilitiesDialog
-                    template={capsTarget}
-                    onClose={() => setCapsTarget(null)}
-                    onSaved={() => {
-                        setCapsTarget(null);
-                        void load();
-                    }}
-                />
-            )}
-
             <ConfirmDialog
                 open={deleteTarget !== null}
                 onOpenChange={(open) => !open && setDeleteTarget(null)}
@@ -446,175 +341,74 @@ interface TemplateEditorDialogProps {
 
 function TemplateEditorDialog({ manufacturer, edit, onClose, onSaved }: TemplateEditorDialogProps) {
     const existing = edit.mode === "edit" ? edit.template : null;
-    // The name is edited alongside the .config; keep it in a ref-like state the save closure reads.
+    // The name is edited alongside the .config; keep it in state the save closures read.
     const [name, setName] = useState(existing?.name ?? "");
 
+    const preview = async (text: string) => {
+        const { previewSpecConfig } = await import("@/lib/manufacturing");
+        return previewSpecConfig(text);
+    };
+    const baseName = (existing?.name ?? "template").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+    const schemaTab: ConfigTab = {
+        id: "schema",
+        label: "Schema",
+        fileBaseName: `${baseName}-schema`,
+        load: async () => {
+            if (existing) {
+                const full = await getTemplate(existing.id);
+                return { text: full.spec_config, parsed: await preview(full.spec_config) };
+            }
+            return { text: "", parsed: { sections: [], errors: [] } };
+        },
+        save: async (text) => {
+            const finalName = name.trim() || (existing ? existing.name : "Untitled template");
+            if (existing) {
+                await updateTemplate(existing.id, { name: finalName, spec_config: text });
+            } else {
+                await createTemplate(manufacturer.id, { name: finalName, spec_config: text });
+            }
+            return preview(text);
+        },
+        headerSlot: () => (
+            <input
+                aria-label="Template name"
+                className="h-7 w-40 rounded-md border bg-background px-2 text-xs"
+                placeholder="Template name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+            />
+        ),
+    };
+
+    const capabilitiesTab: ConfigTab = {
+        id: "capabilities",
+        label: "Capabilities",
+        fileBaseName: `${baseName}-capabilities`,
+        // Capabilities live on a saved template; a brand-new one has none yet.
+        disabledNote: existing
+            ? undefined
+            : "Save the template first, then reopen it to define its capabilities.",
+        load: async () => {
+            if (!existing) return { text: "", parsed: { sections: [], errors: [] } };
+            const full = await getTemplate(existing.id);
+            const text = full.capability_config ?? "";
+            return { text, parsed: await preview(text) };
+        },
+        save: async (text) => {
+            if (existing) await updateTemplate(existing.id, { capability_config: text });
+            return preview(text);
+        },
+    };
+
     return (
-        <SpecConfigEditor
+        <SchemaCapabilitiesDialog
             title={existing ? `Edit template: ${existing.name}` : `New ${manufacturer.name} template`}
-            description="A named spec schema for this manufacturer. Projects copy it when applied."
+            description="A named spec schema and its fabrication capabilities. Projects copy the schema when applied and read the capabilities live."
             saveLabel="Save template"
-            load={async (): Promise<{ text: string; parsed: ParsedSpecConfig }> => {
-                if (existing) {
-                    const full = await getTemplate(existing.id);
-                    const { previewSpecConfig } = await import("@/lib/manufacturing");
-                    return { text: full.spec_config, parsed: await previewSpecConfig(full.spec_config) };
-                }
-                return { text: "", parsed: { sections: [], errors: [] } };
-            }}
-            save={async (text) => {
-                const { previewSpecConfig } = await import("@/lib/manufacturing");
-                const finalName = name.trim() || (existing ? existing.name : "Untitled template");
-                if (existing) {
-                    await updateTemplate(existing.id, { name: finalName, spec_config: text });
-                } else {
-                    await createTemplate(manufacturer.id, { name: finalName, spec_config: text });
-                }
-                return previewSpecConfig(text);
-            }}
-            headerSlot={() => (
-                <input
-                    aria-label="Template name"
-                    className="h-7 w-48 rounded-md border bg-background px-2 text-xs"
-                    placeholder="Template name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                />
-            )}
+            tabs={[schemaTab, capabilitiesTab]}
             onClose={onClose}
             onSaved={onSaved}
         />
-    );
-}
-
-interface TemplateCapabilitiesDialogProps {
-    template: SpecTemplate;
-    onClose: () => void;
-    onSaved: () => void;
-}
-
-function slugifyKey(label: string): string {
-    return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
-        || `custom_${Date.now()}`;
-}
-
-// Edit a fabrication method's capabilities: the KiCad-tracked rule fields plus any
-// custom capabilities the fab lists. A toggle limits the view to KiCad-tracked
-// ones. Reused live by every project spec built from this template.
-function TemplateCapabilitiesDialog({ template, onClose, onSaved }: TemplateCapabilitiesDialogProps) {
-    const [capabilities, setCapabilities] = useState<Record<string, number>>(template.capabilities ?? {});
-    const [meta, setMeta] = useState<Record<string, CapabilityMeta>>(template.capability_meta ?? {});
-    const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
-    const [showAll, setShowAll] = useState(false);
-    const [saving, setSaving] = useState(false);
-
-    useEffect(() => {
-        void getPcbRuleFields()
-            .then(({ fields }) => setRuleFields(fields))
-            .catch(() => setRuleFields([]));
-    }, []);
-
-    const rows = mergeCapabilityRows(ruleFields, capabilities, meta);
-    const visibleRows = showAll ? rows : rows.filter((r) => r.kicad);
-
-    const setCap = (key: string, value: number | undefined) => {
-        setCapabilities((current) => {
-            const next = { ...current };
-            if (value === undefined) delete next[key];
-            else next[key] = value;
-            return next;
-        });
-    };
-
-    const renameCustom = (key: string, label: string, unit: string) => {
-        setMeta((current) => ({ ...current, [key]: { label, unit: unit || undefined } }));
-    };
-
-    const deleteCustom = (key: string) => {
-        setCapabilities((current) => {
-            const next = { ...current };
-            delete next[key];
-            return next;
-        });
-        setMeta((current) => {
-            const next = { ...current };
-            delete next[key];
-            return next;
-        });
-    };
-
-    const addCustom = () => {
-        const key = slugifyKey(`custom ${Object.keys(meta).length + 1}`);
-        setMeta((current) => ({ ...current, [key]: { label: "New capability", unit: "mm" } }));
-        setShowAll(true);
-    };
-
-    const handleSave = async () => {
-        setSaving(true);
-        try {
-            await updateTemplate(template.id, { capabilities, capability_meta: meta });
-            toast.success("Capabilities saved.");
-            onSaved();
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to save.");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <Dialog open onOpenChange={(next) => !next && !saving && onClose()}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Capabilities: {template.name}</DialogTitle>
-                    <DialogDescription>
-                        What this fabrication method can build. Projects using it see these live.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="flex items-center justify-between">
-                    <div className="inline-flex border text-xs">
-                        <button
-                            type="button"
-                            className={`px-2.5 py-1 ${!showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                            onClick={() => setShowAll(false)}
-                        >
-                            KiCad-tracked
-                        </button>
-                        <button
-                            type="button"
-                            className={`px-2.5 py-1 ${showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                            onClick={() => setShowAll(true)}
-                        >
-                            All
-                        </button>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={addCustom}>
-                        <Plus className="mr-1 h-3.5 w-3.5" />
-                        Add capability
-                    </Button>
-                </div>
-
-                <div className="max-h-[60vh] space-y-1.5 overflow-y-auto py-1 pr-1">
-                    {visibleRows.map((row) => (
-                        <CapabilityInput
-                            key={row.key}
-                            row={row}
-                            onChange={(v) => setCap(row.key, v)}
-                            onRename={(label, unit) => renameCustom(row.key, label, unit)}
-                            onDelete={() => deleteCustom(row.key)}
-                        />
-                    ))}
-                </div>
-                <div className="flex justify-end gap-2">
-                    <Button variant="ghost" onClick={onClose} disabled={saving}>
-                        Cancel
-                    </Button>
-                    <Button onClick={() => void handleSave()} disabled={saving}>
-                        {saving ? "Saving…" : "Save"}
-                    </Button>
-                </div>
-            </DialogContent>
-        </Dialog>
     );
 }

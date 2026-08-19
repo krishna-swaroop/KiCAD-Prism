@@ -226,6 +226,9 @@ class WorkspaceService:
                 -- Label/unit metadata for custom capabilities beyond the KiCad
                 -- rule fields; keyed by capability key. Added by migration 30 too.
                 capability_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+                -- Editable .config text for capabilities; the two JSONB maps
+                -- above are derived from it on save. Added by migration 31 too.
+                capability_config TEXT NOT NULL DEFAULT '',
                 -- Identifies a built-in template (e.g. 'jlcpcb:standard'); NULL for
                 -- user-created ones. seeded_hash is the sha256 of the source text it
                 -- was last seeded from, so startup can tell an untouched built-in

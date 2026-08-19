@@ -33,6 +33,7 @@ import {
     updateProjectSpec,
     deleteProjectSpec,
     getTemplate,
+    updateTemplate,
     listTemplates,
     downloadSpecSheet,
     getPcbRuleFields,
@@ -54,7 +55,7 @@ import {
     type SpecSectionDef,
     type SpecTemplate,
 } from "@/types/manufacturing";
-import { SpecConfigEditor } from "./spec-config-editor";
+import { SchemaCapabilitiesDialog } from "./spec-config-editor";
 import { CompactSelect, FIELD_GAP, GROUP_GRID, FIELD_WRAP } from "./ui";
 
 interface ProjectManufacturingProps {
@@ -97,6 +98,8 @@ export function ProjectManufacturing({
     const [templateCapabilities, setTemplateCapabilities] = useState<Record<string, number>>({});
     const [templateCapabilityMeta, setTemplateCapabilityMeta] = useState<Record<string, CapabilityMeta>>({});
     const [templateName, setTemplateName] = useState<string | null>(null);
+    // The id of the spec's linked template, needed to edit its capability text.
+    const [templateId, setTemplateId] = useState<string | null>(null);
     // The board's own extracted rules, read automatically for the capability comparison.
     const [boardRules, setBoardRules] = useState<Record<string, unknown> | null>(null);
     // Which optional sections are switched on (persisted with the spec).
@@ -201,6 +204,7 @@ export function ProjectManufacturing({
             setTemplateCapabilities({});
             setTemplateCapabilityMeta({});
             setTemplateName(null);
+            setTemplateId(null);
             setDirty(false);
             return;
         }
@@ -217,6 +221,7 @@ export function ProjectManufacturing({
                 setTemplateCapabilities(spec.template_capabilities ?? {});
                 setTemplateCapabilityMeta(spec.template_capability_meta ?? {});
                 setTemplateName(spec.template_name ?? null);
+                setTemplateId(spec.template_id ?? null);
                 setDirty(false);
             } catch (error) {
                 if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load the spec.");
@@ -718,55 +723,82 @@ export function ProjectManufacturing({
             </section>
 
             {editorOpen && specId && (
-                <SpecConfigEditor
-                    title="Edit spec schema"
-                    description="Define the fields this spec's form shows, or apply a manufacturer template."
-                    saveLabel="Save schema"
-                    load={async () => {
-                        const spec = await getProjectSpec(specId);
-                        return { text: spec.spec_config, parsed: spec.parsed };
-                    }}
-                    save={async (text) => {
-                        await updateProjectSpec(specId, { spec_config: text });
-                        const { previewSpecConfig } = await import("@/lib/manufacturing");
-                        return previewSpecConfig(text);
-                    }}
-                    headerSlot={(setText) => {
-                        // Prefer templates for the selected manufacturer; fall back to all.
-                        const forMfr = templates.filter((t) => t.manufacturer_id === manufacturerId);
-                        const options = forMfr.length > 0 ? forMfr : templates;
-                        return options.length > 0 ? (
-                            <CompactSelect
-                                aria-label="Apply a template"
-                                widthClass="w-auto"
-                                value=""
-                                onChange={async (e) => {
-                                    const templateId = e.target.value;
-                                    e.target.value = "";
-                                    if (!templateId) return;
-                                    try {
-                                        // Copy-on-apply: fetch the template's config into the editor.
-                                        const { getTemplate } = await import("@/lib/manufacturing");
-                                        const tmpl = await getTemplate(templateId);
-                                        setText(tmpl.spec_config);
-                                    } catch (error) {
-                                        toast.error(error instanceof Error ? error.message : "Failed to load template.");
-                                    }
-                                }}
-                            >
-                                <option value="">Apply template…</option>
-                                {options.map((t) => (
-                                    <option key={t.id} value={t.id}>
-                                        {t.manufacturer_name} — {t.name}
-                                    </option>
-                                ))}
-                            </CompactSelect>
-                        ) : null;
-                    }}
+                <SchemaCapabilitiesDialog
+                    title="Edit spec"
+                    description="Define the fields this spec's form shows and the linked method's fabrication capabilities."
+                    saveLabel="Save"
+                    tabs={[
+                        {
+                            id: "schema",
+                            label: "Schema",
+                            fileBaseName: "spec-schema",
+                            load: async () => {
+                                const spec = await getProjectSpec(specId);
+                                return { text: spec.spec_config, parsed: spec.parsed };
+                            },
+                            save: async (text) => {
+                                await updateProjectSpec(specId, { spec_config: text });
+                                const { previewSpecConfig } = await import("@/lib/manufacturing");
+                                return previewSpecConfig(text);
+                            },
+                            headerSlot: (setText) => {
+                                // Prefer templates for the selected manufacturer; fall back to all.
+                                const forMfr = templates.filter((t) => t.manufacturer_id === manufacturerId);
+                                const options = forMfr.length > 0 ? forMfr : templates;
+                                return options.length > 0 ? (
+                                    <CompactSelect
+                                        aria-label="Apply a template"
+                                        widthClass="w-auto"
+                                        value=""
+                                        onChange={async (e) => {
+                                            const applyId = e.target.value;
+                                            e.target.value = "";
+                                            if (!applyId) return;
+                                            try {
+                                                const { getTemplate } = await import("@/lib/manufacturing");
+                                                const tmpl = await getTemplate(applyId);
+                                                setText(tmpl.spec_config);
+                                            } catch (error) {
+                                                toast.error(error instanceof Error ? error.message : "Failed to load template.");
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Apply template…</option>
+                                        {options.map((t) => (
+                                            <option key={t.id} value={t.id}>
+                                                {t.manufacturer_name} — {t.name}
+                                            </option>
+                                        ))}
+                                    </CompactSelect>
+                                ) : null;
+                            },
+                        },
+                        {
+                            id: "capabilities",
+                            label: "Capabilities",
+                            fileBaseName: "spec-capabilities",
+                            // Capabilities belong to the linked template.
+                            disabledNote: templateId
+                                ? undefined
+                                : "This spec is not linked to a template, so it has no capabilities to edit. Add a spec from a manufacturer schema to get one.",
+                            load: async () => {
+                                const { previewSpecConfig, getTemplate } = await import("@/lib/manufacturing");
+                                if (!templateId) return { text: "", parsed: { sections: [], errors: [] } };
+                                const tmpl = await getTemplate(templateId);
+                                const text = tmpl.capability_config ?? "";
+                                return { text, parsed: await previewSpecConfig(text) };
+                            },
+                            save: async (text) => {
+                                const { previewSpecConfig } = await import("@/lib/manufacturing");
+                                if (templateId) await updateTemplate(templateId, { capability_config: text });
+                                return previewSpecConfig(text);
+                            },
+                        },
+                    ]}
                     onClose={() => setEditorOpen(false)}
                     onSaved={() => {
                         setEditorOpen(false);
-                        // Reload the spec into the form so new fields appear.
+                        // Reload the spec into the form so new fields and capabilities appear.
                         setSpecId((id) => id);
                         void (async () => {
                             const spec = await getProjectSpec(specId);
@@ -774,6 +806,8 @@ export function ProjectManufacturing({
                             setSource(spec.source ?? {});
                             setSchema(spec.parsed);
                             setActiveSections(new Set(spec.active_sections ?? []));
+                            setTemplateCapabilities(spec.template_capabilities ?? {});
+                            setTemplateCapabilityMeta(spec.template_capability_meta ?? {});
                         })();
                     }}
                 />

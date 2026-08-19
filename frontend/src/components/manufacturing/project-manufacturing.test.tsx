@@ -57,7 +57,7 @@ if (!Element.prototype.scrollIntoView) {
 
 // The schema editor is a child; stub it so this suite stays focused on the form.
 vi.mock("./spec-config-editor", () => ({
-    SpecConfigEditor: () => null,
+    SchemaCapabilitiesDialog: () => null,
 }));
 
 import { ProjectManufacturing } from "./project-manufacturing";

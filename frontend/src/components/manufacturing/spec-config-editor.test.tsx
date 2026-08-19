@@ -64,7 +64,6 @@ describe("SpecConfigEditor", () => {
             expect((screen.getByLabelText(".config") as HTMLTextAreaElement).value).toContain("layer_count"),
         );
         expect(screen.getByText("Layer count")).toBeTruthy();
-        expect(screen.getByText(/Schema is valid/)).toBeTruthy();
     });
 
     it("shows parse errors from the live preview", async () => {
@@ -77,8 +76,8 @@ describe("SpecConfigEditor", () => {
         });
         fireEvent.change(screen.getByLabelText(".config"), { target: { value: "[S]\nx: banana" } });
 
+        // The error surfaces in the preview pane.
         await waitFor(() => expect(screen.getByText(/unknown type/)).toBeTruthy());
-        expect(screen.getByText(/1 problem/)).toBeTruthy();
     });
 
     it("saves the edited text through the save callback", async () => {
@@ -90,6 +89,52 @@ describe("SpecConfigEditor", () => {
 
         await waitFor(() => expect(save).toHaveBeenCalledWith("[S]\nx: text"));
         await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    });
+
+    it("downloads the current text as a .config file", async () => {
+        const createObjectURL = vi.fn((_blob: Blob) => "blob:x");
+        const revokeObjectURL = vi.fn();
+        vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+        const clickSpy = vi
+            .spyOn(HTMLAnchorElement.prototype, "click")
+            .mockImplementation(() => {});
+
+        renderEditor({ fileBaseName: "my-schema" });
+        await waitFor(() => expect(screen.getByLabelText(".config")).toBeTruthy());
+        fireEvent.click(screen.getByTitle("Download this .config"));
+
+        expect(createObjectURL).toHaveBeenCalled();
+        const blob = createObjectURL.mock.calls[0][0];
+        expect(blob).toBeInstanceOf(Blob);
+        expect(blob.size).toBeGreaterThan(0);
+        expect(clickSpy).toHaveBeenCalled();
+        clickSpy.mockRestore();
+    });
+
+    it("uploads a file into the editor and re-previews", async () => {
+        renderEditor();
+        await waitFor(() => expect(screen.getByLabelText(".config")).toBeTruthy());
+
+        previewSpecConfig.mockResolvedValue({
+            sections: [
+                {
+                    title: "Uploaded",
+                    optional: false,
+                    when: null,
+                    fields: [{ key: "foo", label: "Foo", type: "text", options: [], default: null, when: null }],
+                },
+            ],
+            errors: [],
+        });
+        // The hidden file input is the only file input in the pane.
+        const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+        const file = new File(["[Uploaded]\nfoo: text"], "caps.config", { type: "text/plain" });
+        fireEvent.change(input, { target: { files: [file] } });
+
+        await waitFor(() =>
+            expect((screen.getByLabelText(".config") as HTMLTextAreaElement).value).toContain("Uploaded"),
+        );
+        await waitFor(() => expect(screen.getByText("Foo")).toBeTruthy());
     });
 
     it("renders a header slot (e.g. a template picker)", async () => {

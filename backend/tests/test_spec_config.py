@@ -266,6 +266,40 @@ class SpecConfigParseTests(unittest.TestCase):
         self.assertIn("capability_meta", flex)
         self.assertIn("max_board_width_mm", flex["capability_meta"])
 
+    def test_capabilities_config_derives_values_and_units(self) -> None:
+        from app.services.spec_config_service import capabilities_from_config
+
+        caps, meta = capabilities_from_config(
+            "[Board rules]\n"
+            "min_track_width: number = 0.1 | Min track width (mm)\n"
+            "min_via_diameter: number = 0.25 | Min via diameter (mm)\n"
+            "[Other]\n"
+            "max_board_width_mm: number = 234 | Max board width (mm)\n"
+        )
+        self.assertEqual(caps["min_track_width"], 0.1)
+        self.assertEqual(caps["max_board_width_mm"], 234)  # whole number stays int
+        self.assertEqual(meta["min_track_width"], {"label": "Min track width", "unit": "mm"})
+        self.assertEqual(meta["max_board_width_mm"]["label"], "Max board width")
+
+    def test_capabilities_config_round_trips_the_seed_dicts(self) -> None:
+        from app.services.pcb_rules_service import PCB_RULE_FIELDS
+        from app.services.spec_config_service import (
+            JLCPCB_FLEX_CAPABILITIES,
+            JLCPCB_FLEX_META,
+            PCBWAY_STANDARD_CAPABILITIES,
+            PCBWAY_META,
+            capabilities_from_config,
+            capabilities_to_config,
+        )
+
+        for caps, meta in (
+            (JLCPCB_FLEX_CAPABILITIES, JLCPCB_FLEX_META),
+            (PCBWAY_STANDARD_CAPABILITIES, PCBWAY_META),
+        ):
+            text = capabilities_to_config(caps, meta, rule_fields=PCB_RULE_FIELDS)
+            derived, _ = capabilities_from_config(text)
+            self.assertEqual(derived, caps)
+
     def test_capabilities_split_into_kicad_tracked_and_custom(self) -> None:
         from app.services.pcb_rules_service import is_kicad_tracked
         from app.services.spec_config_service import (

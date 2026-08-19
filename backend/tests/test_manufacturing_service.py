@@ -140,6 +140,30 @@ class ManufacturingStoreTests(unittest.TestCase):
         self.assertEqual(stored["capability_meta"]["max_board_width_mm"]["label"], "Max width")
         mfg.delete_manufacturer(mid)
 
+    def test_capability_config_text_derives_the_value_map(self) -> None:
+        mid = mfg.create_manufacturer("MfgTest Cap Config Fab")
+        tid = mfg.create_template(
+            mid, "flex", "[S]\nlayer_count: int = 2",
+            capability_config=(
+                "[Board rules]\n"
+                "min_track_width: number = 0.1 | Min track width (mm)\n"
+                "[Other]\n"
+                "max_board_width_mm: number = 234 | Max board width (mm)\n"
+            ),
+        )
+        stored = mfg.get_template(tid)
+        self.assertIn("min_track_width", stored["capability_config"])
+        self.assertEqual(stored["capabilities"]["min_track_width"], 0.1)
+        self.assertEqual(stored["capabilities"]["max_board_width_mm"], 234)
+        self.assertEqual(stored["capability_meta"]["max_board_width_mm"]["label"], "Max board width")
+
+        # Editing the text rewrites the derived maps.
+        mfg.update_template(tid, capability_config="[Board rules]\nmin_track_width: number = 0.075 | Min track (mm)\n")
+        stored = mfg.get_template(tid)
+        self.assertEqual(stored["capabilities"], {"min_track_width": 0.075})
+        self.assertNotIn("max_board_width_mm", stored["capabilities"])
+        mfg.delete_manufacturer(mid)
+
     def test_seed_backfills_capability_metadata_without_clobbering(self) -> None:
         mid = mfg.create_manufacturer("MfgTest Meta Backfill")
         key = f"scratch:meta:{mid}"

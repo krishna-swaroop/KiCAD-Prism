@@ -319,6 +319,7 @@ export async function createTemplate(
     body: {
         name: string;
         spec_config: string;
+        capability_config?: string;
         capabilities?: Record<string, unknown>;
         capability_meta?: Record<string, unknown>;
     },
@@ -338,6 +339,7 @@ export async function updateTemplate(
     body: Partial<{
         name: string;
         spec_config: string;
+        capability_config: string;
         capabilities: Record<string, unknown>;
         capability_meta: Record<string, unknown>;
     }>,

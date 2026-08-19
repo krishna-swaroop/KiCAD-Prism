@@ -295,6 +295,94 @@ def parse_spec_config(text: str) -> ParsedSpecConfig:
     return ParsedSpecConfig(sections=sections, errors=errors)
 
 
+# --------------------------------------------------------------------------
+# Capabilities as .config text
+#
+# A fabrication method's capabilities are written in the same .config grammar as
+# a spec schema: each capability is a `number` field whose default is the
+# minimum, e.g. `min_track_width: number = 0.1 | Min track width (mm)`. The unit,
+# when present, is the trailing `(...)` of the label. This keeps the same editor,
+# preview, and download/upload for both.
+# --------------------------------------------------------------------------
+
+_UNIT_RE = re.compile(r"^(?P<label>.*?)\s*\((?P<unit>[^()]*)\)\s*$")
+
+
+def _split_label_unit(label: str) -> tuple[str, str]:
+    """Split a trailing `(unit)` off a label: `Min track width (mm)` -> (label, mm)."""
+    match = _UNIT_RE.match(label.strip())
+    if match:
+        return match.group("label").strip(), match.group("unit").strip()
+    return label.strip(), ""
+
+
+def capabilities_from_config(text: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Derive the capability value map and its label/unit metadata from .config
+    text. Value = each field's numeric default (fields with no numeric default
+    are skipped). Metadata carries the label and any trailing `(unit)`."""
+    parsed = parse_spec_config(text or "")
+    capabilities: dict[str, Any] = {}
+    meta: dict[str, Any] = {}
+    for section in parsed.sections:
+        for fld in section.fields:
+            default = fld.default
+            if default is None:
+                continue
+            try:
+                value = float(default)
+            except (TypeError, ValueError):
+                continue
+            # Store whole numbers as ints so 4 does not become 4.0 in the UI.
+            capabilities[fld.key] = int(value) if value.is_integer() else value
+            label, unit = _split_label_unit(fld.label)
+            meta[fld.key] = {"label": label, "unit": unit} if unit else {"label": label}
+    return capabilities, meta
+
+
+def capabilities_to_config(
+    capabilities: dict[str, Any],
+    meta: dict[str, Any] | None = None,
+    *,
+    rule_fields: list[dict[str, Any]] | None = None,
+) -> str:
+    """Render a capability value map as .config text: KiCad-tracked keys in their
+    canonical order first (under [Board rules]), then custom keys (under
+    [Other]). Label/unit come from ``meta`` or, for tracked keys, ``rule_fields``.
+    The inverse of :func:`capabilities_from_config`."""
+    meta = meta or {}
+    rule_fields = rule_fields or []
+    field_by_key = {f["key"]: f for f in rule_fields}
+    tracked_order = [f["key"] for f in rule_fields]
+    tracked_keys = set(tracked_order)
+
+    def line_for(key: str) -> str | None:
+        if key not in capabilities:
+            return None
+        value = capabilities[key]
+        entry = meta.get(key) or {}
+        label = entry.get("label") or field_by_key.get(key, {}).get("label") or _humanise(key)
+        unit = entry.get("unit") or field_by_key.get(key, {}).get("unit") or ""
+        label_text = f"{label} ({unit})" if unit else label
+        return f"{key}: number = {value} | {label_text}"
+
+    lines: list[str] = [
+        "# Fabrication capabilities: each is a minimum the board must meet.",
+        "# Written in the same .config grammar as a spec schema; the default is",
+        "# the minimum value, e.g. `min_track_width: number = 0.1 | Min track (mm)`.",
+    ]
+
+    tracked_lines = [line for key in tracked_order if (line := line_for(key))]
+    if tracked_lines:
+        lines += ["", "[Board rules]", *tracked_lines]
+
+    custom_keys = [k for k in capabilities if k not in tracked_keys]
+    custom_lines = [line for key in custom_keys if (line := line_for(key))]
+    if custom_lines:
+        lines += ["", "[Other]", *custom_lines]
+
+    return "\n".join(lines) + "\n"
+
+
 def _parse_type(key: str, type_text: str, lineno: int, errors: list[str]) -> SpecFieldDef | None:
     label = _humanise(key)
 
