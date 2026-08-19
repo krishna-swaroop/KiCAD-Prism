@@ -364,7 +364,6 @@ base_material: choice(FR-4, Flex) = FR-4 | Base material
 layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16) = 2 | Layers
 board_width_mm: number | Dimension width (mm)
 board_height_mm: number | Dimension height (mm)
-pcb_qty: choice(5, 10, 15, 20, 25, 30, 50, 75, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 750, 800, 900, 1000, 1200, 1250, 1400, 1500, 1600, 1750, 1800, 2000, 2400, 2500, 2800, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 11000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 25000, 30000, 40000, 50000, 60000, 70000) = 5 | PCB Qty
 product_type: choice(Industrial/Consumer electronics, Aerospace, Medical) = Industrial/Consumer electronics | Product type
 different_design: choice(1, 2, 3, 4) = 1 | Different design
 delivery_format: choice(Single PCB, Panel by Customer, Panel by JLCPCB) = Single PCB | Delivery format
@@ -507,7 +506,6 @@ base_material: choice(FR-4, Flex, Copper Core) = FR-4 | Base material
 layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16) = 6 | Layers
 board_width_mm: number | Dimension width (mm)
 board_height_mm: number | Dimension height (mm)
-pcb_qty: choice(5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100, 110, 120, 125, 140, 150, 160, 175, 180, 200, 220, 240, 250, 270, 280, 300, 320, 350, 360, 400, 450, 500, 550, 600, 650, 700, 750, 800, 900, 1000, 1200, 1250, 1400, 1500, 1600, 1750, 1800, 2000, 2400, 2500, 2800, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 11000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 25000, 30000, 40000, 50000, 60000, 70000) = 5 | PCB Qty
 product_type: choice(Industrial/Consumer electronics, Aerospace, Medical) = Industrial/Consumer electronics | Product type
 different_design: choice(1, 2, 3, 4) = 1 | Different design
 delivery_format: choice(Single PCB, Panel by Customer, Panel by JLCPCB) = Single PCB | Delivery format
