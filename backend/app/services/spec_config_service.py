@@ -457,40 +457,155 @@ engrave_text: choice(No, Yes) = No | Engrave text
 
 # A ready-made schema mirroring PCBWay's standard PCB order options.
 PCBWAY_SPEC_CONFIG = """\
-# Spec schema modelled on PCBWay's standard PCB order options.
-# Values follow their order form; edit freely for your board.
+# PCBWay standard PCB quote, field by field with the exact site options.
 
 [Base]
-base_material: choice(FR-4, Aluminum, Copper Base, Rogers) = FR-4
-fr4_tg: choice(TG130, TG150, TG170) = TG130 | FR4 TG
-layer_count: int = 2
-board_width_mm: number | Board width (mm)
-board_height_mm: number | Board height (mm)
+board_type: choice(Single pieces, Panel by Customer, Panel by Supplier) = Single pieces | Board type
+route_process: choice(Panel as PCBWay prefer, Panel as V-Scoring, Panel as Tab Route, Both V-Scoring&Tab-routing) = Panel as PCBWay prefer when board_type != Single pieces | Route process
+different_design: choice(1, 2, 3, 4, 5, 6) = 1 when board_type != Single pieces | Different designs in panel
+board_width_mm: number | Size width (mm)
+board_height_mm: number | Size height (mm)
+quantity: choice(5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 9000, 10000) = 5 | Quantity
+layer_count: choice(1 Layer, 2 Layers, 4 Layers, 6 Layers, 8 Layers, 10 Layers, 12 Layers, 14 Layers) = 2 Layers | Layers
 
-[Stackup]
-board_thickness_mm: choice(0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0, 2.4, 2.6, 2.8, 3.0, 3.2) = 1.6 | PCB thickness (mm)
-outer_copper_weight_oz: choice(1, 2, 3, 4, 5, 6, 7, 8) = 1 | Outer copper (oz)
-inner_copper_weight_oz: choice(1, 2, 3, 4) | Inner copper (oz)
-min_track_spacing_mm: number = 0.1 | Min track/spacing (mm)
-min_via_hole_mm: number = 0.3 | Min via hole (mm)
+[Material]
+material: choice(FR-4, Aluminum, Rogers, HDI(Buried/blind vias) ≥4 Layers, Copper Base) = FR-4 | Material
+rogers_material: choice(Rogers 4003C, Rogers 4350B) = Rogers 4003C when material = Rogers | Rogers laminate
+thermal_conductivity: choice(1.0W/(m⋅K), 1.5W/(m⋅K), 2.0W/(m⋅K), 3.0W/(m⋅K)) = 1.0W/(m⋅K) when material = Aluminum | Thermal conductivity
+mcpcb_structure: choice(Metal core in the middle, Metal base on the bottom side) = Metal core in the middle when material = Aluminum | Structure of MCPCB
+fr4_tg: choice(TG 130-140, TG 150-160, TG 170-180, S1000H TG150, S1000-2M TG170) = TG 130-140 when material = FR-4 | FR4 TG
+board_thickness_mm: choice(0.2, 0.3, 0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0, 2.4, 2.6, 2.8, 3.0, 3.2, ≥1.7-8.0) = 1.6 | Board thickness (mm)
 
-[Finish & cosmetic]
-solder_mask_color: choice(Green, Red, Yellow, Blue, White, Black, Purple, Matte Green, Matte Black) = Green
-silkscreen_color: choice(White, Black, Yellow, None) = White
-surface_finish: choice(HASL, Lead-free HASL, Immersion Gold (ENIG), Hard Gold, Immersion Silver, Immersion Tin, OSP, ENEPIG) = HASL
-via_process: choice(Tenting, Plugged, Untented) = Tenting
+[Tolerances]
+min_track_spacing: choice(3/3mil, 4/4mil, 5/5mil, 6/6mil, 8/8mil) = 3/3mil | Min track / spacing
+min_hole_size: choice(0.15mm, 0.2mm, 0.25mm, 0.3mm, 0.8mm, 1.0mm, No Drill) = 0.15mm | Min hole size
 
-[Advanced]
-impedance_control: bool
-gold_fingers: bool
-castellated_holes: bool | Castellated / half holes
-edge_plating: bool
-panelization: choice(None, V-scoring, Tab-routing, Perforation) = None
+[Colour]
+solder_mask: choice(Green, Red, Yellow, Blue, White, Black, Purple, Matte black, Matte green, None) = Green | Solder mask
+silkscreen: choice(White, Black, Yellow, None) = White | Silkscreen
+uv_printing: choice(None, Single-sided: Top, Single-sided: Bottom, Double-sided) = None | UV printing / multi-colour
+
+[Finish]
+surface_finish: choice(HASL with lead, HASL lead free, Immersion gold(ENIG), OSP, Hard gold, Immersion silver(Ag), Immersion tin, HASL lead free + Selective Immersion gold, HASL lead free + Selective Hard gold, Immersion gold + Selective Hard gold, ENEPIG, None/Plain copper) = HASL lead free | Surface finish
+via_process: choice(Tenting vias, Plugged vias with solder mask, Vias not covered) = Tenting vias | Via process
+edge_connector: choice(Yes, No, Yes (20°), Yes (30°), Yes (45°), HASL with lead, HASL lead free, Immersion gold(ENIG), OSP, Hard gold, Immersion silver(Ag), Immersion tin, ENEPIG, None/Plain copper) = No | Edge connector (gold fingers)
+
+[Copper]
+finished_copper: choice(Bare board(0 oz Cu), 1 oz Cu, 2 oz Cu, 3 oz Cu, 4 oz Cu, 5 oz Cu, 6 oz Cu, 7 oz Cu, 8 oz Cu, 9 oz Cu, 10 oz Cu, 11 oz Cu, 12 oz Cu, 13 oz Cu) = 1 oz Cu | Outer copper
+inner_copper: choice(1 oz, 1.5 oz, 2 oz, 3 oz, 4 oz, 5 oz, 6 oz) = 1 oz when layer_count != 1 Layer | Inner copper
+
+[Options]
+remove_product_no: choice(No, Yes (extra+$ 1.5), Specify a location) = No | Remove PCBWay order number
+other_special_request: text | Other special request
 
 [Delivery]
-lead_time: text
-notes: text
+carrier: choice(DHL, FedEx IE, FedEx IP, UPS Saver, UPS Expedited, SF Express, EMS, Register Air Mail, PCBWay Ship) | Shipping carrier
+
+[+Stencil]
+stencil_type: choice(Framework, Non-framework) = Framework | Stencil type
+stencil_step: choice(Yes, No) = No | Multi-level / step stencil
+stencil_size: choice(370×470mm (Valid area 190×290mm), 420×520mm (Valid area 240×340mm), 450×550mm (Valid area 270×370mm), 584×584mm (Valid area 380×380mm), 550×650mm (Valid area 350×450mm), 736×736mm (Valid area 500×500mm), 400×600mm (Valid area 220×400mm), 400×800mm (Valid area 220×600mm), 400×1000mm (Valid area 220×760mm), 500×800mm (Valid area 320×600mm), 400×1200mm (Valid area 220×1000mm), 400×1400mm (Valid area 220×1200mm), 500×1200mm (Valid area 320×1000mm), 500×1400mm (Valid area 320×1200mm), Custom Size (Valid area 190×290mm), Custom Size (Valid area 550×550mm)) = 370×470mm (Valid area 190×290mm) | Stencil size
+stencil_side: choice(Top, Bottom, Top+Bottom(On Single Stencil), Top & Bottom(On Separate Stencil)) = Top | Stencil side
+stencil_fiducials: choice(None, half lasered, lasered through) = None | Existing fiducials
+stencil_electropolishing: choice(Yes, No) = No | Electropolishing
+
+[+Assembly]
+assembly_side: choice(Top side, Bottom side, Both sides) = Top side | Assembly side(s)
+assembly_qty: int | Boards to assemble
+unique_parts: int | Unique parts
+smd_parts: int | SMD parts
+bga_qfp_parts: int | BGA / QFP parts
+through_hole_parts: int | Through-hole parts
+assembly_notes: text | Assembly details
 """
+
+
+# PCBWay advanced / HDI PCB order options, from the advanced quote form.
+PCBWAY_ADVANCED_SPEC_CONFIG = """\
+# PCBWay advanced / HDI / high-frequency / thick-copper quote, field by field.
+
+[Base]
+pcb_type: choice(Through hole board, HDI(Buried/blind vias)) = Through hole board | PCB type
+board_spec: choice(IPC 6012 Class 2, IPC 6012 Class 3, IATF16949, ISO13485, Customer Standard) = IPC 6012 Class 2 | Board spec
+board_type: choice(Single pieces, Panel by Customer, Panel by Supplier) = Single pieces | Board type
+board_width_mm: number | Size width (mm)
+board_height_mm: number | Size height (mm)
+quantity: int = 5 | Quantity
+layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60) = 4 Layers | Layers
+
+[Material]
+material: choice(FR-4, Aluminum, Rogers, HDI(Buried/blind vias) ≥4 Layers, Copper Base) = FR-4 | Material
+board_thickness_mm: choice(≥0.1-0.2 (reviewed), 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6, 4.0, 4.4, 4.8, 5.2, 5.6, 6.0, 7.0, 8.0, Other (reviewed)) = 1.6 | Board thickness (mm)
+
+[Tolerances]
+min_track_spacing: choice(3/3mil, 4/4mil, 5/5mil, 6/6mil, 8/8mil) = 3/3mil | Min track / spacing
+min_hole_size: choice(0.15mm, 0.2mm, 0.25mm, 0.3mm, No Drill) = 0.15mm | Min hole size
+
+[Colour]
+solder_mask: choice(Green, Red, Yellow, Blue, White, Black, Pink, Grey, Orange, Transparent, Purple, Matte black, Matte green, Matte blue, Matte red, None) = Green | Solder mask
+silkscreen: choice(White, Black, Yellow, Blue, Grey, None) = White | Silkscreen
+
+[Finish]
+surface_finish: choice(HASL with lead, HASL lead free, Immersion gold(ENIG), OSP, Hard gold, Immersion silver(Ag), Immersion Tin, HASL lead free + Selective Immersion gold, HASL lead free + Selective Hard gold, Immersion gold + Selective Hard gold, ENEPIG, None/Plain copper) = Immersion gold(ENIG) | Surface finish
+edge_connector: choice(Yes, No, Yes (20°), Yes (30°), Yes (45°), HASL with lead, HASL lead free, Immersion gold(ENIG), OSP, Hard gold, Immersion silver(Ag), Immersion tin, ENEPIG, None/Plain copper) = No | Edge connector (gold fingers)
+
+[Copper]
+finished_copper: choice(Bare board(0 oz Cu), 0.5 oz Cu, 1 oz Cu, 2 oz Cu, 3 oz Cu, 4 oz Cu, 5 oz Cu, 6 oz Cu, 7 oz Cu, 8 oz Cu, 9 oz Cu, 10 oz Cu, 11 oz Cu, 12 oz Cu, 13 oz Cu, 14 oz Cu, 15 oz Cu, 16 oz Cu, 17 oz Cu, 18 oz Cu, 19 oz Cu, 20 oz Cu) = 1 oz Cu | Outer copper
+inner_copper: choice(0.5 oz, 1 oz, 1.5 oz, 2 oz, 3 oz, 4 oz, 5 oz, 6 oz, 7 oz, 8 oz, 9 oz, 10 oz, 11 oz, 12 oz, 13 oz, 14 oz, 15 oz, 16 oz, 17 oz, 18 oz, 19 oz, 20 oz) = 1 oz when layer_count != 1 Layer | Inner copper
+
+[Options]
+final_inspection_report: choice(Default Inspection Report, Microsection Inspection Report, Solderability Test Report, Thermal Stress Test Report, Impedance Test Report, Humidity indicator cards) = Default Inspection Report | Final inspection report
+other_special_request: text | Other special request
+
+[Delivery]
+carrier: choice(DHL, FedEx IE, FedEx IP, UPS Saver, UPS Expedited, SF Express, EMS, Register Air Mail, PCBWay Ship) | Shipping carrier
+"""
+
+
+# PCBWay flexible / rigid-flex PCB order options, from the flex quote form.
+PCBWAY_FLEX_SPEC_CONFIG = """\
+# PCBWay flexible / rigid-flex PCB quote, field by field.
+
+[Base]
+pcb_type: choice(Flexible PCB, Rigid-Flex Board) = Flexible PCB | PCB type
+board_type: choice(Single pieces, Panel by Customer, Panel by Supplier) = Single pieces | Board type
+different_design: choice(1, 2, 3, 4, 5, 6) = 1 when board_type != Single pieces | Different designs in panel
+board_width_mm: number | Size width (mm)
+board_height_mm: number | Size height (mm)
+layer_count: choice(1 Layer, 2 Layers, 4 Layers, 6 Layers, 8 Layers, 10 Layers, 12 Layers, 14 Layers, 16 Layers, Stack-up for FPC) = 2 Layers | Layers
+
+[Material]
+base_material: choice(Polyimide Flex, PET, High Frequency(DK≤3.6), SF230) = Polyimide Flex | Base material
+pet_material: choice(Transparent, Translucent) = Transparent when base_material = PET | PET type
+fpc_thickness_mm: choice(0.025, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.2, 0.22, 0.23, 0.24, 0.25, 0.26, 0.27, 0.29, 0.3, 0.33, 0.34, ≥0.35, ≥0.4) = 0.2 | FPC thickness (mm)
+
+[Tolerances]
+min_track_spacing: choice(≥ 0.06mm) = ≥ 0.06mm | Min track / spacing
+min_hole_size: choice(≥ φ0.15/0.35mm, No Drill) = ≥ φ0.15/0.35mm | Min hole / pad size
+
+[Colour]
+coverlay: choice(Yellow Coverlay, White Coverlay, Black Coverlay, None, Transparent) = Yellow Coverlay | Solder mask / coverlay
+silkscreen: choice(White, Black, None) = White | Silkscreen
+
+[Finish]
+surface_finish: choice(Immersion gold (ENIG), OSP, Hard gold, Immersion silver(Ag), Immersion tin, Immersion gold + Selective Hard gold, ENEPIG) = Immersion gold (ENIG) | Surface finish
+edge_connector: choice(Yes, No) = No | Edge connector
+
+[Copper]
+finished_copper: choice(0.25 oz Cu(9µm), 1/3 oz Cu(12µm), 0.5 oz Cu(18µm), 1 oz Cu(35µm), 1.5 oz Cu(55µm), 2 oz Cu(70µm), 2.5 oz Cu(88µm), Min Track/Spacing for FPC >>) = 1 oz Cu(35µm) | Outer copper
+inner_copper: choice(1/3 oz Cu(12µm), 0.5 oz Cu(18µm), 1 oz Cu(35µm)) = 1 oz Cu(35µm) when layer_count != 1 Layer | Inner copper
+
+[Flex options]
+stiffener: choice(without, TOP, BOT, Both sides, 0.05mm, 0.1mm, 0.15mm, 0.2mm, 0.25mm, 0.075mm(unusual), 0.125mm(unusual), 0.175mm(unusual), 0.225mm(unusual), 0.275mm(unusual), 0.3mm, 0.4mm, 0.5mm, 0.6mm, 0.7mm, 0.8mm, 1.0mm, 1.2mm, 1.5mm, 0.1mm(unusual), 0.9mm(unusual), 1.1mm(unusual), 1.3mm(unusual), 1.4mm(unusual), 1.6mm(unusual), 0.35mm, 0.45mm(unusual), e.g.) = without | Stiffener
+tape_3m_tesa: choice(3M467(Not for reflow and wave soldering), Tesa8853, Tesa8854, 3M9495LE(unusual,Not for reflow and wave soldering), without, e.g.) = without | 3M / Tesa tape
+conductive_tape: choice(HT-A1134(Not for reflow and wave soldering), without) = without | Conductive double-sided tape
+emi_shielding_film: choice(HCF-6000G, PC800, without) = without | EMI shielding film
+e_test: choice(100%, No) = 100% | Electrical test
+
+[Delivery]
+carrier: choice(DHL, FedEx IE, FedEx IP, UPS Saver, UPS Expedited, SF Express, EMS, Register Air Mail, PCBWay Ship) | Shipping carrier
+"""
+
 
 
 # A distinct schema for advanced / HDI PCBs, where the stackup, drilling and
@@ -599,6 +714,8 @@ SEED_MANUFACTURERS: list[dict[str, Any]] = [
         "website": "https://www.pcbway.com",
         "templates": [
             {"key": "pcbway:standard", "name": "PCBWay standard", "config": PCBWAY_SPEC_CONFIG},
+            {"key": "pcbway:advanced", "name": "PCBWay advanced PCB", "config": PCBWAY_ADVANCED_SPEC_CONFIG},
+            {"key": "pcbway:flex", "name": "PCBWay flexible PCB", "config": PCBWAY_FLEX_SPEC_CONFIG},
         ],
     },
 ]

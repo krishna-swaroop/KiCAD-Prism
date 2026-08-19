@@ -152,6 +152,26 @@ class SpecConfigParseTests(unittest.TestCase):
         )
         self.assertIn("Shengyi S1000-2M - TG170", material.options)
 
+    def test_pcbway_schemas_parse_and_are_distinct(self) -> None:
+        from app.services.spec_config_service import (
+            PCBWAY_ADVANCED_SPEC_CONFIG,
+            PCBWAY_FLEX_SPEC_CONFIG,
+            PCBWAY_SPEC_CONFIG,
+        )
+
+        for cfg in (PCBWAY_SPEC_CONFIG, PCBWAY_ADVANCED_SPEC_CONFIG, PCBWAY_FLEX_SPEC_CONFIG):
+            self.assertEqual(parse_spec_config(cfg).errors, [])
+
+        # Standard carries PCBWay's real option strings (parens intact).
+        std = parse_spec_config(PCBWAY_SPEC_CONFIG)
+        finish = next(f for s in std.sections for f in s.fields if f.key == "surface_finish")
+        self.assertIn("Immersion gold(ENIG)", finish.options)
+
+        # Flex is its own schema with FPC-only fields.
+        flex_keys = {f.key for s in parse_spec_config(PCBWAY_FLEX_SPEC_CONFIG).sections for f in s.fields}
+        self.assertIn("coverlay", flex_keys)
+        self.assertIn("stiffener", flex_keys)
+
     def test_when_clause_equality(self) -> None:
         parsed = parse_spec_config("[S]\nm: text\nx: int when m = FR-4\n")
         self.assertEqual(parsed.errors, [])
