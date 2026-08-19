@@ -24,6 +24,7 @@ import {
 import { ResizablePanel } from "@/components/ui/resizable-panel";
 import { downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
+import { useViewerSettings } from "@/lib/viewer-settings";
 import { DifferencesPane } from "./differences-pane";
 import { useDesignCompareJob } from "./use-design-compare-job";
 import { useComparisonComments } from "./use-comparison-comments";
@@ -202,9 +203,13 @@ export function DesignComparisonWorkspace({
     };
 
     const domain = activeTab === "pcb" ? "pcb" : "schematic";
+    // Per-user "show all changes": keep the follow-on writes that are normally
+    // dropped as noise, so they run through the same review steps as any change.
+    const { settings: viewerSettings } = useViewerSettings(undefined);
+    const keepSuppressed = viewerSettings.showAllChanges;
     const schematicReview = useMemo(
-        () => prepareChangesForReview(result?.schematic.changes ?? []),
-        [result?.schematic.changes],
+        () => prepareChangesForReview(result?.schematic.changes ?? [], { keepSuppressed }),
+        [keepSuppressed, result?.schematic.changes],
     );
     // Read from the raw schematic changes, not the prepared ones: the board's
     // rewritten net references are derivative even where the schematic pass
@@ -214,8 +219,8 @@ export function DesignComparisonWorkspace({
         [result?.schematic.changes],
     );
     const pcbReview = useMemo(
-        () => prepareChangesForReview(result?.pcb.changes ?? [], { netRenames }),
-        [netRenames, result?.pcb.changes],
+        () => prepareChangesForReview(result?.pcb.changes ?? [], { netRenames, keepSuppressed }),
+        [keepSuppressed, netRenames, result?.pcb.changes],
     );
     const domainReview = activeTab === "sch"
         ? schematicReview

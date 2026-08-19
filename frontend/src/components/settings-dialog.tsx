@@ -5,11 +5,13 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { GitBranch, Copy, FileCode, Shield, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, Eye } from "lucide-react";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
 import { ROLE_OPTIONS, roleLabel } from "@/lib/roles";
+import { useViewerSettings } from "@/lib/viewer-settings";
 
 interface SettingsDialogProps {
     open: boolean;
@@ -17,7 +19,7 @@ interface SettingsDialogProps {
     user: User | null;
 }
 
-type SettingsTab = "git" | "access" | "general";
+type SettingsTab = "git" | "access" | "viewer" | "general";
 
 interface RoleAssignment {
     email: string;
@@ -61,6 +63,15 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                     </Button>
 
                     <Button
+                        variant={activeTab === "viewer" ? "secondary" : "ghost"}
+                        className="justify-start"
+                        onClick={() => setActiveTab("viewer")}
+                    >
+                        <Eye className="mr-2 h-4 w-4" />
+                        Viewer
+                    </Button>
+
+                    <Button
                         variant={activeTab === "general" ? "secondary" : "ghost"}
                         className="justify-start opacity-50 cursor-not-allowed"
                         title="Coming soon"
@@ -73,6 +84,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                 <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === "git" && <GitSettings user={user} />}
                     {activeTab === "access" && <AccessControlSettings isAdmin={isAdmin} />}
+                    {activeTab === "viewer" && <ViewerSettings user={user} />}
                     {activeTab === "general" && (
                         <div className="flex items-center justify-center h-full text-muted-foreground">
                             General settings coming soon.
@@ -499,6 +511,51 @@ function GitSettings({ user }: { user: User | null }) {
                 busyLabel="Generating…"
                 onConfirm={() => void generateKey()}
             />
+        </div>
+    );
+}
+
+function ViewerSettings({ user }: { user: User | null }) {
+    const { settings, update } = useViewerSettings(user?.email);
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <h3 className="text-lg font-medium">Viewer</h3>
+                <p className="text-sm text-muted-foreground">
+                    How boards, schematics, and comparisons show up for you. These preferences are
+                    saved to this browser.
+                </p>
+            </div>
+
+            <label className="flex items-start gap-3 border rounded-lg p-4 bg-card cursor-pointer">
+                <Checkbox
+                    className="mt-0.5"
+                    checked={settings.greyscale}
+                    onCheckedChange={(checked) => update({ greyscale: checked === true })}
+                />
+                <div className="space-y-0.5">
+                    <Label className="text-base cursor-pointer">Make all views greyscale</Label>
+                    <p className="text-sm text-muted-foreground">
+                        Render every viewer without colour. Off by default.
+                    </p>
+                </div>
+            </label>
+
+            <label className="flex items-start gap-3 border rounded-lg p-4 bg-card cursor-pointer">
+                <Checkbox
+                    className="mt-0.5"
+                    checked={settings.showAllChanges}
+                    onCheckedChange={(checked) => update({ showAllChanges: checked === true })}
+                />
+                <div className="space-y-0.5">
+                    <Label className="text-base cursor-pointer">Show all changes in comparisons</Label>
+                    <p className="text-sm text-muted-foreground">
+                        Show changes previously hidden, such as a pins, a
+                        renamed auto-generated net, or labels.
+                    </p>
+                </div>
+            </label>
         </div>
     );
 }

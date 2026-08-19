@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { ApiHttpError, fetchApi } from '@/lib/api';
 import { fetchAuthConfig, fetchCurrentUser, isAuthCallbackPath } from '@/lib/auth';
+import { setActiveViewerUser } from '@/lib/viewer-settings';
 import { IS_APPLE_PLATFORM } from '@/lib/shortcuts';
 import { useHotkeys } from '@/hooks/use-hotkeys';
 import { CommandPalette } from '@/components/command-palette';
@@ -53,6 +54,12 @@ function App() {
     const isAuthCallbackRoute = typeof window !== "undefined" && isAuthCallbackPath();
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+    // Publish the signed-in user so deep viewer components can read their
+    // per-user settings without prop-drilling the user object.
+    useEffect(() => {
+        setActiveViewerUser(user?.email);
+    }, [user]);
 
     /**
      * Screens mark their own search box with `data-shortcut-search`. "/" focuses

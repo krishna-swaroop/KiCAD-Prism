@@ -135,12 +135,19 @@ function isGeneratedNetRenameOnly(change: ChangeItem): boolean {
  * Convert parser-level events into reviewer-level evidence. Pins that merely
  * follow a symbol are derivative, while same-page geometry is retained as an
  * optional secondary audit trail instead of flooding the primary review list.
+ *
+ * With `keepSuppressed`, nothing is dropped: an event that would normally be
+ * removed as a follow-on write is kept and marked `secondary` instead, so it
+ * flows through the same grouping, geometry, and visual-target steps as a
+ * primary change and shows in the listing behind the layout section. This backs
+ * the per-user "show all changes" setting.
  */
 export function prepareChangesForReview(
     changes: ChangeItem[],
-    options: { netRenames?: Set<string> } = {},
+    options: { netRenames?: Set<string>; keepSuppressed?: boolean } = {},
 ): PreparedReviewChanges {
     const netRenames = options.netRenames ?? new Set<string>();
+    const keepSuppressed = options.keepSuppressed ?? false;
     const parentSymbolEvents = new Set(
         changes
             .filter((change) => change.domain === "schematic" && objectKind(change) === "symbol")
@@ -148,6 +155,15 @@ export function prepareChangesForReview(
     );
     const prepared: ChangeItem[] = [];
     let suppressedCount = 0;
+    // Either drop the change (default) or keep it as secondary evidence
+    // (show-all). Always returns true so a caller can `if (…) { suppress(); continue; }`.
+    const suppress = (change: ChangeItem): true => {
+        suppressedCount += 1;
+        if (keepSuppressed) {
+            prepared.push({ ...change, classification: "secondary" });
+        }
+        return true;
+    };
     const netRenameKeys = semanticNetRenameKeys(changes);
     const parentFootprintEvents = new Set(
         changes
@@ -166,19 +182,19 @@ export function prepareChangesForReview(
             || isDuplicateNativeLabelRename(change, netRenameKeys)
             || isGeneratedNetRenameOnly(change)
         ) {
-            suppressedCount += 1;
+            suppress(change);
             continue;
         }
         if (change.domain === "schematic" && kind === "pin") {
             if (isSamePageLayoutOnly(change)) {
-                suppressedCount += 1;
+                suppress(change);
                 continue;
             }
             if (
                 (change.kind === "added" || change.kind === "removed")
                 && parentSymbolEvents.has(parentSymbolKey(change))
             ) {
-                suppressedCount += 1;
+                suppress(change);
                 continue;
             }
             if (
@@ -188,7 +204,7 @@ export function prepareChangesForReview(
                     ([name]) => name.trim().toLocaleLowerCase() === "reference",
                 )
             ) {
-                suppressedCount += 1;
+                suppress(change);
                 continue;
             }
         }
@@ -200,7 +216,7 @@ export function prepareChangesForReview(
             && (change.kind === "added" || change.kind === "removed")
             && parentFootprintEvents.has(parentSymbolKey(change))
         ) {
-            suppressedCount += 1;
+            suppress(change);
             continue;
         }
 
