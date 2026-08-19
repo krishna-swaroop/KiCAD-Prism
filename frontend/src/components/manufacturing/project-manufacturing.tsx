@@ -13,6 +13,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
     extractBoardSpec,
@@ -486,27 +492,31 @@ export function ProjectManufacturing({
                         {canEdit && (
                             <>
                                 {/* Quick-add: pick a schema for this manufacturer and the spec is
-                                    created at once, named after it. No naming step. */}
-                                <Select
-                                    value=""
-                                    onValueChange={(id) => {
-                                        if (id === "__blank__") void addSpecFromTemplate("");
-                                        else if (id) void addSpecFromTemplate(id);
-                                    }}
-                                >
-                                    <SelectTrigger size="sm" aria-label="Add a schema" className="w-auto">
-                                        <Plus className="h-3.5 w-3.5" />
-                                        <SelectValue placeholder="Add schema" />
-                                    </SelectTrigger>
-                                    <SelectContent>
+                                    created at once, named after it. No naming step. This is an
+                                    action menu, not a value picker: a value-controlled Select fixed
+                                    at "" skips re-selecting the same schema, so adding one twice
+                                    silently did nothing. A menu item always fires. */}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="outline" size="sm" aria-label="Add a schema">
+                                            <Plus className="h-3.5 w-3.5" />
+                                            Add schema
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start">
                                         {manufacturerTemplates.map((t) => (
-                                            <SelectItem key={t.id} value={t.id}>
+                                            <DropdownMenuItem
+                                                key={t.id}
+                                                onSelect={() => void addSpecFromTemplate(t.id)}
+                                            >
                                                 {t.name}
-                                            </SelectItem>
+                                            </DropdownMenuItem>
                                         ))}
-                                        <SelectItem value="__blank__">Blank (starter schema)</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                        <DropdownMenuItem onSelect={() => void addSpecFromTemplate("")}>
+                                            Blank (starter schema)
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                                 {specId && (
                                     <>
                                         <Button variant="ghost" size="sm" onClick={() => void handleRenameSpec()}>

@@ -174,16 +174,48 @@ describe("ProjectManufacturing", () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitForForm();
 
-        // Picking the schema from the "Add schema" dropdown creates the spec at once,
-        // no naming step. (Radix Select: open the trigger, then choose the option.)
-        fireEvent.click(screen.getByRole("combobox", { name: "Add a schema" }));
-        fireEvent.click(await screen.findByRole("option", { name: "Acme standard" }));
+        // Picking the schema from the "Add schema" menu creates the spec at once,
+        // no naming step. (It is an action menu: open the button, choose an item.)
+        // Radix DropdownMenu opens on keyboard reliably in jsdom (pointer events
+        // are flaky there); Enter on the trigger, then click the item.
+        fireEvent.keyDown(screen.getByRole("button", { name: "Add a schema" }), { key: "Enter" });
+        fireEvent.click(await screen.findByRole("menuitem", { name: "Acme standard" }));
 
         await waitFor(() => expect(createProjectSpec).toHaveBeenCalled());
         expect(getTemplate).toHaveBeenCalledWith("tmpl_1");
         const [projectId, body] = createProjectSpec.mock.calls[0];
         expect(projectId).toBe("p1");
         expect(body).toMatchObject({ manufacturer_id: "m1", name: "Acme standard", spec_config: "[X]\nk: int | K" });
+    });
+
+    it("adds a second spec alongside the first, not replacing it", async () => {
+        listTemplates.mockResolvedValue([
+            { id: "tmpl_1", manufacturer_id: "m1", manufacturer_name: "Acme Fab", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" },
+        ]);
+        getTemplate.mockResolvedValue({ id: "tmpl_1", manufacturer_id: "m1", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" });
+        createProjectSpec.mockResolvedValue({ id: "spec_2" });
+        // After the add, the backend returns BOTH specs for this manufacturer.
+        listProjectSpecs
+            .mockResolvedValueOnce([
+                { id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "Default", spec_config: "x", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" },
+            ])
+            .mockResolvedValue([
+                { id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "Default", spec_config: "x", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" },
+                { id: "spec_2", project_id: "p1", manufacturer_id: "m1", name: "Acme standard", spec_config: "x", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" },
+            ]);
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitForForm();
+
+        // Radix DropdownMenu opens on keyboard reliably in jsdom (pointer events
+        // are flaky there); Enter on the trigger, then click the item.
+        fireEvent.keyDown(screen.getByRole("button", { name: "Add a schema" }), { key: "Enter" });
+        fireEvent.click(await screen.findByRole("menuitem", { name: "Acme standard" }));
+
+        await waitFor(() => expect(createProjectSpec).toHaveBeenCalled());
+        // Both specs must be selectable now; the first was not replaced.
+        fireEvent.click(await screen.findByRole("combobox", { name: "Select a spec" }));
+        expect(await screen.findByRole("option", { name: "Default" })).toBeTruthy();
+        expect(await screen.findByRole("option", { name: "Acme standard" })).toBeTruthy();
     });
 
     it("hides edit controls when canEdit is false", async () => {
