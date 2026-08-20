@@ -12,6 +12,7 @@ const getProjectSpec = vi.fn();
 const updateProjectSpec = vi.fn();
 const updateTemplate = vi.fn();
 const listTemplates = vi.fn();
+const applyTemplateToSpec = vi.fn();
 const downloadSpecSheet = vi.fn();
 const getTemplate = vi.fn();
 const getPcbRuleFields = vi.fn();
@@ -30,6 +31,7 @@ vi.mock("@/lib/manufacturing", () => ({
     updateTemplate: (...a: unknown[]) => updateTemplate(...a),
     getTemplate: (...a: unknown[]) => getTemplate(...a),
     listTemplates: (...a: unknown[]) => listTemplates(...a),
+    applyTemplateToSpec: (...a: unknown[]) => applyTemplateToSpec(...a),
     downloadSpecSheet: (...a: unknown[]) => downloadSpecSheet(...a),
     getPcbRuleFields: (...a: unknown[]) => getPcbRuleFields(...a),
     extractPcbRules: (...a: unknown[]) => extractPcbRules(...a),
@@ -94,6 +96,7 @@ describe("ProjectManufacturing", () => {
         getProjectSpecForManufacturer.mockResolvedValue(makeSpec());
         getProjectSpec.mockResolvedValue(makeSpec());
         listTemplates.mockResolvedValue([]);
+        applyTemplateToSpec.mockResolvedValue(undefined);
         listRuns.mockResolvedValue([]);
         updateProjectSpec.mockResolvedValue(undefined);
         extractBoardSpec.mockResolvedValue({ suggested: {} });
@@ -195,6 +198,24 @@ describe("ProjectManufacturing", () => {
         expect(screen.queryByRole("button", { name: /Add a schema/ })).toBeNull();
         expect(screen.queryByRole("combobox", { name: "Select a spec" })).toBeNull();
         expect(screen.queryByRole("button", { name: /Rename/ })).toBeNull();
+    });
+
+    it("swaps the spec's schema through the schema selector", async () => {
+        listTemplates.mockResolvedValue([
+            { id: "t1", manufacturer_id: "m1", name: "Standard", spec_config: "", capabilities: {} },
+            { id: "t2", manufacturer_id: "m1", name: "Advanced", spec_config: "", capabilities: {} },
+        ]);
+        getProjectSpecForManufacturer.mockResolvedValue({ ...makeSpec(), template_id: "t1", template_name: "Standard" });
+        getProjectSpec.mockResolvedValue({ ...makeSpec(), template_id: "t1", template_name: "Standard" });
+        render(<ProjectManufacturing projectId="p1" canEdit />);
+        await waitForForm();
+
+        // Open the schema select and pick the other schema.
+        const trigger = screen.getByRole("combobox", { name: "Schema" });
+        fireEvent.keyDown(trigger, { key: "Enter" });
+        fireEvent.click(await screen.findByRole("option", { name: "Advanced" }));
+
+        await waitFor(() => expect(applyTemplateToSpec).toHaveBeenCalledWith("spec_1", "t2"));
     });
 
     it("hides edit controls when canEdit is false", async () => {

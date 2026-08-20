@@ -419,6 +419,37 @@ class ManufacturingStoreTests(unittest.TestCase):
         mfg.delete_manufacturer(mid)
         mfg.delete_manufacturer(bare)
 
+    def test_apply_template_relinks_spec_and_moves_capabilities(self) -> None:
+        mid = mfg.create_manufacturer("Swap Fab " + uuid.uuid4().hex[:5])
+        std = mfg.create_template(
+            mid, "standard", "[S]\nlayer_count: int = 2", capabilities={"min_track_width": 0.1}
+        )
+        adv = mfg.create_template(
+            mid, "advanced", "[S]\nlayer_count: int = 4", capabilities={"min_track_width": 0.05}
+        )
+        mfg.attach_manufacturer(self.project_id, mid)
+        sid = mfg.list_project_specs(self.project_id, mid)[0]["id"]
+        # The auto-created spec linked to the first template (alphabetical: advanced).
+        first = mfg.get_project_spec(sid)["template_id"]
+        self.assertIn(first, (std, adv))
+
+        # Applying the standard template re-links the spec: its schema text and its
+        # live capabilities both move to that method.
+        mfg.apply_template_to_spec(sid, std)
+        spec = mfg.get_project_spec(sid)
+        self.assertEqual(spec["template_id"], std)
+        self.assertIn("layer_count: int = 2", spec["spec_config"])
+        self.assertEqual(spec["template_capabilities"], {"min_track_width": 0.1})
+
+        # A template from another manufacturer is rejected.
+        other = mfg.create_manufacturer("Other Fab " + uuid.uuid4().hex[:5])
+        other_t = mfg.create_template(other, "x", "[S]\nlayer_count: int")
+        with self.assertRaises(mfg.ManufacturingError):
+            mfg.apply_template_to_spec(sid, other_t)
+
+        mfg.delete_manufacturer(mid)
+        mfg.delete_manufacturer(other)
+
     def test_create_run_unknown_project_rejected(self) -> None:
         with self.assertRaises(mfg.ManufacturingError):
             mfg.create_run("prj_does_not_exist", quantity_ordered=1)

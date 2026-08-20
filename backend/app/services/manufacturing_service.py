@@ -753,7 +753,7 @@ def update_project_spec(spec_id: str, **fields: Any) -> bool:
     """Update a named spec's mutable fields. A rename that collides is rejected."""
     import json
 
-    allowed = {"name", "spec_config", "specs", "source", "active_sections"}
+    allowed = {"name", "spec_config", "specs", "source", "active_sections", "template_id"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
         return False
@@ -806,12 +806,28 @@ def delete_project_spec(spec_id: str) -> bool:
 
 
 def apply_template_to_spec(spec_id: str, template_id: str, *, updated_by: str = "") -> bool:
-    """Copy a manufacturer template's schema text into a named spec (copy-on-apply)."""
+    """Point a spec at a manufacturer template: copy its schema text and re-link it.
+
+    Re-linking (not just copying the text) moves the capabilities too, since a
+    spec reads its linked template's capabilities live. The template must belong
+    to the spec's manufacturer.
+    """
     template = get_template(template_id)
     if not template:
         raise ManufacturingError("Template not found.")
+    with _connect() as conn:
+        spec = conn.execute(
+            "SELECT manufacturer_id FROM ws_project_specs WHERE id = %s", (spec_id,)
+        ).fetchone()
+    if not spec:
+        return False
+    if template.get("manufacturer_id") != spec["manufacturer_id"]:
+        raise ManufacturingError("That schema belongs to a different manufacturer.")
     return update_project_spec(
-        spec_id, spec_config=template.get("spec_config") or "", updated_by=updated_by
+        spec_id,
+        spec_config=template.get("spec_config") or "",
+        template_id=template_id,
+        updated_by=updated_by,
     )
 
 

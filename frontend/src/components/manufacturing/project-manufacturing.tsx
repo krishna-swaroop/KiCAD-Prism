@@ -25,6 +25,8 @@ import {
     getProjectSpecForManufacturer,
     updateProjectSpec,
     updateTemplate,
+    applyTemplateToSpec,
+    listTemplates,
     downloadSpecSheet,
     getPcbRuleFields,
     extractPcbRules,
@@ -42,6 +44,7 @@ import {
     type ProjectManufacturer,
     type SpecFieldDef,
     type SpecSectionDef,
+    type SpecTemplate,
 } from "@/types/manufacturing";
 import { SchemaCapabilitiesDialog } from "./spec-config-editor";
 import { CompactSelect, FIELD_GAP, GROUP_GRID, FIELD_WRAP } from "./ui";
@@ -86,6 +89,9 @@ export function ProjectManufacturing({
     const [templateName, setTemplateName] = useState<string | null>(null);
     // The id of the spec's linked template, needed to edit its capability text.
     const [templateId, setTemplateId] = useState<string | null>(null);
+    // The selected manufacturer's schemas, offered to swap the one spec's schema.
+    const [templates, setTemplates] = useState<SpecTemplate[]>([]);
+    const [applyingTemplate, setApplyingTemplate] = useState(false);
     // The board's own extracted rules, read automatically for the capability comparison.
     const [boardRules, setBoardRules] = useState<Record<string, unknown> | null>(null);
     // Which optional sections are switched on (persisted with the spec).
@@ -150,10 +156,12 @@ export function ProjectManufacturing({
         void load();
     }, [load]);
 
-    // Each manufacturer has exactly one spec, created on first read. Load it.
+    // Each manufacturer has exactly one spec, created on first read. Load it, and
+    // its manufacturer's schemas so the schema picker can swap which one it uses.
     useEffect(() => {
         if (!manufacturerId) {
             setSpecId("");
+            setTemplates([]);
             return;
         }
         let cancelled = false;
@@ -163,6 +171,14 @@ export function ProjectManufacturing({
                 if (!cancelled) setSpecId(spec.id);
             } catch {
                 if (!cancelled) setSpecId("");
+            }
+        })();
+        void (async () => {
+            try {
+                const list = await listTemplates(manufacturerId);
+                if (!cancelled) setTemplates(list);
+            } catch {
+                if (!cancelled) setTemplates([]);
             }
         })();
         return () => {
@@ -284,6 +300,38 @@ export function ProjectManufacturing({
         }
     };
 
+    // Reload the current spec into the form (after a schema swap or an edit) so
+    // new fields, values, and capabilities appear.
+    const reloadSpec = useCallback(async () => {
+        if (!specId) return;
+        const spec = await getProjectSpec(specId);
+        setValues(spec.specs ?? {});
+        setSource(spec.source ?? {});
+        setSchema(spec.parsed);
+        setActiveSections(new Set(spec.active_sections ?? []));
+        setTemplateCapabilities(spec.template_capabilities ?? {});
+        setTemplateCapabilityMeta(spec.template_capability_meta ?? {});
+        setTemplateName(spec.template_name ?? null);
+        setTemplateId(spec.template_id ?? null);
+        setDirty(false);
+    }, [specId]);
+
+    // Swap which of the manufacturer's schemas this one spec uses. Re-links the
+    // spec so its schema fields and capabilities both move to the chosen method.
+    const handleSelectTemplate = async (id: string) => {
+        if (!specId || !id || id === templateId) return;
+        setApplyingTemplate(true);
+        try {
+            await applyTemplateToSpec(specId, id);
+            await reloadSpec();
+            toast.success("Schema applied.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to apply schema.");
+        } finally {
+            setApplyingTemplate(false);
+        }
+    };
+
     const handleAttach = async (id: string) => {
         try {
             await attachManufacturer(projectId, id);
@@ -390,9 +438,30 @@ export function ProjectManufacturing({
                 {selectedManufacturer && (
                     <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
                         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Spec
+                            Schema
                         </span>
-                        <span className="text-sm">{selectedManufacturer.name}</span>
+                        {templates.length > 0 ? (
+                            <Select
+                                value={templateId ?? ""}
+                                onValueChange={(id) => void handleSelectTemplate(id)}
+                                disabled={!canEdit || !specId || applyingTemplate}
+                            >
+                                <SelectTrigger size="sm" aria-label="Schema" className="w-auto min-w-[12rem]">
+                                    <SelectValue placeholder="Custom (no schema)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {templates.map((t) => (
+                                        <SelectItem key={t.id} value={t.id}>
+                                            {t.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <span className="text-sm text-muted-foreground">
+                                No schemas defined for {selectedManufacturer.name}.
+                            </span>
+                        )}
                     </div>
                 )}
             </section>
@@ -416,7 +485,7 @@ export function ProjectManufacturing({
                             />
                         ) : (
                             <p className="px-4 py-6 text-sm text-muted-foreground">
-                                Add a spec from one of this manufacturer&rsquo;s schemas to see its capabilities.
+                                Pick one of this manufacturer&rsquo;s schemas above to see its capabilities.
                             </p>
                         ))}
                 </section>
@@ -469,10 +538,7 @@ export function ProjectManufacturing({
                 {panelCollapsed.has("spec") ? null : !specId ? (
                     <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
                         <Settings2 className="h-8 w-8 opacity-50" />
-                        <p className="text-sm">
-                            No specs for {selectedManufacturer.name} yet.
-                            {canEdit ? " Use “Add spec” above to create one." : ""}
-                        </p>
+                        <p className="text-sm">Loading {selectedManufacturer.name}&rsquo;s spec...</p>
                     </div>
                 ) : specLoading ? (
                     <div className="p-10 text-center text-sm text-muted-foreground">Loading spec...</div>
@@ -591,8 +657,8 @@ export function ProjectManufacturing({
                                 return previewSpecConfig(text);
                             },
                             // No in-editor "apply template" picker: it overwrote the
-                            // open spec's schema. To use a template, add a separate
-                            // spec from the "Add schema" dropdown instead.
+                            // open spec's schema. To switch schemas, use the Schema
+                            // selector on the Manufacturing page instead.
                         },
                         {
                             id: "capabilities",
@@ -601,7 +667,7 @@ export function ProjectManufacturing({
                             // Capabilities belong to the linked template.
                             disabledNote: templateId
                                 ? undefined
-                                : "This spec is not linked to a template, so it has no capabilities to edit. Add a spec from a manufacturer schema to get one.",
+                                : "This spec is not linked to a schema, so it has no capabilities to edit. Pick a schema from the selector on the Manufacturing page to get one.",
                             load: async () => {
                                 const { previewSpecConfig, getTemplate } = await import("@/lib/manufacturing");
                                 if (!templateId) return { text: "", parsed: { sections: [], errors: [] } };
@@ -620,16 +686,7 @@ export function ProjectManufacturing({
                     onSaved={() => {
                         setEditorOpen(false);
                         // Reload the spec into the form so new fields and capabilities appear.
-                        setSpecId((id) => id);
-                        void (async () => {
-                            const spec = await getProjectSpec(specId);
-                            setValues(spec.specs ?? {});
-                            setSource(spec.source ?? {});
-                            setSchema(spec.parsed);
-                            setActiveSections(new Set(spec.active_sections ?? []));
-                            setTemplateCapabilities(spec.template_capabilities ?? {});
-                            setTemplateCapabilityMeta(spec.template_capability_meta ?? {});
-                        })();
+                        void reloadSpec();
                     }}
                 />
             )}
