@@ -1,11 +1,16 @@
 import {
     useLayoutEffect,
     useRef,
+    type MutableRefObject,
     type ReactNode,
 } from "react";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+    useResizableWidth,
+    type UseResizableWidthOptions,
+} from "@/components/ui/resizable-panel";
 import { cn } from "@/lib/utils";
 
 export type ViewerOverlayRailTab<T extends string> = {
@@ -13,6 +18,16 @@ export type ViewerOverlayRailTab<T extends string> = {
     label: string;
     icon?: ReactNode;
     badge?: ReactNode;
+};
+
+export type ViewerOverlayRailResize = Omit<UseResizableWidthOptions, "side">;
+
+/** Schematic/PCB Selection inspector: narrower than Comments, reviewer-resizable. */
+export const SELECTION_INSPECTOR_RAIL_RESIZE: ViewerOverlayRailResize = {
+    storageKey: "prism.visualizer.selection-inspector.width",
+    defaultWidth: 288,
+    minWidth: 240,
+    maxWidth: 480,
 };
 
 type ViewerOverlayRailProps<T extends string> = {
@@ -23,6 +38,12 @@ type ViewerOverlayRailProps<T extends string> = {
     onVisibleWidthChange?: (width: number) => void;
     ariaLabel: string;
     className?: string;
+    /**
+     * When set, the rail width is reviewer-controlled instead of the default
+     * `w-96`. Used for the Selection inspector on Schematic/PCB; omit it for
+     * Comments and other overlay tools so they keep a fixed width.
+     */
+    resizable?: ViewerOverlayRailResize;
     children: ReactNode;
 };
 
@@ -31,7 +52,40 @@ type ViewerOverlayRailProps<T extends string> = {
  * width is reported to the viewer camera as a safe-area inset; it never
  * participates in the canvas layout or calls resize().
  */
-export function ViewerOverlayRail<T extends string>({
+export function ViewerOverlayRail<T extends string>(props: ViewerOverlayRailProps<T>) {
+    if (props.resizable) {
+        return <ResizableViewerOverlayRail {...props} resizable={props.resizable} />;
+    }
+    return <ViewerOverlayRailFrame {...props} />;
+}
+
+function ResizableViewerOverlayRail<T extends string>({
+    resizable,
+    ariaLabel,
+    ...props
+}: ViewerOverlayRailProps<T> & { resizable: ViewerOverlayRailResize }) {
+    const sizing = useResizableWidth({ side: "right", ...resizable });
+    return (
+        <ViewerOverlayRailFrame
+            {...props}
+            ariaLabel={ariaLabel}
+            widthPx={sizing.width}
+            railRef={sizing.panelRef}
+            separator={
+                <div
+                    {...sizing.separatorProps}
+                    aria-label={`Resize ${ariaLabel}`}
+                    className={cn(
+                        "absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize touch-none transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none",
+                        sizing.dragging && "bg-primary/60",
+                    )}
+                />
+            }
+        />
+    );
+}
+
+function ViewerOverlayRailFrame<T extends string>({
     activeTab,
     tabs,
     onTabChange,
@@ -40,8 +94,16 @@ export function ViewerOverlayRail<T extends string>({
     ariaLabel,
     className,
     children,
-}: ViewerOverlayRailProps<T>) {
-    const railRef = useRef<HTMLElement | null>(null);
+    widthPx,
+    railRef: railRefProp,
+    separator,
+}: ViewerOverlayRailProps<T> & {
+    widthPx?: number;
+    railRef?: MutableRefObject<HTMLElement | null>;
+    separator?: ReactNode;
+}) {
+    const internalRef = useRef<HTMLElement | null>(null);
+    const railRef = railRefProp ?? internalRef;
     const activeTabRef = useRef(activeTab);
     activeTabRef.current = activeTab;
 
@@ -62,7 +124,7 @@ export function ViewerOverlayRail<T extends string>({
             observer?.disconnect();
             onVisibleWidthChange(0);
         };
-    }, [onVisibleWidthChange]);
+    }, [onVisibleWidthChange, railRef]);
 
     useLayoutEffect(() => {
         if (!onVisibleWidthChange) return;
@@ -71,28 +133,31 @@ export function ViewerOverlayRail<T extends string>({
                 ? railRef.current?.getBoundingClientRect().width ?? 0
                 : 0,
         );
-    }, [activeTab, onVisibleWidthChange]);
+    }, [activeTab, onVisibleWidthChange, railRef, widthPx]);
 
     useLayoutEffect(() => {
         const rail = railRef.current;
         if (!rail) return;
         if (activeTab) rail.removeAttribute("inert");
         else rail.setAttribute("inert", "");
-    }, [activeTab]);
+    }, [activeTab, railRef]);
 
     return (
         <aside
             ref={railRef}
             aria-label={ariaLabel}
             aria-hidden={!activeTab}
+            style={widthPx == null ? undefined : { width: `${widthPx}px` }}
             className={cn(
-                "absolute inset-y-0 right-0 z-40 flex w-96 flex-col border-l bg-background/95 shadow-xl backdrop-blur-sm transition-[transform,opacity] duration-200",
+                "absolute inset-y-0 right-0 z-40 flex min-w-0 flex-col overflow-hidden border-l bg-background/95 shadow-xl backdrop-blur-sm transition-[transform,opacity] duration-200",
+                widthPx == null && "w-96",
                 activeTab
                     ? "translate-x-0 opacity-100"
                     : "pointer-events-none translate-x-full opacity-0",
                 className,
             )}
         >
+            {separator}
             <div className="flex h-10 shrink-0 items-center gap-1 border-b bg-card/80 p-1">
                 {tabs.map((tab) => (
                     <Button
@@ -120,7 +185,7 @@ export function ViewerOverlayRail<T extends string>({
                     <X className="size-4" />
                 </Button>
             </div>
-            <div className="min-h-0 flex-1">{children}</div>
+            <div className="min-h-0 min-w-0 flex-1">{children}</div>
         </aside>
     );
 }

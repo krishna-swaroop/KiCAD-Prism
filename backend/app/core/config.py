@@ -143,6 +143,15 @@ class Settings(BaseSettings):
         description="Comma-separated list of admin user emails provisioned from env"
     )
 
+    BOOTSTRAP_ADMIN_PASSWORD: str = Field(
+        default="",
+        description=(
+            "One-time password seeded for BOOTSTRAP_ADMIN_USERS on first startup "
+            "when password auth is enabled. The admin must change it on first "
+            "sign-in. Leave empty once real accounts exist."
+        ),
+    )
+
     # Comma-separated list of email domains that receive implicit viewer access.
     DEFAULT_VIEWER_DOMAINS_STR: str = Field(
         default="",
@@ -210,6 +219,25 @@ class Settings(BaseSettings):
         ge=10,
         le=3600,
         description="Sliding window for authentication attempt rate limiting."
+    )
+
+    PASSWORD_AUTH_ENABLED: bool = Field(
+        default=False,
+        description="Enable local email/password login in addition to (or instead of) OIDC."
+    )
+
+    PASSWORD_MIN_LENGTH: int = Field(
+        default=12,
+        ge=8,
+        le=72,
+        description="Minimum length for a local password (bcrypt truncates at 72 bytes)."
+    )
+
+    SESSION_REMEMBER_ME_DAYS: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+        description="Lifetime (days) of a remember-me session."
     )
 
     # Comma-separated browser origins allowed to make credentialed API requests.
@@ -610,6 +638,25 @@ class Settings(BaseSettings):
         return self.OIDC_SCOPES.strip() or "openid profile email"
 
     @property
+    def OIDC_FULLY_CONFIGURED(self) -> bool:
+        """All three OIDC values are present, so OIDC is a usable login method."""
+        return bool(
+            self.EFFECTIVE_OIDC_ISSUER_URL
+            and self.EFFECTIVE_OIDC_CLIENT_ID
+            and self.EFFECTIVE_OIDC_CLIENT_SECRET
+        )
+
+    @property
+    def OIDC_PARTIALLY_CONFIGURED(self) -> bool:
+        """Some but not all OIDC values are present: a misconfiguration to flag."""
+        present = [
+            bool(self.EFFECTIVE_OIDC_ISSUER_URL),
+            bool(self.EFFECTIVE_OIDC_CLIENT_ID),
+            bool(self.EFFECTIVE_OIDC_CLIENT_SECRET),
+        ]
+        return any(present) and not all(present)
+
+    @property
     def KICAD_PROJECTS_ROOT(self) -> str:
         return os.environ.get(
             "KICAD_PROJECTS_ROOT",
@@ -704,6 +751,13 @@ class Settings(BaseSettings):
                 "installation is meant to reach."
             )
 
+        if self.BOOTSTRAP_ADMIN_PASSWORD.strip():
+            warnings.append(
+                "BOOTSTRAP_ADMIN_PASSWORD is set. It seeds a one-time admin password "
+                "for first login; clear it once the admin has signed in and set a real "
+                "password, so a bootstrap secret is not left in the environment."
+            )
+
         return warnings
 
     def auth_configuration_errors(self) -> List[str]:
@@ -712,15 +766,27 @@ class Settings(BaseSettings):
             return self._open_auth_errors()
 
         errors: List[str] = []
-        if not self.EFFECTIVE_OIDC_ISSUER_URL:
-            errors.append("OIDC_ISSUER_URL is required when AUTH_ENABLED=true")
-        elif not self.EFFECTIVE_OIDC_ISSUER_URL.startswith("https://"):
+        if not self.OIDC_FULLY_CONFIGURED and not self.PASSWORD_AUTH_ENABLED:
+            errors.append(
+                "AUTH_ENABLED=true requires a login method: configure OIDC "
+                "(OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET) or set "
+                "PASSWORD_AUTH_ENABLED=true."
+            )
+
+        if self.OIDC_PARTIALLY_CONFIGURED:
+            if not self.EFFECTIVE_OIDC_ISSUER_URL:
+                errors.append("OIDC_ISSUER_URL is required to enable OIDC")
+            if not self.EFFECTIVE_OIDC_CLIENT_ID:
+                errors.append("OIDC_CLIENT_ID is required to enable OIDC")
+            if not self.EFFECTIVE_OIDC_CLIENT_SECRET:
+                errors.append("OIDC_CLIENT_SECRET is required to enable OIDC")
+
+        if self.EFFECTIVE_OIDC_ISSUER_URL and not self.EFFECTIVE_OIDC_ISSUER_URL.startswith("https://"):
             errors.append("OIDC_ISSUER_URL must use https://")
-        if not self.EFFECTIVE_OIDC_CLIENT_ID:
-            errors.append("OIDC_CLIENT_ID is required when AUTH_ENABLED=true")
-        if not self.EFFECTIVE_OIDC_CLIENT_SECRET:
-            errors.append("OIDC_CLIENT_SECRET is required when AUTH_ENABLED=true")
-        if self.OIDC_TOKEN_AUTH_METHOD.strip().lower() not in {"client_secret_post", "client_secret_basic"}:
+        if self.OIDC_FULLY_CONFIGURED and self.OIDC_TOKEN_AUTH_METHOD.strip().lower() not in {
+            "client_secret_post",
+            "client_secret_basic",
+        }:
             errors.append("OIDC_TOKEN_AUTH_METHOD must be client_secret_post or client_secret_basic")
 
         secret = self.SESSION_SECRET.strip()

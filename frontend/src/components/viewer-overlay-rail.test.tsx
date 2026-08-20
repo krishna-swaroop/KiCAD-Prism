@@ -71,6 +71,35 @@ describe("viewer overlay rails", () => {
         await waitFor(() => expect(onWidth).toHaveBeenLastCalledWith(0));
     });
 
+    it("lets the selection inspector resize from a narrower default width", () => {
+        window.localStorage.clear();
+        const { getByRole } = render(
+            <div className="relative h-[600px] w-[900px]">
+                <ViewerOverlayRail
+                    activeTab="selection"
+                    tabs={[{ id: "selection", label: "Selection" }]}
+                    onTabChange={() => undefined}
+                    onClose={() => undefined}
+                    ariaLabel="Viewer details"
+                    resizable={{
+                        storageKey: "test.inspector.width",
+                        defaultWidth: 288,
+                        minWidth: 240,
+                        maxWidth: 480,
+                    }}
+                >
+                    Selection details
+                </ViewerOverlayRail>
+            </div>,
+        );
+
+        const rail = getByRole("complementary", { name: "Viewer details" });
+        expect(rail.style.width).toBe("288px");
+
+        fireEvent.keyDown(getByRole("separator"), { key: "ArrowLeft" });
+        expect(rail.style.width).toBe("304px");
+    });
+
     it("collapses the left controls by transform and retains a measured handle", async () => {
         vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
             .mockImplementation(function measuredRect(this: HTMLElement) {

@@ -15,14 +15,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .compiler import compile_topology
-from .exporter import export_viewer_html
-from .native_clipper import build_native_clip_response
-from .kicad_cli_export import export_project_geometry
-from .pcb_geometry import extract_pad_holes
-from .pcb_extract import extract_pcb_metadata
-from .prism_clipper2 import PrismClipper2Library, prism_clipper2_library_info
-from .semantic_gltf import SemanticGltfBuilder, TILE_SIZE_MM
+_VIEWER_ROOT = Path(__file__).resolve().parents[1]
+if str(_VIEWER_ROOT) not in sys.path:
+    sys.path.insert(0, str(_VIEWER_ROOT))
+
+from pipeline.topology_compiler.compiler import compile_topology
+from pipeline.topology_compiler.exporter import export_viewer_html
+from pipeline.topology_compiler.native_clipper import build_native_clip_response
+from pipeline.topology_compiler.kicad_cli_export import export_project_geometry
+from pipeline.topology_compiler.pcb_geometry import extract_pad_holes
+from pipeline.topology_compiler.pcb_extract import extract_pcb_metadata
+from pipeline.topology_compiler.prism_clipper2 import PrismClipper2Library, prism_clipper2_library_info
+from pipeline.topology_compiler.semantic_gltf import SemanticGltfBuilder, TILE_SIZE_MM
 
 
 SCHEMA = "prism.semantic_gltf_benchmark_a0"
@@ -474,7 +478,7 @@ def _run_node_builder(
     meshopt_level: str,
     preclip_path: Path | None = None,
 ) -> dict[str, Any]:
-    viewer_root = Path(__file__).resolve().parents[2]
+    viewer_root = Path(__file__).resolve().parents[1]
     tool = viewer_root / "tools" / "semantic-gltf" / "build.mjs"
     env = os.environ.copy()
     env.update(
@@ -515,7 +519,7 @@ def _run_full_from_project_trials(
     clipper2_available = bool(prism_clipper2_library_info().get("a2Support"))
     modes = ["js"] + (["clipper2-a2"] if clipper2_available else [])
     results: list[dict[str, Any]] = []
-    viewer_root = Path(__file__).resolve().parents[2]
+    viewer_root = Path(__file__).resolve().parents[1]
     for mode in modes:
         for index in range(trials):
             trial_dir = output / "full-from-project" / mode / f"trial-{index:02d}"
@@ -960,3 +964,59 @@ def _suite_markdown_report(report: dict[str, Any]) -> str:
     failures = report["aggregate"].get("parityFailures") or []
     lines.extend(["", "## Parity Failures", "", ", ".join(failures) if failures else "None"])
     return "\n".join(lines) + "\n"
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="semantic_gltf_benchmark")
+    sub = parser.add_subparsers(required=True)
+
+    benchmark = sub.add_parser(
+        "benchmark-semantic-gltf",
+        help="Benchmark JS versus Prism Clipper2 semantic GLTF clipping and tile packaging",
+    )
+    benchmark.add_argument("project", type=Path, nargs="?", help="KiCad .kicad_pro project or fixed semantic input JSON")
+    benchmark.add_argument("--output", type=Path, required=True)
+    benchmark.add_argument("--trials", type=int, default=7)
+    benchmark.add_argument("--warmups", type=int, default=1)
+    benchmark.add_argument("--workers", type=int, default=6)
+    benchmark.add_argument("--meshopt-level", choices=["low", "medium", "high"], default="medium")
+    benchmark.add_argument("--tile-size", type=float, default=20.0)
+    benchmark.add_argument(
+        "--synthetic-fixture",
+        choices=["coverage"],
+        help="Use the deterministic synthetic semantic input fixture instead of a KiCad project",
+    )
+    benchmark.add_argument(
+        "--full-trials",
+        type=int,
+        default=0,
+        help="Optional secondary full from-project trials per mode; default keeps the primary benchmark isolated",
+    )
+    benchmark.set_defaults(func=run_semantic_gltf_benchmark)
+
+    suite = sub.add_parser(
+        "benchmark-semantic-suite",
+        help="Benchmark JS versus Prism Clipper2 A2 semantic GLTF clipping across multiple KiCad projects",
+    )
+    suite.add_argument("--project", type=Path, action="append", default=[], help="KiCad .kicad_pro project path")
+    suite.add_argument("--manifest", type=Path, help="JSON manifest containing projects")
+    suite.add_argument("--output", type=Path, required=True)
+    suite.add_argument("--trials", type=int, default=7)
+    suite.add_argument("--warmups", type=int, default=1)
+    suite.add_argument("--workers", type=int, default=6)
+    suite.add_argument("--meshopt-level", choices=["low", "medium", "high"], default="medium")
+    suite.add_argument("--tile-size", type=float, default=20.0)
+    suite.set_defaults(func=run_semantic_gltf_suite)
+
+    args = parser.parse_args()
+    report = args.func(args)
+    if args.func is run_semantic_gltf_benchmark:
+        print(json.dumps({"report": str(Path(args.output) / "benchmark-report.json"), "comparison": report.get("comparison")}, indent=2))
+    else:
+        print(json.dumps({"report": str(Path(args.output) / "benchmark-suite-report.json"), "aggregate": report.get("aggregate")}, indent=2))
+
+
+if __name__ == "__main__":
+    main()

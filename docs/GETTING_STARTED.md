@@ -184,9 +184,9 @@ curl -i http://127.0.0.1:8080/api/health/ready
 
 ### Authentication startup fails
 
-`AUTH_ENABLED=true` fails closed when OIDC, session, or database settings are
-incomplete. Use guest mode only for a private evaluation or complete
-[Authentication and access](AUTHENTICATION_AND_ACCESS.md).
+`AUTH_ENABLED=true` fails closed when identity (OIDC or password auth), session,
+or database settings are incomplete. Use guest mode only for a private
+evaluation or complete [Authentication and access](AUTHENTICATION_AND_ACCESS.md).
 
 ## Next
 

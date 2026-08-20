@@ -30,7 +30,10 @@ from __future__ import annotations
 import ast
 import json
 import math
+import os
+import platform
 import re
+import shutil
 import subprocess
 from collections import Counter
 from dataclasses import dataclass, field
@@ -1444,12 +1447,49 @@ def compare_directories(
 # ── Generation ─────────────────────────────────────────────────────────────
 
 def _cli_command() -> str:
-    # Imported lazily: resolving the KiCad CLI is a module-level side effect in
-    # diff_service, and the comparison engine above must stay importable (and
-    # testable) on a machine with no KiCad installed.
-    from app.services.diff_service import CLI_CMD
+    """Locate kicad-cli without importing at module load.
 
-    return CLI_CMD
+    Fabrication compare must stay importable on machines that do not have
+    KiCad installed; resolution happens only when an export is requested.
+    """
+
+    env_path = os.environ.get("KICAD_CLI_PATH")
+    if env_path and os.path.exists(env_path):
+        return env_path
+
+    cli_name = "kicad-cli.exe" if platform.system() == "Windows" else "kicad-cli"
+    if shutil.which(cli_name):
+        return cli_name
+
+    system = platform.system()
+    paths_to_check: list[str] = []
+    if system == "Darwin":
+        paths_to_check = [
+            "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli",
+            os.path.expanduser("~/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"),
+        ]
+    elif system == "Windows":
+        program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
+        kicad_root = Path(program_files) / "KiCad"
+        if kicad_root.exists():
+            versions = sorted([d for d in kicad_root.iterdir() if d.is_dir()], reverse=True)
+            for version in versions:
+                candidate = version / "bin" / "kicad-cli.exe"
+                if candidate.exists():
+                    paths_to_check.append(str(candidate))
+        paths_to_check.append(f"{program_files}\\KiCad\\8.0\\bin\\kicad-cli.exe")
+        paths_to_check.append(f"{program_files}\\KiCad\\7.0\\bin\\kicad-cli.exe")
+    elif system == "Linux":
+        paths_to_check = [
+            "/usr/bin/kicad-cli",
+            "/usr/local/bin/kicad-cli",
+            "/var/lib/flatpak/exports/bin/org.kicad.KiCad",
+        ]
+
+    for path in paths_to_check:
+        if os.path.exists(path):
+            return path
+    return cli_name
 
 
 def _export(

@@ -11,7 +11,7 @@ URLs.
 - Shared deployments use HTTPS with a certificate trusted by the workstation
   operating system.
 - `PUBLIC_BASE_URL` is the exact external origin.
-- the identity provider allows the provider callback;
+- the identity provider allows the provider callback, or password login is enabled;
 - at least one component is released and place-ready.
 
 ## Verify server metadata
@@ -46,6 +46,12 @@ https://prism.example.com/oauth/oidc/callback
 Prism's provider OAuth server accepts authorization code with PKCE and issues
 tokens scoped to `remote_symbols.read`. Those tokens cannot modify Prism
 projects or Library Manager state.
+
+If the workstation already has a Prism browser session, authorize-and-done
+continues. Otherwise KiCad is sent to the same Prism login page
+(`/?next=/oauth/authorize…`) used by the web app, then returned to complete
+the provider grant. Password-only deployments do not need a separate KiCad
+password form.
 
 ## Build a datasource package
 

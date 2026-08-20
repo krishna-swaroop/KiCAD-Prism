@@ -50,4 +50,48 @@ describe("WorkspaceGalleryView project selection", () => {
     fireEvent.click(checkbox);
     expect(onToggleProjectSelection).toHaveBeenCalledWith("prj_card", true);
   });
+
+  it("uses the full breakpoint grid when the properties panel is closed", () => {
+    const { getByTestId } = renderGallery({ propertiesPanelOpen: false });
+    expect(getByTestId("project-gallery-grid").className).toContain("xl:grid-cols-4");
+    expect(getByTestId("project-gallery-grid").className).not.toContain("minmax(220px");
+  });
+
+  it("wraps cards at a fixed minimum width when the properties panel is open", () => {
+    const { getByTestId } = renderGallery({ propertiesPanelOpen: true });
+    expect(getByTestId("project-gallery-grid").className).toContain("minmax(220px");
+    expect(getByTestId("project-gallery-grid").className).not.toContain("xl:grid-cols-4");
+    expect(screen.getByRole("checkbox", { name: "Select Card Board" })).toHaveClass("h-4", "w-4");
+  });
 });
+
+function renderGallery({ propertiesPanelOpen }: { propertiesPanelOpen: boolean }) {
+  const onToggleProjectSelection = vi.fn();
+  const view = render(
+    <MemoryRouter>
+      <WorkspaceGalleryView
+        searchQuery=""
+        isSearching={false}
+        searchResults={[]}
+        selectedProjectId={propertiesPanelOpen ? project.id : null}
+        propertiesPanelOpen={propertiesPanelOpen}
+        bulkSelectedProjectIds={new Set()}
+        currentFolderId={null}
+        visibleFolders={[]}
+        visibleProjects={[project]}
+        getProjectDisplayName={(item) => item.name}
+        onSelectProject={() => {}}
+        onToggleProjectSelection={onToggleProjectSelection}
+        onOpenProject={() => {}}
+        onOpenFolder={() => {}}
+        onRenameFolder={() => {}}
+        onDeleteFolder={() => {}}
+        onMoveProject={() => {}}
+        onDeleteProject={() => {}}
+        onRegenerateThumbnail={() => {}}
+        canManageProjects
+      />
+    </MemoryRouter>,
+  );
+  return view;
+}

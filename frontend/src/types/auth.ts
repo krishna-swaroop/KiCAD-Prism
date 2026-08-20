@@ -10,8 +10,14 @@ export interface User {
 export interface AuthConfig {
     auth_enabled: boolean;
     dev_mode: boolean;
+    oidc_enabled?: boolean;
     oidc_provider_name: string;
+    password_auth_enabled?: boolean;
     workspace_name: string;
+}
+
+export interface PasswordLoginResult extends User {
+    must_change_password: boolean;
 }
 
 export interface ActiveSession {

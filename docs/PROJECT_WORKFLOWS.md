@@ -84,6 +84,11 @@ When semantic identities are available, selecting a schematic symbol, PCB
 footprint, or BOM row highlights the corresponding object in compatible views.
 Identity generation may finish after the first schematic or PCB render.
 
+On Schematic and PCB, `/` or `⌘F` / `Ctrl+F` searches components and nets from
+the Visualizer header. `⌘K` / `Ctrl+K` remains the global command palette.
+Selecting a net or global label opens the inspector with Instances expanded so
+you can jump between occurrences, including labels that share a sheet.
+
 Treat cross-probe as navigation assistance, not an electrical-rule or
 manufacturing approval.
 

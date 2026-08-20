@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { exchangeOidcAuthCode } from "@/lib/auth";
+import { consumeStashedLoginNext, exchangeOidcAuthCode } from "@/lib/auth";
 import type { User } from "@/types/auth";
 
 interface AuthCallbackPageProps {
@@ -35,6 +35,11 @@ export function AuthCallbackPage({ onLoginSuccess }: AuthCallbackPageProps) {
       // HttpOnly transaction cookie it set when this login started.
       try {
         const user = await exchangeOidcAuthCode(code, state);
+        const next = consumeStashedLoginNext();
+        if (next) {
+          window.location.assign(next);
+          return;
+        }
         window.history.replaceState(null, "", "/");
         onLoginSuccess(user);
       } catch (err) {

@@ -12,7 +12,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -115,6 +115,88 @@ class ImportStats:
     ambiguous_symbol_refs: int = 0
     ambiguous_footprint_refs: int = 0
     errors: list[str] = field(default_factory=list)
+    mpn_recovered: int = 0
+    mpn_fallback: int = 0
+
+
+# Actor recorded on revisions this importer creates. Downstream tooling uses it
+# to tell components that came from a database library apart from components
+# that merely share a name with one.
+DATABASE_LIBRARY_IMPORT_ACTOR = "system:import_database_library"
+
+# The database library carries the real manufacturer part number in its own
+# column; the "Part Number" column is the library's internal part number. Older
+# imports wrote the internal number into `mpn`, which made every component
+# unqueryable against a distributor. Keep the internal number in `name` (and in
+# `extra_fields` under a label a librarian recognises) and give `mpn` the real
+# manufacturer part number.
+IPN_COLUMNS = ("Part Number", "Part Number Nocolon")
+MPN_COLUMNS = ("Manufacturer Part Number",)
+
+# Internal-part-number label used in extra_fields. Also the field a librarian
+# searches by, so it must survive into the search document.
+IPN_FIELD_LABEL = "Internal Part Number"
+MPN_SOURCE_FIELD_LABEL = "MPN Source"
+
+# Provenance of the `mpn` column, recorded per row so the supply sync can skip
+# rows whose `mpn` is really an internal number and would burn distributor
+# quota on a guaranteed miss.
+MPN_SOURCE_DATABASE = "database"
+MPN_SOURCE_FALLBACK = "fallback_ipn"
+
+# Database-library columns with no first-class catalog column that are still
+# worth keeping. Anything the importer maps onto a real column (Value, Comment,
+# Part Description, Manufacturer, Datasheet, HelpURL, PackageDescription, Power,
+# SCEM, LibSymbol, LibFootprint, Database Table Name) is deliberately absent, as
+# are the source-bookkeeping columns (Database Name, Part Number Nocolon).
+EXTRA_FIELD_COLUMNS = (
+    "Component Kind",
+    "Component Type",
+    "Case",
+    "ComponentHeight",
+    "Tolerance",
+    "TC",
+    "Voltage",
+    "Resistance",
+    "Pin Count",
+    "Bonding",
+    "Device",
+    "Family",
+    "Mounted",
+    "Socket",
+    "SMD",
+    "PressFit",
+    "Sense",
+    "Sense Comment",
+    "Status",
+    "Status Comment",
+    "Manufacturer1 Part Number",
+    "Manufacturer1 Example",
+    "ComponentLink1URL",
+    "ComponentLink1Description",
+    "ComponentLink2URL",
+    "ComponentLink2Description",
+    "Author",
+    "CreateDate",
+    "LatestRevisionDate",
+)
+
+# Placeholder values seen across the CERN export. A cell echoing its own column
+# name is an export artefact, and "None" is how the source spells an unset
+# status rather than a status a librarian would want to read.
+EXTRA_FIELD_PLACEHOLDERS = frozenset({"none", "n/a", "na", "--", "-"})
+
+
+def _clean_extra_value(column: str, value: str) -> str:
+    """Drop export artefacts so they do not reach the catalog as real values."""
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    if cleaned.casefold() == column.casefold():
+        return ""
+    if cleaned.casefold() in EXTRA_FIELD_PLACEHOLDERS:
+        return ""
+    return cleaned
 
 
 # Truncate order is irrelevant under CASCADE; list every catalog table that holds
@@ -340,7 +422,7 @@ def _insert_import_component(
             summary, keywords, extra_fields, search_document, created_at, updated_at
         )
         VALUES (
-            %s, %s, 1, '', 'import', 'Imported from database library', 'system:import_database_library',
+            %s, %s, 1, '', 'import', 'Imported from database library', %s,
             '', %s, 'open', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s
         )
@@ -348,6 +430,7 @@ def _insert_import_component(
         (
             revision_id,
             component_id,
+            DATABASE_LIBRARY_IMPORT_ACTOR,
             REVISION_MANIFEST_A2,
             metadata["name"],
             metadata["value"],
@@ -401,7 +484,7 @@ def _collect_import_plans(
             if limit and stats.rows_selected >= limit:
                 return plans
 
-            part_number = _row_get_cached(row, column_map, "Part Number", "Part Number Nocolon")
+            part_number = _row_get_cached(row, column_map, *IPN_COLUMNS)
             symbol_ref = _row_get_cached(row, column_map, "LibSymbol")
             footprint_ref = _row_get_cached(row, column_map, "LibFootprint")
             if not part_number:
@@ -451,6 +534,10 @@ def _collect_import_plans(
             metadata = service._normalize_metadata(  # type: ignore[attr-defined]
                 _metadata_from_row_cached(row, table, import_name, column_map)
             )
+            if metadata["extra_fields"].get(MPN_SOURCE_FIELD_LABEL) == MPN_SOURCE_DATABASE:
+                stats.mpn_recovered += 1
+            else:
+                stats.mpn_fallback += 1
             plans.append(
                 ImportRowPlan(
                     table=table,
@@ -478,12 +565,21 @@ def _metadata_from_row_cached(
     manufacturer = _row_get_cached(row, column_map, "Manufacturer") or "TBD"
     datasheet = _row_get_cached(row, column_map, "Datasheet", "HelpURL") or "TBD"
     category = _row_get_cached(row, column_map, "Database Table Name") or table
+    mpn, mpn_source = _resolve_mpn(
+        _row_get_cached(row, column_map, *MPN_COLUMNS), import_name
+    )
+    extra_fields = _extra_fields_from_row(
+        lambda column: _row_get_cached(row, column_map, column),
+        import_name=import_name,
+        mpn_source=mpn_source,
+    )
     return {
+        "name": import_name,
         "value": value,
         "description": description,
         "datasheet_url": datasheet,
         "manufacturer": manufacturer,
-        "mpn": import_name,
+        "mpn": mpn,
         "category": category,
         "package_name": _row_get_cached(row, column_map, "PackageDescription", "Case"),
         "vendor": "",
@@ -496,7 +592,40 @@ def _metadata_from_row_cached(
         "power_dissipation_w": _row_get_cached(row, column_map, "Power"),
         "rate": "",
         "sap_code": _row_get_cached(row, column_map, "SCEM"),
+        "extra_fields": extra_fields,
     }
+
+
+def _resolve_mpn(database_mpn: str, import_name: str) -> tuple[str, str]:
+    """Pick the manufacturer part number and record where it came from.
+
+    `mpn` is required downstream, so a row whose source column is blank still
+    has to carry something. Falling back to the internal part number keeps the
+    component importable; the recorded source is what stops the supply sync
+    from spending distributor quota on it.
+    """
+    cleaned = database_mpn.strip()
+    if cleaned:
+        return cleaned, MPN_SOURCE_DATABASE
+    return import_name, MPN_SOURCE_FALLBACK
+
+
+def _extra_fields_from_row(
+    read: Callable[[str], str],
+    *,
+    import_name: str,
+    mpn_source: str,
+) -> dict[str, str]:
+    """Preserve database columns the catalog has no dedicated column for."""
+    extra_fields = {
+        IPN_FIELD_LABEL: import_name,
+        MPN_SOURCE_FIELD_LABEL: mpn_source,
+    }
+    for column in EXTRA_FIELD_COLUMNS:
+        cleaned = _clean_extra_value(column, read(column))
+        if cleaned:
+            extra_fields[column] = cleaned
+    return extra_fields
 
 
 def _register_planned_assets(
@@ -631,10 +760,33 @@ def _import_plans(
         _begin_import_transaction(target_conn)
         imported_since_commit = 0
 
+    # Components are inserted with raw SQL, which bypasses the service path that
+    # normally registers discovered fields. Register them once up front so the
+    # preserved database columns appear as labelled fields rather than as opaque
+    # keys in the extra-fields blob.
+    discovered_keys = {
+        key
+        for plan in plans
+        for key in plan.metadata.get("extra_fields", {})
+    }
+    if discovered_keys:
+        service._ensure_extra_field_definitions(  # type: ignore[attr-defined]
+            target_conn,
+            sorted(discovered_keys),
+            actor=DATABASE_LIBRARY_IMPORT_ACTOR,
+        )
+
     for plan in plans:
         try:
             now = _utc_now_iso()
-            slug = _unique_slug_local(used_slugs, plan.metadata["mpn"] or plan.metadata["value"])
+            # Slug from the internal part number, which is unique per row. The
+            # manufacturer part number is not: footprint variants and repeated
+            # database rows share one, and slugging on it would suffix thousands
+            # of components with -2, -3, ...
+            slug = _unique_slug_local(
+                used_slugs,
+                plan.import_name or plan.metadata["mpn"] or plan.metadata["value"],
+            )
             component_id, revision_id = _insert_import_component(
                 service,
                 target_conn,
@@ -859,12 +1011,14 @@ def _metadata_from_row(row: sqlite3.Row, table: str, import_name: str) -> dict[s
     manufacturer = _row_get(row, "Manufacturer") or "TBD"
     datasheet = _row_get(row, "Datasheet", "HelpURL") or "TBD"
     category = _row_get(row, "Database Table Name") or table
+    mpn, mpn_source = _resolve_mpn(_row_get(row, *MPN_COLUMNS), import_name)
     return {
+        "name": import_name,
         "value": value,
         "description": description,
         "datasheet_url": datasheet,
         "manufacturer": manufacturer,
-        "mpn": import_name,
+        "mpn": mpn,
         "category": category,
         "package_name": _row_get(row, "PackageDescription", "Case"),
         "vendor": "",
@@ -877,6 +1031,11 @@ def _metadata_from_row(row: sqlite3.Row, table: str, import_name: str) -> dict[s
         "power_dissipation_w": _row_get(row, "Power"),
         "rate": "",
         "sap_code": _row_get(row, "SCEM"),
+        "extra_fields": _extra_fields_from_row(
+            lambda column: _row_get(row, column),
+            import_name=import_name,
+            mpn_source=mpn_source,
+        ),
     }
 
 
@@ -916,20 +1075,6 @@ def _register_asset(
         asset = dict(asset)
         asset["canonical_path"] = runtime_canonical_path
     return asset
-
-
-def _find_existing_component(conn: Any, mpn: str) -> str | None:
-    row = conn.execute(
-        """
-        SELECT c.id
-        FROM components c
-        JOIN component_revisions cr ON cr.id = c.current_revision_id
-        WHERE cr.mpn = %s
-        LIMIT 1
-        """,
-        (mpn,),
-    ).fetchone()
-    return str(row["id"]) if row else None
 
 
 def _clear_catalog(conn: Any) -> None:
@@ -1030,7 +1175,12 @@ def main() -> int:
     )
     print(
         f"Prepared {len(plans)} import rows "
-        f"({stats.skipped_rows} skipped during scan, {stats.duplicate_part_numbers} duplicate MPN variants)",
+        f"({stats.skipped_rows} skipped during scan, {stats.duplicate_part_numbers} duplicate part number variants)",
+        flush=True,
+    )
+    print(
+        f"Manufacturer part numbers: {stats.mpn_recovered} from the source database, "
+        f"{stats.mpn_fallback} falling back to the internal part number",
         flush=True,
     )
 

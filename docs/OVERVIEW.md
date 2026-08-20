@@ -24,7 +24,7 @@ and dangerous Git remote-helper transports.
 
 Project views include:
 
-- schematic and PCB viewers;
+- schematic and PCB viewers, with component and net search in the Visualizer header;
 - cross-probing between compatible schematic, PCB, and BOM identities;
 - WebGPU 3D board views;
 - engineering BOM, stackup, assembly, and Interactive HTML BOM outputs when

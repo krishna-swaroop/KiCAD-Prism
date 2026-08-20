@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { labelInstanceListLabel, type LabelInstanceRef } from "@/lib/label-instances";
 import { selectionLabel } from "@/lib/prism-selection";
 import type {
     PrismSelection,
@@ -30,13 +31,6 @@ import type {
     SemanticTerminal,
 } from "@/types/prism-selection";
 
-export interface LabelInstanceRef {
-    uuid: string;
-    sheet: string;
-    name: string;
-    kind?: "global" | "net" | "hierarchical";
-}
-
 interface SelectionInspectorProps {
     open: boolean;
     selection: PrismSelection | null;
@@ -46,7 +40,7 @@ interface SelectionInspectorProps {
     onImportComponent?: () => void;
     canImportComponent?: boolean;
     importingComponent?: boolean;
-    /** Matching label instances for SCH label / global-label selections. */
+    /** Matching schematic label instances for net / global-label selections. */
     labelInstances?: LabelInstanceRef[];
     onNavigateLabelInstance?: (direction: -1 | 1) => void;
     onFocusLabelInstance?: (uuid: string) => void;
@@ -95,7 +89,7 @@ function resolveTerminal(selection: PrismSelection, index: PrismSemanticIndex | 
 function PropertyRow({ label, value }: { label: string; value: ReactNode }) {
     if (value === undefined || value === null || value === "") return null;
     return (
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-3 border-b py-2.5 last:border-b-0">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-2 border-b py-1.5 last:border-b-0">
             <dt className="text-muted-foreground">{label}</dt>
             <dd className="min-w-0 break-words text-right font-medium">{value}</dd>
         </div>
@@ -212,8 +206,8 @@ function IntegrationRow({ icon: Icon, title, description }: {
     description: string;
 }) {
     return (
-        <div className="flex items-start gap-3 border-b py-3 last:border-b-0">
-            <div className="mt-0.5 border bg-muted/40 p-2">
+        <div className="flex items-start gap-2.5 border-b py-2 last:border-b-0">
+            <div className="mt-0.5 border bg-muted/40 p-1.5">
                 <Icon className="h-4 w-4 text-muted-foreground" />
             </div>
             <div className="min-w-0 flex-1">
@@ -269,8 +263,8 @@ function LibraryImportRow({ onImport, disabled, loading }: {
     loading: boolean;
 }) {
     return (
-        <div className="flex items-start gap-3 border-b py-3 last:border-b-0">
-            <div className="mt-0.5 border bg-muted/40 p-2">
+        <div className="flex items-start gap-2.5 border-b py-2 last:border-b-0">
+            <div className="mt-0.5 border bg-muted/40 p-1.5">
                 <LibraryBig className="h-4 w-4 text-muted-foreground" />
             </div>
             <div className="min-w-0 flex-1">
@@ -316,6 +310,10 @@ export function SelectionInspector({
         : -1;
     const showLabelNav = labelInstances.length >= 2 && Boolean(onNavigateLabelInstance);
     const labelOrdinal = labelIndex >= 0 ? labelIndex + 1 : 1;
+    const currentInstance = labelInstances[labelIndex >= 0 ? labelIndex : 0];
+    const currentInstanceLabel = currentInstance
+        ? labelInstanceListLabel(currentInstance, labelInstances)
+        : undefined;
 
     return (
         <aside
@@ -327,7 +325,7 @@ export function SelectionInspector({
             )}
             aria-label="Selection inspector"
         >
-            <header className="shrink-0 border-b bg-card/70 px-4 py-3">
+            <header className="shrink-0 border-b bg-card/70 px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
                     <nav aria-label="Selection breadcrumb" className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
                         <span>Selection</span>
@@ -342,15 +340,13 @@ export function SelectionInspector({
                         </Button>
                     )}
                 </div>
-                <div className="mt-4 flex items-center gap-3">
-                    <div className="border bg-primary/10 p-2.5 text-primary">
-                        <SelectionIcon className="h-5 w-5" />
+                <div className="mt-2.5 flex items-center gap-2.5">
+                    <div className="border bg-primary/10 p-2 text-primary">
+                        <SelectionIcon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1 leading-tight">
-                        <h2 className="truncate font-mono text-lg font-semibold" title={title}>{title}</h2>
-                        {/* Nudge just the tag up so its bottom lines up with the
-                            icon's bottom, without reflowing the icon or title. */}
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 -translate-y-1.5">
+                        <h2 className="truncate font-mono text-base font-semibold" title={title}>{title}</h2>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <Badge variant="outline" className="px-2 py-0 text-[11px] font-medium">
                                 {capitalizeFirst(resolvedItemType(selection, viewContext))}
                             </Badge>
@@ -360,9 +356,9 @@ export function SelectionInspector({
             </header>
 
             <ScrollArea className="themed-scrollbar min-h-0 flex-1">
-                <div className="space-y-5 p-4 text-xs">
+                <div className="space-y-3 p-3 text-xs">
                     {showLabelNav && (
-                        <CollapsibleSection title="Instances" defaultOpen={false}>
+                        <CollapsibleSection title="Instances">
                             <div className="flex items-center justify-between gap-2 border bg-card/40 px-3 py-2">
                                 <Button
                                     type="button"
@@ -378,9 +374,11 @@ export function SelectionInspector({
                                     <div className="font-medium tabular-nums">
                                         {labelOrdinal} / {labelInstances.length}
                                     </div>
-                                    <div className="mt-0.5 truncate text-muted-foreground" title={labelInstances[labelIndex]?.sheet}>
-                                        {labelInstances[labelIndex >= 0 ? labelIndex : 0]?.sheet}
-                                    </div>
+                                    {currentInstanceLabel && (
+                                        <div className="mt-0.5 truncate text-muted-foreground" title={currentInstanceLabel}>
+                                            {currentInstanceLabel}
+                                        </div>
+                                    )}
                                 </div>
                                 <Button
                                     type="button"
@@ -396,6 +394,7 @@ export function SelectionInspector({
                             <ul className="themed-scrollbar mt-2 max-h-40 space-y-1 overflow-y-auto border bg-card/20 p-2">
                                 {labelInstances.map((instance) => {
                                     const active = instance.uuid === activeUuid;
+                                    const label = labelInstanceListLabel(instance, labelInstances);
                                     return (
                                         <li key={instance.uuid}>
                                             <button
@@ -407,9 +406,9 @@ export function SelectionInspector({
                                                 }`}
                                                 disabled={navigatingLabelInstance || active}
                                                 onClick={() => onFocusLabelInstance?.(instance.uuid)}
-                                                title={`${instance.sheet}:${instance.name}`}
+                                                title={`${label}:${instance.name}`}
                                             >
-                                                {instance.sheet}
+                                                {label}
                                             </button>
                                         </li>
                                     );
@@ -518,7 +517,7 @@ export function SelectionInspector({
                 </div>
             </ScrollArea>
 
-            <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-card/70 p-3">
+            <footer className="flex shrink-0 items-center justify-between gap-2 border-t bg-card/70 p-2">
                 <span className="text-xs text-muted-foreground">Esc clears selection</span>
                 <Button size="sm" variant="outline" onClick={onClear}>Clear</Button>
             </footer>

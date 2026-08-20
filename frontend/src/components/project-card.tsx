@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { CalendarDays, Box, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import React from "react";
+import { cn } from "@/lib/utils";
 
 interface ProjectCardProps {
     project: Project;
     compact?: boolean;
+    dense?: boolean;
     selected?: boolean;
     onClick?: () => void;
     onDoubleClick?: () => void;
@@ -42,6 +44,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 export function ProjectCard({
     project,
     compact,
+    dense = false,
     selected,
     onClick,
     onDoubleClick,
@@ -99,33 +102,41 @@ export function ProjectCard({
 
     return (
         <Card
-            className={`overflow-hidden transition-all cursor-pointer group bg-card border shadow-sm ${selected ? "border-primary shadow-md" : "hover:border-primary/50 hover:shadow-md"}`}
+            className={cn(
+                "overflow-hidden py-0 gap-0 transition-all cursor-pointer group bg-card border shadow-sm",
+                selected ? "border-primary shadow-md" : "hover:border-primary/50 hover:shadow-md",
+            )}
             onClick={handleClick}
             onDoubleClick={onDoubleClick}
         >
-            <div className="aspect-video w-full overflow-hidden bg-muted relative border-b">
+            <div className="relative aspect-video w-full overflow-hidden border-b bg-muted">
                 {thumbnailUrl ? (
                     <img
                         src={thumbnailUrl}
                         alt={displayName}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
                 ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground bg-muted/30">
+                    <div className="flex h-full items-center justify-center bg-muted/30 text-muted-foreground">
                         <Box className="h-10 w-10 opacity-20" />
                     </div>
                 )}
-                <div className="absolute top-2 right-2 flex gap-1">
+                <div className="absolute top-2 right-2 left-2 flex items-start justify-end gap-1">
                     {parentRepo && (
-                        <Badge variant="secondary" className="backdrop-blur-sm bg-background/80 border text-[10px]">
+                        <Badge
+                            variant="secondary"
+                            title={parentRepo}
+                            className="min-w-0 max-w-full truncate border bg-background/80 text-[10px] backdrop-blur-sm"
+                        >
                             {highlightMatch(parentRepo, searchQuery)}
                         </Badge>
                     )}
-                    <Badge variant="secondary" className="backdrop-blur-sm bg-background/80 border text-[10px]">
+                    <Badge variant="secondary" className="shrink-0 border bg-background/80 text-[10px] backdrop-blur-sm">
                         Git
                     </Badge>
                     {actions ? (
                         <div
+                            className="shrink-0"
                             onClick={(event) => event.stopPropagation()}
                             onPointerDown={(event) => event.stopPropagation()}
                         >
@@ -136,7 +147,7 @@ export function ProjectCard({
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-destructive hover:text-destructive-foreground"
+                            className="h-6 w-6 shrink-0 bg-background/80 backdrop-blur-sm hover:bg-destructive hover:text-destructive-foreground"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 onDelete();
@@ -148,18 +159,27 @@ export function ProjectCard({
                 </div>
             </div>
 
-            <CardContent className="p-4">
-                <h3 className="font-semibold text-lg tracking-tight mb-1 group-hover:text-primary transition-colors truncate">
+            <CardContent className={dense ? "p-3" : "p-4"}>
+                <h3
+                    className={cn(
+                        "truncate font-semibold tracking-tight transition-colors group-hover:text-primary",
+                        dense ? "mb-0.5 text-base" : "mb-1 text-lg",
+                    )}
+                    title={displayName}
+                >
                     {highlightMatch(displayName, searchQuery)}
                 </h3>
-                <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">
+                <p className={cn("line-clamp-2 text-muted-foreground", dense ? "text-xs" : "min-h-[2.5rem] text-sm")}>
                     {highlightMatch(description, searchQuery)}
                 </p>
             </CardContent>
 
-            <CardFooter className="p-4 pt-0 border-t-0 text-[11px] text-muted-foreground flex items-center gap-2">
-                <CalendarDays className="h-3.5 w-3.5" />
-                <span>Updated {project.last_modified}</span>
+            <CardFooter className={cn(
+                "flex items-center gap-2 border-t-0 text-[11px] text-muted-foreground",
+                dense ? "p-3 pt-0" : "p-4 pt-0",
+            )}>
+                <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">Updated {project.last_modified}</span>
             </CardFooter>
         </Card>
     );

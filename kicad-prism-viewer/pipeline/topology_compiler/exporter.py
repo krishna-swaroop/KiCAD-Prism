@@ -64,7 +64,6 @@ def export_viewer_html(
             "connected_net_count": semantic_geometry.get("connected_net_count"),
             "assets": semantic_geometry.get("assets", {}),
             "semantic_gltf": semantic_geometry.get("semantic_gltf", {}),
-            "schematic_world": semantic_geometry.get("schematic_world", {}),
         }
     html = template.safe_substitute(
         title=title,

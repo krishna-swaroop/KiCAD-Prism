@@ -4,17 +4,20 @@ import { toast } from "sonner";
 import { Cpu, Box, FileText, CircuitBoard, Layers3, PackageCheck, MessageSquare, MessageSquarePlus, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EngineeringBomTable } from "./engineering-bom-table";
-import { SelectionInspector, type LabelInstanceRef } from "./selection-inspector";
+import { SelectionInspector } from "./selection-inspector";
+import { filterLabelInstances, type LabelInstanceRef } from "@/lib/label-instances";
 import { WebGpu3dTab } from "./webgpu-3d-tab";
 import { EcadViewerControls } from "./ecad-viewer-controls";
 import { CommentForm, type CommentFormSubmitPayload } from "./comment-form";
 import { CommentCard } from "./comment-card";
 import { CommentPanel } from "./comment-panel";
-import { ViewerOverlayRail } from "./viewer-overlay-rail";
+import { ViewerOverlayRail, SELECTION_INSPECTOR_RAIL_RESIZE } from "./viewer-overlay-rail";
 import { fetchApi, readApiError } from "@/lib/api";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
 import { canWriteCatalog } from "@/lib/roles";
 import { crossProbeRequestForSelection, normalizeEcadSelection } from "@/lib/prism-selection";
+import { selectionFromDesignSearchHit, type DesignSearchHit } from "@/lib/design-search";
+import { DesignSearchField } from "./design-search-field";
 import { usePrismCrossProbe } from "@/hooks/use-prism-cross-probe";
 import type { User } from "@/types/auth";
 import type {
@@ -25,7 +28,7 @@ import type {
     EcadSemanticSelectionDetail,
     EcadViewportInsets,
 } from "@/types/ecad-viewer";
-import type { PrismSelection, PrismSemanticIndex } from "@/types/prism-selection";
+import type { PrismSelection, PrismSelectionContext, PrismSemanticIndex } from "@/types/prism-selection";
 import type { Comment, CommentContext, CommentLocation, CommentsFile, MentionCandidate } from "@/types/comments";
 import {
     DEFAULT_COMMENT_CLASS,
@@ -54,6 +57,13 @@ const VISUALIZER_TABS: { id: VisualizerTab; label: string; icon: LucideIcon }[] 
     { id: "stackup", label: "Stackup", icon: Layers3 },
     { id: "assembly", label: "Assembly Assistant", icon: PackageCheck },
 ];
+
+function selectionContextForTab(tab: VisualizerTab): PrismSelectionContext {
+    if (tab === "pcb") return "PCB";
+    if (tab === "3d" || tab === "stackup") return "3D";
+    if (tab === "bom" || tab === "assembly") return "BOM";
+    return "SCH";
+}
 
 const isAbortError = (error: unknown): boolean =>
     error instanceof DOMException && error.name === "AbortError";
@@ -806,6 +816,25 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         };
     }, [commit, pcbViewerElement, projectId, registerClient, schematicViewerElement, semanticIndex]);
 
+    const handleDesignSearchPick = useCallback((hit: DesignSearchHit) => {
+        const sourceContext = selectionContextForTab(activeTab);
+        const currentPage = activeSchematicPage?.filename
+            || activeSchematicPage?.page
+            || activeSchematicPage?.projectPath
+            || null;
+        const selection = selectionFromDesignSearchHit(hit, sourceContext, currentPage);
+        if (!selection) return;
+        // Search is not a click inside a viewer, so the bus would skip the
+        // source SCH/PCB client. Probe everyone, then apply to the source too.
+        crossProbeGlobal(selection);
+        if (sourceContext !== "SCH" && sourceContext !== "PCB") return;
+        const viewer = sourceContext === "SCH" ? schematicViewerRef.current : pcbViewerRef.current;
+        if (typeof viewer?.requestCrossProbe !== "function") return;
+        void viewer.requestCrossProbe(
+            crossProbeRequestForSelection(selection, sourceContext, semanticIndex),
+        );
+    }, [activeSchematicPage, activeTab, crossProbeGlobal, semanticIndex]);
+
     // The active CAD view, or null on non-CAD tabs (3D, stackup, ...).
     const activeViewContext: "SCH" | "PCB" | null =
         activeTab === "pcb" ? "PCB" : activeTab === "sch" ? "SCH" : null;
@@ -868,37 +897,9 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             return;
         }
 
-        const itemType = (selection.anchor?.itemType || "").toLowerCase();
-        if (itemType !== "global-label" && itemType !== "label") {
-            setLabelInstances([]);
-            return;
-        }
-
         const all = viewer.findLabelInstances(selection.netName);
-        const pageHint =
-            activeSchematicPage?.filename ||
-            selection.anchor?.page ||
-            selection.anchor?.sheet ||
-            undefined;
-        const sheetBase = (value: string) => {
-            const parts = value.split("/").filter(Boolean);
-            return parts[parts.length - 1] || value;
-        };
-        const sheetMatches = (sheet: string, page: string | undefined) => {
-            if (!page) return true;
-            if (sheet === page) return true;
-            return sheetBase(sheet) === sheetBase(page);
-        };
-
-        const filtered =
-            itemType === "global-label"
-                ? all.filter((instance) => instance.kind === "global")
-                : all.filter(
-                      (instance) =>
-                          instance.kind === "net" && sheetMatches(instance.sheet, pageHint),
-                  );
-        setLabelInstances(filtered);
-    }, [activeSchematicPage?.filename, globalSelection, schematicViewerElement]);
+        setLabelInstances(filterLabelInstances(all, selection.anchor?.itemType));
+    }, [globalSelection, schematicViewerElement]);
 
     const focusLabelInstance = useCallback(async (uuid: string) => {
         const viewer = schematicViewerRef.current;
@@ -1219,6 +1220,13 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
 
     return (
         <div className="relative flex h-full min-h-0 flex-col bg-background">
+            <DesignSearchField
+                semanticIndex={semanticIndex}
+                currentPage={activeSchematicPage?.filename || activeSchematicPage?.page || activeSchematicPage?.projectPath}
+                loading={semanticIndexLoading}
+                active={viewerActive}
+                onPick={handleDesignSearchPick}
+            />
             {/* Toolbar */}
             <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/20 px-2 py-1">
                 {VISUALIZER_TABS.map((tab, index) => {
@@ -1424,6 +1432,12 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                         onClose={() => setRightRailTab(null)}
                         onVisibleWidthChange={setRightRailInset}
                         ariaLabel="Viewer details"
+                        resizable={
+                            (activeTab === "sch" || activeTab === "pcb")
+                                && rightRailTab === "selection"
+                                ? SELECTION_INSPECTOR_RAIL_RESIZE
+                                : undefined
+                        }
                     >
                         {rightRailTab === "comments" ? (
                             <CommentPanel

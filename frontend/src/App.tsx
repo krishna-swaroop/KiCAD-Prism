@@ -171,7 +171,7 @@ function App() {
         );
     }
     // If auth is enabled and no user, show login page. The backend refuses to start
-    // with incomplete OIDC configuration, so there is no misconfigured state to
+    // with incomplete auth configuration, so there is no misconfigured state to
     // detect here any more.
     if (authConfig.auth_enabled && !user) {
         return (
@@ -181,6 +181,10 @@ function App() {
                     devMode={authConfig.dev_mode}
                     workspaceName={authConfig.workspace_name}
                     initialError={authError}
+                    onLoginSuccess={(signedIn) => {
+                        setUser(signedIn);
+                        setAuthError(null);
+                    }}
                 />
             </Suspense>
         );
