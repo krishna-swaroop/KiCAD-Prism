@@ -11,6 +11,8 @@ import {
     CheckCircle2,
     ClipboardList,
     ListChecks,
+    Pencil,
+    Check,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -471,28 +473,74 @@ function EditableStat({
     canEdit: boolean;
     onCommit: (value: number) => void;
 }) {
+    const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(String(value));
     useEffect(() => setDraft(String(value)), [value]);
 
-    if (!canEdit) {
-        return <Stat label={label} value={value} />;
+    const commit = () => {
+        const next = Number(draft) || 0;
+        if (next !== value) onCommit(next);
+        setEditing(false);
+    };
+
+    // Read-only or not being edited: show the value as a plain stat. When
+    // editable, a pencil reveals the input rather than always showing one.
+    if (!canEdit || !editing) {
+        return (
+            <div className="border p-3">
+                <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
+                    {canEdit && (
+                        <button
+                            type="button"
+                            aria-label={`Edit ${label}`}
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => setEditing(true)}
+                        >
+                            <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                </div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+            </div>
+        );
     }
+
     return (
         <div className="border p-3">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-            <Input
-                type="number"
-                min={0}
-                max={max || undefined}
-                className="mt-1 h-9 text-lg font-semibold tabular-nums"
-                value={draft}
-                aria-label={label}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={() => {
-                    const next = Number(draft) || 0;
-                    if (next !== value) onCommit(next);
-                }}
-            />
+            <div className="mt-1 flex items-center gap-1">
+                <Input
+                    type="number"
+                    min={0}
+                    max={max || undefined}
+                    autoFocus
+                    className="h-9 text-lg font-semibold tabular-nums"
+                    value={draft}
+                    aria-label={label}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={commit}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") commit();
+                        if (e.key === "Escape") {
+                            setDraft(String(value));
+                            setEditing(false);
+                        }
+                    }}
+                />
+                <button
+                    type="button"
+                    aria-label={`Save ${label}`}
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    // onMouseDown so it fires before the input's onBlur cancels it.
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        commit();
+                    }}
+                >
+                    <Check className="h-4 w-4" />
+                </button>
+            </div>
         </div>
     );
 }

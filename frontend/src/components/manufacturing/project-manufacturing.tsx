@@ -741,37 +741,9 @@ export function ProjectManufacturing({
                                 const { previewSpecConfig } = await import("@/lib/manufacturing");
                                 return previewSpecConfig(text);
                             },
-                            headerSlot: (setText) => {
-                                // Prefer templates for the selected manufacturer; fall back to all.
-                                const forMfr = templates.filter((t) => t.manufacturer_id === manufacturerId);
-                                const options = forMfr.length > 0 ? forMfr : templates;
-                                return options.length > 0 ? (
-                                    <CompactSelect
-                                        aria-label="Apply a template"
-                                        widthClass="w-auto"
-                                        value=""
-                                        onChange={async (e) => {
-                                            const applyId = e.target.value;
-                                            e.target.value = "";
-                                            if (!applyId) return;
-                                            try {
-                                                const { getTemplate } = await import("@/lib/manufacturing");
-                                                const tmpl = await getTemplate(applyId);
-                                                setText(tmpl.spec_config);
-                                            } catch (error) {
-                                                toast.error(error instanceof Error ? error.message : "Failed to load template.");
-                                            }
-                                        }}
-                                    >
-                                        <option value="">Apply template…</option>
-                                        {options.map((t) => (
-                                            <option key={t.id} value={t.id}>
-                                                {t.manufacturer_name} — {t.name}
-                                            </option>
-                                        ))}
-                                    </CompactSelect>
-                                ) : null;
-                            },
+                            // No in-editor "apply template" picker: it overwrote the
+                            // open spec's schema. To use a template, add a separate
+                            // spec from the "Add schema" dropdown instead.
                         },
                         {
                             id: "capabilities",

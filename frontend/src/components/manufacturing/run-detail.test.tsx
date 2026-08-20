@@ -97,6 +97,25 @@ describe("RunDetail", () => {
         expect(screen.getByText(/No defects logged/)).toBeTruthy();
     });
 
+    it("shows Good as a number and edits it via the pencil", async () => {
+        getRun.mockResolvedValue(makeRun());
+        updateRun.mockResolvedValue(makeRun());
+        render(<RunDetail runId="run_1" canEdit canLogDefects canChangeStatus onBack={vi.fn()} />);
+        await waitFor(() => expect(screen.getByRole("heading", { name: "Board One" })).toBeTruthy());
+
+        // The value shows as a plain number (no input) until the pencil is clicked.
+        expect(screen.getByText("90")).toBeTruthy();
+        expect(screen.queryByLabelText("Good")).toBeNull();
+
+        fireEvent.click(screen.getByRole("button", { name: "Edit Good" }));
+        const input = await screen.findByLabelText("Good");
+        fireEvent.change(input, { target: { value: "88" } });
+        // The save button commits on mousedown (so it beats the input's blur).
+        fireEvent.mouseDown(screen.getByRole("button", { name: "Save Good" }));
+
+        await waitFor(() => expect(updateRun).toHaveBeenCalledWith("run_1", { quantity_good: 88 }));
+    });
+
     it("shows the frozen manufacturer spec on Overview", async () => {
         getRun.mockResolvedValue({
             ...makeRun(),
