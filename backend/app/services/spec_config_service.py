@@ -840,6 +840,7 @@ JLCPCB_ADVANCED_META: dict[str, Any] = dict(JLCPCB_STANDARD_META)
 # JLCPCB flex (FPC) process, from jlcpcb.com/capabilities/flex-pcb-capabilities.
 # KiCad-tracked minimums (mm); 4 mil = 0.1016 mm.
 JLCPCB_FLEX_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums (35µm/1oz copper process).
     "min_track_width": 0.1016,           # 4 mil
     "min_clearance": 0.1016,             # 4 mil
     "min_through_hole_diameter": 0.1,    # hole range 0.1-6.5 mm
@@ -851,6 +852,8 @@ JLCPCB_FLEX_CAPABILITIES: dict[str, Any] = {
     "min_text_thickness": 0.15,
     "min_silk_clearance": 0.15,          # character to pad
     # Flex-only capabilities KiCad does not track (custom); see FLEX_META below.
+    "min_via_hole_size_mm": 0.3,
+    "hole_diameter_tolerance_mm": 0.08,
     "max_board_width_mm": 234.0,
     "max_board_height_mm": 490.0,
     "board_outline_tolerance_mm": 0.1,
@@ -858,10 +861,22 @@ JLCPCB_FLEX_CAPABILITIES: dict[str, Any] = {
     "max_finished_thickness_mm": 0.45,
     "bend_radius_factor_single_layer": 6.0,
     "bend_radius_factor_multi_layer": 10.0,
+    "min_bga_pad_mm": 0.25,
+    "min_plated_slot_mm": 0.5,
+    "min_castellated_hole_mm": 0.3,
+    "castellated_hole_to_hole_mm": 0.4,
+    "min_solder_bridge_mm": 0.5,
+    "gold_finger_edge_clearance_mm": 0.2,
+    "coverlay_expansion_mm": 0.1,
+    "min_tooling_hole_mm": 2.0,
+    "fiducial_diameter_mm": 1.0,
+    "panel_edge_width_mm": 5.0,
 }
 
 # Labels/units for the custom (non KiCad-tracked) flex capabilities above.
 JLCPCB_FLEX_META: dict[str, Any] = {
+    "min_via_hole_size_mm": {"label": "Min via hole size", "unit": "mm"},
+    "hole_diameter_tolerance_mm": {"label": "Hole diameter tolerance (±)", "unit": "mm"},
     "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
     "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
     "board_outline_tolerance_mm": {"label": "Outline tolerance (±)", "unit": "mm"},
@@ -869,11 +884,23 @@ JLCPCB_FLEX_META: dict[str, Any] = {
     "max_finished_thickness_mm": {"label": "Max finished thickness", "unit": "mm"},
     "bend_radius_factor_single_layer": {"label": "Bend radius (single layer)", "unit": "× thickness"},
     "bend_radius_factor_multi_layer": {"label": "Bend radius (multi-layer)", "unit": "× thickness"},
+    "min_bga_pad_mm": {"label": "Min BGA pad diameter", "unit": "mm"},
+    "min_plated_slot_mm": {"label": "Min plated slot width", "unit": "mm"},
+    "min_castellated_hole_mm": {"label": "Min castellated hole diameter", "unit": "mm"},
+    "castellated_hole_to_hole_mm": {"label": "Castellated hole to hole", "unit": "mm"},
+    "min_solder_bridge_mm": {"label": "Min solder bridge width", "unit": "mm"},
+    "gold_finger_edge_clearance_mm": {"label": "Gold finger to board edge", "unit": "mm"},
+    "coverlay_expansion_mm": {"label": "Coverlay expansion (one side)", "unit": "mm"},
+    "min_tooling_hole_mm": {"label": "Tooling hole diameter", "unit": "mm"},
+    "fiducial_diameter_mm": {"label": "Fiducial diameter", "unit": "mm"},
+    "panel_edge_width_mm": {"label": "Panel handling edge width", "unit": "mm"},
 }
 
 # PCBWay standard process, from pcbway.com/capabilities.html. KiCad-tracked
 # minimums (mm); 16 mil = 0.4064 mm, 6 mil = 0.1524 mm.
 PCBWAY_STANDARD_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums; 6 mil = 0.1524 mm, 16 mil = 0.4064 mm,
+    # 4 mil = 0.1016 mm, 2 mil = 0.0508 mm.
     "min_track_width": 0.1,              # 4 mil
     "min_clearance": 0.1,                # 4 mil
     "min_through_hole_diameter": 0.15,
@@ -882,25 +909,44 @@ PCBWAY_STANDARD_CAPABILITIES: dict[str, Any] = {
     "min_hole_to_hole": 0.4064,          # 16 mil
     "min_text_thickness": 0.15,
     "min_text_height": 0.8,
+    "solder_mask_to_copper_clearance": 0.0508,  # 2 mil min opening
     # PCBWay capabilities KiCad does not track (custom); see PCBWAY_META below.
-    "max_board_width_mm": 560.0,
-    "max_board_height_mm": 1150.0,
+    "min_soldermask_bridge_mm": 0.1016,  # 4 mil
+    "min_drilled_hole_mm": 0.15,
+    "max_drilled_hole_mm": 6.0,
+    "hole_size_tolerance_mm": 0.08,      # PTH
+    "npth_hole_tolerance_mm": 0.05,
+    "min_plated_slot_mm": 0.5,
+    "min_castellated_hole_mm": 0.4,
     "min_board_size_mm": 3.0,
-    "hole_size_tolerance_mm": 0.08,
-    "min_half_hole_diameter_mm": 0.4,
+    "max_board_width_mm": 560.0,         # multilayer
+    "max_board_height_mm": 1150.0,
     "min_board_thickness_mm": 0.2,
     "max_board_thickness_mm": 3.2,
+    "board_outline_tolerance_mm": 0.2,   # CNC
+    "impedance_tolerance_pct": 10.0,
+    "max_outer_copper_oz": 8.0,
+    "max_inner_copper_oz": 4.0,
 }
 
 # Labels/units for the custom (non KiCad-tracked) PCBWay capabilities above.
 PCBWAY_META: dict[str, Any] = {
+    "min_soldermask_bridge_mm": {"label": "Min solder-mask bridge", "unit": "mm"},
+    "min_drilled_hole_mm": {"label": "Min drilled hole", "unit": "mm"},
+    "max_drilled_hole_mm": {"label": "Max drilled hole", "unit": "mm"},
+    "hole_size_tolerance_mm": {"label": "PTH hole tolerance (±)", "unit": "mm"},
+    "npth_hole_tolerance_mm": {"label": "NPTH hole tolerance (±)", "unit": "mm"},
+    "min_plated_slot_mm": {"label": "Min plated slot width", "unit": "mm"},
+    "min_castellated_hole_mm": {"label": "Min castellated hole diameter", "unit": "mm"},
+    "min_board_size_mm": {"label": "Min board size", "unit": "mm"},
     "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
     "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
-    "min_board_size_mm": {"label": "Min board size", "unit": "mm"},
-    "hole_size_tolerance_mm": {"label": "PTH hole tolerance (±)", "unit": "mm"},
-    "min_half_hole_diameter_mm": {"label": "Min half-hole diameter", "unit": "mm"},
     "min_board_thickness_mm": {"label": "Min board thickness", "unit": "mm"},
     "max_board_thickness_mm": {"label": "Max board thickness", "unit": "mm"},
+    "board_outline_tolerance_mm": {"label": "Outline tolerance (±, CNC)", "unit": "mm"},
+    "impedance_tolerance_pct": {"label": "Impedance tolerance (±)", "unit": "%"},
+    "max_outer_copper_oz": {"label": "Max outer copper", "unit": "oz"},
+    "max_inner_copper_oz": {"label": "Max inner copper", "unit": "oz"},
 }
 
 SEED_MANUFACTURERS: list[dict[str, Any]] = [

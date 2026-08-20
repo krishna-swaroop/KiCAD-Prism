@@ -316,6 +316,24 @@ class SpecConfigParseTests(unittest.TestCase):
         self.assertEqual(JLCPCB_STANDARD_CAPABILITIES["min_hole_to_hole"], 0.2)
         self.assertEqual(JLCPCB_STANDARD_CAPABILITIES["min_via_annular_width"], 0.2)
 
+    def test_flex_and_pcbway_capabilities_are_comprehensive(self) -> None:
+        from app.services.spec_config_service import (
+            JLCPCB_FLEX_CAPABILITIES,
+            JLCPCB_FLEX_META,
+            PCBWAY_STANDARD_CAPABILITIES,
+            PCBWAY_META,
+        )
+
+        self.assertGreaterEqual(len(JLCPCB_FLEX_CAPABILITIES), 25)
+        for key in ("min_castellated_hole_mm", "coverlay_expansion_mm", "min_solder_bridge_mm"):
+            self.assertIn(key, JLCPCB_FLEX_CAPABILITIES)
+            self.assertIn(key, JLCPCB_FLEX_META)
+
+        self.assertGreaterEqual(len(PCBWAY_STANDARD_CAPABILITIES), 22)
+        for key in ("min_soldermask_bridge_mm", "impedance_tolerance_pct", "max_outer_copper_oz"):
+            self.assertIn(key, PCBWAY_STANDARD_CAPABILITIES)
+            self.assertIn(key, PCBWAY_META)
+
     def test_capabilities_split_into_kicad_tracked_and_custom(self) -> None:
         from app.services.pcb_rules_service import is_kicad_tracked
         from app.services.spec_config_service import (
