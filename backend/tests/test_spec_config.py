@@ -300,6 +300,22 @@ class SpecConfigParseTests(unittest.TestCase):
             derived, _ = capabilities_from_config(text)
             self.assertEqual(derived, caps)
 
+    def test_jlcpcb_standard_capabilities_are_comprehensive(self) -> None:
+        from app.services.spec_config_service import (
+            JLCPCB_STANDARD_CAPABILITIES,
+            JLCPCB_STANDARD_META,
+        )
+
+        # The standard set covers far more than the original handful of minimums.
+        self.assertGreaterEqual(len(JLCPCB_STANDARD_CAPABILITIES), 25)
+        for key in ("max_board_width_mm", "min_via_hole_size_mm", "impedance_tolerance_pct",
+                    "min_bga_pad_mm", "min_castellated_hole_mm", "aspect_ratio"):
+            self.assertIn(key, JLCPCB_STANDARD_CAPABILITIES)
+            self.assertIn(key, JLCPCB_STANDARD_META)
+        # KiCad-tracked minimums the page lists are present too.
+        self.assertEqual(JLCPCB_STANDARD_CAPABILITIES["min_hole_to_hole"], 0.2)
+        self.assertEqual(JLCPCB_STANDARD_CAPABILITIES["min_via_annular_width"], 0.2)
+
     def test_capabilities_split_into_kicad_tracked_and_custom(self) -> None:
         from app.services.pcb_rules_service import is_kicad_tracked
         from app.services.spec_config_service import (

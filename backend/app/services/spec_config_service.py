@@ -765,17 +765,66 @@ carrier: choice(DHL Express, DHL Express (DDP), UPS Worldwide Express Saver, Fed
 # JLCPCB standard-process minimums, from jlcpcb.com/capabilities/pcb-capabilities
 # (1 oz outer copper figures). Each is the smallest feature the fab can build, mm.
 JLCPCB_STANDARD_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums (1 oz process), from the capabilities page.
     "min_track_width": 0.1,
     "min_clearance": 0.1,
     "min_via_diameter": 0.25,
+    "min_via_annular_width": 0.2,          # PTH annular ring
     "min_through_hole_diameter": 0.15,
-    "min_via_annular_width": 0.15,
-    "min_copper_edge_clearance": 0.2,
+    "min_hole_to_hole": 0.2,               # via hole-to-hole
+    "min_copper_edge_clearance": 0.2,      # routed copper clearance
+    "min_hole_clearance": 0.2,             # NPTH to track
+    "min_silk_clearance": 0.15,            # pad to silkscreen
     "min_text_height": 1.0,
     "min_text_thickness": 0.15,
+    "solder_mask_to_copper_clearance": 0.1,  # min dam (1 oz, standard colours)
+    # Custom capabilities KiCad does not track; see JLCPCB_STANDARD_META.
+    "min_via_hole_size_mm": 0.15,
+    "min_drilled_hole_mm": 0.15,
+    "min_npth_mm": 0.5,
+    "hole_position_tolerance_mm": 0.05,
+    "min_board_thickness_mm": 0.4,
+    "max_board_thickness_mm": 4.5,
+    "board_dimension_tolerance_mm": 0.1,
+    "min_board_size_mm": 3.0,
+    "max_board_width_mm": 670.0,           # 2-layer FR-4
+    "max_board_height_mm": 600.0,
+    "impedance_tolerance_pct": 10.0,
+    "min_soldermask_dam_mm": 0.1,
+    "aspect_ratio": 10.0,
+    "min_plated_slot_mm": 0.5,
+    "min_castellated_hole_mm": 0.5,
+    "castellated_hole_to_hole_mm": 0.5,
+    "min_bga_pad_mm": 0.2,
+    "min_smd_pad_mm": 0.25,
+    "outer_copper_plating_um": 18.0,
 }
 
-# The advanced (HDI) process reaches finer features.
+# Labels/units for the custom (non KiCad-tracked) JLCPCB standard capabilities.
+JLCPCB_STANDARD_META: dict[str, Any] = {
+    "min_via_hole_size_mm": {"label": "Min via hole size", "unit": "mm"},
+    "min_drilled_hole_mm": {"label": "Min drilled hole (2+ layer)", "unit": "mm"},
+    "min_npth_mm": {"label": "Min NPTH", "unit": "mm"},
+    "hole_position_tolerance_mm": {"label": "Hole position tolerance (±)", "unit": "mm"},
+    "min_board_thickness_mm": {"label": "Min board thickness", "unit": "mm"},
+    "max_board_thickness_mm": {"label": "Max board thickness", "unit": "mm"},
+    "board_dimension_tolerance_mm": {"label": "Dimension tolerance (±)", "unit": "mm"},
+    "min_board_size_mm": {"label": "Min board size", "unit": "mm"},
+    "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "impedance_tolerance_pct": {"label": "Impedance tolerance (±)", "unit": "%"},
+    "min_soldermask_dam_mm": {"label": "Min solder-mask dam", "unit": "mm"},
+    "aspect_ratio": {"label": "Max aspect ratio (thickness : hole)", "unit": ": 1"},
+    "min_plated_slot_mm": {"label": "Min plated slot width", "unit": "mm"},
+    "min_castellated_hole_mm": {"label": "Min castellated hole diameter", "unit": "mm"},
+    "castellated_hole_to_hole_mm": {"label": "Castellated hole to hole", "unit": "mm"},
+    "min_bga_pad_mm": {"label": "Min BGA pad diameter", "unit": "mm"},
+    "min_smd_pad_mm": {"label": "Min SMD pad", "unit": "mm"},
+    "outer_copper_plating_um": {"label": "Average hole plating thickness", "unit": "µm"},
+}
+
+# The advanced (HDI) process reaches finer features; it inherits the standard
+# custom capabilities and overrides the ones it improves on.
 JLCPCB_ADVANCED_CAPABILITIES: dict[str, Any] = {
     **JLCPCB_STANDARD_CAPABILITIES,
     "min_track_width": 0.0635,   # 2.5 mil
@@ -784,7 +833,9 @@ JLCPCB_ADVANCED_CAPABILITIES: dict[str, Any] = {
     "min_through_hole_diameter": 0.1,
     "min_microvia_diameter": 0.25,
     "min_microvia_drill": 0.1,
+    "min_via_hole_size_mm": 0.1,
 }
+JLCPCB_ADVANCED_META: dict[str, Any] = dict(JLCPCB_STANDARD_META)
 
 # JLCPCB flex (FPC) process, from jlcpcb.com/capabilities/flex-pcb-capabilities.
 # KiCad-tracked minimums (mm); 4 mil = 0.1016 mm.
@@ -858,9 +909,9 @@ SEED_MANUFACTURERS: list[dict[str, Any]] = [
         "website": "https://jlcpcb.com",
         "templates": [
             {"key": "jlcpcb:standard", "name": "JLCPCB standard", "config": JLCPCB_SPEC_CONFIG,
-             "capabilities": JLCPCB_STANDARD_CAPABILITIES},
+             "capabilities": JLCPCB_STANDARD_CAPABILITIES, "capability_meta": JLCPCB_STANDARD_META},
             {"key": "jlcpcb:advanced", "name": "JLCPCB advanced PCB", "config": JLCPCB_ADVANCED_SPEC_CONFIG,
-             "capabilities": JLCPCB_ADVANCED_CAPABILITIES},
+             "capabilities": JLCPCB_ADVANCED_CAPABILITIES, "capability_meta": JLCPCB_ADVANCED_META},
             {"key": "jlcpcb:flex", "name": "JLCPCB flexible PCB", "config": JLCPCB_SPEC_CONFIG,
              "capabilities": JLCPCB_FLEX_CAPABILITIES, "capability_meta": JLCPCB_FLEX_META},
         ],
