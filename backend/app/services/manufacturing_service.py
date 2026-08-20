@@ -560,7 +560,11 @@ def list_project_manufacturers(project_id: str) -> List[Dict[str, Any]]:
 
 
 def attach_manufacturer(project_id: str, manufacturer_id: str) -> bool:
-    """Add a manufacturer to a project's list. Idempotent; no spec is created."""
+    """Add a manufacturer to a project and ensure its single spec exists.
+
+    A project has exactly one spec per manufacturer. Attaching creates it (from
+    the manufacturer's first template, or a blank starter); re-attaching after a
+    detach resurfaces the same edited spec, so nothing is lost."""
     if not workspace.get_project_by_id(project_id):
         raise ManufacturingError("Project not found.")
     with _connect() as conn:
@@ -576,7 +580,46 @@ def attach_manufacturer(project_id: str, manufacturer_id: str) -> bool:
             (project_id, manufacturer_id, _now()),
         )
         conn.commit()
+    _ensure_project_spec(project_id, manufacturer_id)
     return True
+
+
+def _ensure_project_spec(project_id: str, manufacturer_id: str) -> str:
+    """The id of this project+manufacturer's single spec, creating it if absent.
+
+    The new spec copies the manufacturer's first template (schema + link) so its
+    capabilities read live; a manufacturer with no template gets a blank starter.
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            """SELECT id FROM ws_project_specs
+               WHERE project_id = %s AND manufacturer_id = %s
+               LIMIT 1""",
+            (project_id, manufacturer_id),
+        ).fetchone()
+        if row:
+            return str(row["id"])
+        mfr = conn.execute(
+            "SELECT name FROM ws_manufacturers WHERE id = %s", (manufacturer_id,)
+        ).fetchone()
+    name = (mfr["name"] if mfr else None) or "Spec"
+    templates = list_templates(manufacturer_id)
+    template = templates[0] if templates else None
+    return create_project_spec(
+        project_id,
+        manufacturer_id,
+        name,
+        template_id=template["id"] if template else None,
+        spec_config=(template or {}).get("spec_config") or "",
+    )
+
+
+def get_project_spec_for_manufacturer(
+    project_id: str, manufacturer_id: str
+) -> Optional[Dict[str, Any]]:
+    """The project+manufacturer's single spec (get-or-create), fully populated
+    the same way ``get_project_spec`` returns one."""
+    return get_project_spec(_ensure_project_spec(project_id, manufacturer_id))
 
 
 def detach_manufacturer(project_id: str, manufacturer_id: str) -> bool:

@@ -338,6 +338,21 @@ async def list_project_specs(project_id: str, manufacturer_id: str | None = None
     return await asyncio.to_thread(mfg.list_project_specs, project_id, manufacturer_id)
 
 
+@router.get(
+    "/projects/{project_id}/manufacturers/{mfr_id}/spec",
+    dependencies=[Depends(require_viewer)],
+)
+async def get_project_spec_for_manufacturer(project_id: str, mfr_id: str):
+    """The project+manufacturer's single spec, created on first read if absent."""
+    spec = await asyncio.to_thread(
+        _handle, mfg.get_project_spec_for_manufacturer, project_id, mfr_id
+    )
+    if not spec:
+        raise HTTPException(status_code=404, detail="Spec not found")
+    parsed = spec_config_service.parse_spec_config(spec.get("spec_config") or "")
+    return {**spec, "parsed": parsed.to_dict()}
+
+
 @router.post("/projects/{project_id}/specs")
 async def create_project_spec(
     project_id: str,

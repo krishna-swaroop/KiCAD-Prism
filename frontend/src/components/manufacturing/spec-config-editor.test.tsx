@@ -92,7 +92,7 @@ describe("SpecConfigEditor", () => {
     });
 
     it("downloads the current text as a .config file", async () => {
-        const createObjectURL = vi.fn((_blob: Blob) => "blob:x");
+        const createObjectURL = vi.fn((blob: Blob) => `blob:${blob.size}`);
         const revokeObjectURL = vi.fn();
         vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
         const clickSpy = vi

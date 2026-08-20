@@ -285,8 +285,9 @@ class WorkspaceService:
                 updated_by      TEXT NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_ws_project_specs_scope ON ws_project_specs(project_id, manufacturer_id);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_project_specs_name
-                ON ws_project_specs(project_id, manufacturer_id, lower(name));
+            -- One spec per (project, manufacturer); migration 32 enforces this too.
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_project_specs_one_per_mfr
+                ON ws_project_specs(project_id, manufacturer_id);
         """, prepare=False)
 
     # ------------------------------------------------------------------

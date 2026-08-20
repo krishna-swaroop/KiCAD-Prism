@@ -13,12 +13,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
     extractBoardSpec,
@@ -27,14 +21,10 @@ import {
     listProjectManufacturers,
     attachManufacturer,
     detachManufacturer,
-    listProjectSpecs,
     getProjectSpec,
-    createProjectSpec,
+    getProjectSpecForManufacturer,
     updateProjectSpec,
-    deleteProjectSpec,
-    getTemplate,
     updateTemplate,
-    listTemplates,
     downloadSpecSheet,
     getPcbRuleFields,
     extractPcbRules,
@@ -50,10 +40,8 @@ import {
     type ParsedSpecConfig,
     type PcbRuleField,
     type ProjectManufacturer,
-    type ProjectSpec,
     type SpecFieldDef,
     type SpecSectionDef,
-    type SpecTemplate,
 } from "@/types/manufacturing";
 import { SchemaCapabilitiesDialog } from "./spec-config-editor";
 import { CompactSelect, FIELD_GAP, GROUP_GRID, FIELD_WRAP } from "./ui";
@@ -76,7 +64,6 @@ export function ProjectManufacturing({
     // Navigation: which attached manufacturer and named spec are selected.
     const [manufacturers, setManufacturers] = useState<ProjectManufacturer[]>([]);
     const [manufacturerId, setManufacturerId] = useState<string>("");
-    const [specs, setSpecs] = useState<ProjectSpec[]>([]);
     const [specId, setSpecId] = useState<string>("");
 
     // The selected spec's form state.
@@ -91,7 +78,6 @@ export function ProjectManufacturing({
     const [downloading, setDownloading] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [editorOpen, setEditorOpen] = useState(false);
-    const [templates, setTemplates] = useState<SpecTemplate[]>([]);
     const [allManufacturers, setAllManufacturers] = useState<Manufacturer[]>([]);
     const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
     // The selected spec's linked-template capabilities (read live from getProjectSpec).
@@ -136,20 +122,18 @@ export function ProjectManufacturing({
         };
     }, [projectId]);
 
-    // Load the project-level pieces: attached manufacturers, the runs, templates,
-    // and the global directory (for the "add manufacturer" picker).
+    // Load the project-level pieces: attached manufacturers, the runs, and the
+    // global directory (for the "add manufacturer" picker).
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [attached, runList, tmpls, all] = await Promise.all([
+            const [attached, runList, all] = await Promise.all([
                 listProjectManufacturers(projectId),
                 listRuns(projectId),
-                listTemplates().catch(() => [] as SpecTemplate[]),
                 listManufacturers().catch(() => [] as Manufacturer[]),
             ]);
             setManufacturers(attached);
             setRuns(runList);
-            setTemplates(tmpls);
             setAllManufacturers(all);
             // Keep the current manufacturer selection if still attached, else pick the first.
             setManufacturerId((current) =>
@@ -166,27 +150,19 @@ export function ProjectManufacturing({
         void load();
     }, [load]);
 
-    // When the manufacturer changes, load its specs and select the first.
+    // Each manufacturer has exactly one spec, created on first read. Load it.
     useEffect(() => {
         if (!manufacturerId) {
-            setSpecs([]);
             setSpecId("");
             return;
         }
         let cancelled = false;
         void (async () => {
             try {
-                const list = await listProjectSpecs(projectId, manufacturerId);
-                if (cancelled) return;
-                setSpecs(list);
-                setSpecId((current) =>
-                    list.some((s) => s.id === current) ? current : (list[0]?.id ?? ""),
-                );
+                const spec = await getProjectSpecForManufacturer(projectId, manufacturerId);
+                if (!cancelled) setSpecId(spec.id);
             } catch {
-                if (!cancelled) {
-                    setSpecs([]);
-                    setSpecId("");
-                }
+                if (!cancelled) setSpecId("");
             }
         })();
         return () => {
@@ -327,74 +303,6 @@ export function ProjectManufacturing({
         }
     };
 
-    // Give a new spec a distinct name based on a starting label, so adding the same
-    // template twice does not collide ("JLCPCB", "JLCPCB 2", ...).
-    const uniqueSpecName = (base: string) => {
-        const taken = new Set(specs.map((s) => s.name.toLowerCase()));
-        if (!taken.has(base.toLowerCase())) return base;
-        for (let n = 2; ; n += 1) {
-            const candidate = `${base} ${n}`;
-            if (!taken.has(candidate.toLowerCase())) return candidate;
-        }
-    };
-
-    // Add a spec for the selected manufacturer. A template seeds its schema and
-    // names the spec after the template; the blank option names it "Custom". No
-    // naming step: the spec is created immediately and can be renamed later.
-    const addSpecFromTemplate = async (templateId: string) => {
-        if (!manufacturerId) return;
-        let spec_config: string | undefined;
-        let base = "Custom";
-        if (templateId) {
-            const tmpl = templates.find((t) => t.id === templateId);
-            base = tmpl?.name || "Spec";
-            try {
-                spec_config = (await getTemplate(templateId)).spec_config;
-            } catch {
-                spec_config = undefined;
-            }
-        }
-        try {
-            const { id } = await createProjectSpec(projectId, {
-                manufacturer_id: manufacturerId,
-                name: uniqueSpecName(base),
-                spec_config,
-                template_id: templateId || null,
-            });
-            setSpecs(await listProjectSpecs(projectId, manufacturerId));
-            setSpecId(id);
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to add spec.");
-        }
-    };
-
-    const handleRenameSpec = async () => {
-        if (!specId) return;
-        const current = specs.find((s) => s.id === specId)?.name ?? "";
-        const name = window.prompt("Rename spec", current);
-        if (!name || !name.trim() || name.trim() === current) return;
-        try {
-            await updateProjectSpec(specId, { name: name.trim() });
-            setSpecs(await listProjectSpecs(projectId, manufacturerId));
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to rename spec.");
-        }
-    };
-
-    const handleDeleteSpec = async () => {
-        if (!specId) return;
-        const name = specs.find((s) => s.id === specId)?.name ?? "this spec";
-        if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
-        try {
-            await deleteProjectSpec(specId);
-            const list = await listProjectSpecs(projectId, manufacturerId);
-            setSpecs(list);
-            setSpecId(list[0]?.id ?? "");
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to delete spec.");
-        }
-    };
-
     if (loading) {
         return <div className="text-sm text-muted-foreground">Loading manufacturing...</div>;
     }
@@ -403,7 +311,6 @@ export function ProjectManufacturing({
     const attachedIds = new Set(manufacturers.map((m) => m.id));
     const attachable = allManufacturers.filter((m) => !attachedIds.has(m.id));
     const selectedManufacturer = manufacturers.find((m) => m.id === manufacturerId) ?? null;
-    const manufacturerTemplates = templates.filter((t) => t.manufacturer_id === manufacturerId);
 
     return (
         <div className="flex flex-col gap-4">
@@ -485,65 +392,7 @@ export function ProjectManufacturing({
                         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                             Spec
                         </span>
-                        {specs.length > 0 && (
-                            <Select value={specId} onValueChange={setSpecId}>
-                                <SelectTrigger size="sm" aria-label="Select a spec" className="w-auto">
-                                    <SelectValue placeholder="Spec" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {specs.map((s) => (
-                                        <SelectItem key={s.id} value={s.id}>
-                                            {s.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                        {canEdit && (
-                            <>
-                                {/* Quick-add: pick a schema for this manufacturer and the spec is
-                                    created at once, named after it. No naming step. This is an
-                                    action menu, not a value picker: a value-controlled Select fixed
-                                    at "" skips re-selecting the same schema, so adding one twice
-                                    silently did nothing. A menu item always fires. */}
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="outline" size="sm" aria-label="Add a schema">
-                                            <Plus className="h-3.5 w-3.5" />
-                                            Add schema
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start">
-                                        {manufacturerTemplates.map((t) => (
-                                            <DropdownMenuItem
-                                                key={t.id}
-                                                onSelect={() => void addSpecFromTemplate(t.id)}
-                                            >
-                                                {t.name}
-                                            </DropdownMenuItem>
-                                        ))}
-                                        <DropdownMenuItem onSelect={() => void addSpecFromTemplate("")}>
-                                            Blank (starter schema)
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                                {specId && (
-                                    <>
-                                        <Button variant="ghost" size="sm" onClick={() => void handleRenameSpec()}>
-                                            Rename
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="text-destructive hover:text-destructive"
-                                            onClick={() => void handleDeleteSpec()}
-                                        >
-                                            Delete
-                                        </Button>
-                                    </>
-                                )}
-                            </>
-                        )}
+                        <span className="text-sm">{selectedManufacturer.name}</span>
                     </div>
                 )}
             </section>
@@ -577,7 +426,7 @@ export function ProjectManufacturing({
             {selectedManufacturer && (
             <section className="border">
                 <PanelHeader
-                    label={specs.find((s) => s.id === specId)?.name || "Fabrication spec"}
+                    label={selectedManufacturer ? `${selectedManufacturer.name} spec` : "Fabrication spec"}
                     collapsed={panelCollapsed.has("spec")}
                     onToggle={() => togglePanel("spec")}
                     actions={

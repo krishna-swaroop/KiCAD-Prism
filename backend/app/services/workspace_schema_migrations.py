@@ -1873,6 +1873,37 @@ def _manufacturing_capability_config(conn: Any) -> None:
     )
 
 
+def _manufacturing_one_spec_per_manufacturer(conn: Any) -> None:
+    """Collapse to one project spec per (project, manufacturer).
+
+    Keep the spec a run references (else the most recently updated), delete the
+    rest, then enforce it with a unique index. Runs keep their frozen snapshot,
+    so removing an extra spec never changes what a past run was ordered as.
+    """
+    conn.execute(
+        """
+        WITH ranked AS (
+            SELECT s.id, s.project_id, s.manufacturer_id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY s.project_id, s.manufacturer_id
+                       ORDER BY
+                           (EXISTS (SELECT 1 FROM ws_manufacturing_runs r
+                                    WHERE r.spec_id = s.id)) DESC,
+                           s.updated_at DESC, s.id DESC
+                   ) AS rn
+            FROM ws_project_specs s
+        )
+        DELETE FROM ws_project_specs
+        WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
+        """
+    )
+    conn.execute("DROP INDEX IF EXISTS idx_ws_project_specs_name")
+    conn.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_project_specs_one_per_mfr
+           ON ws_project_specs(project_id, manufacturer_id)"""
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1901,6 +1932,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (29, "manufacturing_run_job_number", _manufacturing_run_job_number),
     (30, "manufacturing_capability_meta", _manufacturing_capability_meta),
     (31, "manufacturing_capability_config", _manufacturing_capability_config),
+    (32, "manufacturing_one_spec_per_manufacturer", _manufacturing_one_spec_per_manufacturer),
 )
 
 

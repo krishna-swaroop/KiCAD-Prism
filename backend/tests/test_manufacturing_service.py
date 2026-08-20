@@ -214,10 +214,14 @@ class ManufacturingStoreTests(unittest.TestCase):
     def test_seed_relinks_an_orphaned_spec_to_its_template(self) -> None:
         # A spec whose template link was lost (e.g. the template was recreated) is
         # reconnected on the next seed by matching name + manufacturer.
+        mfg.seed_builtin_manufacturers()  # so relink's built-in pass runs
         mid = mfg.create_manufacturer("Relink Fab " + uuid.uuid4().hex[:5])
+        # Template exists before attach, so the auto-created spec links to it and
+        # is named after the manufacturer (relink matches on name + manufacturer).
+        mfr_name = next(m for m in mfg.list_manufacturers() if m["id"] == mid)["name"]
+        tid = mfg.create_template(mid, mfr_name, capabilities={"min_track_width": 0.1})
         mfg.attach_manufacturer(self.project_id, mid)
-        tid = mfg.create_template(mid, "Std", capabilities={"min_track_width": 0.1})
-        sid = mfg.create_project_spec(self.project_id, mid, "Std", template_id=tid)
+        sid = mfg.list_project_specs(self.project_id, mid)[0]["id"]
 
         # Orphan the link.
         import app.services.manufacturing_service as m
@@ -388,12 +392,11 @@ class ManufacturingStoreTests(unittest.TestCase):
 
     def test_template_capabilities_and_spec_live_link(self) -> None:
         mid = mfg.create_manufacturer("Caps Fab " + uuid.uuid4().hex[:5])
-        mfg.attach_manufacturer(self.project_id, mid)
+        # Template exists before attach, so the manufacturer's single spec links
+        # to it and reads its capabilities live.
         tid = mfg.create_template(mid, "flex", capabilities={"min_track_width": 0.09})
-        self.assertEqual(mfg.get_template(tid)["capabilities"], {"min_track_width": 0.09})
-
-        # A spec built from the template links to it and reads its capabilities live.
-        sid = mfg.create_project_spec(self.project_id, mid, "flex-spec", template_id=tid)
+        mfg.attach_manufacturer(self.project_id, mid)
+        sid = mfg.list_project_specs(self.project_id, mid)[0]["id"]
         spec = mfg.get_project_spec(sid)
         self.assertEqual(spec["template_id"], tid)
         self.assertEqual(spec["template_name"], "flex")
@@ -406,23 +409,15 @@ class ManufacturingStoreTests(unittest.TestCase):
             {"min_track_width": 0.05, "allow_microvias": True},
         )
 
-        # A blank spec (no template) has no capabilities.
-        blank = mfg.create_project_spec(self.project_id, mid, "blank-spec")
+        # A manufacturer with no template gets a blank spec with no capabilities.
+        bare = mfg.create_manufacturer("Bare Fab " + uuid.uuid4().hex[:5])
+        mfg.attach_manufacturer(self.project_id, bare)
+        blank = mfg.list_project_specs(self.project_id, bare)[0]["id"]
         self.assertIsNone(mfg.get_project_spec(blank)["template_id"])
         self.assertEqual(mfg.get_project_spec(blank)["template_capabilities"], {})
 
-        # A template from a different manufacturer is not linked.
-        other = mfg.create_manufacturer("Other Fab " + uuid.uuid4().hex[:5])
-        other_tid = mfg.create_template(other, "std")
-        mfg.attach_manufacturer(self.project_id, other)
-        cross = mfg.create_project_spec(self.project_id, mid, "cross-spec", template_id=other_tid)
-        self.assertIsNone(mfg.get_project_spec(cross)["template_id"])
-
-        for s in (sid, blank, cross):
-            mfg.delete_project_spec(s)
-        mfg.delete_template(tid)
         mfg.delete_manufacturer(mid)
-        mfg.delete_manufacturer(other)
+        mfg.delete_manufacturer(bare)
 
     def test_create_run_unknown_project_rejected(self) -> None:
         with self.assertRaises(mfg.ManufacturingError):
@@ -430,35 +425,34 @@ class ManufacturingStoreTests(unittest.TestCase):
 
     # -- project manufacturers and named specs --
 
-    def test_attach_manufacturers_and_named_specs(self) -> None:
+    def test_attach_creates_one_spec_per_manufacturer(self) -> None:
         m1 = mfg.create_manufacturer("Named Specs Fab A")
         m2 = mfg.create_manufacturer("Named Specs Fab B")
         mfg.attach_manufacturer(self.project_id, m1)
         mfg.attach_manufacturer(self.project_id, m2)
-        mfg.attach_manufacturer(self.project_id, m1)  # idempotent
+        mfg.attach_manufacturer(self.project_id, m1)  # idempotent, no second spec
         attached = {m["id"] for m in mfg.list_project_manufacturers(self.project_id)}
         self.assertIn(m1, attached)
         self.assertIn(m2, attached)
 
-        # Several named specs per (project, manufacturer).
-        s1 = mfg.create_project_spec(self.project_id, m1, "Prototype", spec_config="[S]\nk: int | K")
-        s2 = mfg.create_project_spec(self.project_id, m1, "4L ENIG")
-        for_m1 = {s["id"] for s in mfg.list_project_specs(self.project_id, m1)}
-        self.assertEqual(for_m1, {s1, s2})
-        # A different manufacturer sees none of them.
-        self.assertEqual(mfg.list_project_specs(self.project_id, m2), [])
+        # Attaching created exactly one spec per manufacturer.
+        for_m1 = mfg.list_project_specs(self.project_id, m1)
+        for_m2 = mfg.list_project_specs(self.project_id, m2)
+        self.assertEqual(len(for_m1), 1)
+        self.assertEqual(len(for_m2), 1)
+        s1 = for_m1[0]["id"]
 
-        # Name collision (case-insensitive) is rejected.
-        with self.assertRaises(mfg.ManufacturingError):
-            mfg.create_project_spec(self.project_id, m1, "prototype")
+        # get-or-create returns that same single spec, never a new one.
+        got = mfg.get_project_spec_for_manufacturer(self.project_id, m1)
+        self.assertEqual(got["id"], s1)
+        self.assertEqual(len(mfg.list_project_specs(self.project_id, m1)), 1)
 
-        # Update values, then a run frozen against the named spec keeps the picture.
+        # Update values, then a run frozen against the spec keeps the picture.
         mfg.update_project_spec(s1, specs={"k": 3}, updated_by="d@x")
         run_id = mfg.create_run(self.project_id, manufacturer_id=m1, spec_id=s1, quantity_ordered=2)
         run = mfg.get_run(run_id)
         self.assertEqual(run["spec_id"], s1)
-        self.assertEqual(run["spec_name"], "Prototype")
-        self.assertEqual(run["spec_snapshot"]["specs"], {"k": 3})
+        self.assertEqual(run["spec_snapshot"]["specs"].get("k"), 3)
 
         # A spec from the wrong manufacturer is rejected for the run.
         with self.assertRaises(mfg.ManufacturingError):
@@ -471,8 +465,6 @@ class ManufacturingStoreTests(unittest.TestCase):
         mfg.attach_manufacturer(self.project_id, m1)
         self.assertIn(s1, {s["id"] for s in mfg.list_project_specs(self.project_id, m1)})
 
-        mfg.delete_project_spec(s1)
-        mfg.delete_project_spec(s2)
         mfg.delete_run(run_id)
         mfg.delete_manufacturer(m1)
         mfg.delete_manufacturer(m2)

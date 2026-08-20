@@ -1794,6 +1794,7 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 (29, "manufacturing_run_job_number"),
                 (30, "manufacturing_capability_meta"),
                 (31, "manufacturing_capability_config"),
+                (32, "manufacturing_one_spec_per_manufacturer"),
             ],
         )
 

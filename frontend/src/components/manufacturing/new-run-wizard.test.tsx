@@ -5,13 +5,13 @@ import type { Project } from "@/types/project";
 
 const createRun = vi.fn();
 const listProjectManufacturers = vi.fn();
-const listProjectSpecs = vi.fn();
+const getProjectSpecForManufacturer = vi.fn();
 const fetchApi = vi.fn();
 
 vi.mock("@/lib/manufacturing", () => ({
     createRun: (...a: unknown[]) => createRun(...a),
     listProjectManufacturers: (...a: unknown[]) => listProjectManufacturers(...a),
-    listProjectSpecs: (...a: unknown[]) => listProjectSpecs(...a),
+    getProjectSpecForManufacturer: (...a: unknown[]) => getProjectSpecForManufacturer(...a),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -63,7 +63,10 @@ describe("NewRunWizard", () => {
         listProjectManufacturers.mockResolvedValue([
             { id: "m1", name: "Acme Fab", contact: "", website: "", notes: "", created_at: "", updated_at: "", attached_at: "" },
         ]);
-        listProjectSpecs.mockResolvedValue([]);
+        getProjectSpecForManufacturer.mockResolvedValue({
+            id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "Acme Fab",
+            spec_config: "", specs: {}, source: {}, active_sections: [], updated_at: "", updated_by: "", parsed: { sections: [], errors: [] },
+        });
     });
     afterEach(() => {
         cleanup();
@@ -96,7 +99,7 @@ describe("NewRunWizard", () => {
         // The picker holds the project-scoped manufacturer.
         expect(screen.getByRole("option", { name: "Acme Fab" })).toBeTruthy();
         fireEvent.change(screen.getByLabelText("Manufacturer"), { target: { value: "m1" } });
-        await waitFor(() => expect(listProjectSpecs).toHaveBeenCalledWith("p1", "m1"));
+        await waitFor(() => expect(getProjectSpecForManufacturer).toHaveBeenCalledWith("p1", "m1"));
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> spec
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> details
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> confirm
@@ -111,20 +114,19 @@ describe("NewRunWizard", () => {
         await waitFor(() => expect(onCreated).toHaveBeenCalledWith("run_1"));
     });
 
-    it("offers the manufacturer's specs and records the chosen one", async () => {
-        listProjectSpecs.mockResolvedValue([
-            {
-                id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "4L ENIG",
-                spec_config: "", specs: {}, source: {}, active_sections: [], updated_at: "", updated_by: "",
-            },
-        ]);
+    it("freezes the manufacturer's single spec onto the run", async () => {
+        getProjectSpecForManufacturer.mockResolvedValue({
+            id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "Acme Fab",
+            spec_config: "", specs: {}, source: {}, active_sections: [], updated_at: "", updated_by: "", parsed: { sections: [], errors: [] },
+        });
         const { onCreated } = renderWizard();
         await reachManufacturer("10");
         fireEvent.change(screen.getByLabelText("Manufacturer"), { target: { value: "m1" } });
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> spec
 
-        const specPicker = await screen.findByLabelText("Spec (optional)");
-        fireEvent.change(specPicker, { target: { value: "spec_1" } });
+        // The single spec is shown (no picker) and used automatically.
+        expect(await screen.findByText("Acme Fab")).toBeTruthy();
+        expect(screen.queryByLabelText("Spec (optional)")).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> details
         fireEvent.click(screen.getByRole("button", { name: "Next" })); // -> confirm
         fireEvent.click(screen.getByRole("button", { name: "Create production" }));

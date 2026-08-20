@@ -215,6 +215,19 @@ export async function getProjectSpec(
     return json(await fetchApi(`/api/manufacturing/specs/${specId}`), "Failed to load the spec.");
 }
 
+/** The project+manufacturer's single spec, created on first read if absent. */
+export async function getProjectSpecForManufacturer(
+    projectId: string,
+    manufacturerId: string,
+): Promise<ProjectSpec & { parsed: ParsedSpecConfig }> {
+    return json(
+        await fetchApi(
+            `/api/manufacturing/projects/${projectId}/manufacturers/${manufacturerId}/spec`,
+        ),
+        "Failed to load the spec.",
+    );
+}
+
 export async function createProjectSpec(
     projectId: string,
     body: { manufacturer_id: string; name: string; spec_config?: string; template_id?: string | null },

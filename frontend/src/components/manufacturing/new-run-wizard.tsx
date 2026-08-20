@@ -15,8 +15,8 @@ import {
     DialogTitle,
     DialogDescription,
 } from "@/components/ui/dialog";
-import { createRun, listProjectManufacturers, listProjectSpecs } from "@/lib/manufacturing";
-import type { ProjectManufacturer, ProjectSpec } from "@/types/manufacturing";
+import { createRun, listProjectManufacturers, getProjectSpecForManufacturer } from "@/lib/manufacturing";
+import type { ProjectManufacturer } from "@/types/manufacturing";
 import { CompactSelect } from "./ui";
 
 interface NewRunWizardProps {
@@ -45,7 +45,7 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
     const [manufacturerId, setManufacturerId] = useState<string>("");
     const [manufacturers, setManufacturers] = useState<ProjectManufacturer[]>([]);
     const [specId, setSpecId] = useState<string>("");
-    const [specs, setSpecs] = useState<ProjectSpec[]>([]);
+    const [specName, setSpecName] = useState<string>("");
     const [commitSha, setCommitSha] = useState("");
     const [releaseTag, setReleaseTag] = useState("");
     const [releases, setReleases] = useState<Release[]>([]);
@@ -92,20 +92,24 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
         };
     }, [projectId]);
 
-    // Load the chosen manufacturer's named specs for this project.
+    // Each manufacturer has one spec; load it so the run freezes it.
     useEffect(() => {
         setSpecId("");
-        if (!projectId || !manufacturerId) {
-            setSpecs([]);
-            return;
-        }
+        setSpecName("");
+        if (!projectId || !manufacturerId) return;
         let cancelled = false;
         void (async () => {
             try {
-                const list = await listProjectSpecs(projectId, manufacturerId);
-                if (!cancelled) setSpecs(list);
+                const spec = await getProjectSpecForManufacturer(projectId, manufacturerId);
+                if (!cancelled) {
+                    setSpecId(spec.id);
+                    setSpecName(spec.name);
+                }
             } catch {
-                if (!cancelled) setSpecs([]);
+                if (!cancelled) {
+                    setSpecId("");
+                    setSpecName("");
+                }
             }
         })();
         return () => {
@@ -251,31 +255,22 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
 
                     {step === 3 && (
                         <div className="space-y-2">
-                            <Label htmlFor="run-spec">Spec (optional)</Label>
-                            {specs.length === 0 ? (
-                                <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-                                    No specs set for this manufacturer yet. The run will freeze the
-                                    project&rsquo;s board profile instead. Add a spec from the Manufacturing tab.
-                                </p>
-                            ) : (
+                            <Label>Spec</Label>
+                            {specName ? (
                                 <>
-                                    <CompactSelect
-                                        id="run-spec"
-                                        className="h-9"
-                                        value={specId}
-                                        onChange={(e) => setSpecId(e.target.value)}
-                                    >
-                                        <option value="">No spec (use board profile)</option>
-                                        {specs.map((s) => (
-                                            <option key={s.id} value={s.id}>
-                                                {s.name}
-                                            </option>
-                                        ))}
-                                    </CompactSelect>
+                                    <div className="rounded-md border p-3 text-sm">{specName}</div>
                                     <p className="text-xs text-muted-foreground">
-                                        The fabrication spec this run is ordered against. It is frozen onto the run.
+                                        The manufacturer&rsquo;s fabrication spec. It is frozen onto the run.
                                     </p>
                                 </>
+                            ) : manufacturerId ? (
+                                <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                                    Loading the manufacturer&rsquo;s spec…
+                                </p>
+                            ) : (
+                                <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                                    Pick a manufacturer first; the run freezes its spec.
+                                </p>
                             )}
                         </div>
                     )}
@@ -342,7 +337,7 @@ export function NewRunWizard({ open, projects, onClose, onCreated }: NewRunWizar
                                 label="Manufacturer"
                                 value={manufacturers.find((m) => m.id === manufacturerId)?.name || "None"}
                             />
-                            <Row label="Spec" value={specs.find((s) => s.id === specId)?.name || "Board profile"} />
+                            <Row label="Spec" value={specName || "Board profile"} />
                             {releaseTag && <Row label="Release" value={releaseTag} />}
                             <Row label="Commit" value={commitSha.trim() ? commitSha.trim().slice(0, 7) : "—"} />
                         </dl>

@@ -7,11 +7,10 @@ const listManufacturers = vi.fn();
 const listProjectManufacturers = vi.fn();
 const attachManufacturer = vi.fn();
 const detachManufacturer = vi.fn();
-const listProjectSpecs = vi.fn();
+const getProjectSpecForManufacturer = vi.fn();
 const getProjectSpec = vi.fn();
-const createProjectSpec = vi.fn();
 const updateProjectSpec = vi.fn();
-const deleteProjectSpec = vi.fn();
+const updateTemplate = vi.fn();
 const listTemplates = vi.fn();
 const downloadSpecSheet = vi.fn();
 const getTemplate = vi.fn();
@@ -25,11 +24,10 @@ vi.mock("@/lib/manufacturing", () => ({
     listProjectManufacturers: (...a: unknown[]) => listProjectManufacturers(...a),
     attachManufacturer: (...a: unknown[]) => attachManufacturer(...a),
     detachManufacturer: (...a: unknown[]) => detachManufacturer(...a),
-    listProjectSpecs: (...a: unknown[]) => listProjectSpecs(...a),
+    getProjectSpecForManufacturer: (...a: unknown[]) => getProjectSpecForManufacturer(...a),
     getProjectSpec: (...a: unknown[]) => getProjectSpec(...a),
-    createProjectSpec: (...a: unknown[]) => createProjectSpec(...a),
     updateProjectSpec: (...a: unknown[]) => updateProjectSpec(...a),
-    deleteProjectSpec: (...a: unknown[]) => deleteProjectSpec(...a),
+    updateTemplate: (...a: unknown[]) => updateTemplate(...a),
     getTemplate: (...a: unknown[]) => getTemplate(...a),
     listTemplates: (...a: unknown[]) => listTemplates(...a),
     downloadSpecSheet: (...a: unknown[]) => downloadSpecSheet(...a),
@@ -93,9 +91,7 @@ describe("ProjectManufacturing", () => {
         listProjectManufacturers.mockResolvedValue([
             { id: "m1", name: "Acme Fab", contact: "", website: "", notes: "", created_at: "", updated_at: "", attached_at: "" },
         ]);
-        listProjectSpecs.mockResolvedValue([
-            { id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "Default", spec_config: "x", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" },
-        ]);
+        getProjectSpecForManufacturer.mockResolvedValue(makeSpec());
         getProjectSpec.mockResolvedValue(makeSpec());
         listTemplates.mockResolvedValue([]);
         listRuns.mockResolvedValue([]);
@@ -189,57 +185,16 @@ describe("ProjectManufacturing", () => {
         expect(screen.getByText("234 mm")).toBeTruthy();
     });
 
-    it("quick-adds a spec from a manufacturer schema, named after it", async () => {
-        listTemplates.mockResolvedValue([
-            { id: "tmpl_1", manufacturer_id: "m1", manufacturer_name: "Acme Fab", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" },
-        ]);
-        getTemplate.mockResolvedValue({ id: "tmpl_1", manufacturer_id: "m1", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" });
-        createProjectSpec.mockResolvedValue({ id: "spec_2" });
+    it("loads the manufacturer's single spec with no add/select controls", async () => {
         render(<ProjectManufacturing projectId="p1" canEdit />);
         await waitForForm();
 
-        // Picking the schema from the "Add schema" menu creates the spec at once,
-        // no naming step. (It is an action menu: open the button, choose an item.)
-        // Radix DropdownMenu opens on keyboard reliably in jsdom (pointer events
-        // are flaky there); Enter on the trigger, then click the item.
-        fireEvent.keyDown(screen.getByRole("button", { name: "Add a schema" }), { key: "Enter" });
-        fireEvent.click(await screen.findByRole("menuitem", { name: "Acme standard" }));
-
-        await waitFor(() => expect(createProjectSpec).toHaveBeenCalled());
-        expect(getTemplate).toHaveBeenCalledWith("tmpl_1");
-        const [projectId, body] = createProjectSpec.mock.calls[0];
-        expect(projectId).toBe("p1");
-        expect(body).toMatchObject({ manufacturer_id: "m1", name: "Acme standard", spec_config: "[X]\nk: int | K" });
-    });
-
-    it("adds a second spec alongside the first, not replacing it", async () => {
-        listTemplates.mockResolvedValue([
-            { id: "tmpl_1", manufacturer_id: "m1", manufacturer_name: "Acme Fab", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" },
-        ]);
-        getTemplate.mockResolvedValue({ id: "tmpl_1", manufacturer_id: "m1", name: "Acme standard", spec_config: "[X]\nk: int | K", created_at: "", updated_at: "" });
-        createProjectSpec.mockResolvedValue({ id: "spec_2" });
-        // After the add, the backend returns BOTH specs for this manufacturer.
-        listProjectSpecs
-            .mockResolvedValueOnce([
-                { id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "Default", spec_config: "x", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" },
-            ])
-            .mockResolvedValue([
-                { id: "spec_1", project_id: "p1", manufacturer_id: "m1", name: "Default", spec_config: "x", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" },
-                { id: "spec_2", project_id: "p1", manufacturer_id: "m1", name: "Acme standard", spec_config: "x", specs: {}, source: {}, active_sections: [], updated_at: null, updated_by: "" },
-            ]);
-        render(<ProjectManufacturing projectId="p1" canEdit />);
-        await waitForForm();
-
-        // Radix DropdownMenu opens on keyboard reliably in jsdom (pointer events
-        // are flaky there); Enter on the trigger, then click the item.
-        fireEvent.keyDown(screen.getByRole("button", { name: "Add a schema" }), { key: "Enter" });
-        fireEvent.click(await screen.findByRole("menuitem", { name: "Acme standard" }));
-
-        await waitFor(() => expect(createProjectSpec).toHaveBeenCalled());
-        // Both specs must be selectable now; the first was not replaced.
-        fireEvent.click(await screen.findByRole("combobox", { name: "Select a spec" }));
-        expect(await screen.findByRole("option", { name: "Default" })).toBeTruthy();
-        expect(await screen.findByRole("option", { name: "Acme standard" })).toBeTruthy();
+        // The one spec is loaded via get-or-create, keyed on the manufacturer.
+        expect(getProjectSpecForManufacturer).toHaveBeenCalledWith("p1", "m1");
+        // There is no multi-spec UI: no add, no selector, no rename/delete.
+        expect(screen.queryByRole("button", { name: /Add a schema/ })).toBeNull();
+        expect(screen.queryByRole("combobox", { name: "Select a spec" })).toBeNull();
+        expect(screen.queryByRole("button", { name: /Rename/ })).toBeNull();
     });
 
     it("hides edit controls when canEdit is false", async () => {
