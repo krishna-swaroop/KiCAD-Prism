@@ -998,6 +998,45 @@ PCBWAY_ADVANCED_META: dict[str, Any] = {
     "min_base_copper_oz": {"label": "Min base copper", "unit": "oz"},
 }
 
+# PCBWay flex (FPC) process, from pcbway.com/pcb_prototype/What_is_Flexible_PCB.html.
+# 2 mil = 0.0508 mm, 4 mil = 0.1016 mm, 6 mil = 0.1524 mm; 8.668 in = 220.17 mm,
+# 27.5 in = 698.5 mm; min board 0.0788 x 0.1576 in = 2.0 x 4.0 mm; 4-40 mil thick.
+PCBWAY_FLEX_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums (outer layer 2 mil process).
+    "min_track_width": 0.0508,           # 2 mil
+    "min_clearance": 0.0508,             # 2 mil
+    "min_through_hole_diameter": 0.1016,  # 4 mil mechanical drill
+    # Flex capabilities KiCad does not track (custom); see PCBWAY_FLEX_META.
+    "min_coverlay_bridge_mm": 0.1524,    # 6 mil
+    "min_board_width_mm": 2.0,
+    "min_board_height_mm": 4.0,
+    "max_board_width_mm": 220.17,        # 8.668 in
+    "max_board_height_mm": 698.5,        # 27.5 in
+    "min_board_thickness_mm": 0.1016,    # 4 mil
+    "max_board_thickness_mm": 1.016,     # 40 mil
+    "bend_radius_factor_single_layer": 3.0,
+    "bend_radius_factor_double_layer": 7.0,
+    "bend_radius_factor_multi_layer": 10.0,
+    "laser_routing_accuracy_mm": 0.0508,  # ±2 mil
+    "impedance_tolerance_pct": 7.0,       # >50 ohm
+}
+
+# Labels/units for the custom (non KiCad-tracked) PCBWay flex capabilities.
+PCBWAY_FLEX_META: dict[str, Any] = {
+    "min_coverlay_bridge_mm": {"label": "Min coverlay bridge", "unit": "mm"},
+    "min_board_width_mm": {"label": "Min board width", "unit": "mm"},
+    "min_board_height_mm": {"label": "Min board height", "unit": "mm"},
+    "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "min_board_thickness_mm": {"label": "Min board thickness (no stiffener)", "unit": "mm"},
+    "max_board_thickness_mm": {"label": "Max board thickness (no stiffener)", "unit": "mm"},
+    "bend_radius_factor_single_layer": {"label": "Bend radius (single layer)", "unit": "× thickness"},
+    "bend_radius_factor_double_layer": {"label": "Bend radius (double layer)", "unit": "× thickness"},
+    "bend_radius_factor_multi_layer": {"label": "Bend radius (multi-layer)", "unit": "× thickness"},
+    "laser_routing_accuracy_mm": {"label": "Laser routing accuracy (±)", "unit": "mm"},
+    "impedance_tolerance_pct": {"label": "Impedance tolerance (±, >50Ω)", "unit": "%"},
+}
+
 SEED_MANUFACTURERS: list[dict[str, Any]] = [
     {
         "name": "JLCPCB",
@@ -1019,7 +1058,8 @@ SEED_MANUFACTURERS: list[dict[str, Any]] = [
              "capabilities": PCBWAY_STANDARD_CAPABILITIES, "capability_meta": PCBWAY_META},
             {"key": "pcbway:advanced", "name": "PCBWay advanced PCB", "config": PCBWAY_ADVANCED_SPEC_CONFIG,
              "capabilities": PCBWAY_ADVANCED_CAPABILITIES, "capability_meta": PCBWAY_ADVANCED_META},
-            {"key": "pcbway:flex", "name": "PCBWay flexible PCB", "config": PCBWAY_FLEX_SPEC_CONFIG},
+            {"key": "pcbway:flex", "name": "PCBWay flexible PCB", "config": PCBWAY_FLEX_SPEC_CONFIG,
+             "capabilities": PCBWAY_FLEX_CAPABILITIES, "capability_meta": PCBWAY_FLEX_META},
         ],
     },
 ]

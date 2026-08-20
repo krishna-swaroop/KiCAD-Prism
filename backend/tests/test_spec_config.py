@@ -347,6 +347,18 @@ class SpecConfigParseTests(unittest.TestCase):
             self.assertIn(key, PCBWAY_ADVANCED_CAPABILITIES)
             self.assertIn(key, PCBWAY_ADVANCED_META)
 
+    def test_pcbway_flex_capabilities_are_present(self) -> None:
+        from app.services.spec_config_service import (
+            PCBWAY_FLEX_CAPABILITIES,
+            PCBWAY_FLEX_META,
+        )
+
+        self.assertGreaterEqual(len(PCBWAY_FLEX_CAPABILITIES), 12)
+        for key in ("min_coverlay_bridge_mm", "bend_radius_factor_double_layer", "laser_routing_accuracy_mm"):
+            self.assertIn(key, PCBWAY_FLEX_CAPABILITIES)
+            self.assertIn(key, PCBWAY_FLEX_META)
+        self.assertEqual(PCBWAY_FLEX_CAPABILITIES["min_track_width"], 0.0508)  # 2 mil
+
     def test_capabilities_split_into_kicad_tracked_and_custom(self) -> None:
         from app.services.pcb_rules_service import is_kicad_tracked
         from app.services.spec_config_service import (
