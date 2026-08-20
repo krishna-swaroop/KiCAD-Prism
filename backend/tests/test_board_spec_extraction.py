@@ -10,6 +10,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services import board_spec_service as bss  # noqa: E402
 
+# kiutils is a best-effort dependency: board_spec_service degrades gracefully
+# when it is absent (see the lazy import there), so a build without kiutils is
+# valid. These tests need it to synthesise a board, so skip rather than error
+# when it is missing, the same way the DB-backed suites skip without a database.
+try:
+    import kiutils  # noqa: F401
+
+    _HAS_KIUTILS = True
+except ImportError:
+    _HAS_KIUTILS = False
+
 
 def _write_board(
     *,
@@ -62,6 +73,8 @@ class BoardSpecExtractionTests(unittest.TestCase):
                 pass
 
     def _board(self, **kwargs) -> str:
+        if not _HAS_KIUTILS:
+            self.skipTest("kiutils is not installed; cannot synthesise a board")
         path = _write_board(**kwargs)
         self._paths.append(path)
         return path
