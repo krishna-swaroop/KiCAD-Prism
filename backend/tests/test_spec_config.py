@@ -250,7 +250,7 @@ class SpecConfigParseTests(unittest.TestCase):
 
     def test_seed_manufacturers_are_named_and_configured(self) -> None:
         names = {m["name"] for m in SEED_MANUFACTURERS}
-        self.assertEqual(names, {"JLCPCB", "PCBWay"})
+        self.assertEqual(names, {"JLCPCB", "PCBWay", "Eurocircuits"})
         for entry in SEED_MANUFACTURERS:
             self.assertTrue(entry["templates"])
             for template in entry["templates"]:
@@ -358,6 +358,36 @@ class SpecConfigParseTests(unittest.TestCase):
             self.assertIn(key, PCBWAY_FLEX_CAPABILITIES)
             self.assertIn(key, PCBWAY_FLEX_META)
         self.assertEqual(PCBWAY_FLEX_CAPABILITIES["min_track_width"], 0.0508)  # 2 mil
+
+    def test_eurocircuits_pools_parse_and_carry_capabilities(self) -> None:
+        from app.services import spec_config_service as s
+
+        pools = {
+            "EUROCIRCUITS_PROTO": ("Eurocircuits Proto", 0.15),
+            "EUROCIRCUITS_STANDARD": ("Eurocircuits Standard", 0.09),
+            "EUROCIRCUITS_SEMIFLEX": ("Eurocircuits Semi-flex", 0.125),
+            "EUROCIRCUITS_HDI": ("Eurocircuits HDI", 0.09),
+        }
+        for prefix, (_name, min_track) in pools.items():
+            parsed = parse_spec_config(getattr(s, f"{prefix}_SPEC_CONFIG"))
+            self.assertEqual(parsed.errors, [], msg=f"{prefix}: {parsed.errors}")
+            self.assertGreater(sum(len(sec.fields) for sec in parsed.sections), 0)
+            caps = getattr(s, f"{prefix}_CAPABILITIES")
+            self.assertEqual(caps["min_track_width"], min_track)
+            for key in ("min_clearance", "min_through_hole_diameter", "min_copper_edge_clearance"):
+                self.assertIn(key, caps)
+        # HDI carries the microvia; semi-flex carries the flex-to-install limits.
+        self.assertEqual(s.EUROCIRCUITS_HDI_CAPABILITIES["min_microvia_diameter"], 0.1)
+        self.assertIn("min_bend_radius_mm", s.EUROCIRCUITS_SEMIFLEX_CAPABILITIES)
+        self.assertIn("min_bend_radius_mm", s.EUROCIRCUITS_SEMIFLEX_META)
+
+        # Eurocircuits ships exactly the four pools requested.
+        euro = next(m for m in SEED_MANUFACTURERS if m["name"] == "Eurocircuits")
+        keys = {t["key"] for t in euro["templates"]}
+        self.assertEqual(
+            keys,
+            {"eurocircuits:proto", "eurocircuits:standard", "eurocircuits:semiflex", "eurocircuits:hdi"},
+        )
 
     def test_capabilities_split_into_kicad_tracked_and_custom(self) -> None:
         from app.services.pcb_rules_service import is_kicad_tracked

@@ -1037,6 +1037,284 @@ PCBWAY_FLEX_META: dict[str, Any] = {
     "impedance_tolerance_pct": {"label": "Impedance tolerance (±, >50Ω)", "unit": "%"},
 }
 
+# ---------------------------------------------------------------------------
+# Eurocircuits
+#
+# Eurocircuits sells by "pool": each pool (Proto, Standard, Semi-flex, HDI) is
+# its own process with its own capabilities, so each is a separate schema built
+# from the pool's page on eurocircuits.com/services. Capabilities come from the
+# same pages. Where a value is given as "finished hole + Xmm total pad", the
+# KiCad-tracked annular ring is X/2 per side.
+# ---------------------------------------------------------------------------
+
+EUROCIRCUITS_PROTO_SPEC_CONFIG = """\
+# Eurocircuits PCB Proto pool, field by field. A lead-free finish is included;
+# 2 or 4 layers only, one green mask, white legend.
+
+[Base]
+layer_count: choice(2, 4) = 2 | Layers
+board_width_mm: number | Dimension width (mm)
+board_height_mm: number | Dimension height (mm)
+delivery_format: choice(Single PCB, Panel by Customer, Panel by Eurocircuits) = Single PCB | Delivery format
+
+[Stackup]
+board_thickness_mm: choice(1.55) = 1.55 | Board thickness (mm)
+base_material: choice(FR4 Improved) = FR4 Improved | Base material
+outer_copper_um: choice(18) = 18 | Outer copper (µm)
+inner_copper_um: choice(35) = 35 when layer_count != 2 | Inner copper (µm)
+
+[Finish]
+surface_finish: choice(Any lead-free (our choice), Lead-free HAL, ENIG) = Any lead-free (our choice) | Surface finish
+solder_mask: choice(Green) = Green | Solder mask
+legend: choice(White) = White | Legend / silkscreen
+legend_sides: choice(None, Top, Bottom, Both) = Top | Legend sides
+
+[Options]
+electrical_test: choice(Yes) = Yes | Electrical test
+profile: choice(Routing, V-cut, Routing + V-cut) = Routing | Board profile
+peelable_mask: choice(No, Yes) = No | Peelable mask
+"""
+
+
+EUROCIRCUITS_STANDARD_SPEC_CONFIG = """\
+# Eurocircuits STANDARD pool, field by field from the standard-pool page. Up to
+# 16 layers, pooling and non-pooling processes, several finishes and mask colours.
+
+[Base]
+process: choice(Pooling, Non-pooling) = Pooling | Process
+layer_count: choice(1, 2, 4, 6, 8, 10, 12, 14, 16) = 2 | Layers
+board_width_mm: number | Dimension width (mm)
+board_height_mm: number | Dimension height (mm)
+delivery_format: choice(Single PCB, Panel by Customer, Panel by Eurocircuits) = Single PCB | Delivery format
+
+[Stackup]
+board_thickness_mm: choice(1.00, 1.55, 2.40) = 1.55 | Board thickness (mm)
+base_material: choice(FR4 Improved (Tg 150), Isola 370HR (high Tg)) = FR4 Improved (Tg 150) | Base material
+outer_copper_um: choice(12, 18, 35, 70) = 35 | Outer copper (µm)
+inner_copper_um: choice(18, 35) = 35 when layer_count != 1 | Inner copper (µm)
+
+[Colour]
+solder_mask: choice(Green, Blue, Black, White, Red, Transparent) = Green | Solder mask
+legend: choice(White, Black) = White | Legend / silkscreen
+legend_sides: choice(None, Top, Bottom, Both) = Top | Legend sides
+
+[Finish]
+surface_finish: choice(ENIG, Lead-free HAL, Immersion silver) = ENIG | Surface finish
+
+[Options]
+electrical_test: choice(Yes) = Yes | Electrical test
+profile: choice(Routing, V-cut, Routing + V-cut) = Routing | Board profile
+peelable_mask: choice(No, Yes) = No | Peelable mask
+carbon_print: choice(No, Yes) = No | Carbon print
+"""
+
+
+EUROCIRCUITS_SEMIFLEX_SPEC_CONFIG = """\
+# Eurocircuits SEMI-FLEX pool, field by field. A 100µm FR4 core forms the
+# flex-to-install region; drilling and cut-outs are not allowed in that area.
+
+[Base]
+layer_count: choice(4, 6) = 4 | Layers
+board_width_mm: number | Dimension width (mm)
+board_height_mm: number | Dimension height (mm)
+delivery_format: choice(Single PCB, Panel by Customer, Panel by Eurocircuits) = Single PCB | Delivery format
+
+[Stackup]
+board_thickness_mm: choice(1.55) = 1.55 | Board thickness (mm)
+base_material: choice(FR4 Improved High Tg, Isola FR406N) = FR4 Improved High Tg | Base material
+semiflex_core_um: choice(100) = 100 | Semi-flex core thickness (µm)
+outer_copper_um: choice(18) = 18 | Outer copper (µm)
+semiflex_core_copper_um: choice(35) = 35 | Semi-flex core copper (µm)
+
+[Finish]
+surface_finish: choice(ENIG, Immersion silver) = ENIG | Surface finish
+solder_mask: choice(Green) = Green | Solder mask
+legend: choice(White) = White | Legend / silkscreen
+legend_sides: choice(None, Top, Bottom, Both) = Top | Legend sides
+
+[Flex-to-install]
+bend_radius_mm: number = 5 | Bend radius (mm)
+bend_angle_deg: choice(90, 180) = 180 | Max bend angle (deg)
+bend_count: int = 1 | Number of bends
+semiflex_length_mm: number = 5 | Semi-flex length (mm)
+semiflex_width_mm: number = 5 | Semi-flex width (mm)
+
+[Options]
+electrical_test: choice(Yes) = Yes | Electrical test
+profile: choice(Routing, V-cut, Routing + V-cut) = Routing | Board profile
+"""
+
+
+EUROCIRCUITS_HDI_SPEC_CONFIG = """\
+# Eurocircuits HDI pool, field by field. 6 or 8 layers with 100µm laser
+# microvias; the microvia and fine track/gap are the point of this schema.
+
+[Base]
+process: choice(Pooling, Non-pooling) = Pooling | Process
+layer_count: choice(6, 8) = 6 | Layers
+board_width_mm: number | Dimension width (mm)
+board_height_mm: number | Dimension height (mm)
+delivery_format: choice(Single PCB, Panel by Customer, Panel by Eurocircuits) = Single PCB | Delivery format
+
+[Stackup]
+board_thickness_mm: choice(1.55) = 1.55 | Board thickness (mm)
+base_material: choice(Isola 370HR (Tg 180)) = Isola 370HR (Tg 180) | Base material
+outer_copper_um: choice(12) = 12 | Outer copper (µm)
+inner_copper_um: choice(18) = 18 | Inner copper (µm)
+
+[Vias]
+microvia: choice(Yes) = Yes | Laser microvia
+microvia_diameter_mm: choice(0.100) = 0.100 | Microvia diameter (mm)
+via_fill: choice(No, Resin filled) = No | Via fill
+
+[Colour]
+solder_mask: choice(Green, Red, Blue, Black) = Green | Solder mask
+legend: choice(White, Black) = White | Legend / silkscreen
+legend_sides: choice(None, Top, Bottom, Both) = Top | Legend sides
+
+[Finish]
+surface_finish: choice(ENIG, ENIG selective) = ENIG | Surface finish
+
+[Options]
+electrical_test: choice(Yes) = Yes | Electrical test
+profile: choice(Routing, V-cut, Routing + V-cut) = Routing | Board profile
+"""
+
+
+# Eurocircuits Proto pool, from eurocircuits.com/services/pcb-proto. A relaxed
+# prototype process (0.150mm track/gap), lead-free finish included.
+EUROCIRCUITS_PROTO_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums.
+    "min_track_width": 0.15,
+    "min_clearance": 0.15,
+    "min_through_hole_diameter": 0.25,     # PTH finished
+    "min_via_annular_width": 0.175,        # outer PTH pad = hole + 0.35mm total
+    "min_copper_edge_clearance": 0.25,     # outer routed
+    # Custom capabilities KiCad does not track; see EUROCIRCUITS_PROTO_META.
+    "min_npth_mm": 0.35,
+    "inner_copper_edge_clearance_mm": 0.4,
+    "board_thickness_mm": 1.55,
+    "max_board_width_mm": 580.0,           # 2-layer
+    "max_board_height_mm": 425.0,
+    "min_board_size_mm": 20.0,
+    "outer_copper_um": 18.0,
+    "inner_copper_um": 35.0,
+}
+EUROCIRCUITS_PROTO_META: dict[str, Any] = {
+    "min_npth_mm": {"label": "Min NPTH diameter", "unit": "mm"},
+    "inner_copper_edge_clearance_mm": {"label": "Inner copper to board edge", "unit": "mm"},
+    "board_thickness_mm": {"label": "Board thickness", "unit": "mm"},
+    "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "min_board_size_mm": {"label": "Min board size", "unit": "mm"},
+    "outer_copper_um": {"label": "Outer copper", "unit": "µm"},
+    "inner_copper_um": {"label": "Inner copper", "unit": "µm"},
+}
+
+# Eurocircuits STANDARD pool, from eurocircuits.com/services/standard-pool. The
+# non-pooling values (finer) are noted; the tracked minimums use the finest the
+# pool can reach (non-pooling), the fab's true capability.
+EUROCIRCUITS_STANDARD_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums (non-pooling reaches 0.090mm; pooling 0.100mm).
+    "min_track_width": 0.09,
+    "min_clearance": 0.09,
+    "min_through_hole_diameter": 0.1,      # PTH finished
+    "min_via_annular_width": 0.15,         # outer PTH pad = hole + 0.30mm total
+    "min_copper_edge_clearance": 0.25,     # outer routed
+    # Custom capabilities KiCad does not track; see EUROCIRCUITS_STANDARD_META.
+    "min_npth_mm": 0.2,
+    "inner_annular_ring_mm": 0.175,        # inner PTH pad = hole + 0.35mm total
+    "inner_copper_edge_clearance_mm": 0.4,
+    "min_board_thickness_mm": 1.0,
+    "max_board_thickness_mm": 2.4,
+    "max_board_width_mm": 580.0,           # 0-2 layer
+    "max_board_height_mm": 425.0,
+    "min_board_size_mm": 5.0,
+    "min_panel_size_mm": 50.0,
+    "outer_copper_um": 35.0,
+    "inner_copper_um": 35.0,
+}
+EUROCIRCUITS_STANDARD_META: dict[str, Any] = {
+    "min_npth_mm": {"label": "Min NPTH diameter", "unit": "mm"},
+    "inner_annular_ring_mm": {"label": "Inner annular ring", "unit": "mm"},
+    "inner_copper_edge_clearance_mm": {"label": "Inner copper to board edge", "unit": "mm"},
+    "min_board_thickness_mm": {"label": "Min board thickness", "unit": "mm"},
+    "max_board_thickness_mm": {"label": "Max board thickness", "unit": "mm"},
+    "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "min_board_size_mm": {"label": "Min board size", "unit": "mm"},
+    "min_panel_size_mm": {"label": "Min panel size", "unit": "mm"},
+    "outer_copper_um": {"label": "Outer copper", "unit": "µm"},
+    "inner_copper_um": {"label": "Inner copper", "unit": "µm"},
+}
+
+# Eurocircuits SEMI-FLEX pool, from eurocircuits.com/services/semi-flex-pool.
+# A 100µm FR4 core bends; no drilling in the flex area.
+EUROCIRCUITS_SEMIFLEX_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums.
+    "min_track_width": 0.125,
+    "min_clearance": 0.125,
+    "min_through_hole_diameter": 0.1,      # PTH finished
+    "min_via_annular_width": 0.15,
+    "min_copper_edge_clearance": 0.25,
+    # Custom capabilities KiCad does not track; see EUROCIRCUITS_SEMIFLEX_META.
+    "min_npth_mm": 0.2,
+    "board_thickness_mm": 1.55,
+    "semiflex_core_thickness_mm": 0.1,
+    "semiflex_core_copper_um": 35.0,
+    "min_bend_radius_mm": 5.0,
+    "max_bend_angle_deg": 180.0,
+    "max_bend_count": 5.0,
+    "min_semiflex_length_mm": 3.0,
+    "min_semiflex_width_mm": 3.0,
+    "min_corner_radius_mm": 1.0,
+    "max_board_width_mm": 340.0,
+    "max_board_height_mm": 440.0,
+}
+EUROCIRCUITS_SEMIFLEX_META: dict[str, Any] = {
+    "min_npth_mm": {"label": "Min NPTH diameter", "unit": "mm"},
+    "board_thickness_mm": {"label": "Board thickness", "unit": "mm"},
+    "semiflex_core_thickness_mm": {"label": "Semi-flex core thickness", "unit": "mm"},
+    "semiflex_core_copper_um": {"label": "Semi-flex core copper", "unit": "µm"},
+    "min_bend_radius_mm": {"label": "Min bend radius", "unit": "mm"},
+    "max_bend_angle_deg": {"label": "Max bend angle", "unit": "deg"},
+    "max_bend_count": {"label": "Max number of bends"},
+    "min_semiflex_length_mm": {"label": "Min semi-flex length", "unit": "mm"},
+    "min_semiflex_width_mm": {"label": "Min semi-flex width", "unit": "mm"},
+    "min_corner_radius_mm": {"label": "Min corner radius", "unit": "mm"},
+    "max_board_width_mm": {"label": "Max panel width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max panel height", "unit": "mm"},
+}
+
+# Eurocircuits HDI pool, from eurocircuits.com/services/hdi-pool. 100µm laser
+# microvias on 6 or 8 layers; non-pooling reaches 0.090mm track/gap.
+EUROCIRCUITS_HDI_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums (non-pooling reaches 0.090mm).
+    "min_track_width": 0.09,
+    "min_clearance": 0.09,
+    "min_through_hole_diameter": 0.1,      # PTH finished
+    "min_microvia_diameter": 0.1,          # laser microvia finished
+    "min_via_annular_width": 0.055,        # non-pooling annular ring
+    "min_copper_edge_clearance": 0.25,
+    # Custom capabilities KiCad does not track; see EUROCIRCUITS_HDI_META.
+    "min_npth_mm": 0.2,
+    "microvia_pad_diameter_mm": 0.21,      # non-pooling
+    "board_thickness_mm": 1.55,
+    "max_board_width_mm": 200.0,
+    "max_board_height_mm": 235.0,
+    "outer_copper_um": 12.0,
+    "inner_copper_um": 18.0,
+}
+EUROCIRCUITS_HDI_META: dict[str, Any] = {
+    "min_npth_mm": {"label": "Min NPTH diameter", "unit": "mm"},
+    "microvia_pad_diameter_mm": {"label": "Min microvia pad diameter", "unit": "mm"},
+    "board_thickness_mm": {"label": "Board thickness", "unit": "mm"},
+    "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "outer_copper_um": {"label": "Outer copper", "unit": "µm"},
+    "inner_copper_um": {"label": "Inner copper", "unit": "µm"},
+}
+
 SEED_MANUFACTURERS: list[dict[str, Any]] = [
     {
         "name": "JLCPCB",
@@ -1060,6 +1338,20 @@ SEED_MANUFACTURERS: list[dict[str, Any]] = [
              "capabilities": PCBWAY_ADVANCED_CAPABILITIES, "capability_meta": PCBWAY_ADVANCED_META},
             {"key": "pcbway:flex", "name": "PCBWay flexible PCB", "config": PCBWAY_FLEX_SPEC_CONFIG,
              "capabilities": PCBWAY_FLEX_CAPABILITIES, "capability_meta": PCBWAY_FLEX_META},
+        ],
+    },
+    {
+        "name": "Eurocircuits",
+        "website": "https://www.eurocircuits.com",
+        "templates": [
+            {"key": "eurocircuits:proto", "name": "Eurocircuits Proto", "config": EUROCIRCUITS_PROTO_SPEC_CONFIG,
+             "capabilities": EUROCIRCUITS_PROTO_CAPABILITIES, "capability_meta": EUROCIRCUITS_PROTO_META},
+            {"key": "eurocircuits:standard", "name": "Eurocircuits Standard", "config": EUROCIRCUITS_STANDARD_SPEC_CONFIG,
+             "capabilities": EUROCIRCUITS_STANDARD_CAPABILITIES, "capability_meta": EUROCIRCUITS_STANDARD_META},
+            {"key": "eurocircuits:semiflex", "name": "Eurocircuits Semi-flex", "config": EUROCIRCUITS_SEMIFLEX_SPEC_CONFIG,
+             "capabilities": EUROCIRCUITS_SEMIFLEX_CAPABILITIES, "capability_meta": EUROCIRCUITS_SEMIFLEX_META},
+            {"key": "eurocircuits:hdi", "name": "Eurocircuits HDI", "config": EUROCIRCUITS_HDI_SPEC_CONFIG,
+             "capabilities": EUROCIRCUITS_HDI_CAPABILITIES, "capability_meta": EUROCIRCUITS_HDI_META},
         ],
     },
 ]
