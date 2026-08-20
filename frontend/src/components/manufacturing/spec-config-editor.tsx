@@ -375,9 +375,15 @@ export function SchemaCapabilitiesDialog({
                     />
                 ) : (
                     <Tabs value={active} onValueChange={setActive}>
-                        <TabsList>
+                        <TabsList className="h-9 gap-1">
                             {tabs.map((tab) => (
-                                <TabsTrigger key={tab.id} value={tab.id}>
+                                <TabsTrigger
+                                    key={tab.id}
+                                    value={tab.id}
+                                    // The active tab is filled with the primary colour so it
+                                    // reads clearly against the muted inactive tabs.
+                                    className="px-3 text-sm data-[state=active]:bg-primary data-[state=active]:font-semibold data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                                >
                                     {tab.label}
                                 </TabsTrigger>
                             ))}
