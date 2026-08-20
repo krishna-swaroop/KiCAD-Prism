@@ -949,6 +949,55 @@ PCBWAY_META: dict[str, Any] = {
     "max_inner_copper_oz": {"label": "Max inner copper", "unit": "oz"},
 }
 
+# PCBWay advanced / HDI process, from pcbway.com/advanced-pcb-capabilities.html.
+# 2 mil = 0.0508 mm, 3 mil = 0.0762 mm, 6 mil = 0.1524 mm, 8 mil = 0.2032 mm.
+PCBWAY_ADVANCED_CAPABILITIES: dict[str, Any] = {
+    # KiCad-tracked minimums (HDI process).
+    "min_track_width": 0.0508,           # 2 mil
+    "min_clearance": 0.0508,             # 2 mil
+    "min_via_diameter": 0.076,           # laser microvia
+    "min_via_annular_width": 0.0762,     # 3 mil
+    "min_through_hole_diameter": 0.15,   # mechanical via
+    "min_hole_clearance": 0.1524,        # 6 mil hole to conductor
+    "min_microvia_diameter": 0.076,
+    "min_microvia_drill": 0.076,
+    # HDI capabilities KiCad does not track (custom); see PCBWAY_ADVANCED_META.
+    "min_mechanical_via_mm": 0.15,
+    "min_bga_pad_mm": 0.2032,            # 8 mil
+    "min_bga_pitch_mm": 0.4,
+    "min_dielectric_thickness_mm": 0.0508,  # 2 mil insulating layer
+    "min_blind_via_pp_thickness_mm": 0.06,
+    "min_blind_via_core_thickness_mm": 0.1,
+    "max_hdi_layers": 64.0,
+    "max_board_width_mm": 609.0,
+    "max_board_height_mm": 889.0,
+    "min_board_thickness_mm": 0.21,
+    "max_board_thickness_mm": 6.0,
+    "aspect_ratio": 20.0,
+    "impedance_tolerance_pct": 10.0,
+    "max_outer_copper_oz": 8.0,
+    "min_base_copper_oz": 0.33,
+}
+
+# Labels/units for the custom (non KiCad-tracked) PCBWay advanced capabilities.
+PCBWAY_ADVANCED_META: dict[str, Any] = {
+    "min_mechanical_via_mm": {"label": "Min mechanical via diameter", "unit": "mm"},
+    "min_bga_pad_mm": {"label": "Min BGA pad diameter", "unit": "mm"},
+    "min_bga_pitch_mm": {"label": "Min BGA pitch", "unit": "mm"},
+    "min_dielectric_thickness_mm": {"label": "Min insulating layer thickness", "unit": "mm"},
+    "min_blind_via_pp_thickness_mm": {"label": "Min blind-via prepreg thickness", "unit": "mm"},
+    "min_blind_via_core_thickness_mm": {"label": "Min blind-via core thickness", "unit": "mm"},
+    "max_hdi_layers": {"label": "Max HDI layer count", "unit": "layers"},
+    "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
+    "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "min_board_thickness_mm": {"label": "Min board thickness", "unit": "mm"},
+    "max_board_thickness_mm": {"label": "Max board thickness", "unit": "mm"},
+    "aspect_ratio": {"label": "Max aspect ratio (thickness : hole)", "unit": ": 1"},
+    "impedance_tolerance_pct": {"label": "Impedance tolerance (±)", "unit": "%"},
+    "max_outer_copper_oz": {"label": "Max outer copper", "unit": "oz"},
+    "min_base_copper_oz": {"label": "Min base copper", "unit": "oz"},
+}
+
 SEED_MANUFACTURERS: list[dict[str, Any]] = [
     {
         "name": "JLCPCB",
@@ -968,7 +1017,8 @@ SEED_MANUFACTURERS: list[dict[str, Any]] = [
         "templates": [
             {"key": "pcbway:standard", "name": "PCBWay standard", "config": PCBWAY_SPEC_CONFIG,
              "capabilities": PCBWAY_STANDARD_CAPABILITIES, "capability_meta": PCBWAY_META},
-            {"key": "pcbway:advanced", "name": "PCBWay advanced PCB", "config": PCBWAY_ADVANCED_SPEC_CONFIG},
+            {"key": "pcbway:advanced", "name": "PCBWay advanced PCB", "config": PCBWAY_ADVANCED_SPEC_CONFIG,
+             "capabilities": PCBWAY_ADVANCED_CAPABILITIES, "capability_meta": PCBWAY_ADVANCED_META},
             {"key": "pcbway:flex", "name": "PCBWay flexible PCB", "config": PCBWAY_FLEX_SPEC_CONFIG},
         ],
     },

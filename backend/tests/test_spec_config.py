@@ -334,6 +334,19 @@ class SpecConfigParseTests(unittest.TestCase):
             self.assertIn(key, PCBWAY_STANDARD_CAPABILITIES)
             self.assertIn(key, PCBWAY_META)
 
+    def test_pcbway_advanced_capabilities_cover_hdi(self) -> None:
+        from app.services.spec_config_service import (
+            PCBWAY_ADVANCED_CAPABILITIES,
+            PCBWAY_ADVANCED_META,
+        )
+
+        self.assertGreaterEqual(len(PCBWAY_ADVANCED_CAPABILITIES), 20)
+        # Finer than standard, with HDI-specific limits.
+        self.assertEqual(PCBWAY_ADVANCED_CAPABILITIES["min_track_width"], 0.0508)  # 2 mil
+        for key in ("min_bga_pitch_mm", "max_hdi_layers", "min_blind_via_pp_thickness_mm"):
+            self.assertIn(key, PCBWAY_ADVANCED_CAPABILITIES)
+            self.assertIn(key, PCBWAY_ADVANCED_META)
+
     def test_capabilities_split_into_kicad_tracked_and_custom(self) -> None:
         from app.services.pcb_rules_service import is_kicad_tracked
         from app.services.spec_config_service import (
