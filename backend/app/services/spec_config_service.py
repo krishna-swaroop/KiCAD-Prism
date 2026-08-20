@@ -1071,8 +1071,9 @@ legend_sides: choice(None, Top, Bottom, Both) = Top | Legend sides
 
 [Options]
 electrical_test: choice(Yes) = Yes | Electrical test
-profile: choice(Routing, V-cut, Routing + V-cut) = Routing | Board profile
-peelable_mask: choice(No, Yes) = No | Peelable mask
+profile: choice(Break routing (2.0mm), V-cut) = Break routing (2.0mm) | Board profile
+via_fill: choice(No, Resin filled) = No | Via filling
+ul_marking: choice(No, Yes) = No | UL marking
 """
 
 
@@ -1094,18 +1095,23 @@ outer_copper_um: choice(12, 18, 35, 70) = 35 | Outer copper (µm)
 inner_copper_um: choice(18, 35) = 35 when layer_count != 1 | Inner copper (µm)
 
 [Colour]
-solder_mask: choice(Green, Blue, Black, White, Red, Transparent) = Green | Solder mask
+solder_mask: choice(Green, Blue, Black, White, Red, None, Transparent) = Green | Solder mask
 legend: choice(White, Black) = White | Legend / silkscreen
 legend_sides: choice(None, Top, Bottom, Both) = Top | Legend sides
 
 [Finish]
-surface_finish: choice(ENIG, Lead-free HAL, Immersion silver) = ENIG | Surface finish
+surface_finish: choice(Lead-free (best price), ENIG, Lead-free HAL, Immersion silver) = Lead-free (best price) | Surface finish
 
 [Options]
-electrical_test: choice(Yes) = Yes | Electrical test
+electrical_test: choice(Yes, No (1 layer only)) = Yes | Electrical test
 profile: choice(Routing, V-cut, Routing + V-cut) = Routing | Board profile
+slot_tool_mm: choice(0.5, 1.2, 2.0) = 1.2 | Slot / cutout tool size (mm)
+via_fill: choice(No, Yes) = No | Via filling
+edge_plating: choice(No, Yes) = No | Plated board edge
 peelable_mask: choice(No, Yes) = No | Peelable mask
+gold_edge_connector: choice(No, Yes) = No | Gold edge connector
 carbon_print: choice(No, Yes) = No | Carbon print
+ul_marking: choice(No, Yes) = No | UL marking
 """
 
 
@@ -1141,7 +1147,11 @@ semiflex_width_mm: number = 5 | Semi-flex width (mm)
 
 [Options]
 electrical_test: choice(Yes) = Yes | Electrical test
-profile: choice(Routing, V-cut, Routing + V-cut) = Routing | Board profile
+profile: choice(Break routing, V-cut) = Break routing | Board profile
+via_fill: choice(No, Yes) = No | Via filling
+edge_plating: choice(No, Yes) = No | Plated board edge
+peelable_mask: choice(No, Yes) = No | Peelable mask
+gold_edge_connector: choice(No, Yes) = No | Gold edge connector
 """
 
 
@@ -1168,7 +1178,7 @@ microvia_diameter_mm: choice(0.100) = 0.100 | Microvia diameter (mm)
 via_fill: choice(No, Resin filled) = No | Via fill
 
 [Colour]
-solder_mask: choice(Green, Red, Blue, Black) = Green | Solder mask
+solder_mask: choice(Green, None, Red, Blue, Black) = Green | Solder mask
 legend: choice(White, Black) = White | Legend / silkscreen
 legend_sides: choice(None, Top, Bottom, Both) = Top | Legend sides
 
@@ -1270,6 +1280,7 @@ EUROCIRCUITS_SEMIFLEX_CAPABILITIES: dict[str, Any] = {
     "min_corner_radius_mm": 1.0,
     "max_board_width_mm": 340.0,
     "max_board_height_mm": 440.0,
+    "min_board_size_mm": 5.0,
 }
 EUROCIRCUITS_SEMIFLEX_META: dict[str, Any] = {
     "min_npth_mm": {"label": "Min NPTH diameter", "unit": "mm"},
@@ -1284,33 +1295,42 @@ EUROCIRCUITS_SEMIFLEX_META: dict[str, Any] = {
     "min_corner_radius_mm": {"label": "Min corner radius", "unit": "mm"},
     "max_board_width_mm": {"label": "Max panel width", "unit": "mm"},
     "max_board_height_mm": {"label": "Max panel height", "unit": "mm"},
+    "min_board_size_mm": {"label": "Min board size", "unit": "mm"},
 }
 
 # Eurocircuits HDI pool, from eurocircuits.com/services/hdi-pool. 100µm laser
 # microvias on 6 or 8 layers; non-pooling reaches 0.090mm track/gap.
 EUROCIRCUITS_HDI_CAPABILITIES: dict[str, Any] = {
-    # KiCad-tracked minimums (non-pooling reaches 0.090mm).
+    # KiCad-tracked minimums (non-pooling reaches 0.090mm). The tracked via
+    # annular ring is the mechanical PTH ring (outer pad = hole + 0.30mm total,
+    # so 0.15mm per side); the finer laser-microvia landing ring is a custom key.
     "min_track_width": 0.09,
     "min_clearance": 0.09,
     "min_through_hole_diameter": 0.1,      # PTH finished
     "min_microvia_diameter": 0.1,          # laser microvia finished
-    "min_via_annular_width": 0.055,        # non-pooling annular ring
+    "min_via_annular_width": 0.15,         # PTH pad = hole + 0.30mm total
     "min_copper_edge_clearance": 0.25,
     # Custom capabilities KiCad does not track; see EUROCIRCUITS_HDI_META.
     "min_npth_mm": 0.2,
-    "microvia_pad_diameter_mm": 0.21,      # non-pooling
+    "inner_annular_ring_mm": 0.175,        # inner PTH pad = hole + 0.35mm total
+    "microvia_landing_ring_mm": 0.055,     # non-pooling; 0.065 pooling
+    "microvia_pad_diameter_mm": 0.21,      # non-pooling; 0.23 pooling
     "board_thickness_mm": 1.55,
     "max_board_width_mm": 200.0,
     "max_board_height_mm": 235.0,
+    "min_board_size_mm": 5.0,
     "outer_copper_um": 12.0,
     "inner_copper_um": 18.0,
 }
 EUROCIRCUITS_HDI_META: dict[str, Any] = {
     "min_npth_mm": {"label": "Min NPTH diameter", "unit": "mm"},
+    "inner_annular_ring_mm": {"label": "Inner annular ring", "unit": "mm"},
+    "microvia_landing_ring_mm": {"label": "Microvia landing ring", "unit": "mm"},
     "microvia_pad_diameter_mm": {"label": "Min microvia pad diameter", "unit": "mm"},
     "board_thickness_mm": {"label": "Board thickness", "unit": "mm"},
     "max_board_width_mm": {"label": "Max board width", "unit": "mm"},
     "max_board_height_mm": {"label": "Max board height", "unit": "mm"},
+    "min_board_size_mm": {"label": "Min board size", "unit": "mm"},
     "outer_copper_um": {"label": "Outer copper", "unit": "µm"},
     "inner_copper_um": {"label": "Inner copper", "unit": "µm"},
 }
