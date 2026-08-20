@@ -55,7 +55,6 @@ from pipeline.topology_compiler.semantic_gltf import (
     _semantic_clipper_backend,
 )
 from pipeline.topology_compiler.__main__ import (
-    _remove_stale_schematic_native,
     _resolve_semantic_tile_size,
     write_artifact_manifest,
 )
@@ -572,25 +571,19 @@ class TopologyCompilerTests(unittest.TestCase):
         self.assertEqual(compilation.metadata["components"][0]["designator"], "U1")
         metadata_spy.assert_called_once()
 
-    def test_artifact_manifest_is_deterministic_and_removes_stale_native(self) -> None:
+    def test_artifact_manifest_is_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "schematic-vector").mkdir()
-            (root / "schematic-vector" / "stale.json").write_text("{}", encoding="utf-8")
-            _remove_stale_schematic_native(root)
-            self.assertFalse((root / "schematic-vector").exists())
             (root / "topology.json").write_text("{}", encoding="utf-8")
             (root / "viewer.html").write_text("<html></html>", encoding="utf-8")
-            (root / "schematic-world").mkdir()
-            (root / "schematic-world" / "schematic.manifest.json").write_text("{}", encoding="utf-8")
             first = write_artifact_manifest(root)
             second = write_artifact_manifest(root)
             self.assertEqual(first, second)
             self.assertEqual(first["schema"], "prism.artifact_manifest_a0")
             total = sum(item["bytes"] for item in first["files"])
             self.assertEqual(first["totalBytes"], total)
-            self.assertEqual(first["totalsByFamily"]["schematic_vector"]["files"], 0)
-            self.assertEqual(first["totalsByFamily"]["schematic_world"]["files"], 1)
+            self.assertEqual(first["totalsByFamily"]["topology"]["files"], 1)
+            self.assertEqual(first["totalsByFamily"]["viewer"]["files"], 1)
 
     def test_component_nodes_preserve_designator(self) -> None:
         gltf = {

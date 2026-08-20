@@ -79,12 +79,16 @@ services:
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-}
       - AUTH_LOGIN_RATE_LIMIT=${AUTH_LOGIN_RATE_LIMIT:-10}
       - AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS=${AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
+      - PASSWORD_AUTH_ENABLED=${PASSWORD_AUTH_ENABLED:-false}
+      - PASSWORD_MIN_LENGTH=${PASSWORD_MIN_LENGTH:-12}
+      - SESSION_REMEMBER_ME_DAYS=${SESSION_REMEMBER_ME_DAYS:-30}
+      - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-}
       - CORS_ORIGINS_STR=${CORS_ORIGINS_STR:-http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8080,http://localhost:8080}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - COMMENTS_API_BASE_URL=${COMMENTS_API_BASE_URL:-}
       # Setting this to false serves every request as an unauthenticated guest.
       # The backend logs a prominent warning and refuses to start if it is true
-      # while OIDC or SESSION_SECRET are incomplete.
+      # while a login method or SESSION_SECRET is incomplete.
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
       # Least privilege that still lets an evaluator look around. This default
       # is what actually applies in Docker -- it overrides the one in

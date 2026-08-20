@@ -662,6 +662,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                           isSearching={isSearching}
                           searchResults={listProjects}
                           selectedProjectId={selectedProjectId}
+                          propertiesPanelOpen={selectedProject !== null}
                           bulkSelectedProjectIds={bulkSelectedProjectIds}
                           currentFolderId={currentFolderId}
                           visibleFolders={visibleFolders}

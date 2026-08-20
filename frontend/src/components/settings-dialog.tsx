@@ -6,9 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { GitBranch, Copy, FileCode, Shield, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, KeyRound } from "lucide-react";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
+import { changeOwnPassword, fetchAuthConfig } from "@/lib/auth";
 import { ROLE_OPTIONS, roleLabel } from "@/lib/roles";
 
 interface SettingsDialogProps {
@@ -23,6 +24,7 @@ interface RoleAssignment {
     email: string;
     role: UserRole;
     source: string;
+    has_password?: boolean;
 }
 
 export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps) {
@@ -34,7 +36,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
             <DialogContent className="max-w-4xl p-0 overflow-hidden flex h-[600px]">
                 <DialogTitle className="sr-only">Workspace Settings</DialogTitle>
                 <DialogDescription className="sr-only">
-                    Manage Git, SSH, and access control settings for this workspace.
+                    Manage Git, SSH, access control, and password settings for this workspace.
                 </DialogDescription>
                 <div className="w-64 bg-muted/30 border-r p-4 flex flex-col gap-2">
                     <div className="mb-4 px-2">
@@ -62,8 +64,8 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
 
                     <Button
                         variant={activeTab === "general" ? "secondary" : "ghost"}
-                        className="justify-start opacity-50 cursor-not-allowed"
-                        title="Coming soon"
+                        className="justify-start"
+                        onClick={() => setActiveTab("general")}
                     >
                         <FileCode className="mr-2 h-4 w-4" />
                         General
@@ -73,14 +75,101 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                 <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === "git" && <GitSettings user={user} />}
                     {activeTab === "access" && <AccessControlSettings isAdmin={isAdmin} />}
-                    {activeTab === "general" && (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                            General settings coming soon.
-                        </div>
-                    )}
+                    {activeTab === "general" && <PasswordSettings />}
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+function PasswordSettings() {
+    const [available, setAvailable] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        void fetchAuthConfig()
+            .then((config) => setAvailable(Boolean(config.password_auth_enabled)))
+            .catch(() => setAvailable(false));
+    }, []);
+
+    if (!available) {
+        return (
+            <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                Local passwords are not enabled on this deployment.
+            </div>
+        );
+    }
+
+    const submit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (newPassword !== confirmPassword) {
+            toast.error("The new passwords do not match.");
+            return;
+        }
+        setSaving(true);
+        try {
+            await changeOwnPassword(currentPassword, newPassword);
+            toast.success("Password updated. Other sessions were signed out.");
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to change password");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <h3 className="text-lg font-medium">Password</h3>
+                <p className="text-sm text-muted-foreground">
+                    Change the password for this account. Other signed-in sessions will end.
+                </p>
+            </div>
+            <form className="max-w-md space-y-3" onSubmit={(event) => void submit(event)}>
+                <div className="space-y-1.5">
+                    <Label htmlFor="current-password">Current password</Label>
+                    <Input
+                        id="current-password"
+                        type="password"
+                        autoComplete="current-password"
+                        value={currentPassword}
+                        onChange={(event) => setCurrentPassword(event.target.value)}
+                        required
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <Label htmlFor="settings-new-password">New password</Label>
+                    <Input
+                        id="settings-new-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        required
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <Label htmlFor="settings-confirm-password">Confirm new password</Label>
+                    <Input
+                        id="settings-confirm-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={confirmPassword}
+                        onChange={(event) => setConfirmPassword(event.target.value)}
+                        required
+                    />
+                </div>
+                <Button type="submit" disabled={saving}>
+                    {saving ? "Saving…" : "Update password"}
+                </Button>
+            </form>
+        </div>
     );
 }
 
@@ -508,6 +597,7 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
     const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
     const [newEmail, setNewEmail] = useState("");
     const [newRole, setNewRole] = useState<UserRole>("viewer");
+    const [passwordAuthEnabled, setPasswordAuthEnabled] = useState(false);
     // The dialog names the person, so it holds the email rather than a boolean.
     const removalTarget = useConfirmTarget<string>();
 
@@ -536,6 +626,12 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
     useEffect(() => {
         void loadAssignments();
     }, [loadAssignments]);
+
+    useEffect(() => {
+        void fetchAuthConfig()
+            .then((config) => setPasswordAuthEnabled(Boolean(config.password_auth_enabled)))
+            .catch(() => setPasswordAuthEnabled(false));
+    }, []);
 
     const upsertRole = async (email: string, role: UserRole) => {
         const normalizedEmail = email.trim().toLowerCase();
@@ -576,6 +672,52 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to remove role assignment";
             toast.error(message);
+        }
+    };
+
+    const [passwordEmail, setPasswordEmail] = useState<string | null>(null);
+    const [passwordValue, setPasswordValue] = useState("");
+    const [savingPassword, setSavingPassword] = useState(false);
+
+    const submitPassword = async () => {
+        if (!passwordEmail) return;
+        setSavingPassword(true);
+        try {
+            const response = await fetchApi(
+                `/api/settings/access/users/${encodeURIComponent(passwordEmail)}/password`,
+                {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ password: passwordValue, must_change: true }),
+                },
+            );
+            if (!response.ok) {
+                throw new Error(await readApiError(response, "Failed to set password"));
+            }
+            toast.success("Password set. The user must change it on next sign-in.");
+            setPasswordEmail(null);
+            setPasswordValue("");
+            await loadAssignments();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to set password");
+        } finally {
+            setSavingPassword(false);
+        }
+    };
+
+    const removePassword = async (email: string) => {
+        try {
+            const response = await fetchApi(
+                `/api/settings/access/users/${encodeURIComponent(email)}/password`,
+                { method: "DELETE" },
+            );
+            if (!response.ok) {
+                throw new Error(await readApiError(response, "Failed to remove password"));
+            }
+            toast.success("Local password removed");
+            await loadAssignments();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to remove password");
         }
     };
 
@@ -652,7 +794,29 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
                                     ))}
                                 </select>
                                 <div className="text-sm text-muted-foreground">{assignment.source}</div>
-                                <div className="flex justify-end">
+                                <div className="flex justify-end gap-1">
+                                    {passwordAuthEnabled && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => { setPasswordEmail(assignment.email); setPasswordValue(""); }}
+                                            aria-label={`Set password for ${assignment.email}`}
+                                            title={assignment.has_password ? "Reset password" : "Set password"}
+                                        >
+                                            <KeyRound className={`h-4 w-4 ${assignment.has_password ? "text-primary" : ""}`} />
+                                        </Button>
+                                    )}
+                                    {passwordAuthEnabled && assignment.has_password && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => void removePassword(assignment.email)}
+                                            aria-label={`Remove local password for ${assignment.email}`}
+                                            title="Remove local password"
+                                        >
+                                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -678,6 +842,37 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
                 requireHold
                 onConfirm={() => { if (removalTarget.target) void removeRole(removalTarget.target); }}
             />
+
+            <Dialog open={passwordAuthEnabled && passwordEmail !== null} onOpenChange={(next) => { if (!next) { setPasswordEmail(null); setPasswordValue(""); } }}>
+                <DialogContent className="max-w-sm">
+                    <DialogTitle>Set a password</DialogTitle>
+                    <DialogDescription>
+                        {passwordEmail} will be required to change this password on their next sign-in.
+                        Their existing sessions are ended.
+                    </DialogDescription>
+                    <form
+                        className="mt-2 space-y-3"
+                        onSubmit={(event) => { event.preventDefault(); void submitPassword(); }}
+                    >
+                        <Input
+                            type="password"
+                            autoComplete="new-password"
+                            placeholder="Temporary password"
+                            value={passwordValue}
+                            onChange={(event) => setPasswordValue(event.target.value)}
+                            required
+                        />
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="outline" onClick={() => { setPasswordEmail(null); setPasswordValue(""); }}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={savingPassword || !passwordValue}>
+                                {savingPassword ? "Saving…" : "Set password"}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

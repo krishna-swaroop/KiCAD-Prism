@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -70,12 +70,9 @@ async def authorize(
     try:
         user = await get_current_user(request)
     except HTTPException:
-        login_url, transaction_token = provider_auth_service.build_oidc_login_url(
-            _base_url(request), str(request.url)
-        )
-        redirect = RedirectResponse(login_url, status_code=302)
-        set_oidc_transaction_cookie(redirect, transaction_token)
-        return redirect
+        next_url = str(request.url)
+        login_url = f"{_base_url(request).rstrip('/')}/?next={quote(next_url, safe='')}"
+        return RedirectResponse(login_url, status_code=302)
 
     code = provider_auth_service.issue_authorization_code(
         user=user,  # type: ignore[arg-type]
@@ -103,6 +100,7 @@ async def oidc_callback(request: Request, code: str = Query(...), state: str = Q
         email=user.email,
         name=user.name,
         picture=user.picture,
+        user_id=getattr(user, "user_id", "") or "",
         user_agent=request.headers.get("user-agent", ""),
         client_ip=rate_limit_service.client_fingerprint(request),
     )

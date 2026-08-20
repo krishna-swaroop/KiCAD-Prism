@@ -37,6 +37,7 @@ class SessionRecord:
     created_at: datetime
     expires_at: datetime
     last_seen_at: datetime
+    user_id: str = ""
 
 
 def _now() -> datetime:
@@ -80,6 +81,12 @@ def initialize_session_store() -> None:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS user_sessions_expires_idx ON user_sessions (expires_at)"
             )
+            connection.execute(
+                "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS user_sessions_user_id_idx ON user_sessions (user_id)"
+            )
             connection.commit()
         _initialized = True
 
@@ -93,6 +100,7 @@ def _row_to_record(row: dict[str, Any], session_id: str) -> SessionRecord:
         created_at=row["created_at"],
         expires_at=row["expires_at"],
         last_seen_at=row["last_seen_at"],
+        user_id=str(row["user_id"] or ""),
     )
 
 
@@ -103,20 +111,23 @@ def create_session(
     picture: str,
     user_agent: str = "",
     client_ip: str = "",
+    user_id: str = "",
+    ttl_seconds: int | None = None,
 ) -> tuple[str, SessionRecord]:
     """Mint a new session and return its secret id alongside the stored record."""
     initialize_session_store()
     session_id = secrets.token_urlsafe(32)
-    expires_at = _now() + timedelta(hours=settings.SESSION_TTL_HOURS)
+    lifetime = timedelta(seconds=ttl_seconds) if ttl_seconds else timedelta(hours=settings.SESSION_TTL_HOURS)
+    expires_at = _now() + lifetime
 
     with database.connection() as connection:
         connection.execute("SET search_path TO workspace, public")
         row = connection.execute(
             """
             INSERT INTO user_sessions
-                (session_digest, email, name, picture, expires_at, user_agent, client_ip)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING email, name, picture, created_at, last_seen_at, expires_at
+                (session_digest, email, name, picture, expires_at, user_agent, client_ip, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING email, name, picture, created_at, last_seen_at, expires_at, user_id
             """,
             (
                 session_id_digest(session_id),
@@ -126,6 +137,7 @@ def create_session(
                 expires_at,
                 user_agent[:512],
                 client_ip[:128],
+                user_id,
             ),
         ).fetchone()
         connection.commit()
@@ -143,7 +155,7 @@ def load_session(session_id: str) -> SessionRecord | None:
         connection.execute("SET search_path TO workspace, public")
         row = connection.execute(
             """
-            SELECT email, name, picture, created_at, last_seen_at, expires_at, revoked_at
+            SELECT email, name, picture, created_at, last_seen_at, expires_at, revoked_at, user_id
             FROM user_sessions
             WHERE session_digest = %s
             """,
@@ -196,6 +208,31 @@ def revoke_session(session_id: str, *, reason: str = "logout") -> bool:
         )
         connection.commit()
         return cursor.rowcount > 0
+
+
+def revoke_sessions_for_user_id(
+    user_id: str,
+    *,
+    reason: str = "revoked",
+    keep_session_id: str = "",
+) -> int:
+    """Terminate every session for this person, optionally sparing the caller."""
+    if not user_id:
+        return 0
+    initialize_session_store()
+    keep_digest = session_id_digest(keep_session_id) if keep_session_id else ""
+    with database.connection() as connection:
+        connection.execute("SET search_path TO workspace, public")
+        cursor = connection.execute(
+            """
+            UPDATE user_sessions
+            SET revoked_at = NOW(), revoked_reason = %s
+            WHERE user_id = %s AND user_id <> '' AND revoked_at IS NULL AND session_digest <> %s
+            """,
+            (reason, user_id, keep_digest),
+        )
+        connection.commit()
+        return cursor.rowcount
 
 
 def revoke_sessions_for_email(email: str, *, reason: str = "revoked", keep_session_id: str = "") -> int:

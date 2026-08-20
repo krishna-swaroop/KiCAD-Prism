@@ -583,9 +583,7 @@ def _run_preflight(viewer_root: Path, job: Dict[str, Any], persist: Callable[[],
             "-c",
             (
                 "import kicad_monkey; "
-                "import kicad_cruncher; "
-                "print('monkey:', getattr(kicad_monkey, '__file__', 'ok')); "
-                "print('cruncher:', getattr(kicad_cruncher, '__file__', 'ok'))"
+                "print('monkey:', getattr(kicad_monkey, '__file__', 'ok'))"
             ),
         ],
         stdout=subprocess.PIPE,
@@ -597,7 +595,7 @@ def _run_preflight(viewer_root: Path, job: Dict[str, Any], persist: Callable[[],
     )
     if result.returncode != 0:
         raise RuntimeError(
-            "Missing required Python libraries: kicad_monkey or kicad_cruncher. "
+            "Missing required Python library: kicad_monkey. "
             f"Output: {(result.stdout or '').strip()}"
         )
     job["logs"].append(f"Preflight OK: Python libraries -> {(result.stdout or '').strip()}")

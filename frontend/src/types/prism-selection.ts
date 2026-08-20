@@ -100,6 +100,7 @@ export interface SemanticNet {
     name: string;
     netCode?: number;
     netClass?: string;
+    aliases?: string[];
     schematicRefs?: SemanticSchematicRef[];
     pcbRefs?: SemanticPcbRef[];
     webgpuRefs?: SemanticWebGpuRef[];

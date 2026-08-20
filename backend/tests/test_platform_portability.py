@@ -69,13 +69,12 @@ class TemporaryPathTests(unittest.TestCase):
                 "compare roots are overridden by deployment env "
                 "(PRISM_DESIGN_COMPARE_CACHE / PRISM_DESIGN_COMPARE_JOBS)"
             )
-        from app.services import design_compare_service, diff_service
+        from app.services import design_compare_service
 
         temporary = Path(tempfile.gettempdir())
         for root in (
             design_compare_service._CACHE_ROOT,
             design_compare_service._JOB_ROOT,
-            diff_service.DIFF_ROOT,
         ):
             self.assertEqual(root.parent, temporary, root)
 

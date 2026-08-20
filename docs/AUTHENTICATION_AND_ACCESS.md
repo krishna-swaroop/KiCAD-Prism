@@ -39,6 +39,35 @@ Register:
 `localhost` and `127.0.0.1` are different redirect origins. Register the exact
 origin used during local testing.
 
+## Password login
+
+Password login is opt-in and can run instead of OIDC, or alongside it. One email
+is one Prism user. Admins assign the role (and optionally a password) in
+Settings. Password login never creates an account and there is no public signup.
+
+```env
+AUTH_ENABLED=true
+PASSWORD_AUTH_ENABLED=true
+PASSWORD_MIN_LENGTH=12
+SESSION_REMEMBER_ME_DAYS=30
+SESSION_SECRET=<random-value>
+BOOTSTRAP_ADMIN_USERS_STR=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=<one-time-password>
+```
+
+`BOOTSTRAP_ADMIN_PASSWORD` seeds a must-change password for bootstrap admins
+that do not already have one. Clear it after first sign-in; Prism will not
+overwrite a real password on restart.
+
+There is no mailer. People who know their current password can change it in
+Settings → General (other sessions are revoked). A lost password is reset by an
+administrator in Settings → Access as a one-time password; the account must
+change it on next sign-in and all other sessions end. Login copy tells the user
+to ask an administrator.
+
+`ALLOWED_USERS_STR` and `ALLOWED_DOMAINS_STR` apply to password login and OIDC
+the same way.
+
 ## Sessions
 
 Prism stores session records in PostgreSQL and sends an opaque signed identifier
@@ -91,8 +120,10 @@ KiCad discovers Prism's authorization metadata and uses an authorization-code
 flow with PKCE. The resulting token is scoped to `remote_symbols.read` and cannot
 mutate projects, catalog state, or administration settings.
 
-Provider authentication depends on the same OIDC identity provider but uses a
-separate Prism authorization server and redirect URI. See
+Provider authentication uses the same Prism login as the browser. If a Prism
+session already exists, KiCad authorize-and-done continues. If not, the user is
+sent to the Prism login page (`/?next=…`) and returned to `/oauth/authorize`.
+The resulting token is still scoped to `remote_symbols.read`. See
 [Remote Symbol Provider](REMOTE_SYMBOL_PROVIDER.md).
 
 ## Service clients
@@ -117,7 +148,7 @@ At least quarterly:
 1. review bootstrap administrators and explicit role assignments;
 2. remove departed accounts and confirm their sessions are revoked;
 3. rotate unused service clients;
-4. review OIDC redirect URIs and allowed origins;
+4. review OIDC redirect URIs, password-auth settings, and allowed origins;
 5. confirm guest mode is disabled;
 6. verify the public backend port is not directly reachable;
 7. test a viewer account and each catalog role.

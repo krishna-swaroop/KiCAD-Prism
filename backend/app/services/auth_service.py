@@ -18,7 +18,7 @@ from requests.auth import HTTPBasicAuth
 
 from app.core.config import settings
 from app.core.roles import Role, normalize_role
-from app.services import access_service
+from app.services import access_service, password_credential_service
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ class ResolvedSessionUser:
     name: str
     picture: str
     role: Role
+    user_id: str = ""
 
 
 _metadata_lock = RLock()
@@ -261,7 +262,12 @@ def _validate_allowed_user(email: str) -> str:
     normalized_email = email.strip().casefold()
     if not normalized_email:
         raise HTTPException(status_code=401, detail="OIDC profile did not include an email address")
+    _enforce_user_allowlist(normalized_email)
+    return normalized_email
 
+
+def _enforce_user_allowlist(normalized_email: str) -> None:
+    """Apply ALLOWED_USERS / ALLOWED_DOMAINS to every human login method."""
     allowed_users = {user.strip().casefold() for user in settings.ALLOWED_USERS if user.strip()}
     if allowed_users and normalized_email not in allowed_users:
         raise HTTPException(status_code=403, detail="Access denied. Your email is not in the allowed users list.")
@@ -271,8 +277,6 @@ def _validate_allowed_user(email: str) -> str:
         domain = normalized_email.split("@")[-1]
         if domain not in allowed_domains:
             raise HTTPException(status_code=403, detail="Access denied. Your email domain is not allowed.")
-
-    return normalized_email
 
 
 def _resolve_session_user(profile: dict[str, Any]) -> ResolvedSessionUser:
@@ -284,7 +288,56 @@ def _resolve_session_user(profile: dict[str, Any]) -> ResolvedSessionUser:
 
     name = str(profile.get(settings.OIDC_NAME_CLAIM) or profile.get("name") or email.split("@")[0])
     picture = str(profile.get(settings.OIDC_PICTURE_CLAIM) or profile.get("picture") or "")
-    return ResolvedSessionUser(email=email, name=name, picture=picture, role=role)
+    user = access_service.upsert_user(email=email, name=name, picture=picture)
+    return ResolvedSessionUser(
+        email=email,
+        name=user["name"] or name,
+        picture=user["picture"] or picture,
+        role=role,
+        user_id=user["user_id"],
+    )
+
+
+@dataclass(frozen=True)
+class PasswordAuthResult:
+    user: ResolvedSessionUser
+    must_change_password: bool
+
+
+def password_auth_enabled() -> bool:
+    return bool(settings.PASSWORD_AUTH_ENABLED)
+
+
+def authenticate_password(email: str, password: str) -> PasswordAuthResult:
+    """Verify a local password and resolve the same session user OIDC would.
+
+    Password login never creates an account. After the password matches, missing
+    role assignment is a 403. Unknown emails and wrong passwords share one 401.
+    """
+    normalized_email = email.strip().casefold()
+    if not normalized_email or not password:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    verification = password_credential_service.verify_password(normalized_email, password)
+    if not verification.ok:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    _enforce_user_allowlist(normalized_email)
+    role = access_service.resolve_user_role(normalized_email)
+    if not role:
+        raise HTTPException(status_code=403, detail="Access denied. No role assignment found for your account.")
+
+    user_row = access_service.get_user_by_email(normalized_email)
+    name = (user_row or {}).get("name") or normalized_email.split("@")[0]
+    picture = (user_row or {}).get("picture") or ""
+    user = ResolvedSessionUser(
+        email=normalized_email,
+        name=name,
+        picture=picture,
+        role=role,
+        user_id=verification.user_id,
+    )
+    return PasswordAuthResult(user=user, must_change_password=verification.must_change)
 
 
 def authenticate_oidc_auth_code(

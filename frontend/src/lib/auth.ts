@@ -1,5 +1,5 @@
 import { fetchJson } from "@/lib/api";
-import type { ActiveSession, AuthConfig, User } from "@/types/auth";
+import type { ActiveSession, AuthConfig, PasswordLoginResult, User } from "@/types/auth";
 
 const AUTH_CALLBACK_PATH = "/auth/callback";
 
@@ -67,6 +67,30 @@ export function exchangeOidcAuthCode(code: string, state: string) {
   );
 }
 
+export function loginWithPassword(email: string, password: string, rememberMe: boolean) {
+  return fetchJson<PasswordLoginResult>(
+    "/api/auth/login/password",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, remember_me: rememberMe }),
+    },
+    "Sign-in failed"
+  );
+}
+
+export function changeOwnPassword(currentPassword: string, newPassword: string) {
+  return fetchJson<{ success: boolean }>(
+    "/api/auth/password/change",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    },
+    "Failed to change password"
+  );
+}
+
 export function fetchActiveSessions(signal?: AbortSignal) {
   return fetchJson<ActiveSession[]>(
     "/api/auth/sessions",
@@ -81,4 +105,37 @@ export function revokeOtherSessions() {
     { method: "POST" },
     "Failed to sign out other sessions"
   );
+}
+
+const LOGIN_NEXT_KEY = "kicad_prism_login_next";
+
+export function sameOriginNextPath(): string | null {
+  const raw = new URLSearchParams(window.location.search).get("next");
+  if (!raw) return null;
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return raw.startsWith("/") ? raw : null;
+  }
+}
+
+export function stashLoginNext(): void {
+  const next = sameOriginNextPath();
+  if (next) window.sessionStorage.setItem(LOGIN_NEXT_KEY, next);
+}
+
+export function consumeStashedLoginNext(): string | null {
+  const stored = window.sessionStorage.getItem(LOGIN_NEXT_KEY);
+  if (stored) window.sessionStorage.removeItem(LOGIN_NEXT_KEY);
+  const candidate = stored || sameOriginNextPath();
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return candidate.startsWith("/") ? candidate : null;
+  }
 }

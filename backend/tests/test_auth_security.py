@@ -22,7 +22,7 @@ from app.core.security import (  # noqa: E402
     require_project_release_actor,
     require_remote_symbol_reader,
 )
-from app.services import access_service, provider_auth_service  # noqa: E402
+from app.services import access_service, password_credential_service, provider_auth_service  # noqa: E402
 
 
 class AuthSecurityTests(unittest.TestCase):
@@ -74,6 +74,10 @@ class AuthSecurityTests(unittest.TestCase):
             access_service,
             "upsert_user_role",
             return_value={"email": "qa@example.com", "role": "qa", "source": "store"},
+        ), patch.object(
+            password_credential_service,
+            "has_credential",
+            return_value=False,
         ):
             assignment = asyncio.run(
                 upsert_access_user(
@@ -84,6 +88,7 @@ class AuthSecurityTests(unittest.TestCase):
             )
 
         self.assertEqual(assignment.role, "qa")
+        self.assertFalse(assignment.has_password)
 
     def test_kicad_provider_token_cannot_access_admin_api(self) -> None:
         user = AuthenticatedUser(

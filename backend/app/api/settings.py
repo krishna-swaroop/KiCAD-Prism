@@ -5,11 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import logging
 
+from app.core.config import settings
 from app.core.roles import ROLE_LABELS, Role, normalize_role
 from app.core.security import AuthenticatedUser, require_admin
 from app.services import (
     access_service,
     git_access_service,
+    password_credential_service,
     project_import_service,
     session_store_service,
 )
@@ -40,10 +42,16 @@ class RoleAssignmentResponse(BaseModel):
     email: str
     role: Role
     source: str
+    has_password: bool = False
 
 
 class UpsertRoleRequest(BaseModel):
     role: str
+
+
+class SetPasswordRequest(BaseModel):
+    password: str
+    must_change: bool = True
 
 @router.get("/ssh-key", response_model=SSHKeyResponse)
 async def get_ssh_key():
@@ -225,7 +233,18 @@ async def forget_git_host_key(host: str):
 
 @router.get("/access/users", response_model=List[RoleAssignmentResponse])
 async def list_access_users():
-    return [RoleAssignmentResponse(**item) for item in access_service.list_role_assignments()]
+    credentialed = (
+        set(password_credential_service.list_credentialed_emails())
+        if settings.PASSWORD_AUTH_ENABLED
+        else set()
+    )
+    return [
+        RoleAssignmentResponse(
+            **item,
+            has_password=item["email"].strip().lower() in credentialed,
+        )
+        for item in access_service.list_role_assignments()
+    ]
 
 
 @router.put("/access/users/{email}", response_model=RoleAssignmentResponse)
@@ -244,7 +263,10 @@ async def upsert_access_user(
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error))
 
-    return RoleAssignmentResponse(**assignment)
+    return RoleAssignmentResponse(
+        **assignment,
+        has_password=password_credential_service.has_credential(assignment["email"]),
+    )
 
 
 @router.delete("/access/users/{email}")
@@ -257,7 +279,61 @@ async def delete_access_user(email: str, user: AuthenticatedUser = Depends(requi
     if not deleted:
         raise HTTPException(status_code=404, detail="User role assignment not found")
 
-    # Withdrawing access must end access now, not when the browser cookie expires.
-    revoked = session_store_service.revoke_sessions_for_email(email, reason=f"access_revoked:{user.email}")
+    account = access_service.get_user_by_email(email)
+    revoked = 0
+    if account:
+        revoked += session_store_service.revoke_sessions_for_user_id(
+            account["user_id"], reason=f"access_revoked:{user.email}"
+        )
+    revoked += session_store_service.revoke_sessions_for_email(
+        email, reason=f"access_revoked:{user.email}"
+    )
 
     return {"deleted": email.strip().lower(), "sessions_revoked": revoked}
+
+
+@router.put("/access/users/{email}/password")
+async def set_user_password(
+    email: str,
+    request: SetPasswordRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+):
+    """Set or reset a user's local password. Requires an existing Prism account."""
+    if not settings.PASSWORD_AUTH_ENABLED:
+        raise HTTPException(status_code=400, detail="Password login is not enabled on this deployment")
+    try:
+        password_credential_service.set_password(
+            email,
+            request.password,
+            updated_by=user.email,
+            must_change=request.must_change,
+        )
+    except password_credential_service.NoSuchUserError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except password_credential_service.PasswordPolicyError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    account = access_service.get_user_by_email(email)
+    revoked = 0
+    if account:
+        revoked += session_store_service.revoke_sessions_for_user_id(
+            account["user_id"], reason=f"password_reset:{user.email}"
+        )
+    revoked += session_store_service.revoke_sessions_for_email(
+        email, reason=f"password_reset:{user.email}"
+    )
+    return {
+        "email": email.strip().lower(),
+        "must_change": request.must_change,
+        "sessions_revoked": revoked,
+    }
+
+
+@router.delete("/access/users/{email}/password")
+async def delete_user_password(email: str, user: AuthenticatedUser = Depends(require_admin)):
+    if not settings.PASSWORD_AUTH_ENABLED:
+        raise HTTPException(status_code=400, detail="Password login is not enabled on this deployment")
+    deleted = password_credential_service.delete_credential(email)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No local password for this account")
+    return {"email": email.strip().lower(), "deleted": True}

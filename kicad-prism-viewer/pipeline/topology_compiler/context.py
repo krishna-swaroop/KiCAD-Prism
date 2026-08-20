@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,7 +12,6 @@ from .copper_geometry import (
     extract_pcb_metadata_from_copper,
 )
 from .pcb_extract import compile_pcb_artifacts
-from .vendor_paths import ensure_reference_paths
 
 
 @dataclass(frozen=True)
@@ -34,9 +32,6 @@ class PrismCompilationContext:
     _design: Any = None
     _board_compilation: BoardCompilation | None = None
     _design_payload_for_topology: dict[str, Any] | None = None
-    _design_payload_for_svg_world: dict[str, Any] | None = None
-    _manufacturing_design: Any = None
-    _bom_assembly_by_variant: dict[str | None, Any] = field(default_factory=dict)
 
     def _log(self, message: str) -> None:
         if self.progress:
@@ -102,16 +97,6 @@ class PrismCompilationContext:
                 ),
             )
         return self._design_payload_for_topology
-
-    @property
-    def design_payload_for_svg_world(self) -> dict[str, Any]:
-        if self._design_payload_for_svg_world is None:
-            self._design_payload_for_svg_world = self._timed(
-                "design_json_svg_ms",
-                "compile schematic-world design JSON",
-                lambda: self.design.to_json(include_indexes=True),
-            )
-        return self._design_payload_for_svg_world
 
     @property
     def pcb_ir(self):
@@ -200,28 +185,3 @@ class PrismCompilationContext:
                 self._compile_copper_board if use_copper else self._compile_ir_board,
             )
         return self._board_compilation
-
-    @property
-    def manufacturing_design(self):
-        if self._manufacturing_design is None:
-            def build():
-                ensure_reference_paths()
-                from kicad_cruncher.kicad_manufacturing_design import KiCadManufacturingDesign  # type: ignore
-
-                return KiCadManufacturingDesign(design=self.design, source_path=self.project_file)
-
-            self._manufacturing_design = self._timed(
-                "bom_design_reuse_ms",
-                "reuse KiCad design for BOM",
-                build,
-            )
-        return self._manufacturing_design
-
-    def bom_assembly_by_variant(self, variant: str | None = None):
-        if variant not in self._bom_assembly_by_variant:
-            self._bom_assembly_by_variant[variant] = self._timed(
-                "bom_assembly_ms",
-                "assemble BOM variant",
-                lambda: self.manufacturing_design.to_bom(variant),
-            )
-        return self._bom_assembly_by_variant[variant]

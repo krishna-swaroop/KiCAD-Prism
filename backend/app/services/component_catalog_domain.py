@@ -1147,7 +1147,14 @@ class ComponentCatalogDomainService:
         for field in ("value", "description", "datasheet_url", "manufacturer", "mpn"):
             if not normalized[field]:
                 raise ValueError(f"{field} is required")
-        normalized["name"] = normalized["mpn"] or normalized["value"]
+        # An explicit name wins. Database-library imports carry an internal part
+        # number that is not the manufacturer part number, and deriving the name
+        # from `mpn` would drop it from the record entirely.
+        normalized["name"] = (
+            str(payload.get("name") or "").strip()
+            or normalized["mpn"]
+            or normalized["value"]
+        )
         normalized["summary"] = normalized["description"]
         raw_extra_fields = payload.get("extra_fields") or payload.get("fields") or {}
         normalized["extra_fields"] = {
@@ -1180,9 +1187,19 @@ class ComponentCatalogDomainService:
         *,
         manufacturer: str,
         mpn: str,
+        name: str = "",
         component_id: str = "",
         acquire_identity_lock: bool = True,
     ) -> None:
+        """Reject a second component that is indistinguishable from an existing one.
+
+        Identity is manufacturer, manufacturer part number and name together. A
+        library legitimately holds several components for one physical part --
+        symbol orientation variants, multi-part connectors split across sheets,
+        alternate footprints -- and those share a manufacturer part number by
+        definition. `name` is what separates them, so it belongs in the key;
+        without it a catalog cannot represent variants at all.
+        """
         if acquire_identity_lock:
             self._lock_component_identity(conn, manufacturer, mpn)
         existing = conn.execute(
@@ -1193,14 +1210,15 @@ class ComponentCatalogDomainService:
             WHERE component.is_active = 1
               AND lower(trim(revision.manufacturer)) = lower(trim(%s))
               AND lower(trim(revision.mpn)) = lower(trim(%s))
+              AND lower(trim(revision.name)) = lower(trim(%s))
               AND component.id <> %s
             LIMIT 1
             """,
-            (manufacturer, mpn, component_id),
+            (manufacturer, mpn, name, component_id),
         ).fetchone()
         if existing:
             raise ValueError(
-                "A component with this manufacturer and manufacturer part number already exists"
+                "A component with this manufacturer, manufacturer part number and name already exists"
             )
 
     def _component_row(self, conn: Any, component_id: str) -> dict[str, Any] | None:
@@ -3866,6 +3884,7 @@ class ComponentCatalogDomainService:
             conn,
             manufacturer=metadata["manufacturer"],
             mpn=metadata["mpn"],
+            name=metadata["name"],
             component_id=existing_component_id or "",
         )
         if existing_component_id:
@@ -4386,11 +4405,11 @@ class ComponentCatalogDomainService:
             fields[str(proposal["key"])] = {**proposal, "storage_kind": "extra", "storage_key": proposal["key"], "archived": False}
         valid_count = 0
         with self._connect() as conn:
-            identity_counts: dict[tuple[str, str], int] = {}
+            identity_counts: dict[tuple[str, str, str], int] = {}
             for raw_item in items:
                 component_id = str(raw_item.get("component_id") or "")
                 component = conn.execute(
-                    "SELECT cr.manufacturer, cr.mpn FROM components c "
+                    "SELECT cr.manufacturer, cr.mpn, cr.name FROM components c "
                     "JOIN component_revisions cr ON cr.id = c.current_revision_id "
                     "WHERE c.id = %s AND c.is_active = 1",
                     (component_id,),
@@ -4400,8 +4419,9 @@ class ComponentCatalogDomainService:
                 patch = dict(raw_item.get("patch") or {})
                 manufacturer = str(patch.get("manufacturer", component["manufacturer"]) or "").strip().casefold()
                 mpn = str(patch.get("mpn", component["mpn"]) or "").strip().casefold()
+                name = str(patch.get("name", component["name"]) or "").strip().casefold()
                 if manufacturer and mpn:
-                    identity = (manufacturer, mpn)
+                    identity = (manufacturer, mpn, name)
                     identity_counts[identity] = identity_counts.get(identity, 0) + 1
             duplicate_identities = {identity for identity, count in identity_counts.items() if count > 1}
             conn.execute(
@@ -4459,13 +4479,22 @@ class ComponentCatalogDomainService:
                             errors.append(f"{field['label']}: {required_error}")
                     target_manufacturer = normalized_patch.get("manufacturer", str(component["manufacturer"] or ""))
                     target_mpn = normalized_patch.get("mpn", str(component["mpn"] or ""))
-                    if (target_manufacturer.strip().casefold(), target_mpn.strip().casefold()) in duplicate_identities:
-                        errors.append("Multiple rows in this batch resolve to the same manufacturer and manufacturer part number")
+                    target_name = normalized_patch.get("name", str(component["name"] or ""))
+                    if (
+                        target_manufacturer.strip().casefold(),
+                        target_mpn.strip().casefold(),
+                        target_name.strip().casefold(),
+                    ) in duplicate_identities:
+                        errors.append(
+                            "Multiple rows in this batch resolve to the same manufacturer, "
+                            "manufacturer part number and name"
+                        )
                     try:
                         self._assert_component_identity_available(
                             conn,
                             manufacturer=target_manufacturer,
                             mpn=target_mpn,
+                            name=target_name,
                             component_id=component_id,
                             acquire_identity_lock=False,
                         )

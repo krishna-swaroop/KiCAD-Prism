@@ -1,13 +1,13 @@
 {
   "schema": "prism.ecad_viewer_build_a0",
   "version": "prism-native-document-diff-v1",
-  "upstreamCommit": "1a39974a90b581f4733d93086ad89e8b5fe6c7d7",
-  "adapterCommit": "a8f5d2f3216d83d1d179079cf8bc05153b21b071",
+  "upstreamCommit": "4ef285b4e60a0ae4523f384425361d01bb3e9a5f",
+  "adapterCommit": "4ef285b4e60a0ae4523f384425361d01bb3e9a5f",
   "dirty": false,
   "worktreePatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "sourceTreeSha256": "dafd4e71069b92b08b31bb275a5f3d03de84a57f416f491f4f7f8e05866e9380",
+  "sourceTreeSha256": "22d4e8d4bdbf36bb3b7a92878fb41341cfe99eeef57ab7c320e24c6d226d7d47",
   "artifacts": {
-    "ecad-viewer.js": "sha256:290bc92ad276b7c2163cfaa8b75c847bc608412f633c69f680f088f7df34e34a",
+    "ecad-viewer.js": "sha256:128c7f3a35b9e781e9e19edca566c996e757cb15e714b0eed12921edbaf4032b",
     "parser.worker.js": "sha256:32474ee6ec9b57bdc1e0fa1a72f6b98b73690c9092f146ab701ab878be5aee69"
   }
 }

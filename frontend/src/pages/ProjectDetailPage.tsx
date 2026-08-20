@@ -19,6 +19,7 @@ import {
     type ProjectSection,
 } from "./project-section-cache";
 
+import { VISUALIZER_DESIGN_SEARCH_SLOT_ID } from "@/lib/design-search";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const AssetsPortal = lazy(() =>
@@ -422,10 +423,26 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
                 </Button>
-                <div className="flex-1">
-                    <h1 className="text-xl font-bold truncate max-w-[200px] md:max-w-none">{project ? getDisplayName(project) : ''}</h1>
-                    <p className="text-sm text-muted-foreground hidden md:block">{project?.description}</p>
+                <div className={cn("min-w-0", activeSection === "visualizers" ? "shrink-0" : "flex-1")}>
+                    <h1 className={cn(
+                        "text-xl font-bold truncate",
+                        activeSection === "visualizers" ? "max-w-[140px] md:max-w-[220px]" : "max-w-[200px] md:max-w-none",
+                    )}>
+                        {project ? getDisplayName(project) : ""}
+                    </h1>
+                    <p className={cn(
+                        "text-sm text-muted-foreground",
+                        activeSection === "visualizers" ? "hidden" : "hidden md:block",
+                    )}>
+                        {project?.description}
+                    </p>
                 </div>
+                {activeSection === "visualizers" ? (
+                    <div
+                        id={VISUALIZER_DESIGN_SEARCH_SLOT_ID}
+                        className="flex min-w-0 flex-1 justify-center px-2"
+                    />
+                ) : null}
 
                 <div className="hidden min-w-0 items-center gap-2 md:flex">
                     <GitBranch className="h-4 w-4 text-muted-foreground" />

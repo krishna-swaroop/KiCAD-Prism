@@ -22,6 +22,10 @@ Source builds use Docker build arguments instead.
 | `AUTH_ENABLED` | explicit authentication switch |
 | `DEV_GUEST_ROLE` | role used only when authentication is disabled |
 | `OIDC_*` | OIDC issuer, client, claims, scopes, and provider label |
+| `PASSWORD_AUTH_ENABLED` | local email/password login (off by default) |
+| `PASSWORD_MIN_LENGTH` | minimum local password length (default 12) |
+| `SESSION_REMEMBER_ME_DAYS` | remember-me session lifetime |
+| `BOOTSTRAP_ADMIN_PASSWORD` | one-time seed for bootstrap admins; clear after first login |
 | `SESSION_SECRET` | signs session and provider tokens |
 | `SESSION_TTL_HOURS` | absolute session lifetime |
 | `SESSION_IDLE_TIMEOUT_MINUTES` | optional idle revocation |
@@ -30,8 +34,8 @@ Source builds use Docker build arguments instead.
 | `BOOTSTRAP_ADMIN_USERS_STR` | initial administrator emails |
 | `DEFAULT_VIEWER_DOMAINS_STR` | optional implicit viewer domains |
 
-`AUTH_ENABLED=true` fails closed if required identity, secret, or database
-settings are incomplete.
+`AUTH_ENABLED=true` fails closed if no login method is complete (OIDC or
+password auth), or if required secret or database settings are incomplete.
 
 ### Database and workers
 
