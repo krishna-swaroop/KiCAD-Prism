@@ -70,10 +70,15 @@ let
     RestrictRealtime = true;
     RestrictSUIDSGID = true;
     SystemCallArchitectures = "native";
+    # kicad-cli sizes its thread pool with sched_setaffinity/setpriority when it
+    # renders PCB thumbnails and exports the 3D GLB, so @resources has to stay
+    # allowed -- denying it killed kicad-cli with SIGSYS before it wrote any
+    # diagnostics. SystemCallErrorNumber keeps a future violation an errno the
+    # caller can report instead of an unexplained signal death.
+    SystemCallErrorNumber = "EPERM";
     SystemCallFilter = [
       "@system-service"
       "~@privileged"
-      "~@resources"
     ];
     UMask = "0027";
   }
