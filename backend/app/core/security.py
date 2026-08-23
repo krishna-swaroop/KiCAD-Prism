@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.roles import (
+    CATALOG_QA_ROLES,
     CATALOG_READ_ROLES,
     CATALOG_WRITE_ROLES,
     PROJECT_RELEASE_ACTOR_ROLES,
@@ -159,6 +160,23 @@ async def require_project_release_actor(
         raise HTTPException(status_code=403, detail="KiCad remote-provider tokens cannot modify Prism resources")
     if user.role not in PROJECT_RELEASE_ACTOR_ROLES:
         raise HTTPException(status_code=403, detail="Designer, QA, or Admin role required")
+    return user
+
+
+async def require_run_status_actor(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    """QA or Admin: advance a manufacturing run's status.
+
+    Mirrors the component-QA split: a designer creates and edits a run, but moving
+    it through its lifecycle (ordered → received → closed …) is a QA/Admin act, so
+    not everyone with write access can change status.
+    """
+
+    if user.auth_type == "kicad_provider":
+        raise HTTPException(status_code=403, detail="KiCad remote-provider tokens cannot modify Prism resources")
+    if user.role not in CATALOG_QA_ROLES:
+        raise HTTPException(status_code=403, detail="QA or Admin role required to change run status")
     return user
 
 

@@ -26,6 +26,10 @@ import { WorkspaceSection, ViewMode } from "./workspace/workspace-types";
 
 const WORKSPACE_PAGE_SIZE = 25;
 
+const ManufacturingDashboard = lazy(() =>
+  import("./manufacturing/manufacturing-dashboard").then((module) => ({ default: module.ManufacturingDashboard }))
+);
+
 const ImportDialog = lazy(() =>
   import("./import-dialog").then((module) => ({ default: module.ImportDialog }))
 );
@@ -60,7 +64,9 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
   const { projects, folders, loading, error, folderById, refresh, createFolder, renameFolder, deleteFolder, moveProjects, deleteProject } =
     useWorkspaceData();
 
-  const requestedSection = searchParams.get("section") === "library-manager" ? "library-manager" : "projects";
+  const sectionParam = searchParams.get("section");
+  const requestedSection: WorkspaceSection =
+    sectionParam === "library-manager" || sectionParam === "manufacturing" ? sectionParam : "projects";
   const [section, setSection] = useState<WorkspaceSection>(requestedSection);
   const [viewMode, setViewMode] = useState<ViewMode>("gallery");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -116,10 +122,12 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
     setSection(nextSection);
     setSearchParams((currentParams) => {
       const next = new URLSearchParams(currentParams);
-      if (nextSection === "library-manager") {
+      if (nextSection === "library-manager" || nextSection === "manufacturing") {
         next.set("section", nextSection);
       } else {
         next.delete("section");
+      }
+      if (nextSection !== "library-manager") {
         next.delete("libraryView");
         next.delete("session");
       }
@@ -564,6 +572,10 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
                     onOpenLibraryManager={() => {}}
                   />
                 )
+              ) : section === "manufacturing" ? (
+                <Suspense fallback={<WorkspaceLoadingState />}>
+                  <ManufacturingDashboard user={user} projects={projects} />
+                </Suspense>
               ) : (
                 <div className="flex h-full min-h-0 flex-col p-6">
                   <WorkspaceBreadcrumbs

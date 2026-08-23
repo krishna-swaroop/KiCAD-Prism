@@ -1,4 +1,4 @@
-import { Blocks, Folder, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Blocks, Factory, Folder, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,16 @@ export function WorkspaceSidebar({
         >
           <Blocks className="h-4 w-4" />
           {!isCollapsed && <span>Library Manager</span>}
+        </Button>
+
+        <Button
+          variant={section === "manufacturing" ? "secondary" : "ghost"}
+          className={cn("w-full justify-start gap-2", isCollapsed && "justify-center px-2")}
+          onClick={() => onSectionChange("manufacturing")}
+          aria-label="Manufacturing"
+        >
+          <Factory className="h-4 w-4" />
+          {!isCollapsed && <span>Manufacturing</span>}
         </Button>
       </div>
     </aside>

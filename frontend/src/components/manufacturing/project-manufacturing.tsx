@@ -1,0 +1,1005 @@
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Factory, Sparkles, Save, Plus, PlusCircle, Settings2, ChevronDown, ChevronRight, FileDown, Trash2, Pencil } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import {
+    extractBoardSpec,
+    listRuns,
+    listManufacturers,
+    listProjectManufacturers,
+    attachManufacturer,
+    detachManufacturer,
+    getProjectSpec,
+    getProjectSpecForManufacturer,
+    updateProjectSpec,
+    updateTemplate,
+    applyTemplateToSpec,
+    listTemplates,
+    downloadSpecSheet,
+    getPcbRuleFields,
+    extractPcbRules,
+} from "@/lib/manufacturing";
+import {
+    RUN_STATUS_LABELS,
+    EXTRACTABLE_KEYS,
+    evaluateCondition,
+    mergeCapabilityRows,
+    type CapabilityMeta,
+    type Manufacturer,
+    type ManufacturingRun,
+    type ParsedSpecConfig,
+    type PcbRuleField,
+    type ProjectManufacturer,
+    type SpecFieldDef,
+    type SpecSectionDef,
+    type SpecTemplate,
+} from "@/types/manufacturing";
+import { SchemaCapabilitiesDialog } from "./spec-config-editor";
+import { CompactSelect, FIELD_GAP, GROUP_GRID, FIELD_WRAP } from "./ui";
+
+interface ProjectManufacturingProps {
+    projectId: string;
+    canEdit: boolean;
+    onOpenRun?: (runId: string) => void;
+    onNewRun?: () => void;
+}
+
+type SpecValues = Record<string, unknown>;
+
+export function ProjectManufacturing({
+    projectId,
+    canEdit,
+    onOpenRun,
+    onNewRun,
+}: ProjectManufacturingProps) {
+    // Navigation: which attached manufacturer and named spec are selected.
+    const [manufacturers, setManufacturers] = useState<ProjectManufacturer[]>([]);
+    const [manufacturerId, setManufacturerId] = useState<string>("");
+    const [specId, setSpecId] = useState<string>("");
+
+    // The selected spec's form state.
+    const [values, setValues] = useState<SpecValues>({});
+    const [source, setSource] = useState<Record<string, string>>({});
+    const [schema, setSchema] = useState<ParsedSpecConfig>({ sections: [], errors: [] });
+    const [runs, setRuns] = useState<ManufacturingRun[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [specLoading, setSpecLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [extracting, setExtracting] = useState(false);
+    const [downloading, setDownloading] = useState(false);
+    const [dirty, setDirty] = useState(false);
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [allManufacturers, setAllManufacturers] = useState<Manufacturer[]>([]);
+    const [ruleFields, setRuleFields] = useState<PcbRuleField[]>([]);
+    // The selected spec's linked-template capabilities (read live from getProjectSpec).
+    const [templateCapabilities, setTemplateCapabilities] = useState<Record<string, number>>({});
+    const [templateCapabilityMeta, setTemplateCapabilityMeta] = useState<Record<string, CapabilityMeta>>({});
+    const [templateName, setTemplateName] = useState<string | null>(null);
+    // The id of the spec's linked template, needed to edit its capability text.
+    const [templateId, setTemplateId] = useState<string | null>(null);
+    // The selected manufacturer's schemas, offered to swap the one spec's schema.
+    const [templates, setTemplates] = useState<SpecTemplate[]>([]);
+    const [applyingTemplate, setApplyingTemplate] = useState(false);
+    // The board's own extracted rules, read automatically for the capability comparison.
+    const [boardRules, setBoardRules] = useState<Record<string, unknown> | null>(null);
+    // Which optional sections are switched on (persisted with the spec).
+    const [activeSections, setActiveSections] = useState<Set<string>>(new Set());
+    // Which sections are collapsed in the UI (per-session, not persisted).
+    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+    // Which top-level panels (Capabilities / spec / Production) are collapsed.
+    const [panelCollapsed, setPanelCollapsed] = useState<Set<string>>(new Set());
+
+    const togglePanel = (id: string) =>
+        setPanelCollapsed((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+
+    useEffect(() => {
+        void getPcbRuleFields()
+            .then(({ fields }) => setRuleFields(fields))
+            .catch(() => setRuleFields([]));
+    }, []);
+
+    // Auto-extract the board's PCB rules once, so the capability table can show the
+    // board's values without the user having to ask. Silent: a board with no
+    // readable rules just leaves the column empty.
+    useEffect(() => {
+        let cancelled = false;
+        void extractPcbRules(projectId)
+            .then(({ rules }) => !cancelled && setBoardRules(rules))
+            .catch(() => !cancelled && setBoardRules(null));
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId]);
+
+    // Load the project-level pieces: attached manufacturers, the runs, and the
+    // global directory (for the "add manufacturer" picker).
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const [attached, runList, all] = await Promise.all([
+                listProjectManufacturers(projectId),
+                listRuns(projectId),
+                listManufacturers().catch(() => [] as Manufacturer[]),
+            ]);
+            setManufacturers(attached);
+            setRuns(runList);
+            setAllManufacturers(all);
+            // Keep the current manufacturer selection if still attached, else pick the first.
+            setManufacturerId((current) =>
+                attached.some((m) => m.id === current) ? current : (attached[0]?.id ?? ""),
+            );
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to load manufacturing data.");
+        } finally {
+            setLoading(false);
+        }
+    }, [projectId]);
+
+    useEffect(() => {
+        void load();
+    }, [load]);
+
+    // Each manufacturer has exactly one spec, created on first read. Load it, and
+    // its manufacturer's schemas so the schema picker can swap which one it uses.
+    useEffect(() => {
+        if (!manufacturerId) {
+            setSpecId("");
+            setTemplates([]);
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const spec = await getProjectSpecForManufacturer(projectId, manufacturerId);
+                if (!cancelled) setSpecId(spec.id);
+            } catch {
+                if (!cancelled) setSpecId("");
+            }
+        })();
+        void (async () => {
+            try {
+                const list = await listTemplates(manufacturerId);
+                if (!cancelled) setTemplates(list);
+            } catch {
+                if (!cancelled) setTemplates([]);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId, manufacturerId]);
+
+    // When the selected spec changes, load its schema and values into the form.
+    useEffect(() => {
+        if (!specId) {
+            setValues({});
+            setSource({});
+            setSchema({ sections: [], errors: [] });
+            setActiveSections(new Set());
+            setTemplateCapabilities({});
+            setTemplateCapabilityMeta({});
+            setTemplateName(null);
+            setTemplateId(null);
+            setDirty(false);
+            return;
+        }
+        let cancelled = false;
+        setSpecLoading(true);
+        void (async () => {
+            try {
+                const spec = await getProjectSpec(specId);
+                if (cancelled) return;
+                setValues(spec.specs ?? {});
+                setSource(spec.source ?? {});
+                setSchema(spec.parsed);
+                setActiveSections(new Set(spec.active_sections ?? []));
+                setTemplateCapabilities(spec.template_capabilities ?? {});
+                setTemplateCapabilityMeta(spec.template_capability_meta ?? {});
+                setTemplateName(spec.template_name ?? null);
+                setTemplateId(spec.template_id ?? null);
+                setDirty(false);
+            } catch (error) {
+                if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load the spec.");
+            } finally {
+                if (!cancelled) setSpecLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [specId]);
+
+    const setField = (key: string, value: unknown, provenance: string = "manual") => {
+        setValues((current) => ({ ...current, [key]: value }));
+        setSource((current) => ({ ...current, [key]: provenance }));
+        setDirty(true);
+    };
+
+    const handleExtract = async () => {
+        setExtracting(true);
+        try {
+            const { suggested, reason } = await extractBoardSpec(projectId);
+            const keys = Object.keys(suggested);
+            if (keys.length === 0) {
+                toast.info(reason ?? "Nothing could be read from the board.");
+                return;
+            }
+            setValues((current) => ({ ...current, ...suggested }));
+            setSource((current) => {
+                const next = { ...current };
+                for (const key of keys) next[key] = "extracted";
+                return next;
+            });
+            setDirty(true);
+            toast.success(`Filled ${keys.length} field(s) from the board. Review and save.`);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to read the board.");
+        } finally {
+            setExtracting(false);
+        }
+    };
+
+    const handleSave = async () => {
+        if (!specId) return;
+        setSaving(true);
+        try {
+            await updateProjectSpec(specId, { specs: values, source, active_sections: [...activeSections] });
+            setDirty(false);
+            toast.success("Spec saved.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to save.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const toggleCollapsed = (title: string) => {
+        setCollapsed((prev) => {
+            const next = new Set(prev);
+            if (next.has(title)) next.delete(title);
+            else next.add(title);
+            return next;
+        });
+    };
+
+    const toggleSectionActive = (title: string, on: boolean) => {
+        setActiveSections((prev) => {
+            const next = new Set(prev);
+            if (on) next.add(title);
+            else next.delete(title);
+            return next;
+        });
+        setDirty(true);
+    };
+
+    const handleDownloadPdf = async () => {
+        setDownloading(true);
+        try {
+            await downloadSpecSheet(projectId, specId || undefined);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to download the spec sheet.");
+        } finally {
+            setDownloading(false);
+        }
+    };
+
+    // Reload the current spec into the form (after a schema swap or an edit) so
+    // new fields, values, and capabilities appear.
+    const reloadSpec = useCallback(async () => {
+        if (!specId) return;
+        const spec = await getProjectSpec(specId);
+        setValues(spec.specs ?? {});
+        setSource(spec.source ?? {});
+        setSchema(spec.parsed);
+        setActiveSections(new Set(spec.active_sections ?? []));
+        setTemplateCapabilities(spec.template_capabilities ?? {});
+        setTemplateCapabilityMeta(spec.template_capability_meta ?? {});
+        setTemplateName(spec.template_name ?? null);
+        setTemplateId(spec.template_id ?? null);
+        setDirty(false);
+    }, [specId]);
+
+    // Swap which of the manufacturer's schemas this one spec uses. Re-links the
+    // spec so its schema fields and capabilities both move to the chosen method.
+    const handleSelectTemplate = async (id: string) => {
+        if (!specId || !id || id === templateId) return;
+        setApplyingTemplate(true);
+        try {
+            await applyTemplateToSpec(specId, id);
+            await reloadSpec();
+            toast.success("Schema applied.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to apply schema.");
+        } finally {
+            setApplyingTemplate(false);
+        }
+    };
+
+    const handleAttach = async (id: string) => {
+        try {
+            await attachManufacturer(projectId, id);
+            await load();
+            setManufacturerId(id);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to add manufacturer.");
+        }
+    };
+
+    const handleDetach = async (id: string) => {
+        try {
+            await detachManufacturer(projectId, id);
+            await load();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to remove manufacturer.");
+        }
+    };
+
+    if (loading) {
+        return <div className="text-sm text-muted-foreground">Loading manufacturing...</div>;
+    }
+
+    const hasFields = schema.sections.some((s) => s.fields.length > 0);
+    const attachedIds = new Set(manufacturers.map((m) => m.id));
+    const attachable = allManufacturers.filter((m) => !attachedIds.has(m.id));
+    const selectedManufacturer = manufacturers.find((m) => m.id === manufacturerId) ?? null;
+
+    return (
+        <div className="flex flex-col gap-4">
+            {/* Manufacturers + named specs navigator */}
+            <section className="border">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Manufacturers
+                    </span>
+                    {canEdit && attachable.length > 0 && (
+                        <Select
+                            value=""
+                            onValueChange={(id) => {
+                                if (id) void handleAttach(id);
+                            }}
+                        >
+                            <SelectTrigger size="sm" aria-label="Add a manufacturer" className="w-auto">
+                                <Plus className="h-3.5 w-3.5" />
+                                <SelectValue placeholder="Add manufacturer" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {attachable.map((m) => (
+                                    <SelectItem key={m.id} value={m.id}>
+                                        {m.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                </div>
+
+                {manufacturers.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
+                        <Factory className="h-8 w-8 opacity-50" />
+                        <p className="text-sm">
+                            No manufacturers yet.
+                            {canEdit ? " Add one above to set its fabrication specs." : ""}
+                        </p>
+                    </div>
+                ) : (
+                    // Square, tab-like chips matching the design system's sharp corners.
+                    <div className="flex flex-wrap gap-px bg-border p-px">
+                        {manufacturers.map((m) => (
+                            <div
+                                key={m.id}
+                                className={cn(
+                                    "flex items-center gap-1 bg-card px-1 transition-colors",
+                                    m.id === manufacturerId ? "bg-secondary" : "hover:bg-muted/40",
+                                )}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => setManufacturerId(m.id)}
+                                    className={cn(
+                                        "px-2 py-1.5 text-sm",
+                                        m.id === manufacturerId && "font-medium",
+                                    )}
+                                >
+                                    {m.name}
+                                </button>
+                                {canEdit && (
+                                    <button
+                                        type="button"
+                                        aria-label={`Remove ${m.name}`}
+                                        title={`Remove ${m.name} from this project`}
+                                        onClick={() => void handleDetach(m.id)}
+                                        className="p-1 text-muted-foreground hover:text-destructive"
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {selectedManufacturer && (
+                    <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2">
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            Schema
+                        </span>
+                        {templates.length > 0 ? (
+                            <Select
+                                value={templateId ?? ""}
+                                onValueChange={(id) => void handleSelectTemplate(id)}
+                                disabled={!canEdit || !specId || applyingTemplate}
+                            >
+                                <SelectTrigger size="sm" aria-label="Schema" className="w-auto min-w-[12rem]">
+                                    <SelectValue placeholder="Custom (no schema)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {templates.map((t) => (
+                                        <SelectItem key={t.id} value={t.id}>
+                                            {t.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <span className="text-sm text-muted-foreground">
+                                No schemas defined for {selectedManufacturer.name}.
+                            </span>
+                        )}
+                    </div>
+                )}
+            </section>
+
+            {/* Capabilities of the selected spec's fabrication method, with the
+                board's own extracted rules shown alongside for comparison. */}
+            {selectedManufacturer && specId && (
+                <section className="border">
+                    <PanelHeader
+                        label="Capabilities"
+                        collapsed={panelCollapsed.has("capabilities")}
+                        onToggle={() => togglePanel("capabilities")}
+                    />
+                    {!panelCollapsed.has("capabilities") &&
+                        (templateName ? (
+                            <CapabilitiesTable
+                                fields={ruleFields}
+                                capabilities={templateCapabilities}
+                                meta={templateCapabilityMeta}
+                                boardRules={boardRules}
+                            />
+                        ) : (
+                            <p className="px-4 py-6 text-sm text-muted-foreground">
+                                Pick one of this manufacturer&rsquo;s schemas above to see its capabilities.
+                            </p>
+                        ))}
+                </section>
+            )}
+
+            {/* Board specs for the selected spec */}
+            {selectedManufacturer && (
+            <section className="border">
+                <PanelHeader
+                    label={selectedManufacturer ? `${selectedManufacturer.name} spec` : "Fabrication spec"}
+                    collapsed={panelCollapsed.has("spec")}
+                    onToggle={() => togglePanel("spec")}
+                    actions={
+                        <>
+                            <Button
+                                variant="outline"
+                                size="icon-sm"
+                                aria-label="Download PDF spec sheet"
+                                title="Download PDF spec sheet"
+                                onClick={() => void handleDownloadPdf()}
+                                disabled={downloading}
+                            >
+                                <FileDown className="h-4 w-4" />
+                            </Button>
+                            {canEdit && specId && (
+                                <>
+                                    <Button
+                                        variant="outline"
+                                        size="icon-sm"
+                                        aria-label="Edit schema"
+                                        title="Edit schema"
+                                        onClick={() => setEditorOpen(true)}
+                                    >
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="outline" size="sm" onClick={() => void handleExtract()} disabled={extracting}>
+                                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                                        {extracting ? "Reading..." : "Extract from board"}
+                                    </Button>
+                                    <Button size="sm" onClick={() => void handleSave()} disabled={saving || !dirty}>
+                                        <Save className="mr-1.5 h-3.5 w-3.5" />
+                                        {saving ? "Saving..." : "Save"}
+                                    </Button>
+                                </>
+                            )}
+                        </>
+                    }
+                />
+
+                {panelCollapsed.has("spec") ? null : !specId ? (
+                    <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
+                        <Settings2 className="h-8 w-8 opacity-50" />
+                        <p className="text-sm">Loading {selectedManufacturer.name}&rsquo;s spec...</p>
+                    </div>
+                ) : specLoading ? (
+                    <div className="p-10 text-center text-sm text-muted-foreground">Loading spec...</div>
+                ) : !hasFields ? (
+                    <div className="flex flex-col items-center gap-3 p-10 text-center text-muted-foreground">
+                        <Settings2 className="h-8 w-8 opacity-50" />
+                        <p className="text-sm">
+                            This schema defines no fields yet.
+                            {canEdit ? " Open “Edit schema” to add some." : ""}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="divide-y">
+                        {schema.errors.length > 0 && (
+                            <div className="m-4 border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive">
+                                The schema has {schema.errors.length} problem(s). Some fields may be missing until you fix it.
+                            </div>
+                        )}
+                        {schema.sections
+                            .filter((section) => evaluateCondition(section.when, values))
+                            .map((section) => (
+                                <SpecSection
+                                    key={section.title}
+                                    section={section}
+                                    values={values}
+                                    collapsed={collapsed.has(section.title)}
+                                    active={!section.optional || activeSections.has(section.title)}
+                                    canEdit={canEdit}
+                                    onToggleCollapsed={() => toggleCollapsed(section.title)}
+                                    onToggleActive={(on) => toggleSectionActive(section.title, on)}
+                                    renderField={(field) => (
+                                        <SpecFieldInput
+                                            key={field.key}
+                                            field={field}
+                                            value={values[field.key]}
+                                            disabled={!canEdit}
+                                            onChange={(v) => setField(field.key, v)}
+                                        />
+                                    )}
+                                />
+                            ))}
+                    </div>
+                )}
+            </section>
+            )}
+
+            {/* Production for this project */}
+            <section className="border">
+                <PanelHeader
+                    label={`Production${runs.length > 0 ? ` (${runs.length})` : ""}`}
+                    collapsed={panelCollapsed.has("production")}
+                    onToggle={() => togglePanel("production")}
+                    actions={
+                        canEdit && onNewRun ? (
+                            <Button size="sm" onClick={onNewRun}>
+                                <PlusCircle className="mr-1.5 h-3.5 w-3.5" />
+                                New production
+                            </Button>
+                        ) : undefined
+                    }
+                />
+
+                {panelCollapsed.has("production") ? null : runs.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
+                        <Factory className="h-8 w-8 opacity-50" />
+                        <p className="text-sm">Track a production to record quantity, manufacturer, and defects.</p>
+                    </div>
+                ) : (
+                    <div>
+                        {runs.map((run) => (
+                            <button
+                                key={run.id}
+                                type="button"
+                                onClick={() => onOpenRun?.(run.id)}
+                                className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                            >
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <span className="truncate text-sm font-medium">
+                                            {run.manufacturer_name || "No manufacturer"}
+                                        </span>
+                                        <Badge variant="secondary">{RUN_STATUS_LABELS[run.status]}</Badge>
+                                    </div>
+                                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                                        {run.quantity_good}/{run.quantity_ordered} good
+                                        {run.defect_count ? ` · ${run.defect_count} defect(s)` : ""}
+                                        {run.commit_sha ? ` · ${run.commit_sha.slice(0, 7)}` : ""}
+                                    </div>
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                    {new Date(run.created_at).toLocaleDateString()}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </section>
+
+            {editorOpen && specId && (
+                <SchemaCapabilitiesDialog
+                    title="Edit spec"
+                    description="Define the fields this spec's form shows and the linked method's fabrication capabilities."
+                    saveLabel="Save"
+                    tabs={[
+                        {
+                            id: "schema",
+                            label: "Schema",
+                            fileBaseName: "spec-schema",
+                            load: async () => {
+                                const spec = await getProjectSpec(specId);
+                                return { text: spec.spec_config, parsed: spec.parsed };
+                            },
+                            save: async (text) => {
+                                await updateProjectSpec(specId, { spec_config: text });
+                                const { previewSpecConfig } = await import("@/lib/manufacturing");
+                                return previewSpecConfig(text);
+                            },
+                            // No in-editor "apply template" picker: it overwrote the
+                            // open spec's schema. To switch schemas, use the Schema
+                            // selector on the Manufacturing page instead.
+                        },
+                        {
+                            id: "capabilities",
+                            label: "Capabilities",
+                            fileBaseName: "spec-capabilities",
+                            // Capabilities belong to the linked template.
+                            disabledNote: templateId
+                                ? undefined
+                                : "This spec is not linked to a schema, so it has no capabilities to edit. Pick a schema from the selector on the Manufacturing page to get one.",
+                            load: async () => {
+                                const { previewSpecConfig, getTemplate } = await import("@/lib/manufacturing");
+                                if (!templateId) return { text: "", parsed: { sections: [], errors: [] } };
+                                const tmpl = await getTemplate(templateId);
+                                const text = tmpl.capability_config ?? "";
+                                return { text, parsed: await previewSpecConfig(text) };
+                            },
+                            save: async (text) => {
+                                const { previewSpecConfig } = await import("@/lib/manufacturing");
+                                if (templateId) await updateTemplate(templateId, { capability_config: text });
+                                return previewSpecConfig(text);
+                            },
+                        },
+                    ]}
+                    onClose={() => setEditorOpen(false)}
+                    onSaved={() => {
+                        setEditorOpen(false);
+                        // Reload the spec into the form so new fields and capabilities appear.
+                        void reloadSpec();
+                    }}
+                />
+            )}
+        </div>
+    );
+}
+
+function formatMinCapability(value: number | undefined, unit?: string | null): string {
+    if (value === undefined || value === null) return "—";
+    return unit ? `${value} ${unit}` : String(value);
+}
+
+function formatBoardValue(value: unknown, unit?: string | null): string {
+    if (value === undefined || value === null || value === "") return "—";
+    if (value === true) return "yes";
+    if (value === false) return "no";
+    return unit ? `${value} ${unit}` : String(value);
+}
+
+// A collapsible panel header band: a chevron + label toggles the panel, and any
+// action buttons sit on the right (their clicks do not toggle the panel).
+function PanelHeader({
+    label,
+    collapsed,
+    onToggle,
+    actions,
+}: {
+    label: ReactNode;
+    collapsed: boolean;
+    onToggle: () => void;
+    actions?: ReactNode;
+}) {
+    return (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={!collapsed}
+                className="flex min-w-0 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+            >
+                {collapsed ? (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <span className="truncate">{label}</span>
+            </button>
+            {actions && <div className="flex items-center gap-1.5">{actions}</div>}
+        </div>
+    );
+}
+
+// Read-only table of the fabrication method's minimum capabilities, with the
+// board's own extracted value for each field alongside so a user can eyeball
+// whether the board meets the minimums. A toggle limits the view to the
+// KiCad-tracked rule fields (the only ones with a board value) versus all,
+// including the fab's custom capabilities. Rows with nothing to show are hidden.
+function CapabilitiesTable({
+    fields,
+    capabilities,
+    meta,
+    boardRules,
+}: {
+    fields: PcbRuleField[];
+    capabilities: Record<string, number>;
+    meta: Record<string, CapabilityMeta>;
+    boardRules: Record<string, unknown> | null;
+}) {
+    const [showAll, setShowAll] = useState(false);
+    const allRows = mergeCapabilityRows(fields, capabilities, meta);
+    const rows = allRows.filter((r) => {
+        if (!showAll && !r.kicad) return false;
+        const hasCap = r.value !== undefined;
+        const hasBoard = r.kicad && boardRules != null && boardRules[r.key] !== undefined;
+        return hasCap || hasBoard;
+    });
+    const hasCustom = allRows.some((r) => !r.kicad && r.value !== undefined);
+
+    return (
+        <div>
+            {hasCustom && (
+                <div className="flex justify-end px-4 pt-2">
+                    <div className="inline-flex border text-xs">
+                        <button
+                            type="button"
+                            className={`px-2.5 py-1 ${!showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            onClick={() => setShowAll(false)}
+                        >
+                            KiCad-tracked
+                        </button>
+                        <button
+                            type="button"
+                            className={`px-2.5 py-1 ${showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                            onClick={() => setShowAll(true)}
+                        >
+                            All
+                        </button>
+                    </div>
+                </div>
+            )}
+            {rows.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-muted-foreground">
+                    No capabilities set for this method yet. Set them from the main Manufacturing page.
+                </p>
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                                <th className="px-4 py-2 text-left font-medium">Rule</th>
+                                <th className="px-4 py-2 text-right font-medium">Manufacturer min</th>
+                                {boardRules != null && (
+                                    <th className="px-4 py-2 text-right font-medium">This board</th>
+                                )}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((row, i) => (
+                                <tr key={row.key} className={i % 2 === 1 ? "bg-muted/20" : ""}>
+                                    <td className="px-4 py-1.5 text-muted-foreground">{row.label}</td>
+                                    <td className="px-4 py-1.5 text-right font-medium tabular-nums">
+                                        {formatMinCapability(row.value, row.unit)}
+                                    </td>
+                                    {boardRules != null && (
+                                        <td className="px-4 py-1.5 text-right tabular-nums">
+                                            {row.kicad ? formatBoardValue(boardRules[row.key], row.unit) : "—"}
+                                        </td>
+                                    )}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+}
+
+interface SpecSectionProps {
+    section: SpecSectionDef;
+    values: SpecValues;
+    collapsed: boolean;
+    active: boolean;
+    canEdit: boolean;
+    onToggleCollapsed: () => void;
+    onToggleActive: (on: boolean) => void;
+    renderField: (field: SpecFieldDef) => ReactNode;
+}
+
+function SpecSection({
+    section,
+    values,
+    collapsed,
+    active,
+    canEdit,
+    onToggleCollapsed,
+    onToggleActive,
+    renderField,
+}: SpecSectionProps) {
+    const showBody = active && !collapsed;
+    // Fields whose gate is unsatisfied are hidden, so options only appear when
+    // their controlling field has the right value.
+    const visibleFields = section.fields.filter((f) => evaluateCondition(f.when, values));
+    return (
+        <div>
+            <div className="flex items-center justify-between gap-3 bg-muted/20 px-4 py-2">
+                <button
+                    type="button"
+                    onClick={onToggleCollapsed}
+                    className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                    aria-expanded={showBody}
+                >
+                    {showBody ? (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    <span className="truncate">{section.title}</span>
+                    {section.optional && (
+                        <span className="rounded-none bg-muted px-1.5 py-0.5 text-[9px] font-medium normal-case tracking-normal text-muted-foreground">
+                            optional
+                        </span>
+                    )}
+                </button>
+
+                {section.optional && (
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={active}
+                        aria-label={`Enable ${section.title}`}
+                        disabled={!canEdit}
+                        onClick={() => onToggleActive(!active)}
+                        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            active ? "bg-primary" : "bg-muted-foreground/30"
+                        }`}
+                    >
+                        <span
+                            className={`inline-block h-3 w-3 transform rounded-full bg-background shadow transition-transform ${
+                                active ? "translate-x-3.5" : "translate-x-0.5"
+                            }`}
+                        />
+                    </button>
+                )}
+            </div>
+
+            {showBody && (
+                <div className={`px-4 pb-3 ${GROUP_GRID}`}>
+                    {visibleFields.map((field) => (
+                        <div key={field.key} className={FIELD_WRAP}>
+                            {renderField(field)}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+interface SpecFieldInputProps {
+    field: SpecFieldDef;
+    value: unknown;
+    disabled: boolean;
+    onChange: (value: unknown) => void;
+}
+
+function SpecFieldInput({ field, value, disabled, onChange }: SpecFieldInputProps) {
+    const inputId = `spec-${field.key}`;
+    // A stored value wins; otherwise fall back to the schema's declared default.
+    const effective = value === undefined || value === null ? field.default : value;
+
+    const labelRow = (
+        <div className="flex items-center gap-1.5">
+            <Label htmlFor={inputId} className="text-xs">
+                {field.label}
+            </Label>
+            {EXTRACTABLE_KEYS.has(field.key) && (
+                <Sparkles
+                    aria-label="Extract from board can fill this field"
+                    className="h-3 w-3 text-muted-foreground"
+                />
+            )}
+        </div>
+    );
+
+    if (field.type === "bool") {
+        // Same stacked shape as the other fields (label on top, control below) so a
+        // row of mixed fields lines up. The control slot is a fixed h-7 box holding
+        // the checkbox, matching the height of an input/select.
+        return (
+            <div className={FIELD_GAP}>
+                {labelRow}
+                <label
+                    htmlFor={inputId}
+                    className="flex h-7 cursor-pointer items-center rounded-none border px-2"
+                >
+                    <input
+                        id={inputId}
+                        type="checkbox"
+                        className="h-3.5 w-3.5"
+                        checked={effective === true}
+                        disabled={disabled}
+                        onChange={(e) => onChange(e.target.checked)}
+                    />
+                </label>
+            </div>
+        );
+    }
+
+    if (field.type === "choice") {
+        // Coerce to a string so a number (e.g. an extracted layer count) matches its
+        // string option. An unset value stays "" (the — placeholder).
+        const selected = effective === undefined || effective === null ? "" : String(effective);
+        return (
+            <div className={FIELD_GAP}>
+                {labelRow}
+                <CompactSelect
+                    id={inputId}
+                    value={field.options.includes(selected) ? selected : ""}
+                    disabled={disabled}
+                    onChange={(e) => onChange(e.target.value || undefined)}
+                >
+                    <option value="">—</option>
+                    {field.options.map((option) => (
+                        <option key={option} value={option}>
+                            {option}
+                        </option>
+                    ))}
+                </CompactSelect>
+            </div>
+        );
+    }
+
+    const isNumber = field.type === "int" || field.type === "number";
+    return (
+        <div className={FIELD_GAP}>
+            {labelRow}
+            <Input
+                id={inputId}
+                type={isNumber ? "number" : "text"}
+                step={field.type === "int" ? 1 : "any"}
+                className="h-7"
+                value={effective === undefined || effective === null ? "" : String(effective)}
+                disabled={disabled}
+                onChange={(e) => {
+                    const raw = e.target.value;
+                    if (isNumber) {
+                        onChange(raw === "" ? undefined : Number(raw));
+                    } else {
+                        onChange(raw || undefined);
+                    }
+                }}
+            />
+        </div>
+    );
+}
