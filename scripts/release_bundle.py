@@ -30,6 +30,12 @@ TEMPLATE_FILES = (
     "Dockerfile.caddy-dns",
     "README.md",
 )
+REPOSITORY_FILES = (
+    ("docs/UPGRADES.md", "UPGRADES.md"),
+    ("scripts/prism_backup.py", "scripts/prism_backup.py"),
+    ("scripts/prism_deploy/__init__.py", "scripts/prism_deploy/__init__.py"),
+    ("scripts/prism_deploy/tui.py", "scripts/prism_deploy/tui.py"),
+)
 
 
 @dataclass(frozen=True)
@@ -135,7 +141,14 @@ def build_release_bundle(
     build_date: str,
 ) -> tuple[Path, Path, Path]:
     metadata = parse_release_tag(tag)
-    missing = [name for name in TEMPLATE_FILES if not (template_dir / name).is_file()]
+    repository_root = template_dir.resolve().parents[1]
+    release_notes_source = repository_root / "docs" / "releases" / f"{metadata.tag}.md"
+    source_files = [
+        *((template_dir / name, name) for name in TEMPLATE_FILES),
+        *((repository_root / source, destination) for source, destination in REPOSITORY_FILES),
+        (release_notes_source, "RELEASE_NOTES.md"),
+    ]
+    missing = [str(source) for source, _destination in source_files if not source.is_file()]
     if missing:
         raise FileNotFoundError(
             f"release template is missing required files: {', '.join(missing)}"
@@ -150,8 +163,10 @@ def build_release_bundle(
 
     output_root.mkdir(parents=True, exist_ok=True)
     bundle_dir.mkdir()
-    for name in TEMPLATE_FILES:
-        shutil.copy2(template_dir / name, bundle_dir / name)
+    for source, destination in source_files:
+        target = bundle_dir / destination
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
 
     replace_release_tokens(
         bundle_dir / ".env.example",
@@ -163,7 +178,7 @@ def build_release_bundle(
     )
     (bundle_dir / "VERSION").write_text(f"{tag}\n", encoding="utf-8")
 
-    checksum_names = (*TEMPLATE_FILES, "VERSION")
+    checksum_names = tuple(destination for _source, destination in source_files) + ("VERSION",)
     checksum_lines = [
         f"{sha256(bundle_dir / name)}  {name}" for name in checksum_names
     ]
