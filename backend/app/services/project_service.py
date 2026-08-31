@@ -139,15 +139,15 @@ def save_path_config_for(project: Any, config: path_config_service.PathConfig) -
 
 
 def invalidate_project_caches() -> None:
-    from app.services import project_properties_service
-
+    # Project metadata used to be memoised in-process here as well. It now
+    # lives in ws_project_metadata, keyed by a fingerprint of the files it was
+    # computed from, so it invalidates itself and has nothing to clear.
     global _project_records_cache, _project_records_cache_time
     global _projects_cache, _projects_cache_time
     _project_records_cache = []
     _project_records_cache_time = 0
     _projects_cache = []
     _projects_cache_time = 0
-    project_properties_service.invalidate_project_properties_cache()
 
 def register_project(project_id: str, name: str, path: str, repo_url: str,
                      sub_path: Optional[str] = None, parent_repo: Optional[str] = None,

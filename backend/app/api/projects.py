@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import mimetypes
 import os
 import posixpath
@@ -23,7 +24,7 @@ from app.services import (
     git_access_service,
     path_config_service,
     project_import_service,
-    project_properties_service,
+    project_metadata_service,
     project_service,
     semantic_index_service,
     semantic_visualizer_service,
@@ -44,6 +45,8 @@ from app.services.git_failures import GitAccessError
 from app.services.git_remote_url import RemoteUrlError, parse_remote_url
 from app.services.path_config_service import PathConfig
 from app.services.job_service import jobs as v3_jobs
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
@@ -1176,6 +1179,47 @@ async def get_project_properties(project_id: str, user: AuthenticatedUser = Depe
     return await asyncio.to_thread(_build_project_properties, project)
 
 
+def _stored_project_metadata(
+    project: project_service.Project,
+) -> tuple[Optional[dict], Optional[dict]]:
+    """Read the project's stored KiCad metadata, refreshing it out of band.
+
+    This used to derive both dictionaries inline, which meant reading and
+    scanning the schematic and the board on every open of the workspace preview
+    panel. On a 57 MB design that scan pinned a core for minutes and, being
+    pure Python, starved the event loop serving every other request -- which is
+    what made opening a large project take tens of seconds.
+
+    The facts change only when the files change, so the import and sync jobs
+    compute them and this reads the row. A project imported before the table
+    existed, or one whose files moved without a sync, has its refresh queued
+    here and returns what is stored meanwhile. That is a card with some blank
+    fields for one job's duration, never a request that blocks on kicad-cli.
+    """
+    anchor = project_service.project_anchor(project)
+    schematic_path = project_service.find_schematic_file(project.path, anchor)
+    pcb_path = project_service.find_pcb_file(project.path, anchor)
+
+    record, current = project_metadata_service.stored_metadata_is_current(
+        project.id, schematic_path, pcb_path
+    )
+    if not current:
+        try:
+            project_import_service.start_project_metadata_job(
+                project.id, requested_by="project-properties"
+            )
+        except Exception as error:
+            # The queue being unavailable must not take the panel down with it;
+            # the card simply keeps whatever was last stored.
+            logger.warning(
+                "Could not queue metadata refresh for %s: %s", project.id, error
+            )
+
+    if not record:
+        return None, None
+    return record.get("schematic"), record.get("pcb")
+
+
 def _build_project_properties(project: project_service.Project) -> ProjectPropertiesResponse:
     repo_path, relative_path = _repo_context(project)
     if relative_path:
@@ -1189,11 +1233,7 @@ def _build_project_properties(project: project_service.Project) -> ProjectProper
     latest_commit = latest_commits[0] if latest_commits else None
     latest_tag = releases[0] if releases else None
 
-    anchor = project_service.project_anchor(project)
-    schematic_path = project_service.find_schematic_file(project.path, anchor)
-    pcb_path = project_service.find_pcb_file(project.path, anchor)
-    schematic_metadata = project_properties_service.extract_schematic_metadata(project.path, schematic_path)
-    pcb_metadata = project_properties_service.extract_pcb_metadata(project.path, pcb_path)
+    schematic_metadata, pcb_metadata = _stored_project_metadata(project)
 
     return ProjectPropertiesResponse(
         project=project,

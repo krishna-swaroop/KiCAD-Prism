@@ -1232,6 +1232,12 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
         )
         thumbnail_job_ids: list[str] = []
         for imported_id in imported_ids:
+            # Queued before the render: the card shows a size and a title block
+            # before it shows a picture, and this job is the cheaper of the two.
+            try:
+                start_project_metadata_job(imported_id, requested_by="project-import")
+            except Exception as error:
+                print(f"Could not queue metadata for {imported_id}: {error}", flush=True)
             try:
                 job_id = start_thumbnail_job(imported_id, requested_by="project-import")
             except Exception as error:
@@ -1291,6 +1297,79 @@ def start_thumbnail_job(project_id: str, *, requested_by: str = "") -> Optional[
         ),
     )
     return str(queued["job_id"])
+
+
+def start_project_metadata_job(project_id: str, *, requested_by: str = "") -> Optional[str]:
+    """Queue a metadata refresh for one project.
+
+    Separate from the thumbnail job even though both shell out to kicad-cli:
+    a thumbnail is cosmetic and may be replaced by an upload, while this is the
+    data the project card reads. Keeping them apart means a render failure does
+    not take the card's size and title block with it.
+    """
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        return None
+    repository_id = str(row.get("repo_id") or "")
+    queued = v3_jobs.enqueue(
+        "project_metadata",
+        {"project_id": project_id},
+        worker_pool="prism",
+        artifact_key=hashlib.sha256(f"metadata:{project_id}".encode("utf-8")).hexdigest(),
+        project_id=project_id,
+        repository_id=repository_id or None,
+        requested_by=requested_by,
+        max_attempts=2,
+        resources={"prism_worker": 1},
+        # Same read lock as the render: kicad-cli must not read a checkout
+        # halfway through a sync fast-forward.
+        locks=(
+            [{"key": f"repository:{repository_id}", "mode": "read"}]
+            if repository_id
+            else []
+        ),
+    )
+    return str(queued["job_id"])
+
+
+def run_project_metadata_job_v3(context: JobContext) -> JobResult:
+    from app.services import project_metadata_service
+
+    project_id = str(context.payload["project_id"])
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        raise ValueError("Project not found")
+    project_path = str(row.get("path") or "")
+    if not project_path or not os.path.isdir(project_path):
+        raise ValueError(f"Project path not found: {project_path}")
+    anchor = str(row.get("project_file_rel") or "") or infer_project_anchor(project_path)
+
+    context.progress(
+        stage="read-metadata",
+        message="Reading project metadata",
+        percent=10,
+        force=True,
+    )
+    schematic_path = project_service.find_schematic_file(project_path, anchor)
+    pcb_path = project_service.find_pcb_file(project_path, anchor)
+    context.check_cancelled()
+
+    computed = project_metadata_service.refresh_project_metadata(
+        project_id, project_path, schematic_path, pcb_path
+    )
+    pcb = computed.get("pcb") or {}
+    return JobResult(
+        message="Project metadata updated",
+        details={
+            "project_id": project_id,
+            "has_schematic": computed.get("schematic") is not None,
+            "has_pcb": computed.get("pcb") is not None,
+            # Recorded so a card with no size on it can be told apart from a
+            # board that genuinely has no outline.
+            "board_stats_source": computed.get("board_stats_source") or "unavailable",
+            "dimensions_mm": pcb.get("dimensions_mm"),
+        },
+    )
 
 
 def start_thumbnail_jobs(
@@ -1428,6 +1507,12 @@ def run_project_sync_job_v3(context: JobContext) -> JobResult:
         start_thumbnail_job(project_id, requested_by="project-sync")
     except Exception as error:
         print(f"Could not queue thumbnail refresh for {project_id}: {error}", flush=True)
+    # A sync is the one event that can change what the files say about
+    # themselves, so it is the event that has to refresh the stored metadata.
+    try:
+        start_project_metadata_job(project_id, requested_by="project-sync")
+    except Exception as error:
+        print(f"Could not queue metadata refresh for {project_id}: {error}", flush=True)
     return JobResult(
         message=str(result.get("message") or "Sync completed"),
         details=dict(result),

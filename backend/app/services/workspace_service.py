@@ -715,6 +715,61 @@ class WorkspaceService:
         return results
 
     # ------------------------------------------------------------------
+    # Project metadata (descriptive facts about the KiCad files)
+    # ------------------------------------------------------------------
+
+    def get_project_metadata(self, project_id: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM ws_project_metadata WHERE project_id=%s",
+                (project_id,),
+            ).fetchone()
+        if not row:
+            return None
+        record = self._row_to_dict(row)
+        for key in ("schematic", "pcb"):
+            value = record.get(key)
+            record[key] = json.loads(value) if isinstance(value, str) else value
+        return record
+
+    def upsert_project_metadata(
+        self,
+        project_id: str,
+        *,
+        schematic: Optional[Dict[str, Any]],
+        pcb: Optional[Dict[str, Any]],
+        source_fingerprint: str,
+        board_stats_source: str = "",
+    ) -> None:
+        """Record what the KiCad files say about themselves.
+
+        Written by the metadata job after an import or a sync, and read by
+        ``/properties``. Deriving this per request meant scanning the board
+        every time somebody clicked a project card.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO ws_project_metadata
+                       (project_id, schematic, pcb, source_fingerprint,
+                        board_stats_source, computed_at)
+                   VALUES (%s,%s,%s,%s,%s,NOW())
+                   ON CONFLICT(project_id) DO UPDATE SET
+                     schematic=excluded.schematic,
+                     pcb=excluded.pcb,
+                     source_fingerprint=excluded.source_fingerprint,
+                     board_stats_source=excluded.board_stats_source,
+                     computed_at=excluded.computed_at""",
+                (
+                    project_id,
+                    json.dumps(schematic) if schematic is not None else None,
+                    json.dumps(pcb) if pcb is not None else None,
+                    source_fingerprint,
+                    board_stats_source,
+                ),
+            )
+            conn.commit()
+
+    # ------------------------------------------------------------------
     # Portfolio CRUD
     # ------------------------------------------------------------------
 
