@@ -188,6 +188,35 @@ type EcadViewerHostProps = {
  * third would be saying the failure is something other than a race, and if it
  * is then the caller should hear about it.
  */
+/**
+ * Split a source list into the batch that is loaded first and the batch that
+ * is appended after.
+ *
+ * Project settings belong in the first batch. Text variables are resolved
+ * while painting, so a document painted before its `.kicad_pro` arrived draws
+ * `${VAR}` verbatim and the viewer has to repaint the whole scene once the
+ * settings land -- about two seconds on a large board. The support-files
+ * fetch that carries the `.kicad_pro` is a small request issued in parallel
+ * with the board download, so in practice it has already resolved by the time
+ * there is a board to draw; it was only ever appended because this split used
+ * to be positional.
+ *
+ * Everything else -- subsheets above all -- still goes through the append
+ * path, which is what keeps the first paint cheap.
+ */
+export function partitionViewerSources(sources: ViewerBlobSource[]): {
+    rootBatch: ViewerBlobSource[];
+    appended: ViewerBlobSource[];
+} {
+    if (!sources.length) return { rootBatch: [], appended: [] };
+    const rest = sources.slice(1);
+    const isProject = (s: ViewerBlobSource) => s.filename.endsWith(".kicad_pro");
+    return {
+        rootBatch: [sources[0]!, ...rest.filter(isProject)],
+        appended: rest.filter((s) => !isProject(s)),
+    };
+}
+
 async function loadRootSource(
     viewer: ECadViewerElement,
     payload: Parameters<ECadViewerElement["replaceSources"]>[0],
@@ -217,7 +246,10 @@ function EcadViewerHost({
     const hostRef = useRef<ECadViewerElement | null>(null);
     const replaceReadyRef = useRef<Promise<void> | null>(null);
     const rootSource = sources[0];
-    const appendedSources = useMemo(() => sources.slice(1), [sources]);
+    const { rootBatch, appended: appendedSources } = useMemo(
+        () => partitionViewerSources(sources),
+        [sources],
+    );
     const viewportLeft = viewportInsets.left ?? 0;
     const viewportRight = viewportInsets.right ?? 0;
     const viewportTop = viewportInsets.top ?? 0;
@@ -240,7 +272,7 @@ function EcadViewerHost({
             hostRef.current.dataset.ecadReadyRevision = "";
             await loadRootSource(
                 hostRef.current,
-                { revisionKey: viewerKey, sources: [rootSource] },
+                { revisionKey: viewerKey, sources: rootBatch },
                 () => cancelled || !hostRef.current,
             );
             if (cancelled || !hostRef.current) return;
@@ -271,7 +303,7 @@ function EcadViewerHost({
         return () => {
             cancelled = true;
         };
-    }, [appendedSources.length, onReady, rootSource, viewerKey]);
+    }, [appendedSources.length, onReady, rootBatch, rootSource, viewerKey]);
 
     useEffect(() => {
         if (!appendedSources.length) return;
