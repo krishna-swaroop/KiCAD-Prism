@@ -144,7 +144,7 @@ class ComponentCatalogPostgresService(ComponentCatalogDomainService):
                     )
                     """
                 )
-                self._ensure_metadata_schema(conn)
+                self._metadata_schema.ensure_schema(conn)
                 conn.execute(
                     """
                     INSERT INTO catalog_schema_migrations (version, applied_at)

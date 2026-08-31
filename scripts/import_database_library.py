@@ -22,8 +22,8 @@ for candidate in (REPO_ROOT / "backend", REPO_ROOT):
         sys.path.insert(0, str(candidate))
         break
 
-from app.services.catalog.metadata_normalization import metadata_keywords, metadata_search_document  # noqa: E402
-from app.services.catalog.metadata_normalization import normalize_metadata  # noqa: E402
+from app.services.catalog.metadata_normalization import metadata_keywords, metadata_search_document, normalize_metadata  # noqa: E402
+from app.services.catalog.metadata_schema import CatalogMetadataSchema  # noqa: E402
 
 ComponentCatalogService: Any = None
 _discover_footprint_name_in_text: Any = None
@@ -1039,7 +1039,7 @@ def _import_groups(
         for key in group.metadata.get("extra_fields", {})
     }
     if discovered_keys:
-        service._ensure_extra_field_definitions(  # type: ignore[attr-defined]
+        CatalogMetadataSchema().ensure_extra_field_definitions(
             target_conn,
             sorted(discovered_keys),
             actor=DATABASE_LIBRARY_IMPORT_ACTOR,
