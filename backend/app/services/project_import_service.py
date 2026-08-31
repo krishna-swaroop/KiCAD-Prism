@@ -1352,10 +1352,21 @@ def run_project_metadata_job_v3(context: JobContext) -> JobResult:
     )
     schematic_path = project_service.find_schematic_file(project_path, anchor)
     pcb_path = project_service.find_pcb_file(project_path, anchor)
+    # The workspace row already resolves the checkout: parent_repo_path is the
+    # clone, relative_path is "." for a root project or the subproject path.
+    # Same split _repo_context makes on the API side.
+    repo_path = str(row.get("parent_repo_path") or project_path)
+    raw_relative = str(row.get("relative_path") or ".").strip()
+    relative_path = None if raw_relative in (".", "", "/") else raw_relative.strip("/")
     context.check_cancelled()
 
     computed = project_metadata_service.refresh_project_metadata(
-        project_id, project_path, schematic_path, pcb_path
+        project_id,
+        project_path,
+        schematic_path,
+        pcb_path,
+        repo_path=repo_path,
+        relative_path=relative_path,
     )
     pcb = computed.get("pcb") or {}
     return JobResult(
@@ -1368,6 +1379,8 @@ def run_project_metadata_job_v3(context: JobContext) -> JobResult:
             # board that genuinely has no outline.
             "board_stats_source": computed.get("board_stats_source") or "unavailable",
             "dimensions_mm": pcb.get("dimensions_mm"),
+            # A push that did not touch the design skips the kicad-cli pass.
+            "reused_file_metadata": bool(computed.get("reused_file_metadata")),
         },
     )
 

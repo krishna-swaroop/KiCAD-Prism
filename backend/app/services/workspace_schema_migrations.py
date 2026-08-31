@@ -1703,6 +1703,30 @@ def _project_metadata(conn: Any) -> None:
     )
 
 
+def _project_metadata_repository(conn: Any) -> None:
+    """Store the card's repository facts alongside its file facts.
+
+    ``/properties`` still derived ``latest_commit`` and ``latest_tag`` from Git
+    on every request. That is far cheaper than the board scan removed in M21 --
+    about 290 ms on our largest monorepo -- but it is per-click work that does
+    not change between clicks, and ``get_releases_filtered`` counts files under
+    the subproject path for every tag, so it grows with the tag list.
+
+    Kept in its own fingerprint rather than sharing the file one: a push moves
+    HEAD without touching the checked-out board, and re-running a 30 s
+    ``kicad-cli`` pass because somebody tagged a release would be worse than
+    the problem being solved.
+    """
+
+    conn.execute(
+        """
+        ALTER TABLE ws_project_metadata
+            ADD COLUMN IF NOT EXISTS repository JSONB,
+            ADD COLUMN IF NOT EXISTS repo_fingerprint TEXT NOT NULL DEFAULT ''
+        """
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (1, "v3_job_foundation", _v3_job_foundation),
     (2, "workspace_read_versions", _workspace_read_versions),
@@ -1721,6 +1745,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (19, "release_studio_project_signoff", _release_studio_project_signoff),
     (20, "project_file_anchor", _project_file_anchor),
     (21, "project_metadata", _project_metadata),
+    (22, "project_metadata_repository", _project_metadata_repository),
 )
 
 

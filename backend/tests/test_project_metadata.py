@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -211,6 +212,148 @@ class ComputeProjectMetadataTests(unittest.TestCase):
         export.assert_not_called()
         self.assertIsNone(computed["pcb"])
         self.assertIsNotNone(computed["schematic"])
+
+
+class RepositoryFactsTests(unittest.TestCase):
+    """The commit and tag lines on the card are Git work, so they are stored too."""
+
+    def _repo(self, directory: Path) -> str:
+        subprocess.run(["git", "init", "-q", str(directory)], check=True)
+        for key, value in (("user.email", "t@example.com"), ("user.name", "Test")):
+            subprocess.run(["git", "-C", str(directory), "config", key, value], check=True)
+        (directory / "board.kicad_pcb").write_text(BOARD_HEADER + ")\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(directory), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(directory), "commit", "-qm", "first"], check=True)
+        return str(directory)
+
+    def test_fingerprint_moves_with_head(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self._repo(Path(directory))
+            before = project_metadata_service.repo_fingerprint(repo)
+
+            (Path(repo) / "note.txt").write_text("x", encoding="utf-8")
+            subprocess.run(["git", "-C", repo, "add", "-A"], check=True)
+            subprocess.run(["git", "-C", repo, "commit", "-qm", "second"], check=True)
+
+            self.assertNotEqual(before, project_metadata_service.repo_fingerprint(repo))
+
+    def test_fingerprint_moves_when_a_tag_is_added_without_a_commit(self) -> None:
+        # A release can be tagged without HEAD moving, and the card shows the
+        # latest tag, so HEAD alone is not a sufficient fingerprint.
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self._repo(Path(directory))
+            before = project_metadata_service.repo_fingerprint(repo)
+
+            subprocess.run(["git", "-C", repo, "tag", "v1.0"], check=True)
+
+            self.assertNotEqual(before, project_metadata_service.repo_fingerprint(repo))
+
+    def test_no_repository_fingerprints_to_nothing(self) -> None:
+        self.assertEqual(project_metadata_service.repo_fingerprint(None), "")
+
+
+class RefreshReusesExpensiveWorkTests(unittest.TestCase):
+    """A push must not trigger another kicad-cli pass."""
+
+    def test_unchanged_files_are_not_re_read(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pcb = _write(root, "board.kicad_pcb", BOARD_HEADER)
+            fingerprint = project_metadata_service.source_fingerprint(None, pcb)
+            stored = {
+                "schematic": None,
+                "pcb": {"filename": "board.kicad_pcb", "dimensions_mm": {"width": 1.0, "height": 2.0}},
+                "source_fingerprint": fingerprint,
+                "board_stats_source": kicad_board_stats_service.SOURCE,
+            }
+
+            with (
+                patch.object(project_metadata_service, "workspace") as ws,
+                patch.object(project_metadata_service, "compute_project_metadata") as compute,
+                patch.object(project_metadata_service, "compute_repository_facts", return_value={"latest_commit": None, "latest_tag": None}),
+                patch.object(project_metadata_service, "repo_fingerprint", return_value="deadbeef"),
+            ):
+                ws.get_project_metadata.return_value = stored
+                computed = project_metadata_service.refresh_project_metadata(
+                    "prj-1", str(root), None, pcb, repo_path="/repo"
+                )
+
+        compute.assert_not_called()
+        self.assertTrue(computed["reused_file_metadata"])
+        self.assertEqual(computed["pcb"]["dimensions_mm"], {"width": 1.0, "height": 2.0})
+
+    def test_changed_files_are_recomputed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pcb = _write(root, "board.kicad_pcb", BOARD_HEADER)
+            stored = {
+                "schematic": None,
+                "pcb": {"filename": "stale.kicad_pcb"},
+                "source_fingerprint": "a-fingerprint-from-before",
+                "board_stats_source": "",
+            }
+            fresh = {
+                "schematic": None,
+                "pcb": {"filename": "board.kicad_pcb"},
+                "source_fingerprint": "new",
+                "board_stats_source": kicad_board_stats_service.SOURCE,
+            }
+
+            with (
+                patch.object(project_metadata_service, "workspace") as ws,
+                patch.object(project_metadata_service, "compute_project_metadata", return_value=dict(fresh)) as compute,
+                patch.object(project_metadata_service, "compute_repository_facts", return_value={"latest_commit": None, "latest_tag": None}),
+                patch.object(project_metadata_service, "repo_fingerprint", return_value="deadbeef"),
+            ):
+                ws.get_project_metadata.return_value = stored
+                computed = project_metadata_service.refresh_project_metadata(
+                    "prj-1", str(root), None, pcb, repo_path="/repo"
+                )
+
+        compute.assert_called_once()
+        self.assertFalse(computed["reused_file_metadata"])
+
+    def test_a_moved_repository_makes_the_row_stale(self) -> None:
+        # Files untouched, HEAD moved: the commit line on the card is wrong, so
+        # the row has to be refreshed even though no kicad-cli work is due.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pcb = _write(root, "board.kicad_pcb", BOARD_HEADER)
+            record = {
+                "source_fingerprint": project_metadata_service.source_fingerprint(None, pcb),
+                "repo_fingerprint": "the-old-head",
+            }
+
+            with (
+                patch.object(project_metadata_service, "workspace") as ws,
+                patch.object(project_metadata_service, "repo_fingerprint", return_value="a-new-head"),
+            ):
+                ws.get_project_metadata.return_value = record
+                _, current = project_metadata_service.stored_metadata_is_current(
+                    "prj-1", None, pcb, "/repo"
+                )
+
+        self.assertFalse(current)
+
+    def test_repository_failure_still_writes_the_row(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pcb = _write(root, "board.kicad_pcb", BOARD_HEADER)
+
+            with (
+                patch.object(project_metadata_service, "workspace") as ws,
+                patch.object(project_metadata_service, "compute_repository_facts", side_effect=RuntimeError("git exploded")),
+                patch.object(project_metadata_service, "repo_fingerprint", return_value=""),
+                patch.object(kicad_board_stats_service, "export_board_stats", side_effect=kicad_board_stats_service.BoardStatsUnavailable("none")),
+            ):
+                ws.get_project_metadata.return_value = None
+                computed = project_metadata_service.refresh_project_metadata(
+                    "prj-1", str(root), None, pcb, repo_path="/repo"
+                )
+
+        ws.upsert_project_metadata.assert_called_once()
+        self.assertIsNone(computed["repository"])
+        self.assertIsNotNone(computed["pcb"])
 
 
 class SourceFingerprintTests(unittest.TestCase):

@@ -727,7 +727,7 @@ class WorkspaceService:
         if not row:
             return None
         record = self._row_to_dict(row)
-        for key in ("schematic", "pcb"):
+        for key in ("schematic", "pcb", "repository"):
             value = record.get(key)
             record[key] = json.loads(value) if isinstance(value, str) else value
         return record
@@ -740,6 +740,8 @@ class WorkspaceService:
         pcb: Optional[Dict[str, Any]],
         source_fingerprint: str,
         board_stats_source: str = "",
+        repository: Optional[Dict[str, Any]] = None,
+        repo_fingerprint: str = "",
     ) -> None:
         """Record what the KiCad files say about themselves.
 
@@ -751,13 +753,16 @@ class WorkspaceService:
             conn.execute(
                 """INSERT INTO ws_project_metadata
                        (project_id, schematic, pcb, source_fingerprint,
-                        board_stats_source, computed_at)
-                   VALUES (%s,%s,%s,%s,%s,NOW())
+                        board_stats_source, repository, repo_fingerprint,
+                        computed_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())
                    ON CONFLICT(project_id) DO UPDATE SET
                      schematic=excluded.schematic,
                      pcb=excluded.pcb,
                      source_fingerprint=excluded.source_fingerprint,
                      board_stats_source=excluded.board_stats_source,
+                     repository=excluded.repository,
+                     repo_fingerprint=excluded.repo_fingerprint,
                      computed_at=excluded.computed_at""",
                 (
                     project_id,
@@ -765,6 +770,8 @@ class WorkspaceService:
                     json.dumps(pcb) if pcb is not None else None,
                     source_fingerprint,
                     board_stats_source,
+                    json.dumps(repository) if repository is not None else None,
+                    repo_fingerprint,
                 ),
             )
             conn.commit()

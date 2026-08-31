@@ -1181,7 +1181,7 @@ async def get_project_properties(project_id: str, user: AuthenticatedUser = Depe
 
 def _stored_project_metadata(
     project: project_service.Project,
-) -> tuple[Optional[dict], Optional[dict]]:
+) -> tuple[Optional[dict], Optional[dict], Optional[dict]]:
     """Read the project's stored KiCad metadata, refreshing it out of band.
 
     This used to derive both dictionaries inline, which meant reading and
@@ -1199,9 +1199,10 @@ def _stored_project_metadata(
     anchor = project_service.project_anchor(project)
     schematic_path = project_service.find_schematic_file(project.path, anchor)
     pcb_path = project_service.find_pcb_file(project.path, anchor)
+    repo_path, _relative_path = _repo_context(project)
 
     record, current = project_metadata_service.stored_metadata_is_current(
-        project.id, schematic_path, pcb_path
+        project.id, schematic_path, pcb_path, repo_path
     )
     if not current:
         try:
@@ -1216,24 +1217,15 @@ def _stored_project_metadata(
             )
 
     if not record:
-        return None, None
-    return record.get("schematic"), record.get("pcb")
+        return None, None, None
+    return record.get("schematic"), record.get("pcb"), record.get("repository")
 
 
 def _build_project_properties(project: project_service.Project) -> ProjectPropertiesResponse:
-    repo_path, relative_path = _repo_context(project)
-    if relative_path:
-        releases = get_releases_filtered(repo_path, relative_path)
-        latest_page = get_commits_list_filtered(repo_path, relative_path, 1)
-    else:
-        releases = get_releases(repo_path)
-        latest_page = get_commits_list(repo_path, 1)
-
-    latest_commits = latest_page["commits"] if isinstance(latest_page, dict) else latest_page
-    latest_commit = latest_commits[0] if latest_commits else None
-    latest_tag = releases[0] if releases else None
-
-    schematic_metadata, pcb_metadata = _stored_project_metadata(project)
+    schematic_metadata, pcb_metadata, repository = _stored_project_metadata(project)
+    repository = repository or {}
+    latest_commit = repository.get("latest_commit")
+    latest_tag = repository.get("latest_tag")
 
     return ProjectPropertiesResponse(
         project=project,

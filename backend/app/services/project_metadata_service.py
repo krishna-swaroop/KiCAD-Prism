@@ -46,6 +46,62 @@ def source_fingerprint(schematic_path: Optional[str], pcb_path: Optional[str]) -
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
+def repo_fingerprint(repo_path: Optional[str]) -> str:
+    """Identify the repository state the stored commit/tag was read at.
+
+    Deliberately separate from ``source_fingerprint``. A push moves HEAD
+    without touching the checked-out board, and a tag can be added without
+    moving HEAD at all; neither should trigger the ~30 s kicad-cli pass that
+    the file fingerprint guards. Reading HEAD and counting tags costs about
+    16 ms against the ~290 ms of Git work it decides whether to repeat.
+    """
+    if not repo_path:
+        return ""
+    try:
+        from git import Repo
+
+        repo = Repo(repo_path)
+        head = repo.head.commit.hexsha if repo.head.is_valid() else "unborn"
+        # Tag count and tip name together: a tag added or moved changes one or
+        # the other, and neither requires walking the tag objects.
+        tags = sorted(tag.name for tag in repo.tags)
+        digest = hashlib.sha256(
+            "|".join([head, str(len(tags)), tags[-1] if tags else "-"]).encode("utf-8")
+        ).hexdigest()
+        return digest
+    except Exception as error:  # pragma: no cover - depends on the checkout
+        logger.warning("Could not fingerprint repository %s: %s", repo_path, error)
+        return ""
+
+
+def compute_repository_facts(repo_path: str, relative_path: Optional[str]) -> dict[str, Any]:
+    """The latest commit and tag the card shows.
+
+    ``get_releases_filtered`` counts files under the subproject path for every
+    tag, so this grows with the tag list -- which is exactly why it belongs in
+    a job rather than in the request that opens a panel.
+    """
+    from app.services.git_service import (
+        get_commits_list,
+        get_commits_list_filtered,
+        get_releases,
+        get_releases_filtered,
+    )
+
+    if relative_path:
+        releases = get_releases_filtered(repo_path, relative_path)
+        latest_page = get_commits_list_filtered(repo_path, relative_path, 1)
+    else:
+        releases = get_releases(repo_path)
+        latest_page = get_commits_list(repo_path, 1)
+
+    latest_commits = latest_page["commits"] if isinstance(latest_page, dict) else latest_page
+    return {
+        "latest_commit": latest_commits[0] if latest_commits else None,
+        "latest_tag": releases[0] if releases else None,
+    }
+
+
 def compute_project_metadata(
     project_path: str,
     schematic_path: Optional[str],
@@ -86,15 +142,52 @@ def refresh_project_metadata(
     project_path: str,
     schematic_path: Optional[str],
     pcb_path: Optional[str],
+    repo_path: Optional[str] = None,
+    relative_path: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Recompute and store one project's metadata."""
-    computed = compute_project_metadata(project_path, schematic_path, pcb_path)
+    """Recompute and store one project's metadata.
+
+    The two halves are refreshed independently. File metadata is reused when
+    the files have not changed, because recomputing it means another kicad-cli
+    pass -- 30 s on a large board -- and a push that only moved HEAD is not a
+    reason to pay it. Repository facts are always recomputed: they are the
+    cheap half and they are what a push actually changes.
+    """
+    stored = workspace.get_project_metadata(project_id)
+    files_fingerprint = source_fingerprint(schematic_path, pcb_path)
+
+    if stored and str(stored.get("source_fingerprint") or "") == files_fingerprint:
+        computed: dict[str, Any] = {
+            "schematic": stored.get("schematic"),
+            "pcb": stored.get("pcb"),
+            "source_fingerprint": files_fingerprint,
+            "board_stats_source": str(stored.get("board_stats_source") or ""),
+            "reused_file_metadata": True,
+        }
+    else:
+        computed = compute_project_metadata(project_path, schematic_path, pcb_path)
+        computed["reused_file_metadata"] = False
+
+    repository: Optional[dict[str, Any]] = None
+    if repo_path:
+        try:
+            repository = compute_repository_facts(repo_path, relative_path)
+        except Exception as error:
+            # A card without a commit line beats a job that fails and leaves
+            # the whole row unwritten.
+            logger.warning("Could not read repository facts for %s: %s", project_id, error)
+
+    computed["repository"] = repository
+    computed["repo_fingerprint"] = repo_fingerprint(repo_path)
+
     workspace.upsert_project_metadata(
         project_id,
         schematic=computed["schematic"],
         pcb=computed["pcb"],
         source_fingerprint=computed["source_fingerprint"],
         board_stats_source=computed["board_stats_source"],
+        repository=repository,
+        repo_fingerprint=computed["repo_fingerprint"],
     )
     return computed
 
@@ -103,10 +196,19 @@ def stored_metadata_is_current(
     project_id: str,
     schematic_path: Optional[str],
     pcb_path: Optional[str],
+    repo_path: Optional[str] = None,
 ) -> tuple[Optional[dict[str, Any]], bool]:
-    """Return the stored row and whether it still matches the files on disk."""
+    """Return the stored row and whether it still describes the project.
+
+    Stale on either axis: the files may have changed, or the repository may
+    have moved. Both are cheap to check -- two ``stat`` calls and a HEAD read.
+    """
     record = workspace.get_project_metadata(project_id)
     if not record:
         return None, False
-    expected = source_fingerprint(schematic_path, pcb_path)
-    return record, str(record.get("source_fingerprint") or "") == expected
+
+    files_current = str(record.get("source_fingerprint") or "") == source_fingerprint(
+        schematic_path, pcb_path
+    )
+    repo_current = str(record.get("repo_fingerprint") or "") == repo_fingerprint(repo_path)
+    return record, files_current and repo_current
