@@ -123,11 +123,6 @@
     },
     {
       "path": "scripts/import_database_library.py",
-      "symbol": "_ensure_extra_field_definitions",
-      "count": 1
-    },
-    {
-      "path": "scripts/import_database_library.py",
       "symbol": "_extract_top_level_symbol_blocks",
       "count": 1
     },
@@ -367,7 +362,7 @@
     "backend/app/api/projects.py": 2124,
     "backend/app/release_studio/closure.py": 1336,
     "backend/app/release_studio/documents/artwork.py": 1533,
-    "backend/app/services/component_catalog_domain.py": 5808,
+    "backend/app/services/component_catalog_domain.py": 5563,
     "backend/app/services/design_compare_service.py": 2185,
     "backend/app/services/fabrication_compare_service.py": 1543,
     "backend/app/services/job_service.py": 1916,
