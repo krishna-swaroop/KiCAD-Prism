@@ -22,6 +22,9 @@ for candidate in (REPO_ROOT / "backend", REPO_ROOT):
         sys.path.insert(0, str(candidate))
         break
 
+from app.services.catalog.metadata_normalization import metadata_keywords, metadata_search_document  # noqa: E402
+from app.services.catalog.metadata_normalization import normalize_metadata  # noqa: E402
+
 ComponentCatalogService: Any = None
 _discover_footprint_name_in_text: Any = None
 _sanitize_name: Any = None
@@ -573,9 +576,9 @@ def _insert_import_component(
             metadata["rate"],
             metadata["sap_code"],
             metadata["summary"],
-            json.dumps(service._keywords(metadata), separators=(",", ":")),  # type: ignore[attr-defined]
+            json.dumps(metadata_keywords(metadata), separators=(",", ":")),
             json.dumps(metadata["extra_fields"], sort_keys=True, separators=(",", ":")),
-            service._search_document(metadata),  # type: ignore[attr-defined]
+            metadata_search_document(metadata),
             now,
             now,
         ),
@@ -651,14 +654,11 @@ def _collect_import_plans(
                 continue
 
             stats.rows_selected += 1
-            metadata = service._normalize_metadata(  # type: ignore[attr-defined]
+            metadata = normalize_metadata(
                 _metadata_from_row_cached(
                     row, table, import_name, column_map, source_namespace
                 )
             )
-            # _normalize_metadata intentionally returns only catalog revision
-            # fields. Keep import origin alongside that normalized payload so
-            # every identity kind receives the component-level provenance tag.
             metadata["import_source_namespace"] = source_namespace
             if metadata["extra_fields"].get(MPN_SOURCE_FIELD_LABEL) == MPN_SOURCE_DATABASE:
                 stats.mpn_recovered += 1

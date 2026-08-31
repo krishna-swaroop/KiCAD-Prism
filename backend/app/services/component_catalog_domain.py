@@ -38,6 +38,17 @@ from app.services.catalog.component_read_models import (
 )
 from app.services.catalog.component_queries import CatalogComponentQueries
 from app.services.catalog.locking import CatalogLockOperations, NoopCatalogLocks
+from app.services.catalog.metadata_normalization import (
+    IDENTITY_KIND_MPN,
+    IDENTITY_KIND_PROVISIONAL_IPN,
+    MPN_SOURCE_MANUFACTURER,
+    MPN_SOURCE_PROVISIONAL_IPN,
+    dedupe,
+    metadata_keywords,
+    metadata_search_document,
+    normalize_identity_value,
+    normalize_metadata,
+)
 from app.services.catalog.normalization import (
     json_loads as _json_loads,
     preview_base_kind as _preview_base_kind,
@@ -74,11 +85,6 @@ PREVIEW_KIND_FOOTPRINT = "footprint"
 PREVIEW_STATUS_READY = "ready"
 PREVIEW_STATUS_FAILED = "failed"
 PREVIEW_PIPELINE_VERSION = "prism-preview-a2-multi-unit"
-
-IDENTITY_KIND_MPN = "mpn"
-IDENTITY_KIND_PROVISIONAL_IPN = "provisional_ipn"
-MPN_SOURCE_MANUFACTURER = "manufacturer"
-MPN_SOURCE_PROVISIONAL_IPN = "provisional_ipn"
 
 SOURCE_MANUAL = "manual"
 SOURCE_EXTERNAL = "external"
@@ -371,20 +377,10 @@ def _rewrite_footprint_payload(
     return text.encode("utf-8")
 
 
-def _dedupe(values: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for value in values:
-        if value and value not in seen:
-            seen.add(value)
-            ordered.append(value)
-    return ordered
-
-
 def _discover_symbol_names_in_text(text: str) -> list[str]:
     matches = re.findall(r'\(symbol\s+"([^"]+)"', text)
     filtered = [name for name in matches if not re.search(r"_\d+_\d+$", name)]
-    return _dedupe(filtered or matches)
+    return dedupe(filtered or matches)
 
 
 def _discover_footprint_name_in_text(text: str) -> str:
@@ -413,11 +409,6 @@ def _release_allows_remote(release_status: str) -> bool:
 
 def _normalize_workflow_stage(stage: str) -> str:
     return normalize_workflow_stage(stage)
-
-
-def _normalize_identity_value(value: Any) -> str:
-    """Canonical catalog identity normalization: trim and lowercase only."""
-    return str(value or "").strip().lower()
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -792,120 +783,6 @@ class ComponentCatalogDomainService:
             raise ValueError("Unsupported asset type")
         return mapping[asset_type]
 
-    def _search_document(self, payload: dict[str, Any]) -> str:
-        fixed = " ".join(
-            str(payload.get(key) or "")
-            for key in (
-                "name",
-                "value",
-                "description",
-                "manufacturer",
-                "mpn",
-                "package_name",
-                "category",
-                "vendor",
-                "vendor_part_number",
-                "sap_code",
-            )
-        ).strip()
-        extra_fields = payload.get("extra_fields") or {}
-        extra = " ".join(f"{key} {value}" for key, value in dict(extra_fields).items())
-        return f"{fixed} {extra}".strip()
-
-    def _fts_query(self, query: str) -> str:
-        tokens = re.findall(r"[A-Za-z0-9_]+", query.strip().lower())
-        return " ".join(f"{token}*" for token in tokens[:8])
-
-    def _keywords(self, payload: dict[str, Any]) -> list[str]:
-        return _dedupe(
-            [
-                str(payload.get("value") or ""),
-                str(payload.get("manufacturer") or ""),
-                str(payload.get("mpn") or ""),
-                str(payload.get("package_name") or ""),
-                str(payload.get("category") or ""),
-                str(payload.get("vendor") or ""),
-            ]
-        )
-
-    def _normalize_metadata(self, payload: dict[str, Any]) -> dict[str, Any]:
-        requested_kind = str(payload.get("identity_kind") or "").strip().lower()
-        mpn_source = str(payload.get("mpn_source") or "").strip().lower()
-        identity_kind = requested_kind or (
-            IDENTITY_KIND_PROVISIONAL_IPN
-            if mpn_source in {MPN_SOURCE_PROVISIONAL_IPN, "fallback_ipn"}
-            else IDENTITY_KIND_MPN
-        )
-        if identity_kind not in {IDENTITY_KIND_MPN, IDENTITY_KIND_PROVISIONAL_IPN}:
-            raise ValueError("identity_kind must be 'mpn' or 'provisional_ipn'")
-        normalized = {
-            "value": str(payload.get("value") or "").strip(),
-            "description": str(payload.get("description") or "").strip(),
-            "datasheet_url": str(payload.get("datasheet_url") or payload.get("datasheet") or "").strip(),
-            "manufacturer": str(payload.get("manufacturer") or "").strip(),
-            "mpn": str(payload.get("mpn") or payload.get("manufacturer_part_number") or "").strip(),
-            "category": str(payload.get("category") or "").strip(),
-            "package_name": str(payload.get("package_name") or "").strip(),
-            "vendor": str(payload.get("vendor") or "").strip(),
-            "vendor_part_number": str(payload.get("vendor_part_number") or "").strip(),
-            "mass_g": str(payload.get("mass_g") or "").strip(),
-            "rqjc_c_w": str(payload.get("rqjc_c_w") or "").strip(),
-            "rqjc_top_c_w": str(payload.get("rqjc_top_c_w") or "").strip(),
-            "temp_max_c": str(payload.get("temp_max_c") or "").strip(),
-            "temp_min_c": str(payload.get("temp_min_c") or "").strip(),
-            "power_dissipation_w": str(payload.get("power_dissipation_w") or "").strip(),
-            "rate": str(payload.get("rate") or "").strip(),
-            "sap_code": str(payload.get("sap_code") or "").strip(),
-            "identity_kind": identity_kind,
-            "identity_source": str(payload.get("identity_source") or "").strip(),
-            "source_internal_part_number": str(
-                payload.get("source_internal_part_number")
-                or payload.get("internal_part_number")
-                or ""
-            ).strip(),
-        }
-        for field in ("value", "description", "datasheet_url", "manufacturer"):
-            if not normalized[field]:
-                raise ValueError(f"{field} is required")
-        if identity_kind == IDENTITY_KIND_MPN and not normalized["mpn"]:
-            raise ValueError("mpn is required for manufacturer-part identities")
-        if identity_kind == IDENTITY_KIND_PROVISIONAL_IPN:
-            normalized["mpn"] = ""
-            if not normalized["identity_source"]:
-                raise ValueError("identity_source is required for provisional parts")
-            if not normalized["source_internal_part_number"]:
-                normalized["source_internal_part_number"] = str(payload.get("name") or "").strip()
-            if not normalized["source_internal_part_number"]:
-                raise ValueError("source_internal_part_number is required for provisional parts")
-        # An explicit name wins. Database-library imports carry an internal part
-        # number that is not the manufacturer part number, and deriving the name
-        # from `mpn` would drop it from the record entirely.
-        normalized["name"] = (
-            str(payload.get("name") or "").strip()
-            or normalized["mpn"]
-            or normalized["value"]
-        )
-        normalized["summary"] = normalized["description"]
-        normalized["normalized_manufacturer"] = _normalize_identity_value(normalized["manufacturer"])
-        normalized["normalized_mpn"] = _normalize_identity_value(normalized["mpn"])
-        normalized["normalized_part_number"] = _normalize_identity_value(
-            normalized["mpn"]
-            if identity_kind == IDENTITY_KIND_MPN
-            else normalized["source_internal_part_number"]
-        )
-        normalized["mpn_source"] = (
-            MPN_SOURCE_MANUFACTURER
-            if identity_kind == IDENTITY_KIND_MPN
-            else MPN_SOURCE_PROVISIONAL_IPN
-        )
-        raw_extra_fields = payload.get("extra_fields") or payload.get("fields") or {}
-        normalized["extra_fields"] = {
-            str(key): str(value or "")
-            for key, value in dict(raw_extra_fields).items()
-            if str(key).strip()
-        }
-        return normalized
-
     def _unique_slug(self, conn: Any, base: str) -> str:
         self._catalog_locks.lock_slug_allocation(conn, base)
         slug = _slugify(base or "component")
@@ -937,8 +814,8 @@ class ComponentCatalogDomainService:
     ) -> None:
         """Reject a second component with the same orderable or provisional identity."""
         _ = name
-        normalized_manufacturer = _normalize_identity_value(manufacturer)
-        normalized_part_number = _normalize_identity_value(
+        normalized_manufacturer = normalize_identity_value(manufacturer)
+        normalized_part_number = normalize_identity_value(
             mpn if identity_kind == IDENTITY_KIND_MPN else source_internal_part_number
         )
         if acquire_identity_lock:
@@ -1416,7 +1293,7 @@ class ComponentCatalogDomainService:
             proposal,
             metadata_overrides,
         )
-        metadata = self._normalize_metadata(normalized_input)
+        metadata = normalize_metadata(normalized_input)
         candidates_by_type = self._project_import_assets.group_import_assets(proposal)
         # An asset type may instead be satisfied by an existing catalog asset. That is
         # a reference, not a copy: the same assets row is linked into this revision, so
@@ -2236,7 +2113,7 @@ class ComponentCatalogDomainService:
 
     def create_manual_component(self, *, actor: str = "", change_summary: str = "Create component", **payload: Any) -> dict[str, Any]:
         self.initialize()
-        metadata = self._normalize_metadata(payload)
+        metadata = normalize_metadata(payload)
         now = _utc_now_iso()
         component_id = str(uuid.uuid4())
         with self._connect() as conn:
@@ -2326,9 +2203,9 @@ class ComponentCatalogDomainService:
                     metadata["rate"],
                     metadata["sap_code"],
                     metadata["summary"],
-                    json.dumps(self._keywords(metadata), separators=(",", ":")),
+                    json.dumps(metadata_keywords(metadata), separators=(",", ":")),
                     json.dumps(metadata["extra_fields"], sort_keys=True, separators=(",", ":")),
-                    self._search_document(metadata),
+                    metadata_search_document(metadata),
                     now,
                     revision["id"],
                 ),
@@ -2437,9 +2314,9 @@ class ComponentCatalogDomainService:
                 metadata["rate"],
                 metadata["sap_code"],
                 metadata["summary"],
-                json.dumps(self._keywords(metadata), separators=(",", ":")),
+                json.dumps(metadata_keywords(metadata), separators=(",", ":")),
                 json.dumps(metadata["extra_fields"], sort_keys=True, separators=(",", ":")),
-                self._search_document(metadata),
+                metadata_search_document(metadata),
                 now,
                 now,
             ),
@@ -2522,7 +2399,7 @@ class ComponentCatalogDomainService:
                     merged[column] = str(updates[key] or "")
             if "extra_fields" in updates:
                 merged["extra_fields"] = dict(updates["extra_fields"] or {})
-            metadata = self._normalize_metadata(merged)
+            metadata = normalize_metadata(merged)
             unchanged = all(
                 (
                     _json_loads(revision.get(key), {}) == metadata[key]
@@ -2609,7 +2486,7 @@ class ComponentCatalogDomainService:
         field_type = str(payload.get("type") or "text")
         if field_type not in METADATA_FIELD_TYPES:
             raise ValueError("Unsupported metadata field type")
-        enum_values = _dedupe([str(value).strip() for value in payload.get("enum_values") or [] if str(value).strip()])
+        enum_values = dedupe([str(value).strip() for value in payload.get("enum_values") or [] if str(value).strip()])
         if field_type == "enum" and not enum_values:
             raise ValueError("Enum fields require at least one option")
         now = _utc_now_iso()
@@ -2653,7 +2530,7 @@ class ComponentCatalogDomainService:
                 raise ValueError("Unsupported metadata field type")
             if before["built_in"] and field_type != before["type"]:
                 raise ValueError("Built-in field types cannot be changed")
-            enum_values = _dedupe([str(value).strip() for value in payload.get("enum_values", before["enum_values"]) if str(value).strip()])
+            enum_values = dedupe([str(value).strip() for value in payload.get("enum_values", before["enum_values"]) if str(value).strip()])
             if field_type == "enum" and not enum_values:
                 raise ValueError("Enum fields require at least one option")
             next_required = bool(payload.get("required", before["required"]))
@@ -3023,7 +2900,7 @@ class ComponentCatalogDomainService:
                     merged[field["storage_key"]] = value
                 else:
                     merged["extra_fields"][field["storage_key"]] = value
-            metadata = self._normalize_metadata(merged)
+            metadata = normalize_metadata(merged)
             self._lock_component_identity(conn, metadata["manufacturer"], metadata["mpn"])
             parent_revision_id = str(revision["id"])
             _, revision_id = self._upsert_component_metadata_row(
@@ -3375,7 +3252,7 @@ class ComponentCatalogDomainService:
                     "rate": row.get("rate", ""),
                     "sap_code": row.get("sap_code", ""),
                 }
-                normalized = self._normalize_metadata(payload)
+                normalized = normalize_metadata(payload)
                 if existing:
                     component_id, revision_id = self._upsert_component_metadata_row(
                         conn,
@@ -3486,7 +3363,7 @@ class ComponentCatalogDomainService:
                         WHERE identity_kind = 'mpn'
                           AND normalized_manufacturer = %s AND normalized_part_number = %s
                         """,
-                        (_normalize_identity_value(manufacturer), _normalize_identity_value(mpn)),
+                        (normalize_identity_value(manufacturer), normalize_identity_value(mpn)),
                     ).fetchone()
                 if not component:
                     not_found += 1
@@ -3495,10 +3372,10 @@ class ComponentCatalogDomainService:
                 if str(component["identity_kind"]) != IDENTITY_KIND_MPN:
                     errors.append(f"Row {index}: provisional components cannot receive MPN inventory")
                     continue
-                if manufacturer and _normalize_identity_value(manufacturer) != str(component["normalized_manufacturer"]):
+                if manufacturer and normalize_identity_value(manufacturer) != str(component["normalized_manufacturer"]):
                     errors.append(f"Row {index}: manufacturer does not match component_id")
                     continue
-                if mpn and _normalize_identity_value(mpn) != str(component["normalized_part_number"]):
+                if mpn and normalize_identity_value(mpn) != str(component["normalized_part_number"]):
                     errors.append(f"Row {index}: mpn does not match component_id")
                     continue
                 try:
