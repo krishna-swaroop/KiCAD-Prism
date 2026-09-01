@@ -110,21 +110,20 @@ def _extract_int_value(block: str, key: str) -> Optional[int]:
 
 
 def _parse_title_block(text: str) -> Optional[dict]:
+    """The title block, reduced to the two fields the panel shows.
+
+    KiCad's block also carries rev, company and numbered comments. Prism
+    extracted all of them and rendered none, so they were payload nobody read
+    and parsing nobody needed. Narrowed to what the properties panel actually
+    displays: the title, which is its heading for the board, and the date.
+    """
     block = _extract_sexpr_block(text, "title_block")
     if not block:
         return None
 
-    comments = {
-        index: _unescape_kicad_string(value)
-        for index, value in re.findall(rf"\(comment\s+(\d+)\s+{_STRING_PATTERN}\)", block)
-    }
-
     return {
         "title": _extract_string_value(block, "title") or "",
         "date": _extract_string_value(block, "date") or "",
-        "rev": _extract_string_value(block, "rev") or "",
-        "company": _extract_string_value(block, "company") or "",
-        "comments": comments,
     }
 
 
@@ -154,8 +153,6 @@ def compute_schematic_metadata(project_path: str, file_path: Optional[str]) -> O
         "version": _extract_int_value(text, "version"),
         "generator": _extract_string_value(text, "generator"),
         "generator_version": _extract_string_value(text, "generator_version"),
-        "paper": _extract_string_value(text, "paper"),
-        "uuid": _extract_string_value(text, "uuid"),
         "title_block": _parse_title_block(text),
     }
 
@@ -186,7 +183,6 @@ def compute_pcb_metadata(
         "version": _extract_int_value(text, "version"),
         "generator": _extract_string_value(text, "generator"),
         "generator_version": _extract_string_value(text, "generator_version"),
-        "paper": _extract_string_value(text, "paper"),
         "dimensions_mm": facts.get("dimensions_mm"),
         "thickness_mm": facts.get("thickness_mm"),
         "title_block": _parse_title_block(text),

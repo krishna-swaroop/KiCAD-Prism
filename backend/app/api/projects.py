@@ -68,11 +68,11 @@ class Monorepo(BaseModel):
 
 
 class ProjectPropertiesTitleBlock(BaseModel):
+    # KiCad's title block also carries rev, company and numbered comments.
+    # Prism parsed all of them and rendered none; narrowed to what the
+    # properties panel displays.
     title: str = ""
     date: str = ""
-    rev: str = ""
-    company: str = ""
-    comments: Dict[str, str] = Field(default_factory=dict)
 
 
 class ProjectPropertiesSchematicFile(BaseModel):
@@ -81,8 +81,6 @@ class ProjectPropertiesSchematicFile(BaseModel):
     version: Optional[int] = None
     generator: Optional[str] = None
     generator_version: Optional[str] = None
-    paper: Optional[str] = None
-    uuid: Optional[str] = None
     title_block: Optional[ProjectPropertiesTitleBlock] = None
 
 
@@ -92,7 +90,6 @@ class ProjectPropertiesPcbFile(BaseModel):
     version: Optional[int] = None
     generator: Optional[str] = None
     generator_version: Optional[str] = None
-    paper: Optional[str] = None
     dimensions_mm: Optional[Dict[str, float]] = None
     thickness_mm: Optional[float] = None
     title_block: Optional[ProjectPropertiesTitleBlock] = None

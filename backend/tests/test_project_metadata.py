@@ -67,11 +67,37 @@ class HeaderExtractionTests(unittest.TestCase):
         self.assertEqual(metadata["version"], 20240819)
         self.assertEqual(metadata["generator"], "pcbnew")
         self.assertEqual(metadata["generator_version"], "8.99")
-        self.assertEqual(metadata["paper"], "A4")
         self.assertEqual(metadata["filename"], "board.kicad_pcb")
         self.assertEqual(metadata["title_block"]["title"], "Mainboard")
-        self.assertEqual(metadata["title_block"]["rev"], "V1.0")
-        self.assertEqual(metadata["title_block"]["comments"], {"1": "First note"})
+        self.assertEqual(metadata["title_block"]["date"], "2026-08-31")
+
+    def test_carries_only_the_fields_the_panel_renders(self) -> None:
+        """Narrower on purpose.
+
+        `paper`, `uuid`, and the title block's rev/company/comments were parsed
+        and never displayed. Pinning the key set keeps a future edit from
+        quietly reintroducing payload nobody reads -- and, since every one of
+        them costs a parse, work nobody needs.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pcb = _write(root, "board.kicad_pcb", BOARD_HEADER)
+            sch = _write(root, "root.kicad_sch", SCHEMATIC_HEADER)
+
+            pcb_meta = project_properties_service.compute_pcb_metadata(str(root), pcb)
+            sch_meta = project_properties_service.compute_schematic_metadata(str(root), sch)
+
+        self.assertEqual(
+            sorted(pcb_meta),
+            ["dimensions_mm", "filename", "generator", "generator_version",
+             "path", "thickness_mm", "title_block", "version"],
+        )
+        self.assertEqual(
+            sorted(sch_meta),
+            ["filename", "generator", "generator_version", "path",
+             "title_block", "version"],
+        )
+        self.assertEqual(sorted(pcb_meta["title_block"]), ["date", "title"])
 
     def test_reads_schematic_header_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -82,7 +108,6 @@ class HeaderExtractionTests(unittest.TestCase):
 
         self.assertEqual(metadata["version"], 20231120)
         self.assertEqual(metadata["generator"], "eeschema")
-        self.assertEqual(metadata["uuid"], "00000000-0000-0000-0000-000000000001")
         self.assertEqual(metadata["title_block"]["title"], "Sheet")
 
     def test_reads_only_the_header_of_a_large_board(self) -> None:
