@@ -38,7 +38,8 @@ from app.services.catalog.component_read_models import (
 from app.services.catalog.component_queries import CatalogComponentQueries
 from app.services.catalog.locking import CatalogLockOperations, NoopCatalogLocks
 from app.services.catalog.metadata_batches import CatalogMetadataBatches
-from app.services.catalog.metadata_fields import CatalogMetadataFields, validate_metadata_value
+from app.services.catalog.metadata_batch_staging import CatalogMetadataBatchStaging
+from app.services.catalog.metadata_fields import CatalogMetadataFields
 from app.services.catalog.metadata_grid import CatalogMetadataGrid
 from app.services.catalog.metadata_schema import (
     BUILTIN_METADATA_FIELDS,
@@ -417,6 +418,7 @@ class ComponentCatalogDomainService:
     _metadata_fields: CatalogMetadataFields = CatalogMetadataFields(_metadata_schema)
     _metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
     _metadata_batches: CatalogMetadataBatches = CatalogMetadataBatches()
+    _metadata_batch_staging: CatalogMetadataBatchStaging = CatalogMetadataBatchStaging()
 
     def __init__(self, store_root: Path | None = None, database_url: str | None = None) -> None:
         self._catalog_runtime = CatalogRuntime(
@@ -437,6 +439,7 @@ class ComponentCatalogDomainService:
         self._metadata_fields: CatalogMetadataFields = CatalogMetadataFields(self._metadata_schema)
         self._metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
         self._metadata_batches = CatalogMetadataBatches()
+        self._metadata_batch_staging = CatalogMetadataBatchStaging()
 
     def _runtime_for_compat(self) -> CatalogRuntime:
         """Lazily support legacy ``__new__``-constructed test doubles."""
@@ -2310,25 +2313,7 @@ class ComponentCatalogDomainService:
             fields[str(proposal["key"])] = {**proposal, "storage_kind": "extra", "storage_key": proposal["key"], "archived": False}
         valid_count = 0
         with self._connect() as conn:
-            identity_counts: dict[tuple[str, str, str], int] = {}
-            for raw_item in items:
-                component_id = str(raw_item.get("component_id") or "")
-                component = conn.execute(
-                    "SELECT cr.manufacturer, cr.mpn, cr.name FROM components c "
-                    "JOIN component_revisions cr ON cr.id = c.current_revision_id "
-                    "WHERE c.id = %s AND c.is_active = 1",
-                    (component_id,),
-                ).fetchone()
-                if not component:
-                    continue
-                patch = dict(raw_item.get("patch") or {})
-                manufacturer = str(patch.get("manufacturer", component["manufacturer"]) or "").strip().casefold()
-                mpn = str(patch.get("mpn", component["mpn"]) or "").strip().casefold()
-                name = str(patch.get("name", component["name"]) or "").strip().casefold()
-                if manufacturer and mpn:
-                    identity = (manufacturer, mpn, name)
-                    identity_counts[identity] = identity_counts.get(identity, 0) + 1
-            duplicate_identities = {identity for identity, count in identity_counts.items() if count > 1}
+            duplicate_identities = self._metadata_batch_staging.duplicate_identities(conn, items)
             self._metadata_batches.insert_batch(
                 conn,
                 batch_id=batch_id,
@@ -2343,57 +2328,16 @@ class ComponentCatalogDomainService:
                 updated_at=now,
             )
             for raw_item in items:
-                component_id = str(raw_item.get("component_id") or "")
-                expected_revision_id = str(raw_item.get("expected_revision_id") or "")
-                component = conn.execute(
-                    "SELECT c.is_active, cr.* FROM components c JOIN component_revisions cr ON cr.id = c.current_revision_id WHERE c.id = %s",
-                    (component_id,),
-                ).fetchone()
-                errors: list[str] = []
-                diff: list[dict[str, str]] = []
-                normalized_patch: dict[str, str] = {}
-                if not component or not bool(component["is_active"]):
-                    errors.append("Component was not found or is inactive")
-                elif str(component["id"]) != expected_revision_id:
-                    errors.append("Component revision conflict: refresh or re-export before applying")
-                else:
-                    extras = _json_loads(component["extra_fields"], {})
-                    for field_key, raw_value in dict(raw_item.get("patch") or {}).items():
-                        field = fields.get(str(field_key))
-                        if not field or field.get("archived"):
-                            errors.append(f"Unknown or archived field: {field_key}")
-                            continue
-                        value = str(raw_value or "").strip()
-                        validation_error = validate_metadata_value(field, value)
-                        if validation_error:
-                            errors.append(f"{field['label']}: {validation_error}")
-                            continue
-                        before = str(component[field["storage_key"]] or "") if field["storage_kind"] == "column" else str(extras.get(field["storage_key"], ""))
-                        if before != value:
-                            normalized_patch[str(field_key)] = value
-                            diff.append({"field": str(field_key), "label": str(field["label"]), "before": before, "after": value})
-                    for field_key, field in fields.items():
-                        if not field.get("required") or field.get("archived"):
-                            continue
-                        if field["storage_kind"] == "column":
-                            resulting = normalized_patch.get(field_key, str(component[field["storage_key"]] or ""))
-                        else:
-                            resulting = normalized_patch.get(field_key, str(extras.get(field["storage_key"], "")))
-                        required_error = validate_metadata_value(field, resulting)
-                        if required_error:
-                            errors.append(f"{field['label']}: {required_error}")
-                    target_manufacturer = normalized_patch.get("manufacturer", str(component["manufacturer"] or ""))
-                    target_mpn = normalized_patch.get("mpn", str(component["mpn"] or ""))
-                    target_name = normalized_patch.get("name", str(component["name"] or ""))
-                    if (
-                        target_manufacturer.strip().casefold(),
-                        target_mpn.strip().casefold(),
-                        target_name.strip().casefold(),
-                    ) in duplicate_identities:
-                        errors.append(
-                            "Multiple rows in this batch resolve to the same manufacturer, "
-                            "manufacturer part number and name"
-                        )
+                preparation = self._metadata_batch_staging.prepare_item(
+                    conn, raw_item, fields, duplicate_identities
+                )
+                component_id = preparation.component_id
+                expected_revision_id = preparation.expected_revision_id
+                normalized_patch = preparation.normalized_patch
+                diff = preparation.diff
+                errors = list(preparation.errors)
+                if preparation.target_identity is not None:
+                    target_manufacturer, target_mpn, target_name = preparation.target_identity
                     try:
                         self._assert_component_identity_available(
                             conn,
