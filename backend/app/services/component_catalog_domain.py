@@ -37,6 +37,7 @@ from app.services.catalog.component_read_models import (
 )
 from app.services.catalog.component_queries import CatalogComponentQueries
 from app.services.catalog.locking import CatalogLockOperations, NoopCatalogLocks
+from app.services.catalog.metadata_batches import CatalogMetadataBatches
 from app.services.catalog.metadata_fields import CatalogMetadataFields, validate_metadata_value
 from app.services.catalog.metadata_grid import CatalogMetadataGrid
 from app.services.catalog.metadata_schema import (
@@ -415,6 +416,7 @@ class ComponentCatalogDomainService:
     _metadata_schema: CatalogMetadataSchema = CatalogMetadataSchema()
     _metadata_fields: CatalogMetadataFields = CatalogMetadataFields(_metadata_schema)
     _metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
+    _metadata_batches: CatalogMetadataBatches = CatalogMetadataBatches()
 
     def __init__(self, store_root: Path | None = None, database_url: str | None = None) -> None:
         self._catalog_runtime = CatalogRuntime(
@@ -434,6 +436,7 @@ class ComponentCatalogDomainService:
         self._metadata_schema: CatalogMetadataSchema = CatalogMetadataSchema()
         self._metadata_fields: CatalogMetadataFields = CatalogMetadataFields(self._metadata_schema)
         self._metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
+        self._metadata_batches = CatalogMetadataBatches()
 
     def _runtime_for_compat(self) -> CatalogRuntime:
         """Lazily support legacy ``__new__``-constructed test doubles."""
@@ -2282,41 +2285,10 @@ class ComponentCatalogDomainService:
             self._metadata_grid.hydrate_rows(prepared, rows, result["items"])
         return {**result, "schema": METADATA_SCHEMA_VERSION, "fields": fields}
 
-    def _metadata_batch_payload(self, conn: Any, batch_id: str) -> dict[str, Any] | None:
-        batch = conn.execute("SELECT * FROM catalog_metadata_batches WHERE id = %s", (batch_id,)).fetchone()
-        if not batch:
-            return None
-        items = conn.execute(
-            "SELECT item.*, cr.name, cr.mpn FROM catalog_metadata_batch_items item "
-            "JOIN components c ON c.id = item.component_id "
-            "JOIN component_revisions cr ON cr.id = c.current_revision_id "
-            "WHERE item.batch_id = %s ORDER BY cr.manufacturer, cr.mpn, item.id",
-            (batch_id,),
-        ).fetchall()
-        return {
-            "id": str(batch["id"]), "source": str(batch["source"]), "status": str(batch["status"]),
-            "schema_version": str(batch["schema_version"]), "change_summary": str(batch["change_summary"]),
-            "unknown_fields": _json_loads(batch["unknown_fields_json"], []),
-            "created_by": str(batch["created_by"]), "total_items": int(batch["total_items"]),
-            "valid_items": int(batch["valid_items"]), "applied_items": int(batch["applied_items"]),
-            "failed_items": int(batch["failed_items"]), "created_at": str(batch["created_at"]),
-            "updated_at": str(batch["updated_at"]),
-            "items": [
-                {
-                    "id": str(item["id"]), "component_id": str(item["component_id"]),
-                    "expected_revision_id": str(item["expected_revision_id"]), "name": str(item["name"]),
-                    "mpn": str(item["mpn"]), "patch": _json_loads(item["patch_json"], {}),
-                    "diff": _json_loads(item["diff_json"], []), "validation_status": str(item["validation_status"]),
-                    "error_message": str(item["error_message"]), "applied_revision_id": str(item["applied_revision_id"]),
-                }
-                for item in items
-            ],
-        }
-
     def get_metadata_batch(self, batch_id: str) -> dict[str, Any] | None:
         self.initialize()
         with self._connect() as conn:
-            return self._metadata_batch_payload(conn, batch_id)
+            return self._metadata_batches.batch_payload(conn, batch_id)
 
     def stage_metadata_batch(
         self,
@@ -2357,18 +2329,18 @@ class ComponentCatalogDomainService:
                     identity = (manufacturer, mpn, name)
                     identity_counts[identity] = identity_counts.get(identity, 0) + 1
             duplicate_identities = {identity for identity, count in identity_counts.items() if count > 1}
-            conn.execute(
-                """
-                INSERT INTO catalog_metadata_batches (
-                    id, source, status, schema_version, change_summary, unknown_fields_json, created_by,
-                    total_items, valid_items, applied_items, failed_items, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, %s, %s)
-                """,
-                (
-                    batch_id, source, "needs_fields" if proposed_fields else "ready", METADATA_SCHEMA_VERSION,
-                    change_summary.strip() or "Bulk update component metadata",
-                    json.dumps(proposed_fields or [], separators=(",", ":")), actor, len(items), now, now,
-                ),
+            self._metadata_batches.insert_batch(
+                conn,
+                batch_id=batch_id,
+                source=source,
+                status="needs_fields" if proposed_fields else "ready",
+                schema_version=METADATA_SCHEMA_VERSION,
+                change_summary=change_summary.strip() or "Bulk update component metadata",
+                unknown_fields_json=json.dumps(proposed_fields or [], separators=(",", ":")),
+                created_by=actor,
+                total_items=len(items),
+                created_at=now,
+                updated_at=now,
             )
             for raw_item in items:
                 component_id = str(raw_item.get("component_id") or "")
@@ -2436,30 +2408,29 @@ class ComponentCatalogDomainService:
                 status = "invalid" if errors else "valid" if diff else "noop"
                 if status == "valid":
                     valid_count += 1
-                conn.execute(
-                    """
-                    INSERT INTO catalog_metadata_batch_items (
-                        id, batch_id, component_id, expected_revision_id, patch_json, diff_json,
-                        validation_status, error_message, applied_revision_id, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, '', %s, %s)
-                    """,
-                    (
-                        str(uuid.uuid4()), batch_id, component_id, expected_revision_id,
-                        json.dumps(normalized_patch, sort_keys=True, separators=(",", ":")),
-                        json.dumps(diff, separators=(",", ":")), status, "; ".join(errors), now, now,
-                    ),
+                self._metadata_batches.insert_batch_item(
+                    conn,
+                    item_id=str(uuid.uuid4()),
+                    batch_id=batch_id,
+                    component_id=component_id,
+                    expected_revision_id=expected_revision_id,
+                    patch_json=json.dumps(normalized_patch, sort_keys=True, separators=(",", ":")),
+                    diff_json=json.dumps(diff, separators=(",", ":")),
+                    validation_status=status,
+                    error_message="; ".join(errors),
+                    created_at=now,
+                    updated_at=now,
                 )
-            conn.execute("UPDATE catalog_metadata_batches SET valid_items = %s WHERE id = %s", (valid_count, batch_id))
+            self._metadata_batches.update_valid_items(conn, batch_id, valid_count)
             conn.commit()
-            return self._metadata_batch_payload(conn, batch_id) or {}
+            return self._metadata_batches.batch_payload(conn, batch_id) or {}
 
     def approve_metadata_batch_fields(self, batch_id: str, *, actor: str) -> dict[str, Any]:
         self.initialize()
         with self._connect() as conn:
-            batch = conn.execute("SELECT * FROM catalog_metadata_batches WHERE id = %s", (batch_id,)).fetchone()
-            if not batch:
+            proposals = self._metadata_batches.fetch_batch_field_proposals(conn, batch_id)
+            if proposals is None:
                 raise ValueError("Metadata batch not found")
-            proposals = _json_loads(batch["unknown_fields_json"], [])
         for proposal in proposals:
             try:
                 self.create_metadata_field(proposal, actor=actor)
@@ -2467,12 +2438,13 @@ class ComponentCatalogDomainService:
                 if "already exists" not in str(exc):
                     raise
         with self._connect() as conn:
-            conn.execute(
-                "UPDATE catalog_metadata_batches SET status = 'ready', unknown_fields_json = '[]', updated_at = %s WHERE id = %s",
-                (_utc_now_iso(), batch_id),
+            self._metadata_batches.mark_fields_approved(
+                conn,
+                batch_id,
+                _utc_now_iso(),
             )
             conn.commit()
-            return self._metadata_batch_payload(conn, batch_id) or {}
+            return self._metadata_batches.batch_payload(conn, batch_id) or {}
 
     def _inherit_validation_evidence(self, conn: Any, parent_revision_id: str, revision_id: str) -> None:
         return self._revision_kernel.inherit_validation_evidence(
@@ -2484,11 +2456,7 @@ class ComponentCatalogDomainService:
     def apply_metadata_batch_item(self, item_id: str, *, actor: str) -> dict[str, Any]:
         self.initialize()
         with self._connect() as conn:
-            item = conn.execute(
-                "SELECT item.*, batch.change_summary, batch.id AS metadata_batch_id FROM catalog_metadata_batch_items item "
-                "JOIN catalog_metadata_batches batch ON batch.id = item.batch_id WHERE item.id = %s",
-                (item_id,),
-            ).fetchone()
+            item = self._metadata_batches.fetch_item_for_apply(conn, item_id)
             if not item:
                 raise ValueError("Metadata batch item not found")
             if str(item["validation_status"]) == "applied":
@@ -2542,9 +2510,11 @@ class ComponentCatalogDomainService:
                     "changed_fields": sorted(patch), "workflow_stage": "qa_review",
                 },
             )
-            conn.execute(
-                "UPDATE catalog_metadata_batch_items SET validation_status = 'applied', applied_revision_id = %s, updated_at = %s WHERE id = %s",
-                (revision_id, _utc_now_iso(), item_id),
+            self._metadata_batches.mark_item_applied(
+                conn,
+                item_id,
+                revision_id,
+                _utc_now_iso(),
             )
             conn.commit()
         return {"item_id": item_id, "status": "applied", "revision_id": revision_id}
@@ -2559,15 +2529,12 @@ class ComponentCatalogDomainService:
     ) -> dict[str, Any]:
         self.initialize()
         with self._connect() as conn:
-            batch = conn.execute("SELECT * FROM catalog_metadata_batches WHERE id = %s", (batch_id,)).fetchone()
+            batch = self._metadata_batches.fetch_batch_for_apply(conn, batch_id)
             if not batch:
                 raise ValueError("Metadata batch not found")
             if str(batch["status"]) == "needs_fields":
                 raise ValueError("Unknown CSV fields must be approved before applying")
-            rows = conn.execute(
-                "SELECT id FROM catalog_metadata_batch_items WHERE batch_id = %s AND validation_status = 'valid' ORDER BY id",
-                (batch_id,),
-            ).fetchall()
+            rows = self._metadata_batches.fetch_valid_item_rows(conn, batch_id)
         selected = set(item_ids or [])
         ids = [str(row["id"]) for row in rows if not selected or str(row["id"]) in selected]
         if selected and not ids:
@@ -2583,28 +2550,29 @@ class ComponentCatalogDomainService:
                 failed += 1
                 errors.append({"item_id": item_id, "error": str(exc)})
                 with self._connect() as conn:
-                    conn.execute(
-                        "UPDATE catalog_metadata_batch_items SET validation_status = 'conflict', error_message = %s, updated_at = %s WHERE id = %s",
-                        (str(exc), _utc_now_iso(), item_id),
+                    self._metadata_batches.mark_item_conflict(
+                        conn,
+                        item_id,
+                        str(exc),
+                        _utc_now_iso(),
                     )
                     conn.commit()
             if progress_callback:
                 progress_callback({"completed": index + 1, "total": len(ids), "applied": applied, "failed": failed})
         with self._connect() as conn:
-            totals = conn.execute(
-                "SELECT SUM(CASE WHEN validation_status = 'applied' THEN 1 ELSE 0 END) AS applied, "
-                "SUM(CASE WHEN validation_status IN ('invalid', 'conflict') THEN 1 ELSE 0 END) AS failed, "
-                "SUM(CASE WHEN validation_status = 'valid' THEN 1 ELSE 0 END) AS remaining "
-                "FROM catalog_metadata_batch_items WHERE batch_id = %s",
-                (batch_id,),
-            ).fetchone()
+            totals = self._metadata_batches.calculate_batch_totals(conn, batch_id)
             total_applied = int(totals["applied"] or 0)
             total_failed = int(totals["failed"] or 0)
             remaining = int(totals["remaining"] or 0)
             status = "completed" if total_failed == 0 and remaining == 0 else "partial"
-            conn.execute(
-                "UPDATE catalog_metadata_batches SET status = %s, valid_items = %s, applied_items = %s, failed_items = %s, updated_at = %s WHERE id = %s",
-                (status, remaining, total_applied, total_failed, _utc_now_iso(), batch_id),
+            self._metadata_batches.finalize_batch(
+                conn,
+                batch_id=batch_id,
+                status=status,
+                valid_items=remaining,
+                applied_items=total_applied,
+                failed_items=total_failed,
+                updated_at=_utc_now_iso(),
             )
             conn.commit()
         return {"batch_id": batch_id, "status": status, "applied": applied, "failed": failed, "errors": errors}
