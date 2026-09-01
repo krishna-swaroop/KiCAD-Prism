@@ -4,6 +4,7 @@
   makeWrapper,
   writeText,
   git,
+  gnutar,
   kicad,
   nodejs,
   openssh,
@@ -20,6 +21,7 @@ let
 
   toolchainPath = lib.makeBinPath [
     git
+    gnutar
     kicad
     nodejs
     openssh
