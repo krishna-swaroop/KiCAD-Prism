@@ -129,9 +129,24 @@ class BoardFactsTests(unittest.TestCase):
 
         facts = kicad_board_stats_service.board_facts(stats)
 
-        self.assertEqual(facts["dimensions_mm"], {"width": 160.0, "height": 233.35})
+        self.assertEqual(facts["dimensions_mm"], {"width_mm": 160.0, "height_mm": 233.35})
         self.assertEqual(facts["thickness_mm"], 1.564)
         self.assertEqual(facts["stats_generator"], "KiCad 10.0.4")
+
+    def test_dimension_keys_match_what_the_panel_reads(self) -> None:
+        """The response model cannot catch a renamed key here.
+
+        ``ProjectPropertiesPcbFile.dimensions_mm`` is typed ``Dict[str, float]``,
+        so any key names validate. The panel's ``formatPcbDimensions`` reads
+        ``width_mm`` and ``height_mm`` specifically, and renders "Not available"
+        for anything else -- which looks exactly like a board with no outline
+        rather than like a bug.
+        """
+        facts = kicad_board_stats_service.board_facts(
+            {"board": {"has_outline": True, "width": "10.0000 mm", "height": "20.0000 mm"}}
+        )
+
+        self.assertEqual(sorted(facts["dimensions_mm"]), ["height_mm", "width_mm"])
 
     def test_board_without_an_outline_reports_no_dimensions(self) -> None:
         facts = kicad_board_stats_service.board_facts(
@@ -177,7 +192,7 @@ class ComputeProjectMetadataTests(unittest.TestCase):
                 computed = project_metadata_service.compute_project_metadata(str(root), sch, pcb)
 
         export.assert_called_once_with(pcb)
-        self.assertEqual(computed["pcb"]["dimensions_mm"], {"width": 100.0, "height": 80.0})
+        self.assertEqual(computed["pcb"]["dimensions_mm"], {"width_mm": 100.0, "height_mm": 80.0})
         self.assertEqual(computed["pcb"]["thickness_mm"], 1.6)
         self.assertEqual(computed["pcb"]["title_block"]["title"], "Mainboard")
         self.assertEqual(computed["schematic"]["title_block"]["title"], "Sheet")
@@ -262,7 +277,7 @@ class RefreshReusesExpensiveWorkTests(unittest.TestCase):
             fingerprint = project_metadata_service.source_fingerprint(None, pcb)
             stored = {
                 "schematic": None,
-                "pcb": {"filename": "board.kicad_pcb", "dimensions_mm": {"width": 1.0, "height": 2.0}},
+                "pcb": {"filename": "board.kicad_pcb", "dimensions_mm": {"width_mm": 1.0, "height_mm": 2.0}},
                 "source_fingerprint": fingerprint,
                 "board_stats_source": kicad_board_stats_service.SOURCE,
             }
@@ -280,7 +295,7 @@ class RefreshReusesExpensiveWorkTests(unittest.TestCase):
 
         compute.assert_not_called()
         self.assertTrue(computed["reused_file_metadata"])
-        self.assertEqual(computed["pcb"]["dimensions_mm"], {"width": 1.0, "height": 2.0})
+        self.assertEqual(computed["pcb"]["dimensions_mm"], {"width_mm": 1.0, "height_mm": 2.0})
 
     def test_changed_files_are_recomputed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

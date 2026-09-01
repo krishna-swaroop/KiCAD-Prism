@@ -173,7 +173,12 @@ def board_facts(stats: dict) -> dict:
     height = _quantity_mm(board.get("height"))
     dimensions = None
     if width is not None and height is not None and board.get("has_outline") is not False:
-        dimensions = {"width": round(width, 2), "height": round(height, 2)}
+        # `width_mm`/`height_mm` is the shape the panel already reads
+        # (`formatPcbDimensions`). The response model types this as a bare
+        # Dict[str, float], so a renamed key would not fail a schema check --
+        # it would just render "Not available" and look like a board with no
+        # outline.
+        dimensions = {"width_mm": round(width, 2), "height_mm": round(height, 2)}
 
     return {
         "dimensions_mm": dimensions,
