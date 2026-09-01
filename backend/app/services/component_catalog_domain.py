@@ -37,6 +37,7 @@ from app.services.catalog.component_read_models import (
 )
 from app.services.catalog.component_queries import CatalogComponentQueries
 from app.services.catalog.locking import CatalogLockOperations, NoopCatalogLocks
+from app.services.catalog.metadata_batch_application import CatalogMetadataBatchApplication
 from app.services.catalog.metadata_batches import CatalogMetadataBatches
 from app.services.catalog.metadata_batch_staging import CatalogMetadataBatchStaging
 from app.services.catalog.metadata_fields import CatalogMetadataFields
@@ -419,6 +420,7 @@ class ComponentCatalogDomainService:
     _metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
     _metadata_batches: CatalogMetadataBatches = CatalogMetadataBatches()
     _metadata_batch_staging: CatalogMetadataBatchStaging = CatalogMetadataBatchStaging()
+    _metadata_batch_application: CatalogMetadataBatchApplication = CatalogMetadataBatchApplication()
 
     def __init__(self, store_root: Path | None = None, database_url: str | None = None) -> None:
         self._catalog_runtime = CatalogRuntime(
@@ -440,6 +442,7 @@ class ComponentCatalogDomainService:
         self._metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
         self._metadata_batches = CatalogMetadataBatches()
         self._metadata_batch_staging = CatalogMetadataBatchStaging()
+        self._metadata_batch_application = CatalogMetadataBatchApplication()
 
     def _runtime_for_compat(self) -> CatalogRuntime:
         """Lazily support legacy ``__new__``-constructed test doubles."""
@@ -2401,12 +2404,9 @@ class ComponentCatalogDomainService:
         self.initialize()
         with self._connect() as conn:
             item = self._metadata_batches.fetch_item_for_apply(conn, item_id)
-            if not item:
-                raise ValueError("Metadata batch item not found")
-            if str(item["validation_status"]) == "applied":
-                return {"item_id": item_id, "status": "applied", "revision_id": str(item["applied_revision_id"])}
-            if str(item["validation_status"]) != "valid":
-                raise ValueError("Metadata batch item is not valid")
+            early_result = self._metadata_batch_application.classify_item(item_id, item)
+            if early_result is not None:
+                return early_result
             component_id = str(item["component_id"])
             self._lock_component_for_mutation(conn, component_id)
             component, revision = self._active_revision_row(conn, component_id, released=False)
@@ -2415,19 +2415,9 @@ class ComponentCatalogDomainService:
             if str(revision["id"]) != str(item["expected_revision_id"]):
                 raise ValueError("Component revision conflict: current revision changed after preview")
             definitions = {field["key"]: field for field in self.list_metadata_fields()}
-            patch = _json_loads(item["patch_json"], {})
-            merged = {**revision, "extra_fields": _json_loads(revision.get("extra_fields"), {})}
-            for field_key, value in patch.items():
-                field = definitions.get(field_key)
-                if not field:
-                    raise ValueError(f"Metadata field {field_key} is unavailable")
-                if field["storage_kind"] == "column":
-                    merged[field["storage_key"]] = value
-                else:
-                    merged["extra_fields"][field["storage_key"]] = value
-            metadata = normalize_metadata(merged)
+            prepared = self._metadata_batch_application.prepare_revision(item, revision, definitions)
+            metadata = prepared.metadata
             self._lock_component_identity(conn, metadata["manufacturer"], metadata["mpn"])
-            parent_revision_id = str(revision["id"])
             _, revision_id = self._upsert_component_metadata_row(
                 conn,
                 component_id=component_id,
@@ -2435,24 +2425,20 @@ class ComponentCatalogDomainService:
                 now=_utc_now_iso(),
                 existing_component_id=component_id,
                 actor=actor,
-                change_summary=str(item["change_summary"]),
-                expected_revision_id=parent_revision_id,
+                change_summary=prepared.change_summary,
+                expected_revision_id=prepared.parent_revision_id,
                 finalize_revision=False,
                 change_kind="metadata_bulk",
             )
             conn.execute("UPDATE component_revisions SET release_status = 'qa_review' WHERE id = %s", (revision_id,))
-            self._inherit_validation_evidence(conn, parent_revision_id, revision_id)
+            self._inherit_validation_evidence(conn, prepared.parent_revision_id, revision_id)
             self._finalize_revision(
                 conn,
                 component_id=component_id,
                 revision_id=revision_id,
                 event_type="revision.created",
                 actor=actor,
-                details={
-                    "change_kind": "metadata_bulk", "change_summary": str(item["change_summary"]),
-                    "metadata_batch_id": str(item["metadata_batch_id"]),
-                    "changed_fields": sorted(patch), "workflow_stage": "qa_review",
-                },
+                details=prepared.finalize_details,
             )
             self._metadata_batches.mark_item_applied(
                 conn,
@@ -2461,7 +2447,7 @@ class ComponentCatalogDomainService:
                 _utc_now_iso(),
             )
             conn.commit()
-        return {"item_id": item_id, "status": "applied", "revision_id": revision_id}
+        return self._metadata_batch_application.applied_result(item_id, revision_id)
 
     def apply_metadata_batch(
         self,
@@ -2479,9 +2465,9 @@ class ComponentCatalogDomainService:
             if str(batch["status"]) == "needs_fields":
                 raise ValueError("Unknown CSV fields must be approved before applying")
             rows = self._metadata_batches.fetch_valid_item_rows(conn, batch_id)
-        selected = set(item_ids or [])
-        ids = [str(row["id"]) for row in rows if not selected or str(row["id"]) in selected]
-        if selected and not ids:
+        selection = self._metadata_batch_application.select_valid_item_ids(rows, item_ids)
+        ids = list(selection.ids)
+        if selection.selected and not ids:
             raise ValueError("None of the selected metadata batch items are valid")
         applied = 0
         failed = 0
@@ -2505,21 +2491,20 @@ class ComponentCatalogDomainService:
                 progress_callback({"completed": index + 1, "total": len(ids), "applied": applied, "failed": failed})
         with self._connect() as conn:
             totals = self._metadata_batches.calculate_batch_totals(conn, batch_id)
-            total_applied = int(totals["applied"] or 0)
-            total_failed = int(totals["failed"] or 0)
-            remaining = int(totals["remaining"] or 0)
-            status = "completed" if total_failed == 0 and remaining == 0 else "partial"
+            accounting = self._metadata_batch_application.account_batch(
+                batch_id, totals, applied, failed, errors
+            )
             self._metadata_batches.finalize_batch(
                 conn,
                 batch_id=batch_id,
-                status=status,
-                valid_items=remaining,
-                applied_items=total_applied,
-                failed_items=total_failed,
+                status=accounting.status,
+                valid_items=accounting.remaining,
+                applied_items=accounting.total_applied,
+                failed_items=accounting.total_failed,
                 updated_at=_utc_now_iso(),
             )
             conn.commit()
-        return {"batch_id": batch_id, "status": status, "applied": applied, "failed": failed, "errors": errors}
+        return accounting.result
 
     def export_metadata_csv(self, field_keys: list[str] | None = None) -> str:
         return "".join(self.iter_metadata_csv(field_keys=field_keys))
