@@ -7,6 +7,7 @@
   hatchling,
   colorama,
   freetype-py,
+  msgspec,
   numpy,
   shapely,
   trimesh,
@@ -16,7 +17,7 @@
 
 buildPythonPackage rec {
   pname = "kicad-monkey";
-  version = "2026.6.13";
+  version = "2026.8.22";
   pyproject = true;
 
   disabled = pythonOlder "3.11" || pythonAtLeast "3.13";
@@ -24,7 +25,7 @@ buildPythonPackage rec {
   src = fetchPypi {
     pname = "kicad_monkey";
     inherit version;
-    hash = "sha256-s1KYWWj+MoJrP5uBlgY+vdXPu1ca3sAu8Sj8ZhTygxk=";
+    hash = "sha256-KkGK/tdMopXrjJda5Ens4wLlWbOcnq1NbwmKYm7F21w=";
   };
 
   build-system = [ hatchling ];
@@ -32,6 +33,7 @@ buildPythonPackage rec {
   dependencies = [
     colorama
     freetype-py
+    msgspec
     numpy
     shapely
     trimesh

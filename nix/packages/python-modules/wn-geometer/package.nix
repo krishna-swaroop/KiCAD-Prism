@@ -10,16 +10,16 @@
 let
   wheels = {
     x86_64-linux = {
-      platform = "manylinux_2_39_x86_64";
-      hash = "sha256-4UUEiUQD9Syua9ecnApWEDSUY4VVuiMW69M+2O71xN4=";
+      platform = "manylinux_2_35_x86_64";
+      hash = "sha256-xXs78Yru4SWj8HRsY7SmnQlyFFQ+e9Hr4lSaEqGt8Hs=";
     };
     aarch64-linux = {
-      platform = "manylinux_2_39_aarch64";
-      hash = "sha256-z1D3CIK56x4hueDFO6CmRmcnDJCYGTHA3I+2GS7tcZo=";
+      platform = "manylinux_2_35_aarch64";
+      hash = "sha256-JLwKBe9QbtKglqzxwJ6pWXQ6DtPSQnTWiyD9DfsjbH4=";
     };
     aarch64-darwin = {
       platform = "macosx_11_0_arm64";
-      hash = "sha256-//QeuICzpJPhsB7PTHLWtA4KbWr+sszvCY35uozi1SI=";
+      hash = "sha256-PdvYu+tZGyKBSBCgxc+jBu9RHr22y4VCSk/qRba3Ajk=";
     };
   };
   wheel =
@@ -28,14 +28,14 @@ let
 in
 buildPythonPackage {
   pname = "wn-geometer";
-  version = "2026.6.10";
+  version = "2026.8.21";
   format = "wheel";
 
   disabled = pythonOlder "3.10";
 
   src = fetchPypi {
     pname = "wn_geometer";
-    version = "2026.6.10";
+    version = "2026.8.21";
     inherit (wheel) platform hash;
     format = "wheel";
     dist = "py3";
@@ -52,7 +52,7 @@ buildPythonPackage {
   meta = {
     description = "Python bindings for Geometer CAD geometry operations";
     homepage = "https://github.com/wavenumber-eng/geometer";
-    changelog = "https://github.com/wavenumber-eng/geometer/blob/v2026-06-10/CHANGELOG.md";
+    changelog = "https://github.com/wavenumber-eng/geometer/blob/v2026-08-21/CHANGELOG.md";
     license = lib.licenses.mit;
     sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
     maintainers = with lib.maintainers; [ ];
