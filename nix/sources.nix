@@ -27,10 +27,16 @@ in
   kicad-prism = fileset.toSource {
     root = ../.;
     fileset = fileset.unions [
+      ../assets/Outputs.kicad_jobset
+      ../backend/Dockerfile
       ../backend/app
-      ../scripts/ecad-diff.mjs
-      ../scripts/ecad-parse.mjs
-      ../scripts/vendor
+      ../backend/requirements.txt
+      ../backend/tests
+      ../docker-compose.yml
+      ../fixtures
+      ../kicad-prism-viewer/requirements-runtime.txt
+      ../requirements
+      ../scripts
     ];
   };
 }
