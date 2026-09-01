@@ -38,6 +38,7 @@ from app.services.catalog.component_read_models import (
 from app.services.catalog.component_queries import CatalogComponentQueries
 from app.services.catalog.locking import CatalogLockOperations, NoopCatalogLocks
 from app.services.catalog.metadata_fields import CatalogMetadataFields, validate_metadata_value
+from app.services.catalog.metadata_grid import CatalogMetadataGrid
 from app.services.catalog.metadata_schema import (
     BUILTIN_METADATA_FIELDS,
     CatalogMetadataSchema,
@@ -413,6 +414,7 @@ class ComponentCatalogDomainService:
     _project_import_acceptance: CatalogProjectImportAcceptance = CatalogProjectImportAcceptance()
     _metadata_schema: CatalogMetadataSchema = CatalogMetadataSchema()
     _metadata_fields: CatalogMetadataFields = CatalogMetadataFields(_metadata_schema)
+    _metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
 
     def __init__(self, store_root: Path | None = None, database_url: str | None = None) -> None:
         self._catalog_runtime = CatalogRuntime(
@@ -431,6 +433,7 @@ class ComponentCatalogDomainService:
         self._project_import_acceptance = CatalogProjectImportAcceptance()
         self._metadata_schema: CatalogMetadataSchema = CatalogMetadataSchema()
         self._metadata_fields: CatalogMetadataFields = CatalogMetadataFields(self._metadata_schema)
+        self._metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
 
     def _runtime_for_compat(self) -> CatalogRuntime:
         """Lazily support legacy ``__new__``-constructed test doubles."""
@@ -2255,28 +2258,15 @@ class ComponentCatalogDomainService:
     def get_metadata_grid_preferences(self, user_email: str) -> dict[str, Any]:
         self.initialize()
         with self._connect() as conn:
-            row = conn.execute("SELECT layout_json FROM catalog_grid_preferences WHERE user_email = %s", (user_email.casefold(),)).fetchone()
-        return _json_loads(row["layout_json"], {}) if row else {}
+            return self._metadata_grid.get_preferences(conn, user_email)
 
     def save_metadata_grid_preferences(self, user_email: str, layout: dict[str, Any]) -> dict[str, Any]:
         self.initialize()
-        normalized = {
-            "visible": [str(value) for value in layout.get("visible") or []],
-            "order": [str(value) for value in layout.get("order") or []],
-            "widths": {str(key): max(80, min(600, int(value))) for key, value in dict(layout.get("widths") or {}).items()},
-            "pinned": [str(value) for value in layout.get("pinned") or []],
-        }
-        now = _utc_now_iso()
+        prepared = self._metadata_grid.prepare_preferences(user_email, layout)
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO catalog_grid_preferences (user_email, layout_json, updated_at) VALUES (%s, %s, %s)
-                ON CONFLICT(user_email) DO UPDATE SET layout_json = excluded.layout_json, updated_at = excluded.updated_at
-                """,
-                (user_email.casefold(), json.dumps(normalized, separators=(",", ":")), now),
-            )
+            self._metadata_grid.save_preferences(conn, prepared)
             conn.commit()
-        return normalized
+        return prepared.layout
 
     def metadata_grid(self, *, field_keys: list[str] | None = None, **filters: Any) -> dict[str, Any]:
         fields = self.list_metadata_fields()
@@ -2286,30 +2276,10 @@ class ComponentCatalogDomainService:
         result = self.list_components(lightweight=True, include_inactive=False, **filters)
         component_ids = [str(item["id"]) for item in result["items"]]
         if component_ids:
-            column_keys = sorted({
-                str(field["storage_key"])
-                for field in fields
-                if field["storage_kind"] == "column"
-            })
-            needs_extras = any(field["storage_kind"] == "extra" for field in fields)
-            selected_columns = ["component_id", "revision_id", *column_keys]
-            if needs_extras:
-                selected_columns.append("extra_fields")
-            placeholders = ",".join("%s" for _ in component_ids)
+            prepared = self._metadata_grid.prepare_rows(component_ids, fields)
             with self._connect() as conn:
-                rows = conn.execute(
-                    f"SELECT {', '.join(selected_columns)} FROM component_heads "
-                    f"WHERE component_id IN ({placeholders})",
-                    tuple(component_ids),
-                ).fetchall()
-            by_component = {str(row["component_id"]): dict(row) for row in rows}
-            for item in result["items"]:
-                head = by_component.get(str(item["id"]), {})
-                for key in column_keys:
-                    if key in head:
-                        item[key] = str(head[key] or "")
-                if needs_extras:
-                    item["extra_fields"] = _json_loads(head.get("extra_fields"), {})
+                rows = self._metadata_grid.fetch_rows(conn, prepared)
+            self._metadata_grid.hydrate_rows(prepared, rows, result["items"])
         return {**result, "schema": METADATA_SCHEMA_VERSION, "fields": fields}
 
     def _metadata_batch_payload(self, conn: Any, batch_id: str) -> dict[str, Any] | None:
