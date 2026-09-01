@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import csv
 import hashlib
 import hmac
 import io
@@ -45,6 +44,7 @@ from app.services.catalog.metadata_csv import (
     CSV_SPREADSHEET_TEXT_GUARD,
     CatalogMetadataCsv,
 )
+from app.services.catalog.inventory_csv import CatalogInventoryCsv
 from app.services.catalog.metadata_fields import CatalogMetadataFields
 from app.services.catalog.metadata_grid import CatalogMetadataGrid
 from app.services.catalog.metadata_schema import (
@@ -403,6 +403,7 @@ class ComponentCatalogDomainService:
     _metadata_fields: CatalogMetadataFields = CatalogMetadataFields(_metadata_schema)
     _metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
     _metadata_csv: CatalogMetadataCsv = CatalogMetadataCsv()
+    _inventory_csv: CatalogInventoryCsv = CatalogInventoryCsv()
     _metadata_batches: CatalogMetadataBatches = CatalogMetadataBatches()
     _metadata_batch_staging: CatalogMetadataBatchStaging = CatalogMetadataBatchStaging()
     _metadata_batch_application: CatalogMetadataBatchApplication = CatalogMetadataBatchApplication()
@@ -426,6 +427,7 @@ class ComponentCatalogDomainService:
         self._metadata_fields: CatalogMetadataFields = CatalogMetadataFields(self._metadata_schema)
         self._metadata_grid: CatalogMetadataGrid = CatalogMetadataGrid()
         self._metadata_csv: CatalogMetadataCsv = CatalogMetadataCsv()
+        self._inventory_csv: CatalogInventoryCsv = CatalogInventoryCsv()
         self._metadata_batches = CatalogMetadataBatches()
         self._metadata_batch_staging = CatalogMetadataBatchStaging()
         self._metadata_batch_application = CatalogMetadataBatchApplication()
@@ -2626,113 +2628,36 @@ class ComponentCatalogDomainService:
 
     def export_inventory_csv(self) -> str:
         self.initialize()
-        output = io.StringIO()
-        writer = csv.DictWriter(
-            output,
-            fieldnames=(
-                "component_id", "manufacturer", "mpn", "quantity", "uom", "inventory_status"
-            ),
-        )
-        writer.writeheader()
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT component.id AS component_id, revision.manufacturer, revision.mpn,
-                       COALESCE(SUM(inventory.quantity), 0) AS quantity,
-                       COALESCE(MIN(inventory.uom), '') AS uom,
-                       COALESCE(MIN(inventory.inventory_status), '') AS inventory_status
-                FROM components component
-                JOIN component_revisions revision ON revision.id = component.current_revision_id
-                LEFT JOIN inventory_levels inventory
-                  ON inventory.component_id = component.id AND inventory.source = 'csv'
-                WHERE component.identity_kind = 'mpn'
-                GROUP BY component.id, revision.manufacturer, revision.mpn
-                ORDER BY lower(revision.manufacturer), lower(revision.mpn), component.id
-                """
-            ).fetchall()
-        for row in rows:
-            writer.writerow(dict(row))
-        return output.getvalue()
+            rows = self._inventory_csv.fetch_export_rows(conn)
+        return self._inventory_csv.render_export(rows)
 
     def import_inventory_csv(self, file_content: str) -> dict[str, Any]:
         self.initialize()
-        reader = csv.DictReader(io.StringIO(file_content))
-        if not reader.fieldnames:
-            raise ValueError("CSV file is empty")
+        reader = self._inventory_csv.parse(file_content)
         updated = 0
         not_found = 0
         errors: list[str] = []
         with self._connect() as conn:
             for index, row in enumerate(reader, start=2):
-                component_id = str(row.get("component_id") or "").strip()
-                manufacturer = str(row.get("manufacturer") or "").strip()
-                mpn = str(row.get("manufacturer_part_number") or row.get("mpn") or "").strip()
-                if not component_id and (not manufacturer or not mpn):
-                    errors.append(f"Row {index}: component_id or manufacturer+mpn is required")
+                try:
+                    identity = self._inventory_csv.prepare_identity(row, index)
+                except ValueError as exc:
+                    errors.append(str(exc))
                     continue
-                if component_id:
-                    component = conn.execute(
-                        """
-                        SELECT component.id, component.identity_kind,
-                               component.normalized_manufacturer, component.normalized_part_number
-                        FROM components component WHERE component.id = %s
-                        """,
-                        (component_id,),
-                    ).fetchone()
-                else:
-                    component = conn.execute(
-                        """
-                        SELECT id, identity_kind, normalized_manufacturer, normalized_part_number
-                        FROM components
-                        WHERE identity_kind = 'mpn'
-                          AND normalized_manufacturer = %s AND normalized_part_number = %s
-                        """,
-                        (normalize_identity_value(manufacturer), normalize_identity_value(mpn)),
-                    ).fetchone()
+                component = self._inventory_csv.find_component(conn, identity)
                 if not component:
                     not_found += 1
                     errors.append(f"Row {index}: component identity was not found")
                     continue
-                if str(component["identity_kind"]) != IDENTITY_KIND_MPN:
-                    errors.append(f"Row {index}: provisional components cannot receive MPN inventory")
-                    continue
-                if manufacturer and normalize_identity_value(manufacturer) != str(component["normalized_manufacturer"]):
-                    errors.append(f"Row {index}: manufacturer does not match component_id")
-                    continue
-                if mpn and normalize_identity_value(mpn) != str(component["normalized_part_number"]):
-                    errors.append(f"Row {index}: mpn does not match component_id")
-                    continue
                 try:
-                    quantity = float(row.get("quantity") or row.get("stock_quantity") or 0)
-                except (TypeError, ValueError):
-                    errors.append(f"Row {index}: quantity must be numeric")
+                    self._inventory_csv.validate_component(component, identity, index)
+                    prepared = self._inventory_csv.prepare_upsert(row, index)
+                except ValueError as exc:
+                    errors.append(str(exc))
                     continue
                 now = _utc_now_iso()
-                conn.execute(
-                    """
-                    INSERT INTO inventory_levels (
-                        source, component_id, location_key, source_record_id, quantity, uom,
-                        inventory_status, fetch_status, fetched_at, updated_at
-                    ) VALUES ('csv', %s, '', %s, %s, %s, %s, 'ok', %s, %s)
-                    ON CONFLICT(source, component_id, location_key) DO UPDATE SET
-                        source_record_id = EXCLUDED.source_record_id,
-                        quantity = EXCLUDED.quantity,
-                        uom = EXCLUDED.uom,
-                        inventory_status = EXCLUDED.inventory_status,
-                        fetch_status = EXCLUDED.fetch_status,
-                        fetched_at = EXCLUDED.fetched_at,
-                        updated_at = EXCLUDED.updated_at
-                    """,
-                    (
-                        component["id"],
-                        f"csv:{index}",
-                        quantity,
-                        str(row.get("uom") or row.get("stock_uom") or ""),
-                        str(row.get("inventory_status") or ""),
-                        now,
-                        now,
-                    ),
-                )
+                self._inventory_csv.upsert(conn, component["id"], index, prepared, now)
                 updated += 1
             conn.commit()
         return {"updated": updated, "not_found": not_found, "errors": errors}
