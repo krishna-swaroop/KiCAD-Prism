@@ -98,6 +98,7 @@ jobs:
       # database, because it drops and rebuilds schema objects. Pointing both
       # names at one database silently skipped the entire suite.
       TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/kicad_prism_catalog_test
+      LEGACY_SURVIVOR_TEST_POSTGRES_URL: postgresql://postgres@127.0.0.1:5432/kicad_prism_survivor_test
 
     steps:
       - name: Check out source
@@ -114,7 +115,9 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Create the isolated catalog test database
-        run: psql "$PRISM_DATABASE_URL" -c 'CREATE DATABASE kicad_prism_catalog_test'
+        run: |
+          psql "$PRISM_DATABASE_URL" -c 'CREATE DATABASE kicad_prism_catalog_test'
+          psql "$PRISM_DATABASE_URL" -c 'CREATE DATABASE kicad_prism_survivor_test'
 
       - name: Compile Python sources
         run: python -m compileall -q app
@@ -124,11 +127,23 @@ jobs:
 
       - name: Require the catalog integration suite to have run
         run: |
+          set -o pipefail
           # These tests skip themselves when TEST_POSTGRES_URL is missing or
           # points at the application database, so a silent skip looks green.
           python -m unittest tests.test_component_catalog_postgres_integration -v 2>&1 | tee result.log
           if grep -q "skipped" result.log; then
             echo "Catalog integration tests skipped; check TEST_POSTGRES_URL." >&2
+            exit 1
+          fi
+
+      - name: Require the legacy survivor integration suite to have run
+        run: |
+          set -o pipefail
+          # This is the destructive upgrade path: export a legacy catalog,
+          # initialize epoch 2, and restore every non-CERN survivor.
+          python -m unittest tests.test_legacy_catalog_survivor_postgres_integration -v 2>&1 | tee survivor-result.log
+          if grep -q "skipped" survivor-result.log; then
+            echo "Legacy survivor integration tests skipped; check LEGACY_SURVIVOR_TEST_POSTGRES_URL." >&2
             exit 1
           fi
 

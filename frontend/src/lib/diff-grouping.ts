@@ -59,5 +59,3 @@ export function mergedKind(kinds: Iterable<DiffKind>): DiffKind {
     if (set.size === 1) return set.values().next().value as DiffKind;
     return "changed";
 }
-
-

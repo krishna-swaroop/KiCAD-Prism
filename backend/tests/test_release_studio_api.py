@@ -97,6 +97,33 @@ class ReleaseStudioRequestAndCoverageTests(unittest.TestCase):
         request = self.api.PublishRequest(tag="v1.0.0", title="Board", notes="notes")
         self.assertEqual(request.tag, "v1.0.0")
 
+    def test_source_discovery_hides_internal_exception_details(self) -> None:
+        with (
+            patch.object(self.api, "get_project_for_role_or_404"),
+            patch.object(
+                self.api.workspace,
+                "get_project_by_id",
+                return_value={"path": "/srv/private/board", "relative_path": "board"},
+            ),
+            patch(
+                "app.release_studio.source.discover_source",
+                side_effect=RuntimeError("failed at /srv/private/board/secret.kicad_pro"),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as caught:
+                _run(
+                    self.api.get_source(
+                        "project", "a" * 40, _User("viewer", role="viewer")
+                    )
+                )
+
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(
+            caught.exception.detail,
+            "Could not inspect this revision's Release Studio source.",
+        )
+        self.assertNotIn("/srv/private", str(caught.exception.detail))
+
     def test_publish_zips_the_dossier_and_creates_a_forge_release(self) -> None:
         user = _User("designer@example.com")
         build = {
@@ -402,6 +429,18 @@ class ReleaseStudioDocumentSheetApiTests(unittest.TestCase):
                 )
             )
         self.assertEqual(caught.exception.status_code, 404)
+
+    def test_sheet_preview_hides_corrupt_archive_details(self) -> None:
+        with patch.object(self.api, "_artifact_bytes", return_value=b"not a tar archive"):
+            with self.assertRaises(HTTPException) as caught:
+                _run(
+                    self.api.preview_document_sheet(
+                        "proj", "build", "fabrication", user=self.user
+                    )
+                )
+
+        self.assertEqual(caught.exception.status_code, 500)
+        self.assertEqual(caught.exception.detail, "The stored dossier could not be read.")
 
 
 class ReleaseStudioVendorApiTests(unittest.TestCase):
