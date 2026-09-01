@@ -119,6 +119,7 @@ python312Packages.buildPythonApplication rec {
   '';
 
   passthru.frontend = kicad-prism-frontend;
+  passthru.kicad = kicad;
 
   meta = {
     description = "Self-hosted PCB review and component governance platform for KiCad";
