@@ -117,6 +117,14 @@ python312Packages.buildPythonApplication rec {
     AUTH_ENABLED=false \
       ${python.interpreter} ${installCheckScript} > /dev/null
 
+    (
+      cd backend
+      PATH=${toolchainPath} \
+      PYTHONPATH="${makePythonPath dependencies}" \
+      AUTH_ENABLED=false \
+        ${python.interpreter} -m unittest discover -s tests -p "test_*.py"
+    )
+
     runHook postInstallCheck
   '';
 
