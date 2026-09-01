@@ -9,13 +9,14 @@
   fastapi,
   kicad-monkey,
   openpyxl,
+  textual,
   uvicorn,
   wn-geometer,
 }:
 
 buildPythonPackage rec {
   pname = "kicad-cruncher";
-  version = "2026.6.13";
+  version = "2026.8.22";
   pyproject = true;
 
   disabled = pythonOlder "3.11" || pythonAtLeast "3.13";
@@ -23,7 +24,7 @@ buildPythonPackage rec {
   src = fetchPypi {
     pname = "kicad_cruncher";
     inherit version;
-    hash = "sha256-xSIpbgO30rlfTRDh+sUByHf5U8TQxC66SjGkk1TWDCk=";
+    hash = "sha256-urxEm8OlDyJIePH4bYgTUUhuyv/b0wUepSMsZL+ubQM=";
   };
 
   build-system = [ hatchling ];
@@ -33,6 +34,7 @@ buildPythonPackage rec {
     fastapi
     kicad-monkey
     openpyxl
+    textual
     uvicorn
     wn-geometer
   ];
