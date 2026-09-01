@@ -381,6 +381,8 @@ in
       ];
     };
 
+    environment.etc."prism/kicad-base-image".text = "${cfg.package.kicad}\n";
+
     systemd.tmpfiles.settings."10-kicad-prism" = {
       ${cfg.stateDir} = ownedDirectory;
       ${cfg.projectsDir} = ownedDirectory;
