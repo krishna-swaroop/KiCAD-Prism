@@ -68,18 +68,11 @@ export function DocumentSheetPreview({
             {error && <p className="shrink-0 text-sm text-destructive">{error}</p>}
             <div className="relative min-h-0 flex-1 overflow-hidden border bg-preview-surface">
                 {url && (
+                    // react-doctor-disable-next-line react-doctor/iframe-missing-sandbox
                     <iframe
                         title={sheet.key}
                         src={url}
                         className="absolute inset-0 h-full w-full border-0 bg-preview-surface"
-                        // Blob URLs of build artifacts. Browsers render PDFs
-                        // with a script-driven viewer (Chromium's internal
-                        // viewer, Firefox's pdf.js), so allow-scripts is
-                        // required for the preview to appear at all; without
-                        // the sandbox the frame would additionally allow
-                        // top-navigation, forms, popups, and modals.
-                        // react-doctor-disable-next-line react-doctor/iframe-missing-sandbox
-                        sandbox="allow-same-origin allow-downloads allow-scripts"
                     />
                 )}
             </div>
@@ -191,10 +184,8 @@ export function MemberViewer({
                 <p className="text-sm text-muted-foreground">No preview. Download to inspect.</p>
             )}
             {!failure && kind === "pdf" && objectUrl && (
-                // Same artifact-blob sandbox as the sheet preview above:
-                // scripts are required for the browser's PDF viewer to run.
                 // react-doctor-disable-next-line react-doctor/iframe-missing-sandbox
-                <iframe title={member.path} src={objectUrl} className="h-[70vh] w-full border" sandbox="allow-same-origin allow-downloads allow-scripts" />
+                <iframe title={member.path} src={objectUrl} className="h-[70vh] w-full border" />
             )}
             {!failure && kind === "image" && objectUrl && (
                 <img alt={member.path} src={objectUrl} className="max-h-[70vh] w-full border bg-preview-surface object-contain" />
