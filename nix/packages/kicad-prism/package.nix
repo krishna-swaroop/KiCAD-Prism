@@ -25,6 +25,7 @@ let
     kicad
     nodejs
     openssh
+    python
     python312Packages.kicad-cruncher
   ];
 
