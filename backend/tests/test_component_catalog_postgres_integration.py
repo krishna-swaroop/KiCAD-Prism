@@ -441,6 +441,8 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
             )
             self.component_ids.append(str(component["id"]))
             fixtures.append(component)
+        self._install_deterministic_preview_renderer()
+        fixtures[24] = self._complete_cad(fixtures[24], f"HydrateCad{token[:8]}")
         csv_rows = [
             "component_id,manufacturer,mpn,quantity,uom,inventory_status",
             f"{fixtures[0]['id']},{fixtures[0]['manufacturer']},{fixtures[0]['mpn']},12,pcs,available",
@@ -463,8 +465,18 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
             listed = listed_by_id[str(fixture["id"])]
             assert detail is not None
             self.assertEqual(listed["representations"], detail["representations"])
+            self.assertEqual(listed["previews"], detail["previews"])
             self.assertEqual(listed["local_inventory"], detail["local_inventory"])
             self.assertEqual(listed["supply"], detail["supply"])
+        cad_rep = next(
+            item
+            for item in listed_by_id[str(fixtures[24]["id"])]["representations"]
+            if item["is_default"]
+        )
+        self.assertTrue(cad_rep["symbol"]["id"])
+        self.assertTrue(cad_rep["footprint"]["id"])
+        self.assertTrue(cad_rep["symbol"]["preview_id"])
+        self.assertTrue(cad_rep["footprint"]["preview_id"])
         self.assertEqual(listed_by_id[str(fixtures[0]["id"])]["stock_quantity"], 12)
         self.assertEqual(listed_by_id[str(fixtures[-1]["id"])]["stock_quantity"], 3)
         self.assertFalse(listed_by_id[str(fixtures[24]["id"])]["stock_known"])
