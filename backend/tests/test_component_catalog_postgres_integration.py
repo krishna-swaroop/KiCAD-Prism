@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.catalog.asset_imports import CatalogAssetImports  # noqa: E402
 from app.services.catalog.asset_registry import CatalogAssetRegistry  # noqa: E402
+from app.services.catalog.postgres_runtime import CatalogPostgresConnection  # noqa: E402
 from app.services.catalog.preview_pipeline import CatalogPreviewPipeline  # noqa: E402
 from app.services.catalog.preview_renderer import CatalogPreviewRenderer  # noqa: E402
 from app.services.catalog_schema_migrations import (  # noqa: E402
@@ -403,6 +404,78 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
         errored = self.service.get_component(component["id"])
         assert errored is not None
         self.assertEqual(errored["local_inventory"]["fetch_status"], "error")
+
+    def _capture_list_sql(self, **kwargs: object) -> tuple[list[str], dict]:
+        captured: list[str] = []
+        original = CatalogPostgresConnection.execute
+
+        def execute(conn: object, sql: str, params: object = None) -> object:
+            captured.append(str(sql))
+            return original(conn, sql, params)
+
+        with patch.object(CatalogPostgresConnection, "execute", execute):
+            page = self.service.list_components(**kwargs)
+        return captured, page
+
+    @staticmethod
+    def _is_representation_hydration(sql: str) -> bool:
+        compact = " ".join(sql.split()).lower()
+        return "from revision_representations" in compact and "where revision_id in" in compact
+
+    @staticmethod
+    def _is_inventory_hydration(sql: str) -> bool:
+        compact = " ".join(sql.split()).lower()
+        return "from inventory_levels" in compact
+
+    def test_full_list_hydration_query_count_is_bounded_for_page_size(self) -> None:
+        token = "hydrate-" + uuid.uuid4().hex[:8]
+        fixtures: list[dict] = []
+        for index in range(50):
+            component = self.service.create_manual_component(
+                value="10k",
+                description="List hydration fixture",
+                datasheet="https://example.com/hydrate.pdf",
+                manufacturer=f"Hydrate {token}",
+                manufacturer_part_number=f"HYD-{token}-{index:02d}",
+                actor="author@example.com",
+            )
+            self.component_ids.append(str(component["id"]))
+            fixtures.append(component)
+        csv_rows = [
+            "component_id,manufacturer,mpn,quantity,uom,inventory_status",
+            f"{fixtures[0]['id']},{fixtures[0]['manufacturer']},{fixtures[0]['mpn']},12,pcs,available",
+            f"{fixtures[-1]['id']},{fixtures[-1]['manufacturer']},{fixtures[-1]['mpn']},3,pcs,available",
+        ]
+        self.assertEqual(self.service.import_inventory_csv("\n".join(csv_rows))["updated"], 2)
+
+        one_sql, one_page = self._capture_list_sql(query=token, page=1, page_size=1)
+        fifty_sql, fifty_page = self._capture_list_sql(query=token, page=1, page_size=50)
+        self.assertEqual(one_page["total"], 50)
+        self.assertEqual(len(one_page["items"]), 1)
+        self.assertEqual(len(fifty_page["items"]), 50)
+        self.assertEqual(len(one_sql), len(fifty_sql))
+        self.assertEqual(sum(1 for sql in fifty_sql if self._is_representation_hydration(sql)), 1)
+        self.assertEqual(sum(1 for sql in fifty_sql if self._is_inventory_hydration(sql)), 1)
+
+        listed_by_id = {item["id"]: item for item in fifty_page["items"]}
+        for fixture in (fixtures[0], fixtures[24], fixtures[-1]):
+            detail = self.service.get_component(str(fixture["id"]))
+            listed = listed_by_id[str(fixture["id"])]
+            assert detail is not None
+            self.assertEqual(listed["representations"], detail["representations"])
+            self.assertEqual(listed["local_inventory"], detail["local_inventory"])
+            self.assertEqual(listed["supply"], detail["supply"])
+        self.assertEqual(listed_by_id[str(fixtures[0]["id"])]["stock_quantity"], 12)
+        self.assertEqual(listed_by_id[str(fixtures[-1]["id"])]["stock_quantity"], 3)
+        self.assertFalse(listed_by_id[str(fixtures[24]["id"])]["stock_known"])
+
+        light_sql, light_page = self._capture_list_sql(
+            query=token, page=1, page_size=50, lightweight=True
+        )
+        self.assertEqual(len(light_page["items"]), 50)
+        self.assertFalse(any(self._is_representation_hydration(sql) for sql in light_sql))
+        self.assertFalse(any(self._is_inventory_hydration(sql) for sql in light_sql))
+        self.assertIsNone(light_page["items"][0]["local_inventory"])
 
     def test_mpn_correction_updates_identity_and_rejects_conflicts(self) -> None:
         first = self._component("correction-a-" + uuid.uuid4().hex[:8])

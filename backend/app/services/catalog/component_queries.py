@@ -15,6 +15,7 @@ from app.services.catalog.component_read_models import (
     VALIDATION_STATUS_PASSED,
     VALIDATION_STATUS_SKIPPED,
     VALIDATION_STATUS_WARNING,
+    inventory_payloads_from_source_rows,
 )
 from app.services.catalog.revision_kernel import WORKFLOW_STAGES, normalize_workflow_stage
 
@@ -402,6 +403,20 @@ class CatalogComponentQueries:
                 if asset_id not in revision_runs:
                     revision_runs[asset_id] = dict(inherited_row)
 
+        representations_by_revision: dict[str, list[dict[str, Any]]] = {}
+        inventory_by_component: dict[str, list[dict[str, Any]]] = {}
+        if not plan.lightweight and parsed_rows:
+            representations_by_revision = self._component_read_models.load_representations_for_revisions(
+                conn,
+                revision_ids,
+                assets_by_revision=assets_by_revision,
+                previews_by_revision=previews_by_revision,
+            )
+            inventory_by_component = self._component_read_models.load_inventory_for_components(
+                conn,
+                [str(component_row["id"]) for component_row, _, _, _ in parsed_rows],
+            )
+
         items = []
         for component_row, revision_row, default_symbol_asset_id, default_footprint_asset_id in parsed_rows:
             rev_assets = assets_by_revision.get(str(revision_row["id"]), [])
@@ -424,6 +439,9 @@ class CatalogComponentQueries:
                     )
                 )
                 continue
+            local_inventory, supply_sources = inventory_payloads_from_source_rows(
+                inventory_by_component.get(str(component_row["id"]), [])
+            )
             rev_previews = previews_by_revision.get(str(revision_row["id"]), [])
             items.append(
                 self._component_read_models.component_payload(
@@ -434,6 +452,11 @@ class CatalogComponentQueries:
                     preloaded_assets=rev_assets,
                     preloaded_previews=rev_previews,
                     preloaded_validation_runs=validation_by_revision.get(str(revision_row["id"]), {}),
+                    preloaded_representations=representations_by_revision.get(
+                        str(revision_row["id"]), []
+                    ),
+                    preloaded_local_inventory=local_inventory,
+                    preloaded_supply_sources=supply_sources,
                 )
             )
 

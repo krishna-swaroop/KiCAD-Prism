@@ -7,6 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.services.catalog.component_read_models import (  # noqa: E402
+    inventory_payloads_from_source_rows,
+)
 from app.services.component_catalog_domain import _supply_source_payload  # noqa: E402
 from app.services.component_catalog_service_postgres import (  # noqa: E402
     ComponentCatalogPostgresService,
@@ -116,6 +119,40 @@ class SupplySourcesQueryTests(unittest.TestCase):
 
     def test_empty_when_no_rows(self) -> None:
         sources = self.service._supply_sources(_FakeConn([]), "component-1")
+        self.assertEqual(sources, [])
+
+
+class InventoryPayloadsFromSourceRowsTests(unittest.TestCase):
+    def test_first_row_is_local_inventory_and_all_rows_are_supply(self) -> None:
+        local, sources = inventory_payloads_from_source_rows(
+            [
+                {
+                    "source": "inventree",
+                    "quantity": 10,
+                    "uom": "pcs",
+                    "inventory_status": "available",
+                    "fetch_status": "ok",
+                    "fetched_at": "2026-01-01T00:00:00Z",
+                },
+                {
+                    "source": "csv",
+                    "quantity": 2,
+                    "uom": "pcs",
+                    "inventory_status": "",
+                    "fetch_status": "error",
+                    "fetched_at": "2026-01-02T00:00:00Z",
+                },
+            ]
+        )
+        assert local is not None
+        self.assertEqual(local["source"], "inventree")
+        self.assertEqual(local["quantity"], 10.0)
+        self.assertEqual([item["id"] for item in sources], ["inventree", "csv"])
+        self.assertEqual([item["fetch_status"] for item in sources], ["ok", "error"])
+
+    def test_empty_rows_mean_unknown_stock(self) -> None:
+        local, sources = inventory_payloads_from_source_rows([])
+        self.assertIsNone(local)
         self.assertEqual(sources, [])
 
 
