@@ -78,7 +78,7 @@
     }
   ],
   "module_line_ceilings": {
-    "backend/app/api/catalog_admin.py": 1599,
+    "backend/app/api/catalog_admin.py": 1595,
     "backend/app/api/projects.py": 2153,
     "backend/app/release_studio/closure.py": 1336,
     "backend/app/release_studio/documents/artwork.py": 1533,

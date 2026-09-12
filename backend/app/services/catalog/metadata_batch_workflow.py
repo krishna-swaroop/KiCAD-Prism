@@ -13,6 +13,7 @@ from typing import Any
 import uuid
 
 from app.services.catalog.component_writer import CatalogComponentWriter
+from app.services.catalog.conflicts import CatalogConflict
 from app.services.catalog.locking import CatalogLockOperations
 from app.services.catalog.metadata_batch_application import CatalogMetadataBatchApplication
 from app.services.catalog.metadata_batch_staging import CatalogMetadataBatchStaging
@@ -144,7 +145,7 @@ class CatalogMetadataBatchWorkflow:
         if not component or not revision:
             raise ValueError("Component not found")
         if str(revision["id"]) != str(item["expected_revision_id"]):
-            raise ValueError("Component revision conflict: current revision changed after preview")
+            raise CatalogConflict("Component revision conflict: current revision changed after preview")
         definitions = {field["key"]: field for field in self._metadata_fields.list_fields(conn)}
         prepared = self._application.prepare_revision(item, revision, definitions)
         metadata = prepared.metadata

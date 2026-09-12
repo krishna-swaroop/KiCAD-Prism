@@ -11,6 +11,7 @@ import json
 from typing import Any
 import uuid
 
+from app.services.catalog.conflicts import CatalogConflict
 from app.services.catalog.component_read_models import (
     VALIDATION_STATUS_FAILED,
     VALIDATION_STATUS_NOT_RUN,
@@ -108,7 +109,7 @@ class CatalogReleaseWorkflow:
         if not revision:
             raise ValueError("Component revision not found")
         if expected_revision_id and str(revision["id"]) != expected_revision_id:
-            raise ValueError("Component revision conflict: refresh the component before changing workflow")
+            raise CatalogConflict("Component revision conflict: refresh the component before changing workflow")
         if expected_manifest_hash and str(revision.get("manifest_hash") or "") != expected_manifest_hash:
             raise ValueError("Component manifest conflict: refresh the component before changing workflow")
         current_status = normalize_workflow_stage(str(revision["release_status"]))

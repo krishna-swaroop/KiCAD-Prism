@@ -6,6 +6,7 @@ import json
 import uuid
 from typing import Any
 
+from app.services.catalog.conflicts import CatalogConflict
 from app.services.catalog.locking import CatalogLockOperations
 from app.services.catalog.normalization import (
     canonical_json,
@@ -206,7 +207,7 @@ class CatalogRevisionKernel:
     def assert_expected_revision(current_id: str, expected_revision_id: str = "") -> None:
         # Empty expected_revision_id is the legacy skip used by older callers.
         if expected_revision_id and current_id != expected_revision_id:
-            raise ValueError("Component revision conflict: refresh the component before saving")
+            raise CatalogConflict()
 
     def clone_revision(
         self,

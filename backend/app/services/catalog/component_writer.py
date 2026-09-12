@@ -13,6 +13,7 @@ import json
 from typing import Any
 import uuid
 
+from app.services.catalog.conflicts import CatalogConflict
 from app.services.catalog.locking import CatalogLockOperations
 from app.services.catalog.metadata_normalization import (
     IDENTITY_KIND_MPN,
@@ -420,7 +421,7 @@ class CatalogComponentWriter:
         if not revision:
             return None
         if str(revision["id"]) != expected_revision_id:
-            raise ValueError("Component revision conflict: refresh the component before saving")
+            raise CatalogConflict()
         metadata = merge_metadata_patch(component, revision, updates)
         if metadata_matches_revision(revision, metadata):
             return ""
