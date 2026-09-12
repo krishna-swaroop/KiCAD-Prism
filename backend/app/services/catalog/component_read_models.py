@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from app.core.config import settings
 from app.services.catalog.asset_types import PLACE_REQUIRED_ASSET_TYPES
@@ -79,6 +79,45 @@ VALIDATION_STATUS_NOT_RUN = "not_run"
 KLC_RELEASE_GATE_VALUES = {"off", "warn", "block"}
 
 
+# Distinguishes "inventory was not preloaded" from a legitimate empty result.
+_PRELOAD_UNSET = object()
+
+_INVENTORY_AGGREGATE_COLUMNS = (
+    "source, SUM(quantity) AS quantity, MIN(uom) AS uom, "
+    "MIN(inventory_status) AS inventory_status, "
+    "MIN(fetch_status) AS fetch_status, MAX(fetched_at) AS fetched_at"
+)
+_INVENTORY_SOURCE_ORDER = (
+    "CASE source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END, source"
+)
+
+
+def local_inventory_payload(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Shape the preferred inventory aggregate used by component payloads."""
+
+    if row is None:
+        return None
+    return {
+        "source": str(row["source"]),
+        "quantity": float(row["quantity"] or 0),
+        "uom": str(row["uom"] or ""),
+        "inventory_status": str(row["inventory_status"] or ""),
+        "fetch_status": str(row.get("fetch_status") or "ok"),
+        "fetched_at": str(row["fetched_at"] or ""),
+    }
+
+
+def inventory_payloads_from_source_rows(
+    rows: list[Mapping[str, Any]],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Return ``(local_inventory, supply_sources)`` from prioritized source rows."""
+
+    return (
+        local_inventory_payload(rows[0]) if rows else None,
+        [supply_source_payload(dict(row)) for row in rows],
+    )
+
+
 def supply_source_payload(row: dict[str, Any]) -> dict[str, Any]:
     """Shape one inventory source for the stable component payload."""
 
@@ -132,6 +171,51 @@ class CatalogComponentReadModels:
             if previews is not None
             else self.load_previews_for_revision(conn, revision_id)
         )
+        rows = conn.execute(
+            "SELECT * FROM revision_representations WHERE revision_id = %s "
+            "ORDER BY display_order, id",
+            (revision_id,),
+        ).fetchall()
+        return self._shape_representation_rows(rows, assets=assets, previews=previews)
+
+    def load_representations_for_revisions(
+        self,
+        conn: Any,
+        revision_ids: list[str],
+        *,
+        assets_by_revision: dict[str, list[dict[str, Any]]] | None = None,
+        previews_by_revision: dict[str, list[dict[str, Any]]] | None = None,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Load every representation for ``revision_ids`` in one query."""
+
+        assets_by_revision = assets_by_revision or {}
+        previews_by_revision = previews_by_revision or {}
+        shaped: dict[str, list[dict[str, Any]]] = {revision_id: [] for revision_id in revision_ids}
+        if not revision_ids:
+            return shaped
+        placeholders = ",".join("%s" for _ in revision_ids)
+        rows_by_revision: dict[str, list[Any]] = {revision_id: [] for revision_id in revision_ids}
+        for row in conn.execute(
+            f"SELECT * FROM revision_representations WHERE revision_id IN ({placeholders}) "
+            "ORDER BY revision_id, display_order, id",
+            tuple(revision_ids),
+        ).fetchall():
+            rows_by_revision.setdefault(str(row["revision_id"]), []).append(row)
+        for revision_id, rows in rows_by_revision.items():
+            shaped[revision_id] = self._shape_representation_rows(
+                rows,
+                assets=assets_by_revision.get(revision_id, []),
+                previews=previews_by_revision.get(revision_id, []),
+            )
+        return shaped
+
+    @staticmethod
+    def _shape_representation_rows(
+        rows: list[Any],
+        *,
+        assets: list[dict[str, Any]],
+        previews: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         assets_by_id = {str(asset["id"]): asset for asset in assets}
         previews_by_asset: dict[str, list[dict[str, Any]]] = {}
         for preview in previews:
@@ -159,11 +243,6 @@ class CatalogComponentReadModels:
                 "preview_id": str(ready_preview["id"]) if ready_preview else "",
             }
 
-        rows = conn.execute(
-            "SELECT * FROM revision_representations WHERE revision_id = %s "
-            "ORDER BY display_order, id",
-            (revision_id,),
-        ).fetchall()
         return [
             {
                 "id": str(row["id"]),
@@ -181,43 +260,53 @@ class CatalogComponentReadModels:
 
     def local_inventory(self, conn: Any, component_id: str) -> dict[str, Any] | None:
         row = conn.execute(
-            """
-            SELECT source, SUM(quantity) AS quantity, MIN(uom) AS uom,
-                   MIN(inventory_status) AS inventory_status,
-                   MIN(fetch_status) AS fetch_status, MAX(fetched_at) AS fetched_at
+            f"""
+            SELECT {_INVENTORY_AGGREGATE_COLUMNS}
             FROM inventory_levels
             WHERE component_id = %s
             GROUP BY source
-            ORDER BY CASE source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END, source
+            ORDER BY {_INVENTORY_SOURCE_ORDER}
             LIMIT 1
             """,
             (component_id,),
         ).fetchone()
-        if not row:
-            return None
-        return {
-            "source": str(row["source"]),
-            "quantity": float(row["quantity"] or 0),
-            "uom": str(row["uom"] or ""),
-            "inventory_status": str(row["inventory_status"] or ""),
-            "fetch_status": str(row["fetch_status"] or "ok"),
-            "fetched_at": str(row["fetched_at"] or ""),
-        }
+        return local_inventory_payload(row)
 
     def supply_sources(self, conn: Any, component_id: str) -> list[dict[str, Any]]:
         rows = conn.execute(
-            """
-            SELECT source, SUM(quantity) AS quantity, MIN(uom) AS uom,
-                   MIN(inventory_status) AS inventory_status,
-                   MIN(fetch_status) AS fetch_status, MAX(fetched_at) AS fetched_at
+            f"""
+            SELECT {_INVENTORY_AGGREGATE_COLUMNS}
             FROM inventory_levels
             WHERE component_id = %s
             GROUP BY source
-            ORDER BY CASE source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END, source
+            ORDER BY {_INVENTORY_SOURCE_ORDER}
             """,
             (component_id,),
         ).fetchall()
         return [supply_source_payload(dict(row)) for row in rows]
+
+    def load_inventory_for_components(
+        self, conn: Any, component_ids: list[str]
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Load inventory aggregates for many components in one query."""
+
+        grouped: dict[str, list[dict[str, Any]]] = {component_id: [] for component_id in component_ids}
+        if not component_ids:
+            return grouped
+        placeholders = ",".join("%s" for _ in component_ids)
+        rows = conn.execute(
+            f"""
+            SELECT component_id, {_INVENTORY_AGGREGATE_COLUMNS}
+            FROM inventory_levels
+            WHERE component_id IN ({placeholders})
+            GROUP BY component_id, source
+            ORDER BY component_id, {_INVENTORY_SOURCE_ORDER}
+            """,
+            tuple(component_ids),
+        ).fetchall()
+        for row in rows:
+            grouped.setdefault(str(row["component_id"]), []).append(dict(row))
+        return grouped
 
     def load_previews_for_assets(self, conn: Any, asset_ids: list[str]) -> list[dict[str, Any]]:
         if not asset_ids:
@@ -539,6 +628,9 @@ class CatalogComponentReadModels:
         preloaded_assets: list[dict[str, Any]] | None = None,
         preloaded_previews: list[dict[str, Any]] | None = None,
         preloaded_validation_runs: dict[str, dict[str, Any]] | None = None,
+        preloaded_representations: list[dict[str, Any]] | None = None,
+        preloaded_local_inventory: Any = _PRELOAD_UNSET,
+        preloaded_supply_sources: list[dict[str, Any]] | None = None,
         representation_id: str = "",
     ) -> dict[str, Any]:
         assets = (
@@ -551,8 +643,12 @@ class CatalogComponentReadModels:
             if preloaded_previews is not None
             else self.load_previews_for_revision(conn, str(revision_row["id"]))
         )
-        representations = self.load_representations_for_revision(
-            conn, str(revision_row["id"]), assets=assets, previews=previews
+        representations = (
+            preloaded_representations
+            if preloaded_representations is not None
+            else self.load_representations_for_revision(
+                conn, str(revision_row["id"]), assets=assets, previews=previews
+            )
         )
         default_representation = next((item for item in representations if item["is_default"]), None)
         effective_representation = default_representation
@@ -573,8 +669,15 @@ class CatalogComponentReadModels:
             is_active=bool(component_row["is_active"]),
             identity_kind=str(component_row.get("identity_kind") or IDENTITY_KIND_MPN),
         )
-        local_inventory = self.local_inventory(conn, str(component_row["id"]))
-        supply_sources = self.supply_sources(conn, str(component_row["id"]))
+        if preloaded_local_inventory is _PRELOAD_UNSET:
+            local_inventory = self.local_inventory(conn, str(component_row["id"]))
+        else:
+            local_inventory = preloaded_local_inventory
+        supply_sources = (
+            preloaded_supply_sources
+            if preloaded_supply_sources is not None
+            else self.supply_sources(conn, str(component_row["id"]))
+        )
         validation_summary = self.component_validation_summary(
             conn,
             str(revision_row["id"]),
@@ -816,6 +919,8 @@ class CatalogComponentReadModels:
 __all__ = [
     "CatalogComponentReadModels",
     "cad_availability",
+    "inventory_payloads_from_source_rows",
+    "local_inventory_payload",
     "remote_place_enabled",
     "representation_slot_present",
     "supply_source_payload",
