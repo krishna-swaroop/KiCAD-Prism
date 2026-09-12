@@ -25,9 +25,13 @@ these modules are forms and grids over server data rather than viewer bridges.
 
 ## Modules
 
-**Component authoring** — `library-component-workspace.tsx` (the monolith),
-`library-component-quick-view.tsx`, `library-asset-link-picker.tsx`,
-`use-edit-history.ts`.
+**Component authoring** — `library-component-workspace.tsx` (the coordinator:
+URL ownership and current/historical selection stay here),
+`library-component-chrome.tsx` (shared badges, cards, empty/loading chrome),
+`library-component-evidence.ts` (tab evidence load hooks, no store or query
+library), `library-component-evidence-panels.tsx` (read-only revisions, review,
+usage, and audit evidence), `library-component-quick-view.tsx`,
+`library-asset-link-picker.tsx`, `use-edit-history.ts`.
 
 **Previews** — two paths that share nothing but a subject.
 `library-preview-viewport.tsx` pans and zooms a stored SVG render

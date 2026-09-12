@@ -91,7 +91,32 @@ describe("component evidence across generations", () => {
         expect(await screen.findByText("history for comp-a")).toBeInTheDocument();
     });
 
+    it("ignores a stale generation that completes after the component has moved on", async () => {
+        let finishA: ((value: { items: ReturnType<typeof revision>[] }) => void) | undefined;
+        const aRevisions = new Promise<{ items: ReturnType<typeof revision>[] }>((resolve) => {
+            finishA = resolve;
+        });
+        vi.mocked(fetchJson).mockImplementation(async (input) => {
+            const url = String(input);
+            if (url === "/api/catalog/components/comp-a") return component("comp-a") as never;
+            if (url === "/api/catalog/components/comp-b") return component("comp-b") as never;
+            if (url === "/api/catalog/components/comp-a/revisions") return aRevisions as never;
+            if (url === "/api/catalog/components/comp-b/revisions") {
+                return { items: [revision("comp-b", "history for comp-b")] } as never;
+            }
+            return { items: [] } as never;
+        });
 
+        const { rerender } = renderWorkspace("comp-a");
+        expect(await screen.findByText("COMP-A")).toBeInTheDocument();
+        rerender(<Harness componentId="comp-b" />);
+        expect(await screen.findByText("history for comp-b")).toBeInTheDocument();
+        finishA!({ items: [revision("comp-a", "history for comp-a")] });
+        await waitFor(() => {
+            expect(screen.queryByText("history for comp-a")).not.toBeInTheDocument();
+        });
+        expect(screen.getByText("history for comp-b")).toBeInTheDocument();
+    });
 
     // Arriving with a `?revision=` that belongs to a different component. Every
     // in-app path clears that param and the API scopes the lookup and 404s, so
