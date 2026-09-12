@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assetMutationRevisionId,
+  isRevisionConflict,
   releaseRetainedRevisionOnConflict,
 } from "./library-asset-mutation";
 
@@ -31,5 +32,9 @@ describe("assetMutationRevisionId", () => {
     expect(releaseRetainedRevisionOnConflict(selection, 409)?.expectedRevisionId).toBe("");
     expect(releaseRetainedRevisionOnConflict(selection, 409, "asset_referenced")).toEqual(selection);
     expect(releaseRetainedRevisionOnConflict(selection, 409, "manifest_conflict")).toEqual(selection);
+    expect(isRevisionConflict(409, "revision_conflict")).toBe(true);
+    expect(isRevisionConflict(409)).toBe(true);
+    expect(isRevisionConflict(409, "asset_referenced")).toBe(false);
+    expect(isRevisionConflict(400, "revision_conflict")).toBe(false);
   });
 });

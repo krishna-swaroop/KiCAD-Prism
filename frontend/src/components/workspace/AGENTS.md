@@ -30,7 +30,9 @@ URL ownership and current/historical selection stay here),
 `library-component-chrome.tsx` (shared badges, cards, empty/loading chrome),
 `library-component-evidence.ts` (tab evidence load hooks, no store or query
 library), `library-component-evidence-panels.tsx` (read-only revisions, review,
-usage, and audit evidence), `library-component-quick-view.tsx`,
+usage, and audit evidence), `library-component-metadata-dialog.tsx` and
+`library-component-asset-dialog.tsx` (edit sessions captured at open, one
+success callback), `library-component-quick-view.tsx`,
 `library-asset-link-picker.tsx`, `use-edit-history.ts`.
 
 **Previews** — two paths that share nothing but a subject.
