@@ -1733,6 +1733,68 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
             place_enabled=True,
         )
 
+    def test_tied_timestamps_paginate_without_duplicate_or_omitted_ids(self) -> None:
+        token = "tie-" + uuid.uuid4().hex[:8]
+        frozen = "2026-09-12T21:00:00+00:00"
+        fixtures: list[dict] = []
+        with (
+            patch("app.services.catalog.component_writer.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.revision_kernel._utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.revision_finalization.utc_now_iso", return_value=frozen),
+        ):
+            for index in range(4):
+                component = self.service.create_manual_component(
+                    name="Tied Name",
+                    value="10k",
+                    description=f"Pagination {token}",
+                    datasheet="https://example.com/r.pdf",
+                    manufacturer="Prism Tiebreak",
+                    manufacturer_part_number=f"PG-TIE-{token}-{index}",
+                    actor="author@example.com",
+                )
+                self.component_ids.append(str(component["id"]))
+                fixtures.append(component)
+
+        expected = {str(item["id"]) for item in fixtures}
+        timestamps = {str(item["revision_updated_at"]) for item in fixtures}
+        names = {str(item["name"]) for item in fixtures}
+        self.assertEqual(timestamps, {frozen})
+        self.assertEqual(names, {"Tied Name"})
+
+        def paged_ids(**kwargs: object) -> list[str]:
+            seen: list[str] = []
+            page = 1
+            while True:
+                result = self.service.list_components(
+                    query=token,
+                    page=page,
+                    page_size=2,
+                    lightweight=True,
+                    **kwargs,
+                )
+                batch = [
+                    str(item["id"])
+                    for item in result["items"]
+                    if str(item["id"]) in expected
+                ]
+                overlap = set(seen) & set(batch)
+                self.assertFalse(overlap, overlap)
+                seen.extend(batch)
+                if page >= int(result["pages"]) or not result["items"]:
+                    break
+                page += 1
+            return seen
+
+        ranked_ids = paged_ids()
+        named_ids = paged_ids(sort_by="name", sort_dir="asc")
+        manufacturer_ids = paged_ids(sort_by="manufacturer", sort_dir="asc")
+        self.assertEqual(set(ranked_ids), expected)
+        self.assertEqual(len(ranked_ids), 4)
+        self.assertEqual(ranked_ids, sorted(expected))
+        self.assertEqual(named_ids, ranked_ids)
+        self.assertEqual(manufacturer_ids, ranked_ids)
+        self.assertEqual(paged_ids(), ranked_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

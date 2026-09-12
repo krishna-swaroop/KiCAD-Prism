@@ -179,6 +179,7 @@ class CatalogAvailabilityQueryTests(unittest.TestCase):
         self.assertIn("COALESCE(default_rep.footprint_asset_id, '') <> ''", plan.order_sql)
         self.assertNotIn("EXISTS", plan.order_sql)
         self.assertNotIn("revision_assets", plan.order_sql)
+        self.assertTrue(plan.order_sql.endswith(", c.id"))
 
 
 class CatalogAvailabilitySummaryTests(unittest.TestCase):

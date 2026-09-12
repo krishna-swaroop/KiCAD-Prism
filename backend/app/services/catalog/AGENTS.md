@@ -50,6 +50,9 @@ rationale are recorded in `docs/CATALOG_DECOMPOSITION_HANDOFF.md`.
 - Write-conflict classification is `CatalogConflict.code`. HTTP 409 bodies are
   `{code, message}` (`conflicts.py`, `backend/app/api/catalog_errors.py`).
 - Canonical asset paths under the store root (`asset_files.py`, `runtime.py`).
+- Paginated catalog and remote-head lists end `ORDER BY` with immutable
+  component identity (`component_queries.py`, `remote_heads.py`). This is a
+  stable-dataset total order, not snapshot isolation across concurrent writes.
 
 ## Navigation
 
