@@ -2,6 +2,8 @@
  * Panel API client — typed fetch helpers for the remote-provider endpoints.
  */
 
+import { normalizePanelPageSize, PANEL_PAGE_SIZE } from "@/panel/lib/panel-page";
+
 export interface PanelComponent {
   id: string;
   slug: string;
@@ -135,37 +137,55 @@ export function isAuthError(err: unknown): boolean {
   return err instanceof PanelApiError && (err.status === 401 || err.status === 403);
 }
 
-async function fetchComponentPages(
+export interface PanelPageResult {
+  items: PanelComponent[];
+  total: number | null;
+  has_more: boolean;
+  page: number;
+  pages: number | null;
+  page_size: number;
+}
+
+export interface PanelPageQuery {
+  page?: number;
+  pageSize?: number;
+  signal?: AbortSignal;
+}
+
+function asPageResult(data: Partial<PanelPageResult>, fallbackPage: number, fallbackSize: number): PanelPageResult {
+  return {
+    items: data.items ?? [],
+    total: data.total ?? null,
+    has_more: Boolean(data.has_more),
+    page: data.page ?? fallbackPage,
+    pages: data.pages ?? null,
+    page_size: data.page_size ?? fallbackSize,
+  };
+}
+
+async function fetchComponentPage(
   endpoint: string,
   params: URLSearchParams,
-  pageSize: number,
-  maxItems: number,
-  signal?: AbortSignal
-): Promise<PanelComponent[]> {
-  const items: PanelComponent[] = [];
-  let page = 1;
-  let pages = 1;
-  do {
-    params.set("page", String(page));
-    params.set("page_size", String(pageSize));
-    const data = await panelFetch<{ items: PanelComponent[]; pages: number }>(
-      `${endpoint}?${params.toString()}`,
-      signal
-    );
-    items.push(...data.items);
-    pages = data.pages;
-    page += 1;
-  } while (page <= pages && items.length < maxItems && !signal?.aborted);
-  return items.slice(0, maxItems);
+  query: PanelPageQuery = {},
+): Promise<PanelPageResult> {
+  const page = query.page ?? 1;
+  const pageSize = normalizePanelPageSize(query.pageSize ?? PANEL_PAGE_SIZE);
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+  const data = await panelFetch<Partial<PanelPageResult>>(
+    `${endpoint}?${params.toString()}`,
+    query.signal,
+  );
+  return asPageResult(data, page, pageSize);
 }
 
 export async function searchComponents(
   query: string,
-  signal?: AbortSignal
-): Promise<PanelComponent[]> {
+  pageQuery: PanelPageQuery = {},
+): Promise<PanelPageResult> {
   const params = new URLSearchParams();
   if (query) params.set("q", query);
-  return fetchComponentPages("/api/remote-provider/search", params, 50, 50, signal);
+  return fetchComponentPage("/api/remote-provider/search", params, pageQuery);
 }
 
 export async function getCategories(
@@ -180,10 +200,10 @@ export async function getCategories(
 
 export async function getComponentsByCategory(
   category: string,
-  signal?: AbortSignal
-): Promise<PanelComponent[]> {
+  pageQuery: PanelPageQuery = {},
+): Promise<PanelPageResult> {
   const params = new URLSearchParams({ category });
-  return fetchComponentPages("/api/remote-provider/components-by-category", params, 200, 500, signal);
+  return fetchComponentPage("/api/remote-provider/components-by-category", params, pageQuery);
 }
 
 export async function getComponent(
