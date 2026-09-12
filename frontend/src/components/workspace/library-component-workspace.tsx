@@ -3,8 +3,6 @@ import {
   Archive,
   ArrowLeft,
   Boxes,
-  Check,
-  ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleDashed,
@@ -44,10 +42,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { FileInput } from "@/components/ui/file-input";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AsyncSearchPicker } from "./async-search-picker";
 import {
   Select,
   SelectContent,
@@ -56,7 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiHttpError, fetchJson } from "@/lib/api";
+import { fetchJson } from "@/lib/api";
 import { canWriteCatalog, workflowStage } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types/auth";
@@ -73,8 +69,6 @@ import type {
   CatalogRevisionDiff,
   CatalogRevisionSummary,
   CatalogValidationStatus,
-  ImportCompletedResponse,
-  SelectionRequiredResponse,
   WorkflowStage,
 } from "@/types/catalog";
 import type { Project } from "@/types/project";
@@ -107,42 +101,21 @@ import {
   WhereUsedPanel,
 } from "./library-component-evidence-panels";
 import { LibraryPreviewPair } from "./library-preview-inspector";
-import { assetMutationRevisionId, releaseRetainedRevisionOnConflict } from "./library-asset-mutation";
+import {
+  ASSET_LABELS,
+  AssetAttachDialog,
+  assetAttachSessionFrom,
+  type AssetAttachSession,
+  type AssetType,
+} from "./library-component-asset-dialog";
+import {
+  MetadataEditDialog,
+  metadataEditSessionFrom,
+  type MetadataEditSession,
+} from "./library-component-metadata-dialog";
 import { resolveLibraryPreviewPairAssetIds } from "./library-preview-pair";
 
 type ComponentTab = "overview" | "assets" | "revisions" | "review" | "usage" | "audit";
-type AssetType = CatalogAsset["asset_type"];
-type AssetAttachMode = "upload" | "link";
-
-type MetadataForm = {
-  value: string;
-  description: string;
-  datasheetUrl: string;
-  manufacturer: string;
-  mpn: string;
-  category: string;
-  packageName: string;
-  vendor: string;
-  vendorPartNumber: string;
-  massG: string;
-  rqjcCW: string;
-  rqjcTopCW: string;
-  tempMaxC: string;
-  tempMinC: string;
-  powerDissipationW: string;
-  rate: string;
-  sapCode: string;
-  extraFieldsJson: string;
-  changeSummary: string;
-};
-
-type AssetImportSelection = {
-  file: File;
-  targetLibrary: string;
-  options: string[];
-  selected: string;
-  expectedRevisionId: string;
-};
 
 type ValidationJob = {
   status: "queued" | "running" | "completed" | "failed";
@@ -169,20 +142,6 @@ const COMPONENT_TABS: Array<{ id: ComponentTab; label: string; icon: typeof Boxe
   { id: "usage", label: "Where Used", icon: Link2 },
   { id: "audit", label: "Audit", icon: ShieldCheck },
 ];
-
-const ASSET_LABELS: Record<AssetType, string> = {
-  symbol: "Symbol",
-  footprint: "Footprint",
-  "3dmodel": "3D model",
-  spice: "SPICE model",
-};
-
-const ASSET_ACCEPT: Record<AssetType, string> = {
-  symbol: ".kicad_sym",
-  footprint: ".kicad_mod,.zip",
-  "3dmodel": ".step,.stp,.wrl",
-  spice: ".sp,.cir,.spice,.lib",
-};
 
 const WORKFLOW_LABELS: Record<WorkflowStage, string> = {
   open: "Open",
@@ -233,28 +192,6 @@ function isCatalogComponent(value: unknown): value is CatalogComponent {
     && typeof candidate.validation === "object"
     && candidate.validation !== null;
 }
-
-const metadataFormFromComponent = (component: CatalogComponent): MetadataForm => ({
-  value: component.value,
-  description: component.description,
-  datasheetUrl: component.datasheet_url,
-  manufacturer: component.manufacturer,
-  mpn: component.mpn,
-  category: component.category,
-  packageName: component.package_name,
-  vendor: component.vendor,
-  vendorPartNumber: component.vendor_part_number,
-  massG: component.mass_g,
-  rqjcCW: component.rqjc_c_w,
-  rqjcTopCW: component.rqjc_top_c_w,
-  tempMaxC: component.temp_max_c,
-  tempMinC: component.temp_min_c,
-  powerDissipationW: component.power_dissipation_w,
-  rate: component.rate,
-  sapCode: component.sap_code,
-  extraFieldsJson: JSON.stringify(component.extra_fields, null, 2),
-  changeSummary: "Update component metadata",
-});
 
 function OverviewPanel({ component, canMutate, onEdit }: { component: CatalogComponent; canMutate: boolean; onEdit: () => void }) {
   const requiredAttached = component.assets.filter((asset) => asset.required).length;
@@ -602,293 +539,6 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-function MetadataEditDialog({
-  open,
-  form,
-  submitting,
-  onOpenChange,
-  onChange,
-  onSubmit,
-}: {
-  open: boolean;
-  form: MetadataForm | null;
-  submitting: boolean;
-  onOpenChange: (open: boolean) => void;
-  onChange: (form: MetadataForm) => void;
-  onSubmit: () => void;
-}) {
-  if (!form) return null;
-  const setField = (field: keyof MetadataForm, value: string) => onChange({ ...form, [field]: value });
-  const requiredComplete = Boolean(form.value.trim() && form.manufacturer.trim() && form.mpn.trim() && form.description.trim() && form.datasheetUrl.trim() && form.changeSummary.trim());
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Edit component metadata</DialogTitle>
-          <DialogDescription>Saving creates a new immutable revision. The current revision ID is checked to prevent overwriting concurrent work.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {METADATA_FIELDS.map(({ field, label, type, placeholder }) => (
-            <div key={field} className="space-y-2">
-              <Label htmlFor={`component-edit-${field}`}>{label}{["value", "manufacturer", "mpn", "datasheetUrl"].includes(field) ? " *" : ""}</Label>
-              <Input id={`component-edit-${field}`} type={type} required={["value", "manufacturer", "mpn", "datasheetUrl"].includes(field)} value={form[field]} placeholder={placeholder} onChange={(event) => setField(field, event.target.value)} />
-            </div>
-          ))}
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="component-edit-description">Description *</Label>
-            <Textarea id="component-edit-description" required value={form.description} rows={3} onChange={(event) => setField("description", event.target.value)} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="component-edit-extra-fields">Extended symbol fields (JSON object)</Label>
-            <Textarea id="component-edit-extra-fields" className="font-mono text-xs" value={form.extraFieldsJson} rows={6} spellCheck={false} onChange={(event) => setField("extraFieldsJson", event.target.value)} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="component-edit-summary">Change summary *</Label>
-            <Input id="component-edit-summary" required value={form.changeSummary} placeholder="Describe why this revision is needed" onChange={(event) => setField("changeSummary", event.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={submitting || !requiredComplete} onClick={onSubmit}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Edit3 className="h-4 w-4" />} Save new revision</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-const STORED_FILE_RESULT_LIMIT = 50;
-
-/** Pick a file already sitting in Prism storage, including ones never registered as an asset. */
-function StoredFilePicker({
-  id,
-  assetType,
-  value,
-  onChange,
-}: {
-  id: string;
-  assetType: AssetType;
-  value: string;
-  onChange: (path: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const kind = ASSET_LABELS[assetType].toLowerCase();
-
-  return (
-    <AsyncSearchPicker<string>
-      id={id}
-      open={open}
-      onOpenChange={setOpen}
-      // Portalled out of the attach dialog, so it needs its own modal layer.
-      modal
-      contentClassName="w-[var(--radix-popover-trigger-width)]"
-      fetchKey={assetType}
-      trigger={
-        <button
-          type="button"
-          id={id}
-          aria-expanded={open}
-          className="border-input dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full min-w-0 items-center justify-between gap-1.5 border px-3 py-2 text-left text-xs leading-none transition-colors outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-1"
-        >
-          <span className={cn("min-w-0 truncate", value ? "text-foreground" : "text-muted-foreground")}>{value || "Select a stored file"}</span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </button>
-      }
-      fetchPage={(query, signal) =>
-        fetchJson<{ files: string[]; total?: number }>(
-          `/api/catalog/assets/browse?asset_type=${encodeURIComponent(assetType)}&limit=${STORED_FILE_RESULT_LIMIT}&q=${encodeURIComponent(query)}`,
-          { signal },
-          "Stored assets could not be listed.",
-        ).then((response) => ({ items: response.files, total: response.total }))
-      }
-      getKey={(path) => path}
-      isSelected={(path) => path === value}
-      onSelect={onChange}
-      searchPlaceholder={`Search stored ${kind} files`}
-      listLabel={`Stored ${kind} files`}
-      emptyMessage={`No stored ${kind} files match.`}
-      renderItem={(path) => (
-        <>
-          <Check className={cn("h-3.5 w-3.5 shrink-0", path === value ? "text-primary" : "invisible")} />
-          <span className="min-w-0 flex-1 truncate">{path}</span>
-        </>
-      )}
-      renderFooter={({ shown, total }) =>
-        total > shown ? (
-          <p className="border-t px-2.5 py-1.5 text-[11px] text-muted-foreground">Showing {shown} of {total} stored files — refine the search to narrow.</p>
-        ) : null
-      }
-    />
-  );
-}
-
-function AssetAttachDialog({
-  assetType,
-  mode,
-  file,
-  targetLibrary,
-  targetName,
-  counterpartAssets,
-  counterpartAssetId,
-  selectedLink,
-  selection,
-  submitting,
-  onOpenChange,
-  onModeChange,
-  onFileChange,
-  onTargetLibraryChange,
-  onTargetNameChange,
-  onCounterpartAssetChange,
-  onSelectedLinkChange,
-  onSelectionChange,
-  onUpload,
-  onLink,
-}: {
-  assetType: AssetType | null;
-  mode: AssetAttachMode;
-  file: File | null;
-  targetLibrary: string;
-  targetName: string;
-  counterpartAssets: CatalogAsset[];
-  counterpartAssetId: string;
-  selectedLink: string;
-  selection: AssetImportSelection | null;
-  submitting: boolean;
-  onOpenChange: (open: boolean) => void;
-  onModeChange: (mode: AssetAttachMode) => void;
-  onFileChange: (file: File | null) => void;
-  onTargetLibraryChange: (value: string) => void;
-  onTargetNameChange: (value: string) => void;
-  onCounterpartAssetChange: (value: string) => void;
-  onSelectedLinkChange: (value: string) => void;
-  onSelectionChange: (value: string) => void;
-  onUpload: () => void;
-  onLink: () => void;
-}) {
-  const label = assetType ? ASSET_LABELS[assetType] : "asset";
-  return (
-    <Dialog open={assetType !== null} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Add {label.toLowerCase()}</DialogTitle>
-          <DialogDescription>Upload a file or link one already present in Prism storage. Attaching it creates a new immutable component revision.</DialogDescription>
-        </DialogHeader>
-        {selection ? (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Select the {assetType === "symbol" ? "symbol" : "footprint"} to import</Label>
-              <div className="max-h-64 space-y-1 overflow-y-auto border p-2">
-                {selection.options.map((option) => (
-                  <button key={option} type="button" className={cn("w-full border px-3 py-2 text-left text-sm hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", selection.selected === option && "border-primary bg-primary/5")} onClick={() => onSelectionChange(option)}>{option}</button>
-                ))}
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button disabled={submitting || !selection.selected} onClick={onUpload}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Import selected</Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <>
-            <div className="inline-flex items-center gap-1 border bg-muted/30 p-1" role="tablist" aria-label="Asset source">
-              {ASSET_SOURCE_TABS.map(({ id, label: tabLabel, icon: Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === id}
-                  disabled={submitting}
-                  className={cn(
-                    "inline-flex h-7 items-center gap-1.5 border border-transparent px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                    mode === id
-                      ? "border-border bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => onModeChange(id)}
-                >
-                  <Icon className="h-3.5 w-3.5" />{tabLabel}
-                </button>
-              ))}
-            </div>
-            <div className="space-y-4">
-              {mode === "upload" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="component-asset-file">{label} file</Label>
-                  <FileInput
-                    id="component-asset-file"
-                    accept={assetType ? ASSET_ACCEPT[assetType] : undefined}
-                    value={file}
-                    onValueChange={onFileChange}
-                    disabled={submitting}
-                  />
-                  {file ? <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p> : null}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="component-existing-asset">Existing file</Label>
-                  {assetType ? (
-                    <StoredFilePicker
-                      id="component-existing-asset"
-                      assetType={assetType}
-                      value={selectedLink}
-                      onChange={onSelectedLinkChange}
-                    />
-                  ) : null}
-                </div>
-              )}
-              <div className={cn("grid gap-4", mode === "link" && "sm:grid-cols-2")}>
-                <div className="space-y-2"><Label htmlFor="component-asset-library">Target library</Label><Input id="component-asset-library" value={targetLibrary} onChange={(event) => onTargetLibraryChange(event.target.value)} placeholder="Prism library" /></div>
-                {mode === "link" ? <div className="space-y-2"><Label htmlFor="component-asset-name">Target item name</Label><Input id="component-asset-name" value={targetName} onChange={(event) => onTargetNameChange(event.target.value)} placeholder="Auto-detect" /></div> : null}
-              </div>
-              {(assetType === "symbol" || assetType === "footprint") && counterpartAssets.length ? (
-                <div className="space-y-2">
-                  <Label htmlFor="component-counterpart-asset">Pair with {assetType === "symbol" ? "footprint" : "symbol"}</Label>
-                  <Select value={counterpartAssetId} onValueChange={onCounterpartAssetChange}>
-                    <SelectTrigger id="component-counterpart-asset" className="w-full"><SelectValue placeholder="Select the counterpart asset" /></SelectTrigger>
-                    <SelectContent>{counterpartAssets.map((asset) => <SelectItem key={asset.id} value={asset.id}>{asset.target_library ? `${asset.target_library}:` : ""}{asset.target_name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">The current default counterpart is preselected. You can edit the resulting pair in Representations.</p>
-                </div>
-              ) : null}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button disabled={submitting || (mode === "upload" ? !file : !selectedLink)} onClick={mode === "upload" ? onUpload : onLink}>
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === "upload" ? <Upload className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}{mode === "upload" ? "Attach file" : "Link asset"}
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Fixed table, no closure over props: build it once.
-const METADATA_FIELDS: Array<{ field: keyof MetadataForm; label: string; type?: string; placeholder?: string }> = [
-  { field: "value", label: "Value", placeholder: "10 kΩ, TPS55289…" },
-  { field: "manufacturer", label: "Manufacturer" },
-  { field: "mpn", label: "Manufacturer part number" },
-  { field: "datasheetUrl", label: "Datasheet URL", type: "url" },
-  { field: "category", label: "Category" },
-  { field: "packageName", label: "Package" },
-  { field: "vendor", label: "Vendor" },
-  { field: "vendorPartNumber", label: "Vendor part number" },
-  { field: "massG", label: "Mass (g)" },
-  { field: "rqjcCW", label: "RθJC (°C/W)" },
-  { field: "rqjcTopCW", label: "RθJC top (°C/W)" },
-  { field: "tempMaxC", label: "Maximum temperature (°C)" },
-  { field: "tempMinC", label: "Minimum temperature (°C)" },
-  { field: "powerDissipationW", label: "Power dissipation (W)" },
-  { field: "rate", label: "Rate" },
-  { field: "sapCode", label: "SAP code" },
-];
-
-// Fixed table, no closure over props: build it once.
-const ASSET_SOURCE_TABS: Array<{ id: AssetAttachMode; label: string; icon: typeof Upload }> = [
-  { id: "upload", label: "Upload file", icon: Upload },
-  { id: "link", label: "Link existing", icon: Link2 },
-];
-
 // react-doctor-disable-next-line no-giant-component - tabs, evidence, and release queue share one component resource
 export function LibraryComponentWorkspace({
   componentId,
@@ -947,16 +597,8 @@ export function LibraryComponentWorkspace({
   const [reviewNote, setReviewNote] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [transitioning, setTransitioning] = useState(false);
-  const [metadataOpen, setMetadataOpen] = useState(false);
-  const [metadataForm, setMetadataForm] = useState<MetadataForm | null>(null);
-  const [attachAssetType, setAttachAssetType] = useState<AssetType | null>(null);
-  const [attachMode, setAttachMode] = useState<AssetAttachMode>("upload");
-  const [attachFile, setAttachFile] = useState<File | null>(null);
-  const [attachTargetLibrary, setAttachTargetLibrary] = useState("");
-  const [attachTargetName, setAttachTargetName] = useState("");
-  const [attachCounterpartId, setAttachCounterpartId] = useState("");
-  const [selectedLink, setSelectedLink] = useState("");
-  const [importSelection, setImportSelection] = useState<AssetImportSelection | null>(null);
+  const [metadataSession, setMetadataSession] = useState<MetadataEditSession | null>(null);
+  const [attachSession, setAttachSession] = useState<AssetAttachSession | null>(null);
   const [detachAsset, setDetachAsset] = useState<CatalogAsset | null>(null);
   const [busyAction, setBusyAction] = useState("");
 
@@ -1194,156 +836,21 @@ export function LibraryComponentWorkspace({
     }
   };
 
+  const refreshAfterMutation = () => {
+    updateParams({ revision: null, compare: null });
+    setRefreshKey((value) => value + 1);
+  };
+
   const openMetadataEditor = () => {
     if (!currentComponent || !canMutate) return;
-    setMetadataForm(metadataFormFromComponent(currentComponent));
-    setMetadataOpen(true);
-  };
-
-  const handleMetadataSave = async () => {
-    if (!metadataForm || !currentComponent || !canMutate) return;
-    let extraFields: Record<string, string>;
-    try {
-      const parsed: unknown = JSON.parse(metadataForm.extraFieldsJson || "{}");
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Extended fields must be a JSON object.");
-      extraFields = Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]));
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : "Extended fields contain invalid JSON.");
-      return;
-    }
-    setBusyAction("metadata");
-    try {
-      await fetchJson<CatalogComponent>(`/api/catalog/components/${encodeURIComponent(componentId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          value: metadataForm.value.trim(),
-          description: metadataForm.description.trim(),
-          datasheet_url: metadataForm.datasheetUrl.trim(),
-          manufacturer: metadataForm.manufacturer.trim(),
-          mpn: metadataForm.mpn.trim(),
-          category: metadataForm.category.trim(),
-          package_name: metadataForm.packageName.trim(),
-          vendor: metadataForm.vendor.trim(),
-          vendor_part_number: metadataForm.vendorPartNumber.trim(),
-          mass_g: metadataForm.massG.trim(),
-          rqjc_c_w: metadataForm.rqjcCW.trim(),
-          rqjc_top_c_w: metadataForm.rqjcTopCW.trim(),
-          temp_max_c: metadataForm.tempMaxC.trim(),
-          temp_min_c: metadataForm.tempMinC.trim(),
-          power_dissipation_w: metadataForm.powerDissipationW.trim(),
-          rate: metadataForm.rate.trim(),
-          sap_code: metadataForm.sapCode.trim(),
-          extra_fields: extraFields,
-          change_summary: metadataForm.changeSummary.trim(),
-          expected_revision_id: currentComponent.revision_id,
-        }),
-      });
-      toast.success("Metadata saved as a new revision.");
-      setMetadataOpen(false);
-      setMetadataForm(null);
-      updateParams({ revision: null, compare: null });
-      setRefreshKey((value) => value + 1);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusyAction("");
-    }
-  };
-
-  const resetAttachDialog = () => {
-    setAttachAssetType(null);
-    setAttachMode("upload");
-    setAttachFile(null);
-    setAttachTargetLibrary("");
-    setAttachTargetName("");
-    setAttachCounterpartId("");
-    setSelectedLink("");
-    setImportSelection(null);
+    setMetadataSession(metadataEditSessionFrom(currentComponent));
   };
 
   const openAttachDialog = (assetType: AssetType) => {
     if (!currentComponent || !canMutate) return;
-    // The dialog opens instantly in upload mode. Stored files are only listed
-    // when the user actually opens the "Link existing" picker.
-    setAttachAssetType(assetType);
-    setAttachMode("upload");
-    setAttachFile(null);
-    setAttachTargetLibrary(currentComponent.library_name || currentComponent.name);
-    setAttachTargetName("");
-    const defaultRepresentation = currentComponent.representations.find((item) => item.is_default);
-    setAttachCounterpartId(
-      assetType === "symbol"
-        ? defaultRepresentation?.footprint?.id || ""
-        : assetType === "footprint"
-          ? defaultRepresentation?.symbol?.id || ""
-          : ""
-    );
-    setSelectedLink("");
-    setImportSelection(null);
-  };
-
-  const handleAssetUpload = async () => {
-    if (!attachAssetType || !currentComponent || !canMutate) return;
-    const sourceFile = importSelection?.file || attachFile;
-    if (!sourceFile) return;
-    setBusyAction("asset");
-    try {
-      const form = new FormData();
-      form.append("file", sourceFile);
-      form.append("target_library", importSelection?.targetLibrary || attachTargetLibrary || currentComponent.name);
-      form.append("expected_revision_id", assetMutationRevisionId(currentComponent.revision_id, importSelection?.expectedRevisionId));
-      if (attachCounterpartId) form.append("counterpart_asset_id", attachCounterpartId);
-      if (importSelection?.selected) {
-        form.append(attachAssetType === "symbol" ? "selected_symbol" : "selected_footprint", importSelection.selected);
-      }
-      const endpoint = attachAssetType === "symbol"
-        ? `/api/catalog/components/${encodeURIComponent(componentId)}/symbol-import`
-        : attachAssetType === "footprint"
-          ? `/api/catalog/components/${encodeURIComponent(componentId)}/footprint-import`
-          : `/api/catalog/components/${encodeURIComponent(componentId)}/assets/${encodeURIComponent(attachAssetType)}`;
-      const response = await fetchJson<SelectionRequiredResponse | ImportCompletedResponse | { component: CatalogComponent }>(endpoint, { method: "POST", body: form });
-      if ("mode" in response && response.mode === "selection_required") {
-        const options = response.discovered_symbols || response.discovered_footprints || [];
-        setImportSelection({ file: sourceFile, targetLibrary: attachTargetLibrary || currentComponent.name, options, selected: options[0] || "", expectedRevisionId: assetMutationRevisionId(currentComponent.revision_id, importSelection?.expectedRevisionId) });
-        return;
-      }
-      toast.success(`${ASSET_LABELS[attachAssetType]} attached as a new revision.`);
-      resetAttachDialog();
-      updateParams({ revision: null, compare: null });
-      setRefreshKey((value) => value + 1);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-      const status = reason instanceof ApiHttpError ? reason.status : undefined;
-      const code = reason instanceof ApiHttpError ? reason.code : undefined;
-      setImportSelection((current) => releaseRetainedRevisionOnConflict(current, status, code));
-    } finally {
-      setBusyAction("");
-    }
-  };
-
-  const handleAssetLink = async () => {
-    if (!attachAssetType || !selectedLink || !currentComponent || !canMutate) return;
-    setBusyAction("asset");
-    try {
-      await fetchJson(`/api/catalog/components/${encodeURIComponent(componentId)}/assets/${encodeURIComponent(attachAssetType)}/link`, {
-        method: "POST",
-        body: JSON.stringify({
-          file_path: selectedLink,
-          target_library: attachTargetLibrary.trim() || currentComponent.name,
-          target_name: attachTargetName.trim(),
-          counterpart_asset_id: attachCounterpartId,
-          expected_revision_id: currentComponent.revision_id,
-        }),
-      });
-      toast.success(`${ASSET_LABELS[attachAssetType]} linked as a new revision.`);
-      resetAttachDialog();
-      updateParams({ revision: null, compare: null });
-      setRefreshKey((value) => value + 1);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusyAction("");
-    }
+    // A new session starts in upload mode. Stored files are only listed when
+    // the user actually opens the "Link existing" picker.
+    setAttachSession(assetAttachSessionFrom(currentComponent, assetType));
   };
 
   const handleAssetDetachById = async () => {
@@ -1611,37 +1118,29 @@ export function LibraryComponentWorkspace({
         </DialogContent>
       </Dialog>
 
-      <MetadataEditDialog
-        open={metadataOpen}
-        form={metadataForm}
-        submitting={busyAction === "metadata"}
-        onOpenChange={(open) => { setMetadataOpen(open); if (!open) setMetadataForm(null); }}
-        onChange={setMetadataForm}
-        onSubmit={() => void handleMetadataSave()}
-      />
+      {metadataSession ? (
+        <MetadataEditDialog
+          key={metadataSession.openedAt}
+          session={metadataSession}
+          onClose={() => setMetadataSession(null)}
+          onSuccess={() => {
+            setMetadataSession(null);
+            refreshAfterMutation();
+          }}
+        />
+      ) : null}
 
-      <AssetAttachDialog
-        assetType={attachAssetType}
-        mode={attachMode}
-        file={attachFile}
-        targetLibrary={attachTargetLibrary}
-        targetName={attachTargetName}
-        counterpartAssets={currentComponent.assets.filter((asset) => attachAssetType === "symbol" ? asset.asset_type === "footprint" : attachAssetType === "footprint" ? asset.asset_type === "symbol" : false)}
-        counterpartAssetId={attachCounterpartId}
-        selectedLink={selectedLink}
-        selection={importSelection}
-        submitting={busyAction === "asset"}
-        onOpenChange={(open) => { if (!open) resetAttachDialog(); }}
-        onModeChange={setAttachMode}
-        onFileChange={setAttachFile}
-        onTargetLibraryChange={setAttachTargetLibrary}
-        onTargetNameChange={setAttachTargetName}
-        onCounterpartAssetChange={setAttachCounterpartId}
-        onSelectedLinkChange={setSelectedLink}
-        onSelectionChange={(selected) => setImportSelection((current) => current ? { ...current, selected } : current)}
-        onUpload={() => void handleAssetUpload()}
-        onLink={() => void handleAssetLink()}
-      />
+      {attachSession ? (
+        <AssetAttachDialog
+          key={attachSession.openedAt}
+          session={attachSession}
+          onClose={() => setAttachSession(null)}
+          onSuccess={() => {
+            setAttachSession(null);
+            refreshAfterMutation();
+          }}
+        />
+      ) : null}
 
       <Dialog open={detachAsset !== null} onOpenChange={(open) => { if (!open && busyAction !== "detach-id") setDetachAsset(null); }}>
         <DialogContent className="sm:max-w-md">
