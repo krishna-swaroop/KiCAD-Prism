@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { LibraryImportRemediationDialog, type ProposalRemediation } from "./library-import-remediation-dialog";
 import { LibraryImportRemediationGrid } from "./library-import-remediation-grid";
 import { LibraryFolderDiscoveryDialog } from "./library-folder-discovery-dialog";
+import { isAbortError, useImportSessionProposals, useNonOverlappingPoll } from "./library-import-session-proposals";
 
 interface LibraryImportCenterProps {
   projects: Project[];
@@ -101,7 +102,6 @@ const DIRECTORY_INPUT_PROPS: InputHTMLAttributes<HTMLInputElement> & {
 export function LibraryImportCenter({ projects, user, initialSessionId }: LibraryImportCenterProps) {
   const [sessions, setSessions] = useState<ProjectComponentImportSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessionId || "");
-  const [proposals, setProposals] = useState<ProjectComponentImportProposal[]>([]);
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -129,37 +129,41 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
     () => sessions.find((session) => session.id === selectedSessionId),
     [selectedSessionId, sessions]
   );
+  const { proposals, loadProposals } = useImportSessionProposals(selectedSessionId);
+  const hasActiveScan = sessions.some((session) => session.status === "queued" || session.status === "scanning");
 
-  const loadSessions = useCallback(async () => {
-    const response = await fetchJson<{ items: ProjectComponentImportSession[] }>("/api/catalog/import-sessions");
+  const loadSessions = useCallback(async (signal?: AbortSignal) => {
+    const response = await fetchJson<{ items: ProjectComponentImportSession[] }>(
+      "/api/catalog/import-sessions",
+      { signal },
+    );
+    if (signal?.aborted) return;
     setSessions(response.items);
     setSelectedSessionId((current) => current || initialSessionId || response.items[0]?.id || "");
   }, [initialSessionId]);
 
-  const loadProposals = useCallback(async (sessionId: string) => {
-    if (!sessionId) {
-      setProposals([]);
-      return;
-    }
-    const response = await fetchJson<{ items: ProjectComponentImportProposal[] }>(
-      `/api/catalog/import-sessions/${sessionId}/proposals`
-    );
-    setProposals(response.items);
-  }, []);
+  const refreshActiveImport = useCallback(async (signal: AbortSignal) => {
+    await loadSessions(signal);
+    await loadProposals(selectedSessionId, signal);
+  }, [loadProposals, loadSessions, selectedSessionId]);
 
+  // Fetch carries the AbortController signal; setters run only when this
+  // initial session-list request is still the mounted one.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     const load = async () => {
       try {
-        await loadSessions();
+        await loadSessions(controller.signal);
       } catch (error) {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load import sessions");
+        if (controller.signal.aborted || isAbortError(error)) return;
+        toast.error(error instanceof Error ? error.message : "Failed to load import sessions");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     void load();
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [loadSessions]);
 
   useEffect(() => {
@@ -172,19 +176,7 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
     }).catch(() => setServerRoots([]));
   }, [canWrite]);
 
-  useEffect(() => {
-    void loadProposals(selectedSessionId).catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to load import proposals");
-    });
-  }, [loadProposals, selectedSessionId]);
-
-  useEffect(() => {
-    if (!sessions.some((session) => session.status === "queued" || session.status === "scanning")) return;
-    const timer = window.setInterval(() => {
-      void loadSessions().then(() => loadProposals(selectedSessionId));
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [loadProposals, loadSessions, selectedSessionId, sessions]);
+  useNonOverlappingPoll(hasActiveScan, refreshActiveImport);
 
   const createSession = async (scope: "project" | "all-projects") => {
     if (scope === "project" && !projectId) return;

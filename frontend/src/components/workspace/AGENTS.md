@@ -55,6 +55,8 @@ pair draws. Navigation belongs to the viewer, not to the frame around it — see
 `frontend/src/lib/ecad-renderer.ts`.
 
 **Import** — `library-import-center.tsx`,
+`library-import-session-proposals.ts` (proposals keyed by session ID; abort
+superseded reads; non-overlapping scan polling),
 `library-import-remediation-dialog.tsx`, `library-import-remediation-grid.tsx`,
 `library-folder-discovery-dialog.tsx`. Import produces proposals that a human
 remediates before acceptance; the grid is the remediation surface.

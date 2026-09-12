@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Project } from "@/types/project";
+import type { ProjectComponentImportProposal, ProjectComponentImportSession } from "@/types/catalog";
 import { fetchJson } from "@/lib/api";
 import { LibraryImportCenter } from "./library-import-center";
 
@@ -73,5 +74,81 @@ describe("LibraryImportCenter sources", () => {
       "grid-cols-1",
       "import-source-groups--split",
     );
+  });
+});
+
+function importSession(id: string, status: ProjectComponentImportSession["status"] = "staged"): ProjectComponentImportSession {
+  return {
+    id,
+    scope: "folder",
+    project_id: "",
+    project_ids: [],
+    project_revisions: {},
+    source_revision: "",
+    status,
+    created_by: "admin@example.com",
+    created_at: "2026-08-27T00:00:00Z",
+    updated_at: "2026-08-27T00:00:00Z",
+    error_message: "",
+    proposal_count: 1,
+    selection: { display_name: id },
+  };
+}
+
+function importProposal(sessionId: string, reference: string): ProjectComponentImportProposal {
+  return {
+    id: `${sessionId}-${reference}`,
+    session_id: sessionId,
+    dedupe_key: reference,
+    component_uid: reference,
+    reference,
+    status: "candidate",
+    accepted_component_id: "",
+    metadata: { references: [reference], value: "10k" },
+    assets: [],
+    provenance: [],
+    findings: [],
+  };
+}
+
+describe("LibraryImportCenter session proposals", () => {
+  beforeEach(() => {
+    vi.mocked(fetchJson).mockReset();
+  });
+
+  it("does not show session A proposals after switching to session B", async () => {
+    let finishA: ((value: { items: ProjectComponentImportProposal[] }) => void) | undefined;
+    vi.mocked(fetchJson).mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === "/api/catalog/import-sessions") {
+        return { items: [importSession("session-a"), importSession("session-b")] };
+      }
+      if (path === "/api/catalog/import-sources/folder-roots") return { items: [] };
+      if (path.endsWith("/session-a/proposals")) {
+        return new Promise((resolve) => {
+          finishA = resolve;
+        });
+      }
+      if (path.endsWith("/session-b/proposals")) {
+        return { items: [importProposal("session-b", "R-B")] };
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <LibraryImportCenter
+        projects={[project]}
+        user={{ name: "Admin", email: "admin@example.com", role: "admin" }}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /session-b/i }));
+    expect(await screen.findByText("R-B")).toBeInTheDocument();
+
+    await act(async () => {
+      finishA!({ items: [importProposal("session-a", "R-A")] });
+    });
+    await waitFor(() => expect(screen.queryByText("R-A")).not.toBeInTheDocument());
+    expect(screen.getByText("R-B")).toBeInTheDocument();
   });
 });
