@@ -20,7 +20,7 @@ vi.mock("@/lib/api", () => ({
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), message: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 
 import { ApiHttpError, fetchJson } from "@/lib/api";
-import type { CatalogComponent } from "@/types/catalog";
+import type { CatalogComponent, CatalogMetadataField } from "@/types/catalog";
 import {
     AssetAttachDialog,
     assetAttachSessionFrom,
@@ -67,6 +67,65 @@ function catalogComponent(id = "comp-a"): CatalogComponent {
     } as unknown as CatalogComponent;
 }
 
+function metadataField(
+    partial: Partial<CatalogMetadataField> & Pick<CatalogMetadataField, "key" | "label" | "storage_key">,
+): CatalogMetadataField {
+    return {
+        id: `field-${partial.key}`,
+        description: "",
+        group: "core",
+        type: "text",
+        unit: "",
+        enum_values: [],
+        storage_kind: "column",
+        built_in: true,
+        required: false,
+        display_order: 0,
+        archived: false,
+        created_by: "",
+        updated_by: "",
+        created_at: "",
+        updated_at: "",
+        ...partial,
+    };
+}
+
+function builtinEditorFields(): CatalogMetadataField[] {
+    return [
+        metadataField({ key: "value", label: "Value", storage_key: "value", required: true, display_order: 1 }),
+        metadataField({ key: "manufacturer", label: "Manufacturer", storage_key: "manufacturer", required: true, display_order: 2 }),
+        metadataField({ key: "mpn", label: "Manufacturer Part Number", storage_key: "mpn", required: true, display_order: 3 }),
+        metadataField({ key: "datasheet_url", label: "Datasheet", storage_key: "datasheet_url", type: "url", required: true, display_order: 4 }),
+        metadataField({ key: "description", label: "Description", storage_key: "description", required: true, display_order: 5 }),
+    ];
+}
+
+function patchCallBody() {
+    const request = vi.mocked(fetchJson).mock.calls.find((call) => call[1]?.method === "PATCH");
+    return JSON.parse(String(request?.[1]?.body)) as Record<string, unknown>;
+}
+
+function mockMetadataRoutes(options?: {
+    fields?: CatalogMetadataField[];
+    component?: CatalogComponent;
+    delayFields?: () => Promise<{ items: CatalogMetadataField[] }>;
+    delayPatch?: () => Promise<CatalogComponent>;
+}) {
+    vi.mocked(fetchJson).mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url === "/api/catalog/metadata/fields") {
+            if (options?.delayFields) return options.delayFields() as never;
+            return { items: options?.fields ?? builtinEditorFields() } as never;
+        }
+        if (url.startsWith("/api/catalog/components/") && init?.method === "PATCH") {
+            if (options?.delayPatch) return options.delayPatch() as never;
+            return (options?.component ?? catalogComponent()) as never;
+        }
+        if (url === "/api/catalog/components/comp-a") return (options?.component ?? catalogComponent()) as never;
+        return { items: [] } as never;
+    });
+}
+
 function chooseFile(file: File) {
     const input = document.getElementById("component-asset-file");
     if (!(input instanceof HTMLInputElement)) throw new Error("file input missing");
@@ -77,6 +136,7 @@ function chooseFile(file: File) {
 describe("metadata edit session", () => {
     beforeEach(() => {
         vi.mocked(fetchJson).mockReset();
+        mockMetadataRoutes();
     });
 
     it("opens a fresh buffer after cancel so edited fields do not leak", async () => {
@@ -85,7 +145,7 @@ describe("metadata edit session", () => {
             <MetadataEditDialog session={first} onClose={vi.fn()} onSuccess={vi.fn()} />,
         );
 
-        fireEvent.change(screen.getByLabelText("Value *"), { target: { value: "leaked-value" } });
+        fireEvent.change(await screen.findByLabelText("Value *"), { target: { value: "leaked-value" } });
         expect(screen.getByLabelText("Value *")).toHaveValue("leaked-value");
 
         const second = metadataEditSessionFrom(catalogComponent());
@@ -93,12 +153,11 @@ describe("metadata edit session", () => {
             <MetadataEditDialog key={second.openedAt} session={second} onClose={vi.fn()} onSuccess={vi.fn()} />,
         );
 
-        expect(screen.getByLabelText("Value *")).toHaveValue("10k");
+        expect(await screen.findByLabelText("Value *")).toHaveValue("10k");
         expect(screen.queryByDisplayValue("leaked-value")).not.toBeInTheDocument();
     });
 
     it("sends the revision captured when the session opened", async () => {
-        vi.mocked(fetchJson).mockResolvedValue(catalogComponent() as never);
         const onSuccess = vi.fn();
         const session = metadataEditSessionFrom({
             ...catalogComponent(),
@@ -106,10 +165,219 @@ describe("metadata edit session", () => {
         });
         render(<MetadataEditDialog session={session} onClose={vi.fn()} onSuccess={onSuccess} />);
 
+        fireEvent.click(await screen.findByRole("button", { name: /save new revision/i }));
+        await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+        expect(patchCallBody().expected_revision_id).toBe("rev-at-open");
+    });
+
+    it("renders a custom enum field from definitions and round-trips unknown extras", async () => {
+        mockMetadataRoutes({
+            fields: [
+                ...builtinEditorFields(),
+                metadataField({
+                    key: "application_note",
+                    label: "Application note",
+                    type: "text",
+                    storage_kind: "extra",
+                    storage_key: "application_note",
+                    built_in: false,
+                    display_order: 6,
+                }),
+                metadataField({
+                    key: "dielectric",
+                    label: "Dielectric",
+                    type: "number",
+                    storage_kind: "extra",
+                    storage_key: "dielectric",
+                    built_in: false,
+                    display_order: 7,
+                }),
+                metadataField({
+                    key: "tolerance",
+                    label: "Tolerance",
+                    type: "enum",
+                    enum_values: ["1%", "5%"],
+                    storage_kind: "extra",
+                    storage_key: "tolerance",
+                    built_in: false,
+                    display_order: 8,
+                }),
+            ],
+            component: {
+                ...catalogComponent(),
+                extra_fields: {
+                    application_note: "bias",
+                    dielectric: "2.2",
+                    tolerance: "5%",
+                    leftover_note: "keep-me",
+                },
+            },
+        });
+        const onSuccess = vi.fn();
+        render(
+            <MetadataEditDialog
+                session={metadataEditSessionFrom({
+                    ...catalogComponent(),
+                    extra_fields: {
+                        application_note: "bias",
+                        dielectric: "2.2",
+                        tolerance: "5%",
+                        leftover_note: "keep-me",
+                    },
+                })}
+                onClose={vi.fn()}
+                onSuccess={onSuccess}
+            />,
+        );
+
+        expect(await screen.findByLabelText("Application note")).toHaveValue("bias");
+        expect(screen.getByLabelText("Dielectric")).toHaveValue("2.2");
+        expect(screen.getByLabelText("Tolerance")).toHaveValue("5%");
+        expect(screen.getByLabelText("Additional extra fields (JSON object)")).toHaveValue(
+            JSON.stringify({ leftover_note: "keep-me" }, null, 2),
+        );
+        fireEvent.change(screen.getByLabelText("Dielectric"), { target: { value: "not-a-number" } });
+        fireEvent.change(screen.getByLabelText("Tolerance"), { target: { value: "1%" } });
         fireEvent.click(screen.getByRole("button", { name: /save new revision/i }));
         await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
-        const body = JSON.parse(String(vi.mocked(fetchJson).mock.calls[0]?.[1]?.body));
-        expect(body.expected_revision_id).toBe("rev-at-open");
+        expect(patchCallBody().extra_fields).toEqual({
+            leftover_note: "keep-me",
+            application_note: "bias",
+            dielectric: "not-a-number",
+            tolerance: "1%",
+        });
+    });
+
+    it("keeps additional extras writable when the component has none yet", async () => {
+        const onSuccess = vi.fn();
+        render(
+            <MetadataEditDialog
+                session={metadataEditSessionFrom(catalogComponent())}
+                onClose={vi.fn()}
+                onSuccess={onSuccess}
+            />,
+        );
+
+        fireEvent.change(await screen.findByLabelText("Additional extra fields (JSON object)"), {
+            target: { value: JSON.stringify({ Tolerance: "1%" }) },
+        });
+        fireEvent.click(screen.getByRole("button", { name: /save new revision/i }));
+        await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+        expect(patchCallBody().extra_fields).toEqual({ Tolerance: "1%" });
+    });
+
+    it("blocks save when a required identity field is cleared", async () => {
+        render(
+            <MetadataEditDialog
+                session={metadataEditSessionFrom(catalogComponent())}
+                onClose={vi.fn()}
+                onSuccess={vi.fn()}
+            />,
+        );
+
+        fireEvent.change(await screen.findByLabelText("Value *"), { target: { value: "" } });
+        expect(screen.getByRole("alert")).toHaveTextContent("Required");
+        expect(screen.getByRole("button", { name: /save new revision/i })).toBeDisabled();
+    });
+
+    it("does not require MPN for a provisional identity", async () => {
+        const onSuccess = vi.fn();
+        render(
+            <MetadataEditDialog
+                session={metadataEditSessionFrom({
+                    ...catalogComponent(),
+                    identity_kind: "provisional_ipn",
+                    mpn: "",
+                })}
+                onClose={vi.fn()}
+                onSuccess={onSuccess}
+            />,
+        );
+
+        expect(await screen.findByLabelText("Manufacturer Part Number")).toHaveValue("");
+        expect(screen.getByText(/Manufacturer part number is optional/i)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: /save new revision/i }));
+        await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+        expect(patchCallBody().mpn).toBe("");
+    });
+
+    it("ignores field definitions that arrive after the session unmounts", async () => {
+        let finish: ((value: { items: CatalogMetadataField[] }) => void) | undefined;
+        mockMetadataRoutes({
+            delayFields: () => new Promise((resolve) => {
+                finish = resolve;
+            }),
+        });
+        const { unmount } = render(
+            <MetadataEditDialog
+                session={metadataEditSessionFrom(catalogComponent())}
+                onClose={vi.fn()}
+                onSuccess={vi.fn()}
+            />,
+        );
+
+        unmount();
+        finish!({
+            items: [
+                metadataField({ key: "tolerance", label: "Tolerance", storage_key: "tolerance" }),
+            ],
+        });
+        await waitFor(() => expect(fetchJson).toHaveBeenCalled());
+        expect(screen.queryByLabelText("Tolerance")).not.toBeInTheDocument();
+    });
+
+    it("does not apply a delayed definitions payload to a later session", async () => {
+        let finishFirst: ((value: { items: CatalogMetadataField[] }) => void) | undefined;
+        let calls = 0;
+        vi.mocked(fetchJson).mockImplementation(async (input) => {
+            const url = String(input);
+            if (url !== "/api/catalog/metadata/fields") return { items: [] } as never;
+            calls += 1;
+            if (calls === 1) {
+                return new Promise((resolve) => {
+                    finishFirst = resolve;
+                });
+            }
+            return { items: builtinEditorFields() } as never;
+        });
+        const first = metadataEditSessionFrom(catalogComponent());
+        const { rerender } = render(
+            <MetadataEditDialog session={first} onClose={vi.fn()} onSuccess={vi.fn()} />,
+        );
+        const second = metadataEditSessionFrom(catalogComponent());
+        rerender(
+            <MetadataEditDialog key={second.openedAt} session={second} onClose={vi.fn()} onSuccess={vi.fn()} />,
+        );
+
+        expect(await screen.findByLabelText("Value *")).toBeInTheDocument();
+        finishFirst!({
+            items: [metadataField({ key: "tolerance", label: "Tolerance", storage_key: "tolerance" })],
+        });
+        await waitFor(() => expect(screen.queryByLabelText("Tolerance")).not.toBeInTheDocument());
+        expect(screen.getByLabelText("Value *")).toBeInTheDocument();
+    });
+
+    it("ignores a delayed metadata save that completes after unmount", async () => {
+        let finish: ((value: CatalogComponent) => void) | undefined;
+        mockMetadataRoutes({
+            delayPatch: () => new Promise((resolve) => {
+                finish = resolve;
+            }),
+        });
+        const onSuccess = vi.fn();
+        const { unmount } = render(
+            <MetadataEditDialog
+                session={metadataEditSessionFrom(catalogComponent())}
+                onClose={vi.fn()}
+                onSuccess={onSuccess}
+            />,
+        );
+
+        fireEvent.click(await screen.findByRole("button", { name: /save new revision/i }));
+        await waitFor(() => expect(vi.mocked(fetchJson).mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(true));
+        unmount();
+        finish!(catalogComponent());
+        await waitFor(() => expect(onSuccess).not.toHaveBeenCalled());
     });
 });
 
@@ -216,11 +484,7 @@ describe("asset attach session", () => {
 
 describe("workspace dialog sessions", () => {
     beforeEach(() => {
-        vi.mocked(fetchJson).mockImplementation(async (input) => {
-            const url = String(input);
-            if (url === "/api/catalog/components/comp-a") return catalogComponent() as never;
-            return { items: [] } as never;
-        });
+        mockMetadataRoutes();
     });
     afterEach(() => vi.clearAllMocks());
 
@@ -237,12 +501,12 @@ describe("workspace dialog sessions", () => {
         );
 
         fireEvent.click(await screen.findByRole("button", { name: /edit metadata/i }));
-        fireEvent.change(screen.getByLabelText("Value *"), { target: { value: "cancelled-edit" } });
+        fireEvent.change(await screen.findByLabelText("Value *"), { target: { value: "cancelled-edit" } });
         fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
         await waitFor(() => expect(screen.queryByRole("heading", { name: "Edit component metadata" })).not.toBeInTheDocument());
 
         fireEvent.click(screen.getByRole("button", { name: /edit metadata/i }));
-        expect(screen.getByLabelText("Value *")).toHaveValue("10k");
+        expect(await screen.findByLabelText("Value *")).toHaveValue("10k");
         expect(screen.queryByDisplayValue("cancelled-edit")).not.toBeInTheDocument();
     });
 });

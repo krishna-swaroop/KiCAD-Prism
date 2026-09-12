@@ -32,7 +32,10 @@ URL ownership and current/historical selection stay here),
 library), `library-component-evidence-panels.tsx` (read-only revisions, review,
 usage, and audit evidence), `library-component-metadata-dialog.tsx` and
 `library-component-asset-dialog.tsx` (edit sessions captured at open, one
-success callback), `library-component-quick-view.tsx`,
+success callback), `library-component-metadata-form.ts` (definition-driven
+values, identity/provisional required rules, storage-key PATCH mapping;
+save validation matches the single PATCH, not bulk-edit shape checks),
+`library-component-metadata-fields.tsx` (typed input adapters), `library-component-quick-view.tsx`,
 `library-asset-link-picker.tsx`, `use-edit-history.ts`.
 
 **Previews** — two paths that share nothing but a subject.
@@ -75,3 +78,7 @@ Its input buffer is genuinely local state; the resolved selection is not.
   before changing its submission path.
 - `library-component-workspace.tsx` is slated for decomposition. Do not add to
   it if the work can live in a sibling module.
+- **Single-editor extras stay writable.** Field definitions are admin-gated, so
+  the metadata dialog always keeps the additional-extras JSON box. Designers
+  can still add ad-hoc keys; defined extras render as typed controls and are
+  omitted from that leftover object.
