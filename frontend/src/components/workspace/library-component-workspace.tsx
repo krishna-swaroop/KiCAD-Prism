@@ -416,7 +416,7 @@ function OverviewPanel({ component, canMutate, onEdit }: { component: CatalogCom
             { label: "Vendor", value: component.vendor },
             { label: "Vendor P/N", value: component.vendor_part_number },
             { label: "SAP code", value: component.sap_code },
-            { label: "Stock", value: component.stock_known ? `${component.stock_quantity} ${component.stock_uom}`.trim() : "Not synchronized" },
+            { label: "Stock", value: component.stock_known ? (component.local_inventory?.mixed_units ? "Mixed units" : `${component.stock_quantity} ${component.stock_uom}`.trim()) : "Not synchronized" },
           ]} />
         </PanelCard>
       </div>

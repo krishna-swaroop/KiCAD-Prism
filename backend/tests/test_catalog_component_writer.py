@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -149,6 +150,50 @@ class RemoteHeadPayloadTests(unittest.TestCase):
         empty = remote_head_payload(self._row(has_symbol=0, has_footprint=0))
         self.assertEqual(empty["availability_state"], "metadata_only")
         self.assertEqual(empty["assets"], [])
+
+    def test_inventory_locations_are_aggregated_by_policy(self) -> None:
+        payload = remote_head_payload(
+            self._row(
+                inventory_sources=json.dumps(
+                    [
+                        {
+                            "source": "csv",
+                            "location_key": "a",
+                            "quantity": 2,
+                            "uom": "pcs",
+                            "inventory_status": "available",
+                            "fetch_status": "ok",
+                            "fetched_at": "2026-01-01T00:00:00Z",
+                        },
+                        {
+                            "source": "csv",
+                            "location_key": "b",
+                            "quantity": 3,
+                            "uom": "g",
+                            "inventory_status": "available",
+                            "fetch_status": "ok",
+                            "fetched_at": "2026-01-01T00:00:00Z",
+                        },
+                        {
+                            "source": "inventree",
+                            "location_key": "main",
+                            "quantity": 10,
+                            "uom": "pcs",
+                            "inventory_status": "available",
+                            "fetch_status": "ok",
+                            "fetched_at": "2026-01-01T00:00:00Z",
+                        },
+                    ]
+                )
+            )
+        )
+        sources = payload["supply"]["sources"]
+        self.assertEqual([source["id"] for source in sources], ["inventree", "csv"])
+        self.assertEqual(sources[0]["stock"], 10.0)
+        self.assertFalse(sources[0]["mixed_units"])
+        self.assertTrue(sources[1]["mixed_units"])
+        self.assertEqual(sources[1]["stock"], 0.0)
+        self.assertEqual(sources[1]["display_name"], "CSV")
 
 
 if __name__ == "__main__":

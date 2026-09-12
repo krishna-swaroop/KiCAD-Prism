@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 from app.core.config import settings
 from app.services.catalog.asset_types import PLACE_REQUIRED_ASSET_TYPES
+from app.services.catalog.inventory_policy import aggregate_inventory_locations
 from app.services.catalog.metadata_normalization import IDENTITY_KIND_MPN
 from app.services.catalog.normalization import (
     json_loads,
@@ -82,13 +83,14 @@ KLC_RELEASE_GATE_VALUES = {"off", "warn", "block"}
 # Distinguishes "inventory was not preloaded" from a legitimate empty result.
 _PRELOAD_UNSET = object()
 
-_INVENTORY_AGGREGATE_COLUMNS = (
-    "source, SUM(quantity) AS quantity, MIN(uom) AS uom, "
-    "MIN(inventory_status) AS inventory_status, "
-    "MIN(fetch_status) AS fetch_status, MAX(fetched_at) AS fetched_at"
+_INVENTORY_LOCATION_COLUMNS = (
+    "component_id, source, location_key, quantity, uom, "
+    "inventory_status, fetch_status, fetched_at"
 )
-_INVENTORY_SOURCE_ORDER = (
-    "CASE source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END, source"
+# Must match inventory_policy.INVENTORY_SOURCE_PRIORITY (inventree, csv, then name).
+_INVENTORY_LOCATION_ORDER = (
+    "CASE source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END, "
+    "source, location_key"
 )
 
 
@@ -104,17 +106,26 @@ def local_inventory_payload(row: Mapping[str, Any] | None) -> dict[str, Any] | N
         "inventory_status": str(row["inventory_status"] or ""),
         "fetch_status": str(row.get("fetch_status") or "ok"),
         "fetched_at": str(row["fetched_at"] or ""),
+        "mixed_units": bool(row.get("mixed_units")),
+        "mixed_status": bool(row.get("mixed_status")),
+        "mixed_fetch": bool(row.get("mixed_fetch")),
+        "mixed_freshness": bool(row.get("mixed_freshness")),
     }
 
 
 def inventory_payloads_from_source_rows(
     rows: list[Mapping[str, Any]],
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    """Return ``(local_inventory, supply_sources)`` from prioritized source rows."""
+    """Return ``(local_inventory, supply_sources)`` from location rows.
 
+    Rows may be raw ``inventory_levels`` locations or already-aggregated source
+    mappings; both go through :func:`aggregate_inventory_locations`.
+    """
+
+    payloads = [item.as_payload_row() for item in aggregate_inventory_locations(rows)]
     return (
-        local_inventory_payload(rows[0]) if rows else None,
-        [supply_source_payload(dict(row)) for row in rows],
+        local_inventory_payload(payloads[0]) if payloads else None,
+        [supply_source_payload(row) for row in payloads],
     )
 
 
@@ -135,6 +146,10 @@ def supply_source_payload(row: dict[str, Any]) -> dict[str, Any]:
         "stock_status": str(row.get("inventory_status") or ""),
         "fetch_status": str(row.get("fetch_status") or "ok"),
         "fetched_at": str(row.get("fetched_at") or ""),
+        "mixed_units": bool(row.get("mixed_units")),
+        "mixed_status": bool(row.get("mixed_status")),
+        "mixed_fetch": bool(row.get("mixed_fetch")),
+        "mixed_freshness": bool(row.get("mixed_freshness")),
     }
 
 
@@ -258,37 +273,36 @@ class CatalogComponentReadModels:
             for row in rows
         ]
 
+    def _load_inventory_locations(self, conn: Any, component_id: str) -> list[dict[str, Any]]:
+        return [
+            dict(row)
+            for row in conn.execute(
+                f"""
+                SELECT {_INVENTORY_LOCATION_COLUMNS}
+                FROM inventory_levels
+                WHERE component_id = %s
+                ORDER BY {_INVENTORY_LOCATION_ORDER}
+                """,
+                (component_id,),
+            ).fetchall()
+        ]
+
     def local_inventory(self, conn: Any, component_id: str) -> dict[str, Any] | None:
-        row = conn.execute(
-            f"""
-            SELECT {_INVENTORY_AGGREGATE_COLUMNS}
-            FROM inventory_levels
-            WHERE component_id = %s
-            GROUP BY source
-            ORDER BY {_INVENTORY_SOURCE_ORDER}
-            LIMIT 1
-            """,
-            (component_id,),
-        ).fetchone()
-        return local_inventory_payload(row)
+        local, _ = inventory_payloads_from_source_rows(
+            self._load_inventory_locations(conn, component_id)
+        )
+        return local
 
     def supply_sources(self, conn: Any, component_id: str) -> list[dict[str, Any]]:
-        rows = conn.execute(
-            f"""
-            SELECT {_INVENTORY_AGGREGATE_COLUMNS}
-            FROM inventory_levels
-            WHERE component_id = %s
-            GROUP BY source
-            ORDER BY {_INVENTORY_SOURCE_ORDER}
-            """,
-            (component_id,),
-        ).fetchall()
-        return [supply_source_payload(dict(row)) for row in rows]
+        _, sources = inventory_payloads_from_source_rows(
+            self._load_inventory_locations(conn, component_id)
+        )
+        return sources
 
     def load_inventory_for_components(
         self, conn: Any, component_ids: list[str]
     ) -> dict[str, list[dict[str, Any]]]:
-        """Load inventory aggregates for many components in one query."""
+        """Load raw inventory locations for many components in one query."""
 
         grouped: dict[str, list[dict[str, Any]]] = {component_id: [] for component_id in component_ids}
         if not component_ids:
@@ -296,11 +310,10 @@ class CatalogComponentReadModels:
         placeholders = ",".join("%s" for _ in component_ids)
         rows = conn.execute(
             f"""
-            SELECT component_id, {_INVENTORY_AGGREGATE_COLUMNS}
+            SELECT {_INVENTORY_LOCATION_COLUMNS}
             FROM inventory_levels
             WHERE component_id IN ({placeholders})
-            GROUP BY component_id, source
-            ORDER BY component_id, {_INVENTORY_SOURCE_ORDER}
+            ORDER BY component_id, {_INVENTORY_LOCATION_ORDER}
             """,
             tuple(component_ids),
         ).fetchall()

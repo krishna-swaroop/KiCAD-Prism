@@ -52,6 +52,10 @@ export interface CatalogLocalInventory {
   inventory_status: string;
   fetch_status: string;
   fetched_at: string;
+  mixed_units?: boolean;
+  mixed_status?: boolean;
+  mixed_fetch?: boolean;
+  mixed_freshness?: boolean;
 }
 
 export interface CatalogValidationRun {

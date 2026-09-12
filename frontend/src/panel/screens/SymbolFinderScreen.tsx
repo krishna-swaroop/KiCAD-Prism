@@ -200,7 +200,9 @@ export function SymbolFinderScreen({
               No matching components found.
             </div>
           ) : (
-            searchResults.map((comp) => (
+            searchResults.map((comp) => {
+              const local = primaryLocalSource(comp);
+              return (
               <button
                 key={comp.id}
                 onClick={() => onSelectComponent(comp)}
@@ -214,10 +216,15 @@ export function SymbolFinderScreen({
                     {comp.manufacturer || "Unknown"} · {comp.mpn || "—"} · {comp.package_name || "—"}
                   </span>
                 </span>
-                <StockDot quantity={primaryLocalSource(comp)?.stock ?? 0} known={primaryLocalSource(comp) !== null} />
+                <StockDot
+                  quantity={local?.stock ?? 0}
+                  known={local !== null}
+                  mixedUnits={Boolean(local?.mixed_units)}
+                />
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
               </button>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -225,12 +232,20 @@ export function SymbolFinderScreen({
   );
 }
 
-function StockDot({ quantity, known }: { quantity: number; known: boolean }) {
-  const inStock = quantity > 0;
+function StockDot({
+  quantity,
+  known,
+  mixedUnits,
+}: {
+  quantity: number;
+  known: boolean;
+  mixedUnits?: boolean;
+}) {
+  const inStock = !mixedUnits && quantity > 0;
   return (
     <span
-      className={`h-2 w-2 shrink-0 rounded-full ${!known ? "bg-muted-foreground/40" : inStock ? "bg-emerald-500" : "bg-red-500"}`}
-      title={!known ? "Stock unknown" : inStock ? `In stock (${quantity})` : "Out of stock"}
+      className={`h-2 w-2 shrink-0 rounded-full ${!known || mixedUnits ? "bg-muted-foreground/40" : inStock ? "bg-emerald-500" : "bg-red-500"}`}
+      title={!known ? "Stock unknown" : mixedUnits ? "Mixed units" : inStock ? `In stock (${quantity})` : "Out of stock"}
     />
   );
 }

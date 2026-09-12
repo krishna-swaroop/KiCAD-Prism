@@ -1,12 +1,16 @@
-"""PostgreSQL catalog head projection infrastructure."""
+"""PostgreSQL catalog head projection infrastructure.
+
+``inventory_sources`` stores location-level inventory rows. Public catalog and
+remote payloads aggregate those rows through ``inventory_policy``.
+"""
 
 from __future__ import annotations
 
 from app.services.catalog.postgres_runtime import CatalogPostgresConnection
 
 
-POSTGRES_HEAD_PROJECTION_VERSION = "catalog-component-heads-v5"
-POSTGRES_REMOTE_HEAD_PROJECTION_VERSION = "catalog-remote-heads-v4"
+POSTGRES_HEAD_PROJECTION_VERSION = "catalog-component-heads-v6"
+POSTGRES_REMOTE_HEAD_PROJECTION_VERSION = "catalog-remote-heads-v5"
 
 
 def ensure_component_heads_projection(conn: CatalogPostgresConnection) -> None:
@@ -144,6 +148,7 @@ def ensure_component_heads_projection(conn: CatalogPostgresConnection) -> None:
                     FROM revision_representations WHERE revision_id = revision.id
                 ) counts ON true
                 LEFT JOIN LATERAL (
+                    -- Denormalized preferred-source hint; payloads use inventory_policy.
                     SELECT source, SUM(quantity) AS quantity, MIN(uom) AS uom,
                            MIN(inventory_status) AS inventory_status
                     FROM inventory_levels WHERE component_id = component.id
@@ -154,22 +159,17 @@ def ensure_component_heads_projection(conn: CatalogPostgresConnection) -> None:
                 LEFT JOIN LATERAL (
                     SELECT COALESCE(
                         json_agg(json_build_object(
-                            'source', agg.source,
-                            'quantity', agg.quantity,
-                            'uom', agg.uom,
-                            'inventory_status', agg.inventory_status,
-                            'fetch_status', agg.fetch_status,
-                            'fetched_at', agg.fetched_at
-                        ) ORDER BY CASE agg.source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END,
-                                  agg.source)::text, '[]') AS sources_json
-                    FROM (
-                        SELECT source, SUM(quantity) AS quantity, MIN(uom) AS uom,
-                               MIN(inventory_status) AS inventory_status,
-                               MIN(fetch_status) AS fetch_status,
-                               MAX(fetched_at) AS fetched_at
-                        FROM inventory_levels WHERE component_id = component.id
-                        GROUP BY source
-                    ) agg
+                            'source', loc.source,
+                            'location_key', loc.location_key,
+                            'quantity', loc.quantity,
+                            'uom', loc.uom,
+                            'inventory_status', loc.inventory_status,
+                            'fetch_status', loc.fetch_status,
+                            'fetched_at', loc.fetched_at
+                        ) ORDER BY CASE loc.source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END,
+                                  loc.source, loc.location_key)::text, '[]') AS sources_json
+                    FROM inventory_levels loc
+                    WHERE loc.component_id = component.id
                 ) inventory_all ON true
                 WHERE component.id = target_component_id AND component.current_revision_id <> '';
             END;
@@ -371,6 +371,7 @@ def ensure_remote_component_heads_projection(conn: CatalogPostgresConnection) ->
                     FROM revision_representations WHERE revision_id = revision.id
                 ) counts ON true
                 LEFT JOIN LATERAL (
+                    -- Denormalized preferred-source hint; payloads use inventory_policy.
                     SELECT source, SUM(quantity) AS quantity, MIN(uom) AS uom,
                            MIN(inventory_status) AS inventory_status
                     FROM inventory_levels WHERE component_id = component.id
@@ -381,22 +382,17 @@ def ensure_remote_component_heads_projection(conn: CatalogPostgresConnection) ->
                 LEFT JOIN LATERAL (
                     SELECT COALESCE(
                         json_agg(json_build_object(
-                            'source', agg.source,
-                            'quantity', agg.quantity,
-                            'uom', agg.uom,
-                            'inventory_status', agg.inventory_status,
-                            'fetch_status', agg.fetch_status,
-                            'fetched_at', agg.fetched_at
-                        ) ORDER BY CASE agg.source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END,
-                                  agg.source)::text, '[]') AS sources_json
-                    FROM (
-                        SELECT source, SUM(quantity) AS quantity, MIN(uom) AS uom,
-                               MIN(inventory_status) AS inventory_status,
-                               MIN(fetch_status) AS fetch_status,
-                               MAX(fetched_at) AS fetched_at
-                        FROM inventory_levels WHERE component_id = component.id
-                        GROUP BY source
-                    ) agg
+                            'source', loc.source,
+                            'location_key', loc.location_key,
+                            'quantity', loc.quantity,
+                            'uom', loc.uom,
+                            'inventory_status', loc.inventory_status,
+                            'fetch_status', loc.fetch_status,
+                            'fetched_at', loc.fetched_at
+                        ) ORDER BY CASE loc.source WHEN 'inventree' THEN 1 WHEN 'csv' THEN 2 ELSE 99 END,
+                                  loc.source, loc.location_key)::text, '[]') AS sources_json
+                    FROM inventory_levels loc
+                    WHERE loc.component_id = component.id
                 ) inventory_all ON true
                 LEFT JOIN LATERAL (
                     SELECT preview.id AS preview_id

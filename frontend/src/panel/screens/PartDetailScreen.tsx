@@ -468,16 +468,20 @@ function ParameterTable({
 
 function AvailabilityCard({ source }: { source: PanelSupplySource }) {
   const isVendor = source.kind === "vendor";
+  const mixedUnits = Boolean(source.mixed_units);
   const asOf = formatAsOf(source.fetched_at);
   const breaks = isVendor ? (source.price_breaks ?? []) : [];
+  const inStock = !mixedUnits && source.stock > 0;
+  const plentiful = inStock && source.stock > 100;
   const dotTone =
-    source.stock > 100 ? "bg-emerald-500" : source.stock > 0 ? "bg-amber-400" : "bg-red-500";
-  const qtyTone = source.stock > 0 ? "text-foreground" : "text-muted-foreground";
+    mixedUnits ? "bg-muted-foreground/40" : plentiful ? "bg-emerald-500" : inStock ? "bg-amber-400" : "bg-red-500";
+  const qtyTone = mixedUnits || inStock ? "text-foreground" : "text-muted-foreground";
   // Soft badge tones mirror the dot: plentiful emerald, scarce amber, none red.
-  const statusTone =
-    source.stock > 100
+  const statusTone = mixedUnits
+    ? "border-border bg-secondary/40 text-muted-foreground"
+    : plentiful
       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-      : source.stock > 0
+      : inStock
         ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
         : "border-red-500/30 bg-red-500/10 text-red-400";
   const statusLabel = source.stock_status
@@ -518,10 +522,16 @@ function AvailabilityCard({ source }: { source: PanelSupplySource }) {
               qtyTone
             )}
           >
-            {formatQuantity(source.stock)}
-            {source.uom ? (
-              <span className="ml-1 text-xs font-normal text-muted-foreground">{source.uom}</span>
-            ) : null}
+            {mixedUnits ? (
+              "Mixed units"
+            ) : (
+              <>
+                {formatQuantity(source.stock)}
+                {source.uom ? (
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">{source.uom}</span>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

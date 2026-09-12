@@ -42,6 +42,10 @@ export interface PanelSupplySource {
   stock_status: string;
   fetch_status: string;
   fetched_at: string;
+  mixed_units?: boolean;
+  mixed_status?: boolean;
+  mixed_fetch?: boolean;
+  mixed_freshness?: boolean;
   unit_price?: number;
   currency?: string;
   price_break_qty?: number;

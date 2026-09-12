@@ -12,8 +12,8 @@ from typing import Any
 
 from app.services.catalog.component_read_models import (
     cad_availability,
+    inventory_payloads_from_source_rows,
     remote_place_enabled,
-    supply_source_payload,
 )
 from app.services.catalog.metadata_normalization import IDENTITY_KIND_MPN
 from app.services.catalog.normalization import json_loads
@@ -83,7 +83,9 @@ def remote_head_payload(raw: Any) -> dict[str, Any]:
         "release_status": "released",
         "workflow_stage": "released",
         "supply": {
-            "sources": [supply_source_payload(source) for source in json_loads(row.get("inventory_sources"), [])]
+            "sources": inventory_payloads_from_source_rows(
+                json_loads(row.get("inventory_sources"), [])
+            )[1]
         },
         "default_representation_id": str(row.get("default_representation_id") or ""),
         "representation_count": int(row.get("representation_count") or 0),
