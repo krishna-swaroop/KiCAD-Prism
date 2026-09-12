@@ -44,6 +44,15 @@ class ReleaseMetadataTests(unittest.TestCase):
 
 
 class ReleaseBundleTests(unittest.TestCase):
+    def test_release_workflow_publishes_the_checked_in_notes(self) -> None:
+        workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "docker-publish.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('test -f "docs/releases/${GITHUB_REF_NAME}.md"', workflow)
+        self.assertIn("body_path: docs/releases/${{ github.ref_name }}.md", workflow)
+        self.assertNotIn("generate_release_notes:", workflow)
+
     def test_bundle_contains_digest_pins_and_valid_checksums(self) -> None:
         backend_image = (
             "ghcr.io/krishna-swaroop/kicad-prism-backend@"
@@ -58,7 +67,7 @@ class ReleaseBundleTests(unittest.TestCase):
             bundle_dir, archive, archive_checksum = build_release_bundle(
                 template_dir=TEMPLATE_DIR,
                 output_root=Path(output),
-                tag="v3.1.2-alpha.1",
+                tag="v3.1.0-alpha",
                 backend_image=backend_image,
                 frontend_image=frontend_image,
                 revision="abc123",
@@ -80,15 +89,36 @@ class ReleaseBundleTests(unittest.TestCase):
 
             with tarfile.open(archive, mode="r:gz") as packaged:
                 packaged_names = set(packaged.getnames())
-            archive_root = "kicad-prism-v3.1.2-alpha.1-linux-amd64"
+            archive_root = "kicad-prism-v3.1.0-alpha-linux-amd64"
             self.assertIn(f"{archive_root}/compose.yml", packaged_names)
             self.assertIn(f"{archive_root}/SHA256SUMS", packaged_names)
+            self.assertIn(f"{archive_root}/RELEASE_NOTES.md", packaged_names)
+            self.assertIn(f"{archive_root}/UPGRADES.md", packaged_names)
+            self.assertIn(f"{archive_root}/scripts/prism_backup.py", packaged_names)
+            self.assertIn(f"{archive_root}/scripts/prism_deploy/tui.py", packaged_names)
+
+            release_notes = (bundle_dir / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+            self.assertIn("epoch-2 cutover", release_notes)
+            self.assertIn("paired pin", release_notes.lower())
 
             expected_archive_hash = hashlib.sha256(archive.read_bytes()).hexdigest()
             self.assertEqual(
                 archive_checksum.read_text(encoding="utf-8"),
                 f"{expected_archive_hash}  {archive.name}\n",
             )
+
+    def test_bundle_refuses_a_tag_without_checked_in_release_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as output:
+            with self.assertRaises(FileNotFoundError):
+                build_release_bundle(
+                    template_dir=TEMPLATE_DIR,
+                    output_root=Path(output),
+                    tag="v99.0.0-alpha",
+                    backend_image="backend@sha256:" + "a" * 64,
+                    frontend_image="frontend@sha256:" + "b" * 64,
+                    revision="abc123",
+                    build_date="2026-08-30T00:00:00Z",
+                )
 
 
 if __name__ == "__main__":

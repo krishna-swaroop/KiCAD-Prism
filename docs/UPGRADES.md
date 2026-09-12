@@ -68,6 +68,10 @@ out.
 Run everything from the deployment directory: the one holding `compose.yml`
 (release bundle) or `docker-compose.yml` (source build).
 
+Release-bundle users should first extract the next bundle into a separate
+staging directory. Do not replace the active deployment or start the new images
+yet. The staged bundle contains this runbook and the backup tool used below.
+
 ## 1. Record what you are running
 
 ```bash
@@ -79,6 +83,15 @@ build. Keep this with the backup — a rollback needs to know what to roll back
 *to*, and "the previous one" is not an answer at 6pm.
 
 ## 2. Take a backup
+
+Release bundle, before replacing the active files:
+
+```bash
+python3 /path/to/staged-bundle/scripts/prism_backup.py \
+  --root /path/to/active-prism create
+```
+
+Source checkout:
 
 ```bash
 python3 scripts/prism_backup.py create
@@ -100,6 +113,16 @@ of every payload.
 > plus the `.env` verbatim. Encrypt it and store it off this host.
 
 ## 3. Check that the backup is real
+
+Use the same copy of `prism_backup.py` that created the archive. For a release
+bundle staged outside the active deployment, that is:
+
+```bash
+python3 /path/to/staged-bundle/scripts/prism_backup.py verify \
+  /path/to/active-prism/prism-backup-<timestamp>.tar.gz
+```
+
+For a source checkout:
 
 ```bash
 python3 scripts/prism_backup.py verify prism-backup-<timestamp>.tar.gz
@@ -295,6 +318,43 @@ non-catalog PostgreSQL schema untouched. Use this rollout order:
 10. Rebuild project usage if the deployment requires it.
 11. Run catalog acceptance queries and default/non-default KiCad placement smoke tests before reopening access.
 
+### Run the catalog tools from the release bundle
+
+The release bundle deliberately keeps backend dependencies inside the
+digest-pinned backend image. After the verified backup, replace the deployment
+files with the new bundle, carry site values into its `.env`, pull the new
+backend image, and stop every catalog writer while leaving PostgreSQL running:
+
+```bash
+docker compose pull backend
+docker compose stop frontend backend prism-worker catalog-worker
+```
+
+Choose an absolute host directory outside `data/projects` for migration
+archives and reports, then define the command used by the examples below:
+
+```bash
+mkdir -p /absolute/host/migration
+run_catalog_tool() {
+  docker compose run --rm --no-deps \
+    --volume /absolute/host/migration:/migration \
+    backend python "$@"
+}
+```
+
+This one-off container uses the active deployment's PostgreSQL network and
+`data/projects` mount without starting the backend service. Source checkouts
+with the backend dependencies installed can use the same examples with:
+
+```bash
+run_catalog_tool() { python3 "$@"; }
+```
+
+After the catalog-only reset, initialize epoch 2 once with
+`docker compose up -d backend`, wait for it to become healthy, then stop it
+again before restoring survivors. Do not start the workers until restoration
+and the CERN import have completed.
+
 ### Preserving non-CERN work from a legacy catalog
 
 Pre-epoch-2 CERN imports did not carry the newer `external_source` marker. Their
@@ -309,13 +369,13 @@ a hard stop. Write the archive outside
 component store:
 
 ```bash
-python3 scripts/migrate_legacy_catalog_survivors.py export \
+run_catalog_tool scripts/migrate_legacy_catalog_survivors.py export \
   --output /migration/prism-legacy-survivors.zip \
   --expect-survivors <survivor-count> \
   --expect-librarian <librarian-impacted-count> \
   --expect-excluded-cern <legacy-cern-count>
 
-python3 scripts/migrate_legacy_catalog_survivors.py verify \
+run_catalog_tool scripts/migrate_legacy_catalog_survivors.py verify \
   /migration/prism-legacy-survivors.zip
 ```
 
@@ -331,7 +391,7 @@ After producing the CERN importer dry-run report, require a clean identity
 comparison:
 
 ```bash
-python3 scripts/migrate_legacy_catalog_survivors.py check-cern-report \
+run_catalog_tool scripts/migrate_legacy_catalog_survivors.py check-cern-report \
   /migration/prism-legacy-survivors.zip \
   /migration/cern-preflight.json
 ```
@@ -341,13 +401,13 @@ check all pass should the full reset run. Start the new backend once to create
 epoch 2, stop catalog writers again, and preflight then execute restoration:
 
 ```bash
-python3 scripts/migrate_legacy_catalog_survivors.py restore \
+run_catalog_tool scripts/migrate_legacy_catalog_survivors.py restore \
   /migration/prism-legacy-survivors.zip \
   --expect-components <survivor-count> \
   --confirm RESTORE-PRISM-LEGACY-SURVIVORS-EPOCH-2 \
   --dry-run
 
-python3 scripts/migrate_legacy_catalog_survivors.py restore \
+run_catalog_tool scripts/migrate_legacy_catalog_survivors.py restore \
   /migration/prism-legacy-survivors.zip \
   --expect-components <survivor-count> \
   --confirm RESTORE-PRISM-LEGACY-SURVIVORS-EPOCH-2
@@ -363,7 +423,7 @@ the other.
 The reset command is:
 
 ```bash
-python3 scripts/reset_prism_catalog.py \
+run_catalog_tool scripts/reset_prism_catalog.py \
   --confirm RESET-PRISM-CATALOG-EPOCH-2
 ```
 
@@ -372,7 +432,7 @@ the importer's explicit CERN origin marker. Non-CERN components and assets still
 referenced by them are preserved:
 
 ```bash
-python3 scripts/reset_prism_catalog.py \
+run_catalog_tool scripts/reset_prism_catalog.py \
   --cern-only \
   --confirm RESET-PRISM-CERN-IMPORTS
 ```
