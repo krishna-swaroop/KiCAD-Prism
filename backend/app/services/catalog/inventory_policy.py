@@ -11,6 +11,7 @@ Distributor adapters are out of scope; this module does not name vendors.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
 
@@ -98,6 +99,18 @@ def _normalize_fetch_status(status: str) -> str:
     return FETCH_STATUS_ERROR
 
 
+def _fetch_instant(stamp: str) -> datetime | None:
+    """Compare instants, not ISO strings (offsets and precision can differ)."""
+
+    try:
+        instant = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    if instant.tzinfo is None:
+        return None
+    return instant.astimezone(timezone.utc)
+
+
 def aggregate_source_locations(
     source: str, locations: list[InventoryLocation]
 ) -> InventorySourceAggregate:
@@ -131,9 +144,12 @@ def aggregate_source_locations(
     )
 
     stamps = [location.fetched_at.strip() for location in locations]
-    mixed_freshness = len(set(stamps)) > 1
-    nonempty_stamps = [stamp for stamp in stamps if stamp]
-    fetched_at = max(nonempty_stamps) if nonempty_stamps else ""
+    instants = [_fetch_instant(stamp) for stamp in stamps]
+    mixed_freshness = len(set(instants)) > 1
+    dated_stamps = [(instant, stamp) for instant, stamp in zip(instants, stamps) if instant is not None]
+    # This is the latest *location* update, not freshness of the entire total.
+    # Consumers must retain mixed_freshness when displaying it.
+    fetched_at = max(dated_stamps)[1] if dated_stamps else ""
 
     return InventorySourceAggregate(
         source=source,

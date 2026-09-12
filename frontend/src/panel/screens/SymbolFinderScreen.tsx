@@ -4,6 +4,7 @@ import { ChevronRight, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { inventoryWarnings } from "@/lib/inventory-presentation";
 
 import type { PanelCategory, PanelComponent } from "@/panel/lib/panel-api";
 import {
@@ -219,7 +220,7 @@ export function SymbolFinderScreen({
                 <StockDot
                   quantity={local?.stock ?? 0}
                   known={local !== null}
-                  mixedUnits={Boolean(local?.mixed_units)}
+                  warning={inventoryWarnings(local).join(" · ")}
                 />
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
               </button>
@@ -235,17 +236,17 @@ export function SymbolFinderScreen({
 function StockDot({
   quantity,
   known,
-  mixedUnits,
+  warning,
 }: {
   quantity: number;
   known: boolean;
-  mixedUnits?: boolean;
+  warning: string;
 }) {
-  const inStock = !mixedUnits && quantity > 0;
+  const inStock = known && !warning && quantity > 0;
   return (
     <span
-      className={`h-2 w-2 shrink-0 rounded-full ${!known || mixedUnits ? "bg-muted-foreground/40" : inStock ? "bg-emerald-500" : "bg-red-500"}`}
-      title={!known ? "Stock unknown" : mixedUnits ? "Mixed units" : inStock ? `In stock (${quantity})` : "Out of stock"}
+      className={`h-2 w-2 shrink-0 rounded-full ${!known || warning ? "bg-muted-foreground/40" : inStock ? "bg-emerald-500" : "bg-red-500"}`}
+      title={!known ? "Stock unknown" : warning || (inStock ? `In stock (${quantity})` : "Out of stock")}
     />
   );
 }

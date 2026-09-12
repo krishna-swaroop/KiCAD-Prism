@@ -32,6 +32,7 @@ import { getComponent, getInlineBundle, getPartManifest } from "@/panel/lib/pane
 import { hasSession, retry, sendRpcCommand } from "@/panel/lib/kicad-bridge";
 import { LibraryPreviewPair } from "@/components/workspace/library-preview-inspector";
 import { cn } from "@/lib/utils";
+import { inventoryWarnings } from "@/lib/inventory-presentation";
 
 interface PartDetailScreenProps {
   componentId: string;
@@ -469,22 +470,24 @@ function ParameterTable({
 function AvailabilityCard({ source }: { source: PanelSupplySource }) {
   const isVendor = source.kind === "vendor";
   const mixedUnits = Boolean(source.mixed_units);
+  const warnings = inventoryWarnings(source);
+  const uncertain = warnings.length > 0;
   const asOf = formatAsOf(source.fetched_at);
   const breaks = isVendor ? (source.price_breaks ?? []) : [];
-  const inStock = !mixedUnits && source.stock > 0;
+  const inStock = !uncertain && source.stock > 0;
   const plentiful = inStock && source.stock > 100;
   const dotTone =
-    mixedUnits ? "bg-muted-foreground/40" : plentiful ? "bg-emerald-500" : inStock ? "bg-amber-400" : "bg-red-500";
-  const qtyTone = mixedUnits || inStock ? "text-foreground" : "text-muted-foreground";
+    uncertain ? "bg-muted-foreground/40" : plentiful ? "bg-emerald-500" : inStock ? "bg-amber-400" : "bg-red-500";
+  const qtyTone = uncertain || inStock ? "text-foreground" : "text-muted-foreground";
   // Soft badge tones mirror the dot: plentiful emerald, scarce amber, none red.
-  const statusTone = mixedUnits
+  const statusTone = uncertain
     ? "border-border bg-secondary/40 text-muted-foreground"
     : plentiful
       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
       : inStock
         ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
         : "border-red-500/30 bg-red-500/10 text-red-400";
-  const statusLabel = source.stock_status
+  const statusLabel = uncertain ? warnings.join(" · ") : source.stock_status
     ? source.stock_status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : null;
 
@@ -506,15 +509,15 @@ function AvailabilityCard({ source }: { source: PanelSupplySource }) {
         ) : null}
         {asOf ? (
           <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/60">
-            Updated {asOf}
+            {source.mixed_freshness ? "Latest location update" : "Updated"} {asOf}
           </span>
         ) : null}
       </div>
 
-      <div className="flex items-end justify-between gap-3 px-3 pb-3 pt-1">
+      <div className="flex flex-wrap items-end justify-between gap-3 px-3 pb-3 pt-1">
         <div>
           <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            On hand
+            {warnings.includes("Sync failed") ? "Last known on hand" : "On hand"}
           </div>
           <div
             className={cn(
@@ -534,9 +537,9 @@ function AvailabilityCard({ source }: { source: PanelSupplySource }) {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
           {statusLabel ? (
-            <Badge variant="outline" className={cn("shrink-0", statusTone)}>
+            <Badge variant="outline" className={cn("max-w-full whitespace-normal", statusTone)}>
               {statusLabel}
             </Badge>
           ) : null}

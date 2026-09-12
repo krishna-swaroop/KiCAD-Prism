@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { inventoryWarnings } from "@/lib/inventory-presentation";
 
 import type { PanelComponent } from "@/panel/lib/panel-api";
 import { getComponentsByCategory, isAuthError, primaryLocalSource } from "@/panel/lib/panel-api";
@@ -103,6 +104,7 @@ export function CategoryListScreen({
                 quantity={local?.stock ?? 0}
                 known={local !== null}
                 mixedUnits={Boolean(local?.mixed_units)}
+                warning={inventoryWarnings(local).join(" · ")}
               />
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
             </button>
@@ -118,19 +120,21 @@ function StockBadge({
   quantity,
   known,
   mixedUnits,
+  warning,
 }: {
   quantity: number;
   known: boolean;
   mixedUnits?: boolean;
+  warning: string;
 }) {
-  const inStock = !mixedUnits && quantity > 0;
+  const inStock = known && !warning && quantity > 0;
   return (
     <Badge
-      variant={!known || mixedUnits ? "secondary" : inStock ? "default" : "destructive"}
+      variant={!known || warning ? "secondary" : inStock ? "default" : "destructive"}
       className={`text-[9px] ${inStock ? "bg-emerald-600/90 text-white" : ""}`}
-      title={mixedUnits ? "Mixed units" : undefined}
+      title={warning || undefined}
     >
-      {!known ? "?" : mixedUnits ? "mix" : inStock ? quantity : "0"}
+      {!known ? "?" : mixedUnits ? "mix" : warning ? "!" : inStock ? quantity : "0"}
     </Badge>
   );
 }

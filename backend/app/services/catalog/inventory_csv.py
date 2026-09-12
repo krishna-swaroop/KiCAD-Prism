@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 from dataclasses import dataclass
 from typing import Any, Iterator
 
@@ -181,10 +182,19 @@ class CatalogInventoryCsv:
 
     @staticmethod
     def prepare_upsert(row: dict[str, Any], row_index: int) -> PreparedInventoryCsvRow:
+        # Blank exports represent an unrepresentable mixed-unit total. Never
+        # turn that unknown value into a known zero during re-import.
+        raw_quantity = row.get("quantity")
+        if raw_quantity is None:
+            raw_quantity = row.get("stock_quantity")
+        if raw_quantity is None or not str(raw_quantity).strip():
+            raise ValueError(f"Row {row_index}: quantity is required; use 0 for zero stock")
         try:
-            quantity = float(row.get("quantity") or row.get("stock_quantity") or 0)
+            quantity = float(raw_quantity)
         except (TypeError, ValueError):
             raise ValueError(f"Row {row_index}: quantity must be numeric") from None
+        if not math.isfinite(quantity):
+            raise ValueError(f"Row {row_index}: quantity must be finite")
         return PreparedInventoryCsvRow(
             quantity=quantity,
             uom=str(row.get("uom") or row.get("stock_uom") or ""),

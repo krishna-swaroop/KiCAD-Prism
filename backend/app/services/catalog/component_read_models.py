@@ -116,10 +116,9 @@ def local_inventory_payload(row: Mapping[str, Any] | None) -> dict[str, Any] | N
 def inventory_payloads_from_source_rows(
     rows: list[Mapping[str, Any]],
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    """Return ``(local_inventory, supply_sources)`` from location rows.
+    """Return ``(local_inventory, supply_sources)`` from raw location rows.
 
-    Rows may be raw ``inventory_levels`` locations or already-aggregated source
-    mappings; both go through :func:`aggregate_inventory_locations`.
+    Aggregated mappings must not be re-aggregated: that loses mixed-data flags.
     """
 
     payloads = [item.as_payload_row() for item in aggregate_inventory_locations(rows)]

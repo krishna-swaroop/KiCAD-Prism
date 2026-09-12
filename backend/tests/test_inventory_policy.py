@@ -46,6 +46,28 @@ class InventorySourceSortTests(unittest.TestCase):
 
 
 class InventoryAggregationTests(unittest.TestCase):
+    def test_freshness_compares_instants_across_offsets_and_precision(self) -> None:
+        newest = "2026-01-02T00:00:00.5Z"
+        aggregate = aggregate_inventory_locations([
+            _location("csv", 1, fetched_at="2026-01-02T01:00:00+02:00"),
+            _location("csv", 2, fetched_at="2026-01-02T00:00:00Z"),
+            _location("csv", 3, fetched_at=newest),
+        ])[0]
+        self.assertEqual(aggregate.fetched_at, newest)
+        self.assertTrue(aggregate.mixed_freshness)
+
+    def test_equal_instants_are_not_mixed_and_invalid_dates_do_not_win(self) -> None:
+        rows = [
+            _location("csv", 1, fetched_at="2026-01-02T01:00:00+01:00"),
+            _location("csv", 1, fetched_at="2026-01-02T00:00:00Z"),
+        ]
+        self.assertFalse(aggregate_inventory_locations(rows)[0].mixed_freshness)
+        for missing in ("", "unknown", "2026-01-03T00:00:00"):
+            with self.subTest(missing=missing):
+                aggregate = aggregate_inventory_locations(rows + [_location("csv", 1, fetched_at=missing)])[0]
+                self.assertTrue(aggregate.mixed_freshness)
+                self.assertIn(aggregate.fetched_at, [row["fetched_at"] for row in rows])
+
     def test_same_unit_csv_and_inventree_keep_totals_and_precedence(self) -> None:
         aggregates = aggregate_inventory_locations(
             [

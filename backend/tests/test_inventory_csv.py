@@ -38,6 +38,22 @@ def _row(
 
 
 class InventoryCsvExportShapeTests(unittest.TestCase):
+    def test_mixed_unit_export_cannot_be_reimported_as_zero(self) -> None:
+        exported = CatalogInventoryCsv.render_export(CatalogInventoryCsv.shape_export_rows([
+            _row("c1", location_key="", quantity=2, uom="pcs"),
+            _row("c1", location_key="b", quantity=3, uom="g"),
+        ]))
+        row = next(iter(CatalogInventoryCsv.parse(exported)))
+        with self.assertRaisesRegex(ValueError, "quantity is required"):
+            CatalogInventoryCsv.prepare_upsert(row, 2)
+
+    def test_import_requires_finite_quantity_and_preserves_explicit_zero(self) -> None:
+        for value in (None, "", " ", "nan", "inf", "-Infinity", "1e999"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                CatalogInventoryCsv.prepare_upsert({"quantity": value}, 2)
+        self.assertEqual(CatalogInventoryCsv.prepare_upsert({"quantity": 0, "stock_quantity": 9}, 2).quantity, 0)
+        self.assertEqual(CatalogInventoryCsv.prepare_upsert({"stock_quantity": "2.5"}, 2).quantity, 2.5)
+
     def test_same_unit_csv_locations_sum(self) -> None:
         rows = CatalogInventoryCsv.shape_export_rows(
             [
