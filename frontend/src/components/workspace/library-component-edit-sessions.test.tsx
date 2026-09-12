@@ -9,8 +9,9 @@ vi.mock("@/lib/api", () => ({
     ApiHttpError: class ApiHttpError extends Error {
         status: number;
         code?: string;
-        constructor(message: string, status: number, code?: string) {
+        constructor(status: number, message: string, code?: string) {
             super(message);
+            this.name = "ApiHttpError";
             this.status = status;
             this.code = code;
         }
@@ -184,7 +185,7 @@ describe("asset attach session", () => {
 
     it("closes on revision_conflict so the next open recaptures the head", async () => {
         vi.mocked(fetchJson).mockRejectedValue(
-            new ApiHttpError("Refresh the component before saving.", 409, "revision_conflict"),
+            new ApiHttpError(409, "Refresh the component before saving.", "revision_conflict"),
         );
         const onClose = vi.fn();
         const onSuccess = vi.fn();
@@ -199,7 +200,7 @@ describe("asset attach session", () => {
 
     it("keeps the session open on a non-revision 409", async () => {
         vi.mocked(fetchJson).mockRejectedValue(
-            new ApiHttpError("That asset is still referenced.", 409, "asset_referenced"),
+            new ApiHttpError(409, "That asset is still referenced.", "asset_referenced"),
         );
         const onClose = vi.fn();
         const session = assetAttachSessionFrom(catalogComponent(), "symbol");
