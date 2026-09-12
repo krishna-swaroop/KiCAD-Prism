@@ -126,6 +126,33 @@ describe("useNonOverlappingPoll", () => {
     expect(tick).toHaveBeenCalledTimes(2);
   });
 
+  it("toasts a repeated outage only once until a tick succeeds", async () => {
+    vi.useFakeTimers();
+    const tick = vi.fn()
+      .mockRejectedValueOnce(new Error("scan refresh failed"))
+      .mockRejectedValueOnce(new Error("scan refresh failed"))
+      .mockRejectedValueOnce(new Error("scan refresh failed"))
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("scan refresh failed"));
+    renderHook(() => useNonOverlappingPoll(true, tick, 1000));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(tick).toHaveBeenCalledTimes(3);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(tick).toHaveBeenCalledTimes(4);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(tick).toHaveBeenCalledTimes(5);
+    expect(toast.error).toHaveBeenCalledTimes(2);
+  });
+
   it("reports a failed tick and recovers on the next interval", async () => {
     vi.useFakeTimers();
     const tick = vi.fn()

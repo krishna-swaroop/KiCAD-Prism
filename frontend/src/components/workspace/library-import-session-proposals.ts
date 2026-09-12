@@ -50,14 +50,22 @@ export function useNonOverlappingPoll(
     if (!enabled) return;
     const controller = new AbortController();
     let inFlight = false;
+    let lastFailure = "";
     const run = async () => {
       if (inFlight || controller.signal.aborted) return;
       inFlight = true;
       try {
         await tick(controller.signal);
+        lastFailure = "";
       } catch (error) {
         if (controller.signal.aborted || isAbortError(error)) return;
-        toast.error(error instanceof Error ? error.message : "Failed to refresh import sessions");
+        const notice = error instanceof Error ? error.message : "Failed to refresh import sessions";
+        // One toast per outage, not one per 2s tick, so a 30s restart does not
+        // stack fifteen identical errors. A later success clears the episode.
+        if (notice !== lastFailure) {
+          lastFailure = notice;
+          toast.error(notice);
+        }
       } finally {
         inFlight = false;
       }
