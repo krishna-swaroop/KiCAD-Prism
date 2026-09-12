@@ -18,7 +18,7 @@ vi.mock("@/lib/api", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), message: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 
-import { fetchJson } from "@/lib/api";
+import { ApiHttpError, fetchJson } from "@/lib/api";
 import type { CatalogComponent } from "@/types/catalog";
 import {
     AssetAttachDialog,
@@ -180,6 +180,36 @@ describe("asset attach session", () => {
         expect(String(request?.[0])).toContain("/symbol-import");
         const body = request?.[1]?.body as FormData;
         expect(body.get("expected_revision_id")).toBe("comp-a-rev1");
+    });
+
+    it("closes on revision_conflict so the next open recaptures the head", async () => {
+        vi.mocked(fetchJson).mockRejectedValue(
+            new ApiHttpError("Refresh the component before saving.", 409, "revision_conflict"),
+        );
+        const onClose = vi.fn();
+        const onSuccess = vi.fn();
+        const session = assetAttachSessionFrom(catalogComponent(), "symbol");
+        render(<AssetAttachDialog session={session} onClose={onClose} onSuccess={onSuccess} />);
+
+        chooseFile(new File(["sym"], "part.kicad_sym"));
+        fireEvent.click(screen.getByRole("button", { name: /attach file/i }));
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        expect(onSuccess).not.toHaveBeenCalled();
+    });
+
+    it("keeps the session open on a non-revision 409", async () => {
+        vi.mocked(fetchJson).mockRejectedValue(
+            new ApiHttpError("That asset is still referenced.", 409, "asset_referenced"),
+        );
+        const onClose = vi.fn();
+        const session = assetAttachSessionFrom(catalogComponent(), "symbol");
+        render(<AssetAttachDialog session={session} onClose={onClose} onSuccess={vi.fn()} />);
+
+        chooseFile(new File(["sym"], "part.kicad_sym"));
+        fireEvent.click(screen.getByRole("button", { name: /attach file/i }));
+        await waitFor(() => expect(fetchJson).toHaveBeenCalled());
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByRole("heading", { name: "Add symbol" })).toBeInTheDocument();
     });
 });
 

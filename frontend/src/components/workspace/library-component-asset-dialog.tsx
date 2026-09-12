@@ -32,7 +32,7 @@ import type {
 
 import { AsyncSearchPicker } from "./async-search-picker";
 import { formatBytes } from "./library-component-chrome";
-import { assetMutationRevisionId, releaseRetainedRevisionOnConflict } from "./library-asset-mutation";
+import { assetMutationRevisionId, isRevisionConflict } from "./library-asset-mutation";
 
 export type AssetType = CatalogAsset["asset_type"];
 type AssetAttachMode = "upload" | "link";
@@ -194,6 +194,13 @@ export function AssetAttachDialog({
 
   const label = ASSET_LABELS[session.assetType];
 
+  const closeIfRevisionConflict = (reason: unknown) => {
+    if (!(reason instanceof ApiHttpError)) return;
+    // The session revision is frozen at open, so retrying in-dialog still
+    // sends the same stale head. Close and let the next Add recapture.
+    if (isRevisionConflict(reason.status, reason.code)) onClose();
+  };
+
   const handleUpload = async () => {
     const sourceFile = importSelection?.file || file;
     if (!sourceFile) return;
@@ -230,9 +237,7 @@ export function AssetAttachDialog({
     } catch (reason) {
       if (!aliveRef.current) return;
       toast.error(reason instanceof Error ? reason.message : String(reason));
-      const status = reason instanceof ApiHttpError ? reason.status : undefined;
-      const code = reason instanceof ApiHttpError ? reason.code : undefined;
-      setImportSelection((current) => releaseRetainedRevisionOnConflict(current, status, code));
+      closeIfRevisionConflict(reason);
     } finally {
       if (aliveRef.current) setSubmitting(false);
     }
@@ -258,6 +263,7 @@ export function AssetAttachDialog({
     } catch (reason) {
       if (!aliveRef.current) return;
       toast.error(reason instanceof Error ? reason.message : String(reason));
+      closeIfRevisionConflict(reason);
     } finally {
       if (aliveRef.current) setSubmitting(false);
     }
