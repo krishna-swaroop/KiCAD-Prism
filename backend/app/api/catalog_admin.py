@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.api.catalog_errors import raise_catalog_value_error
 from app.core.config import settings
 from app.core.security import AuthenticatedUser, require_catalog_reader, require_catalog_writer
 from app.services.component_catalog_service import catalog_service
@@ -994,8 +995,7 @@ def update_catalog_component(
             expected_revision_id=expected_revision_id,
         )
     except ValueError as exc:
-        status_code = 409 if "revision conflict" in str(exc).lower() else 400
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
     if not component:
         raise HTTPException(status_code=404, detail="Component not found")
     return component
@@ -1022,8 +1022,7 @@ def create_component_representation(
             change_summary=payload.change_summary,
         )
     except ValueError as exc:
-        status = 409 if "revision conflict" in str(exc).lower() else 400
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.patch("/components/{component_id}/representations/{representation_id}")
@@ -1050,8 +1049,7 @@ def update_component_representation(
             change_summary=payload.change_summary,
         )
     except ValueError as exc:
-        status = 409 if "revision conflict" in str(exc).lower() else 400
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.delete("/components/{component_id}/representations/{representation_id}")
@@ -1069,8 +1067,7 @@ def delete_component_representation(
             actor=user.email,
         )
     except ValueError as exc:
-        status = 409 if "revision conflict" in str(exc).lower() else 400
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.post("/components/{component_id}/symbol-import")
@@ -1097,7 +1094,7 @@ async def import_symbol_library(
             actor=user.email, expected_revision_id=expected_revision_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409 if "revision conflict" in str(exc).lower() else 400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.post("/components/{component_id}/footprint-import")
@@ -1124,7 +1121,7 @@ async def import_footprint(
             actor=user.email, expected_revision_id=expected_revision_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409 if "revision conflict" in str(exc).lower() else 400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.post("/components/{component_id}/assets/{asset_type}")
@@ -1149,7 +1146,7 @@ async def import_auxiliary_asset(
             actor=user.email, expected_revision_id=expected_revision_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409 if "revision conflict" in str(exc).lower() else 400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.delete("/components/{component_id}/assets/{asset_type}")
@@ -1179,8 +1176,7 @@ def detach_component_asset_by_id(
             actor=user.email,
         )
     except ValueError as exc:
-        status = 409 if "revision conflict" in str(exc).lower() or "referenced" in str(exc).lower() else 400
-        raise HTTPException(status_code=status, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.delete("/components/{component_id}")
@@ -1221,7 +1217,7 @@ def transition_release_status(
             expected_manifest_hash=payload.expected_manifest_hash,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
     if not component:
         raise HTTPException(status_code=404, detail="Component not found")
     return component
@@ -1596,4 +1592,4 @@ def link_library_asset(
             actor=user.email, expected_revision_id=payload.expected_revision_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409 if "revision conflict" in str(exc).lower() else 400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)

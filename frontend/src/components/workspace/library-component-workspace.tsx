@@ -2243,7 +2243,8 @@ export function LibraryComponentWorkspace({
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : String(reason));
       const status = reason instanceof ApiHttpError ? reason.status : undefined;
-      setImportSelection((current) => releaseRetainedRevisionOnConflict(current, status));
+      const code = reason instanceof ApiHttpError ? reason.code : undefined;
+      setImportSelection((current) => releaseRetainedRevisionOnConflict(current, status, code));
     } finally {
       setBusyAction("");
     }

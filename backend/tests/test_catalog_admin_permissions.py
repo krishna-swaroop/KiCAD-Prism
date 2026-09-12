@@ -16,6 +16,13 @@ from app.api import catalog_admin  # noqa: E402
 from app.api.catalog_admin import _can_transition_workflow, _require_field_admin  # noqa: E402
 from app.core.security import AuthenticatedUser  # noqa: E402
 from app.services import catalog_worker_tasks  # noqa: E402
+from app.services.catalog.conflicts import (  # noqa: E402
+    ASSET_REFERENCED_CODE,
+    CatalogConflict,
+    MANIFEST_CONFLICT_CODE,
+    REVISION_CONFLICT_CODE,
+    manifest_conflict,
+)
 
 
 class CatalogAdminPermissionTests(unittest.TestCase):
@@ -157,7 +164,7 @@ class CatalogAdminAssetRevisionTests(unittest.IsolatedAsyncioTestCase):
         for handler, service_name, kwargs in cases:
             with self.subTest(service_name):
                 with patch.object(
-                    catalog_admin.catalog_service, service_name, side_effect=ValueError(CONFLICT)
+                    catalog_admin.catalog_service, service_name, side_effect=CatalogConflict(CONFLICT)
                 ) as mocked:
                     with self.assertRaises(HTTPException) as raised:
                         await handler("cmp-1", expected_revision_id="stale-rev", user=WRITER, **kwargs)
@@ -167,7 +174,7 @@ class CatalogAdminAssetRevisionTests(unittest.IsolatedAsyncioTestCase):
 
         payload = catalog_admin.LinkAssetRequest(file_path="lib/a.kicad_sym", expected_revision_id="stale-rev")
         with patch.object(
-            catalog_admin.catalog_service, "link_library_asset", side_effect=ValueError(CONFLICT)
+            catalog_admin.catalog_service, "link_library_asset", side_effect=CatalogConflict(CONFLICT)
         ) as mocked:
             with self.assertRaises(HTTPException) as raised:
                 catalog_admin.link_library_asset("cmp-1", "symbol", payload, user=WRITER)
@@ -191,6 +198,137 @@ class CatalogAdminAssetRevisionTests(unittest.IsolatedAsyncioTestCase):
                     expected_revision_id="rev-1",
                     user=WRITER,
                 )
+        self.assertEqual(raised.exception.status_code, 400)
+
+
+class CatalogAdminTypedConflictTests(unittest.TestCase):
+    def test_metadata_conflict_wording_does_not_change_409(self) -> None:
+        payload = catalog_admin.UpdateComponentMetadataRequest(
+            expected_revision_id="rev-1", value="10k"
+        )
+        with patch.object(
+            catalog_admin.catalog_service,
+            "update_component_metadata",
+            side_effect=CatalogConflict("head moved"),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                catalog_admin.update_catalog_component("cmp-1", payload, user=WRITER)
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(
+            raised.exception.detail,
+            {"code": REVISION_CONFLICT_CODE, "message": "head moved"},
+        )
+
+    def test_metadata_validation_stays_400_and_missing_stays_404(self) -> None:
+        payload = catalog_admin.UpdateComponentMetadataRequest(
+            expected_revision_id="rev-1", value="10k"
+        )
+        with patch.object(
+            catalog_admin.catalog_service,
+            "update_component_metadata",
+            side_effect=ValueError("datasheet is required"),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                catalog_admin.update_catalog_component("cmp-1", payload, user=WRITER)
+        self.assertEqual(raised.exception.status_code, 400)
+        with patch.object(catalog_admin.catalog_service, "update_component_metadata", return_value=None):
+            with self.assertRaises(HTTPException) as raised:
+                catalog_admin.update_catalog_component("cmp-1", payload, user=WRITER)
+        self.assertEqual(raised.exception.status_code, 404)
+
+    def test_representation_conflict_wording_does_not_change_409(self) -> None:
+        create = catalog_admin.CreateRepresentationRequest(expected_revision_id="rev-1")
+        update = catalog_admin.UpdateRepresentationRequest(expected_revision_id="rev-1", label="B")
+        cases = (
+            (
+                lambda: catalog_admin.create_component_representation("cmp-1", create, user=WRITER),
+                "create_representation",
+            ),
+            (
+                lambda: catalog_admin.update_component_representation(
+                    "cmp-1", "rep-1", update, user=WRITER
+                ),
+                "update_representation",
+            ),
+            (
+                lambda: catalog_admin.delete_component_representation(
+                    "cmp-1", "rep-1", expected_revision_id="rev-1", user=WRITER
+                ),
+                "delete_representation",
+            ),
+        )
+        for handler, service_name in cases:
+            with self.subTest(service_name):
+                with patch.object(
+                    catalog_admin.catalog_service,
+                    service_name,
+                    side_effect=CatalogConflict("representation head moved"),
+                ):
+                    with self.assertRaises(HTTPException) as raised:
+                        handler()
+                self.assertEqual(raised.exception.status_code, 409)
+                self.assertEqual(
+                    raised.exception.detail,
+                    {"code": REVISION_CONFLICT_CODE, "message": "representation head moved"},
+                )
+
+    def test_detach_referenced_conflict_is_409_without_scanning_text(self) -> None:
+        with patch.object(
+            catalog_admin.catalog_service,
+            "detach_asset_by_id",
+            side_effect=CatalogConflict("cannot detach", code=ASSET_REFERENCED_CODE),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                catalog_admin.detach_component_asset_by_id(
+                    "cmp-1", "asset-1", expected_revision_id="rev-1", user=WRITER
+                )
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(
+            raised.exception.detail,
+            {"code": ASSET_REFERENCED_CODE, "message": "cannot detach"},
+        )
+
+    def test_workflow_manifest_conflict_is_409(self) -> None:
+        payload = catalog_admin.ReleaseStatusRequest(
+            workflow_stage="qa_review",
+            expected_revision_id="rev-1",
+            expected_manifest_hash="stale-hash",
+        )
+        with (
+            patch.object(
+                catalog_admin.catalog_service,
+                "get_component",
+                return_value={
+                    "id": "cmp-1",
+                    "workflow_stage": "in_progress",
+                    "release_status": "in_progress",
+                },
+            ),
+            patch.object(
+                catalog_admin.catalog_service,
+                "set_release_status",
+                side_effect=manifest_conflict("manifest moved"),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                catalog_admin.transition_release_status("cmp-1", payload, user=WRITER)
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(
+            raised.exception.detail,
+            {"code": MANIFEST_CONFLICT_CODE, "message": "manifest moved"},
+        )
+
+    def test_plain_value_error_with_conflict_wording_is_not_409(self) -> None:
+        payload = catalog_admin.UpdateComponentMetadataRequest(
+            expected_revision_id="rev-1", value="10k"
+        )
+        with patch.object(
+            catalog_admin.catalog_service,
+            "update_component_metadata",
+            side_effect=ValueError(CONFLICT),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                catalog_admin.update_catalog_component("cmp-1", payload, user=WRITER)
         self.assertEqual(raised.exception.status_code, 400)
 
 

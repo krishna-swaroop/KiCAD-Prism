@@ -23,10 +23,13 @@ describe("assetMutationRevisionId", () => {
       selected: "B",
       expectedRevisionId: "rev-1",
     };
-    const afterConflict = releaseRetainedRevisionOnConflict(selection, 409);
+    const afterConflict = releaseRetainedRevisionOnConflict(selection, 409, "revision_conflict");
     expect(afterConflict?.expectedRevisionId).toBe("");
     expect(afterConflict?.selected).toBe("B");
     expect(assetMutationRevisionId("rev-2", afterConflict?.expectedRevisionId)).toBe("rev-2");
     expect(releaseRetainedRevisionOnConflict(selection, 400)).toEqual(selection);
+    expect(releaseRetainedRevisionOnConflict(selection, 409)?.expectedRevisionId).toBe("");
+    expect(releaseRetainedRevisionOnConflict(selection, 409, "asset_referenced")).toEqual(selection);
+    expect(releaseRetainedRevisionOnConflict(selection, 409, "manifest_conflict")).toEqual(selection);
   });
 });

@@ -1,16 +1,46 @@
 export interface ApiErrorPayload {
-  detail?: string;
+  detail?: string | { code?: string; message?: string } | Array<{ loc?: unknown[]; msg?: string }>;
   message?: string;
 }
 
 export class ApiHttpError extends Error {
   status: number;
+  code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = "ApiHttpError";
     this.status = status;
+    this.code = code;
   }
+}
+
+type ParsedApiError = {
+  message: string;
+  code?: string;
+};
+
+function parseApiErrorPayload(payload: ApiErrorPayload, fallback: string): ParsedApiError {
+  const detail = payload.detail;
+  if (typeof detail === "string" && detail) {
+    return { message: detail };
+  }
+  if (Array.isArray(detail)) {
+    return {
+      message: detail
+        .map((entry) => `${entry.loc?.slice(-1)?.[0] || "Field"}: ${entry.msg}`)
+        .join(", "),
+    };
+  }
+  if (detail && typeof detail === "object") {
+    const message =
+      typeof detail.message === "string" && detail.message.trim()
+        ? detail.message
+        : payload.message || fallback;
+    const code = typeof detail.code === "string" && detail.code.trim() ? detail.code : undefined;
+    return { message, code };
+  }
+  return { message: payload.message || fallback };
 }
 
 export async function fetchApi(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -42,24 +72,16 @@ export async function fetchApi(input: RequestInfo | URL, init?: RequestInit): Pr
   return response;
 }
 
-export async function readApiError(response: Response, fallback: string): Promise<string> {
+async function readApiErrorPayload(response: Response, fallback: string): Promise<ParsedApiError> {
   try {
-    const payload = await response.json();
-    if (payload.detail) {
-      if (typeof payload.detail === "string") {
-        return payload.detail;
-      }
-      if (Array.isArray(payload.detail)) {
-        // FastAPI validation errors
-        return payload.detail
-          .map((e: any) => `${e.loc?.slice(-1)?.[0] || "Field"}: ${e.msg}`)
-          .join(", ");
-      }
-    }
-    return payload.message || fallback;
+    return parseApiErrorPayload((await response.json()) as ApiErrorPayload, fallback);
   } catch {
-    return fallback;
+    return { message: fallback };
   }
+}
+
+export async function readApiError(response: Response, fallback: string): Promise<string> {
+  return (await readApiErrorPayload(response, fallback)).message;
 }
 
 export async function fetchJson<T>(
@@ -69,7 +91,8 @@ export async function fetchJson<T>(
 ): Promise<T> {
   const response = await fetchApi(input, init);
   if (!response.ok) {
-    throw new ApiHttpError(response.status, await readApiError(response, fallbackError));
+    const parsed = await readApiErrorPayload(response, fallbackError);
+    throw new ApiHttpError(response.status, parsed.message, parsed.code);
   }
   return (await response.json()) as T;
 }

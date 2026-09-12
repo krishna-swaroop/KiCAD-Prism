@@ -28,6 +28,7 @@ from app.services.catalog.asset_types import (
     PLACE_REQUIRED_ASSET_TYPES,
     SUPPORTED_ASSET_TYPES,
 )
+from app.services.catalog.conflicts import CatalogConflict, asset_referenced_conflict
 from app.services.catalog.kicad_cli import KicadCliRunner
 from app.services.catalog.normalization import sanitize_name
 from app.services.catalog.revision_finalization import CatalogRevisionFinalizer
@@ -442,7 +443,7 @@ class CatalogAssetImports:
         if not current:
             raise ValueError("Component not found")
         if str(current["id"]) != expected_revision_id:
-            raise ValueError("Component revision conflict: refresh the component before saving")
+            raise CatalogConflict()
         linked = conn.execute(
             "SELECT asset_type FROM revision_assets WHERE revision_id = %s AND asset_id = %s",
             (current["id"], asset_id),
@@ -458,7 +459,7 @@ class CatalogAssetImports:
             (current["id"], asset_id, asset_id),
         ).fetchone()
         if referenced:
-            raise ValueError("Asset is referenced by a representation; remove or reassign it first")
+            raise asset_referenced_conflict()
         revision = self._revision_kernel.clone_revision(
             conn,
             component_id,

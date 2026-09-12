@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 import uuid
 
+from app.services.catalog.conflicts import CatalogConflict
 from app.services.catalog.normalization import canonical_json, utc_now_iso
 from app.services.catalog.revision_finalization import CatalogRevisionFinalizer
 from app.services.catalog.revision_kernel import CatalogRevisionKernel
@@ -156,7 +157,7 @@ class CatalogRepresentations:
     ) -> str:
         current, original = self.current_representation_row(conn, component_id, representation_id)
         if str(current["id"]) != expected_revision_id:
-            raise ValueError("Component revision conflict: refresh the component before saving")
+            raise CatalogConflict()
         revision = self._revision_kernel.clone_revision(
             conn,
             component_id,
@@ -239,7 +240,7 @@ class CatalogRepresentations:
         change_summary = "Delete component representation"
         current, original = self.current_representation_row(conn, component_id, representation_id)
         if str(current["id"]) != expected_revision_id:
-            raise ValueError("Component revision conflict: refresh the component before saving")
+            raise CatalogConflict()
         revision = self._revision_kernel.clone_revision(
             conn,
             component_id,

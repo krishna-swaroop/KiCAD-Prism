@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.services.catalog.conflicts import CatalogConflict, REVISION_CONFLICT_CODE  # noqa: E402
 from app.services.catalog.revision_kernel import CatalogRevisionKernel  # noqa: E402
 from app.services.component_catalog_domain import (  # noqa: E402
     _normalize_workflow_stage,
@@ -29,8 +30,10 @@ class CatalogRevisionPreconditionTests(unittest.TestCase):
         CatalogRevisionKernel.assert_expected_revision("rev-1")
 
     def test_mismatched_expected_revision_is_a_conflict(self) -> None:
-        with self.assertRaisesRegex(ValueError, "revision conflict"):
+        with self.assertRaises(CatalogConflict) as raised:
             CatalogRevisionKernel.assert_expected_revision("rev-2", "rev-1")
+        self.assertEqual(raised.exception.code, REVISION_CONFLICT_CODE)
+        self.assertIsInstance(raised.exception, ValueError)
 
 
 if __name__ == "__main__":
