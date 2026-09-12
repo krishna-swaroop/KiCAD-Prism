@@ -233,22 +233,37 @@ describe("metadata edit session", () => {
         expect(await screen.findByLabelText("Application note")).toHaveValue("bias");
         expect(screen.getByLabelText("Dielectric")).toHaveValue("2.2");
         expect(screen.getByLabelText("Tolerance")).toHaveValue("5%");
-        expect(screen.getByLabelText("Unknown extra fields (JSON object)")).toHaveValue(
+        expect(screen.getByLabelText("Additional extra fields (JSON object)")).toHaveValue(
             JSON.stringify({ leftover_note: "keep-me" }, null, 2),
         );
         fireEvent.change(screen.getByLabelText("Dielectric"), { target: { value: "not-a-number" } });
-        expect(screen.getByRole("alert")).toHaveTextContent("Invalid number");
-        expect(screen.getByRole("button", { name: /save new revision/i })).toBeDisabled();
-        fireEvent.change(screen.getByLabelText("Dielectric"), { target: { value: "4.7" } });
         fireEvent.change(screen.getByLabelText("Tolerance"), { target: { value: "1%" } });
         fireEvent.click(screen.getByRole("button", { name: /save new revision/i }));
         await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
         expect(patchCallBody().extra_fields).toEqual({
             leftover_note: "keep-me",
             application_note: "bias",
-            dielectric: "4.7",
+            dielectric: "not-a-number",
             tolerance: "1%",
         });
+    });
+
+    it("keeps additional extras writable when the component has none yet", async () => {
+        const onSuccess = vi.fn();
+        render(
+            <MetadataEditDialog
+                session={metadataEditSessionFrom(catalogComponent())}
+                onClose={vi.fn()}
+                onSuccess={onSuccess}
+            />,
+        );
+
+        fireEvent.change(await screen.findByLabelText("Additional extra fields (JSON object)"), {
+            target: { value: JSON.stringify({ Tolerance: "1%" }) },
+        });
+        fireEvent.click(screen.getByRole("button", { name: /save new revision/i }));
+        await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+        expect(patchCallBody().extra_fields).toEqual({ Tolerance: "1%" });
     });
 
     it("blocks save when a required identity field is cleared", async () => {

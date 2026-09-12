@@ -49,17 +49,10 @@ export function validateMetadataField(
   value: string,
   identityKind: CatalogComponent["identity_kind"],
 ): string {
+  // The single-component PATCH accepts the same free-form strings the previous
+  // editor stored. Shape checks belong to bulk edit; blocking them here would
+  // trap saves on legacy values the user did not touch.
   if (!value.trim()) return isFieldRequired(field, identityKind) ? "Required" : "";
-  if (field.type === "number" && !Number.isFinite(Number(value))) return "Invalid number";
-  if (field.type === "url") {
-    try {
-      const url = new URL(value);
-      if (!["http:", "https:"].includes(url.protocol)) return "Use HTTP(S)";
-    } catch {
-      return "Invalid URL";
-    }
-  }
-  if (field.type === "enum" && !field.enum_values.includes(value)) return "Invalid option";
   return "";
 }
 
@@ -69,7 +62,7 @@ export function parseUnknownExtraJson(
   try {
     const parsed: unknown = JSON.parse(raw || "{}");
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { ok: false, message: "Unknown extra fields must be a JSON object." };
+      return { ok: false, message: "Additional extra fields must be a JSON object." };
     }
     return {
       ok: true,

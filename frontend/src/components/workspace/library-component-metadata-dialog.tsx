@@ -100,7 +100,6 @@ export function MetadataEditDialog({
     ? metadataFormErrors(fields, values, session.identityKind, changeSummary, unknownExtrasJson)
     : null;
   const canSave = Boolean(fields && errors && isMetadataFormComplete(errors) && !loadError);
-  const showUnknownExtras = Object.keys(unknownExtraFields(session.component, fields ?? [])).length > 0;
 
   const handleSubmit = async () => {
     if (!fields || !errors || !isMetadataFormComplete(errors)) return;
@@ -160,23 +159,21 @@ export function MetadataEditDialog({
                 onChange={(next) => setValues({ ...values, [field.key]: next })}
               />
             ))}
-            {showUnknownExtras ? (
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="component-edit-unknown-extras">Unknown extra fields (JSON object)</Label>
-                <Textarea
-                  id="component-edit-unknown-extras"
-                  className="font-mono text-xs"
-                  value={unknownExtrasJson}
-                  rows={6}
-                  spellCheck={false}
-                  aria-invalid={Boolean(errors?.unknownExtrasError)}
-                  onChange={(event) => setUnknownExtrasJson(event.target.value)}
-                />
-                {errors?.unknownExtrasError ? (
-                  <p className="text-destructive text-xs" role="alert">{errors.unknownExtrasError}</p>
-                ) : null}
-              </div>
-            ) : null}
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="component-edit-unknown-extras">Additional extra fields (JSON object)</Label>
+              <Textarea
+                id="component-edit-unknown-extras"
+                className="font-mono text-xs"
+                value={unknownExtrasJson}
+                rows={6}
+                spellCheck={false}
+                aria-invalid={Boolean(errors?.unknownExtrasError)}
+                onChange={(event) => setUnknownExtrasJson(event.target.value)}
+              />
+              {errors?.unknownExtrasError ? (
+                <p className="text-destructive text-xs" role="alert">{errors.unknownExtrasError}</p>
+              ) : null}
+            </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="component-edit-summary">Change summary *</Label>
               <Input

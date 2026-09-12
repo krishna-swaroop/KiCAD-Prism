@@ -151,22 +151,40 @@ describe("identity and validation rules", () => {
     expect(validateMetadataField(mpn, "", "mpn")).toBe("Required");
   });
 
-  it("surfaces the same number, URL, and enum messages as the grid", () => {
-    expect(validateMetadataField(
-      metadataField({ key: "mass_g", label: "Mass", type: "number", storage_key: "mass_g" }),
-      "heavy",
+  it("does not block save on legacy number, URL, or enum shapes the PATCH still accepts", () => {
+    const errors = metadataFormErrors(
+      [
+        metadataField({ key: "value", label: "Value", storage_key: "value" }),
+        metadataField({ key: "mass_g", label: "Mass", type: "number", storage_key: "mass_g" }),
+        metadataField({
+          key: "datasheet_url",
+          label: "Datasheet",
+          type: "url",
+          storage_key: "datasheet_url",
+        }),
+        custom,
+      ],
+      {
+        value: "10k",
+        mass_g: "~5",
+        datasheet_url: "example.com/ds.pdf",
+        tolerance: "10%",
+      },
       "mpn",
-    )).toBe("Invalid number");
-    expect(validateMetadataField(
-      metadataField({ key: "datasheet_url", label: "Datasheet", type: "url", storage_key: "datasheet_url" }),
-      "ftp://example.test/ds",
-      "mpn",
-    )).toBe("Use HTTP(S)");
-    expect(validateMetadataField(custom, "10%", "mpn")).toBe("Invalid option");
+      "Update",
+      "{}",
+    );
+    expect(errors.fieldErrors).toEqual({
+      value: "",
+      mass_g: "",
+      datasheet_url: "",
+      tolerance: "",
+    });
+    expect(isMetadataFormComplete(errors)).toBe(true);
     expect(validateMetadataField(custom, "", "mpn")).toBe("Required");
   });
 
-  it("blocks save when unknown extras are not a JSON object", () => {
+  it("blocks save when additional extras are not a JSON object", () => {
     const errors = metadataFormErrors(
       [metadataField({ key: "value", label: "Value", storage_key: "value" })],
       { value: "10k" },
@@ -174,7 +192,7 @@ describe("identity and validation rules", () => {
       "Update",
       "[]",
     );
-    expect(errors.unknownExtrasError).toBe("Unknown extra fields must be a JSON object.");
+    expect(errors.unknownExtrasError).toBe("Additional extra fields must be a JSON object.");
     expect(isMetadataFormComplete(errors)).toBe(false);
     expect(parseUnknownExtraJson('{"note":1}').ok).toBe(true);
   });
