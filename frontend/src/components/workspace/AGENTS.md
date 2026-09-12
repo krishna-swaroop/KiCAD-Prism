@@ -29,7 +29,9 @@ these modules are forms and grids over server data rather than viewer bridges.
 URL ownership and current/historical selection stay here),
 `library-component-chrome.tsx` (shared badges, cards, empty/loading chrome),
 `library-component-evidence.ts` (tab evidence load hooks, no store or query
-library), `library-component-evidence-panels.tsx` (read-only revisions, review,
+library), `library-component-validation.ts` (component-scoped AbortController
+and `watchPrismJob` adapter; the coordinator starts/aborts and applies the
+originating component's result), `library-component-evidence-panels.tsx` (read-only revisions, review,
 usage, and audit evidence), `library-component-metadata-dialog.tsx` and
 `library-component-asset-dialog.tsx` (edit sessions captured at open, one
 success callback), `library-component-metadata-form.ts` (definition-driven

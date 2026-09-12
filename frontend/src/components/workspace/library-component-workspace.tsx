@@ -114,16 +114,9 @@ import {
   type MetadataEditSession,
 } from "./library-component-metadata-dialog";
 import { resolveLibraryPreviewPairAssetIds } from "./library-preview-pair";
+import { useLibraryComponentValidation } from "./library-component-validation";
 
 type ComponentTab = "overview" | "assets" | "revisions" | "review" | "usage" | "audit";
-
-type ValidationJob = {
-  status: "queued" | "running" | "completed" | "failed";
-  component?: CatalogComponent | null;
-  errors?: Array<{ error: string }>;
-  error?: string;
-  message?: string;
-};
 
 type RemoteProviderManifest = {
   assets: Array<{
@@ -165,8 +158,6 @@ const VALIDATION_LABELS: Record<CatalogValidationStatus, string> = {
   skipped: "KLC skipped",
   not_run: "KLC not run",
 };
-
-const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 /**
  * Is this response actually a component?
@@ -601,6 +592,11 @@ export function LibraryComponentWorkspace({
   const [attachSession, setAttachSession] = useState<AssetAttachSession | null>(null);
   const [detachAsset, setDetachAsset] = useState<CatalogAsset | null>(null);
   const [busyAction, setBusyAction] = useState("");
+  const { runValidation, validationBusy } = useLibraryComponentValidation({
+    componentId,
+    onRefresh: () => setRefreshKey((value) => value + 1),
+  });
+  const activeBusyAction = busyAction || (validationBusy ? "validation" : "");
 
   const updateParams = useCallback((values: Record<string, string | null>) => {
     setSearchParams((current) => {
@@ -887,30 +883,9 @@ export function LibraryComponentWorkspace({
     }
   };
 
-  const handleValidateComponent = async () => {
+  const handleValidateComponent = () => {
     if (!canMutate || !currentComponent?.validation.enabled) return;
-    setBusyAction("validation");
-    try {
-      const queued = await fetchJson<{ job_id: string }>(`/api/catalog/components/${encodeURIComponent(componentId)}/validate`, { method: "POST" });
-      toast.message("KLC validation started.");
-      let job: ValidationJob | null = null;
-      for (let attempt = 0; attempt < 180; attempt += 1) {
-        await sleep(1000);
-        job = await fetchJson<ValidationJob>(`/api/catalog/validation/jobs/${encodeURIComponent(queued.job_id)}`);
-        if (job.status === "completed" || job.status === "failed") break;
-      }
-      if (!job || job.status === "queued" || job.status === "running") throw new Error("Validation is still running. Refresh later to see its status.");
-      if (job.status === "failed") throw new Error(job.error || job.message || "KLC validation failed.");
-      if (!job.component) throw new Error(job.errors?.[0]?.error || "Validation did not return an updated component.");
-      if (job.component.validation.status === "failed") toast.error("KLC validation found blocking errors.");
-      else if (job.component.validation.status === "warning") toast.warning("KLC validation completed with warnings.");
-      else toast.success("KLC validation passed.");
-      setRefreshKey((value) => value + 1);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusyAction("");
-    }
+    void runValidation();
   };
 
   const handleDownloadAsset = async (asset: CatalogAsset) => {
@@ -1033,7 +1008,7 @@ export function LibraryComponentWorkspace({
             <AssetsPanel
               component={activeComponent}
               canMutate={canMutate}
-              busyAction={busyAction}
+              busyAction={activeBusyAction}
               onAttach={openAttachDialog}
               onDetachAsset={setDetachAsset}
               onDownload={(asset) => void handleDownloadAsset(asset)}
