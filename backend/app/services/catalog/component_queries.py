@@ -25,6 +25,9 @@ REPRESENTATION_ASSET_COLUMNS = {
     "footprint": "footprint_asset_id",
 }
 
+# OFFSET pages need a total order when timestamps or ranks tie.
+COMPONENT_LIST_TIEBREAKER = "c.id"
+
 
 def default_representation_has_asset(revision_ref: str, asset_type: str, alias: str) -> str:
     """SQL predicate: the default representation has a non-empty asset for ``asset_type``."""
@@ -242,7 +245,10 @@ class CatalogComponentQueries:
             )
 
         if sort_column:
-            order_sql = f"ORDER BY {sort_column} {sort_direction}, {revision_ref}.updated_at DESC"
+            order_sql = (
+                f"ORDER BY {sort_column} {sort_direction}, "
+                f"{revision_ref}.updated_at DESC, {COMPONENT_LIST_TIEBREAKER}"
+            )
             order_params: list[Any] = []
         elif query_text:
             order_sql = (
@@ -250,11 +256,11 @@ class CatalogComponentQueries:
                 f"WHEN LOWER({revision_ref}.mpn) = LOWER(%s) THEN 0 "
                 f"WHEN LOWER({revision_ref}.mpn) LIKE LOWER(%s) THEN 1 "
                 f"WHEN LOWER({revision_ref}.name) LIKE LOWER(%s) THEN 2 "
-                f"ELSE 3 END, {revision_ref}.updated_at DESC"
+                f"ELSE 3 END, {revision_ref}.updated_at DESC, {COMPONENT_LIST_TIEBREAKER}"
             )
             order_params = [query_text, f"{query_text}%", f"{query_text}%"]
         else:
-            order_sql = f"ORDER BY {revision_ref}.updated_at DESC"
+            order_sql = f"ORDER BY {revision_ref}.updated_at DESC, {COMPONENT_LIST_TIEBREAKER}"
             order_params = []
 
         return CatalogComponentListPlan(
@@ -558,6 +564,7 @@ class CatalogComponentQueries:
 
 
 __all__ = [
+    "COMPONENT_LIST_TIEBREAKER",
     "CatalogComponentListPlan",
     "CatalogComponentQueries",
     "REPRESENTATION_ASSET_COLUMNS",

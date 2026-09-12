@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 import base64
 import csv
 import hashlib
@@ -1732,6 +1733,142 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
             missing=[],
             place_enabled=True,
         )
+
+    def test_tied_timestamps_paginate_without_duplicate_or_omitted_ids(self) -> None:
+        token = "tie-" + uuid.uuid4().hex[:8]
+        frozen = "2026-09-12T21:00:00+00:00"
+        fixtures: list[dict] = []
+        with (
+            patch("app.services.catalog.component_writer.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.revision_kernel._utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.revision_finalization.utc_now_iso", return_value=frozen),
+        ):
+            for index in range(4):
+                component = self.service.create_manual_component(
+                    name="Tied Name",
+                    value="10k",
+                    description=f"Pagination {token}",
+                    datasheet="https://example.com/r.pdf",
+                    manufacturer="Prism Tiebreak",
+                    manufacturer_part_number=f"PG-TIE-{token}-{index}",
+                    actor="author@example.com",
+                )
+                self.component_ids.append(str(component["id"]))
+                fixtures.append(component)
+
+        expected = {str(item["id"]) for item in fixtures}
+        timestamps = {str(item["revision_updated_at"]) for item in fixtures}
+        names = {str(item["name"]) for item in fixtures}
+        self.assertEqual(timestamps, {frozen})
+        self.assertEqual(names, {"Tied Name"})
+
+        def paged_ids(**kwargs: object) -> list[str]:
+            seen: list[str] = []
+            page = 1
+            while True:
+                result = self.service.list_components(
+                    query=token,
+                    page=page,
+                    page_size=2,
+                    lightweight=True,
+                    **kwargs,
+                )
+                batch = [
+                    str(item["id"])
+                    for item in result["items"]
+                    if str(item["id"]) in expected
+                ]
+                overlap = set(seen) & set(batch)
+                self.assertFalse(overlap, overlap)
+                seen.extend(batch)
+                if page >= int(result["pages"]) or not result["items"]:
+                    break
+                page += 1
+            return seen
+
+        ranked_ids = paged_ids()
+        named_ids = paged_ids(sort_by="name", sort_dir="asc")
+        manufacturer_ids = paged_ids(sort_by="manufacturer", sort_dir="asc")
+        self.assertEqual(set(ranked_ids), expected)
+        self.assertEqual(len(ranked_ids), 4)
+        self.assertEqual(ranked_ids, sorted(expected))
+        self.assertEqual(named_ids, ranked_ids)
+        self.assertEqual(manufacturer_ids, ranked_ids)
+        self.assertEqual(paged_ids(), ranked_ids)
+
+        clock = (
+            patch("app.services.catalog.component_writer.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.revision_kernel._utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.revision_finalization.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.asset_registry.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.asset_links.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.representations.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.release_workflow.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.preview_pipeline.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.preview_store.utc_now_iso", return_value=frozen),
+            patch("app.services.catalog.klc_validation.utc_now_iso", return_value=frozen),
+        )
+        released: list[dict] = []
+        with ExitStack() as stack:
+            for frozen_clock in clock:
+                stack.enter_context(frozen_clock)
+            for index, item in enumerate(fixtures):
+                current = self._complete_cad(item, f"Tie{token[-6:]}{index}")
+                self.service.set_release_status(
+                    current["id"], "in_progress", actor="designer@example.com"
+                )
+                review = self.service.set_release_status(
+                    current["id"], "qa_review", actor="designer@example.com"
+                )
+                approved = self.service.set_release_status(
+                    current["id"],
+                    "done",
+                    actor="qa@example.com",
+                    expected_revision_id=review["revision_id"],
+                    expected_manifest_hash=review["manifest_hash"],
+                )
+                released.append(
+                    self.service.set_release_status(
+                        current["id"],
+                        "released",
+                        actor="designer@example.com",
+                        expected_revision_id=approved["revision_id"],
+                        expected_manifest_hash=approved["manifest_hash"],
+                    )
+                )
+        self.assertEqual({str(item["revision_updated_at"]) for item in released}, {frozen})
+
+        def paged_remote_ids() -> list[str]:
+            seen: list[str] = []
+            page = 1
+            while True:
+                result = self.service.list_remote_component_heads(
+                    query=token,
+                    page=page,
+                    page_size=2,
+                )
+                batch = [
+                    str(item["id"])
+                    for item in result["items"]
+                    if str(item["id"]) in expected
+                ]
+                overlap = set(seen) & set(batch)
+                self.assertFalse(overlap, overlap)
+                seen.extend(batch)
+                pages = result["pages"]
+                if pages is None:
+                    if not result["has_more"] or not result["items"]:
+                        break
+                elif page >= int(pages) or not result["items"]:
+                    break
+                page += 1
+            return seen
+
+        remote_ids = paged_remote_ids()
+        self.assertEqual(set(remote_ids), expected)
+        self.assertEqual(len(remote_ids), 4)
+        self.assertEqual(remote_ids, sorted(expected))
+        self.assertEqual(paged_remote_ids(), remote_ids)
 
 
 if __name__ == "__main__":

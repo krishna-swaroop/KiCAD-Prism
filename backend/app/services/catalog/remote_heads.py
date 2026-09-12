@@ -21,6 +21,7 @@ from app.services.catalog.preview_renderer import PREVIEW_STATUS_READY
 
 
 REMOTE_HEADS_MAX_PAGE_SIZE = 200
+REMOTE_HEAD_TIEBREAKER = "component_id"
 _PROJECTION_VERSION_SQL = "SELECT value FROM catalog_meta WHERE key = 'remote_component_heads_version'"
 
 
@@ -139,11 +140,11 @@ class CatalogRemoteHeads:
                 "WHEN LOWER(mpn) = LOWER(%s) THEN 0 "
                 "WHEN LOWER(mpn) LIKE LOWER(%s) THEN 1 "
                 "WHEN LOWER(name) LIKE LOWER(%s) THEN 2 "
-                "ELSE 3 END, updated_at DESC"
+                f"ELSE 3 END, updated_at DESC, {REMOTE_HEAD_TIEBREAKER}"
             )
             order_params: list[Any] = [query_text, f"{query_text}%", f"{query_text}%"]
         else:
-            order_sql = "ORDER BY updated_at DESC"
+            order_sql = f"ORDER BY updated_at DESC, {REMOTE_HEAD_TIEBREAKER}"
             order_params = []
 
         total: int | None = None
@@ -198,4 +199,9 @@ class CatalogRemoteHeads:
         }
 
 
-__all__ = ["REMOTE_HEADS_MAX_PAGE_SIZE", "CatalogRemoteHeads", "remote_head_payload"]
+__all__ = [
+    "REMOTE_HEADS_MAX_PAGE_SIZE",
+    "REMOTE_HEAD_TIEBREAKER",
+    "CatalogRemoteHeads",
+    "remote_head_payload",
+]
