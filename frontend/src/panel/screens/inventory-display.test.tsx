@@ -1,10 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { useState } from "react";
+
 import { CategoryListScreen } from "./CategoryListScreen";
 import { PartDetailScreen } from "./PartDetailScreen";
 import { inventoryWarnings } from "@/lib/inventory-presentation";
-import { getComponent, getComponentsByCategory, type PanelComponent, type PanelSupplySource } from "@/panel/lib/panel-api";
+import { getComponent, getComponentsByCategory, type PanelComponent, type PanelPageResult, type PanelSupplySource } from "@/panel/lib/panel-api";
+import { emptyCategoryBrowse } from "@/panel/lib/view-state";
 
 vi.mock("@/panel/lib/panel-api", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/panel/lib/panel-api")>(),
@@ -21,6 +24,15 @@ const source = (overrides: Partial<PanelSupplySource> = {}): PanelSupplySource =
   stock_status: "available", fetch_status: "ok", fetched_at: "2026-01-01T00:00:00Z",
   ...overrides,
 });
+const pageOf = (items: PanelComponent[]): PanelPageResult => ({
+  items,
+  total: null,
+  has_more: false,
+  page: 1,
+  pages: null,
+  page_size: 50,
+});
+
 const component = (inventory: PanelSupplySource): PanelComponent => ({
   id: "part", slug: "part", name: "Inventory test", identity_kind: "mpn",
   manufacturer: "Prism", mpn: "P-1", description: "Inventory fixture", package_name: "", category: "Parts",
@@ -30,6 +42,21 @@ const component = (inventory: PanelSupplySource): PanelComponent => ({
   symbol_preview_url: "", footprint_preview_url: "", manifest_url: "", inline_url: "",
   supply: { sources: [inventory] },
 });
+
+function CategoryHarness() {
+  const [view, setView] = useState(emptyCategoryBrowse("Parts"));
+  return (
+    <CategoryListScreen
+      category="Parts"
+      viewState={view}
+      onViewStateChange={setView}
+      onBack={noop}
+      onSelectComponent={noop}
+      onAuthRequired={noop}
+      appendLog={noop}
+    />
+  );
+}
 
 describe("inventory presentation", () => {
   it("preserves all uncertainty reasons including unknown fetch failures", () => {
@@ -44,9 +71,8 @@ describe("inventory presentation", () => {
     ["Mixed units", { mixed_units: true }],
     ["Mixed status", { mixed_status: true }],
   ] as const)("category stock does not turn green for %s", async (warning, overrides) => {
-    vi.mocked(getComponentsByCategory).mockResolvedValue([component(source(overrides))]);
-    render(<CategoryListScreen category="Parts" onBack={noop} onSelectComponent={noop}
-      onAuthRequired={noop} appendLog={noop} />);
+    vi.mocked(getComponentsByCategory).mockResolvedValue(pageOf([component(source(overrides))]));
+    render(<CategoryHarness />);
     const badge = await screen.findByTitle(warning);
     expect(badge.className).not.toContain("emerald");
     expect(badge).not.toHaveTextContent("200");

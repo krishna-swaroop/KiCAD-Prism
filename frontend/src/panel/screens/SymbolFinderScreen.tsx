@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, Loader2, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { inventoryWarnings } from "@/lib/inventory-presentation";
@@ -13,13 +14,14 @@ import {
   isAuthError,
   primaryLocalSource,
 } from "@/panel/lib/panel-api";
+import { appendUniquePageItems, formatPanelLoadedCount } from "@/panel/lib/panel-page";
 
-import type { FinderViewState } from "@/panel/lib/view-state";
+import { emptyPagedList, type FinderViewState } from "@/panel/lib/view-state";
 
 interface SymbolFinderScreenProps {
   viewState: FinderViewState;
   onViewStateChange: React.Dispatch<React.SetStateAction<FinderViewState>>;
-  onSelectCategory: (category: string) => void;
+  onSelectCategory: (category: string, total?: number | null) => void;
   onSelectComponent: (component: PanelComponent) => void;
   onAuthRequired: () => void;
   appendLog: (msg: string) => void;
@@ -49,20 +51,17 @@ export function SymbolFinderScreen({
   onAuthRequired,
   appendLog,
 }: SymbolFinderScreenProps) {
-  const { query, searchResults } = viewState;
+  const { query, fetchedQuery, search } = viewState;
   const setQuery = useCallback(
     (value: string) => onViewStateChange((prev) => ({ ...prev, query: value })),
-    [onViewStateChange],
-  );
-  const setSearchResults = useCallback(
-    (items: PanelComponent[]) =>
-      onViewStateChange((prev) => ({ ...prev, searchResults: items })),
     [onViewStateChange],
   );
   const [categories, setCategories] = useState<PanelCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load categories on mount
@@ -88,13 +87,25 @@ export function SymbolFinderScreen({
     return () => controller.abort();
   }, [appendLog, onAuthRequired]);
 
-  // Debounced search
+  // Debounced first-page search. Remounts keep an already-fetched query.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    loadMoreAbortRef.current?.abort();
+    setLoadingMore(false);
 
     const trimmed = query.trim();
     if (!trimmed) {
-      setSearchResults([]);
+      setSearching(false);
+      onViewStateChange((prev) => {
+        if (prev.fetchedQuery === "" && prev.search.page === 0 && prev.search.items.length === 0) {
+          return prev;
+        }
+        return { ...prev, fetchedQuery: "", search: emptyPagedList() };
+      });
+      return;
+    }
+
+    if (trimmed === fetchedQuery) {
       setSearching(false);
       return;
     }
@@ -105,10 +116,19 @@ export function SymbolFinderScreen({
       const controller = new AbortController();
       searchAbortRef.current = controller;
 
-      searchComponents(trimmed, controller.signal)
-        .then((items) => {
+      searchComponents(trimmed, { page: 1, signal: controller.signal })
+        .then((page) => {
           if (controller.signal.aborted) return;
-          setSearchResults(items);
+          onViewStateChange((prev) => ({
+            ...prev,
+            fetchedQuery: trimmed,
+            search: {
+              items: page.items,
+              page: page.page,
+              hasMore: page.has_more,
+              total: page.total,
+            },
+          }));
           setSearching(false);
         })
         .catch((err) => {
@@ -118,14 +138,54 @@ export function SymbolFinderScreen({
             return;
           }
           appendLog(`Search failed: ${(err as Error).message}`);
+          onViewStateChange((prev) => ({
+            ...prev,
+            fetchedQuery: trimmed,
+            search: emptyPagedList(),
+          }));
           setSearching(false);
         });
     }, 150);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      searchAbortRef.current?.abort();
     };
-  }, [query, appendLog, onAuthRequired, setSearchResults]);
+  }, [query, fetchedQuery, appendLog, onAuthRequired, onViewStateChange]);
+
+  useEffect(() => () => loadMoreAbortRef.current?.abort(), []);
+
+  const loadMore = () => {
+    const trimmed = query.trim();
+    if (!trimmed || !search.hasMore || loadingMore) return;
+    loadMoreAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadMoreAbortRef.current = controller;
+    setLoadingMore(true);
+    searchComponents(trimmed, { page: search.page + 1, signal: controller.signal })
+      .then((page) => {
+        if (controller.signal.aborted) return;
+        onViewStateChange((prev) => ({
+          ...prev,
+          search: {
+            items: appendUniquePageItems(prev.search.items, page.items),
+            page: page.page,
+            hasMore: page.has_more,
+            total: page.total ?? prev.search.total,
+          },
+        }));
+        setLoadingMore(false);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        if (isAuthError(err)) {
+          onAuthRequired();
+          return;
+        }
+        appendLog(`Search failed: ${(err as Error).message}`);
+        setLoadingMore(false);
+      });
+  };
 
   const isSearching = query.trim().length > 0;
 
@@ -164,7 +224,7 @@ export function SymbolFinderScreen({
             categories.map((cat) => (
               <button
                 key={cat.name}
-                onClick={() => onSelectCategory(cat.name)}
+                onClick={() => onSelectCategory(cat.name, cat.count)}
                 className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-secondary/60"
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-secondary text-xs font-bold text-muted-foreground">
@@ -196,36 +256,52 @@ export function SymbolFinderScreen({
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Searching…
             </div>
-          ) : searchResults.length === 0 ? (
+          ) : search.items.length === 0 ? (
             <div className="rounded border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted-foreground">
               No matching components found.
             </div>
           ) : (
-            searchResults.map((comp) => {
-              const local = primaryLocalSource(comp);
-              return (
-              <button
-                key={comp.id}
-                onClick={() => onSelectComponent(comp)}
-                className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-secondary/60"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium text-foreground">
-                    {comp.name}
+            <>
+              <p className="px-1 pb-1 text-[10px] text-muted-foreground">
+                {formatPanelLoadedCount(search.items.length, search.total, search.hasMore, "result")}
+              </p>
+              {search.items.map((comp) => {
+                const local = primaryLocalSource(comp);
+                return (
+                <button
+                  key={comp.id}
+                  onClick={() => onSelectComponent(comp)}
+                  className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-secondary/60"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-foreground">
+                      {comp.name}
+                    </span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      {comp.manufacturer || "Unknown"} · {comp.mpn || "—"} · {comp.package_name || "—"}
+                    </span>
                   </span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
-                    {comp.manufacturer || "Unknown"} · {comp.mpn || "—"} · {comp.package_name || "—"}
-                  </span>
-                </span>
-                <StockDot
-                  quantity={local?.stock ?? 0}
-                  known={local !== null}
-                  warning={inventoryWarnings(local).join(" · ")}
-                />
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
-              </button>
-              );
-            })
+                  <StockDot
+                    quantity={local?.stock ?? 0}
+                    known={local !== null}
+                    warning={inventoryWarnings(local).join(" · ")}
+                  />
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
+                </button>
+                );
+              })}
+              {search.hasMore && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 w-full"
+                  disabled={loadingMore}
+                  onClick={loadMore}
+                >
+                  {loadingMore ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Load more"}
+                </Button>
+              )}
+            </>
           )}
         </div>
       )}

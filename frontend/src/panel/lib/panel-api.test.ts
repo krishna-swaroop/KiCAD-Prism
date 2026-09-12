@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getComponent,
+  getComponentsByCategory,
   getInlineBundle,
   getPartManifest,
   primaryLocalSource,
+  searchComponents,
   type PanelComponent,
   type PanelSupplySource,
 } from "./panel-api";
@@ -98,5 +100,76 @@ describe("panel representation requests", () => {
       "/api/remote-provider/parts/component-1",
       "/api/remote-provider/components/component-1/inline",
     ]);
+  });
+});
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+describe("panel page fetches", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("returns one typed search page and does not walk remaining pages", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        items: [{ id: "a" }],
+        total: null,
+        has_more: true,
+        page: 1,
+        pages: null,
+        page_size: 50,
+      }),
+    );
+
+    await expect(searchComponents("resistor")).resolves.toEqual({
+      items: [{ id: "a" }],
+      total: null,
+      has_more: true,
+      page: 1,
+      pages: null,
+      page_size: 50,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "/api/remote-provider/search?q=resistor&page=1&page_size=50",
+    );
+  });
+
+  it("requests a later category page without raising page_size past the server limit", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        items: [],
+        total: 501,
+        has_more: true,
+        page: 2,
+        pages: 11,
+        page_size: 50,
+      }),
+    );
+
+    await getComponentsByCategory("Resistors", { page: 2, pageSize: 500 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      "/api/remote-provider/components-by-category?category=Resistors&page=2&page_size=200",
+    );
+  });
+
+  it("propagates cancellation of an in-flight page", async () => {
+    const controller = new AbortController();
+    vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+        });
+      }),
+    );
+
+    const pending = searchComponents("cap", { signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 });

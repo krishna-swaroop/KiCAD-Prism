@@ -11,7 +11,11 @@ import {
 } from "@/panel/lib/kicad-bridge";
 import { getCategories, isAuthError, setApiToken } from "@/panel/lib/panel-api";
 import type { PanelComponent } from "@/panel/lib/panel-api";
-import type { FinderViewState } from "@/panel/lib/view-state";
+import {
+  emptyCategoryBrowse,
+  emptyFinderView,
+  type CategoryBrowseState,
+} from "@/panel/lib/view-state";
 
 import { PanelLoginScreen } from "@/panel/screens/PanelLoginScreen";
 import { SymbolFinderScreen } from "@/panel/screens/SymbolFinderScreen";
@@ -35,10 +39,10 @@ type Screen =
 
 export function PanelApp() {
   const [screen, setScreen] = useState<Screen>({ kind: "login" });
-  const [finderView, setFinderView] = useState<FinderViewState>({
-    query: "",
-    searchResults: [],
-  });
+  const [finderView, setFinderView] = useState(emptyFinderView);
+  const [categoryView, setCategoryView] = useState<CategoryBrowseState>(
+    () => emptyCategoryBrowse(""),
+  );
   const [logEntries, setLogEntries] = useState<string[]>([]);
   const [sessionReady, setSessionReady] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
@@ -155,10 +159,12 @@ export function PanelApp() {
   const goToFinder = useCallback(() => setScreen({ kind: "finder" }), []);
   const goToLogin = useCallback(() => setScreen({ kind: "login" }), []);
 
-  const goToCategory = useCallback(
-    (name: string) => setScreen({ kind: "category", name }),
-    []
-  );
+  const goToCategory = useCallback((name: string, total?: number | null) => {
+    setCategoryView((prev) =>
+      prev.name === name ? prev : emptyCategoryBrowse(name, total ?? null),
+    );
+    setScreen({ kind: "category", name });
+  }, []);
 
   const goToDetailFromFinder = useCallback((comp: PanelComponent) => {
     setScreen({
@@ -222,6 +228,8 @@ export function PanelApp() {
         {screen.kind === "category" && (
           <CategoryListScreen
             category={screen.name}
+            viewState={categoryView}
+            onViewStateChange={setCategoryView}
             onBack={goToFinder}
             onSelectComponent={goToDetailFromCategory}
             onAuthRequired={goToLogin}
