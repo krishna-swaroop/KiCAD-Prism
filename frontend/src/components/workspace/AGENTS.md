@@ -32,7 +32,9 @@ URL ownership and current/historical selection stay here),
 library), `library-component-evidence-panels.tsx` (read-only revisions, review,
 usage, and audit evidence), `library-component-metadata-dialog.tsx` and
 `library-component-asset-dialog.tsx` (edit sessions captured at open, one
-success callback), `library-component-quick-view.tsx`,
+success callback), `library-component-metadata-form.ts` (definition-driven
+values, identity/provisional required rules, storage-key PATCH mapping),
+`library-component-metadata-fields.tsx` (typed input adapters), `library-component-quick-view.tsx`,
 `library-asset-link-picker.tsx`, `use-edit-history.ts`.
 
 **Previews** — two paths that share nothing but a subject.
