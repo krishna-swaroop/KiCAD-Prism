@@ -243,6 +243,30 @@ describe("search pagination", () => {
     expect(searchComponents).not.toHaveBeenCalled();
   });
 
+  it("shows a failed first page as an error and retries the same query", async () => {
+    vi.mocked(getCategories).mockResolvedValue([]);
+    vi.mocked(searchComponents)
+      .mockRejectedValueOnce(new Error("Network error: 502"))
+      .mockResolvedValueOnce(pageOf([component({ id: "op", name: "LM358 op-amp" })]));
+
+    render(<FinderHarness initial={{ ...emptyFinderView(), query: "LM358" }} />);
+
+    expect(await screen.findByText("Search failed")).toBeInTheDocument();
+    expect(screen.getByText("Network error: 502")).toBeInTheDocument();
+    expect(screen.queryByText("No matching components found.")).not.toBeInTheDocument();
+    expect(searchComponents).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(await screen.findByText("LM358 op-amp")).toBeInTheDocument();
+    expect(screen.queryByText("Search failed")).not.toBeInTheDocument();
+    expect(searchComponents).toHaveBeenCalledTimes(2);
+    expect(searchComponents).toHaveBeenNthCalledWith(
+      2,
+      "LM358",
+      expect.objectContaining({ page: 1 }),
+    );
+  });
+
   it("drops a late page from a superseded query", async () => {
     vi.mocked(getCategories).mockResolvedValue([]);
     let resolveOld: ((value: PanelPageResult) => void) | undefined;

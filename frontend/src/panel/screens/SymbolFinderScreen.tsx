@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRight, Loader2, Search } from "lucide-react";
+import { ChevronRight, CircleAlert, Loader2, RefreshCw, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,9 +60,39 @@ export function SymbolFinderScreen({
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [searching, setSearching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const runFirstPage = useCallback((trimmed: string, signal: AbortSignal) => {
+    searchComponents(trimmed, { page: 1, signal })
+      .then((page) => {
+        if (signal.aborted) return;
+        setSearchError(null);
+        onViewStateChange((prev) => ({
+          ...prev,
+          fetchedQuery: trimmed,
+          search: {
+            items: page.items,
+            page: page.page,
+            hasMore: page.has_more,
+            total: page.total,
+          },
+        }));
+        setSearching(false);
+      })
+      .catch((err) => {
+        if (signal.aborted) return;
+        if (isAuthError(err)) {
+          onAuthRequired();
+          return;
+        }
+        appendLog(`Search failed: ${(err as Error).message}`);
+        setSearchError((err as Error).message);
+        setSearching(false);
+      });
+  }, [appendLog, onAuthRequired, onViewStateChange]);
 
   // Load categories on mount
   useEffect(() => {
@@ -96,6 +126,7 @@ export function SymbolFinderScreen({
     const trimmed = query.trim();
     if (!trimmed) {
       setSearching(false);
+      setSearchError(null);
       onViewStateChange((prev) => {
         if (prev.fetchedQuery === "" && prev.search.page === 0 && prev.search.items.length === 0) {
           return prev;
@@ -107,53 +138,37 @@ export function SymbolFinderScreen({
 
     if (trimmed === fetchedQuery) {
       setSearching(false);
+      setSearchError(null);
       return;
     }
 
     setSearching(true);
+    setSearchError(null);
     debounceRef.current = setTimeout(() => {
       if (searchAbortRef.current) searchAbortRef.current.abort();
       const controller = new AbortController();
       searchAbortRef.current = controller;
-
-      searchComponents(trimmed, { page: 1, signal: controller.signal })
-        .then((page) => {
-          if (controller.signal.aborted) return;
-          onViewStateChange((prev) => ({
-            ...prev,
-            fetchedQuery: trimmed,
-            search: {
-              items: page.items,
-              page: page.page,
-              hasMore: page.has_more,
-              total: page.total,
-            },
-          }));
-          setSearching(false);
-        })
-        .catch((err) => {
-          if (controller.signal.aborted) return;
-          if (isAuthError(err)) {
-            onAuthRequired();
-            return;
-          }
-          appendLog(`Search failed: ${(err as Error).message}`);
-          onViewStateChange((prev) => ({
-            ...prev,
-            fetchedQuery: trimmed,
-            search: emptyPagedList(),
-          }));
-          setSearching(false);
-        });
+      runFirstPage(trimmed, controller.signal);
     }, 150);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       searchAbortRef.current?.abort();
     };
-  }, [query, fetchedQuery, appendLog, onAuthRequired, onViewStateChange]);
+  }, [query, fetchedQuery, runFirstPage, onViewStateChange]);
 
   useEffect(() => () => loadMoreAbortRef.current?.abort(), []);
+
+  const retrySearch = () => {
+    const trimmed = query.trim();
+    if (!trimmed || searching) return;
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+    setSearching(true);
+    setSearchError(null);
+    runFirstPage(trimmed, controller.signal);
+  };
 
   const loadMore = () => {
     const trimmed = query.trim();
@@ -256,6 +271,8 @@ export function SymbolFinderScreen({
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Searching…
             </div>
+          ) : searchError ? (
+            <SearchErrorState message={searchError} onRetry={retrySearch} />
           ) : search.items.length === 0 ? (
             <div className="rounded border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted-foreground">
               No matching components found.
@@ -305,6 +322,19 @@ export function SymbolFinderScreen({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SearchErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="rounded border border-destructive bg-destructive/10 px-3 py-6 text-center">
+      <CircleAlert className="mx-auto h-4 w-4 text-destructive" />
+      <p className="mt-2 text-xs font-medium">Search failed</p>
+      <p className="mt-1 text-[10px] text-muted-foreground">{message}</p>
+      <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
+        <RefreshCw className="h-3 w-3" /> Retry
+      </Button>
     </div>
   );
 }
