@@ -1,6 +1,8 @@
 """HTTP translation for catalog write errors.
 
 409 vs 400 is decided by ``CatalogConflict``, not by scanning exception text.
+Conflict responses carry ``{"code", "message"}`` so clients can distinguish
+retryable head movement from referential conflicts without reading prose.
 Unexpected exceptions are not converted here.
 """
 
@@ -14,5 +16,9 @@ from app.services.catalog.conflicts import CatalogConflict
 def raise_catalog_value_error(exc: ValueError) -> None:
     """Raise 409 for typed conflicts and 400 for other validation errors."""
 
-    status = 409 if isinstance(exc, CatalogConflict) else 400
-    raise HTTPException(status_code=status, detail=str(exc)) from exc
+    if isinstance(exc, CatalogConflict):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+    raise HTTPException(status_code=400, detail=str(exc)) from exc

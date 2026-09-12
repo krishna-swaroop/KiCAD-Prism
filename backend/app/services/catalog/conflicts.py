@@ -9,12 +9,16 @@ from __future__ import annotations
 
 REVISION_CONFLICT_CODE = "revision_conflict"
 ASSET_REFERENCED_CODE = "asset_referenced"
+MANIFEST_CONFLICT_CODE = "manifest_conflict"
 
 DEFAULT_REVISION_CONFLICT_MESSAGE = (
     "Component revision conflict: refresh the component before saving"
 )
 DEFAULT_ASSET_REFERENCED_MESSAGE = (
     "Asset is referenced by a representation; remove or reassign it first"
+)
+DEFAULT_MANIFEST_CONFLICT_MESSAGE = (
+    "Component manifest conflict: refresh the component before changing workflow"
 )
 
 
@@ -41,12 +45,19 @@ def asset_referenced_conflict(
     return CatalogConflict(message, code=ASSET_REFERENCED_CODE)
 
 
+def manifest_conflict(message: str = DEFAULT_MANIFEST_CONFLICT_MESSAGE) -> CatalogConflict:
+    return CatalogConflict(message, code=MANIFEST_CONFLICT_CODE)
+
+
 __all__ = [
     "ASSET_REFERENCED_CODE",
     "CatalogConflict",
     "DEFAULT_ASSET_REFERENCED_MESSAGE",
+    "DEFAULT_MANIFEST_CONFLICT_MESSAGE",
     "DEFAULT_REVISION_CONFLICT_MESSAGE",
+    "MANIFEST_CONFLICT_CODE",
     "REVISION_CONFLICT_CODE",
     "asset_referenced_conflict",
+    "manifest_conflict",
     "revision_conflict",
 ]

@@ -47,6 +47,8 @@ rationale are recorded in `docs/CATALOG_DECOMPOSITION_HANDOFF.md`.
 - DBL bundle layout, column order, and file names (`dbl_export.py`).
 - Release gating is fail-closed and review/release records are append-only
   (`release_workflow.py`).
+- Write-conflict classification is `CatalogConflict.code`. HTTP 409 bodies are
+  `{code, message}` (`conflicts.py`, `backend/app/api/catalog_errors.py`).
 - Canonical asset paths under the store root (`asset_files.py`, `runtime.py`).
 
 ## Navigation
