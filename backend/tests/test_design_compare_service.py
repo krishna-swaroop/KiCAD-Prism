@@ -57,11 +57,15 @@ class DesignCompareServiceTests(unittest.TestCase):
         self.assertEqual([source["path"] for source in sources], ["board.kicad_sch"])
 
     def test_snapshot_archives_design_inputs_without_manufacturing_assets(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        # Commit can start git auto-maintenance, which writes into .git/objects
+        # after the assertions and races TemporaryDirectory cleanup (ENOTEMPTY).
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temporary:
             root = Path(temporary) / "repo"
             destination = Path(temporary) / "snapshot"
             root.mkdir()
             subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "maintenance.auto", "false"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "gc.auto", "0"], check=True)
             subprocess.run(["git", "-C", str(root), "config", "user.name", "Test"], check=True)
             subprocess.run(
                 ["git", "-C", str(root), "config", "user.email", "test@example.invalid"],
