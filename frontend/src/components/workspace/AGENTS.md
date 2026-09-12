@@ -37,7 +37,10 @@ usage, and audit evidence), `library-component-metadata-dialog.tsx` and
 success callback), `library-component-metadata-form.ts` (definition-driven
 values, identity/provisional required rules, storage-key PATCH mapping;
 save validation matches the single PATCH, not bulk-edit shape checks),
-`library-component-metadata-fields.tsx` (typed input adapters), `library-component-quick-view.tsx`,
+`library-component-metadata-fields.tsx` (typed input adapters),
+`library-component-asset-download.ts` (released-revision downloads through the
+matching remote-provider representation, not the default placement pair),
+`library-component-quick-view.tsx`,
 `library-asset-link-picker.tsx`, `use-edit-history.ts`.
 
 **Previews** — two paths that share nothing but a subject.

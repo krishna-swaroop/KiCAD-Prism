@@ -113,19 +113,11 @@ import {
   metadataEditSessionFrom,
   type MetadataEditSession,
 } from "./library-component-metadata-dialog";
+import { useReleasedAssetDownload } from "./library-component-asset-download";
 import { resolveLibraryPreviewPairAssetIds } from "./library-preview-pair";
 import { useLibraryComponentValidation } from "./library-component-validation";
 
 type ComponentTab = "overview" | "assets" | "revisions" | "review" | "usage" | "audit";
-
-type RemoteProviderManifest = {
-  assets: Array<{
-    asset_type: AssetType;
-    name: string;
-    sha256: string;
-    download_url: string;
-  }>;
-};
 
 const COMPONENT_TABS: Array<{ id: ComponentTab; label: string; icon: typeof Boxes }> = [
   { id: "overview", label: "Overview", icon: Boxes },
@@ -597,6 +589,7 @@ export function LibraryComponentWorkspace({
     onRefresh: () => setRefreshKey((value) => value + 1),
   });
   const activeBusyAction = busyAction || (validationBusy ? "validation" : "");
+  const downloadReleasedAsset = useReleasedAssetDownload(componentId);
 
   const updateParams = useCallback((values: Record<string, string | null>) => {
     setSearchParams((current) => {
@@ -888,27 +881,6 @@ export function LibraryComponentWorkspace({
     void runValidation();
   };
 
-  const handleDownloadAsset = async (asset: CatalogAsset) => {
-    if (!currentComponent || !activeComponent || activeComponent.revision_id !== currentComponent.released_revision_id) {
-      toast.info("Direct downloads are available for the released revision. Release this revision or open the released revision first.");
-      return;
-    }
-    try {
-      const manifest = await fetchJson<RemoteProviderManifest>(`/api/remote-provider/parts/${encodeURIComponent(componentId)}`);
-      const downloadable = manifest.assets.find((entry) => entry.asset_type === asset.asset_type && entry.sha256 === asset.sha256)
-        || manifest.assets.find((entry) => entry.asset_type === asset.asset_type && entry.name === asset.name);
-      if (!downloadable?.download_url) throw new Error("This asset is not present in the released download manifest.");
-      const anchor = document.createElement("a");
-      anchor.href = downloadable.download_url;
-      anchor.download = asset.name;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    }
-  };
-
   const relevantDiffState = diffPair ? diffLoadState : { status: "loaded", error: "" } satisfies EvidenceLoadState;
   const revisionsTabState = combinedEvidenceState([revisionsLoadState, relevantDiffState]);
   const reviewTabState = combinedEvidenceState([revisionsLoadState, reviewsLoadState, releasesLoadState, relevantDiffState]);
@@ -1011,7 +983,9 @@ export function LibraryComponentWorkspace({
               busyAction={activeBusyAction}
               onAttach={openAttachDialog}
               onDetachAsset={setDetachAsset}
-              onDownload={(asset) => void handleDownloadAsset(asset)}
+              onDownload={(asset) => {
+                void downloadReleasedAsset(asset, currentComponent, activeComponent);
+              }}
               onRegeneratePreviews={() => void handleRegeneratePreviews()}
               onValidate={() => void handleValidateComponent()}
               onRepresentationsChanged={() => {
