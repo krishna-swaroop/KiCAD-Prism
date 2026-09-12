@@ -60,6 +60,10 @@ class SupplySourcePayloadTests(unittest.TestCase):
                 "stock_status": "available",
                 "fetch_status": "ok",
                 "fetched_at": "2026-01-01T00:00:00Z",
+                "mixed_units": False,
+                "mixed_status": False,
+                "mixed_fetch": False,
+                "mixed_freshness": False,
             },
         )
 
@@ -93,6 +97,7 @@ class SupplySourcesQueryTests(unittest.TestCase):
             [
                 {
                     "source": "inventree",
+                    "location_key": "main",
                     "quantity": 10,
                     "uom": "pcs",
                     "inventory_status": "available",
@@ -100,7 +105,17 @@ class SupplySourcesQueryTests(unittest.TestCase):
                     "fetched_at": "2026-01-01T00:00:00Z",
                 },
                 {
+                    "source": "inventree",
+                    "location_key": "overflow",
+                    "quantity": 2,
+                    "uom": "pcs",
+                    "inventory_status": "available",
+                    "fetch_status": "ok",
+                    "fetched_at": "2026-01-01T00:00:00Z",
+                },
+                {
                     "source": "csv",
+                    "location_key": "",
                     "quantity": 2,
                     "uom": "pcs",
                     "inventory_status": "",
@@ -111,9 +126,12 @@ class SupplySourcesQueryTests(unittest.TestCase):
         )
         sources = self.service._supply_sources(conn, "component-1")
         self.assertEqual([s["id"] for s in sources], ["inventree", "csv"])
+        self.assertEqual(sources[0]["stock"], 12.0)
+        self.assertFalse(sources[0]["mixed_units"])
         self.assertEqual([s["fetch_status"] for s in sources], ["ok", "error"])
         sql, params = conn.queries[0]
-        self.assertIn("GROUP BY source", sql)
+        self.assertIn("location_key", sql)
+        self.assertNotIn("GROUP BY", sql)
         self.assertNotIn("LIMIT", sql)
         self.assertEqual(params, ("component-1",))
 
@@ -147,8 +165,39 @@ class InventoryPayloadsFromSourceRowsTests(unittest.TestCase):
         assert local is not None
         self.assertEqual(local["source"], "inventree")
         self.assertEqual(local["quantity"], 10.0)
+        self.assertFalse(local["mixed_units"])
         self.assertEqual([item["id"] for item in sources], ["inventree", "csv"])
         self.assertEqual([item["fetch_status"] for item in sources], ["ok", "error"])
+
+    def test_mixed_unit_locations_do_not_sum(self) -> None:
+        local, sources = inventory_payloads_from_source_rows(
+            [
+                {
+                    "source": "csv",
+                    "location_key": "a",
+                    "quantity": 2,
+                    "uom": "pcs",
+                    "inventory_status": "available",
+                    "fetch_status": "ok",
+                    "fetched_at": "2026-01-01T00:00:00Z",
+                },
+                {
+                    "source": "csv",
+                    "location_key": "b",
+                    "quantity": 5,
+                    "uom": "g",
+                    "inventory_status": "available",
+                    "fetch_status": "ok",
+                    "fetched_at": "2026-01-01T00:00:00Z",
+                },
+            ]
+        )
+        assert local is not None
+        self.assertTrue(local["mixed_units"])
+        self.assertEqual(local["quantity"], 0.0)
+        self.assertEqual(local["uom"], "")
+        self.assertEqual(len(sources), 1)
+        self.assertTrue(sources[0]["mixed_units"])
 
     def test_empty_rows_mean_unknown_stock(self) -> None:
         local, sources = inventory_payloads_from_source_rows([])

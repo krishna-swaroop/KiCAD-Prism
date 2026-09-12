@@ -22,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.catalog.asset_imports import CatalogAssetImports  # noqa: E402
 from app.services.catalog.asset_registry import CatalogAssetRegistry  # noqa: E402
-from app.services.catalog.postgres_runtime import CatalogPostgresConnection  # noqa: E402
+from app.services.catalog.postgres_runtime import CatalogPostgresConnection, PostgresCatalogRuntime  # noqa: E402
+from app.services.catalog.inventory_csv import CatalogInventoryCsv  # noqa: E402
 from app.services.catalog.preview_pipeline import CatalogPreviewPipeline  # noqa: E402
 from app.services.catalog.preview_renderer import CatalogPreviewRenderer  # noqa: E402
 from app.services.catalog_schema_migrations import (  # noqa: E402
@@ -404,6 +405,62 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
         errored = self.service.get_component(component["id"])
         assert errored is not None
         self.assertEqual(errored["local_inventory"]["fetch_status"], "error")
+
+    def test_inventory_policy_survives_list_remote_projection_and_csv_roundtrip(self) -> None:
+        self._install_deterministic_preview_renderer()
+        component = self._complete_cad(self._component(), "InventoryPolicy")
+        component_id = component["id"]
+        for stage, actor in (("in_progress", "designer@example.com"), ("qa_review", "designer@example.com"),
+                             ("done", "qa@example.com"), ("released", "designer@example.com")):
+            component = self.service.set_release_status(
+                component_id, stage, actor=actor,
+                expected_revision_id=component["revision_id"],
+                expected_manifest_hash=component["manifest_hash"],
+            )
+        runtime = PostgresCatalogRuntime(database_url=POSTGRES_URL)
+        locations = [
+            ("inventree", "a", 2, "pcs", "available", "ok", "2026-01-02T00:00:00.5Z"),
+            ("inventree", "b", 3, "pcs", "reserved", "error", "2026-01-02T01:00:00+02:00"),
+            ("csv", "", 2, "pcs", "available", "ok", "2026-01-01T00:00:00Z"),
+            ("csv", "b", 3, "g", "available", "ok", "2026-01-01T00:00:00Z"),
+            ("warehouse_x", "", 7, "pcs", "available", "ok", "2026-01-01T00:00:00Z"),
+        ]
+        with runtime.connect() as conn:
+            for source, location, quantity, uom, status, fetch, stamp in locations:
+                conn.execute(
+                    """INSERT INTO inventory_levels
+                       (source, component_id, location_key, source_record_id, quantity, uom,
+                        inventory_status, fetch_status, fetched_at, updated_at)
+                       VALUES (%s, %s, %s, '', %s, %s, %s, %s, %s, %s)""",
+                    (source, component_id, location, quantity, uom, status, fetch, stamp, stamp),
+                )
+            conn.commit()
+        detail = self.service.get_component(component_id)
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        sources = detail["supply"]["sources"]
+        self.assertEqual([source["id"] for source in sources], ["inventree", "csv", "warehouse_x"])
+        self.assertEqual(detail["stock_quantity"], 5)
+        self.assertEqual(sources[0]["fetch_status"], "error")
+        self.assertTrue(sources[0]["mixed_fetch"])
+        self.assertTrue(sources[0]["mixed_status"])
+        self.assertTrue(sources[0]["mixed_freshness"])
+        self.assertEqual(sources[0]["fetched_at"], "2026-01-02T00:00:00.5Z")
+        self.assertTrue(sources[1]["mixed_units"])
+        self.assertEqual(sources[1]["stock"], 0)
+        listed = self.service.list_components(query=component["mpn"], lightweight=False)["items"][0]
+        self.assertEqual(listed["local_inventory"], detail["local_inventory"])
+        self.assertEqual(listed["supply"], detail["supply"])
+        remote = self.service.list_remote_component_heads(query=component["mpn"])["items"][0]
+        self.assertEqual(remote["supply"], detail["supply"])
+
+        exported = next(row for row in CatalogInventoryCsv.parse(self.service.export_inventory_csv())
+                        if row["component_id"] == component_id)
+        self.assertEqual(exported["quantity"], "")
+        result = self.service.import_inventory_csv(CatalogInventoryCsv.render_export([exported]))
+        self.assertEqual(result["updated"], 0)
+        self.assertIn("quantity is required", result["errors"][0])
+        self.assertEqual(self.service.get_component(component_id)["supply"], detail["supply"])
 
     def _capture_list_sql(self, **kwargs: object) -> tuple[list[str], dict]:
         captured: list[str] = []

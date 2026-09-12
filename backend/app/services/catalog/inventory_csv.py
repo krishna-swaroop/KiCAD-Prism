@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 from dataclasses import dataclass
 from typing import Any, Iterator
 
+from app.services.catalog.inventory_policy import (
+    aggregate_inventory_locations,
+    csv_export_quantity_fields,
+)
 from app.services.catalog.metadata_normalization import (
     IDENTITY_KIND_MPN,
     normalize_identity_value,
@@ -53,22 +58,68 @@ class CatalogInventoryCsv:
         return reader
 
     @staticmethod
-    def fetch_export_rows(conn: Any) -> list[Any]:
-        return conn.execute(
+    def fetch_export_rows(conn: Any) -> list[dict[str, Any]]:
+        rows = conn.execute(
             """
             SELECT component.id AS component_id, revision.manufacturer, revision.mpn,
-                   COALESCE(SUM(inventory.quantity), 0) AS quantity,
-                   COALESCE(MIN(inventory.uom), '') AS uom,
-                   COALESCE(MIN(inventory.inventory_status), '') AS inventory_status
+                   inventory.source AS inventory_source, inventory.location_key,
+                   inventory.quantity, inventory.uom, inventory.inventory_status
             FROM components component
             JOIN component_revisions revision ON revision.id = component.current_revision_id
             LEFT JOIN inventory_levels inventory
               ON inventory.component_id = component.id AND inventory.source = 'csv'
             WHERE component.identity_kind = 'mpn'
-            GROUP BY component.id, revision.manufacturer, revision.mpn
-            ORDER BY lower(revision.manufacturer), lower(revision.mpn), component.id
+            ORDER BY lower(revision.manufacturer), lower(revision.mpn), component.id,
+                     inventory.location_key
             """
         ).fetchall()
+        return CatalogInventoryCsv.shape_export_rows(rows)
+
+    @staticmethod
+    def shape_export_rows(rows: list[Any]) -> list[dict[str, Any]]:
+        """Collapse CSV location rows with the shared inventory policy."""
+
+        grouped: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for row in rows:
+            component_id = str(row["component_id"])
+            if component_id not in grouped:
+                grouped[component_id] = {
+                    "component_id": component_id,
+                    "manufacturer": row["manufacturer"],
+                    "mpn": row["mpn"],
+                    "locations": [],
+                }
+                order.append(component_id)
+            if not row.get("inventory_source"):
+                continue
+            grouped[component_id]["locations"].append(
+                {
+                    "source": str(row["inventory_source"]),
+                    "location_key": str(row.get("location_key") or ""),
+                    "quantity": row.get("quantity"),
+                    "uom": row.get("uom") or "",
+                    "inventory_status": row.get("inventory_status") or "",
+                }
+            )
+        export_rows: list[dict[str, Any]] = []
+        for component_id in order:
+            item = grouped[component_id]
+            aggregates = aggregate_inventory_locations(item["locations"])
+            quantity, uom, inventory_status = csv_export_quantity_fields(
+                aggregates[0] if aggregates else None
+            )
+            export_rows.append(
+                {
+                    "component_id": component_id,
+                    "manufacturer": item["manufacturer"],
+                    "mpn": item["mpn"],
+                    "quantity": quantity,
+                    "uom": uom,
+                    "inventory_status": inventory_status,
+                }
+            )
+        return export_rows
 
     @staticmethod
     def render_export(rows: list[Any]) -> str:
@@ -131,10 +182,19 @@ class CatalogInventoryCsv:
 
     @staticmethod
     def prepare_upsert(row: dict[str, Any], row_index: int) -> PreparedInventoryCsvRow:
+        # Blank exports represent an unrepresentable mixed-unit total. Never
+        # turn that unknown value into a known zero during re-import.
+        raw_quantity = row.get("quantity")
+        if raw_quantity is None:
+            raw_quantity = row.get("stock_quantity")
+        if raw_quantity is None or not str(raw_quantity).strip():
+            raise ValueError(f"Row {row_index}: quantity is required; use 0 for zero stock")
         try:
-            quantity = float(row.get("quantity") or row.get("stock_quantity") or 0)
+            quantity = float(raw_quantity)
         except (TypeError, ValueError):
             raise ValueError(f"Row {row_index}: quantity must be numeric") from None
+        if not math.isfinite(quantity):
+            raise ValueError(f"Row {row_index}: quantity must be finite")
         return PreparedInventoryCsvRow(
             quantity=quantity,
             uom=str(row.get("uom") or row.get("stock_uom") or ""),

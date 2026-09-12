@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { inventoryWarnings } from "@/lib/inventory-presentation";
 
 import type { PanelComponent } from "@/panel/lib/panel-api";
 import { getComponentsByCategory, isAuthError, primaryLocalSource } from "@/panel/lib/panel-api";
@@ -83,7 +84,9 @@ export function CategoryListScreen({
         </div>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {components.map((comp) => (
+          {components.map((comp) => {
+            const local = primaryLocalSource(comp);
+            return (
             <button
               key={comp.id}
               onClick={() => onSelectComponent(comp)}
@@ -97,24 +100,41 @@ export function CategoryListScreen({
                   {comp.manufacturer || "Unknown"} · {comp.package_name || "—"}
                 </span>
               </span>
-              <StockBadge quantity={primaryLocalSource(comp)?.stock ?? 0} known={primaryLocalSource(comp) !== null} />
+              <StockBadge
+                quantity={local?.stock ?? 0}
+                known={local !== null}
+                mixedUnits={Boolean(local?.mixed_units)}
+                warning={inventoryWarnings(local).join(" · ")}
+              />
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function StockBadge({ quantity, known }: { quantity: number; known: boolean }) {
-  const inStock = quantity > 0;
+function StockBadge({
+  quantity,
+  known,
+  mixedUnits,
+  warning,
+}: {
+  quantity: number;
+  known: boolean;
+  mixedUnits?: boolean;
+  warning: string;
+}) {
+  const inStock = known && !warning && quantity > 0;
   return (
     <Badge
-      variant={!known ? "secondary" : inStock ? "default" : "destructive"}
+      variant={!known || warning ? "secondary" : inStock ? "default" : "destructive"}
       className={`text-[9px] ${inStock ? "bg-emerald-600/90 text-white" : ""}`}
+      title={warning || undefined}
     >
-      {!known ? "?" : inStock ? quantity : "0"}
+      {!known ? "?" : mixedUnits ? "mix" : warning ? "!" : inStock ? quantity : "0"}
     </Badge>
   );
 }

@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { inventoryWarnings } from "@/lib/inventory-presentation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -416,7 +417,7 @@ function OverviewPanel({ component, canMutate, onEdit }: { component: CatalogCom
             { label: "Vendor", value: component.vendor },
             { label: "Vendor P/N", value: component.vendor_part_number },
             { label: "SAP code", value: component.sap_code },
-            { label: "Stock", value: component.stock_known ? `${component.stock_quantity} ${component.stock_uom}`.trim() : "Not synchronized" },
+            { label: "Stock", value: component.stock_known ? (inventoryWarnings(component.local_inventory).join(" · ") || `${component.stock_quantity} ${component.stock_uom}`.trim()) : "Not synchronized" },
           ]} />
         </PanelCard>
       </div>
