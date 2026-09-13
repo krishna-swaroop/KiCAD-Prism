@@ -13,7 +13,7 @@ export function classifyPlacementError(error: unknown): PlacementFailureKind {
   if (error instanceof PanelApiError) {
     return "pre_dispatch";
   }
-  return "rpc";
+  return "unknown_outcome";
 }
 
 export function formatPlacementError(error: unknown): string {

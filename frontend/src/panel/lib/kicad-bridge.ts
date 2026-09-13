@@ -111,12 +111,8 @@ function postToKiCad(payload: string): boolean {
   if (typeof w.external === "object" && w.external !== null) {
     const ext = w.external as { invoke?: (p: string) => void };
     if (ext.invoke) {
-      try {
-        ext.invoke(payload);
-        return true;
-      } catch {
-        /* ignore */
-      }
+      ext.invoke(payload);
+      return true;
     }
   }
   return false;
@@ -158,6 +154,10 @@ export class KiCadBridge {
     return this.sessionId !== null;
   }
 
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+
   handleIncoming(incoming: unknown) {
     let payload: KiCadResponse | null = null;
     if (typeof incoming === "string") {
@@ -197,17 +197,22 @@ export class KiCadBridge {
     }
     const sessionId = this.sessionId;
     const messageId = ++this.messageCounter;
-    const envelope = {
-      version: RPC_VERSION,
-      session_id: sessionId,
-      message_id: messageId,
-      command,
-      parameters: structuredClone(parameters),
-      data,
-    };
+    let payload: string;
+    try {
+      payload = JSON.stringify({
+        version: RPC_VERSION,
+        session_id: sessionId,
+        message_id: messageId,
+        command,
+        parameters: structuredClone(parameters),
+        data,
+      });
+    } catch (error) {
+      throw new KiCadRpcError("pre_dispatch", error instanceof Error ? error.message : String(error));
+    }
     const pending = this.registerWaiter(sessionId, messageId, timeoutMs);
     try {
-      if (!this.transport.post(JSON.stringify(envelope))) {
+      if (!this.transport.post(payload)) {
         this.rejectWaiter(
           waiterKey(sessionId, messageId),
           new KiCadRpcError("pre_dispatch", "KiCad transport is unavailable."),
@@ -216,18 +221,18 @@ export class KiCadBridge {
     } catch (error) {
       const wrapped = error instanceof KiCadRpcError
         ? error
-        : new KiCadRpcError("unknown_outcome", (error as Error).message);
+        : new KiCadRpcError("unknown_outcome", error instanceof Error ? error.message : String(error));
       this.rejectWaiter(waiterKey(sessionId, messageId), wrapped);
     }
     return pending;
   }
 
   waitForSession(options: WaitForSessionOptions = {}): Promise<string> {
-    if (this.sessionId) {
-      return Promise.resolve(this.sessionId);
-    }
     if (options.signal?.aborted) {
       return Promise.reject(abortError());
+    }
+    if (this.sessionId) {
+      return Promise.resolve(this.sessionId);
     }
 
     return new Promise((resolve, reject) => {
@@ -268,6 +273,8 @@ export class KiCadBridge {
   }
 
   uninstall() {
+    this.rejectPending(new KiCadRpcError("unknown_outcome", "Bridge uninstalled"));
+    this.rejectSessionWaiters(new Error("Bridge uninstalled"));
     if (!this.installed) return;
     const w = window as unknown as { kiclient?: KiClient };
     const existing = w.kiclient;
@@ -334,7 +341,7 @@ export class KiCadBridge {
   }
 
   private settleResponse(payload: KiCadResponse) {
-    const responseSession = payload.session_id ?? this.sessionId;
+    const responseSession = payload.session_id;
     if (!this.sessionId || !responseSession || responseSession !== this.sessionId) {
       this.log(`Ignoring stale KiCad response for session ${payload.session_id ?? "?"}`);
       return;
@@ -406,6 +413,10 @@ export function createKiCadBridge(options?: KiCadBridgeOptions): KiCadBridge {
 
 export function hasSession(): boolean {
   return getDefaultBridge().hasSession();
+}
+
+export function getSessionId(): string | null {
+  return getDefaultBridge().getSessionId();
 }
 
 export function sendRpcCommand(

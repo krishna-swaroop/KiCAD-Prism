@@ -277,4 +277,65 @@ describe("KiCadBridge", () => {
     await expect(pending).rejects.toThrow("login failed");
     expect(clock.live.size).toBe(0);
   });
+
+  it("rejects serialization before dispatch without registering a waiter", async () => {
+    const clock = trackingClock();
+    const post = vi.fn(() => true);
+    const instance = makeBridge({ clock, transport: { post } });
+    openSession(instance);
+    post.mockClear();
+    await expect(instance.send("PLACE_COMPONENT", { unserializable: 1n }))
+      .rejects.toMatchObject({ kind: "pre_dispatch" });
+    expect(post).not.toHaveBeenCalled();
+    expect(clock.live.size).toBe(0);
+  });
+
+  it("does not mistake a throwing Linux transport for no dispatch", async () => {
+    const instance = makeBridge();
+    const invoke = vi.fn();
+    const original = Object.getOwnPropertyDescriptor(window, "external");
+    Object.defineProperty(window, "external", { configurable: true, value: { invoke } });
+    try {
+      openSession(instance);
+      invoke.mockImplementation(() => { throw new Error("reply channel failed"); });
+      await expect(instance.send("PLACE_COMPONENT")).rejects.toMatchObject({ kind: "unknown_outcome" });
+    } finally {
+      if (original) Object.defineProperty(window, "external", original);
+      else Reflect.deleteProperty(window, "external");
+    }
+  });
+
+  it("requires response session identity, including after counter reuse", async () => {
+    const posted: Posted[] = [];
+    const clock = trackingClock();
+    const instance = makeBridge({ clock, transport: { post: (payload) => { posted.push(JSON.parse(payload)); return true; } } });
+    openSession(instance, "old");
+    const previous = instance.send("PLACE_COMPONENT");
+    const rejected = expect(previous).rejects.toMatchObject({ kind: "unknown_outcome" });
+    openSession(instance, "new");
+    await rejected;
+    const pending = instance.send("PLACE_COMPONENT");
+    const responseTo = posted.at(-1)?.message_id;
+    instance.handleIncoming({ response_to: responseTo, status: "OK" });
+    expect(clock.live.size).toBe(1);
+    instance.handleIncoming({ response_to: responseTo, session_id: "new", status: "OK" });
+    await pending;
+    expect(clock.live.size).toBe(0);
+  });
+
+  it("uninstall settles work but reinstall keeps the document session", async () => {
+    const clock = trackingClock();
+    const instance = makeBridge({ clock, transport: { post: () => true } });
+    instance.install();
+    openSession(instance);
+    const rejected = expect(instance.send("PLACE_COMPONENT")).rejects.toMatchObject({ kind: "unknown_outcome" });
+    instance.uninstall();
+    await rejected;
+    expect(clock.live.size).toBe(0);
+    instance.install();
+    expect(instance.getSessionId()).toBe("session-1");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(instance.waitForSession({ signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

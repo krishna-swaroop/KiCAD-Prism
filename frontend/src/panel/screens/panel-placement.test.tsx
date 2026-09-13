@@ -1,9 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PanelComponent } from "@/panel/lib/panel-api";
 import { getComponent, getInlineBundle, getPartManifest } from "@/panel/lib/panel-api";
-import { KiCadRpcError, hasSession, sendRpcCommand } from "@/panel/lib/kicad-bridge";
+import { createKiCadBridge, KiCadRpcError, getSessionId, sendRpcCommand } from "@/panel/lib/kicad-bridge";
 import { PLACEMENT_RESPONSE_TIMEOUT_MS } from "@/panel/lib/panel-placement";
 
 import { PartDetailScreen } from "./PartDetailScreen";
@@ -16,7 +16,7 @@ vi.mock("@/panel/lib/panel-api", async (importOriginal) => ({
 }));
 vi.mock("@/panel/lib/kicad-bridge", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/panel/lib/kicad-bridge")>(),
-  hasSession: vi.fn(),
+  getSessionId: vi.fn(),
   sendRpcCommand: vi.fn(),
 }));
 vi.mock("@/components/workspace/library-preview-inspector", () => ({
@@ -78,7 +78,7 @@ const placeable: PanelComponent = {
 
 describe("panel placement", () => {
   beforeEach(() => {
-    vi.mocked(hasSession).mockReturnValue(true);
+    vi.mocked(getSessionId).mockReturnValue("session-1");
     vi.mocked(getComponent).mockResolvedValue(placeable);
     vi.mocked(getPartManifest).mockResolvedValue({ library: "Prism" });
     vi.mocked(getInlineBundle).mockResolvedValue({
@@ -127,5 +127,56 @@ describe("panel placement", () => {
     fireEvent.click(screen.getByRole("button", { name: "Place" }));
     await waitFor(() => expect(sendRpcCommand).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("does not dispatch a manifest after navigation, even if fetch ignores abort", async () => {
+    let finish!: (manifest: Record<string, unknown>) => void;
+    vi.mocked(getPartManifest).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const { unmount } = render(<PartDetailScreen componentId="part" onBack={() => {}} appendLog={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Place" }));
+    const signal = vi.mocked(getPartManifest).mock.calls.at(-1)?.[2];
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    await act(async () => finish({ library: "Prism" }));
+    expect(sendRpcCommand).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch into a different session after preparing a manifest", async () => {
+    vi.mocked(getPartManifest).mockImplementation(async () => {
+      vi.mocked(getSessionId).mockReturnValue("session-2");
+      return { library: "Prism" };
+    });
+    render(<PartDetailScreen componentId="part" onBack={() => {}} appendLog={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Place" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Placement did not start: KiCad session changed");
+    expect(sendRpcCommand).not.toHaveBeenCalled();
+  });
+
+  it("classifies a malformed manifest response as pre-dispatch", async () => {
+    vi.mocked(getPartManifest).mockRejectedValue(new SyntaxError("Invalid JSON"));
+    render(<PartDetailScreen componentId="part" onBack={() => {}} appendLog={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Place" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Placement did not start: Invalid JSON");
+    expect(sendRpcCommand).not.toHaveBeenCalled();
+  });
+
+  it("does not replay after the real bridge timeout and old retry window expire", async () => {
+    const posted: Array<{ command: string }> = [];
+    const bridge = createKiCadBridge({ transport: { post: (payload) => { posted.push(JSON.parse(payload)); return true; } } });
+    bridge.handleIncoming({ command: "NEW_SESSION", session_id: "session-1", message_id: 1 });
+    vi.mocked(sendRpcCommand).mockImplementation((...args) => bridge.send(...args));
+    const { unmount } = render(<PartDetailScreen componentId="part" onBack={() => {}} appendLog={() => {}} />);
+    const button = await screen.findByRole("button", { name: "Place" });
+    vi.useFakeTimers();
+    try {
+      await act(async () => { fireEvent.click(button); fireEvent.click(button); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(90_000); });
+      expect(screen.getByRole("alert")).toHaveTextContent("Check the schematic before placing again");
+      expect(posted.filter((message) => message.command === "PLACE_COMPONENT")).toHaveLength(1);
+      expect(button).toBeEnabled();
+    } finally {
+      unmount();
+      bridge.dispose();
+    }
   });
 });

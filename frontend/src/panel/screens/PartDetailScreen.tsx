@@ -29,7 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import type { PanelComponent, PanelSupplySource } from "@/panel/lib/panel-api";
 import { getComponent, getInlineBundle, getPartManifest } from "@/panel/lib/panel-api";
-import { hasSession, sendRpcCommand } from "@/panel/lib/kicad-bridge";
+import { getSessionId, KiCadRpcError, sendRpcCommand } from "@/panel/lib/kicad-bridge";
 import { formatPlacementError, PLACEMENT_RESPONSE_TIMEOUT_MS } from "@/panel/lib/panel-placement";
 import { LibraryPreviewPair } from "@/components/workspace/library-preview-inspector";
 import { cn } from "@/lib/utils";
@@ -95,7 +95,10 @@ export function PartDetailScreen({
   const [placing, setPlacing] = useState(false);
   const [placementError, setPlacementError] = useState<string | null>(null);
   const placingRef = useRef(false);
+  const placementControllerRef = useRef<AbortController | null>(null);
   const [representationId, setRepresentationId] = useState("");
+
+  useEffect(() => () => placementControllerRef.current?.abort(), [componentId]);
 
   // Fetch full component details. List screens pass a slim payload, so detail
   // refreshes the component before previews/assets are shown.
@@ -119,48 +122,51 @@ export function PartDetailScreen({
   }, [componentId, prefetched, appendLog]);
 
   async function runPlacement(path: "manifest" | "inline") {
-    if (!component || !hasSession()) {
+    const sessionId = getSessionId();
+    if (!component || !sessionId) {
       appendLog("Cannot place: no session or component.");
       return;
     }
     if (placingRef.current) return;
     placingRef.current = true;
+    const controller = new AbortController();
+    placementControllerRef.current = controller;
+    let dispatchAttempted = false;
     setPlacing(true);
     setPlacementError(null);
     try {
-      if (path === "manifest") {
-        const manifest = await getPartManifest(component.id, representationId);
-        await sendRpcCommand(
-          "PLACE_COMPONENT",
-          manifest as Record<string, unknown>,
-          "",
-          PLACEMENT_RESPONSE_TIMEOUT_MS,
-        );
-        appendLog(`Placed ${component.name} via manifest.`);
-      } else {
-        const bundle = (await getInlineBundle(component.id, representationId)) as Record<
-          string,
-          unknown
-        >;
-        await sendRpcCommand(
-          "PLACE_COMPONENT",
-          {
-            library: bundle.library,
-            symbol_name: bundle.symbol_name,
-            compression: bundle.compression,
-          },
-          (bundle.data as string) || "",
-          PLACEMENT_RESPONSE_TIMEOUT_MS,
-        );
-        appendLog(`Placed ${component.name} via inline bundle.`);
+      const payload = path === "manifest"
+        ? await getPartManifest(component.id, representationId, controller.signal)
+        : await getInlineBundle(component.id, representationId, controller.signal);
+      if (controller.signal.aborted) return;
+      if (sessionId !== getSessionId()) {
+        throw new KiCadRpcError("pre_dispatch", "KiCad session changed while preparing placement. Try again in the current schematic.");
       }
+      dispatchAttempted = true;
+      await sendRpcCommand(
+        "PLACE_COMPONENT",
+        path === "manifest" ? payload : {
+          library: payload.library,
+          symbol_name: payload.symbol_name,
+          compression: payload.compression,
+        },
+        path === "inline" ? (payload.data as string) || "" : "",
+        PLACEMENT_RESPONSE_TIMEOUT_MS,
+      );
+      if (!controller.signal.aborted) appendLog(`Placed ${component.name} via ${path === "inline" ? "inline bundle" : "manifest"}.`);
     } catch (err) {
-      const message = formatPlacementError(err);
+      if (controller.signal.aborted) return;
+      const failure = dispatchAttempted || err instanceof KiCadRpcError ? err
+        : new KiCadRpcError("pre_dispatch", err instanceof Error ? err.message : String(err));
+      const message = formatPlacementError(failure);
       setPlacementError(message);
       appendLog(message);
     } finally {
-      placingRef.current = false;
-      setPlacing(false);
+      if (placementControllerRef.current === controller) {
+        placingRef.current = false;
+        placementControllerRef.current = null;
+        setPlacing(false);
+      }
     }
   }
 

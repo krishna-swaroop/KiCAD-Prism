@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { LogTerminal } from "@/panel/components/LogTerminal";
 import {
@@ -48,7 +48,6 @@ export function PanelApp() {
   const [sessionReady, setSessionReady] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const initializedRef = useRef(false);
 
   const appendLog = useCallback((msg: string) => {
     const stamp = new Date().toLocaleTimeString();
@@ -57,13 +56,15 @@ export function PanelApp() {
 
   const clearLog = useCallback(() => setLogEntries([]), []);
 
-  const testAuthAndRoute = useCallback(async () => {
+  const testAuthAndRoute = useCallback(async (signal?: AbortSignal) => {
     try {
       // This succeeds if we have a valid cookie session or valid token.
-      await getCategories(undefined);
+      await getCategories(signal);
+      if (signal?.aborted) return;
       appendLog("Session authenticated — entering finder.");
       setScreen({ kind: "finder" });
     } catch (err) {
+      if (signal?.aborted) return;
       if (isAuthError(err)) {
         appendLog("Session not authenticated.");
         setScreen({ kind: "login" });
@@ -78,9 +79,6 @@ export function PanelApp() {
   // ─── Initialize bridge ──────────────────────────────────────────
 
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-
     setLogCallback(appendLog);
     installBridge();
     const sessionWait = new AbortController();
@@ -89,32 +87,36 @@ export function PanelApp() {
       try {
         // 1. Start waiting for KiCad session in background
         waitForSession({ signal: sessionWait.signal }).then(async () => {
+          if (sessionWait.signal.aborted) return;
           setSessionReady(true);
           appendLog("KiCad session ready.");
           try {
             const sourceInfo = await getSourceInfo();
+            if (sessionWait.signal.aborted) return;
             const params = (sourceInfo.parameters || {}) as Record<string, unknown>;
             if (params.token) {
               setApiToken(params.token as string);
               appendLog("Extracted token from KiCad session.");
               // We got a new token, try routing again just in case we were stuck on login
-              testAuthAndRoute();
+              void testAuthAndRoute(sessionWait.signal);
             }
             if (params.auth_type === "oauth2" && !params.authenticated) {
               appendLog("KiCad reports authentication required.");
               // Only override to login if currently in finder (could wait for search failure)
             }
           } catch (e) {
+            if (sessionWait.signal.aborted) return;
             appendLog(`Source info error: ${(e as Error).message}`);
           }
         }).catch((err) => {
-          if ((err as Error).name === "AbortError") return;
+          if (sessionWait.signal.aborted || (err as Error).name === "AbortError") return;
           appendLog(`KiCad init error: ${(err as Error).message}`);
         });
 
         // 2. Immediately check if we have a valid cookie session via the API
-        await testAuthAndRoute();
+        await testAuthAndRoute(sessionWait.signal);
       } catch (err) {
+        if (sessionWait.signal.aborted) return;
         appendLog(`Init error: ${(err as Error).message}`);
       }
     })();

@@ -222,20 +222,22 @@ export async function getComponent(
 
 export async function getPartManifest(
   partId: string,
-  representationId = ""
+  representationId = "",
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const query = representationId ? `?representation=${encodeURIComponent(representationId)}` : "";
   return panelFetch<Record<string, unknown>>(
-    `/api/remote-provider/parts/${partId}${query}`
+    `/api/remote-provider/parts/${partId}${query}`, signal,
   );
 }
 
 export async function getInlineBundle(
   componentId: string,
-  representationId = ""
+  representationId = "",
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const query = representationId ? `?representation=${encodeURIComponent(representationId)}` : "";
   return panelFetch<Record<string, unknown>>(
-    `/api/remote-provider/components/${componentId}/inline${query}`
+    `/api/remote-provider/components/${componentId}/inline${query}`, signal,
   );
 }
