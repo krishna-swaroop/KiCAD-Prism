@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -29,7 +29,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import type { PanelComponent, PanelSupplySource } from "@/panel/lib/panel-api";
 import { getComponent, getInlineBundle, getPartManifest } from "@/panel/lib/panel-api";
-import { hasSession, retry, sendRpcCommand } from "@/panel/lib/kicad-bridge";
+import { hasSession, sendRpcCommand } from "@/panel/lib/kicad-bridge";
+import { formatPlacementError } from "@/panel/lib/panel-placement";
 import { LibraryPreviewPair } from "@/components/workspace/library-preview-inspector";
 import { cn } from "@/lib/utils";
 import { inventoryWarnings } from "@/lib/inventory-presentation";
@@ -92,7 +93,8 @@ export function PartDetailScreen({
   const [loading, setLoading] = useState(!prefetched);
   const [showAllParams, setShowAllParams] = useState(false);
   const [placing, setPlacing] = useState(false);
-  const [placingInline, setPlacingInline] = useState(false);
+  const [placementError, setPlacementError] = useState<string | null>(null);
+  const placingRef = useRef(false);
   const [representationId, setRepresentationId] = useState("");
 
   // Fetch full component details. List screens pass a slim payload, so detail
@@ -116,44 +118,25 @@ export function PartDetailScreen({
     return () => controller.abort();
   }, [componentId, prefetched, appendLog]);
 
-  // ─── Place via manifest ────────────────────────────────────────
-
-  async function handlePlace() {
+  async function runPlacement(path: "manifest" | "inline") {
     if (!component || !hasSession()) {
       appendLog("Cannot place: no session or component.");
       return;
     }
+    if (placingRef.current) return;
+    placingRef.current = true;
     setPlacing(true);
+    setPlacementError(null);
     try {
-      const manifest = await getPartManifest(component.id, representationId);
-      await retry(async () => {
-        await sendRpcCommand(
-          "PLACE_COMPONENT",
-          manifest as Record<string, unknown>
-        );
-      });
-      appendLog(`Placed ${component.name} via manifest.`);
-    } catch (err) {
-      appendLog(`Placement failed: ${(err as Error).message}`);
-    } finally {
-      setPlacing(false);
-    }
-  }
-
-  // ─── Place via inline ──────────────────────────────────────────
-
-  async function handleInline() {
-    if (!component || !hasSession()) {
-      appendLog("Cannot place: no session or component.");
-      return;
-    }
-    setPlacingInline(true);
-    try {
-      const bundle = (await getInlineBundle(component.id, representationId)) as Record<
-        string,
-        unknown
-      >;
-      await retry(async () => {
+      if (path === "manifest") {
+        const manifest = await getPartManifest(component.id, representationId);
+        await sendRpcCommand("PLACE_COMPONENT", manifest as Record<string, unknown>);
+        appendLog(`Placed ${component.name} via manifest.`);
+      } else {
+        const bundle = (await getInlineBundle(component.id, representationId)) as Record<
+          string,
+          unknown
+        >;
         await sendRpcCommand(
           "PLACE_COMPONENT",
           {
@@ -161,14 +144,17 @@ export function PartDetailScreen({
             symbol_name: bundle.symbol_name,
             compression: bundle.compression,
           },
-          (bundle.data as string) || ""
+          (bundle.data as string) || "",
         );
-      });
-      appendLog(`Placed ${component.name} via inline bundle.`);
+        appendLog(`Placed ${component.name} via inline bundle.`);
+      }
     } catch (err) {
-      appendLog(`Inline placement failed: ${(err as Error).message}`);
+      const message = formatPlacementError(err);
+      setPlacementError(message);
+      appendLog(message);
     } finally {
-      setPlacingInline(false);
+      placingRef.current = false;
+      setPlacing(false);
     }
   }
 
@@ -225,13 +211,13 @@ export function PartDetailScreen({
           {canPlace && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-xs" aria-label="More actions">
+                <Button variant="ghost" size="icon-xs" aria-label="More actions" disabled={placing}>
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleInline} disabled={placingInline}>
-                  {placingInline ? (
+                <DropdownMenuItem onClick={() => void runPlacement("inline")} disabled={placing}>
+                  {placing ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                   ) : null}
                   Inline Fallback
@@ -402,11 +388,16 @@ export function PartDetailScreen({
               Datasheet
             </Button>
           )}
-          <Button className="min-w-0 flex-1" onClick={handlePlace} disabled={!canPlace || placing}>
+          <Button className="min-w-0 flex-1" onClick={() => void runPlacement("manifest")} disabled={!canPlace || placing}>
             {placing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {canPlace ? "Place" : "Unavailable"}
           </Button>
         </div>
+        {placementError ? (
+          <p className="text-[10px] text-destructive" role="alert">
+            {placementError}
+          </p>
+        ) : null}
       </div>
 
     </div>
