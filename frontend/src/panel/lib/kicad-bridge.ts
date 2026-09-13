@@ -412,8 +412,9 @@ export function sendRpcCommand(
   command: string,
   parameters: Record<string, unknown> = {},
   data = "",
+  timeoutMs?: number,
 ): Promise<KiCadResponse> {
-  return getDefaultBridge().send(command, parameters, data);
+  return getDefaultBridge().send(command, parameters, data, timeoutMs);
 }
 
 export function installBridge() {

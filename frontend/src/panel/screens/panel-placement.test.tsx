@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PanelComponent } from "@/panel/lib/panel-api";
 import { getComponent, getInlineBundle, getPartManifest } from "@/panel/lib/panel-api";
 import { KiCadRpcError, hasSession, sendRpcCommand } from "@/panel/lib/kicad-bridge";
+import { PLACEMENT_RESPONSE_TIMEOUT_MS } from "@/panel/lib/panel-placement";
 
 import { PartDetailScreen } from "./PartDetailScreen";
 
@@ -99,7 +100,12 @@ describe("panel placement", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Place" }));
     await waitFor(() => expect(sendRpcCommand).toHaveBeenCalledTimes(1));
-    expect(sendRpcCommand).toHaveBeenCalledWith("PLACE_COMPONENT", { library: "Prism" });
+    expect(sendRpcCommand).toHaveBeenCalledWith(
+      "PLACE_COMPONENT",
+      { library: "Prism" },
+      "",
+      PLACEMENT_RESPONSE_TIMEOUT_MS,
+    );
     expect(screen.getByRole("button", { name: "Place" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "More actions" })).toBeDisabled();
 

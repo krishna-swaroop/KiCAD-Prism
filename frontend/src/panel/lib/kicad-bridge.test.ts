@@ -164,6 +164,23 @@ describe("KiCadBridge", () => {
     expect(clock.live.size).toBe(0);
   });
 
+  it("honors a longer per-call timeout instead of the 4s default", async () => {
+    vi.useFakeTimers();
+    const clock = trackingClock();
+    const instance = makeBridge({
+      clock,
+      transport: { post: () => true },
+    });
+    openSession(instance);
+    const pending = instance.send("PLACE_COMPONENT", {}, "", 30_000);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(clock.live.size).toBe(1);
+    const timedOut = expect(pending).rejects.toThrow("Response timeout");
+    await vi.advanceTimersByTimeAsync(26_000);
+    await timedOut;
+    expect(clock.live.size).toBe(0);
+  });
+
   it("installs once and drains the backlog without chaining handlers", () => {
     const replies: Posted[] = [];
     const instance = makeBridge({

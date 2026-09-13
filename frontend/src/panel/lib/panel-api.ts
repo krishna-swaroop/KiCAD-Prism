@@ -93,7 +93,7 @@ export interface PanelCategory {
   count: number;
 }
 
-class PanelApiError extends Error {
+export class PanelApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
     super(message);

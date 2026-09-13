@@ -30,7 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { PanelComponent, PanelSupplySource } from "@/panel/lib/panel-api";
 import { getComponent, getInlineBundle, getPartManifest } from "@/panel/lib/panel-api";
 import { hasSession, sendRpcCommand } from "@/panel/lib/kicad-bridge";
-import { formatPlacementError } from "@/panel/lib/panel-placement";
+import { formatPlacementError, PLACEMENT_RESPONSE_TIMEOUT_MS } from "@/panel/lib/panel-placement";
 import { LibraryPreviewPair } from "@/components/workspace/library-preview-inspector";
 import { cn } from "@/lib/utils";
 import { inventoryWarnings } from "@/lib/inventory-presentation";
@@ -130,7 +130,12 @@ export function PartDetailScreen({
     try {
       if (path === "manifest") {
         const manifest = await getPartManifest(component.id, representationId);
-        await sendRpcCommand("PLACE_COMPONENT", manifest as Record<string, unknown>);
+        await sendRpcCommand(
+          "PLACE_COMPONENT",
+          manifest as Record<string, unknown>,
+          "",
+          PLACEMENT_RESPONSE_TIMEOUT_MS,
+        );
         appendLog(`Placed ${component.name} via manifest.`);
       } else {
         const bundle = (await getInlineBundle(component.id, representationId)) as Record<
@@ -145,6 +150,7 @@ export function PartDetailScreen({
             compression: bundle.compression,
           },
           (bundle.data as string) || "",
+          PLACEMENT_RESPONSE_TIMEOUT_MS,
         );
         appendLog(`Placed ${component.name} via inline bundle.`);
       }

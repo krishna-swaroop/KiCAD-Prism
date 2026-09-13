@@ -1,17 +1,16 @@
 import { KiCadRpcError, type KiCadRpcFailureKind } from "@/panel/lib/kicad-bridge";
+import { PanelApiError } from "@/panel/lib/panel-api";
 
 export type PlacementFailureKind = KiCadRpcFailureKind;
+
+/** KiCad may decompress and register an inline bundle before acknowledging. */
+export const PLACEMENT_RESPONSE_TIMEOUT_MS = 30_000;
 
 export function classifyPlacementError(error: unknown): PlacementFailureKind {
   if (error instanceof KiCadRpcError) {
     return error.kind;
   }
-  const message = error instanceof Error ? error.message : String(error);
-  if (
-    message.startsWith("Network error:")
-    || message.startsWith("Request failed")
-    || message === "Cannot place: no session or component."
-  ) {
+  if (error instanceof PanelApiError) {
     return "pre_dispatch";
   }
   return "rpc";
