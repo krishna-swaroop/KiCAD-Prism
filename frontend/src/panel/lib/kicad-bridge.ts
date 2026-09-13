@@ -201,7 +201,6 @@ export class KiCadBridge {
       }
     } catch (error) {
       this.rejectWaiter(waiterKey(sessionId, messageId), error as Error);
-      throw error;
     }
     return pending;
   }

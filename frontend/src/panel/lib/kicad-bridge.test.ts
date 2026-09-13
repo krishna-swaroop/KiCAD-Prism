@@ -124,6 +124,23 @@ describe("KiCadBridge", () => {
     expect(clock.live.size).toBe(0);
   });
 
+  it("rejects a throwing transport through the waiter without a second rejection", async () => {
+    const clock = trackingClock();
+    const instance = makeBridge({
+      clock,
+      transport: {
+        post(payload) {
+          const envelope = JSON.parse(payload) as Posted;
+          if (envelope.command === "NEW_SESSION") return true;
+          throw new Error("boom");
+        },
+      },
+    });
+    openSession(instance);
+    await expect(instance.send("GET_SOURCE_INFO")).rejects.toThrow("boom");
+    expect(clock.live.size).toBe(0);
+  });
+
   it("times out a missing reply once and ignores a late response", async () => {
     vi.useFakeTimers();
     const clock = trackingClock();
