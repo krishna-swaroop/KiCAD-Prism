@@ -7,8 +7,19 @@
  */
 
 const RPC_VERSION = 1;
-const BACKOFF_MS = [500, 1200, 2500];
 const DEFAULT_RESPONSE_TIMEOUT_MS = 4000;
+
+export type KiCadRpcFailureKind = "pre_dispatch" | "unknown_outcome" | "rpc";
+
+export class KiCadRpcError extends Error {
+  readonly kind: KiCadRpcFailureKind;
+
+  constructor(kind: KiCadRpcFailureKind, message: string) {
+    super(message);
+    this.name = "KiCadRpcError";
+    this.kind = kind;
+  }
+}
 
 type Waiter = {
   resolve: (payload: KiCadResponse) => void;
@@ -100,12 +111,8 @@ function postToKiCad(payload: string): boolean {
   if (typeof w.external === "object" && w.external !== null) {
     const ext = w.external as { invoke?: (p: string) => void };
     if (ext.invoke) {
-      try {
-        ext.invoke(payload);
-        return true;
-      } catch {
-        /* ignore */
-      }
+      ext.invoke(payload);
+      return true;
     }
   }
   return false;
@@ -147,6 +154,10 @@ export class KiCadBridge {
     return this.sessionId !== null;
   }
 
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+
   handleIncoming(incoming: unknown) {
     let payload: KiCadResponse | null = null;
     if (typeof incoming === "string") {
@@ -182,35 +193,46 @@ export class KiCadBridge {
     timeoutMs = DEFAULT_RESPONSE_TIMEOUT_MS,
   ): Promise<KiCadResponse> {
     if (!this.sessionId) {
-      throw new Error("Session has not been established yet.");
+      throw new KiCadRpcError("pre_dispatch", "Session has not been established yet.");
     }
     const sessionId = this.sessionId;
     const messageId = ++this.messageCounter;
-    const envelope = {
-      version: RPC_VERSION,
-      session_id: sessionId,
-      message_id: messageId,
-      command,
-      parameters: structuredClone(parameters),
-      data,
-    };
+    let payload: string;
+    try {
+      payload = JSON.stringify({
+        version: RPC_VERSION,
+        session_id: sessionId,
+        message_id: messageId,
+        command,
+        parameters: structuredClone(parameters),
+        data,
+      });
+    } catch (error) {
+      throw new KiCadRpcError("pre_dispatch", error instanceof Error ? error.message : String(error));
+    }
     const pending = this.registerWaiter(sessionId, messageId, timeoutMs);
     try {
-      if (!this.transport.post(JSON.stringify(envelope))) {
-        this.rejectWaiter(waiterKey(sessionId, messageId), new Error("KiCad transport is unavailable."));
+      if (!this.transport.post(payload)) {
+        this.rejectWaiter(
+          waiterKey(sessionId, messageId),
+          new KiCadRpcError("pre_dispatch", "KiCad transport is unavailable."),
+        );
       }
     } catch (error) {
-      this.rejectWaiter(waiterKey(sessionId, messageId), error as Error);
+      const wrapped = error instanceof KiCadRpcError
+        ? error
+        : new KiCadRpcError("unknown_outcome", error instanceof Error ? error.message : String(error));
+      this.rejectWaiter(waiterKey(sessionId, messageId), wrapped);
     }
     return pending;
   }
 
   waitForSession(options: WaitForSessionOptions = {}): Promise<string> {
-    if (this.sessionId) {
-      return Promise.resolve(this.sessionId);
-    }
     if (options.signal?.aborted) {
       return Promise.reject(abortError());
+    }
+    if (this.sessionId) {
+      return Promise.resolve(this.sessionId);
     }
 
     return new Promise((resolve, reject) => {
@@ -251,6 +273,8 @@ export class KiCadBridge {
   }
 
   uninstall() {
+    this.rejectPending(new KiCadRpcError("unknown_outcome", "Bridge uninstalled"));
+    this.rejectSessionWaiters(new Error("Bridge uninstalled"));
     if (!this.installed) return;
     const w = window as unknown as { kiclient?: KiClient };
     const existing = w.kiclient;
@@ -267,7 +291,7 @@ export class KiCadBridge {
   }
 
   dispose() {
-    this.rejectPending(new Error("Bridge disposed"));
+    this.rejectPending(new KiCadRpcError("unknown_outcome", "Bridge disposed"));
     this.rejectSessionWaiters(new Error("Bridge disposed"));
     this.uninstall();
     this.sessionId = null;
@@ -275,7 +299,7 @@ export class KiCadBridge {
   }
 
   private resetSession(request: KiCadResponse) {
-    this.rejectPending(new Error("Session reset"));
+    this.rejectPending(new KiCadRpcError("unknown_outcome", "Session reset"));
     this.sessionId = request.session_id ?? null;
     this.messageCounter = request.message_id ?? 0;
     if (this.sessionId) {
@@ -309,7 +333,7 @@ export class KiCadBridge {
         resolve,
         reject,
         timer: this.clock.setTimeout(() => {
-          this.rejectWaiter(key, new Error("Response timeout"));
+          this.rejectWaiter(key, new KiCadRpcError("unknown_outcome", "Response timeout"));
         }, timeoutMs),
       };
       this.waiters.set(key, waiter);
@@ -317,7 +341,7 @@ export class KiCadBridge {
   }
 
   private settleResponse(payload: KiCadResponse) {
-    const responseSession = payload.session_id ?? this.sessionId;
+    const responseSession = payload.session_id;
     if (!this.sessionId || !responseSession || responseSession !== this.sessionId) {
       this.log(`Ignoring stale KiCad response for session ${payload.session_id ?? "?"}`);
       return;
@@ -326,7 +350,7 @@ export class KiCadBridge {
     const waiter = this.takeWaiter(key);
     if (!waiter) return;
     if (payload.status === "ERROR") {
-      waiter.reject(new Error(payload.error_message || "KiCad RPC failed"));
+      waiter.reject(new KiCadRpcError("rpc", payload.error_message || "KiCad RPC failed"));
       return;
     }
     waiter.resolve(payload);
@@ -391,28 +415,17 @@ export function hasSession(): boolean {
   return getDefaultBridge().hasSession();
 }
 
+export function getSessionId(): string | null {
+  return getDefaultBridge().getSessionId();
+}
+
 export function sendRpcCommand(
   command: string,
   parameters: Record<string, unknown> = {},
   data = "",
+  timeoutMs?: number,
 ): Promise<KiCadResponse> {
-  return getDefaultBridge().send(command, parameters, data);
-}
-
-export async function retry<T>(fn: () => Promise<T>): Promise<T> {
-  let lastError: Error | null = null;
-  for (let index = 0; index < BACKOFF_MS.length; index += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error as Error;
-      defaultLog(`Attempt ${index + 1} failed: ${lastError.message}`);
-      if (index < BACKOFF_MS.length - 1) {
-        await new Promise((r) => window.setTimeout(r, BACKOFF_MS[index]));
-      }
-    }
-  }
-  throw lastError;
+  return getDefaultBridge().send(command, parameters, data, timeoutMs);
 }
 
 export function installBridge() {
