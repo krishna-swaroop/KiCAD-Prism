@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LogTerminal } from "@/panel/components/LogTerminal";
 import {
   installBridge,
+  uninstallBridge,
   waitForSession,
   getSourceInfo,
   triggerRemoteLogin,
@@ -82,11 +83,12 @@ export function PanelApp() {
 
     setLogCallback(appendLog);
     installBridge();
+    const sessionWait = new AbortController();
 
     (async () => {
       try {
         // 1. Start waiting for KiCad session in background
-        waitForSession().then(async () => {
+        waitForSession({ signal: sessionWait.signal }).then(async () => {
           setSessionReady(true);
           appendLog("KiCad session ready.");
           try {
@@ -106,6 +108,7 @@ export function PanelApp() {
             appendLog(`Source info error: ${(e as Error).message}`);
           }
         }).catch((err) => {
+          if ((err as Error).name === "AbortError") return;
           appendLog(`KiCad init error: ${(err as Error).message}`);
         });
 
@@ -115,6 +118,11 @@ export function PanelApp() {
         appendLog(`Init error: ${(err as Error).message}`);
       }
     })();
+
+    return () => {
+      sessionWait.abort();
+      uninstallBridge();
+    };
   }, [appendLog, testAuthAndRoute]);
 
   // ─── Login handler ──────────────────────────────────────────────
