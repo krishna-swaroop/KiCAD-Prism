@@ -522,13 +522,12 @@ anonymous-admin configuration when the public origin is not local. Startup
 also logs a prominent guest-mode warning. An administrator guest is appropriate
 only for a private local seed/evaluation machine.
 
-### 4.2 `viewer` breaks two features you probably want in the demo
+### 4.2 `viewer` keeps the public demo read-only
 
 Audited guards on the mutating endpoints:
 
 | Feature | Endpoint | Guard | Works as guest viewer? |
 |---|---|---|---|
-| Visual SCH/PCB/BOM diff | `POST /api/projects/{id}/diff` | `require_designer` | **No** |
 | Design comparison | `POST /api/projects/{id}/design-compare` | `require_viewer` | Yes |
 | Trigger jobset workflow | `POST /api/projects/{id}/workflows` | `require_designer` | No (good) |
 | Generate semantic index | `POST /api/projects/{id}/semantic-index/generate` | `require_designer` | No (good) |
@@ -538,20 +537,10 @@ Audited guards on the mutating endpoints:
 | Delete project | `DELETE /api/projects/{id}` | `require_designer` | No (good) |
 | Folder create/move/delete | `folders.py` | `require_designer` | No (good) |
 
-The problem: **visual diff is designer-gated**, and it's one of the most
-compelling things Prism does. Two ways to handle it:
-
-- **Simplest (do this first):** pre-compute diffs locally for a few interesting
-  commit pairs so the cached results render, and deep-link to them from your demo
-  landing copy. Your own USB-PD board already has a tag (`A.1.0.0`) and a commit
-  history to diff against.
-- **Better long-term:** introduce an explicit `PRISM_DEMO_MODE=true` flag that
-  relaxes *read-only-but-expensive* operations for viewers while keeping all
-  destructive operations designer-gated. Implement it as a dedicated dependency
-  (e.g. `require_designer_or_demo`) applied only to `POST .../diff`, so the
-  permission widening is visible at each call site rather than hidden in role
-  resolution. Do **not** solve this by promoting guests to `designer` — that
-  would hand them project deletion, repo import, and jobset execution.
+The current Design Comparison path is viewer-accessible and is the supported
+SCH/PCB/BOM comparison experience. The older raster-diff endpoint at
+`POST /api/projects/{id}/diff` has been removed; do not build demo setup or role
+exceptions around it.
 
 The comments UI is shipped, but guest viewers cannot create or reply to
 comments. That keeps a public demo read-only while preserving discussion review;

@@ -44,6 +44,9 @@ jobs:
           --tag "$GITHUB_REF_NAME"
           --github-output "$GITHUB_OUTPUT"
 
+      - name: Require checked-in release notes
+        run: test -f "docs/releases/${GITHUB_REF_NAME}.md"
+
       - name: Require tagged commit on main
         id: source
         run: |
@@ -257,7 +260,7 @@ jobs:
           name: KiCAD Prism ${{ github.ref_name }}
           prerelease: ${{ needs.validate.outputs.prerelease }}
           make_latest: ${{ needs.validate.outputs.prerelease == 'false' }}
-          generate_release_notes: true
+          body_path: docs/releases/${{ github.ref_name }}.md
           fail_on_unmatched_files: true
           files: |
             ${{ steps.bundle.outputs.archive }}
