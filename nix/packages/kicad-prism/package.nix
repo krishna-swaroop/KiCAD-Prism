@@ -3,6 +3,7 @@
   python312Packages,
   makeWrapper,
   writeText,
+  coreutils,
   git,
   gnutar,
   kicad,
@@ -20,6 +21,7 @@ let
   viewerRoot = "${kicad-prism-viewer}/share/kicad-prism-viewer";
 
   toolchainPath = lib.makeBinPath [
+    coreutils
     git
     gnutar
     kicad
