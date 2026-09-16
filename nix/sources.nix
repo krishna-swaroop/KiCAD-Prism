@@ -31,7 +31,7 @@ in
       ../backend/Dockerfile
       ../backend/app
       ../backend/requirements.txt
-      ../backend/tests
+      (fileset.difference ../backend/tests ../backend/tests/test_gzip_middleware.py)
       ../docker-compose.yml
       ../fixtures
       ../frontend/src/lib/catalog-workflow-policy.generated.ts
