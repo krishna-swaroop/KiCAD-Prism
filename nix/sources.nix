@@ -34,6 +34,7 @@ in
       ../backend/tests
       ../docker-compose.yml
       ../fixtures
+      ../frontend/src/lib/catalog-workflow-policy.generated.ts
       ../kicad-prism-viewer/requirements-runtime.txt
       ../requirements
       ../scripts
