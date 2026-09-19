@@ -1,0 +1,46 @@
+name: Nix
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Nix packages and devShell
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Cache the Nix store
+        uses: DeterminateSystems/flakehub-cache-action@v3.21.9
+
+      - name: Build packages
+        run: |
+          nix build \
+            .#kicad-prism \
+            .#kicad-prism-frontend \
+            .#kicad-prism-viewer \
+            .#prism-clipper2
+
+      - name: Check the devShell evaluates
+        run: nix develop --command true

@@ -68,3 +68,7 @@ deploy/certs/*
 # ecad-parse snapshot index cache (a stray one can appear if the CLI is run
 # with a relative root; never commit it)
 *.index-cache.json
+# Nix
+result
+result-*
+.direnv/
