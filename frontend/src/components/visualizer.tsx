@@ -1108,7 +1108,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             schematicViewer?.removeEventListener("ecad-viewer:crossprobe", handleCrossProbe as EventListener);
             pcbViewer?.removeEventListener("ecad-viewer:crossprobe", handleCrossProbe as EventListener);
         };
-    }, [applyHighlightIntent, clearGlobalSelection, clearSelectionAndHighlights, commit, crossProbeGlobal, pcbViewerElement, schematicViewerElement, selectGlobal, semanticIndex?.sourceRevisionKey]);
+    }, [applyHighlightIntent, clearGlobalSelection, commit, crossProbeGlobal, pcbViewerElement, schematicViewerElement, selectGlobal, semanticIndex?.sourceRevisionKey]);
 
     useEffect(() => {
         const applySelection = (
