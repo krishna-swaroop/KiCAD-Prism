@@ -37,6 +37,7 @@ import { usePrismCrossProbe } from "@/hooks/use-prism-cross-probe";
 import { HighlightControls } from "./review-tools/highlight-controls";
 import {
     createReviewHighlightState,
+    groupHighlightRefsByDocument,
     highlightRefKey,
     highlightRequestForRef,
     mapSelectionToHighlightRef,
@@ -453,6 +454,12 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         undefined,
         createReviewHighlightState,
     );
+    // The imperative clear paths need the committed collection without a stale
+    // closure; the ref follows the reducer state one commit behind at most.
+    const highlightStateRef = useRef(highlightState);
+    useEffect(() => {
+        highlightStateRef.current = highlightState;
+    }, [highlightState]);
     const [highlightDimming, setHighlightDimming] = useState(false);
     const highlightRequestSequence = useRef(0);
     const nextHighlightRequestId = useCallback(() => {
@@ -585,6 +592,34 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         clearGlobalSelection();
         clearHighlights();
     }, [clearGlobalSelection, clearHighlights]);
+
+    /**
+     * The element's `clearSelection()` also empties its highlight store (sealed
+     * RV-01 behavior), so clearing the inspected object must re-project the
+     * host's retained set. One request per document because a request carries
+     * a single `documentKey`; the first group is an authoritative `replace`,
+     * the rest are idempotent `add`s (a second `replace` would clear the first
+     * group again). The issued request ids keep the echoes suppressed.
+     */
+    const reprojectHighlightsForViewer = useCallback(
+        (context: HighlightContext, viewer: ECadViewerElement | null) => {
+            if (!viewer || typeof viewer.updateHighlightedNets !== "function") return;
+            const groups = groupHighlightRefsByDocument(highlightStateRef.current.refs, context);
+            groups.forEach((refs, index) => {
+                const requestId = nextHighlightRequestId();
+                dispatchHighlight({ type: "issued", requestId });
+                viewer.updateHighlightedNets({
+                    revisionKey: refs[0]!.revisionKey,
+                    documentKey: refs[0]!.documentKey,
+                    operation: index === 0 ? "replace" : "add",
+                    nets: refs,
+                    origin: REVIEW_HIGHLIGHT_ORIGIN,
+                    requestId,
+                });
+            });
+        },
+        [nextHighlightRequestId],
+    );
 
     const fitHighlightedNets = useCallback(() => {
         const viewer = pcbViewerRef.current;
@@ -1037,11 +1072,12 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 selectGlobal(normalized);
             } else {
                 // Empty selection: a click on empty canvas away from any item.
-                // Clear the current selection so it deselects and the selection
-                // side panel closes, rather than leaving the last item stuck.
-                // clearSelection also clears the element highlight stores, so
-                // the host collection must clear with it.
-                clearSelectionAndHighlights();
+                // Clear the inspected object only (C1: a plain click retains
+                // the current inspected-object behavior; the retained highlight
+                // set is a separate concept). The element's clearSelection
+                // empties its highlight store, so applySelection(null) follows
+                // with a re-projection of the host's retained refs.
+                clearGlobalSelection();
             }
             // Shift-click carries additive intent observed at the gesture;
             // plain clicks and double-click cross-probes keep their existing
@@ -1072,7 +1108,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             schematicViewer?.removeEventListener("ecad-viewer:crossprobe", handleCrossProbe as EventListener);
             pcbViewer?.removeEventListener("ecad-viewer:crossprobe", handleCrossProbe as EventListener);
         };
-    }, [applyHighlightIntent, clearSelectionAndHighlights, commit, crossProbeGlobal, pcbViewerElement, schematicViewerElement, selectGlobal, semanticIndex?.sourceRevisionKey]);
+    }, [applyHighlightIntent, clearGlobalSelection, clearSelectionAndHighlights, commit, crossProbeGlobal, pcbViewerElement, schematicViewerElement, selectGlobal, semanticIndex?.sourceRevisionKey]);
 
     useEffect(() => {
         const applySelection = (
@@ -1082,7 +1118,11 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         ) => {
             if (!viewer) return;
             if (!selection) {
+                // Clearing the inspected object is not a highlight action: the
+                // retained set survives, so re-project it over the element's
+                // own clearSelection.
                 viewer.clearSelection();
+                reprojectHighlightsForViewer(targetContext, viewer);
                 return;
             }
             if (typeof viewer.requestCrossProbe !== "function") return;
@@ -1125,7 +1165,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             unregisterSchematic();
             unregisterPcb();
         };
-    }, [commit, pcbViewerElement, projectId, registerClient, schematicViewerElement, semanticIndex]);
+    }, [commit, pcbViewerElement, projectId, registerClient, reprojectHighlightsForViewer, schematicViewerElement, semanticIndex]);
 
     const handleDesignSearchPick = useCallback((hit: DesignSearchHit) => {
         const sourceContext = selectionContextForTab(activeTab);

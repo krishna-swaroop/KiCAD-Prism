@@ -115,6 +115,25 @@ export function removeHighlightRef(
     return next.length === refs.length ? refs : next;
 }
 
+/**
+ * Split one context's refs by `documentKey`. A viewer request carries exactly
+ * one document, so every re-projection or replay needs one request per
+ * document. Insertion order is preserved.
+ */
+export function groupHighlightRefsByDocument(
+    refs: readonly ScopedNetRef[],
+    context: HighlightContext,
+): ScopedNetRef[][] {
+    const groups = new Map<string, ScopedNetRef[]>();
+    for (const ref of refs) {
+        if (ref.context !== context) continue;
+        const group = groups.get(ref.documentKey);
+        if (group) group.push(ref);
+        else groups.set(ref.documentKey, [ref]);
+    }
+    return Array.from(groups.values());
+}
+
 function noticeForUnresolved(
     entry: { ref: ScopedNetRef; reason: HighlightUnresolvedReason },
 ): HighlightNotice {
@@ -476,6 +495,7 @@ export type ReviewHighlightAction =
       }
     | { type: "remove"; ref: ScopedNetRef; requestId: string }
     | { type: "clear" }
+    | { type: "issued"; requestId: string }
     | { type: "notice"; notice: HighlightNotice }
     | { type: "viewer-change"; context: HighlightContext; detail: HighlightChangeDetail }
     | {
@@ -570,6 +590,14 @@ export function reviewHighlightReducer(
                 ...state,
                 refs: [],
                 notices: [],
+            };
+        case "issued":
+            // A host request that does not mutate the collection (a
+            // re-projection after clearSelection): remember its id so the
+            // element's echo is ignored like any other host request.
+            return {
+                ...state,
+                issuedRequestIds: recordRequestId(state.issuedRequestIds, action.requestId),
             };
         case "notice":
             return {

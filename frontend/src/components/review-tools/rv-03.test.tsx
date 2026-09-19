@@ -43,6 +43,13 @@ type SourceUpdate = {
 };
 
 const ROOT_UUID = "11111111-1111-4111-8111-111111111111";
+const POWER_UUID = "44444444-4444-4444-8444-444444444444";
+
+function sameRefSet(a: readonly ScopedNetRef[], b: readonly ScopedNetRef[]): boolean {
+    if (a.length !== b.length) return false;
+    const keys = new Set(a.map(highlightRefKey));
+    return b.every((ref) => keys.has(highlightRefKey(ref)));
+}
 
 class FakeEcadViewer extends HTMLElement {
     static instances: FakeEcadViewer[] = [];
@@ -84,7 +91,12 @@ class FakeEcadViewer extends HTMLElement {
             });
         }
     });
-    readonly appendSources = vi.fn(async () => {});
+    readonly appendSources = vi.fn(async (update: SourceUpdate) => {
+        this.documentKeys = [
+            ...this.documentKeys,
+            ...update.sources.map((source) => source.filename),
+        ];
+    });
     readonly setActive = vi.fn();
     readonly setViewportInsets = vi.fn();
     readonly setCommentMode = vi.fn();
@@ -179,6 +191,14 @@ class FakeEcadViewer extends HTMLElement {
                     continue;
                 }
                 accepted.push(ref);
+            }
+            if (request.operation === "replace") {
+                const changed = !sameRefSet(this.highlightedNets, accepted);
+                if (changed) {
+                    this.highlightedNets = [...accepted];
+                    this.emitHighlightChange(this.changeFor(request, accepted, unresolved));
+                }
+                return { changed, accepted, unresolved, cameraMoved: false };
             }
             let changed = false;
             for (const ref of accepted) {
@@ -305,6 +325,8 @@ function textResponse(body: string, status = 200): Response {
     return new Response(body, { status });
 }
 
+let subsheetFiles: Array<{ name: string; url: string }> = [];
+
 function stubViewerFetch(): void {
     vi.stubGlobal(
         "fetch",
@@ -314,7 +336,8 @@ function stubViewerFetch(): void {
             if (url.includes("/semantic-index/identity")) return jsonResponse(SEMANTIC_INDEX);
             if (url.includes("/comments/mention-candidates")) return jsonResponse([]);
             if (url.includes("/comments")) return jsonResponse({ comments: [] });
-            if (url.includes("/schematic/subsheets")) return jsonResponse({ files: [] });
+            if (url.includes("/Subsheets/")) return textResponse("(kicad_sch)");
+            if (url.includes("/schematic/subsheets")) return jsonResponse({ files: subsheetFiles });
             if (url.includes("/schematic")) return textResponse("(kicad_sch)");
             if (url.includes("/pcb")) return textResponse("(kicad_pcb)");
             return textResponse("", 404);
@@ -398,7 +421,8 @@ beforeAll(() => {
 beforeEach(() => {
     FakeEcadViewer.instances = [];
     FakeEcadViewer.pcbNets = new Set(["A", "B"]);
-    FakeEcadViewer.schNets = new Set(["SENSE"]);
+    FakeEcadViewer.schNets = new Set(["SENSE", "VBUS"]);
+    subsheetFiles = [];
     stubViewerFetch();
 });
 
@@ -892,6 +916,103 @@ describe("rv-03: Visualizer highlight wiring", () => {
                 .filter((request) => request.nets.length > 0)
                 .every((request) => request.revisionKey === "pcb:p1:c1"),
         ).toBe(true);
+    });
+
+    it("keeps the retained set when empty canvas clears the inspected selection", async () => {
+        const { schematic, pcb } = await mountWithPcb();
+        shiftClick(pcb, { net: "A", netCode: 1, page: "board.kicad_pcb" });
+        shiftClick(schematic, { net: "SENSE", page: `root.kicad_sch:/${ROOT_UUID}` });
+        await waitFor(() => expect(within(selectedNetList()).getByText("SENSE")).toBeTruthy());
+
+        const pcbCallsBefore = pcb.updateHighlightedNets.mock.calls.length;
+        const schematicCallsBefore = schematic.updateHighlightedNets.mock.calls.length;
+
+        act(() => {
+            pcb.dispatchEvent(
+                new CustomEvent("ecad-viewer:selection", {
+                    detail: { sourceContext: "PCB", itemType: "", operation: "replace" },
+                    bubbles: true,
+                    composed: true,
+                }),
+            );
+        });
+
+        // The inspected object clears, the retained set does not.
+        await waitFor(() => expect(pcb.clearSelection).toHaveBeenCalled());
+        expect(schematic.clearSelection).toHaveBeenCalled();
+        expect(within(selectedNetList()).getByText("A")).toBeTruthy();
+        expect(within(selectedNetList()).getByText("SENSE")).toBeTruthy();
+
+        // The cleared viewer re-projects its own context over clearSelection.
+        const pcbReplace = highlightRequests(pcb)
+            .slice(pcbCallsBefore)
+            .find((request) => request.operation === "replace");
+        expect(pcbReplace).toBeDefined();
+        expect(pcbReplace!.origin).toBe(REVIEW_HIGHLIGHT_ORIGIN);
+        expect(pcbReplace!.documentKey).toBe("board.kicad_pcb");
+        expect(pcbReplace!.nets.map((ref) => ref.netKey)).toEqual(["A"]);
+        expect(pcb.highlightedNets.map((ref) => ref.netKey)).toEqual(["A"]);
+
+        const schematicReplace = highlightRequests(schematic)
+            .slice(schematicCallsBefore)
+            .find((request) => request.operation === "replace");
+        expect(schematicReplace).toBeDefined();
+        expect(schematicReplace!.documentKey).toBe("root.kicad_sch");
+        expect(schematicReplace!.nets.map((ref) => ref.netKey)).toEqual(["SENSE"]);
+    });
+
+    it("re-projects one request per document after clearSelection", async () => {
+        subsheetFiles = [
+            {
+                name: "Subsheets/power.kicad_sch",
+                url: "/api/projects/p1/Subsheets/power.kicad_sch",
+            },
+        ];
+        const { schematic } = await mountVisualizer();
+        await waitFor(() =>
+            expect(schematic.documentKeys).toContain("Subsheets/power.kicad_sch"),
+        );
+
+        shiftClick(schematic, { net: "SENSE", page: `root.kicad_sch:/${ROOT_UUID}` });
+        shiftClick(schematic, {
+            net: "VBUS",
+            page: `Subsheets/power.kicad_sch:/${ROOT_UUID}/${POWER_UUID}`,
+        });
+        await waitFor(() => expect(within(selectedNetList()).getByText("VBUS")).toBeTruthy());
+
+        const before = schematic.updateHighlightedNets.mock.calls.length;
+        act(() => {
+            schematic.dispatchEvent(
+                new CustomEvent("ecad-viewer:selection", {
+                    detail: { sourceContext: "SCH", itemType: "" },
+                    bubbles: true,
+                    composed: true,
+                }),
+            );
+        });
+
+        // One request per document: the authoritative first group is a
+        // replace, the remaining groups are adds (a second replace would clear
+        // the first document again per sealed C1).
+        await waitFor(() => {
+            const requests = highlightRequests(schematic).slice(before);
+            expect(requests.filter((request) => request.operation === "replace")).toHaveLength(1);
+            expect(requests.filter((request) => request.operation === "add")).toHaveLength(1);
+        });
+        const requests = highlightRequests(schematic).slice(before);
+        const replace = requests.find((request) => request.operation === "replace")!;
+        const add = requests.find((request) => request.operation === "add")!;
+        expect(replace.documentKey).toBe("root.kicad_sch");
+        expect(replace.nets.map((ref) => ref.netKey)).toEqual(["SENSE"]);
+        expect(add.documentKey).toBe("Subsheets/power.kicad_sch");
+        expect(add.nets.map((ref) => ref.netKey)).toEqual(["VBUS"]);
+        // The element's effective set holds both documents.
+        expect(schematic.highlightedNets.map((ref) => ref.netKey).sort()).toEqual([
+            "SENSE",
+            "VBUS",
+        ]);
+        expect(within(selectedNetList()).getByText("SENSE")).toBeTruthy();
+        expect(within(selectedNetList()).getByText("VBUS")).toBeTruthy();
     });
 
     it("clears the selection and the highlight set on Escape", async () => {
