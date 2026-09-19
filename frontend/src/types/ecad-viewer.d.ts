@@ -55,6 +55,14 @@ export interface KiCanvasSelectDetail {
     semantic?: EcadSemanticSelectionDetail;
 }
 
+/** Pointer modifiers observed on a selection gesture. */
+export interface EcadSelectionModifiers {
+    shift?: boolean;
+    ctrl?: boolean;
+    meta?: boolean;
+    alt?: boolean;
+}
+
 export interface EcadSemanticSelectionDetail {
     sourceContext: "SCH" | "PCB";
     itemType: string;
@@ -73,6 +81,12 @@ export interface EcadSemanticSelectionDetail {
     x?: number;
     y?: number;
     bounds?: [number, number, number, number];
+    /**
+     * Additive selection intent observed at the gesture. Hosts must not
+     * reconstruct it from a later global keyboard state.
+     */
+    operation?: "replace" | "add" | "toggle";
+    modifiers?: EcadSelectionModifiers;
 }
 
 export interface EcadSchematicPageState {
@@ -347,6 +361,70 @@ export interface EcadTransitionTraceDetail {
     detail?: Record<string, unknown>;
 }
 
+/**
+ * Multi-net highlight API (contract C1), shipped by the vendored bundle from
+ * ecad-viewer a170968. The element keeps a revision-scoped set; Prism is the
+ * authoritative host store and each viewer projects it.
+ */
+export type HighlightOperation = "replace" | "add" | "remove" | "toggle" | "clear";
+
+export type HighlightContext = "PCB" | "SCH";
+
+export type HighlightUnresolvedReason =
+    | "revision-mismatch"
+    | "document-mismatch"
+    | "unknown-net"
+    | "ambiguous-occurrence"
+    | "unsupported-context";
+
+export interface ScopedNetRef {
+    /** Must equal the revisionKey passed to replaceSources for the loaded revision. */
+    revisionKey: string;
+    /** Board or schematic filename inside that revision (for example "h1_two_nets.kicad_pcb"). */
+    documentKey: string;
+    context: HighlightContext;
+    /** Revision-scoped canonical net key: the board net name for PCB, or a host key for SCH. */
+    netKey: string;
+    /** Optional board-local hint resolved only within this revision. */
+    netCode?: number;
+    /** Required for SCH nets whose document is instantiated more than once. */
+    occurrencePath?: string;
+}
+
+export interface HighlightRequest {
+    revisionKey: string;
+    documentKey: string;
+    operation: HighlightOperation;
+    nets: readonly ScopedNetRef[];
+    /** Stable producer identity, for example "prism-selection", "ecad-standalone", "rv-01-test". */
+    origin: string;
+    /** Caller-unique id used to suppress echoes; a replay of the same replacement reuses no id. */
+    requestId: string;
+    /** false/default: never move the camera as a side effect. */
+    focus?: boolean;
+}
+
+export interface HighlightResult {
+    changed: boolean;
+    accepted: readonly ScopedNetRef[];
+    unresolved: readonly { ref: ScopedNetRef; reason: HighlightUnresolvedReason }[];
+    cameraMoved: boolean;
+}
+
+export interface HighlightChangeDetail {
+    revisionKey: string;
+    documentKey: string;
+    operation: HighlightOperation;
+    origin: string;
+    requestId: string;
+    changed: boolean;
+    /** Effective resulting set, bounded and duplicate-free. */
+    nets: readonly ScopedNetRef[];
+    accepted: readonly ScopedNetRef[];
+    unresolved: readonly { ref: ScopedNetRef; reason: HighlightUnresolvedReason }[];
+    cause: "request" | "revision-reset" | "source-reload";
+}
+
 export interface ECadViewerElement extends HTMLElement {
     readonly isReady: boolean;
     /** Design-variant API (packet 3.4); required by the vendored bundle. */
@@ -358,7 +436,23 @@ export interface ECadViewerElement extends HTMLElement {
     setActive(active: boolean): void;
     setViewportInsets(insets: EcadViewportInsets | null): void;
     resize?(): void;
+    /**
+     * Clears the inspected object and the element's highlight set, restoring
+     * the exact user layer state (contract C1).
+     */
     clearSelection(): void;
+    /**
+     * Apply one highlight-set request synchronously. Validates revision and
+     * document first, resolves each reference, mutates the retained set and
+     * emits exactly one `ecad-viewer:highlight-change` for an effective change.
+     */
+    updateHighlightedNets(request: HighlightRequest): HighlightResult;
+    /** Current highlight set, insertion order, duplicate-free. */
+    getHighlightedNets(): readonly ScopedNetRef[];
+    /** Fit the union of selected geometry; false when the set is empty. */
+    focusHighlightedNets(): boolean;
+    /** Visual emphasis toggle only; never edits the user visibility map. */
+    setHighlightDimming(enabled: boolean): boolean;
     /**
      * Routing summary for a board net, resolved by name first and net code
      * second. Null until the board has loaded or when the net is not on it.
@@ -448,6 +542,7 @@ declare global {
         "ecad-viewer:crossprobe:result": CustomEvent<CrossProbeResult>;
         "ecad-viewer:selection": CustomEvent<EcadSemanticSelectionDetail>;
         "ecad-viewer:crossprobe": CustomEvent<EcadSemanticSelectionDetail>;
+        "ecad-viewer:highlight-change": CustomEvent<HighlightChangeDetail>;
         "ecad-viewer:view-state-change": CustomEvent<void>;
         "ecad-viewer:comment-overlay-click": CustomEvent<EcadCommentOverlayHitDetail>;
         "ecad-viewer:document-comparison-ready": CustomEvent<EcadDocumentComparisonPreparation>;

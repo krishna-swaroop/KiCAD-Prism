@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo, useReducer } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Cpu, Box, FileText, CircuitBoard, Layers3, PackageCheck, MessageSquare, MessageSquarePlus, type LucideIcon } from "lucide-react";
@@ -34,6 +34,18 @@ import {
 } from "./design-variants/variant-selection";
 import { DesignVariantSelector } from "./design-variants/variant-selector";
 import { usePrismCrossProbe } from "@/hooks/use-prism-cross-probe";
+import { HighlightControls } from "./review-tools/highlight-controls";
+import {
+    createReviewHighlightState,
+    highlightRefKey,
+    highlightRequestForRef,
+    mapSelectionToHighlightRef,
+    noticeForMappingFailure,
+    noticeForViewerUnresolved,
+    reviewHighlightReducer,
+    REVIEW_HIGHLIGHT_ORIGIN,
+    type HighlightIntent,
+} from "@/lib/review-highlight-state";
 import {
     projectAssemblyState,
     physicalVisibility,
@@ -51,6 +63,9 @@ import type {
     EcadCommentOverlayHitDetail,
     EcadSemanticSelectionDetail,
     EcadViewportInsets,
+    HighlightChangeDetail,
+    HighlightContext,
+    ScopedNetRef,
 } from "@/types/ecad-viewer";
 import type { PrismSelection, PrismSelectionContext, PrismSemanticIndex } from "@/types/prism-selection";
 import type { Comment, CommentContext, CommentLocation, CommentsFile, MentionCandidate } from "@/types/comments";
@@ -384,6 +399,25 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
     const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
     const lastSelectionRef = useRef<EcadSemanticSelectionDetail | null>(null);
 
+    // The exact documents each viewer loads. Highlight references must name one
+    // of these; anything else is an unresolved gesture, never a guessed name.
+    const schematicRootSource = useMemo<ViewerBlobSource | null>(
+        () => (schematicContent ? { filename: "root.kicad_sch", content: schematicContent } : null),
+        [schematicContent],
+    );
+    const schematicSources = useMemo<ViewerBlobSource[]>(
+        () => (schematicRootSource ? [schematicRootSource, ...viewerSupportFiles, ...subsheets] : []),
+        [schematicRootSource, subsheets, viewerSupportFiles],
+    );
+    const pcbSources = useMemo<ViewerBlobSource[]>(
+        () => (pcbContent
+            ? [{ filename: "board.kicad_pcb", content: pcbContent }, ...viewerSupportFiles]
+            : []),
+        [pcbContent, viewerSupportFiles],
+    );
+    const schematicViewerKey = buildViewerKey("schematic", projectId, commit);
+    const pcbViewerKey = buildViewerKey("pcb", projectId, commit);
+
     const {
         selection: globalSelection,
         isProbing: selectionIsProbing,
@@ -407,6 +441,156 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         },
         [notifyClientReady],
     );
+
+    // ---- Multi-net highlights (contract C1) -------------------------------
+    //
+    // Prism owns the collection; each viewer projects the requests it can
+    // resolve. Requests carry the loaded revision and document verbatim, and
+    // the element's echo of a request is matched by origin/requestId so it is
+    // never re-applied as a new user action.
+    const [highlightState, dispatchHighlight] = useReducer(
+        reviewHighlightReducer,
+        undefined,
+        createReviewHighlightState,
+    );
+    const [highlightDimming, setHighlightDimming] = useState(false);
+    const highlightRequestSequence = useRef(0);
+    const nextHighlightRequestId = useCallback(() => {
+        highlightRequestSequence.current += 1;
+        return `prism-highlight-${highlightRequestSequence.current}`;
+    }, []);
+    const schematicDocumentKeys = useMemo(
+        () => schematicSources.map((source) => source.filename),
+        [schematicSources],
+    );
+    const pcbDocumentKeys = useMemo(
+        () => pcbSources.map((source) => source.filename),
+        [pcbSources],
+    );
+
+    // A different viewer key is a different revision; a variant or tab change
+    // leaves it untouched, so resolvable highlights survive those.
+    useEffect(() => {
+        dispatchHighlight({
+            type: "revision",
+            revisionKeys: { SCH: schematicViewerKey, PCB: pcbViewerKey },
+        });
+    }, [pcbViewerKey, schematicViewerKey]);
+
+    useEffect(() => {
+        const handleHighlightChange = (context: HighlightContext) => (event: Event) => {
+            const detail = (event as CustomEvent<HighlightChangeDetail>).detail;
+            dispatchHighlight({ type: "viewer-change", context, detail });
+        };
+        const schematicHandler = handleHighlightChange("SCH");
+        const pcbHandler = handleHighlightChange("PCB");
+        schematicViewerElement?.addEventListener("ecad-viewer:highlight-change", schematicHandler as EventListener);
+        pcbViewerElement?.addEventListener("ecad-viewer:highlight-change", pcbHandler as EventListener);
+        return () => {
+            schematicViewerElement?.removeEventListener("ecad-viewer:highlight-change", schematicHandler as EventListener);
+            pcbViewerElement?.removeEventListener("ecad-viewer:highlight-change", pcbHandler as EventListener);
+        };
+    }, [pcbViewerElement, schematicViewerElement]);
+
+    // Dimming is a board emphasis setting; re-apply it after a viewer remount
+    // or a late board load rather than trusting the element to remember.
+    useEffect(() => {
+        if (!pcbViewerElement) return;
+        void customElements.whenDefined("ecad-viewer").then(() => {
+            pcbViewerElement.setHighlightDimming?.(highlightDimming);
+        });
+    }, [highlightDimming, pcbReadyGeneration, pcbViewerElement]);
+
+    const applyHighlightIntent = useCallback(
+        (
+            context: HighlightContext,
+            detail: EcadSemanticSelectionDetail,
+            intent: HighlightIntent,
+            selection: PrismSelection | null,
+        ) => {
+            const revisionKey = context === "SCH" ? schematicViewerKey : pcbViewerKey;
+            const mapping = mapSelectionToHighlightRef({
+                context,
+                detail,
+                selection,
+                semanticIndex,
+                revisionKey,
+                documentKeys: context === "SCH" ? schematicDocumentKeys : pcbDocumentKeys,
+            });
+            if (!mapping.ok) {
+                dispatchHighlight({ type: "notice", notice: noticeForMappingFailure(mapping) });
+                return;
+            }
+            const viewer = context === "SCH" ? schematicViewerRef.current : pcbViewerRef.current;
+            if (!viewer || typeof viewer.updateHighlightedNets !== "function") {
+                dispatchHighlight({
+                    type: "notice",
+                    notice: {
+                        key: highlightRefKey(mapping.ref),
+                        label: mapping.ref.netKey,
+                        reason: "unsupported-context",
+                        message: "This viewer build does not expose the multi-net highlight API.",
+                        ref: mapping.ref,
+                    },
+                });
+                return;
+            }
+            const requestId = nextHighlightRequestId();
+            dispatchHighlight({ type: "intent", ref: mapping.ref, intent, requestId });
+            const result = viewer.updateHighlightedNets(
+                highlightRequestForRef(mapping.ref, intent, requestId),
+            );
+            for (const entry of result.unresolved) {
+                dispatchHighlight({ type: "notice", notice: noticeForViewerUnresolved(entry) });
+            }
+        },
+        [
+            nextHighlightRequestId,
+            pcbDocumentKeys,
+            pcbViewerKey,
+            schematicDocumentKeys,
+            schematicViewerKey,
+            semanticIndex,
+        ],
+    );
+
+    const removeHighlightedRef = useCallback((ref: ScopedNetRef) => {
+        const requestId = nextHighlightRequestId();
+        dispatchHighlight({ type: "remove", ref, requestId });
+        const viewer = ref.context === "SCH" ? schematicViewerRef.current : pcbViewerRef.current;
+        if (!viewer || typeof viewer.updateHighlightedNets !== "function") return;
+        viewer.updateHighlightedNets(highlightRequestForRef(ref, "remove", requestId));
+    }, [nextHighlightRequestId]);
+
+    const clearHighlights = useCallback(() => {
+        dispatchHighlight({ type: "clear" });
+        const targets: Array<[HighlightContext, ECadViewerElement | null, string, string | undefined]> = [
+            ["SCH", schematicViewerRef.current, schematicViewerKey, schematicSources[0]?.filename],
+            ["PCB", pcbViewerRef.current, pcbViewerKey, pcbSources[0]?.filename],
+        ];
+        for (const [, viewer, revisionKey, documentKey] of targets) {
+            if (!viewer || !documentKey || typeof viewer.updateHighlightedNets !== "function") continue;
+            viewer.updateHighlightedNets({
+                revisionKey,
+                documentKey,
+                operation: "clear",
+                nets: [],
+                origin: REVIEW_HIGHLIGHT_ORIGIN,
+                requestId: nextHighlightRequestId(),
+            });
+        }
+    }, [nextHighlightRequestId, pcbSources, pcbViewerKey, schematicSources, schematicViewerKey]);
+
+    const clearSelectionAndHighlights = useCallback(() => {
+        clearGlobalSelection();
+        clearHighlights();
+    }, [clearGlobalSelection, clearHighlights]);
+
+    const fitHighlightedNets = useCallback(() => {
+        const viewer = pcbViewerRef.current;
+        if (!viewer || typeof viewer.focusHighlightedNets !== "function") return;
+        viewer.focusHighlightedNets();
+    }, []);
 
     // The index supplies the catalog and overlays atomically; there is no
     // independent catalog fetch or revision-reconciliation state.
@@ -845,7 +1029,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
 
         const revisionKey = semanticIndex?.sourceRevisionKey ?? commit ?? undefined;
 
-        const handleSelection = (event: Event) => {
+        const handleSelection = (context: HighlightContext) => (event: Event) => {
             const detail = (event as CustomEvent<EcadSemanticSelectionDetail>).detail;
             lastSelectionRef.current = detail;
             const normalized = normalizeEcadSelection(detail, revisionKey);
@@ -855,7 +1039,15 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 // Empty selection: a click on empty canvas away from any item.
                 // Clear the current selection so it deselects and the selection
                 // side panel closes, rather than leaving the last item stuck.
-                clearGlobalSelection();
+                // clearSelection also clears the element highlight stores, so
+                // the host collection must clear with it.
+                clearSelectionAndHighlights();
+            }
+            // Shift-click carries additive intent observed at the gesture;
+            // plain clicks and double-click cross-probes keep their existing
+            // paths and never enter the highlight controller.
+            if (detail.operation === "add" || detail.operation === "toggle") {
+                applyHighlightIntent(context, detail, detail.operation, normalized);
             }
         };
 
@@ -866,18 +1058,21 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             if (normalized) crossProbeGlobal(normalized);
         };
 
-        schematicViewer?.addEventListener("ecad-viewer:selection", handleSelection as EventListener);
-        pcbViewer?.addEventListener("ecad-viewer:selection", handleSelection as EventListener);
+        const handleSchematicSelection = handleSelection("SCH");
+        const handlePcbSelection = handleSelection("PCB");
+
+        schematicViewer?.addEventListener("ecad-viewer:selection", handleSchematicSelection as EventListener);
+        pcbViewer?.addEventListener("ecad-viewer:selection", handlePcbSelection as EventListener);
         schematicViewer?.addEventListener("ecad-viewer:crossprobe", handleCrossProbe as EventListener);
         pcbViewer?.addEventListener("ecad-viewer:crossprobe", handleCrossProbe as EventListener);
 
         return () => {
-            schematicViewer?.removeEventListener("ecad-viewer:selection", handleSelection as EventListener);
-            pcbViewer?.removeEventListener("ecad-viewer:selection", handleSelection as EventListener);
+            schematicViewer?.removeEventListener("ecad-viewer:selection", handleSchematicSelection as EventListener);
+            pcbViewer?.removeEventListener("ecad-viewer:selection", handlePcbSelection as EventListener);
             schematicViewer?.removeEventListener("ecad-viewer:crossprobe", handleCrossProbe as EventListener);
             pcbViewer?.removeEventListener("ecad-viewer:crossprobe", handleCrossProbe as EventListener);
         };
-    }, [commit, clearGlobalSelection, crossProbeGlobal, pcbViewerElement, schematicViewerElement, selectGlobal, semanticIndex?.sourceRevisionKey]);
+    }, [applyHighlightIntent, clearSelectionAndHighlights, commit, crossProbeGlobal, pcbViewerElement, schematicViewerElement, selectGlobal, semanticIndex?.sourceRevisionKey]);
 
     useEffect(() => {
         const applySelection = (
@@ -1246,7 +1441,10 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             ) return;
 
             if (event.key === "Escape") {
-                clearGlobalSelection();
+                // Escape clears the inspected object and the highlight set
+                // together; the element stores clear on clearSelection, so the
+                // host collection clears with the same gesture.
+                clearSelectionAndHighlights();
                 setRightRailTab(null);
                 setCommentMode(false);
                 setShowCommentForm(false);
@@ -1322,24 +1520,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         // ecad-viewer still receives every key Prism does not handle.
         window.addEventListener("keydown", handleKeyboard, true);
         return () => window.removeEventListener("keydown", handleKeyboard, true);
-    }, [activeTab, canModifyComments, clearGlobalSelection]);
-
-    const schematicRootSource = useMemo<ViewerBlobSource | null>(
-        () => (schematicContent ? { filename: "root.kicad_sch", content: schematicContent } : null),
-        [schematicContent],
-    );
-    const schematicSources = useMemo<ViewerBlobSource[]>(
-        () => (schematicRootSource ? [schematicRootSource, ...viewerSupportFiles, ...subsheets] : []),
-        [schematicRootSource, subsheets, viewerSupportFiles],
-    );
-    const pcbSources = useMemo<ViewerBlobSource[]>(
-        () => (pcbContent
-            ? [{ filename: "board.kicad_pcb", content: pcbContent }, ...viewerSupportFiles]
-            : []),
-        [pcbContent, viewerSupportFiles],
-    );
-    const schematicViewerKey = buildViewerKey("schematic", projectId, commit);
-    const pcbViewerKey = buildViewerKey("pcb", projectId, commit);
+    }, [activeTab, canModifyComments, clearSelectionAndHighlights]);
 
     return (
         <div className="relative flex h-full min-h-0 flex-col bg-background">
@@ -1509,7 +1690,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 workspace={activeTab === "stackup" ? "stackup" : "pcb"}
                                 selection={globalSelection}
                                 onSelection={crossProbeGlobal}
-                                onClearSelection={clearGlobalSelection}
+                                onClearSelection={clearSelectionAndHighlights}
                                 hiddenComponents={dnpPlan.hidden}
                                 ambiguousComponents={dnpPlan.ambiguous}
                                 showDnp={showDnp}
@@ -1616,7 +1797,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 onOpenChange={(open) => {
                                     if (!open) setRightRailTab(null);
                                 }}
-                                onClear={clearGlobalSelection}
+                                onClear={clearSelectionAndHighlights}
                                 onImportComponent={globalSelection.kind === "net" ? undefined : handleImportSelectedComponent}
                                 canImportComponent={canImportLibraryComponent}
                                 importingComponent={componentImportPending}
@@ -1632,6 +1813,24 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                             </div>
                         )}
                     </ViewerOverlayRail>
+
+                    {/* Highlight chips and controls belong to the review UI,
+                        not to one viewer: the same bar serves PCB and SCH. */}
+                    {activeViewContext
+                        && (highlightState.refs.length > 0 || highlightState.notices.length > 0) && (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center px-3">
+                            <HighlightControls
+                                refs={highlightState.refs}
+                                notices={highlightState.notices}
+                                dimming={highlightDimming}
+                                onRemove={removeHighlightedRef}
+                                onClear={clearHighlights}
+                                onToggleDimming={setHighlightDimming}
+                                onFit={fitHighlightedNets}
+                                canFit={highlightState.refs.some((ref) => ref.context === "PCB")}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 

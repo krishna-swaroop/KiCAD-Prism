@@ -340,7 +340,7 @@ export function crossProbeRequestForSelection(
 }
 
 /** Build an ecad-viewer project_path hint: `filename:sheet_path`. */
-function schematicPageHint(
+export function schematicPageHint(
     reference: { page?: string; sheetInstancePath?: string } | undefined,
 ): string | undefined {
     if (!reference) return undefined;
