@@ -29,6 +29,7 @@ from app.services.workspace_migrations import m019_release_studio_project_signof
 from app.services.workspace_migrations import m020_project_file_anchor
 from app.services.workspace_migrations import m021_project_metadata
 from app.services.workspace_migrations import m022_project_metadata_repository
+from app.services.trackers import migrations as tracker_migrations
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (20, "project_file_anchor", m020_project_file_anchor.migrate),
     (21, "project_metadata", m021_project_metadata.migrate),
     (22, "project_metadata_repository", m022_project_metadata_repository.migrate),
+    (23, tracker_migrations.WORKSPACE_MIGRATION_NAME, tracker_migrations.migrate),
 )
 
 
