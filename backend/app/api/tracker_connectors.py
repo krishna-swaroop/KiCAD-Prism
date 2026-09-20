@@ -95,6 +95,17 @@ async def create_connector(
         raise _http_error(exc) from exc
 
 
+@router.get("/{connector_id}/health")
+async def connector_health(
+    connector_id: str,
+    _admin: AuthenticatedUser = Depends(require_admin),
+) -> dict[str, Any]:
+    try:
+        return service.health(connector_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
 @router.get("/{connector_id}")
 async def get_connector(
     connector_id: str,

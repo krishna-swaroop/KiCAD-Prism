@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as TrackerSurface from "./index";
 import {
     TrackerApiError,
     TRACKER_ROUTES,
@@ -12,18 +13,23 @@ import {
     getConnector,
     getConnectorHealth,
     getProjectTracker,
+    LINK_STATES,
+    listConnectors,
     listIdentities,
+    pauseConnector,
     projectionFromComment,
     promoteComment,
-    retryThreadSync,
-    stripTrackerSecrets,
-    trackerUiMocks,
-    updateProjectTracker,
-} from "@/lib/trackers-client";
-import {
     PROVIDER_ERROR_CLASSES,
-    LINK_STATES,
-} from "@/types/trackers";
+    resumeConnector,
+    retryThreadSync,
+    revokeConnector,
+    stripTrackerSecrets,
+    testConnector,
+    trackerUiMocks,
+    unlinkIdentity,
+    updateConnector,
+    updateProjectTracker,
+} from "./index";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../");
 const examples = JSON.parse(
@@ -54,12 +60,40 @@ afterEach(() => {
 });
 
 describe("frozen DTOs", () => {
+    it("exposes the public tracker surface from the feature index", () => {
+        expect(TrackerSurface.listConnectors).toBeTypeOf("function");
+        expect(TrackerSurface.pauseConnector).toBeTypeOf("function");
+        expect(TrackerSurface.resumeConnector).toBeTypeOf("function");
+        expect(TrackerSurface.revokeConnector).toBeTypeOf("function");
+        expect(TrackerSurface.testConnector).toBeTypeOf("function");
+        expect(TrackerSurface.updateConnector).toBeTypeOf("function");
+        expect(TrackerSurface.unlinkIdentity).toBeTypeOf("function");
+        expect(TrackerSurface.LINK_STATES).toEqual(["linked", "inaccessible", "deleted", "transferred"]);
+        expect(TrackerSurface.PROVIDER_ERROR_CLASSES.length).toBeGreaterThan(0);
+        expect(TrackerSurface.IDENTITY_STATUSES).toContain("active");
+        expect(TrackerSurface.CONTAINER_KINDS).toContain("repo");
+        expect(TrackerSurface.VISIBILITIES).toContain("private");
+        expect(TrackerSurface.TRACKER_ERROR_CODES).toContain("admin_required");
+    });
+
     it("matches TR-00/TR-09 tracker examples", () => {
         const tracker = examples.tracker as Record<string, Record<string, unknown>>;
         expect(trackerUiMocks.destination).toMatchObject(tracker.Destination);
         expect(trackerUiMocks.health).toEqual(tracker.ConnectorHealth);
         expect(trackerUiMocks.projectSettings).toEqual(tracker.ProjectTrackerSettings);
         expect(trackerUiMocks.identity).toEqual(tracker.UserIdentity);
+        expect(trackerUiMocks.connector).toEqual(tracker.TrackerConnector);
+        expect(tracker.AdminConnectorRoutes).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    method: "GET",
+                    path: "/api/admin/trackers/connectors/",
+                    auth: "admin",
+                }),
+            ]),
+        );
+        expect(TRACKER_ROUTES.connectors).toBe("/api/admin/trackers/connectors");
+        expect(TRACKER_ROUTES.connector("cn_gh1")).toBe("/api/admin/trackers/connectors/cn_gh1");
         expect(trackerUiMocks.linkedProjection).toMatchObject(
             examples.comments.Comment.tracker as Record<string, unknown>,
         );
@@ -158,10 +192,13 @@ describe("trackers-client", () => {
         expect(created.credentialConfigured).toBe(true);
         expect(created).not.toHaveProperty("credentials");
         const [, init] = fetchMock.mock.calls[0];
+        expect(fetchMock.mock.calls[0][0]).toBe(TRACKER_ROUTES.connectors);
         expect(JSON.parse(String(init?.body))).toMatchObject({
             provider: "github",
             credentials: { installationMaterial: "unit-test-app-material" },
         });
+        expect(created.bot).toEqual({ id: "199001", login: "prism[bot]" });
+        expect(created).not.toHaveProperty("botForgeUserId");
     });
 
     it("preserves publication and conflict error state", async () => {
@@ -230,6 +267,41 @@ describe("trackers-client", () => {
         const connector = await getConnector("cn_gh1");
         expect(connector.paused).toBe(true);
         expect(connector.pausedReason).toBe("auth");
+        expect(connector.bot.login).toBe("prism[bot]");
         expect(connector).not.toHaveProperty("credential_envelope");
+    });
+
+    it("calls admin lifecycle routes from the frozen table", async () => {
+        const fetchMock = stubFetch((url) => {
+            if (url.endsWith("/health")) {
+                return jsonResponse(200, trackerUiMocks.health);
+            }
+            if (url.endsWith("/test")) {
+                return jsonResponse(200, {
+                    ...trackerUiMocks.connector,
+                    test: {
+                        ok: true,
+                        writesEnabled: true,
+                        pausedReason: null,
+                        visibility: "private",
+                        permissions: { issues: "write" },
+                        bot: { id: "199001", login: "prism[bot]" },
+                    },
+                });
+            }
+            return jsonResponse(200, trackerUiMocks.connector);
+        });
+        await listConnectors();
+        await updateConnector("cn_gh1", { displayName: "GitHub.com" });
+        await pauseConnector("cn_gh1");
+        await resumeConnector("cn_gh1");
+        await testConnector("cn_gh1");
+        await revokeConnector("cn_gh1");
+        await unlinkIdentity("cn_gh1");
+        const paths = fetchMock.mock.calls.map((call) => String(call[0]));
+        expect(paths[0]).toBe("/api/admin/trackers/connectors");
+        expect(paths.some((path) => path.endsWith("/pause"))).toBe(true);
+        expect(paths.some((path) => path.endsWith("/test"))).toBe(true);
+        expect(paths.every((path) => !path.startsWith("/api/trackers/connectors"))).toBe(true);
     });
 });
