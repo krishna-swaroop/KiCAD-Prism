@@ -24,7 +24,7 @@ from app.services.trackers.composition import (  # noqa: E402
     initialize_tracker_composition,
     reset_tracker_runtime,
 )
-from app.services.trackers.create_executor import unmount_create_executor  # noqa: E402
+from app.services.trackers.create_executor import set_connect_factory, unmount_create_executor  # noqa: E402
 from app.services.trackers.contracts import RemoteChange, UpdateCursor  # noqa: E402
 from app.services.trackers.inbox_store import InboxStore, apply_schema as apply_inbox_schema  # noqa: E402
 from app.services.trackers.jobs import run_tracker_dispatch_job, run_tracker_poll_job, run_tracker_sweep_job  # noqa: E402
@@ -39,7 +39,6 @@ from app.services.trackers.scheduler import (  # noqa: E402
     mount_hints_applier,
     reset_scheduler_throttle,
 )
-from app.services.trackers.errors import ProviderError  # noqa: E402
 from app.services.trackers.store import TrackerStore  # noqa: E402
 from test_tracker_tr_28 import (  # noqa: E402
     BOT_ID,
@@ -112,8 +111,10 @@ class CompositionUnitTests(unittest.TestCase):
         self.assertTrue(tracker_scheduler.hint_dispatch_enabled())
         self.assertTrue(has_outbound_executor())
         self.assertIsNotNone(get_tracker_runtime())
-        load_builtin_job_handlers()
         kinds = registered_job_kinds()
+        if DISPATCH_KIND not in kinds:
+            load_builtin_job_handlers()
+            kinds = registered_job_kinds()
         self.assertIn(DISPATCH_KIND, kinds)
         self.assertIn(POLL_KIND, kinds)
         self.assertIn(SWEEP_KIND, kinds)
@@ -172,22 +173,29 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
         migrate_workspace_tracker_tables(self.conn)
         apply_op_schema(self.conn)
         apply_inbox_schema(self.conn)
+        self.conn.execute("CREATE SCHEMA IF NOT EXISTS workspace")
+        self.conn.execute("SET search_path TO workspace, public")
+        migrate_workspace_tracker_tables(self.conn)
+        self.conn.execute(f'SET search_path TO "{self.schema}", public')
         self.conn.commit()
         self.store = TrackerStore(self.conn)
         self.ops = OpStore(self.conn)
         self.inbox = InboxStore(self.conn)
+        set_connect_factory(self._factory)
+        self.addCleanup(lambda: set_connect_factory(None))
 
     def _cleanup(self) -> None:
         try:
+            self.conn.rollback()
             self.conn.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
+            self.conn.execute("DROP SCHEMA IF EXISTS workspace CASCADE")
             self.conn.commit()
         finally:
             self.conn.close()
 
-    @staticmethod
     @contextmanager
-    def _factory(conn):
-        yield conn
+    def _factory(self):
+        yield self.conn
 
     def _seed_destination(self, *, paused: bool = False, with_credentials: bool = False) -> None:
         self.store.upsert_connector(
@@ -212,7 +220,77 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
             remote_container_id=CONTAINER,
             generation=1,
         )
+        self._mirror_project_tracker_to_workspace()
         self.conn.commit()
+
+    def _mirror_project_tracker_to_workspace(self) -> None:
+        connector = self.conn.execute(
+            "SELECT * FROM tracker_connectors WHERE id = %s",
+            (CONNECTOR,),
+        ).fetchone()
+        if connector is not None:
+            self.conn.execute(
+                """
+                INSERT INTO workspace.tracker_connectors (
+                    id, provider, instance_kind, bot_forge_user_id, bot_login,
+                    credential_envelope, paused, paused_reason
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    provider = EXCLUDED.provider,
+                    instance_kind = EXCLUDED.instance_kind,
+                    bot_forge_user_id = EXCLUDED.bot_forge_user_id,
+                    bot_login = EXCLUDED.bot_login,
+                    credential_envelope = EXCLUDED.credential_envelope,
+                    paused = EXCLUDED.paused,
+                    paused_reason = EXCLUDED.paused_reason
+                """,
+                (
+                    connector["id"],
+                    connector["provider"],
+                    connector["instance_kind"],
+                    connector.get("bot_forge_user_id"),
+                    connector.get("bot_login"),
+                    connector.get("credential_envelope"),
+                    connector.get("paused", False),
+                    connector.get("paused_reason"),
+                ),
+            )
+        row = self.conn.execute(
+            """
+            SELECT id, project_id, connector_id, container_kind, container_path,
+                   remote_container_id, destination_generation, visibility
+            FROM project_trackers
+            WHERE id = %s
+            """,
+            ("pt_tr62",),
+        ).fetchone()
+        if row is None:
+            return
+        self.conn.execute(
+            """
+            INSERT INTO workspace.project_trackers (
+                id, project_id, connector_id, container_kind, container_path,
+                remote_container_id, destination_generation, visibility
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (project_id) DO UPDATE SET
+                connector_id = EXCLUDED.connector_id,
+                container_kind = EXCLUDED.container_kind,
+                container_path = EXCLUDED.container_path,
+                remote_container_id = EXCLUDED.remote_container_id,
+                destination_generation = EXCLUDED.destination_generation,
+                visibility = EXCLUDED.visibility
+            """,
+            (
+                row["id"],
+                row["project_id"],
+                row["connector_id"],
+                row["container_kind"],
+                row["container_path"],
+                row["remote_container_id"],
+                row["destination_generation"],
+                row["visibility"],
+            ),
+        )
 
     def test_poll_job_enqueues_and_applies_hints(self) -> None:
         self._seed_destination()
@@ -234,7 +312,7 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
         bundle.bot_login = BOT_LOGIN
         bundle.destination = mock.Mock(return_value=mock.Mock())
         fetcher = mock.Mock()
-        fetcher.fetch_issue.return_value = _remote_issue()
+        fetcher.fetch_issue.return_value = _remote_issue(body="issue body")
         registry = mock.Mock()
         registry.bundle_for_connector.return_value = bundle
         registry.inbound_fetcher.return_value = fetcher
@@ -246,7 +324,7 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
                 {
                     "connectorId": CONNECTOR,
                     "remoteContainerId": CONTAINER,
-                    "_connect": self._factory(self.conn),
+                    "_connect": self._factory,
                 }
             )
             result = run_tracker_poll_job(context)
@@ -279,7 +357,7 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
             {
                 "connectorId": CONNECTOR,
                 "remoteContainerId": CONTAINER,
-                "_connect": self._factory(self.conn),
+                "_connect": self._factory,
             }
         )
         result = run_tracker_sweep_job(context)
@@ -287,28 +365,37 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
 
     def test_dispatch_without_credentials_surfaces_provider_error(self) -> None:
         self._seed_destination(with_credentials=False)
-        self.inbox.enqueue(
+        self.conn.execute(
+            "INSERT INTO comments(id, project_id, author, content) VALUES (%s,%s,%s,%s)",
+            (COMMENT_ID, "proj_tr62", "Priya", "needs forge"),
+        )
+        self.store.insert_thread(
+            thread_id="thr_tr62_dispatch",
+            comment_id=COMMENT_ID,
+            project_tracker_id="pt_tr62",
+            destination_generation=1,
             connector_id=CONNECTOR,
-            delivery_id="del_tr62",
-            hints=[
-                {
-                    "objectKind": "issue",
-                    "remoteContainerId": CONTAINER,
-                    "externalId": ISSUE,
-                    "event": "edited",
-                }
-            ],
+            remote_container_id=CONTAINER,
+            external_id="pending",
+        )
+        self.ops.insert(
+            op_id="op_tr62",
+            tracked_thread_id="thr_tr62_dispatch",
+            op="create_issue",
+            destination_generation=1,
         )
         self.conn.commit()
         context = FakeContext(
             {
                 "connectorId": CONNECTOR,
                 "remoteContainerId": CONTAINER,
-                "_connect": self._factory(self.conn),
+                "_connect": self._factory,
             }
         )
-        with self.assertRaises(ProviderError):
-            run_tracker_dispatch_job(context)
+        result = run_tracker_dispatch_job(context)
+        self.assertEqual(result.message, "Dispatched")
+        row = self.ops.get("op_tr62")
+        self.assertEqual(row["last_error"]["class"], "auth_lost")
 
     def test_dispatch_defers_hints_when_create_executor_unmounted(self) -> None:
         unmount_create_executor()
@@ -330,7 +417,7 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
             {
                 "connectorId": CONNECTOR,
                 "remoteContainerId": CONTAINER,
-                "_connect": self._factory(self.conn),
+                "_connect": self._factory,
             }
         )
         with self.assertRaises(RetryableJobError) as caught:
@@ -343,7 +430,7 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
             {
                 "connectorId": CONNECTOR,
                 "remoteContainerId": CONTAINER,
-                "_connect": self._factory(self.conn),
+                "_connect": self._factory,
             }
         )
         result = run_tracker_poll_job(context)

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConnectorHealthPanel, formatIsoDuration, formatIsoTimestamp, healthIsRateLimited } from "./connector-health";
@@ -118,7 +118,8 @@ describe("ConnectorSettings (F9.settings_states / C8)", () => {
             expect(screen.getByLabelText(/display name/i)).toHaveValue("GitHub.com");
         });
         expect(screen.getByLabelText(/private key/i)).toHaveValue("");
-        expect(screen.getByText(/leave fields blank/i)).toBeTruthy();
+        const appCredentials = screen.getByRole("group", { name: /GitHub App installation/i });
+        expect(within(appCredentials).getByText(/leave fields blank/i)).toBeTruthy();
         expect(screen.queryByDisplayValue("leak")).toBeNull();
         expect(JSON.stringify(document.body.textContent)).not.toMatch(/credential_envelope|gho_/);
 

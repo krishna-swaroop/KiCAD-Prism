@@ -131,11 +131,12 @@ def _apply_destination_hints(conn: Any, connector_id: str, container_id: str) ->
     if not connector_id or not container_id:
         return 0
     try:
-        return _runtime().apply_pending_hints(
-            conn,
-            connector_id=connector_id,
-            remote_container_id=container_id,
-        )
+        with conn.transaction():
+            return _runtime().apply_pending_hints(
+                conn,
+                connector_id=connector_id,
+                remote_container_id=container_id,
+            )
     except Exception:
         return 0
 
