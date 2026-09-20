@@ -14,7 +14,7 @@ nothing.
 import asyncio
 import os
 import re
-from typing import Callable, List, Optional, TypeVar
+from typing import Callable, List, Mapping, Optional, Tuple, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -46,6 +46,7 @@ from app.services.comments_store_service import (
 from app.services.postgres_database import database
 from app.core.roles import Role
 from app.services.trackers.mentions import (
+    MentionCandidate,
     build_candidate_indexes,
     enrich_stored_mentions,
     list_mention_candidates as query_mention_candidates,
@@ -278,23 +279,37 @@ def _authored(comment: dict) -> AuthoredObject:
     )
 
 
-def _mention_context():
-    def read():
-        with database.connection() as conn:
-            conn.execute("SET search_path TO workspace, public")
-            candidates = query_mention_candidates(conn)
-            by_id, email_index = build_candidate_indexes(candidates, conn=conn)
-            return candidates, by_id, email_index
+MentionIndexes = Tuple[Mapping[str, MentionCandidate], Mapping[str, tuple[str, str]]]
+_EMPTY_MENTION_INDEXES: MentionIndexes = ({}, {})
 
-    return read()
+
+def _build_mention_indexes(conn) -> MentionIndexes:
+    """Build mention lookup indexes from workspace tables on ``conn``."""
+    conn.execute("SET search_path TO workspace, public")
+    candidates = query_mention_candidates(conn)
+    return build_candidate_indexes(candidates, conn=conn)
+
+
+def _load_mention_indexes() -> MentionIndexes:
+    """Load mention indexes once via the store connection (test-injectable)."""
+    with comments_store._connect() as conn:
+        try:
+            return _build_mention_indexes(conn)
+        except Exception as exc:
+            from psycopg.errors import InvalidCatalogName, UndefinedTable
+
+            if isinstance(exc, (UndefinedTable, InvalidCatalogName)):
+                return _EMPTY_MENTION_INDEXES
+            raise
 
 
 def _normalize_comment_mentions(
     *,
     content: str,
     raw_mentions: Optional[List],
+    mention_indexes: MentionIndexes,
 ) -> tuple[str, List[str]]:
-    candidates, by_id, email_index = _mention_context()
+    by_id, email_index = mention_indexes
     normalized_content, mentions = normalize_incoming_mentions(
         content=content,
         raw_mentions=raw_mentions,
@@ -304,8 +319,8 @@ def _normalize_comment_mentions(
     return normalized_content, storage_user_ids(mentions)
 
 
-def _wire_comment_mentions(comment: dict) -> dict:
-    _, by_id, email_index = _mention_context()
+def _wire_comment_mentions(comment: dict, mention_indexes: MentionIndexes) -> dict:
+    by_id, email_index = mention_indexes
     comment["mentions"] = enrich_stored_mentions(
         comment.get("mentions"),
         candidates_by_id=by_id,
@@ -314,9 +329,15 @@ def _wire_comment_mentions(comment: dict) -> dict:
     return comment
 
 
-def _with_permissions(comment: dict, actor: ActorIdentity, *, project_id: str | None = None) -> dict:
+def _with_permissions(
+    comment: dict,
+    actor: ActorIdentity,
+    *,
+    project_id: str | None = None,
+    mention_indexes: MentionIndexes,
+) -> dict:
     """Attach the caller's capabilities so the UI never re-derives policy."""
-    _wire_comment_mentions(comment)
+    _wire_comment_mentions(comment, mention_indexes)
     linked = str((comment.get("tracker") or {}).get("linkState") or "") == "linked"
     promote_min_role = _promote_min_role(project_id) if project_id else "designer"
     comment["permissions"] = comment_permissions.capabilities(
@@ -459,7 +480,7 @@ async def list_mention_candidates(
     """
     def read() -> List[MentionCandidate]:
         get_project_for_role_or_404(project_id, user.role)
-        with database.connection() as conn:
+        with comments_store._connect() as conn:
             conn.execute("SET search_path TO workspace, public")
             return [MentionCandidate(**candidate.to_wire()) for candidate in query_mention_candidates(conn)]
 
@@ -476,10 +497,14 @@ async def get_comments(project_id: str, user: AuthenticatedUser = Depends(requir
         listing = comments_store.get_comments_file(project.id, project.path)
         actor = _read_actor(user)
         comments = listing["comments"]
+        mention_indexes = _load_mention_indexes()
         if actor is not None:
-            comments = [_with_permissions(c, actor, project_id=project.id) for c in comments]
+            comments = [
+                _with_permissions(c, actor, project_id=project.id, mention_indexes=mention_indexes)
+                for c in comments
+            ]
         else:
-            comments = [_wire_comment_mentions(c) for c in comments]
+            comments = [_wire_comment_mentions(c, mention_indexes) for c in comments]
         listing["comments"] = comments
         return listing
 
@@ -518,10 +543,14 @@ async def get_comparison_comments(
         )
         actor = _read_actor(user)
         comments = listing["comments"]
+        mention_indexes = _load_mention_indexes()
         if actor is not None:
-            comments = [_with_permissions(c, actor, project_id=project.id) for c in comments]
+            comments = [
+                _with_permissions(c, actor, project_id=project.id, mention_indexes=mention_indexes)
+                for c in comments
+            ]
         else:
-            comments = [_wire_comment_mentions(c) for c in comments]
+            comments = [_wire_comment_mentions(c, mention_indexes) for c in comments]
         listing["comments"] = comments
         return listing
 
@@ -554,9 +583,11 @@ async def create_comparison_comment(
         project = get_project_for_role_or_404(project_id, user.role)
         actor = _actor(user)
         comment_permissions.authorize(CommentAction.CREATE, actor)
+        mention_indexes = _load_mention_indexes()
         normalized_content, mention_ids = _normalize_comment_mentions(
             content=content,
             raw_mentions=raw_mentions,
+            mention_indexes=mention_indexes,
         )
         anchor = resolve_comparison_anchor(
             project,
@@ -595,7 +626,7 @@ async def create_comparison_comment(
             project_relative_path=anchor.project_relative_path,
             promotion_actor=_promotion_actor(actor),
         )
-        return _with_permissions(created, actor, project_id=project.id)
+        return _with_permissions(created, actor, project_id=project.id, mention_indexes=mention_indexes)
 
     return await _run_mutation(write)
 
@@ -621,9 +652,11 @@ async def create_comment(
         project = get_project_for_role_or_404(project_id, user.role)
         actor = _actor(user)
         comment_permissions.authorize(CommentAction.CREATE, actor)
+        mention_indexes = _load_mention_indexes()
         normalized_content, mention_ids = _normalize_comment_mentions(
             content=content,
             raw_mentions=raw_mentions,
+            mention_indexes=mention_indexes,
         )
         revision = request.revision.model_dump() if request.revision is not None else None
         anchor = resolve_canvas_anchor(
@@ -652,7 +685,7 @@ async def create_comment(
             project_relative_path=anchor.project_relative_path,
             promotion_actor=_promotion_actor(actor),
         )
-        return _with_permissions(created, actor, project_id=project.id)
+        return _with_permissions(created, actor, project_id=project.id, mention_indexes=mention_indexes)
 
     return await _run_mutation(write)
 
@@ -686,6 +719,7 @@ async def update_comment(
         current = comments_store.get_comment(project.id, project.path, comment_id)
         if current is None:
             return None
+        mention_indexes = _load_mention_indexes()
         expected = request.expectedRevision
         if has_edit:
             comment_permissions.authorize(CommentAction.EDIT, actor, target=_authored(current))
@@ -701,6 +735,7 @@ async def update_comment(
                 normalized_content, mention_ids = _normalize_comment_mentions(
                     content=base_content,
                     raw_mentions=edit_kwargs.get("mentions"),
+                    mention_indexes=mention_indexes,
                 )
                 edit_kwargs["content"] = normalized_content
                 edit_kwargs["mentions"] = mention_ids
@@ -713,7 +748,11 @@ async def update_comment(
             updated = comments_store.update_comment_status(
                 project.id, project.path, comment_id, status, editor=_editor(actor), expected_revision=expected,
             )
-        return _with_permissions(updated, actor, project_id=project.id) if updated else None
+        return (
+            _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
+            if updated
+            else None
+        )
 
     updated_comment = await _run_mutation(write)
     if isinstance(updated_comment, JSONResponse):
@@ -761,7 +800,12 @@ async def pin_comment(
             project_relative_path=anchor.project_relative_path,
             expected_revision=request.expectedRevision,
         )
-        return _with_permissions(updated, actor, project_id=project.id) if updated else None
+        mention_indexes = _load_mention_indexes()
+        return (
+            _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
+            if updated
+            else None
+        )
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
@@ -796,7 +840,12 @@ async def promote_comment(
         updated = comments_store.promote_comment(
             project.id, project.path, comment_id, _promotion_actor(actor),
         )
-        return _with_permissions(updated, actor, project_id=project.id) if updated else None
+        mention_indexes = _load_mention_indexes()
+        return (
+            _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
+            if updated
+            else None
+        )
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
@@ -839,7 +888,11 @@ async def add_reply(
         reply["permissions"] = comment_permissions.capabilities(
             actor, _authored(reply), linked=linked, promote_min_role=_promote_min_role(project.id),
         )
-        return {"comment": _with_permissions(comment, actor, project_id=project.id), "reply": reply}
+        mention_indexes = _load_mention_indexes()
+        return {
+            "comment": _with_permissions(comment, actor, project_id=project.id, mention_indexes=mention_indexes),
+            "reply": reply,
+        }
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
@@ -883,7 +936,12 @@ async def update_reply(
             editor=_editor(actor),
             expected_revision=request.expectedRevision,
         )
-        return _with_permissions(updated, actor, project_id=project.id) if updated else None
+        mention_indexes = _load_mention_indexes()
+        return (
+            _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
+            if updated
+            else None
+        )
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
@@ -922,7 +980,12 @@ async def share_reply_to_tracker(
             )
         except PublicationDenied as exc:
             raise comment_permissions.CommentPermissionError(exc.code, str(exc)) from exc
-        return _with_permissions(updated, actor, project_id=project.id) if updated else None
+        mention_indexes = _load_mention_indexes()
+        return (
+            _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
+            if updated
+            else None
+        )
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
@@ -964,7 +1027,12 @@ async def delete_reply(
             editor=_editor(actor),
             expected_revision=expectedRevision,
         )
-        return _with_permissions(updated, actor, project_id=project.id) if updated else None
+        mention_indexes = _load_mention_indexes()
+        return (
+            _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
+            if updated
+            else None
+        )
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):

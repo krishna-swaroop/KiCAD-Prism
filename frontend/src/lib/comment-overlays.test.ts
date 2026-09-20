@@ -75,7 +75,11 @@ describe("normalizeComment", () => {
     });
 
     it("keeps explicit values", () => {
-        const explicit = comment("c1", "PCB", {}, { commentClass: "task", severity: "major", mentions: ["bob"] });
+        const explicit = comment("c1", "PCB", {}, {
+            commentClass: "task",
+            severity: "major",
+            mentions: [{ userId: "bob", displayName: "Bob" }],
+        });
         expect(normalizeComment(explicit)).toEqual(explicit);
     });
 });

@@ -495,7 +495,7 @@ export function DesignComparisonWorkspace({
     };
 
     useEffect(() => {
-        if (!deepLinkCommentId || !deepLinkScene || jobStatus !== "ready" || !result) {
+        if (!deepLinkCommentId || !deepLinkScene || jobStatus?.status !== "completed" || !result) {
             return;
         }
         if (appliedDeepLinkSceneRef.current === deepLinkScene) return;
