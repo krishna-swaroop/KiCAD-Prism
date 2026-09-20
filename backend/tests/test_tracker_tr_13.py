@@ -21,7 +21,10 @@ from app.services.trackers.inbox_store import (  # noqa: E402
     StaleHintFence,
     apply_schema as apply_inbox_schema,
 )
-from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
+from app.services.trackers.migrations import (  # noqa: E402
+    WORKSPACE_WEBHOOK_OAUTH_VERSION,
+    migrate_workspace_tracker_tables,
+)
 from app.services.trackers.op_store import (  # noqa: E402
     EXECUTE_DISPATCH,
     OP_KINDS,
@@ -74,7 +77,7 @@ class ContractSnapshotTests(unittest.TestCase):
         self.assertEqual(list(CHECKPOINT_KINDS), ["poll", "sweep", "recovery"])
         versions = [version for version, _, _ in WS_MIGRATIONS]
         self.assertIn(23, versions)
-        self.assertEqual(max(versions), 24)
+        self.assertEqual(max(versions), WORKSPACE_WEBHOOK_OAUTH_VERSION)
 
     def test_sanitize_error_redacts_tokens_and_caps_length(self) -> None:
         payload = sanitize_error(
