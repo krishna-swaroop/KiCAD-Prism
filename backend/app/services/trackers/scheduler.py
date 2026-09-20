@@ -54,6 +54,12 @@ def hints_applier_mounted() -> bool:
     return _hints_applier_mounted
 
 
+def hint_dispatch_enabled() -> bool:
+    """TR-26 enables dispatch for hint-only destinations; until then retain pending hints."""
+
+    return False
+
+
 def reset_scheduler_throttle() -> None:
     """Test helper: allow the next scheduler pass without waiting."""
 
@@ -171,7 +177,7 @@ def schedule_due_tracker_jobs(
         destinations = _due_dispatch_destinations(conn, comments_schema, workspace_schema)
         hints = (
             _due_hint_destinations(conn, comments_schema, workspace_schema)
-            if hints_applier_mounted()
+            if hint_dispatch_enabled() and hints_applier_mounted()
             else []
         )
         polls = _due_checkpoint_destinations(conn, comments_schema, workspace_schema, "poll")

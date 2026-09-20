@@ -518,7 +518,8 @@ class RecoveryPostgresTests(unittest.TestCase):
         )
         self.conn.commit()
 
-    def test_hint_only_destinations_enqueue_when_applier_mounted(self) -> None:
+    def test_hint_only_destinations_skip_dispatch_until_tr_26(self) -> None:
+        mount_hints_applier(True)
         self.store.upsert_connector(connector_id=DEST.connectorId, provider="github", instance_kind="github.com")
         self.conn.commit()
         self.inbox.enqueue(
@@ -534,8 +535,7 @@ class RecoveryPostgresTests(unittest.TestCase):
             workspace_schema=self.schema,
             force=True,
         )
-        self.assertEqual(len(scheduled), 1)
-        self.assertEqual(scheduled[0]["kind"], DISPATCH_KIND)
+        self.assertEqual(scheduled, [])
 
     def test_incomplete_scan_leaves_op_recovering(self) -> None:
         self._seed()

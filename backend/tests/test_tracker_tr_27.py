@@ -198,14 +198,14 @@ class GitHubWebhookPostgresTests(unittest.TestCase):
         headers = self._headers(body, delivery="durability-1")
 
         class _Request:
-            async def body(self) -> bytes:
-                return body
+            def __init__(self, raw: bytes, hdrs: dict[str, str]) -> None:
+                self._raw = raw
+                self.headers = hdrs
 
-            @property
-            def headers(self) -> dict[str, str]:
-                return headers
+            async def stream(self):
+                yield self._raw
 
-        response = run(webhooks_api.github_webhook("cn_gh1", _Request()))
+        response = run(webhooks_api.github_webhook("cn_gh1", _Request(body, headers)))
         self.assertEqual(response.status_code, 200)
         row = self.conn.execute(
             "SELECT delivery_id FROM remote_deliveries WHERE connector_id = 'cn_gh1'"
@@ -226,7 +226,7 @@ class GitHubWebhookPostgresTests(unittest.TestCase):
         self.assertEqual(int(hints["n"]), 0)
 
     def test_oversize_payload_rejected(self) -> None:
-        body = b"x" * (256 * 1024 + 1)
+        body = b"x" * (1024 * 1024 + 1)
         headers = self._headers(b"{}", delivery="big-1")
         with self.assertRaises(WebhookRejected):
             self.service.ingest("cn_gh1", headers, body)
@@ -263,22 +263,22 @@ class GitHubWebhookPostgresTests(unittest.TestCase):
         body = self._payload()
 
         class _Request:
-            async def body(self) -> bytes:
-                return body
+            def __init__(self, raw: bytes, hdrs: dict[str, str]) -> None:
+                self._raw = raw
+                self.headers = hdrs
 
-            @property
-            def headers(self) -> dict[str, str]:
-                return self._headers(body, signature="sha256=bad")
-
-            def _headers(self, raw: bytes, signature: str) -> dict[str, str]:
-                return {
-                    "X-GitHub-Delivery": "bad-1",
-                    "X-GitHub-Event": "issues",
-                    "X-Hub-Signature-256": signature,
-                }
+            async def stream(self):
+                yield self._raw
 
         with self.assertRaises(HTTPException) as caught:
-            run(webhooks_api.github_webhook("cn_gh1", _Request()))
+            run(webhooks_api.github_webhook(
+                "cn_gh1",
+                _Request(body, {
+                    "X-GitHub-Delivery": "bad-1",
+                    "X-GitHub-Event": "issues",
+                    "X-Hub-Signature-256": "sha256=bad",
+                }),
+            ))
         self.assertEqual(caught.exception.status_code, 401)
 
 

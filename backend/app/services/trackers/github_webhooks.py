@@ -22,7 +22,7 @@ from app.services.trackers.inbox_store import InboxStore
 
 logger = logging.getLogger(__name__)
 
-MAX_BODY_BYTES = 256 * 1024
+MAX_BODY_BYTES = 1024 * 1024
 SIGNATURE_HEADER = "x-hub-signature-256"
 DELIVERY_HEADER = "x-github-delivery"
 EVENT_HEADER = "x-github-event"

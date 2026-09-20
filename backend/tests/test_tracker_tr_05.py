@@ -199,6 +199,31 @@ class ImmutableAnchorTests(unittest.TestCase):
             (swapped["anchor"]["baseCommit"], swapped["anchor"]["compareCommit"]),
         )
         self.assertEqual(forward["anchor"]["state"], "pinned")
+        on_base = run(comments_api.create_comparison_comment(
+            "prj_test",
+            comments_api.CreateComparisonCommentRequest(
+                baseCommit=self.fixture.sha_a, compareCommit=self.fixture.sha_b,
+                domain="PCB", content="on base", selectedSide="base",
+            ),
+            user,
+        ))
+        self.assertEqual(on_base["anchor"]["commit"], self.fixture.sha_a)
+        self.assertNotEqual(
+            forward["anchor"]["sourceRevisionKey"],
+            on_base["anchor"]["sourceRevisionKey"],
+        )
+
+    def test_source_file_resolves_without_full_commit_checkout(self) -> None:
+        from app.services import comment_anchor_service
+
+        user = session("viewer")
+        with patch.object(
+            comment_anchor_service.project_source_snapshot,
+            "project_source_snapshot",
+            side_effect=AssertionError("full checkout must not run"),
+        ):
+            created = self._create(user, revision={"commit": self.fixture.sha_a})
+        self.assertEqual(created["filePath"], "board.kicad_pcb")
 
     def test_admin_manual_pin_of_unpinned_legacy_row(self) -> None:  # F2.admin_manual_pin
         designer = session("designer", user_id="u_d")

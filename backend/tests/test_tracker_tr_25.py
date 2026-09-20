@@ -378,6 +378,27 @@ class PromotionPostgresTests(unittest.TestCase):
         with self.store._connect() as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) AS n FROM sync_ops WHERE op = 'add_comment'").fetchone()["n"], 0)
 
+    def test_viewer_reply_unsynced_survives_listing(self) -> None:
+        comment_id = self._seed_linked_thread()
+        viewer = session("viewer", user_id="u_viewer")
+        posted = run(comments_api.add_reply(
+            "prj_a",
+            comment_id,
+            comments_api.CreateReplyRequest(content="viewer reply"),
+            viewer,
+        ))
+        reply_id = posted["reply"]["id"]
+        listing = run(comments_api.get_comments("prj_a", viewer))
+        thread = next(item for item in listing["comments"] if item["id"] == comment_id)
+        reply = next(item for item in thread["replies"] if item["id"] == reply_id)
+        self.assertEqual(reply["sync"]["state"], "unsynced_local")
+        with self.store._connect() as conn:
+            row = conn.execute(
+                "SELECT sync_state FROM comment_replies WHERE id = %s",
+                (reply_id,),
+            ).fetchone()
+        self.assertEqual(row["sync_state"], "unsynced_local")
+
     def test_designer_share_enqueues_add_comment(self) -> None:  # F8.share_to_github
         comment_id = self._seed_linked_thread()
         viewer = session("viewer", user_id="u_viewer")

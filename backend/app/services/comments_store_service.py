@@ -32,6 +32,7 @@ from app.services.trackers.promotion import (
     after_reply_added,
     after_root_severity_change,
     attach_tracker_projection,
+    attach_tracker_projections,
     manual_promote_root,
     maybe_auto_promote_root,
     share_reply,
@@ -67,7 +68,8 @@ _COMMENT_COLUMNS = """
 
 _REPLY_COLUMNS = """
     id, comment_id, author, timestamp, content,
-    author_user_id, author_kind, revision, updated_at, deleted_at, origin
+    author_user_id, author_kind, revision, updated_at, deleted_at, origin,
+    sync_state
 """
 
 COMMENT_CLASSES = ("general", "observation", "question", "task")
@@ -201,6 +203,9 @@ def _row_to_reply_dict(row) -> Dict:
     }
     if row.get("deleted_at"):
         reply["deletedAt"] = _iso_timestamp(row["deleted_at"])
+    sync_state = _optional_str(row.get("sync_state"))
+    if sync_state:
+        reply["syncState"] = sync_state
     return reply
 
 
@@ -608,13 +613,13 @@ class CommentsStoreService:
         for row in reply_rows:
             replies_by_comment.setdefault(row["comment_id"], []).append(_row_to_reply_dict(row))
 
-        comments: List[Dict] = []
-        for row in comment_rows:
-            comment = _row_to_comment_dict(row, replies_by_comment.get(row["id"], []))
-            attach_tracker_projection(
-                conn, project_id, comment, workspace_schema=self.workspace_schema,
-            )
-            comments.append(comment)
+        comments: List[Dict] = [
+            _row_to_comment_dict(row, replies_by_comment.get(row["id"], []))
+            for row in comment_rows
+        ]
+        attach_tracker_projections(
+            conn, project_id, comments, workspace_schema=self.workspace_schema,
+        )
 
         return {
             "meta": dict(COMMENTS_META),
@@ -1165,6 +1170,10 @@ class CommentsStoreService:
                         )
                         if outcome.action == "unsynced":
                             unsynced_reply_ids.add(reply_id)
+                            conn.execute(
+                                "UPDATE comment_replies SET sync_state = %s WHERE project_id = %s AND id = %s",
+                                ("unsynced_local", project_id, reply_id),
+                            )
 
                 updated_comment = self._get_comment_with_replies(
                     conn, project_id, comment_id, unsynced_reply_ids=unsynced_reply_ids or None,
@@ -1227,6 +1236,10 @@ class CommentsStoreService:
                     reply=_row_to_reply_dict(reply),
                     actor=actor,
                     workspace_schema=self.workspace_schema,
+                )
+                conn.execute(
+                    "UPDATE comment_replies SET sync_state = NULL WHERE project_id = %s AND id = %s",
+                    (project_id, reply_id),
                 )
                 return self._get_comment_with_replies(conn, project_id, comment_id)
 
