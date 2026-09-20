@@ -16,6 +16,8 @@ WORKSPACE_MIGRATION_VERSION = 23
 WORKSPACE_MIGRATION_NAME = "tracker_connectors_identities_policy"
 WORKSPACE_FK_CASCADE_VERSION = 24
 WORKSPACE_FK_CASCADE_NAME = "tracker_connector_delete_cascade"
+WORKSPACE_WEBHOOK_OAUTH_VERSION = 25
+WORKSPACE_WEBHOOK_OAUTH_NAME = "tracker_webhook_oauth_tables"
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -50,6 +52,42 @@ def cascade_workspace_tracker_fks(conn: Any) -> None:
     set_foreign_key_cascade(conn, "user_identities", "connector_id", "tracker_connectors", "id")
     set_foreign_key_cascade(conn, "project_trackers", "connector_id", "tracker_connectors", "id")
     set_foreign_key_cascade(conn, "destination_acks", "connector_id", "tracker_connectors", "id")
+
+
+def migrate_tracker_webhook_oauth_tables(conn: Any) -> None:
+    """Webhook signing secrets, OAuth state, and per-connector OAuth apps (workspace)."""
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tracker_webhook_secrets (
+            connector_id TEXT PRIMARY KEY REFERENCES tracker_connectors(id) ON DELETE CASCADE,
+            secret_envelope TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS tracker_oauth_states (
+            state_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            connector_id TEXT NOT NULL,
+            pkce_verifier TEXT NOT NULL,
+            callback_url TEXT NOT NULL,
+            return_to TEXT NOT NULL DEFAULT '/',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMPTZ NOT NULL,
+            consumed_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS tracker_oauth_states_expiry
+            ON tracker_oauth_states(expires_at)
+            WHERE consumed_at IS NULL;
+
+        CREATE TABLE IF NOT EXISTS tracker_oauth_clients (
+            connector_id TEXT PRIMARY KEY REFERENCES tracker_connectors(id) ON DELETE CASCADE,
+            client_id TEXT NOT NULL,
+            client_secret_envelope TEXT NOT NULL
+        );
+        """,
+        prepare=False,
+    )
 
 
 def migrate_workspace_tracker_tables(conn: Any) -> None:

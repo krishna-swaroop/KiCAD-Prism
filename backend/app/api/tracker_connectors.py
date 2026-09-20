@@ -37,6 +37,9 @@ class ConnectorCredentials(BaseModel):
     appId: str = ""
     installationId: str = ""
     privateKey: str = ""
+    webhookSecret: str = ""
+    oauthClientId: str = ""
+    oauthClientSecret: str = ""
 
 
 class CreateConnectorRequest(BaseModel):

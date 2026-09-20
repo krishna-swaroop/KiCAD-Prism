@@ -24,7 +24,10 @@ from app.api import tracker_connectors as connectors_api  # noqa: E402
 from app.services import comments_schema_migrations  # noqa: E402
 from app.services.trackers.connector_service import ConnectorService  # noqa: E402
 from app.services.trackers.errors import ProviderError  # noqa: E402
-from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
+from app.services.trackers.migrations import (  # noqa: E402
+    migrate_tracker_webhook_oauth_tables,
+    migrate_workspace_tracker_tables,
+)
 from app.services.trackers.secrets import decrypt_secret  # noqa: E402
 
 try:
@@ -40,6 +43,8 @@ DOCS = Path(__file__).resolve().parents[2] / "docs" / "tracker-integration"
 F3 = json.loads((DOCS / "fixtures" / "F03.json").read_text(encoding="utf-8"))
 F7 = json.loads((DOCS / "fixtures" / "F07.json").read_text(encoding="utf-8"))
 INSTALLATION_MATERIAL = "installation-private-key-fixture-text"
+WEBHOOK_SECRET = "webhook-secret-fixture-tr19"
+OAUTH_CLIENT_SECRET = "oauth-client-secret-fixture-tr19"
 TEST_SESSION_SECRET = "unit-test-session-secret-not-a-credential"
 ROOT_KEY = "aa" * 32
 
@@ -157,6 +162,7 @@ class ConnectorAdminApiTests(unittest.TestCase):
         )
         comments_schema_migrations.apply_comments_migrations(self.conn)
         migrate_workspace_tracker_tables(self.conn)
+        migrate_tracker_webhook_oauth_tables(self.conn)
         self.conn.commit()
         self.settings = _settings()
         self.service = ConnectorService(
@@ -218,6 +224,41 @@ class ConnectorAdminApiTests(unittest.TestCase):
                 self.admin,
             )
         )
+
+    def test_create_persists_webhook_and_oauth_sidecars(self) -> None:
+        created = run(
+            connectors_api.create_connector(
+                connectors_api.CreateConnectorRequest(
+                    id="cn_sidecar",
+                    provider="github",
+                    instanceKind="github.com",
+                    displayName="GitHub",
+                    credentials=connectors_api.ConnectorCredentials(
+                        appId="772215",
+                        installationId="88001122",
+                        privateKey=INSTALLATION_MATERIAL,
+                        webhookSecret=WEBHOOK_SECRET,
+                        oauthClientId="ov_client_fixture",
+                        oauthClientSecret=OAUTH_CLIENT_SECRET,
+                    ),
+                ),
+                self.admin,
+            )
+        )
+        self.assertTrue(created["credentialConfigured"])
+        self.assertTrue(created["webhookConfigured"])
+        self.assertTrue(created["oauthClientConfigured"])
+        dumped = json.dumps(created)
+        self.assertNotIn(WEBHOOK_SECRET, dumped)
+        self.assertNotIn(OAUTH_CLIENT_SECRET, dumped)
+        webhook_row = self.conn.execute(
+            "SELECT secret_envelope FROM tracker_webhook_secrets WHERE connector_id = 'cn_sidecar'"
+        ).fetchone()
+        oauth_row = self.conn.execute(
+            "SELECT client_id, client_secret_envelope FROM tracker_oauth_clients WHERE connector_id = 'cn_sidecar'"
+        ).fetchone()
+        self.assertIsNotNone(webhook_row)
+        self.assertEqual(oauth_row["client_id"], "ov_client_fixture")
 
     def test_create_read_hides_secrets_and_ignores_env_token(self) -> None:
         created = self._create()

@@ -17,8 +17,8 @@ from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
 from app.core.config import Settings, settings as default_settings
-from app.services.trackers.inbox_store import InboxStore, apply_schema as apply_inbox_schema
-from app.services.trackers.secrets import decrypt_secret, encrypt_secret
+from app.services.trackers.credential_sidecars import load_webhook_secret, store_webhook_secret
+from app.services.trackers.inbox_store import InboxStore
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,6 @@ MAX_BODY_BYTES = 256 * 1024
 SIGNATURE_HEADER = "x-hub-signature-256"
 DELIVERY_HEADER = "x-github-delivery"
 EVENT_HEADER = "x-github-event"
-SECRET_FIELD = "webhook_secret"
 KNOWN_EVENTS = frozenset(
     {
         "issues",
@@ -41,19 +40,6 @@ KNOWN_EVENTS = frozenset(
 
 class WebhookRejected(ValueError):
     """Signature, size, or routing rejected the delivery."""
-
-
-def apply_webhook_schema(conn: Any) -> None:
-    apply_inbox_schema(conn)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS tracker_webhook_secrets (
-            connector_id TEXT PRIMARY KEY,
-            secret_envelope TEXT NOT NULL
-        );
-        """,
-        prepare=False,
-    )
 
 
 def verify_signature(headers: Mapping[str, str], raw_body: bytes, secret: str) -> bool:
@@ -213,27 +199,17 @@ class GitHubWebhookService:
         if self._connect is not None:
             with self._connect() as conn:
                 conn.execute(f'SET search_path TO "{self.comments_schema}", "{self.workspace_schema}", public')
-                apply_webhook_schema(conn)
                 yield conn
             return
         from app.services.postgres_database import database
 
         with database.connection() as conn:
             conn.execute(f'SET search_path TO {self.comments_schema}, {self.workspace_schema}, public')
-            apply_webhook_schema(conn)
             yield conn
 
     def configure_secret(self, connector_id: str, secret: str) -> None:
-        envelope = encrypt_secret(secret, _secret_context(connector_id), settings=self.settings)
         with self.connection() as conn:
-            conn.execute(
-                """
-                INSERT INTO tracker_webhook_secrets (connector_id, secret_envelope)
-                VALUES (%s, %s)
-                ON CONFLICT (connector_id) DO UPDATE SET secret_envelope = EXCLUDED.secret_envelope
-                """,
-                (connector_id, envelope),
-            )
+            store_webhook_secret(conn, connector_id, secret, settings=self.settings)
             conn.commit()
 
     def ingest(self, connector_id: str, headers: Mapping[str, str], raw_body: bytes) -> dict:
@@ -270,32 +246,25 @@ class GitHubWebhookService:
 
     def _secret(self, connector_id: str) -> str:
         with self.connection() as conn:
-            row = conn.execute(
-                "SELECT secret_envelope FROM tracker_webhook_secrets WHERE connector_id = %s",
-                (connector_id,),
-            ).fetchone()
-            if not row:
-                raise WebhookRejected("webhook_not_configured")
-            return decrypt_secret(
-                row["secret_envelope"],
-                _secret_context(connector_id),
-                settings=self.settings,
-            ).decode()
-
-def _secret_context(connector_id: str) -> dict[str, str]:
-    return {"record": connector_id, "field": SECRET_FIELD}
+            try:
+                return load_webhook_secret(conn, connector_id, settings=self.settings)
+            except KeyError:
+                raise WebhookRejected("webhook_not_configured") from None
 
 
 def initialize_tracker_webhook_service() -> None:
-    service = GitHubWebhookService()
-    with service.connection() as conn:
+    from app.services.postgres_database import database
+    from app.services.workspace_schema_migrations import apply_workspace_migrations
+
+    with database.connection() as conn:
+        conn.execute("SET search_path TO workspace, public")
+        apply_workspace_migrations(conn)
         conn.commit()
 
 
 __all__ = [
     "GitHubWebhookService",
     "WebhookRejected",
-    "apply_webhook_schema",
     "initialize_tracker_webhook_service",
     "parse_github_event",
     "verify_signature",

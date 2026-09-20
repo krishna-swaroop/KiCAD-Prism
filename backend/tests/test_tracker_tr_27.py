@@ -28,7 +28,10 @@ from app.services.trackers.github_webhooks import (  # noqa: E402
     verify_signature,
 )
 from app.services.trackers.inbox_store import InboxStore, apply_schema as apply_inbox_schema  # noqa: E402
-from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
+from app.services.trackers.migrations import (  # noqa: E402
+    migrate_tracker_webhook_oauth_tables,
+    migrate_workspace_tracker_tables,
+)
 
 try:
     import psycopg
@@ -110,6 +113,7 @@ class GitHubWebhookPostgresTests(unittest.TestCase):
         self.conn.execute(f'CREATE SCHEMA "{self.schema}"')
         self.conn.execute(f'SET search_path TO "{self.schema}", public')
         migrate_workspace_tracker_tables(self.conn)
+        migrate_tracker_webhook_oauth_tables(self.conn)
         apply_inbox_schema(self.conn)
         self.conn.execute(
             """

@@ -22,12 +22,11 @@ from app.core.config import Settings, settings as default_settings
 from app.services.trackers.connector_service import ConnectorNotFound, ConnectorService
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.github_identity import GitHubIdentityAdapter, GitHubOAuthApp
+from app.services.trackers.credential_sidecars import load_oauth_client, store_oauth_client
 from app.services.trackers.secrets import SecretStoreLocked, decrypt_secret, encrypt_secret
 
 STATE_TTL_SECONDS = 600
 TOKEN_FIELD = "user_oauth"
-OAUTH_CLIENT_FIELD = "oauth_client"
-
 _user_cache_versions: dict[str, int] = {}
 _user_cache_lock = threading.Lock()
 
@@ -50,33 +49,35 @@ def user_cache_version(user_id: str) -> int:
         return int(_user_cache_versions.get(user_id, 0))
 
 
-def apply_identity_schema(conn: Any) -> None:
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS tracker_oauth_states (
-            state_id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            session_id TEXT NOT NULL,
-            connector_id TEXT NOT NULL,
-            pkce_verifier TEXT NOT NULL,
-            callback_url TEXT NOT NULL,
-            return_to TEXT NOT NULL DEFAULT '/',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            expires_at TIMESTAMPTZ NOT NULL,
-            consumed_at TIMESTAMPTZ
-        );
-        CREATE INDEX IF NOT EXISTS tracker_oauth_states_expiry
-            ON tracker_oauth_states(expires_at)
-            WHERE consumed_at IS NULL;
+def validate_relative_return_to(path: str) -> str:
+    """Reject open redirects; only same-origin relative paths are allowed."""
 
-        CREATE TABLE IF NOT EXISTS tracker_oauth_clients (
-            connector_id TEXT PRIMARY KEY,
-            client_id TEXT NOT NULL,
-            client_secret_envelope TEXT NOT NULL
-        );
-        """,
-        prepare=False,
-    )
+    candidate = (path or "/").strip()
+    if not candidate.startswith("/") or candidate.startswith("//"):
+        return "/"
+    if "://" in candidate:
+        return "/"
+    return candidate
+
+
+def build_oauth_return_url(return_to: str, *, linked: bool, error_code: str | None = None) -> str:
+    from urllib.parse import parse_qsl, urlencode
+
+    safe = validate_relative_return_to(return_to)
+    if "?" in safe:
+        base, query = safe.split("?", 1)
+    else:
+        base, query = safe, ""
+    params = list(parse_qsl(query, keep_blank_values=True))
+    params = [(key, value) for key, value in params if key not in {"tracker_oauth", "tracker_oauth_error", "connector_id"}]
+    if linked:
+        params.append(("tracker_oauth", "linked"))
+    else:
+        params.append(("tracker_oauth", "error"))
+        if error_code:
+            params.append(("tracker_oauth_error", error_code))
+    encoded = urlencode(params)
+    return f"{base}?{encoded}" if encoded else base
 
 
 def _qual(schema: str, table: str) -> str:
@@ -103,14 +104,12 @@ class IdentityService:
     def connection(self):
         if self._connect is not None:
             with self._connect() as conn:
-                apply_identity_schema(conn)
                 yield conn
             return
         from app.services.postgres_database import database
 
         with database.connection() as conn:
             conn.execute("SET search_path TO workspace, public")
-            apply_identity_schema(conn)
             yield conn
 
     def begin_oauth(
@@ -125,6 +124,7 @@ class IdentityService:
         if not (user_id or "").strip():
             raise OAuthStateError("identity_unresolved")
         self._require_connector(connector_id)
+        safe_return_to = validate_relative_return_to(return_to)
         oauth_app = self._oauth_app(connector_id)
         verifier = secrets.token_urlsafe(64)
         adapter = self._adapter(oauth_app, connector_id)
@@ -146,7 +146,7 @@ class IdentityService:
                     connector_id,
                     verifier,
                     callback_url,
-                    return_to or "/",
+                    safe_return_to,
                     expires_at,
                 ),
             )
@@ -164,6 +164,7 @@ class IdentityService:
         actor_user_id: str,
     ) -> dict:
         state_id, connector_id, bound_user = self._decode_state(state_token)
+        return_to = "/"
         with self.connection() as conn:
             row = conn.execute(
                 """
@@ -175,6 +176,7 @@ class IdentityService:
             ).fetchone()
             if row is None:
                 raise OAuthStateError("unknown_or_reused_state")
+            return_to = validate_relative_return_to(str(row.get("return_to") or "/"))
             if row["connector_id"] != connector_id:
                 raise OAuthStateError("connector_mismatch")
             if row["user_id"] != bound_user:
@@ -213,7 +215,9 @@ class IdentityService:
             )
             conn.commit()
             bump_user_cache(actor_user_id)
-            return identity
+            public = dict(identity)
+            public["returnTo"] = return_to
+            return public
 
     def list_identities(self, user_id: str) -> list[dict]:
         with self.connection() as conn:
@@ -413,26 +417,19 @@ class IdentityService:
         if conn is None:
             with self.connection() as owned:
                 return self._oauth_app(connector_id, conn=owned)
-        row = conn.execute(
-            "SELECT client_id, client_secret_envelope FROM tracker_oauth_clients WHERE connector_id = %s",
-            (connector_id,),
-        ).fetchone()
-        if not row:
-            raise OAuthStateError("oauth_client_not_configured")
+        try:
+            client_id, secret = load_oauth_client(conn, connector_id, settings=self.settings)
+        except KeyError:
+            raise OAuthStateError("oauth_client_not_configured") from None
         connector = conn.execute(
             "SELECT instance_kind, base_url FROM tracker_connectors WHERE id = %s",
             (connector_id,),
         ).fetchone()
         if not connector:
             raise OAuthStateError("connector_not_found")
-        secret = decrypt_secret(
-            row["client_secret_envelope"],
-            _oauth_client_context(connector_id),
-            settings=self.settings,
-        ).decode()
         callback = self._callback_url(connector_id)
         return GitHubOAuthApp(
-            client_id=str(row["client_id"]),
+            client_id=client_id,
             client_secret=secret,
             instance_kind=str(connector["instance_kind"]),
             base_url=str(connector.get("base_url") or ""),
@@ -474,29 +471,21 @@ class IdentityService:
         )
 
     def configure_oauth_client(self, connector_id: str, *, client_id: str, client_secret: str) -> None:
-        """Test/admin helper: persist per-connector OAuth app credentials."""
+        """Test helper: persist per-connector OAuth app credentials."""
 
-        envelope = encrypt_secret(client_secret, _oauth_client_context(connector_id), settings=self.settings)
         with self.connection() as conn:
-            conn.execute(
-                """
-                INSERT INTO tracker_oauth_clients (connector_id, client_id, client_secret_envelope)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (connector_id) DO UPDATE SET
-                    client_id = EXCLUDED.client_id,
-                    client_secret_envelope = EXCLUDED.client_secret_envelope
-                """,
-                (connector_id, client_id, envelope),
+            store_oauth_client(
+                conn,
+                connector_id,
+                client_id=client_id,
+                client_secret=client_secret,
+                settings=self.settings,
             )
             conn.commit()
 
 
 def _token_context(identity_id: str) -> dict[str, str]:
     return {"record": identity_id, "field": TOKEN_FIELD}
-
-
-def _oauth_client_context(connector_id: str) -> dict[str, str]:
-    return {"record": connector_id, "field": OAUTH_CLIENT_FIELD}
 
 
 def _b64_encode(raw: bytes) -> str:
@@ -543,8 +532,12 @@ def _decode_payload(token: str, settings: Settings) -> dict[str, Any]:
 
 
 def initialize_tracker_identity_service() -> None:
-    service = IdentityService()
-    with service.connection() as conn:
+    from app.services.postgres_database import database
+    from app.services.workspace_schema_migrations import apply_workspace_migrations
+
+    with database.connection() as conn:
+        conn.execute("SET search_path TO workspace, public")
+        apply_workspace_migrations(conn)
         conn.commit()
 
 
@@ -552,8 +545,9 @@ __all__ = [
     "IdentityNotFound",
     "IdentityService",
     "OAuthStateError",
-    "apply_identity_schema",
+    "build_oauth_return_url",
     "bump_user_cache",
     "initialize_tracker_identity_service",
     "user_cache_version",
+    "validate_relative_return_to",
 ]

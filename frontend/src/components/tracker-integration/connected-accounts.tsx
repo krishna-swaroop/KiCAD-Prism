@@ -260,7 +260,7 @@ export function ConnectedAccounts({
             if (returnPath) {
                 storeOAuthReturnPath(returnPath);
             }
-            const { authorizeUrl } = await beginIdentityLink(connectorId);
+            const { authorizeUrl } = await beginIdentityLink(connectorId, returnPath);
             window.location.assign(authorizeUrl);
         } catch (error) {
             setFormError(describeConnectedAccountsError(error, "Could not start account linking"));
