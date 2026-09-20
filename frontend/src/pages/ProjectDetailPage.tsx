@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck } from "lucide-react";
-import { fetchApi, fetchJson, readApiError } from "@/lib/api";
+import { ApiHttpError, fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,17 @@ import {
 } from "./project-section-cache";
 
 import { VISUALIZER_DESIGN_SEARCH_SLOT_ID } from "@/lib/design-search";
+import {
+    applyCanvasDeepLinkNavigation,
+    applyComparisonDeepLinkNavigation,
+    explicitPinnedCommit,
+    readTrackerDeepLink,
+    shouldValidatePinnedCommit,
+    sourceForbiddenMessage,
+    sourceUnavailableMessage,
+    stashTrackerDeepLinkLoginReturn,
+    type DeepLinkSourceState,
+} from "@/lib/tracker-deep-link";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const AssetsPortal = lazy(() =>
@@ -131,6 +142,12 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const canMutateProject = user?.role === "admin" || user?.role === "designer";
 
     // Helper function to get display name
+    const deepLinkIntent = useMemo(
+        () => readTrackerDeepLink(searchParams),
+        [searchParams],
+    );
+    const pinnedCommit = explicitPinnedCommit(searchParams, deepLinkIntent);
+    const [sourceStatus, setSourceStatus] = useState<DeepLinkSourceState>("idle");
     const selectedBranchRef = searchParams.get('branch');
     const currentCommit = searchParams.get('commit');
     const selectedBranch = useMemo(
@@ -143,7 +160,8 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
         () => branches.find((branch) => branch.is_current) || null,
         [branches]
     );
-    const activeCommit = currentCommit || selectedBranch?.commit || null;
+    // A tracker deep link pins an exact SHA; never substitute branch HEAD.
+    const activeCommit = pinnedCommit ?? (currentCommit || selectedBranch?.commit || null);
     const comparisonUrl = useMemo(
         () => readComparisonUrlState(searchParams),
         [searchParams],
@@ -155,7 +173,56 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
         setActiveSection(sectionFromSearchParams(searchParams));
     }, [searchParams]);
 
+    useEffect(() => {
+        stashTrackerDeepLinkLoginReturn(searchParams, window.location.pathname);
+        const intent = readTrackerDeepLink(searchParams);
+        const normalized = intent.kind === "canvas"
+            ? applyCanvasDeepLinkNavigation(searchParams)
+            : intent.kind === "comparison"
+                ? applyComparisonDeepLinkNavigation(searchParams)
+                : null;
+        if (normalized && normalized.toString() !== searchParams.toString()) {
+            setSearchParams(normalized, { replace: true });
+        }
+    }, [searchParams, setSearchParams]);
+
+    useEffect(() => {
+        if (!projectId || !pinnedCommit || !shouldValidatePinnedCommit(deepLinkIntent)) {
+            setSourceStatus("idle");
+            return;
+        }
+
+        const controller = new AbortController();
+        setSourceStatus("checking");
+
+        void fetchJson(
+            `/api/projects/${projectId}/commits/distance?commit=${encodeURIComponent(pinnedCommit)}`,
+            { signal: controller.signal },
+            "Failed to validate commit",
+        )
+            .then(() => {
+                if (!controller.signal.aborted) {
+                    setSourceStatus("available");
+                }
+            })
+            .catch((err: unknown) => {
+                if (controller.signal.aborted) return;
+                if (err instanceof ApiHttpError && err.status === 404) {
+                    setSourceStatus("unavailable");
+                    return;
+                }
+                if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
+                    setSourceStatus("forbidden");
+                    return;
+                }
+                setSourceStatus("available");
+            });
+
+        return () => controller.abort();
+    }, [deepLinkIntent, pinnedCommit, projectId]);
+
     const visitedSections = useVisitedProjectSections(projectId, activeSection);
+    const deepLinkSourceBlocked = sourceStatus === "unavailable" || sourceStatus === "forbidden";
 
     const handleSectionChange = (section: ProjectSection) => {
         setActiveSection(section);
@@ -367,6 +434,26 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
 
     if (!project) {
         return <div className="flex items-center justify-center h-app-viewport">Project not found</div>;
+    }
+
+    if (deepLinkSourceBlocked && deepLinkIntent.kind === "canvas") {
+        return (
+            <div className="flex h-app-viewport flex-col bg-background">
+                <header className="border-b px-4 py-4 md:px-6">
+                    <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Back to workspace
+                    </Button>
+                </header>
+                <div className="flex flex-1 items-center justify-center p-6">
+                    <div className="max-w-lg rounded-lg border border-destructive/30 bg-destructive/10 px-6 py-5 text-center text-sm">
+                        {sourceStatus === "forbidden"
+                            ? sourceForbiddenMessage()
+                            : sourceUnavailableMessage(pinnedCommit ?? activeCommit ?? "")}
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     const handleBackNavigation = () => {
@@ -707,7 +794,11 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                             active={activeSection === "visualizers"}
                             fill
                         >
-                            {projectId && (
+                            {projectId && sourceStatus === "checking" && pinnedCommit ? (
+                                <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+                                    Validating linked design source...
+                                </div>
+                            ) : projectId && (
                                 <ErrorBoundary label="the visualizer" resetKeys={[projectId, activeCommit]}>
                                     <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading visualizers...</div>}>
                                         <Visualizer
