@@ -19,6 +19,8 @@ from app.api.workspace import router as workspace_router
 from app.api.remote_provider import router as remote_provider_router
 from app.api.provider_oauth import router as provider_oauth_router
 from app.api.tracker_connectors import router as tracker_connectors_router
+from app.api.tracker_identity import admin_router as tracker_identity_admin_router
+from app.api.tracker_identity import router as tracker_identity_router
 from app.api.catalog_admin import router as catalog_admin_router
 from app.api.oauth import router as oauth_router
 from app.api.service_clients import router as service_clients_router
@@ -182,6 +184,12 @@ async def lifespan(app: FastAPI):
         initialize_tracker_connector_service()
     except Exception:
         logger.exception("Tracker connector schema initialization failed")
+    from app.services.trackers.identity_service import initialize_tracker_identity_service
+
+    try:
+        initialize_tracker_identity_service()
+    except Exception:
+        logger.exception("Tracker identity schema initialization failed")
     if settings.AUTH_ENABLED:
         session_store_service.initialize_session_store()
         session_store_service.prune_expired_sessions()
@@ -252,3 +260,5 @@ app.include_router(service_clients_router)
 app.include_router(remote_provider_router, tags=["remote-provider"])
 app.include_router(provider_oauth_router, tags=["provider-oauth"])
 app.include_router(tracker_connectors_router)
+app.include_router(tracker_identity_router)
+app.include_router(tracker_identity_admin_router)
