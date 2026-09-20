@@ -120,6 +120,7 @@ class RemoteIssue(_FrozenDto):
 class RemoteComment(_FrozenDto):
     externalCommentId: str
     externalId: str
+    externalNumber: Optional[int] = None
     url: str
     body: str
     author: ForgeUser

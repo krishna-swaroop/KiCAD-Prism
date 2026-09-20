@@ -8,6 +8,44 @@ from typing import Any, Mapping, Optional
 from app.services.trackers.schema import FORBIDDEN_COLUMNS, LINK_STATES
 
 
+def issue_number_for_api(thread: Mapping[str, Any]) -> str:
+    """GitHub REST issue routes use the repo-scoped number, not the immutable id."""
+
+    number = thread.get("external_number")
+    if number not in (None, ""):
+        return str(number)
+    return str(thread.get("external_id") or "")
+
+
+def resolve_threads_for_issue_ref(
+    conn: Any,
+    *,
+    connector_id: str,
+    container_id: str,
+    issue_ref: str,
+) -> list[dict]:
+    """Match a linked thread by immutable id or repo issue number."""
+
+    ref = str(issue_ref or "")
+    rows = conn.execute(
+        """
+        SELECT t.*, c.project_id
+        FROM tracked_threads t
+        JOIN comments c ON c.id = t.comment_id
+        WHERE t.connector_id = %s
+          AND t.remote_container_id = %s
+          AND t.unlinked_at IS NULL
+          AND (
+              t.external_id = %s
+              OR t.external_number = %s
+          )
+        ORDER BY t.id ASC
+        """,
+        (connector_id, container_id, ref, ref),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def _dump(row: Mapping[str, Any] | None, *, hide: tuple[str, ...] = ()) -> Optional[dict]:
     if row is None:
         return None
@@ -199,6 +237,7 @@ class TrackerStore:
         connector_id: str,
         remote_container_id: str,
         external_id: str,
+        external_number: str | None = None,
         external_url: str | None = None,
         link_state: str = "linked",
         lineage: list | None = None,
@@ -209,9 +248,9 @@ class TrackerStore:
             """
             INSERT INTO tracked_threads (
                 id, comment_id, project_tracker_id, destination_generation,
-                connector_id, remote_container_id, external_id, external_url,
-                link_state, lineage
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                connector_id, remote_container_id, external_id, external_number,
+                external_url, link_state, lineage
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
             """,
             (
                 thread_id,
@@ -221,6 +260,7 @@ class TrackerStore:
                 connector_id,
                 remote_container_id,
                 str(external_id),
+                str(external_number) if external_number not in (None, "") else None,
                 external_url,
                 link_state,
                 json.dumps(lineage or []),

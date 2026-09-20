@@ -42,6 +42,8 @@ from test_tracker_tr_28 import (  # noqa: E402
     CONTAINER,
     EXT_COMMENT,
     ISSUE,
+    ISSUE_ID,
+    ISSUE_NUMBER,
     OP_REPLY,
     REPLY_ID,
     _forge_user,
@@ -197,7 +199,8 @@ class PollPostgresTests(unittest.TestCase):
         project_id: str,
         comment_id: str,
         thread_id: str,
-        external_id: str = ISSUE,
+        external_id: str = ISSUE_ID,
+        external_number: str | None = ISSUE_NUMBER,
     ) -> None:
         self.store.set_project_tracker(
             project_tracker_id=f"pt_{project_id}",
@@ -220,7 +223,8 @@ class PollPostgresTests(unittest.TestCase):
             connector_id=CONNECTOR,
             remote_container_id=CONTAINER,
             external_id=external_id,
-            external_url=f"https://github.com/acme/openswitch/issues/{external_id}",
+            external_number=external_number,
+            external_url=f"https://github.com/acme/openswitch/issues/{external_number or external_id}",
         )
 
     def _seed_prism_reply(self, *, thread_id: str, body: str, project_id: str = "prj_a") -> None:
@@ -484,7 +488,13 @@ class PollPostgresTests(unittest.TestCase):
 
     def test_f7_shared_repo_two_projects_single_poll(self) -> None:
         self._seed_project(project_id="prj_a", comment_id=COMMENT_ID, thread_id="tt_a")
-        self._seed_project(project_id="prj_b", comment_id="c_b", thread_id="tt_b", external_id="413")
+        self._seed_project(
+            project_id="prj_b",
+            comment_id="c_b",
+            thread_id="tt_b",
+            external_id="198400413",
+            external_number="413",
+        )
         self.conn.commit()
         self._queue_pages(
             [
@@ -493,7 +503,7 @@ class PollPostgresTests(unittest.TestCase):
                         RemoteChange(
                             objectKind="issue",
                             remoteContainerId=CONTAINER,
-                            externalId=ISSUE,
+                            externalId=ISSUE_ID,
                             observedUpdatedAt="2026-09-20T16:05:00Z",
                         )
                     ],
@@ -548,7 +558,7 @@ class PollPostgresTests(unittest.TestCase):
         change = RemoteChange(
             objectKind="comment",
             remoteContainerId=CONTAINER,
-            externalId=ISSUE,
+            externalId=ISSUE_ID,
             externalCommentId=EXT_COMMENT,
             observedUpdatedAt="2026-09-20T16:10:00Z",
         )

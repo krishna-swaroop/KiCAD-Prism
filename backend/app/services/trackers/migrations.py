@@ -143,6 +143,7 @@ def migrate_comments_tracked_links(conn: Any) -> None:
             connector_id TEXT NOT NULL,
             remote_container_id TEXT NOT NULL,
             external_id TEXT NOT NULL,
+            external_number TEXT,
             external_url TEXT,
             link_state TEXT NOT NULL,
             paused_reason TEXT,
@@ -163,6 +164,8 @@ def migrate_comments_tracked_links(conn: Any) -> None:
             ) WHERE unlinked_at IS NULL;
         CREATE INDEX IF NOT EXISTS tracked_threads_container
             ON tracked_threads(connector_id, remote_container_id, external_id);
+        CREATE INDEX IF NOT EXISTS tracked_threads_container_number
+            ON tracked_threads(connector_id, remote_container_id, external_number);
 
         CREATE TABLE IF NOT EXISTS tracked_replies (
             id TEXT PRIMARY KEY,
@@ -175,6 +178,24 @@ def migrate_comments_tracked_links(conn: Any) -> None:
             UNIQUE (tracked_thread_id, external_comment_id),
             UNIQUE (reply_id)
         );
+        """,
+        prepare=False,
+    )
+
+
+def migrate_tracked_threads_external_number(conn: Any) -> None:
+    """Split immutable issue id from repo-scoped issue number (R2-H1)."""
+
+    conn.execute(
+        """
+        ALTER TABLE tracked_threads ADD COLUMN IF NOT EXISTS external_number TEXT;
+        CREATE INDEX IF NOT EXISTS tracked_threads_container_number
+            ON tracked_threads(connector_id, remote_container_id, external_number);
+        UPDATE tracked_threads
+        SET external_number = external_id
+        WHERE external_number IS NULL
+          AND external_id IS NOT NULL
+          AND external_id NOT IN ('', 'pending');
         """,
         prepare=False,
     )

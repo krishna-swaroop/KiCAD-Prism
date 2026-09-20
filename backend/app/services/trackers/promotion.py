@@ -524,11 +524,13 @@ def attach_tracker_projection(
         (str(thread["id"]), list(LIVE_CREATE_STATES)),
     ).fetchone()
     external_id = str(thread.get("external_id") or "")
+    external_number = thread.get("external_number")
     linked = external_id not in ("", "pending")
     comment["tracker"] = {
         "linkState": str(thread.get("link_state") or "linked"),
         "provider": str(policy.get("connector_provider") or "github") if policy else None,
         "externalId": external_id if linked else None,
+        "externalNumber": str(external_number) if linked and external_number not in (None, "") else None,
         "externalUrl": thread.get("external_url"),
         "destination": {
             "connectorId": str(thread.get("connector_id") or ""),

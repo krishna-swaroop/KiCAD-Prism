@@ -31,6 +31,7 @@ from app.services.trackers.errors import ProviderError
 from app.services.trackers.github_updates import destination_for, format_iso8601, parse_iso8601
 from app.services.trackers.provenance import resolve_editor
 from app.services.trackers.scheduler import sweep_interval_seconds
+from app.services.trackers.store import issue_number_for_api
 
 GetIssueFn = Callable[[Destination, str, Optional[str]], IssueRead]
 ListCommentsFn = Callable[
@@ -492,7 +493,7 @@ def sweep_destination_links(
             if processed >= limit:
                 break
             thread_id = str(thread["id"])
-            issue_ref = str(thread["external_id"])
+            issue_ref = issue_number_for_api(thread)
             outcome.threads_checked += 1
 
             try:

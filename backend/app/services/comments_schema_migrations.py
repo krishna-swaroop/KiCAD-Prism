@@ -17,7 +17,11 @@ import logging
 from typing import Callable, List, Tuple
 
 from app.services.trackers.inbox_store import apply_schema as apply_inbox_schema
-from app.services.trackers.migrations import cascade_comments_tracker_fks, migrate_comments_tracked_links
+from app.services.trackers.migrations import (
+    cascade_comments_tracker_fks,
+    migrate_comments_tracked_links,
+    migrate_tracked_threads_external_number,
+)
 from app.services.trackers.op_store import apply_schema as apply_op_schema
 
 logger = logging.getLogger(__name__)
@@ -144,11 +148,18 @@ def _m002_backfill_create_revisions(conn) -> None:
     )
 
 
+def _m005_tracked_threads_external_number(conn) -> None:
+    """Immutable GitHub issue id vs repo issue number (R2-H1)."""
+
+    migrate_tracked_threads_external_number(conn)
+
+
 MIGRATIONS: List[Tuple[int, str, Callable[[object], None]]] = [
     (1, "identity_revisions_tombstones", _m001_identity_revisions_tombstones),
     (2, "backfill_create_revisions", _m002_backfill_create_revisions),
     (3, "tracked_threads_and_replies", migrate_comments_tracked_links),
     (4, "sync_ops_inbox_and_delete_cascade", _m004_sync_ops_inbox_and_delete_cascade),
+    (5, "tracked_threads_external_number", _m005_tracked_threads_external_number),
 ]
 
 
