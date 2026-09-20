@@ -12,6 +12,7 @@ implementation disagree.
 | [CONTRACTS.md](CONTRACTS.md) | Accepted decisions D1–D9, action-permission and field-authority matrices, operation ordering, provider error classification, cadence budgets. Versioned; changes need a coordinator-reviewed revision. |
 | [dto-examples.json](dto-examples.json) | Canonical request/response/DTO examples the backend and frontend implement verbatim. |
 | [fixtures/](fixtures/) | Synthetic adversarial fixture manifests F1–F10: named cases with inputs and expected outcomes. Owning tickets materialize the HTTP bodies and database rows; consumers add ticket-local cases only. |
+| [foundation-gate.md](foundation-gate.md) | TR-08 acceptance of TR-01–TR-07 before provider work. |
 
 ## Delivery
 
