@@ -1,8 +1,10 @@
 """Bounded tracker job handlers registered into the Prism worker (TR-14).
 
 Dispatch/poll/sweep run in the existing prism pool. Claimed ``sent`` ops take
-the recovery path and are never resent (D2). Network I/O, when a later ticket
-installs an executor, happens after the claim/sent transaction commits.
+the recovery path and are never resent (D2). ``mark_sent`` commits before any
+provider I/O; confirm/fail use a new transaction (C2/H2). Inbound hints stay
+pending until an apply ticket mounts a reducer (M3). Poll/sweep cadence
+follows C7 (M4).
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
 from app.services.job_runtime import JobContext, JobResult, RetryableJobError
+from app.services.trackers.errors import ProviderError
 from app.services.trackers.inbox_store import InboxStore
 from app.services.trackers.op_store import (
     EXECUTE_DISPATCH,
@@ -20,10 +23,11 @@ from app.services.trackers.op_store import (
 )
 from app.services.trackers.scheduler import (
     DISPATCH_KIND,
-    POLL_INTERVAL_SECONDS,
+    OUTBOX_POLL_SECONDS,
     POLL_KIND,
-    SWEEP_INTERVAL_SECONDS,
     SWEEP_KIND,
+    poll_interval_seconds,
+    sweep_interval_seconds,
 )
 
 DispatchExecutor = Callable[[dict[str, Any]], None]
@@ -39,43 +43,36 @@ def run_tracker_dispatch_job(context: JobContext) -> JobResult:
     context.check_cancelled()
     payload = context.payload
     connector_id = str(payload.get("connectorId") or "")
+    executor = _executor(context)
     with _comments_connect(context) as conn:
         paused = _connector_paused(conn, connector_id)
         ops = OpStore(conn)
         claimed = ops.claim(context.worker_id, lease_seconds=60)
         if claimed is None:
-            inbox = InboxStore(conn)
-            hint = inbox.claim_hint(context.worker_id, lease_seconds=60)
-            if hint is None:
-                conn.commit()
-                raise RetryableJobError(
-                    "No due tracker operations",
-                    code="tracker_idle",
-                    retry_after_seconds=30,
-                )
-            if paused:
-                conn.commit()
-                return JobResult(message="Connector paused; hint retained")
-            inbox.finish_hint(str(hint["id"]), int(hint["fence"]), state="ignored")
-            conn.commit()
-            return JobResult(message="Hint claimed; apply is a later ticket")
-        result = _handle_claimed_op(ops, claimed, paused=paused, executor=_executor(context))
+            return _retain_inbound_hints(conn)
+        prepared = _prepare_claimed_op(
+            ops, claimed, paused=paused, has_executor=executor is not None
+        )
         conn.commit()
-        return result
+    if not prepared["run_io"]:
+        return prepared["result"]
+    return _run_executor_outside_txn(context, prepared["claimed"], executor)
 
 
 def run_tracker_poll_job(context: JobContext) -> JobResult:
-    return _run_checkpoint_job(context, kind="poll", interval=POLL_INTERVAL_SECONDS)
+    return _run_checkpoint_job(context, kind="poll")
 
 
 def run_tracker_sweep_job(context: JobContext) -> JobResult:
-    return _run_checkpoint_job(context, kind="sweep", interval=SWEEP_INTERVAL_SECONDS)
+    return _run_checkpoint_job(context, kind="sweep")
 
 
-def _run_checkpoint_job(context: JobContext, *, kind: str, interval: int) -> JobResult:
+def _run_checkpoint_job(context: JobContext, *, kind: str) -> JobResult:
     context.check_cancelled()
     payload = context.payload
-    scope = f"{payload.get('connectorId')}:{payload.get('remoteContainerId')}"
+    connector_id = str(payload.get("connectorId") or "")
+    container_id = str(payload.get("remoteContainerId") or "")
+    scope = f"{connector_id}:{container_id}"
     with _comments_connect(context) as conn:
         inbox = InboxStore(conn)
         claimed = inbox.claim_checkpoint(
@@ -86,11 +83,18 @@ def _run_checkpoint_job(context: JobContext, *, kind: str, interval: int) -> Job
         )
         if claimed is None:
             conn.commit()
+            fallback = poll_interval_seconds(conn, connector_id) if kind == "poll" else sweep_interval_seconds(
+                conn, connector_id, container_id
+            )
             raise RetryableJobError(
                 "Tracker checkpoint already leased",
                 code="tracker_checkpoint_busy",
-                retry_after_seconds=interval,
+                retry_after_seconds=fallback,
             )
+        if kind == "poll":
+            interval = poll_interval_seconds(conn, connector_id)
+        else:
+            interval = sweep_interval_seconds(conn, connector_id, container_id)
         conn.execute(
             """
             UPDATE sync_checkpoints
@@ -102,16 +106,36 @@ def _run_checkpoint_job(context: JobContext, *, kind: str, interval: int) -> Job
             (interval, kind, scope, int(claimed["fence"])),
         )
         conn.commit()
-    return JobResult(message=f"Scheduled next {kind}")
+    return JobResult(message=f"Scheduled next {kind}", details={"intervalSeconds": interval})
 
 
-def _handle_claimed_op(
+def _retain_inbound_hints(conn: Any) -> JobResult:
+    """Do not finish hints as ignored. Apply is a later ticket (M3)."""
+
+    pending = conn.execute(
+        "SELECT 1 FROM remote_hints WHERE state = 'pending' LIMIT 1"
+    ).fetchone()
+    conn.commit()
+    if pending:
+        raise RetryableJobError(
+            "Inbound hints retained pending apply",
+            code="tracker_hints_deferred",
+            retry_after_seconds=OUTBOX_POLL_SECONDS,
+        )
+    raise RetryableJobError(
+        "No due tracker operations",
+        code="tracker_idle",
+        retry_after_seconds=OUTBOX_POLL_SECONDS,
+    )
+
+
+def _prepare_claimed_op(
     ops: OpStore,
     claimed: dict[str, Any],
     *,
     paused: bool,
-    executor: DispatchExecutor | None,
-) -> JobResult:
+    has_executor: bool,
+) -> dict[str, Any]:
     op_id = str(claimed["id"])
     fence = int(claimed["fence"])
     if paused:
@@ -122,36 +146,133 @@ def _handle_claimed_op(
             error={"class": "auth_lost", "message": "Connector is paused.", "retryable": False},
             consume_attempt=False,
         )
-        return JobResult(message="Paused connector retained the operation")
+        return {
+            "run_io": False,
+            "claimed": claimed,
+            "result": JobResult(message="Paused connector retained the operation"),
+        }
     resume_at = _rate_limit_resume(claimed)
     if resume_at is not None and resume_at > datetime.now(timezone.utc):
         ops.schedule(op_id, fence, next_attempt_at=resume_at, consume_attempt=False)
-        return JobResult(message="Rate-limited operation waiting")
+        return {
+            "run_io": False,
+            "claimed": claimed,
+            "result": JobResult(message="Rate-limited operation waiting"),
+        }
     if claimed.get("dispatch") == RECOVERY_DISPATCH:
-        if executor is not None:
-            executor(claimed)
-        else:
-            ops.schedule(
-                op_id,
-                fence,
-                next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=1),
-                consume_attempt=False,
-            )
-        return JobResult(message="Recovery path; not resent")
-    if claimed.get("dispatch") != EXECUTE_DISPATCH:
-        ops.schedule(op_id, fence, next_attempt_at=datetime.now(timezone.utc), consume_attempt=False)
-        return JobResult(message="Unexpected dispatch")
-    if executor is None:
+        if has_executor:
+            return {
+                "run_io": True,
+                "claimed": claimed,
+                "result": JobResult(message="Recovery path; not resent"),
+            }
         ops.schedule(
             op_id,
             fence,
-            next_attempt_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+            next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=1),
             consume_attempt=False,
         )
-        return JobResult(message="Dispatch claimed; executor not mounted")
+        return {
+            "run_io": False,
+            "claimed": claimed,
+            "result": JobResult(message="Recovery path; not resent"),
+        }
+    if claimed.get("dispatch") != EXECUTE_DISPATCH:
+        ops.schedule(op_id, fence, next_attempt_at=datetime.now(timezone.utc), consume_attempt=False)
+        return {
+            "run_io": False,
+            "claimed": claimed,
+            "result": JobResult(message="Unexpected dispatch"),
+        }
+    if not has_executor:
+        ops.schedule(
+            op_id,
+            fence,
+            next_attempt_at=datetime.now(timezone.utc) + timedelta(seconds=OUTBOX_POLL_SECONDS),
+            consume_attempt=False,
+        )
+        return {
+            "run_io": False,
+            "claimed": claimed,
+            "result": JobResult(message="Dispatch claimed; executor not mounted"),
+        }
     ops.mark_sent(op_id, fence)
-    executor(claimed)
-    return JobResult(message="Dispatched")
+    return {
+        "run_io": True,
+        "claimed": claimed,
+        "result": JobResult(message="Dispatched"),
+    }
+
+
+def _run_executor_outside_txn(
+    context: JobContext,
+    claimed: dict[str, Any],
+    executor: DispatchExecutor | None,
+) -> JobResult:
+    if executor is None:
+        return JobResult(message="Dispatched")
+    op_id = str(claimed["id"])
+    fence = int(claimed["fence"])
+    try:
+        executor(claimed)
+    except Exception as exc:
+        with _comments_connect(context) as conn:
+            _record_executor_outcome(OpStore(conn), op_id, fence, exc)
+            conn.commit()
+        raise
+    return JobResult(
+        message="Recovery path; not resent" if claimed.get("dispatch") == RECOVERY_DISPATCH else "Dispatched"
+    )
+
+
+def _record_executor_outcome(ops: OpStore, op_id: str, fence: int, exc: BaseException) -> None:
+    if isinstance(exc, ProviderError):
+        error = exc.to_dto()
+        resume_at = _rate_limit_resume({"last_error": error})
+        if exc.class_ == "rate_limited":
+            ops.schedule(
+                op_id,
+                fence,
+                next_attempt_at=resume_at or datetime.now(timezone.utc) + timedelta(minutes=1),
+                error=error,
+                consume_attempt=False,
+            )
+            return
+        if exc.retryable:
+            ops.schedule(
+                op_id,
+                fence,
+                next_attempt_at=datetime.now(timezone.utc) + timedelta(seconds=OUTBOX_POLL_SECONDS),
+                error=error,
+                consume_attempt=True,
+            )
+            return
+        ops.fail(op_id, fence, error=error)
+        return
+    ops.schedule(
+        op_id,
+        fence,
+        next_attempt_at=datetime.now(timezone.utc) + timedelta(seconds=OUTBOX_POLL_SECONDS),
+        error={"class": "transient", "message": str(exc)[:300], "retryable": True},
+        consume_attempt=True,
+    )
+
+
+def _handle_claimed_op(
+    ops: OpStore,
+    claimed: dict[str, Any],
+    *,
+    paused: bool,
+    executor: DispatchExecutor | None,
+) -> JobResult:
+    """Test helper: prepare + optional in-process executor without a JobContext."""
+
+    prepared = _prepare_claimed_op(
+        ops, claimed, paused=paused, has_executor=executor is not None
+    )
+    if prepared["run_io"] and executor is not None:
+        executor(claimed)
+    return prepared["result"]
 
 
 def _rate_limit_resume(claimed: dict[str, Any]) -> Optional[datetime]:

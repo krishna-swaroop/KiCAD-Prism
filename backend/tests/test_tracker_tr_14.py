@@ -34,13 +34,20 @@ from app.services.trackers.op_store import (  # noqa: E402
 )
 from app.services.trackers.scheduler import (  # noqa: E402
     DISPATCH_KIND,
+    OUTBOX_POLL_SECONDS,
     POLL_KIND,
+    POLL_QUIET_SECONDS,
+    POLL_WHILE_WEBHOOK_FRESH_SECONDS,
     SWEEP_KIND,
+    SWEEP_QUIET_SECONDS,
+    SWEEP_WHILE_ACTIVE_SECONDS,
     TRACKER_PRIORITY,
     TRACKER_RESOURCE,
     TRACKER_RESOURCE_CAPACITY,
     artifact_key,
+    poll_interval_seconds,
     schedule_due_tracker_jobs,
+    sweep_interval_seconds,
 )
 from app.services.trackers.store import TrackerStore  # noqa: E402
 
@@ -253,12 +260,12 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             comments_schema=self.schema,
             workspace_schema=self.schema,
         )
-        self.assertEqual(len(scheduled), 1)
-        self.assertEqual(scheduled[0]["kind"], DISPATCH_KIND)
-        self.assertEqual(scheduled[0]["priority"], TRACKER_PRIORITY)
-        self.assertEqual(scheduled[0]["resources"], {TRACKER_RESOURCE: 1})
+        dispatch = [row for row in scheduled if row["kind"] == DISPATCH_KIND]
+        self.assertEqual(len(dispatch), 1)
+        self.assertEqual(dispatch[0]["priority"], TRACKER_PRIORITY)
+        self.assertEqual(dispatch[0]["resources"], {TRACKER_RESOURCE: 1})
         self.assertEqual(
-            scheduled[0]["artifact_key"],
+            dispatch[0]["artifact_key"],
             artifact_key(DISPATCH_KIND, "cn_gh1", "111"),
         )
         again = schedule_due_tracker_jobs(
@@ -267,8 +274,9 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             comments_schema=self.schema,
             workspace_schema=self.schema,
         )
-        self.assertTrue(again[0]["deduplicated"])
-        self.assertEqual(len(self.jobs.rows), 1)
+        dispatch_again = [row for row in again if row["kind"] == DISPATCH_KIND]
+        self.assertTrue(dispatch_again[0]["deduplicated"])
+        self.assertEqual(len([row for row in self.jobs.rows if row["kind"] == DISPATCH_KIND]), 1)
 
     def test_paused_connector_retains_ops_without_scheduling(self) -> None:
         self._seed(paused=True)
@@ -304,7 +312,7 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             comments_schema=self.schema,
             workspace_schema=self.schema,
         )
-        self.assertEqual(scheduled, [])
+        self.assertEqual([row for row in scheduled if row["kind"] == DISPATCH_KIND], [])
 
     def test_duplicate_workers_one_claim(self) -> None:  # F5.duplicate_workers
         self._seed()
@@ -367,6 +375,78 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
         )
         self.assertEqual(scheduled[0]["kind"], DISPATCH_KIND)
         self.assertEqual(scheduled[0]["payload"]["remoteContainerId"], "111")
+
+    def test_h2_sent_is_durable_before_executor_io(self) -> None:
+        self._seed()
+        seen: dict[str, object] = {}
+
+        def executor(_claimed):  # noqa: ANN001
+            other = self._connect()
+            try:
+                row = other.execute("SELECT state, sent_at FROM sync_ops WHERE id = 'op_1'").fetchone()
+                seen["state"] = row["state"]
+                seen["sent_at"] = row["sent_at"]
+            finally:
+                other.close()
+
+        context = FakeContext(
+            {"connectorId": "cn_gh1", "remoteContainerId": "111", "_connect": self._factory, "_executor": executor}
+        )
+        result = run_tracker_dispatch_job(context)
+        self.assertEqual(result.message, "Dispatched")
+        self.assertEqual(seen["state"], "sent")
+        self.assertIsNotNone(seen["sent_at"])
+        after = self.ops.get("op_1")
+        self.assertEqual(after["state"], "sent")
+
+    def test_m3_dispatch_does_not_ignore_inbound_hints(self) -> None:
+        self.store.upsert_connector(connector_id="cn_gh1", provider="github", instance_kind="github.com")
+        self.conn.commit()
+        self.inbox.enqueue(
+            connector_id="cn_gh1",
+            delivery_id="del_keep",
+            hints=[{"objectKind": "issue", "remoteContainerId": "111", "externalId": "412", "event": "edited"}],
+        )
+        self.conn.commit()
+        context = FakeContext({"connectorId": "cn_gh1", "remoteContainerId": "111", "_connect": self._factory})
+        with self.assertRaises(RetryableJobError) as caught:
+            run_tracker_dispatch_job(context)
+        self.assertEqual(caught.exception.code, "tracker_hints_deferred")
+        self.assertEqual(caught.exception.retry_after_seconds, OUTBOX_POLL_SECONDS)
+        row = self.conn.execute("SELECT state FROM remote_hints WHERE delivery_id = 'del_keep'").fetchone()
+        self.assertEqual(row["state"], "pending")
+
+    def test_m4_poll_and_sweep_follow_contract_cadence(self) -> None:
+        self._seed()
+        self.assertEqual(poll_interval_seconds(self.conn, "cn_gh1"), POLL_QUIET_SECONDS)
+        self.inbox.enqueue(
+            connector_id="cn_gh1",
+            delivery_id="del_hook",
+            hints=[{"objectKind": "issue", "remoteContainerId": "111", "externalId": "412", "event": "edited"}],
+        )
+        self.conn.commit()
+        self.assertEqual(poll_interval_seconds(self.conn, "cn_gh1"), POLL_WHILE_WEBHOOK_FRESH_SECONDS)
+        self.assertEqual(sweep_interval_seconds(self.conn, "cn_gh1", "111"), SWEEP_WHILE_ACTIVE_SECONDS)
+        self.conn.execute("UPDATE sync_ops SET state = 'confirmed', claimed_by = NULL WHERE id = 'op_1'")
+        self.conn.commit()
+        # Recent hint still counts as 24h activity.
+        self.assertEqual(sweep_interval_seconds(self.conn, "cn_gh1", "111"), SWEEP_WHILE_ACTIVE_SECONDS)
+        self.conn.execute("UPDATE remote_hints SET received_at = NOW() - INTERVAL '25 hours'")
+        self.conn.execute("UPDATE remote_deliveries SET received_at = NOW() - INTERVAL '25 hours'")
+        self.conn.commit()
+        self.assertEqual(poll_interval_seconds(self.conn, "cn_gh1"), POLL_QUIET_SECONDS)
+        self.assertEqual(sweep_interval_seconds(self.conn, "cn_gh1", "111"), SWEEP_QUIET_SECONDS)
+        self.conn.execute("UPDATE remote_hints SET state = 'applied'")
+        self.conn.commit()
+        scheduled = schedule_due_tracker_jobs(
+            job_service=self.jobs,
+            connect=self._factory,
+            comments_schema=self.schema,
+            workspace_schema=self.schema,
+        )
+        kinds = {row["kind"] for row in scheduled}
+        self.assertIn(POLL_KIND, kinds)
+        self.assertIn(SWEEP_KIND, kinds)
 
 
 if __name__ == "__main__":

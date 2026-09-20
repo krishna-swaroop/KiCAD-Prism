@@ -5,12 +5,13 @@ cannot strand pending ops. Enqueue uses ``artifact_key`` so two workers
 collapse to one job per destination. Tracker jobs run at a lower priority
 and take a dedicated ``tracker_sync`` slot so they cannot starve import or
 compare work. Paused connectors keep their ops; rate-limited rows wait on
-``next_attempt_at``.
+``next_attempt_at``. Poll/sweep cadence follows CONTRACTS.md §6 (C7).
 """
 
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any, Callable, Iterator, Optional
 
 from app.services.job_service import jobs as default_jobs
@@ -22,8 +23,16 @@ SWEEP_KIND = "tracker_sweep"
 TRACKER_RESOURCE = "tracker_sync"
 TRACKER_PRIORITY = 200
 TRACKER_RESOURCE_CAPACITY = 2
-POLL_INTERVAL_SECONDS = 300
-SWEEP_INTERVAL_SECONDS = 900
+OUTBOX_POLL_SECONDS = 30
+POLL_WEBHOOK_WINDOW_SECONDS = 30 * 60
+POLL_WHILE_WEBHOOK_FRESH_SECONDS = 15 * 60
+POLL_QUIET_SECONDS = 3 * 60
+SWEEP_ACTIVITY_WINDOW_SECONDS = 24 * 60 * 60
+SWEEP_WHILE_ACTIVE_SECONDS = 60 * 60
+SWEEP_QUIET_SECONDS = 6 * 60 * 60
+# Back-compat aliases: default to the quiet C7 cadence, not the old 5/15 min values.
+POLL_INTERVAL_SECONDS = POLL_QUIET_SECONDS
+SWEEP_INTERVAL_SECONDS = SWEEP_QUIET_SECONDS
 TRACKER_JOB_KINDS = (DISPATCH_KIND, POLL_KIND, SWEEP_KIND)
 
 Connect = Callable[[], Any]
@@ -42,6 +51,76 @@ def artifact_key(kind: str, connector_id: str, remote_container_id: str) -> str:
     return f"{kind}:{connector_id}:{remote_container_id}"
 
 
+def poll_interval_seconds(conn: Any, connector_id: str) -> int:
+    """15 min while a webhook arrived in the last 30 min; else 3 min (C7)."""
+
+    if not connector_id:
+        return POLL_QUIET_SECONDS
+    row = conn.execute(
+        """
+        SELECT MAX(received_at) AS last_webhook
+        FROM remote_deliveries
+        WHERE connector_id = %s
+        """,
+        (connector_id,),
+    ).fetchone()
+    last = row["last_webhook"] if row else None
+    if last is None:
+        return POLL_QUIET_SECONDS
+    if getattr(last, "tzinfo", None) is None:
+        last = last.replace(tzinfo=timezone.utc)
+    age = datetime.now(timezone.utc) - last.astimezone(timezone.utc)
+    if age.total_seconds() <= POLL_WEBHOOK_WINDOW_SECONDS:
+        return POLL_WHILE_WEBHOOK_FRESH_SECONDS
+    return POLL_QUIET_SECONDS
+
+
+def sweep_interval_seconds(conn: Any, connector_id: str, container_id: str) -> int:
+    """1 h while pending ops or 24 h activity; else 6 h (C7)."""
+
+    if not connector_id or not container_id:
+        return SWEEP_QUIET_SECONDS
+    pending = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+        FROM sync_ops o
+        JOIN tracked_threads t ON t.id = o.tracked_thread_id
+        WHERE t.connector_id = %s
+          AND t.remote_container_id = %s
+          AND o.state = ANY(%s)
+        """,
+        (connector_id, container_id, list(LIVE_STATES)),
+    ).fetchone()
+    if pending and int(pending["n"] or 0) > 0:
+        return SWEEP_WHILE_ACTIVE_SECONDS
+    recent = conn.execute(
+        """
+        SELECT 1
+        WHERE EXISTS (
+            SELECT 1 FROM remote_hints
+            WHERE connector_id = %s AND remote_container_id = %s
+              AND received_at >= NOW() - (%s * INTERVAL '1 second')
+        )
+        OR EXISTS (
+            SELECT 1 FROM tracked_threads
+            WHERE connector_id = %s AND remote_container_id = %s
+              AND last_verified_at >= NOW() - (%s * INTERVAL '1 second')
+        )
+        """,
+        (
+            connector_id,
+            container_id,
+            SWEEP_ACTIVITY_WINDOW_SECONDS,
+            connector_id,
+            container_id,
+            SWEEP_ACTIVITY_WINDOW_SECONDS,
+        ),
+    ).fetchone()
+    if recent:
+        return SWEEP_WHILE_ACTIVE_SECONDS
+    return SWEEP_QUIET_SECONDS
+
+
 def schedule_due_tracker_jobs(
     *,
     job_service: Any | None = None,
@@ -57,28 +136,40 @@ def schedule_due_tracker_jobs(
     with opener() as conn:
         destinations = _due_dispatch_destinations(conn, comments_schema, workspace_schema)
         hints = _due_hint_destinations(conn, comments_schema, workspace_schema)
-        polls = _due_checkpoint_destinations(conn, comments_schema, "poll")
-        sweeps = _due_checkpoint_destinations(conn, comments_schema, "sweep")
+        polls = _due_checkpoint_destinations(conn, comments_schema, workspace_schema, "poll")
+        sweeps = _due_checkpoint_destinations(conn, comments_schema, workspace_schema, "sweep")
         conn.commit()
     seen: set[tuple[str, str, str]] = set()
+    enqueued = 0
     for connector_id, container_id, paused in destinations:
         if paused:
             continue
-        scheduled.append(
-            _enqueue(service, DISPATCH_KIND, connector_id, container_id, seen)
-        )
+        row = _enqueue(service, DISPATCH_KIND, connector_id, container_id, seen)
+        scheduled.append(row)
+        if row and not row.get("deduplicated"):
+            enqueued += 1
     for connector_id, container_id in hints:
-        scheduled.append(
-            _enqueue(service, DISPATCH_KIND, connector_id, container_id, seen)
-        )
+        row = _enqueue(service, DISPATCH_KIND, connector_id, container_id, seen)
+        scheduled.append(row)
+        if row and not row.get("deduplicated"):
+            enqueued += 1
+    # Throttle: poll/sweep share the tracker_sync slot; skip extra kinds once
+    # the dedicated capacity is already filled by this pass.
+    remaining = max(0, TRACKER_RESOURCE_CAPACITY - enqueued)
     for connector_id, container_id in polls:
-        scheduled.append(
-            _enqueue(service, POLL_KIND, connector_id, container_id, seen)
-        )
+        if remaining <= 0:
+            break
+        row = _enqueue(service, POLL_KIND, connector_id, container_id, seen)
+        scheduled.append(row)
+        if row and not row.get("deduplicated"):
+            remaining -= 1
     for connector_id, container_id in sweeps:
-        scheduled.append(
-            _enqueue(service, SWEEP_KIND, connector_id, container_id, seen)
-        )
+        if remaining <= 0:
+            break
+        row = _enqueue(service, SWEEP_KIND, connector_id, container_id, seen)
+        scheduled.append(row)
+        if row and not row.get("deduplicated"):
+            remaining -= 1
     return [row for row in scheduled if row is not None]
 
 
@@ -135,30 +226,67 @@ def _due_dispatch_destinations(conn: Any, comments_schema: str, workspace_schema
 
 
 def _due_hint_destinations(conn: Any, comments_schema: str, workspace_schema: str) -> list[tuple[str, str]]:
-    del workspace_schema
     rows = conn.execute(
         f"""
         SELECT DISTINCT h.connector_id, h.remote_container_id
         FROM {_qual(comments_schema, 'remote_hints')} h
+        LEFT JOIN {_qual(workspace_schema, 'tracker_connectors')} c ON c.id = h.connector_id
         WHERE h.state = 'pending'
+          AND (h.claimed_by IS NULL OR h.lease_expires_at IS NULL OR h.lease_expires_at < NOW())
+          AND COALESCE(c.paused, FALSE) = FALSE
         """
     ).fetchall()
     return [(str(row["connector_id"]), str(row["remote_container_id"])) for row in rows]
 
 
-def _due_checkpoint_destinations(conn: Any, comments_schema: str, kind: str) -> list[tuple[str, str]]:
+def _due_checkpoint_destinations(
+    conn: Any, comments_schema: str, workspace_schema: str, kind: str
+) -> list[tuple[str, str]]:
+    _seed_destination_checkpoints(conn, comments_schema, workspace_schema, kind)
     rows = conn.execute(
         f"""
-        SELECT scope_key
-        FROM {_qual(comments_schema, 'sync_checkpoints')}
-        WHERE kind = %s
-          AND (next_run_at IS NULL OR next_run_at <= NOW())
+        SELECT cp.scope_key
+        FROM {_qual(comments_schema, 'sync_checkpoints')} cp
+        WHERE cp.kind = %s
+          AND (cp.next_run_at IS NULL OR cp.next_run_at <= NOW())
         """,
         (kind,),
     ).fetchall()
     out: list[tuple[str, str]] = []
+    paused = _paused_connectors(conn, workspace_schema)
     for row in rows:
         connector_id, _, container_id = str(row["scope_key"]).partition(":")
-        if connector_id and container_id:
+        if connector_id and container_id and connector_id not in paused:
             out.append((connector_id, container_id))
     return out
+
+
+def _seed_destination_checkpoints(
+    conn: Any, comments_schema: str, workspace_schema: str, kind: str
+) -> None:
+    rows = conn.execute(
+        f"""
+        SELECT p.connector_id, p.remote_container_id, COALESCE(c.paused, FALSE) AS paused
+        FROM {_qual(workspace_schema, 'project_trackers')} p
+        LEFT JOIN {_qual(workspace_schema, 'tracker_connectors')} c ON c.id = p.connector_id
+        """
+    ).fetchall()
+    for row in rows:
+        if row["paused"]:
+            continue
+        scope = f"{row['connector_id']}:{row['remote_container_id']}"
+        conn.execute(
+            f"""
+            INSERT INTO {_qual(comments_schema, 'sync_checkpoints')} (kind, scope_key, next_run_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (kind, scope_key) DO NOTHING
+            """,
+            (kind, scope),
+        )
+
+
+def _paused_connectors(conn: Any, workspace_schema: str) -> set[str]:
+    rows = conn.execute(
+        f'SELECT id FROM {_qual(workspace_schema, "tracker_connectors")} WHERE paused = TRUE'
+    ).fetchall()
+    return {str(row["id"]) for row in rows}
