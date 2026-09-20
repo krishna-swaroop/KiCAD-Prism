@@ -12,6 +12,7 @@ import {
     type CommentContext,
     type CommentLocation,
     type CommentSeverity,
+    type Mention,
     type MentionCandidate,
 } from "@/types/comments";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,7 @@ export type CommentFormSubmitPayload = {
     content: string;
     commentClass: CommentClass;
     severity: CommentSeverity;
-    mentions: string[];
+    mentions: Mention[];
 };
 
 interface CommentFormProps {
@@ -33,16 +34,21 @@ interface CommentFormProps {
     mentionCandidates?: MentionCandidate[];
 }
 
-function extractMentions(content: string, candidates: MentionCandidate[]): string[] {
-    const emails = new Set(candidates.map((c) => c.email.toLowerCase()));
-    const found = content.match(/@([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g) ?? [];
-    const mentions: string[] = [];
+const MENTION_TOKEN_RE = /@\[([^\]]+)\]\(user:([^)]+)\)/g;
+
+function formatMentionToken(displayName: string, userId: string): string {
+    return `@[${displayName}](user:${userId})`;
+}
+
+function extractMentions(content: string): Mention[] {
+    const mentions: Mention[] = [];
     const seen = new Set<string>();
-    for (const token of found) {
-        const email = token.slice(1).toLowerCase();
-        if (!emails.has(email) || seen.has(email)) continue;
-        seen.add(email);
-        mentions.push(email);
+    for (const match of content.matchAll(MENTION_TOKEN_RE)) {
+        const displayName = (match[1] ?? "").trim();
+        const userId = (match[2] ?? "").trim();
+        if (!userId || seen.has(userId)) continue;
+        seen.add(userId);
+        mentions.push({ userId, displayName: displayName || userId });
     }
     return mentions;
 }
@@ -69,10 +75,6 @@ export function CommentForm({
     const [mentionIndex, setMentionIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    // Visualizer mounts this per open, keyed on the pinned location, so the
-    // initial state above is the reset. Focus still needs asking for: the form
-    // is a bare fixed overlay, not a Radix dialog, so nothing moves focus for
-    // us and the autoFocus attribute is what react-doctor objects to.
     useEffect(() => {
         textareaRef.current?.focus();
     }, []);
@@ -82,8 +84,8 @@ export function CommentForm({
         const q = mentionQuery.toLowerCase();
         return mentionCandidates
             .filter((candidate) => {
-                const email = candidate.email.toLowerCase();
-                return !q || email.includes(q) || email.split("@")[0]?.includes(q);
+                const name = candidate.displayName.toLowerCase();
+                return !q || name.includes(q) || candidate.userId.toLowerCase().includes(q);
             })
             .slice(0, 8);
     }, [mentionCandidates, mentionQuery]);
@@ -92,7 +94,7 @@ export function CommentForm({
 
     const updateMentionState = (value: string, cursor: number) => {
         const before = value.slice(0, cursor);
-        const match = before.match(/@([A-Za-z0-9._%+\-@]*)$/);
+        const match = before.match(/@([A-Za-z0-9._%+\- ]*)$/);
         if (!match) {
             setMentionQuery(null);
             return;
@@ -101,13 +103,14 @@ export function CommentForm({
         setMentionIndex(0);
     };
 
-    const insertMention = (email: string) => {
+    const insertMention = (candidate: MentionCandidate) => {
         const el = textareaRef.current;
         if (!el) return;
         const cursor = el.selectionStart ?? content.length;
         const before = content.slice(0, cursor);
         const after = content.slice(cursor);
-        const replaced = before.replace(/@([A-Za-z0-9._%+\-@]*)$/, `@${email} `);
+        const token = formatMentionToken(candidate.displayName, candidate.userId);
+        const replaced = before.replace(/@([A-Za-z0-9._%+\- ]*)$/, `${token} `);
         const next = `${replaced}${after}`;
         setContent(next);
         setMentionQuery(null);
@@ -125,7 +128,7 @@ export function CommentForm({
             content: content.trim(),
             commentClass,
             severity,
-            mentions: extractMentions(content, mentionCandidates),
+            mentions: extractMentions(content),
         });
     };
 
@@ -143,7 +146,7 @@ export function CommentForm({
             }
             if (e.key === "Enter" || e.key === "Tab") {
                 e.preventDefault();
-                insertMention(mentionMatches[mentionIndex]!.email);
+                insertMention(mentionMatches[mentionIndex]!);
                 return;
             }
             if (e.key === "Escape") {
@@ -254,7 +257,7 @@ export function CommentForm({
                                 updateMentionState(target.value, target.selectionStart ?? target.value.length);
                             }}
                             onKeyDown={handleKeyDown}
-                            placeholder="Describe the issue… Use @email to mention someone"
+                            placeholder="Describe the issue… Use @name to mention someone"
                             className="w-full h-32 p-3 border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-ring text-foreground bg-background"
                             disabled={isSubmitting}
                         />
@@ -263,7 +266,7 @@ export function CommentForm({
                             <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-40 overflow-auto rounded-md border bg-popover shadow-md">
                                 {mentionMatches.map((candidate, index) => (
                                     <button
-                                        key={candidate.email}
+                                        key={candidate.userId}
                                         type="button"
                                         className={cn(
                                             "flex w-full items-center justify-between px-3 py-2 text-left text-sm",
@@ -273,10 +276,10 @@ export function CommentForm({
                                         )}
                                         onMouseDown={(e) => {
                                             e.preventDefault();
-                                            insertMention(candidate.email);
+                                            insertMention(candidate);
                                         }}
                                     >
-                                        <span className="truncate">{candidate.email}</span>
+                                        <span className="truncate">{candidate.displayName}</span>
                                         <span className="ml-2 text-[10px] uppercase text-muted-foreground">
                                             {candidate.role}
                                         </span>
