@@ -10,6 +10,7 @@ compare work. Paused connectors keep their ops; rate-limited rows wait on
 
 from __future__ import annotations
 
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterator, Optional
@@ -24,6 +25,7 @@ TRACKER_RESOURCE = "tracker_sync"
 TRACKER_PRIORITY = 200
 TRACKER_RESOURCE_CAPACITY = 2
 OUTBOX_POLL_SECONDS = 30
+SCHEDULER_SCAN_SECONDS = 30
 POLL_WEBHOOK_WINDOW_SECONDS = 30 * 60
 POLL_WHILE_WEBHOOK_FRESH_SECONDS = 15 * 60
 POLL_QUIET_SECONDS = 3 * 60
@@ -36,6 +38,27 @@ SWEEP_INTERVAL_SECONDS = SWEEP_QUIET_SECONDS
 TRACKER_JOB_KINDS = (DISPATCH_KIND, POLL_KIND, SWEEP_KIND)
 
 Connect = Callable[[], Any]
+
+_hints_applier_mounted = False
+_last_scheduler_scan_at: float | None = None
+
+
+def mount_hints_applier(mounted: bool = True) -> None:
+    """TR-18 mounts the inbound hint applier; until then skip hint-only dispatch."""
+
+    global _hints_applier_mounted
+    _hints_applier_mounted = mounted
+
+
+def hints_applier_mounted() -> bool:
+    return _hints_applier_mounted
+
+
+def reset_scheduler_throttle() -> None:
+    """Test helper: allow the next scheduler pass without waiting."""
+
+    global _last_scheduler_scan_at
+    _last_scheduler_scan_at = None
 
 
 @contextmanager
@@ -127,15 +150,30 @@ def schedule_due_tracker_jobs(
     connect: Connect | None = None,
     comments_schema: str = "comments",
     workspace_schema: str = "workspace",
+    force: bool = False,
 ) -> list[dict[str, Any]]:
     """Scan durable rows and enqueue at most one job per destination+kind."""
+
+    global _last_scheduler_scan_at
+    if not force:
+        now = time.monotonic()
+        if (
+            _last_scheduler_scan_at is not None
+            and (now - _last_scheduler_scan_at) < SCHEDULER_SCAN_SECONDS
+        ):
+            return []
+        _last_scheduler_scan_at = now
 
     service = job_service or default_jobs
     opener = connect or _default_connect
     scheduled: list[dict[str, Any]] = []
     with opener() as conn:
         destinations = _due_dispatch_destinations(conn, comments_schema, workspace_schema)
-        hints = _due_hint_destinations(conn, comments_schema, workspace_schema)
+        hints = (
+            _due_hint_destinations(conn, comments_schema, workspace_schema)
+            if hints_applier_mounted()
+            else []
+        )
         polls = _due_checkpoint_destinations(conn, comments_schema, workspace_schema, "poll")
         sweeps = _due_checkpoint_destinations(conn, comments_schema, workspace_schema, "sweep")
         conn.commit()

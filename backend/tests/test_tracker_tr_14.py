@@ -23,7 +23,12 @@ from app.services.job_handlers import (  # noqa: E402
 )
 from app.services.job_runtime import JobCancelled, RetryableJobError  # noqa: E402
 from app.services.trackers.inbox_store import InboxStore, apply_schema as apply_inbox_schema  # noqa: E402
-from app.services.trackers.jobs import _handle_claimed_op, run_tracker_dispatch_job  # noqa: E402
+from app.services.trackers.errors import ProviderError  # noqa: E402
+from app.services.trackers.jobs import (  # noqa: E402
+    _handle_claimed_op,
+    _record_executor_outcome,
+    run_tracker_dispatch_job,
+)
 from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
 from app.services.trackers.op_store import (  # noqa: E402
     EXECUTE_DISPATCH,
@@ -46,6 +51,8 @@ from app.services.trackers.scheduler import (  # noqa: E402
     TRACKER_RESOURCE_CAPACITY,
     artifact_key,
     poll_interval_seconds,
+    mount_hints_applier,
+    reset_scheduler_throttle,
     schedule_due_tracker_jobs,
     sweep_interval_seconds,
 )
@@ -152,6 +159,8 @@ class RegistrationTests(unittest.TestCase):
 @unittest.skipIf(SHARED_APPLICATION_DATABASE, "TEST_POSTGRES_URL must not target PRISM_DATABASE_URL")
 class TrackerSchedulerPostgresTests(unittest.TestCase):
     def setUp(self) -> None:
+        reset_scheduler_throttle()
+        mount_hints_applier(False)
         self.schema = f"tr14_{uuid.uuid4().hex[:12]}"
         self.conn = psycopg.connect(_dsn(), row_factory=dict_row)
         self.addCleanup(self._cleanup)
@@ -259,6 +268,7 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             connect=self._factory,
             comments_schema=self.schema,
             workspace_schema=self.schema,
+            force=True,
         )
         dispatch = [row for row in scheduled if row["kind"] == DISPATCH_KIND]
         self.assertEqual(len(dispatch), 1)
@@ -273,6 +283,7 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             connect=self._factory,
             comments_schema=self.schema,
             workspace_schema=self.schema,
+            force=True,
         )
         dispatch_again = [row for row in again if row["kind"] == DISPATCH_KIND]
         self.assertTrue(dispatch_again[0]["deduplicated"])
@@ -285,6 +296,7 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             connect=self._factory,
             comments_schema=self.schema,
             workspace_schema=self.schema,
+            force=True,
         )
         self.assertEqual(scheduled, [])
         row = self.ops.get("op_1")
@@ -311,6 +323,7 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             connect=self._factory,
             comments_schema=self.schema,
             workspace_schema=self.schema,
+            force=True,
         )
         self.assertEqual([row for row in scheduled if row["kind"] == DISPATCH_KIND], [])
 
@@ -356,7 +369,7 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
         with self.assertRaises(JobCancelled):
             run_tracker_dispatch_job(context)
 
-    def test_inbox_row_is_discovered_independently(self) -> None:
+    def test_hint_only_destinations_skip_dispatch_until_applier_mounted(self) -> None:
         self.store.upsert_connector(
             connector_id="cn_gh1", provider="github", instance_kind="github.com"
         )
@@ -372,6 +385,16 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             connect=self._factory,
             comments_schema=self.schema,
             workspace_schema=self.schema,
+            force=True,
+        )
+        self.assertEqual(scheduled, [])
+        mount_hints_applier(True)
+        scheduled = schedule_due_tracker_jobs(
+            job_service=self.jobs,
+            connect=self._factory,
+            comments_schema=self.schema,
+            workspace_schema=self.schema,
+            force=True,
         )
         self.assertEqual(scheduled[0]["kind"], DISPATCH_KIND)
         self.assertEqual(scheduled[0]["payload"]["remoteContainerId"], "111")
@@ -443,10 +466,86 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             connect=self._factory,
             comments_schema=self.schema,
             workspace_schema=self.schema,
+            force=True,
         )
         kinds = {row["kind"] for row in scheduled}
         self.assertIn(POLL_KIND, kinds)
         self.assertIn(SWEEP_KIND, kinds)
+
+    def test_scheduler_scan_is_throttled_to_30_seconds(self) -> None:
+        self._seed()
+        first = schedule_due_tracker_jobs(
+            job_service=self.jobs,
+            connect=self._factory,
+            comments_schema=self.schema,
+            workspace_schema=self.schema,
+        )
+        self.assertEqual(len([row for row in first if row["kind"] == DISPATCH_KIND]), 1)
+        second = schedule_due_tracker_jobs(
+            job_service=self.jobs,
+            connect=self._factory,
+            comments_schema=self.schema,
+            workspace_schema=self.schema,
+        )
+        self.assertEqual(second, [])
+
+    def test_executor_timeout_after_sent_enters_quarantine_not_fail(self) -> None:
+        self._seed()
+        claimed = self.ops.claim("worker-a")
+        sent = self.ops.mark_sent("op_1", int(claimed["fence"]))
+        self.conn.commit()
+        timeout = ProviderError(
+            "transient",
+            "Request timed out; outcome unknown.",
+            retryable=False,
+        )
+        _record_executor_outcome(
+            self.ops,
+            "op_1",
+            int(sent["fence"]),
+            timeout,
+            dispatch=EXECUTE_DISPATCH,
+        )
+        row = self.ops.get("op_1")
+        self.assertEqual(row["state"], "quarantine")
+        self.assertNotEqual(row["state"], "failed")
+
+    def test_invalid_request_on_execute_dispatch_fails_immediately(self) -> None:
+        self._seed()
+        claimed = self.ops.claim("worker-a")
+        sent = self.ops.mark_sent("op_1", int(claimed["fence"]))
+        self.conn.commit()
+        bad_request = ProviderError("invalid_request", "Forge rejected the request.")
+        _record_executor_outcome(
+            self.ops,
+            "op_1",
+            int(sent["fence"]),
+            bad_request,
+            dispatch=EXECUTE_DISPATCH,
+        )
+        row = self.ops.get("op_1")
+        self.assertEqual(row["state"], "failed")
+        self.assertEqual(row["last_error"]["class"], "invalid_request")
+
+    def test_executor_confirm_uses_returned_external_id(self) -> None:
+        self._seed()
+
+        def executor(_claimed):  # noqa: ANN001
+            return "412"
+
+        context = FakeContext(
+            {
+                "connectorId": "cn_gh1",
+                "remoteContainerId": "111",
+                "_connect": self._factory,
+                "_executor": executor,
+            }
+        )
+        result = run_tracker_dispatch_job(context)
+        self.assertEqual(result.message, "Dispatched")
+        row = self.ops.get("op_1")
+        self.assertEqual(row["state"], "confirmed")
+        self.assertEqual(row["external_result_id"], "412")
 
 
 if __name__ == "__main__":

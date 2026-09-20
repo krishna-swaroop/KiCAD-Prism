@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 
 from app.services.job_runtime import JobContext, JobResult, RetryableJobError
 from app.services.trackers.errors import ProviderError
@@ -30,7 +30,9 @@ from app.services.trackers.scheduler import (
     sweep_interval_seconds,
 )
 
-DispatchExecutor = Callable[[dict[str, Any]], None]
+DispatchExecutor = Callable[[dict[str, Any]], str | None]
+
+QUARANTINE_FIRST_MINUTES = 1
 
 
 def register_tracker_job_handlers(register: Callable[[str, Callable], None]) -> None:
@@ -213,19 +215,31 @@ def _run_executor_outside_txn(
         return JobResult(message="Dispatched")
     op_id = str(claimed["id"])
     fence = int(claimed["fence"])
+    dispatch = str(claimed.get("dispatch") or EXECUTE_DISPATCH)
     try:
-        executor(claimed)
+        external_id = executor(claimed)
     except Exception as exc:
         with _comments_connect(context) as conn:
-            _record_executor_outcome(OpStore(conn), op_id, fence, exc)
+            _record_executor_outcome(OpStore(conn), op_id, fence, exc, dispatch=dispatch)
             conn.commit()
         raise
+    if external_id:
+        with _comments_connect(context) as conn:
+            OpStore(conn).confirm(op_id, fence, external_result_id=str(external_id))
+            conn.commit()
     return JobResult(
         message="Recovery path; not resent" if claimed.get("dispatch") == RECOVERY_DISPATCH else "Dispatched"
     )
 
 
-def _record_executor_outcome(ops: OpStore, op_id: str, fence: int, exc: BaseException) -> None:
+def _record_executor_outcome(
+    ops: OpStore,
+    op_id: str,
+    fence: int,
+    exc: BaseException,
+    *,
+    dispatch: str,
+) -> None:
     if isinstance(exc, ProviderError):
         error = exc.to_dto()
         resume_at = _rate_limit_resume({"last_error": error})
@@ -247,7 +261,10 @@ def _record_executor_outcome(ops: OpStore, op_id: str, fence: int, exc: BaseExce
                 consume_attempt=True,
             )
             return
-        ops.fail(op_id, fence, error=error)
+        if dispatch == EXECUTE_DISPATCH and exc.class_ in {"invalid_request", "capability_missing"}:
+            ops.fail(op_id, fence, error=error)
+            return
+        _enter_unknown_outcome_recovery(ops, op_id, fence, error=error)
         return
     ops.schedule(
         op_id,
@@ -255,6 +272,23 @@ def _record_executor_outcome(ops: OpStore, op_id: str, fence: int, exc: BaseExce
         next_attempt_at=datetime.now(timezone.utc) + timedelta(seconds=OUTBOX_POLL_SECONDS),
         error={"class": "transient", "message": str(exc)[:300], "retryable": True},
         consume_attempt=True,
+    )
+
+
+def _enter_unknown_outcome_recovery(
+    ops: OpStore,
+    op_id: str,
+    fence: int,
+    *,
+    error: Mapping[str, Any],
+) -> None:
+    """Unknown write outcome (D2): sent → recovering → quarantine, never fail on the spot."""
+
+    ops.enter_recovery(op_id, fence)
+    ops.enter_quarantine(
+        op_id,
+        fence,
+        next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=QUARANTINE_FIRST_MINUTES),
     )
 
 
@@ -271,7 +305,13 @@ def _handle_claimed_op(
         ops, claimed, paused=paused, has_executor=executor is not None
     )
     if prepared["run_io"] and executor is not None:
-        executor(claimed)
+        external_id = executor(claimed)
+        if external_id:
+            ops.confirm(
+                str(claimed["id"]),
+                int(claimed["fence"]),
+                external_result_id=str(external_id),
+            )
     return prepared["result"]
 
 
