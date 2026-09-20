@@ -206,6 +206,8 @@ export interface EcadCommentAreaDetail {
     x: number;
     y: number;
     bounds: [number, number, number, number];
+    /** Sheet occurrence path when the schematic file is instantiated more than once. */
+    sheetPath?: string;
     page?: string;
     layer?: string;
 }

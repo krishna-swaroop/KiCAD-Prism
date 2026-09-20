@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { trackerUiMocks } from "@/lib/trackers-client-fixtures";
 import * as TrackerSurface from "./index";
 import {
     TrackerApiError,
@@ -25,7 +26,6 @@ import {
     revokeConnector,
     stripTrackerSecrets,
     testConnector,
-    trackerUiMocks,
     unlinkIdentity,
     updateConnector,
     updateProjectTracker,

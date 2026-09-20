@@ -68,12 +68,35 @@ afterEach(() => {
 describe("displayed canvas revision (F2 / C1)", () => {
     it("sends the historical SHA and never invents HEAD", () => {
         const sha = "b".repeat(40);
-        expect(displayedCanvasRevision(sha)).toEqual({ commit: sha, worktree: false });
+        expect(displayedCanvasRevision(sha)).toEqual({
+            commit: sha,
+            worktree: false,
+            sourceRevisionKey: null,
+        });
     });
 
     it("marks a live/worktree view as unpinned worktree", () => {
-        expect(displayedCanvasRevision(null)).toEqual({ worktree: true });
-        expect(displayedCanvasRevision("3f2c9a1")).toEqual({ worktree: true });
+        expect(displayedCanvasRevision(null)).toEqual({
+            worktree: true,
+            sourceRevisionKey: null,
+        });
+        expect(displayedCanvasRevision("3f2c9a1")).toEqual({
+            worktree: true,
+            sourceRevisionKey: null,
+        });
+    });
+
+    it("forwards sourceRevisionKey for pinned and worktree views", () => {
+        const sha = "d".repeat(40);
+        expect(displayedCanvasRevision(sha, "src:worktree")).toEqual({
+            commit: sha,
+            worktree: false,
+            sourceRevisionKey: "src:worktree",
+        });
+        expect(displayedCanvasRevision(null, "src:live")).toEqual({
+            worktree: true,
+            sourceRevisionKey: "src:live",
+        });
     });
 });
 
@@ -200,7 +223,7 @@ describe("canvas and comparison creates send the displayed revision/side, not au
         });
         const body = JSON.parse(String(mockedFetch.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
         expect(body).not.toHaveProperty("author");
-        expect(body.revision).toEqual({ commit: sha, worktree: false });
+        expect(body.revision).toEqual({ commit: sha, worktree: false, sourceRevisionKey: null });
     });
 
     it("sends selectedSide on comparison create", async () => {

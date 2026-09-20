@@ -18,12 +18,18 @@ const FULL_SHA = /^[0-9a-f]{40}$/i;
 /** The revision the reviewer is looking at. HEAD is never inferred. */
 export function displayedCanvasRevision(
     commit?: string | null,
+    sourceRevisionKey?: string | null,
 ): CreateCommentDisplayedRevision {
     const sha = (commit ?? "").trim();
+    const revisionKey = (sourceRevisionKey ?? "").trim() || null;
     if (FULL_SHA.test(sha)) {
-        return { commit: sha.toLowerCase(), worktree: false };
+        return {
+            commit: sha.toLowerCase(),
+            worktree: false,
+            sourceRevisionKey: revisionKey,
+        };
     }
-    return { worktree: true };
+    return { worktree: true, sourceRevisionKey: revisionKey };
 }
 
 export function actionAllowed(

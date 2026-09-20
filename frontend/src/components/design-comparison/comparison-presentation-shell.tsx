@@ -103,6 +103,9 @@ type ComparisonPresentationShellProps = {
      * it to whichever shell is on screen.
      */
     toolbarContent?: ReactNode;
+    /** Which revision side (Old/New) the reviewer is viewing. */
+    selectedSide?: OldNewSide;
+    onSelectedSideChange?: (side: OldNewSide) => void;
 };
 
 type SessionPhase = "waiting-layout" | "loading" | "ready" | "error";
@@ -255,6 +258,8 @@ export function ComparisonPresentationShell({
     rightRailTab = null,
     onRightRailTabChange = ignoreRightRailChange,
     toolbarContent = null,
+    selectedSide: oldNewSide = "compare",
+    onSelectedSideChange,
 // react-doctor-disable-next-line prefer-useReducer - separate concerns: viewer handles, session lifecycle, selection reporting and rail geometry do not change together
 }: ComparisonPresentationShellProps) {
     const [primaryViewer, setPrimaryViewer] =
@@ -270,7 +275,6 @@ export function ComparisonPresentationShell({
     const [sessionError, setSessionError] = useState<string | null>(null);
     const [preparation, setPreparation] =
         useState<EcadDocumentComparisonPreparation | null>(null);
-    const [oldNewSide, setOldNewSide] = useState<OldNewSide>("compare");
     const [selectionPending, setSelectionPending] = useState(false);
     // Native selection may repaint viewer-owned PCB state as it settles. This
     // counter gives layer focus a deterministic post-selection pass even when
@@ -1360,7 +1364,7 @@ export function ComparisonPresentationShell({
                             variant={oldNewSide === "base" ? "secondary" : "ghost"}
                             size="sm"
                             className="h-7 rounded-sm text-xs"
-                            onClick={() => setOldNewSide("base")}
+                            onClick={() => onSelectedSideChange?.("base")}
                             aria-label="Old revision"
                             aria-pressed={oldNewSide === "base"}
                         >
@@ -1377,7 +1381,7 @@ export function ComparisonPresentationShell({
                                 oldNewSide === "compare" &&
                                     "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
                             )}
-                            onClick={() => setOldNewSide("compare")}
+                            onClick={() => onSelectedSideChange?.("compare")}
                             aria-label="New revision"
                             aria-pressed={oldNewSide === "compare"}
                         >

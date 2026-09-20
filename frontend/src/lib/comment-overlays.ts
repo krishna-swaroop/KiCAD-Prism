@@ -184,7 +184,7 @@ export function commentLocationFromArea(detail: EcadCommentAreaDetail): CommentL
         x: detail.x,
         y: detail.y,
         layer: detail.layer ?? "",
-        page: detail.page,
+        page: detail.sheetPath ?? detail.page,
         bounds: detail.bounds,
     };
 }
