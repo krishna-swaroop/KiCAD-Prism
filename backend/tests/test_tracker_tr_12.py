@@ -20,6 +20,8 @@ from app.services.trackers.migrations import (  # noqa: E402
     WORKSPACE_FK_CASCADE_VERSION,
     WORKSPACE_MIGRATION_NAME,
     WORKSPACE_MIGRATION_VERSION,
+    WORKSPACE_WEBHOOK_OAUTH_NAME,
+    WORKSPACE_WEBHOOK_OAUTH_VERSION,
     migrate_comments_tracked_links,
     migrate_workspace_tracker_tables,
 )
@@ -57,9 +59,11 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(len(versions), len(set(versions)))
         self.assertIn(WORKSPACE_MIGRATION_VERSION, versions)
         self.assertEqual(names[WORKSPACE_MIGRATION_VERSION], WORKSPACE_MIGRATION_NAME)
-        self.assertEqual(max(versions), WORKSPACE_FK_CASCADE_VERSION)
-        self.assertEqual(WS_MIGRATIONS[-1][0], WORKSPACE_FK_CASCADE_VERSION)
-        self.assertEqual(WS_MIGRATIONS[-1][1], WORKSPACE_FK_CASCADE_NAME)
+        self.assertEqual(max(versions), WORKSPACE_WEBHOOK_OAUTH_VERSION)
+        self.assertIn(WORKSPACE_FK_CASCADE_VERSION, versions)
+        self.assertEqual(names[WORKSPACE_FK_CASCADE_VERSION], WORKSPACE_FK_CASCADE_NAME)
+        self.assertEqual(WS_MIGRATIONS[-1][0], WORKSPACE_WEBHOOK_OAUTH_VERSION)
+        self.assertEqual(WS_MIGRATIONS[-1][1], WORKSPACE_WEBHOOK_OAUTH_NAME)
 
     def test_comments_migration_3_is_tracked_links(self) -> None:
         versions = [version for version, name, _ in comments_schema_migrations.MIGRATIONS]

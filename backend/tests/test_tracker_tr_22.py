@@ -28,7 +28,10 @@ from app.services.trackers.mentions import (  # noqa: E402
     parse_mention_tokens,
     resolve_mention_assignments,
 )
-from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
+from app.services.trackers.migrations import (  # noqa: E402
+    migrate_tracker_webhook_oauth_tables,
+    migrate_workspace_tracker_tables,
+)
 
 try:
     import psycopg
@@ -209,6 +212,7 @@ class MentionPostgresTests(unittest.TestCase):
             prepare=False,
         )
         migrate_workspace_tracker_tables(self.conn)
+        migrate_tracker_webhook_oauth_tables(self.conn)
         comments_schema_migrations.apply_comments_migrations(self.conn)
         self.conn.execute(
             """

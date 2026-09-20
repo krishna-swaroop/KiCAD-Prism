@@ -22,7 +22,10 @@ from app.core.security import AuthenticatedUser  # noqa: E402
 from app.api import project_trackers as trackers_api  # noqa: E402
 from app.services import comments_schema_migrations  # noqa: E402
 from app.services.trackers.connector_service import ConnectorService  # noqa: E402
-from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
+from app.services.trackers.migrations import (  # noqa: E402
+    migrate_tracker_webhook_oauth_tables,
+    migrate_workspace_tracker_tables,
+)
 from app.services.trackers.publication_policy import (  # noqa: E402
     DispatchPause,
     PublicationDenied,
@@ -150,6 +153,7 @@ class PublicationPolicyPostgresTests(unittest.TestCase):
             prepare=False,
         )
         migrate_workspace_tracker_tables(self.conn)
+        migrate_tracker_webhook_oauth_tables(self.conn)
         comments_schema_migrations.apply_comments_migrations(self.conn)
         self.conn.commit()
         self.settings = _settings()
