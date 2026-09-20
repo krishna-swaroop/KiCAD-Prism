@@ -63,12 +63,14 @@ class ConnectorService:
         connect: Callable[[], Any] | None = None,
         settings: Any | None = None,
         tester: Callable[..., dict] | None = None,
+        container_observer: Callable[..., dict[str, Any]] | None = None,
         comments_schema: str = "comments",
         workspace_schema: str = "workspace",
     ) -> None:
         self._connect = connect
         self.settings = settings or default_settings
         self._tester = tester
+        self._container_observer = container_observer
         self.comments_schema = comments_schema
         self.workspace_schema = workspace_schema
 
@@ -288,6 +290,83 @@ class ConnectorService:
             )
             conn.commit()
             return self._public(TrackerStore(conn).get_connector(connector_id), conn)
+
+    def observe_container(
+        self,
+        connector_id: str,
+        *,
+        container_kind: str,
+        container_path: str,
+        remote_container_id: str,
+        generation: int = 1,
+        visibility_hint: str | None = None,
+    ) -> dict[str, Any]:
+        """Resolve destination visibility via ``IssueTracker.get_container`` (D7)."""
+
+        if self._container_observer is not None:
+            return self._container_observer(
+                connector_id,
+                container_kind=container_kind,
+                container_path=container_path,
+                remote_container_id=remote_container_id,
+                generation=generation,
+                visibility_hint=visibility_hint,
+            )
+        with self.connection() as conn:
+            row = self._require(conn, connector_id)
+            envelope = conn.execute(
+                "SELECT credential_envelope FROM tracker_connectors WHERE id = %s",
+                (connector_id,),
+            ).fetchone()
+            blob = (envelope or {}).get("credential_envelope")
+            if not blob:
+                return {
+                    "visibility": "unknown",
+                    "containerPath": container_path,
+                    "remoteContainerId": remote_container_id,
+                }
+            material = json.loads(
+                decrypt_secret(blob, _context(connector_id), settings=self.settings).decode()
+            )
+        from app.services.trackers.contracts import Destination
+        from app.services.trackers.github_auth import GitHubAppAuth, GitHubAppCredentials
+        from app.services.trackers.github_issues import GitHubIssueAdapter
+
+        creds = GitHubAppCredentials(
+            app_id=str(material.get("appId") or material.get("app_id") or ""),
+            installation_id=str(material.get("installationId") or material.get("installation_id") or ""),
+            private_key_pem=str(material.get("privateKey") or material.get("private_key") or ""),
+            instance_kind=str(row.get("instance_kind") or "github.com"),
+            base_url=str(row.get("base_url") or ""),
+        )
+        auth = GitHubAppAuth(creds)
+        adapter = GitHubIssueAdapter(
+            auth,
+            http=auth.http,
+            bot_user_id=str(row.get("bot_forge_user_id") or ""),
+            bot_login=str(row.get("bot_login") or ""),
+        )
+        dest = Destination(
+            connectorId=connector_id,
+            containerKind=container_kind,  # type: ignore[arg-type]
+            containerPath=container_path,
+            remoteContainerId=remote_container_id,
+            generation=max(1, int(generation)),
+            visibility=visibility_hint if visibility_hint in {"public", "private", "unknown"} else None,
+        )
+        try:
+            container = adapter.get_container(dest)
+        except ProviderError:
+            return {
+                "visibility": "unknown",
+                "containerPath": container_path,
+                "remoteContainerId": remote_container_id,
+            }
+        return {
+            "visibility": str(container.visibility),
+            "containerPath": str(container.path),
+            "remoteContainerId": str(container.remoteContainerId),
+        }
 
     def test_connection(self, connector_id: str, *, actor_user_id: str) -> dict[str, Any]:
         with self.connection() as conn:
