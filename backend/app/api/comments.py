@@ -23,6 +23,12 @@ from pydantic import BaseModel, Field, model_validator
 from app.api._helpers import get_project_for_role_or_404
 from app.core.security import AuthenticatedUser, require_comment_writer, require_designer, require_viewer
 from app.services import access_service, comment_permissions
+from app.services.comment_anchor_service import (
+    AnchorValidationError,
+    resolve_canvas_anchor,
+    resolve_comparison_anchor,
+    resolve_manual_pin,
+)
 from app.services.comment_permissions import (
     ActorIdentity,
     AuthoredObject,
@@ -55,6 +61,14 @@ class CommentLocation(BaseModel):
     bounds: Optional[List[float]] = None  # [x, y, w, h] for area comments
 
 
+class CreateDisplayedRevision(BaseModel):
+    """The commit or worktree the author was looking at. Never inferred."""
+
+    commit: Optional[str] = None
+    worktree: bool = False
+    sourceRevisionKey: Optional[str] = None
+
+
 class CreateCommentRequest(BaseModel):
     # ``author`` is no longer accepted: attribution comes from the session.
     context: str  # "PCB" or "SCH"
@@ -66,6 +80,7 @@ class CreateCommentRequest(BaseModel):
     commentClass: Optional[str] = DEFAULT_COMMENT_CLASS
     severity: Optional[str] = DEFAULT_COMMENT_SEVERITY
     mentions: Optional[List[str]] = None
+    revision: Optional[CreateDisplayedRevision] = None
     metadata: Optional[dict] = None
 
 
@@ -111,6 +126,11 @@ class DeleteCommentRequest(BaseModel):
     expectedRevision: Optional[int] = None
 
 
+class PinCommentRequest(BaseModel):
+    commit: str
+    expectedRevision: Optional[int] = None
+
+
 class CommentAnchor(BaseModel):
     state: str = "unpinned"
     source: Optional[str] = None
@@ -118,6 +138,8 @@ class CommentAnchor(BaseModel):
     sourceRevisionKey: Optional[str] = None
     baseCommit: Optional[str] = None
     compareCommit: Optional[str] = None
+    selectedSide: Optional[str] = None
+    projectFile: Optional[str] = None
 
 
 class CommentPermissions(BaseModel):
@@ -204,6 +226,7 @@ class CreateComparisonCommentRequest(BaseModel):
     commentClass: Optional[str] = DEFAULT_COMMENT_CLASS
     severity: Optional[str] = DEFAULT_COMMENT_SEVERITY
     mentions: Optional[List[str]] = None
+    selectedSide: Optional[str] = None
 
 
 def _actor(user: AuthenticatedUser) -> ActorIdentity:
@@ -247,6 +270,10 @@ def _conflict_response(exc: RevisionConflict) -> JSONResponse:
     )
 
 
+def _anchor_response(exc: AnchorValidationError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": exc.detail, "code": exc.code})
+
+
 async def _run_mutation(write: Callable[[], T]):
     """Run a store mutation off the event loop, translating policy outcomes.
 
@@ -259,6 +286,15 @@ async def _run_mutation(write: Callable[[], T]):
         return _permission_response(exc)
     except RevisionConflict as exc:
         return _conflict_response(exc)
+    except AnchorValidationError as exc:
+        return _anchor_response(exc)
+    except ValueError as exc:
+        if "immutable" in str(exc).lower():
+            return JSONResponse(
+                status_code=422,
+                content={"detail": str(exc), "code": "anchor_immutable"},
+            )
+        raise
 
 
 def _normalize_status(value: str) -> str:
@@ -430,13 +466,19 @@ async def create_comparison_comment(
     content = _normalize_content(request.content)
     comment_class = _normalize_comment_class(request.commentClass)
     severity = _normalize_severity(request.severity)
-    base_commit = _normalize_commit(request.baseCommit, "baseCommit")
-    compare_commit = _normalize_commit(request.compareCommit, "compareCommit")
 
     def write():
         project = get_project_for_role_or_404(project_id, user.role)
         actor = _actor(user)
         comment_permissions.authorize(CommentAction.CREATE, actor)
+        anchor = resolve_comparison_anchor(
+            project,
+            base_commit=request.baseCommit,
+            compare_commit=request.compareCommit,
+            selected_side=request.selectedSide,
+            file_path=request.filePath,
+            context=domain,
+        )
         created = comments_store.create_comment(
             project_id=project.id,
             project_path=project.path,
@@ -453,12 +495,17 @@ async def create_comparison_comment(
             severity=severity,
             mentions=request.mentions,
             scope="comparison",
-            base_commit=base_commit,
-            compare_commit=compare_commit,
+            base_commit=anchor.base_commit,
+            compare_commit=anchor.compare_commit,
             comparison_domain=domain,
-            file_path=request.filePath,
+            file_path=anchor.file_path,
             semantic_item_id=request.semanticItemId,
             anchor_kind=anchor_kind,
+            anchor_commit=anchor.commit,
+            anchor_revision_key=anchor.source_revision_key,
+            anchor_source=anchor.source,
+            selected_side=anchor.selected_side,
+            project_relative_path=anchor.project_relative_path,
         )
         return _with_permissions(created, actor)
 
@@ -485,6 +532,10 @@ async def create_comment(
         project = get_project_for_role_or_404(project_id, user.role)
         actor = _actor(user)
         comment_permissions.authorize(CommentAction.CREATE, actor)
+        revision = request.revision.model_dump() if request.revision is not None else None
+        anchor = resolve_canvas_anchor(
+            project, revision=revision, context=context, file_path=None,
+        )
         created = comments_store.create_comment(
             project_id=project.id,
             project_path=project.path,
@@ -501,6 +552,11 @@ async def create_comment(
             severity=severity,
             mentions=request.mentions,
             metadata=request.metadata,
+            file_path=anchor.file_path,
+            anchor_commit=anchor.commit,
+            anchor_revision_key=anchor.source_revision_key,
+            anchor_source=anchor.source,
+            project_relative_path=anchor.project_relative_path,
         )
         return _with_permissions(created, actor)
 
@@ -559,6 +615,49 @@ async def update_comment(
     if not updated_comment:
         raise HTTPException(status_code=404, detail="Comment not found")
     return updated_comment
+
+
+@router.post(
+    "/{project_id}/comments/{comment_id}/pin",
+    dependencies=[Depends(require_comment_writer)],
+)
+async def pin_comment(
+    project_id: str,
+    comment_id: str,
+    request: PinCommentRequest,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Admin-only pin of an unpinned (legacy/worktree) comment. Never uses HEAD."""
+
+    def write():
+        project = get_project_for_role_or_404(project_id, user.role)
+        actor = _actor(user)
+        if not actor.is_admin:
+            raise comment_permissions.CommentPermissionError(
+                "legacy_admin_only",
+                "Only an admin can pin a comment to a commit",
+            )
+        current = comments_store.get_comment(project.id, project.path, comment_id)
+        if current is None:
+            return None
+        context = str(current.get("context") or "PCB")
+        anchor = resolve_manual_pin(project, commit=request.commit, context=context)
+        updated = comments_store.pin_comment_anchor(
+            project.id, project.path, comment_id, _editor(actor),
+            commit=anchor.commit or request.commit,
+            source_revision_key=anchor.source_revision_key,
+            file_path=anchor.file_path,
+            project_relative_path=anchor.project_relative_path,
+            expected_revision=request.expectedRevision,
+        )
+        return _with_permissions(updated, actor) if updated else None
+
+    result = await _run_mutation(write)
+    if isinstance(result, JSONResponse):
+        return result
+    if not result:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    return result
 
 
 @router.post("/{project_id}/comments/{comment_id}/replies", dependencies=[Depends(require_comment_writer)])

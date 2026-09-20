@@ -52,7 +52,8 @@ _COMMENT_COLUMNS = """
     file_path, semantic_item_id, anchor_kind,
     forge_provider, forge_issue_id, forge_issue_url, forge_sync_state,
     author_user_id, author_kind, revision, updated_at, deleted_at,
-    anchor_commit, anchor_revision_key, anchor_source, anchor_state
+    anchor_commit, anchor_revision_key, anchor_source, anchor_state,
+    selected_side, project_relative_path
 """
 
 _REPLY_COLUMNS = """
@@ -151,14 +152,19 @@ def _anchor_block(row) -> Dict:
     block answers "which revision" for both canvas and comparison scopes.
     """
     state = row.get("anchor_state") or ANCHOR_STATE_UNPINNED
-    return {
+    block = {
         "state": state,
         "source": row.get("anchor_source"),
         "commit": row.get("anchor_commit"),
         "sourceRevisionKey": row.get("anchor_revision_key"),
         "baseCommit": row.get("base_commit"),
         "compareCommit": row.get("compare_commit"),
+        "selectedSide": row.get("selected_side"),
     }
+    project_file = row.get("project_relative_path")
+    if project_file:
+        block["projectFile"] = project_file
+    return block
 
 
 def _row_to_reply_dict(row) -> Dict:
@@ -207,6 +213,8 @@ def _row_to_comment_dict(row, replies: List[Dict]) -> Dict:
         "mentions": _normalize_mentions(row.get("mentions")),
         "anchor": _anchor_block(row),
     }
+    if (comment["anchor"].get("state") or ANCHOR_STATE_UNPINNED) == ANCHOR_STATE_UNPINNED:
+        comment["tracker"] = {"linkState": None, "notPromotableReason": "unpinned_anchor"}
     if row.get("deleted_at"):
         comment["deletedAt"] = _iso_timestamp(row["deleted_at"])
     element_id = row.get("element_id")
@@ -343,6 +351,8 @@ class CommentsStoreService:
                         "ALTER TABLE comments ADD COLUMN IF NOT EXISTS forge_issue_id TEXT",
                         "ALTER TABLE comments ADD COLUMN IF NOT EXISTS forge_issue_url TEXT",
                         "ALTER TABLE comments ADD COLUMN IF NOT EXISTS forge_sync_state TEXT",
+                        "ALTER TABLE comments ADD COLUMN IF NOT EXISTS selected_side TEXT",
+                        "ALTER TABLE comments ADD COLUMN IF NOT EXISTS project_relative_path TEXT",
                     )),
                     prepare=False,
                 )
@@ -647,6 +657,8 @@ class CommentsStoreService:
         anchor_commit: Optional[str] = None,
         anchor_revision_key: Optional[str] = None,
         anchor_source: Optional[str] = None,
+        selected_side: Optional[str] = None,
+        project_relative_path: Optional[str] = None,
     ) -> Dict:
         """Insert a root comment at revision 1 and record its creation.
 
@@ -662,7 +674,10 @@ class CommentsStoreService:
         author_user_id = _optional_str(author_user_id)
         author_kind_norm = _optional_str(author_kind) or (AUTHOR_KIND_USER if author_user_id else AUTHOR_KIND_LEGACY)
         anchor_commit = _optional_str(anchor_commit)
-        anchor_state = ANCHOR_STATE_PINNED if anchor_commit else ANCHOR_STATE_UNPINNED
+        selected_side = _optional_str(selected_side)
+        project_relative_path = _optional_str(project_relative_path)
+        has_comparison_pair = bool(_optional_str(base_commit) and _optional_str(compare_commit))
+        anchor_state = ANCHOR_STATE_PINNED if (anchor_commit or has_comparison_pair) else ANCHOR_STATE_UNPINNED
         area = _parse_area_bounds(location.get("bounds"))
         class_norm = _normalize_comment_class(comment_class)
         severity_norm = _normalize_severity(severity)
@@ -687,14 +702,16 @@ class CommentsStoreService:
                         scope, base_commit, compare_commit, comparison_domain,
                         file_path, semantic_item_id, anchor_kind,
                         author_user_id, author_kind, revision, updated_at,
-                        anchor_commit, anchor_revision_key, anchor_source, anchor_state
+                        anchor_commit, anchor_revision_key, anchor_source, anchor_state,
+                        selected_side, project_relative_path
                     )
                     VALUES(
                         %s, %s, %s, %s, 'OPEN', %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb,
                         %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, 1, %s,
-                        %s, %s, %s, %s
+                        %s, %s, %s, %s,
+                        %s, %s
                     )
                     """,
                     (
@@ -733,6 +750,8 @@ class CommentsStoreService:
                         _optional_str(anchor_revision_key),
                         _optional_str(anchor_source),
                         anchor_state,
+                        selected_side,
+                        project_relative_path,
                     ),
                 )
                 comments_revisions.record_revision(
@@ -873,6 +892,63 @@ class CommentsStoreService:
                     severity=_normalize_severity(severity) if severity is not None else None,
                     comment_class=_normalize_comment_class(comment_class) if comment_class is not None else None,
                     mentions=_normalize_mentions(mentions) if mentions is not None else None,
+                )
+                return self._get_comment_with_replies(conn, project_id, comment_id)
+
+    def pin_comment_anchor(
+        self,
+        project_id: str,
+        project_path: str,
+        comment_id: str,
+        editor: Editor,
+        *,
+        commit: str,
+        source_revision_key: Optional[str],
+        file_path: Optional[str] = None,
+        project_relative_path: Optional[str] = None,
+        expected_revision: Optional[int] = None,
+    ) -> Optional[Dict]:
+        """Admin pin of an unpinned root. Already-pinned rows stay immutable."""
+        self.initialize()
+        now = _utc_now_iso()
+        with self._connect() as conn:
+            with conn.transaction():
+                self._bootstrap_project_if_needed(conn, project_id, project_path)
+                row = conn.execute(
+                    f"SELECT {_COMMENT_COLUMNS} FROM comments WHERE project_id = %s AND id = %s AND deleted_at IS NULL",
+                    (project_id, comment_id),
+                ).fetchone()
+                if row is None:
+                    return None
+                if row.get("anchor_state") == ANCHOR_STATE_PINNED and row.get("anchor_commit"):
+                    raise ValueError("anchor fields are immutable")
+                params: List[object] = [
+                    commit, source_revision_key, "manual", ANCHOR_STATE_PINNED,
+                    _optional_str(file_path) or row.get("file_path"),
+                    _optional_str(project_relative_path) or row.get("project_relative_path"),
+                    now, project_id, comment_id,
+                ]
+                guard = ""
+                if expected_revision is not None:
+                    guard = " AND revision = %s"
+                    params.append(expected_revision)
+                updated = conn.execute(
+                    f"""
+                    UPDATE comments
+                    SET anchor_commit = %s, anchor_revision_key = %s, anchor_source = %s,
+                        anchor_state = %s, file_path = %s, project_relative_path = %s,
+                        revision = revision + 1, updated_at = %s
+                    WHERE project_id = %s AND id = %s AND deleted_at IS NULL{guard}
+                    RETURNING revision
+                    """,
+                    tuple(params),
+                ).fetchone()
+                if updated is None:
+                    raise comments_revisions.RevisionConflict("root", comment_id, int(row["revision"] or 1))
+                comments_revisions.record_revision(
+                    conn, project_id=project_id, target_kind=comments_revisions.ROOT, target_id=comment_id,
+                    revision=int(updated["revision"]), change_kind=comments_revisions.CHANGE_EDIT, editor=editor,
+                    content=row["content"],
                 )
                 return self._get_comment_with_replies(conn, project_id, comment_id)
 

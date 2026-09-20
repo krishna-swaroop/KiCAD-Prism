@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -46,6 +47,24 @@ def run(coro):
 
 def body(response: JSONResponse) -> dict:
     return json.loads(response.body)
+
+
+def seed_two_commit_board(root: str) -> tuple[str, str]:
+    """TR-05 deviation: comparison SHAs must exist in the project repository."""
+    path = Path(root)
+    (path / "board.kicad_pro").write_text("{}\n")
+    (path / "board.kicad_pcb").write_text("(kicad_pcb (version 20240101) A)\n")
+    subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "A"], cwd=root, check=True, capture_output=True)
+    sha_a = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    (path / "board.kicad_pcb").write_text("(kicad_pcb (version 20240101) B)\n")
+    subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "B"], cwd=root, check=True, capture_output=True)
+    sha_b = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    return sha_a, sha_b
 
 
 class RequestModelTests(unittest.TestCase):
@@ -125,13 +144,16 @@ class RootMutationRouteTests(unittest.TestCase):
         self.assertEqual((created["author"], created["authorUserId"], created["authorKind"]), ("Mira", "u_v", "user"))
         self.assertEqual(created["permissions"], {"canReply": True, "canEdit": True, "canDelete": True, "canResolve": False, "canPublish": False})
 
+        sha_a, sha_b = seed_two_commit_board(self.project.path)
+        self.project.project_file = "board.kicad_pro"
         comparison = run(comments_api.create_comparison_comment(
             "prj_test",
-            comments_api.CreateComparisonCommentRequest(baseCommit="a" * 40, compareCommit="b" * 40, domain="PCB", content="cmp", author="Mallory"),
+            comments_api.CreateComparisonCommentRequest(baseCommit=sha_a, compareCommit=sha_b, domain="PCB", content="cmp", author="Mallory"),
             viewer,
         ))
         self.assertEqual((comparison["author"], comparison["authorUserId"], comparison["scope"]), ("Mira", "u_v", "comparison"))
-        self.assertEqual(comparison["anchor"]["baseCommit"], "a" * 40)
+        self.assertEqual(comparison["anchor"]["baseCommit"], sha_a)
+        self.assertEqual(comparison["anchor"]["compareCommit"], sha_b)
 
     def test_provider_token_cannot_create_even_as_designer(self) -> None:  # F1.kicad_provider_read_only
         plugin = AuthenticatedUser(email="p@x", name="Plugin", role="designer", auth_type="kicad_provider")
