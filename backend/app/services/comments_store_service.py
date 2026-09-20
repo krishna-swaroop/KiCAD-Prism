@@ -917,11 +917,29 @@ class CommentsStoreService:
             (project_id, comment_id, reply_id),
         ).fetchone()
 
-    def get_reply(self, project_id: str, comment_id: str, reply_id: str) -> Optional[Dict]:
+    def get_reply(
+        self,
+        project_id: str,
+        comment_id: str,
+        reply_id: str,
+        project_path: Optional[str] = None,
+    ) -> Optional[Dict]:
+        """One live reply under one live root of this project, or None.
+
+        A reply is addressed by all three keys: a valid id under another
+        project or another root is not found, so a caller can never reach a
+        row it did not list. ``project_path`` lets a first request on a
+        project import ``comments.json`` before looking, like the listings.
+        """
         self.initialize()
         with self._connect() as conn:
-            row = self._live_reply(conn, project_id, comment_id, reply_id)
-            return _row_to_reply_dict(row) if row else None
+            with conn.transaction():
+                if project_path is not None:
+                    self._bootstrap_project_if_needed(conn, project_id, project_path)
+                if not self._live_root_exists(conn, project_id, comment_id):
+                    return None
+                row = self._live_reply(conn, project_id, comment_id, reply_id)
+                return _row_to_reply_dict(row) if row else None
 
     def get_history(self, project_id: str, target_kind: str, target_id: str) -> List[Dict]:
         self.initialize()
