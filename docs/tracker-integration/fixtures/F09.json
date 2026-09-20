@@ -1,0 +1,17 @@
+{
+  "set": "F9",
+  "title": "Browser flows",
+  "decisions": ["D4", "C8"],
+  "owner": "TR-40",
+  "cases": [
+    {"id": "F9.role_state_matrix", "owner": "TR-40", "given": "viewer/designer/admin × unlinked/linked/inaccessible/deleted/transferred/unsynced_local", "when": "thread rendered", "expect": "controls match the D4 matrix; disabled controls show a reason tooltip", "proves": "D4"},
+    {"id": "F9.destination_shown_before_promote", "owner": "TR-40", "given": "project with destination", "when": "comment dialog with severity≥minor or Promote clicked", "expect": "destination path and visibility visible before submit", "proves": "C4"},
+    {"id": "F9.login_return", "owner": "TR-41", "given": "logged-out user opens deep link", "when": "login completes", "expect": "returns to the exact deep link (commit, view, comment, variant)", "proves": "C8"},
+    {"id": "F9.exact_commit_and_marker", "owner": "TR-41", "given": "deep link with commit A while project HEAD is B", "when": "opened", "expect": "viewer loads A; marker and semantic selection restored; banner 'viewing commit A'", "proves": "C8"},
+    {"id": "F9.source_unavailable", "owner": "TR-41", "given": "commit no longer in repo", "when": "opened", "expect": "explicit unavailable state; no silent switch to latest", "proves": "C8"},
+    {"id": "F9.stale_cache", "owner": "TR-40", "given": "thread cached; remote state changed", "when": "reload", "expect": "server state wins; pending intent shown separately from observed remote state", "proves": "C8"},
+    {"id": "F9.retry_and_revocation", "owner": "TR-40", "given": "failed op; revoked connector", "when": "rendered", "expect": "Retry visible to designers with publication; revoked shows inaccessible with admin hint", "proves": "C8"},
+    {"id": "F9.accessibility", "owner": "TR-42", "given": "all tracker surfaces", "when": "keyboard-only and screen reader", "expect": "focus order, aria labels on chips/buttons, dark mode contrast; narrow (≤400px) and wide screenshots captured", "proves": "C8"},
+    {"id": "F9.settings_states", "owner": "TR-37", "given": "connector editor", "when": "loading/empty/offline/forbidden/revoked/retry", "expect": "each state rendered; secrets never echoed back", "proves": "C8"}
+  ]
+}

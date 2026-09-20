@@ -1,0 +1,26 @@
+{
+  "set": "F7",
+  "title": "Hints, polling, pagination, access loss, transfers",
+  "decisions": ["D7", "D9", "C7"],
+  "owner": "TR-32",
+  "cases": [
+    {"id": "F7.reordered_hints", "owner": "TR-28", "given": "webhooks closed then reopened delivered in reverse order", "when": "both applied", "expect": "each triggers a fetch; final local state equals the fetched (open) state regardless of order", "proves": "D3"},
+    {"id": "F7.duplicate_delivery", "owner": "TR-27", "given": "same delivery id delivered twice", "when": "second arrives", "expect": "2xx; no second hint row (unique connector_id, delivery_id)", "proves": "D9"},
+    {"id": "F7.hint_durable_before_2xx", "owner": "TR-27", "given": "database down", "when": "webhook received", "expect": "5xx returned so the forge redelivers; nothing acknowledged without a durable row", "proves": "C6"},
+    {"id": "F7.bad_signature", "owner": "TR-27", "given": "invalid X-Hub-Signature-256", "when": "webhook received", "expect": "401; no row; raw bytes verified, not re-serialized JSON", "proves": "C6"},
+    {"id": "F7.pagination_full", "owner": "TR-32", "given": "list_updates spans 3 pages", "when": "poll", "expect": "hints for all pages durable before cursor advances", "proves": "C7"},
+    {"id": "F7.pagination_interrupted", "owner": "TR-32", "given": "page 2 fails", "when": "poll", "expect": "cursor unchanged; page_cursor checkpoint allows resume; page-1 hints already durable and idempotent", "proves": "C7"},
+    {"id": "F7.poll_window_overlap", "owner": "TR-32", "given": "objects updated exactly at the previous cursor", "when": "next poll", "expect": "included by the 5-min overlap and deduped by (object, updated_at)", "proves": "C7"},
+    {"id": "F7.conditional_304", "owner": "TR-33", "given": "issue etag unchanged", "when": "sweep", "expect": "304 → issue skipped but replies still enumerated", "proves": "C7"},
+    {"id": "F7.unauthorized_401", "owner": "TR-33", "given": "installation revoked", "when": "sweep", "expect": "connector paused:auth; all its links inaccessible; ops retained without consuming attempts", "proves": "D7"},
+    {"id": "F7.private_404", "owner": "TR-33", "given": "issue 404 while container reachable", "when": "first sweep", "expect": "inaccessible; not deleted", "proves": "D7"},
+    {"id": "F7.deleted_after_two_listings", "owner": "TR-33", "given": "404 plus absence from complete listing on two sweeps ≥ 10 min apart", "when": "second sweep", "expect": "deleted; Promote again enabled", "proves": "D7"},
+    {"id": "F7.gone_410", "owner": "TR-33", "given": "GET returns 410", "when": "sweep", "expect": "deleted immediately", "proves": "D7"},
+    {"id": "F7.throttling", "owner": "TR-33", "given": "403 secondary limit with retry-after", "when": "sweep", "expect": "checkpoint next_run_at=resume_at; link states unchanged", "proves": "C7"},
+    {"id": "F7.transfer_to_approved_container", "owner": "TR-34", "given": "issues.transferred to acme/hardware-issues which has a valid ack", "when": "hint applied", "expect": "relinked with new external id and container; thread note; state continues", "proves": "D7"},
+    {"id": "F7.transfer_to_unapproved_container", "owner": "TR-34", "given": "transfer to acme/public-notes (no ack)", "when": "hint applied", "expect": "transferred; sync paused; admin action required", "proves": "D7"},
+    {"id": "F7.lost_then_recovered_access", "owner": "TR-33", "given": "403 for 2 sweeps then 200", "when": "third sweep", "expect": "inaccessible → linked; paused ops resume; no duplicate creates", "proves": "D7"},
+    {"id": "F7.shared_repo_two_projects", "owner": "TR-32", "given": "P1 and P2 subscribe to the same container", "when": "poll", "expect": "one poll per (connector, container); hints fan out to each project's links", "proves": "D9"},
+    {"id": "F7.quiet_repo_not_broken", "owner": "TR-35", "given": "no webhook for 2 h but polls succeed and no changes exist", "when": "health computed", "expect": "not degraded; shows delivery history and reconciliation age", "proves": "C7"}
+  ]
+}

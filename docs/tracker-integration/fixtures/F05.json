@@ -1,0 +1,20 @@
+{
+  "set": "F5",
+  "title": "Crash boundaries and ambiguous writes",
+  "decisions": ["D2", "C5"],
+  "owner": "TR-26",
+  "cases": [
+    {"id": "F5.crash_before_send", "owner": "TR-26", "given": "op pending, worker killed before writing sent", "when": "restart", "expect": "op still pending; executed once; no duplicate", "proves": "C5"},
+    {"id": "F5.crash_after_acceptance_before_confirm", "owner": "TR-26", "given": "op sent; forge created #412; worker killed before result stored", "when": "restart", "expect": "op recovering → scan finds #412 by marker+bot id → confirmed; exactly one issue", "proves": "D2"},
+    {"id": "F5.timeout_then_late_acceptance", "owner": "TR-26", "given": "POST /issues times out client-side; forge creates #412 30 s later", "when": "scan at +1 min finds nothing; scan at +5 min finds #412", "expect": "op quarantine → confirmed at second scan; no second issue", "proves": "D2"},
+    {"id": "F5.quarantine_expiry_then_retry", "owner": "TR-26", "given": "all scans complete and empty for the budget", "when": "budget expires; human clicks Retry", "expect": "failed:unknown_outcome, then one more scan, then new op with lineage_of=old", "proves": "D2"},
+    {"id": "F5.late_acceptance_after_retry", "owner": "TR-26", "given": "retry created #413; original #412 appears later", "when": "hint/scan sees #412 with old op marker", "expect": "#413 closed by bot with duplicate note; link points to #412; lineage records both", "proves": "D2"},
+    {"id": "F5.incomplete_scan_no_advance", "owner": "TR-18", "given": "scan page 2 returns 502", "when": "recovery runs", "expect": "op stays recovering; quarantine schedule not advanced", "proves": "D2"},
+    {"id": "F5.labels_removed_before_scan", "owner": "TR-18", "given": "#412 exists but a human removed all labels", "when": "recovery scan", "expect": "found (no label filter)", "proves": "D2"},
+    {"id": "F5.duplicate_workers", "owner": "TR-14", "given": "two workers claim the same pending op concurrently", "when": "both run", "expect": "one wins the claim (FOR UPDATE SKIP LOCKED/fence); the other sees no work; one request sent", "proves": "C5"},
+    {"id": "F5.stale_lease_on_sent", "owner": "TR-14", "given": "worker A wrote sent then hung; lease expired; worker B claims", "when": "B runs", "expect": "B takes the recovery path (scan), never resends; A's late write rejected by fence", "proves": "D2"},
+    {"id": "F5.webhook_before_response", "owner": "TR-27", "given": "op sent; webhook issues.opened for #412 arrives before the POST response", "when": "hint applied, then response arrives", "expect": "hint completes the op (link + confirmed); response handling is idempotent", "proves": "D2"},
+    {"id": "F5.reply_recovery", "owner": "TR-29", "given": "add_comment sent, crash before confirm", "when": "restart", "expect": "recovery lists issue comments, matches reply marker + bot id; confirmed; one comment", "proves": "D2"},
+    {"id": "F5.claim_of_sent_is_recovery", "owner": "TR-14", "given": "any op in state sent", "when": "claimed", "expect": "handler dispatches to recovery, not to execute; asserted by unit test", "proves": "D2"}
+  ]
+}
