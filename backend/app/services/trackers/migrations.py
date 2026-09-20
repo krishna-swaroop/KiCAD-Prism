@@ -1,4 +1,4 @@
-"""Additive tracker schema migrations (workspace 23, comments 3).
+"""Additive tracker schema migrations (workspace 23–24, comments 3–4).
 
 Workspace SQL lives here so TR-12 does not add a ``workspace_migrations/m023_``
 module outside the ticket allowlist. The registry line is owned by
@@ -8,11 +8,48 @@ module outside the ticket allowlist. The registry line is owned by
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
 WORKSPACE_MIGRATION_VERSION = 23
 WORKSPACE_MIGRATION_NAME = "tracker_connectors_identities_policy"
+WORKSPACE_FK_CASCADE_VERSION = 24
+WORKSPACE_FK_CASCADE_NAME = "tracker_connector_delete_cascade"
+
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def set_foreign_key_cascade(conn: Any, table: str, column: str, ref_table: str, ref_column: str) -> None:
+    """Drop and re-add a single-column FK with ON DELETE CASCADE. Restart-safe."""
+
+    for name in (table, column, ref_table, ref_column):
+        if not _IDENT.match(name):
+            raise ValueError(f"invalid SQL identifier: {name!r}")
+    constraint = f"{table}_{column}_fkey"
+    conn.execute(f'ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint}', prepare=False)
+    conn.execute(
+        f"ALTER TABLE {table} ADD CONSTRAINT {constraint} "
+        f"FOREIGN KEY ({column}) REFERENCES {ref_table}({ref_column}) ON DELETE CASCADE",
+        prepare=False,
+    )
+
+
+def cascade_comments_tracker_fks(conn: Any) -> None:
+    """Hard-delete of a comment/reply must take tracker links and ops with it."""
+
+    set_foreign_key_cascade(conn, "tracked_threads", "comment_id", "comments", "id")
+    set_foreign_key_cascade(conn, "tracked_replies", "tracked_thread_id", "tracked_threads", "id")
+    set_foreign_key_cascade(conn, "tracked_replies", "reply_id", "comment_replies", "id")
+    set_foreign_key_cascade(conn, "sync_ops", "tracked_thread_id", "tracked_threads", "id")
+
+
+def cascade_workspace_tracker_fks(conn: Any) -> None:
+    """Deleting a connector must not leave project_trackers / identities dangling."""
+
+    set_foreign_key_cascade(conn, "user_identities", "connector_id", "tracker_connectors", "id")
+    set_foreign_key_cascade(conn, "project_trackers", "connector_id", "tracker_connectors", "id")
+    set_foreign_key_cascade(conn, "destination_acks", "connector_id", "tracker_connectors", "id")
 
 
 def migrate_workspace_tracker_tables(conn: Any) -> None:
@@ -38,7 +75,7 @@ def migrate_workspace_tracker_tables(conn: Any) -> None:
         CREATE TABLE IF NOT EXISTS user_identities (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
-            connector_id TEXT NOT NULL REFERENCES tracker_connectors(id),
+            connector_id TEXT NOT NULL REFERENCES tracker_connectors(id) ON DELETE CASCADE,
             provider TEXT NOT NULL,
             forge_user_id TEXT NOT NULL,
             forge_login TEXT NOT NULL,
@@ -54,7 +91,7 @@ def migrate_workspace_tracker_tables(conn: Any) -> None:
         CREATE TABLE IF NOT EXISTS project_trackers (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
-            connector_id TEXT NOT NULL REFERENCES tracker_connectors(id),
+            connector_id TEXT NOT NULL REFERENCES tracker_connectors(id) ON DELETE CASCADE,
             container_kind TEXT NOT NULL,
             container_path TEXT NOT NULL,
             remote_container_id TEXT NOT NULL,
@@ -71,7 +108,7 @@ def migrate_workspace_tracker_tables(conn: Any) -> None:
 
         CREATE TABLE IF NOT EXISTS destination_acks (
             id TEXT PRIMARY KEY,
-            connector_id TEXT NOT NULL REFERENCES tracker_connectors(id),
+            connector_id TEXT NOT NULL REFERENCES tracker_connectors(id) ON DELETE CASCADE,
             remote_container_id TEXT NOT NULL,
             observed_visibility TEXT NOT NULL,
             acknowledged_by TEXT NOT NULL,
@@ -100,7 +137,7 @@ def migrate_comments_tracked_links(conn: Any) -> None:
         """
         CREATE TABLE IF NOT EXISTS tracked_threads (
             id TEXT PRIMARY KEY,
-            comment_id TEXT NOT NULL REFERENCES comments(id),
+            comment_id TEXT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
             project_tracker_id TEXT NOT NULL,
             destination_generation INTEGER NOT NULL,
             connector_id TEXT NOT NULL,
@@ -129,8 +166,8 @@ def migrate_comments_tracked_links(conn: Any) -> None:
 
         CREATE TABLE IF NOT EXISTS tracked_replies (
             id TEXT PRIMARY KEY,
-            tracked_thread_id TEXT NOT NULL REFERENCES tracked_threads(id),
-            reply_id TEXT NOT NULL REFERENCES comment_replies(id),
+            tracked_thread_id TEXT NOT NULL REFERENCES tracked_threads(id) ON DELETE CASCADE,
+            reply_id TEXT NOT NULL REFERENCES comment_replies(id) ON DELETE CASCADE,
             external_comment_id TEXT NOT NULL,
             external_url TEXT,
             remote_author_id TEXT,

@@ -1785,6 +1785,7 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 (21, "project_metadata"),
                 (22, "project_metadata_repository"),
                 (23, "tracker_connectors_identities_policy"),
+                (24, "tracker_connector_delete_cascade"),
             ],
         )
 
