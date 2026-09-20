@@ -94,7 +94,7 @@ class PromotionPostgresTests(unittest.TestCase):
         patches = [
             patch.object(comments_api, "comments_store", self.store),
             patch.object(comments_api, "get_project_for_role_or_404", return_value=self.project),
-            patch.object(comments_api, "_mention_context", return_value=([], {}, {})),
+            patch.object(comments_api, "_load_mention_indexes", return_value=({}, {})),
             patch.object(comments_api, "_promote_min_role", return_value="designer"),
         ]
         for item in patches:

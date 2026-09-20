@@ -75,15 +75,22 @@ def is_anchor_promotable(comment: Mapping[str, Any]) -> bool:
 
 
 def load_policy_row(conn: Any, project_id: str, *, workspace_schema: str = WORKSPACE_SCHEMA) -> Optional[dict]:
-    return conn.execute(
-        f"""
-        SELECT pt.*, tc.paused AS connector_paused, tc.provider AS connector_provider
-        FROM {_qual(workspace_schema, "project_trackers")} pt
-        LEFT JOIN {_qual(workspace_schema, "tracker_connectors")} tc ON tc.id = pt.connector_id
-        WHERE pt.project_id = %s
-        """,
-        (project_id,),
-    ).fetchone()
+    try:
+        return conn.execute(
+            f"""
+            SELECT pt.*, tc.paused AS connector_paused, tc.provider AS connector_provider
+            FROM {_qual(workspace_schema, "project_trackers")} pt
+            LEFT JOIN {_qual(workspace_schema, "tracker_connectors")} tc ON tc.id = pt.connector_id
+            WHERE pt.project_id = %s
+            """,
+            (project_id,),
+        ).fetchone()
+    except Exception as exc:
+        from psycopg.errors import InvalidCatalogName, UndefinedTable
+
+        if isinstance(exc, (UndefinedTable, InvalidCatalogName)):
+            return None
+        raise
 
 
 def _acknowledged(conn: Any, *, connector_id: str, remote_container_id: str, visibility: str,
@@ -499,9 +506,7 @@ def attach_tracker_projection(
     policy = load_policy_row(conn, project_id, workspace_schema=workspace_schema)
     if thread is None:
         tracker: dict[str, Any] = {"linkState": None}
-        if policy is None:
-            tracker["notPromotableReason"] = "no_destination"
-        elif not should_auto_promote(comment, policy):
+        if policy is not None and not should_auto_promote(comment, policy):
             tracker["notPromotableReason"] = "below_auto_threshold"
         comment["tracker"] = tracker
         for reply in comment.get("replies", []):

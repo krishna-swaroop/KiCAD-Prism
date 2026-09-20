@@ -39,6 +39,10 @@ vi.mock("@/lib/api", async () => {
 
 const mockedFetchJson = vi.mocked(fetchJson);
 
+function mockFetchUrl(input: RequestInfo | URL): string {
+    return typeof input === "string" ? input : input.toString();
+}
+
 const COMMIT_A = "3f2c9a1b7e4d5c6a8b9f0e1d2c3b4a5968778695";
 const COMMIT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const COMMENT_ID = "c_8f3a1b2c";
@@ -46,7 +50,6 @@ const COMMENT_ID = "c_8f3a1b2c";
 const viewer: User = {
     email: "viewer@example.com",
     name: "Viewer",
-    picture: null,
     role: "viewer",
 };
 
@@ -68,7 +71,8 @@ afterEach(() => {
 
 beforeEach(() => {
     mockedFetchJson.mockReset();
-    mockedFetchJson.mockImplementation(async (url: string) => {
+    mockedFetchJson.mockImplementation(async (input: RequestInfo | URL) => {
+        const url = mockFetchUrl(input);
         if (url.includes("/overview")) {
             return {
                 project: {
@@ -187,7 +191,8 @@ describe("ProjectDetailPage deep-link host (F9)", () => {
     });
 
     it("shows an explicit unavailable state for missing commits", async () => {
-        mockedFetchJson.mockImplementation(async (url: string) => {
+        mockedFetchJson.mockImplementation(async (input: RequestInfo | URL) => {
+            const url = mockFetchUrl(input);
             if (url.includes("/commits/distance")) {
                 const error = new Error("Commit not found") as Error & { status: number };
                 error.status = 404;

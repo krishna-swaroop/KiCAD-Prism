@@ -155,9 +155,9 @@ export function CommentCard({
 
             {comment.mentions && comment.mentions.length > 0 && (
                 <div className="flex flex-wrap gap-1 px-3 pb-2">
-                    {comment.mentions.map((email) => (
-                        <Badge key={email} variant="outline" className="max-w-full truncate text-[10px]">
-                            @{email}
+                    {comment.mentions.map((mention) => (
+                        <Badge key={mention.userId} variant="outline" className="max-w-full truncate text-[10px]">
+                            @{mention.displayName}
                         </Badge>
                     ))}
                 </div>
