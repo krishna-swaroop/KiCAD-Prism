@@ -106,6 +106,7 @@ function createCommentPayload(payload: CreateCommentRequest): CreateCommentReque
         commentClass: payload.commentClass,
         severity: payload.severity,
         mentions: payload.mentions,
+        revision: payload.revision,
         metadata: payload.metadata,
     };
 }

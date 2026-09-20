@@ -151,6 +151,16 @@ export interface CommentsFile {
 }
 
 /**
+ * The commit (or worktree) the comment was authored against. Distinct from
+ * `Comment.revision`, which is the thread's integer edit counter.
+ */
+export interface CreateCommentDisplayedRevision {
+    commit?: string | null;
+    worktree?: boolean;
+    sourceRevisionKey?: string | null;
+}
+
+/**
  * Outgoing payloads carry no author: the server records the session's
  * identity, so nothing a browser sends can change attribution.
  */
@@ -164,6 +174,7 @@ export interface CreateCommentRequest {
     commentClass?: CommentClass;
     severity?: CommentSeverity;
     mentions?: string[];
+    revision?: CreateCommentDisplayedRevision;
     metadata?: Record<string, unknown>;
 }
 

@@ -40,6 +40,7 @@ const examples = JSON.parse(
     comments: {
         Comment: Comment;
         Comment_legacy_unpinned: Partial<Comment>;
+        CreateCommentRequest: Record<string, unknown>;
         UpdateCommentRequest: Record<string, unknown>;
         ConflictError: Record<string, unknown>;
         PublicationDeniedError: Record<string, unknown>;
@@ -115,10 +116,12 @@ describe("comments client against the frozen server examples", () => {
 
         await createComment("p", {
             context: "PCB", location: { x: 1, y: 2, layer: "F.Cu" }, content: "hi", severity: "major",
+            revision: examples.comments.CreateCommentRequest.revision as { commit: string; worktree: boolean; sourceRevisionKey: null },
             // @ts-expect-error author is not part of the contract; it must not survive to the wire either
             author: "Mallory",
         });
         expect(lastBody()).not.toHaveProperty("author");
+        expect(lastBody().revision).toEqual(examples.comments.CreateCommentRequest.revision);
         expect(lastRequest().init.method).toBe("POST");
 
         await createComparisonComment("p", {
