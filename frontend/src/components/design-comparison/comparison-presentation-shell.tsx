@@ -258,10 +258,22 @@ export function ComparisonPresentationShell({
     rightRailTab = null,
     onRightRailTabChange = ignoreRightRailChange,
     toolbarContent = null,
-    selectedSide: oldNewSide = "compare",
+    selectedSide,
     onSelectedSideChange,
 // react-doctor-disable-next-line prefer-useReducer - separate concerns: viewer handles, session lifecycle, selection reporting and rail geometry do not change together
 }: ComparisonPresentationShellProps) {
+    const [uncontrolledSide, setUncontrolledSide] =
+        useState<OldNewSide>("compare");
+    const oldNewSide = onSelectedSideChange
+        ? (selectedSide ?? "compare")
+        : uncontrolledSide;
+    const handleSelectedSideChange = (side: OldNewSide) => {
+        if (onSelectedSideChange) {
+            onSelectedSideChange(side);
+            return;
+        }
+        setUncontrolledSide(side);
+    };
     const [primaryViewer, setPrimaryViewer] =
         useState<ECadViewerElement | null>(null);
     const [secondaryViewer, setSecondaryViewer] =
@@ -1364,7 +1376,7 @@ export function ComparisonPresentationShell({
                             variant={oldNewSide === "base" ? "secondary" : "ghost"}
                             size="sm"
                             className="h-7 rounded-sm text-xs"
-                            onClick={() => onSelectedSideChange?.("base")}
+                            onClick={() => handleSelectedSideChange("base")}
                             aria-label="Old revision"
                             aria-pressed={oldNewSide === "base"}
                         >
@@ -1381,7 +1393,7 @@ export function ComparisonPresentationShell({
                                 oldNewSide === "compare" &&
                                     "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
                             )}
-                            onClick={() => onSelectedSideChange?.("compare")}
+                            onClick={() => handleSelectedSideChange("compare")}
                             aria-label="New revision"
                             aria-pressed={oldNewSide === "compare"}
                         >
