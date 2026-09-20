@@ -167,11 +167,14 @@ class GitHubCommentAdapter:
     def _require_own(self, comment: RemoteComment, *, action: str) -> None:
         bot_ids = {value for value in (self.bot_user_id,) if value}
         bot_logins = {value.casefold() for value in (self.bot_login,) if value}
+        if not bot_ids and not bot_logins:
+            raise ProviderError(
+                "capability_missing",
+                f"GitHub bot identity is unknown; refuse to {action} a remote comment.",
+            )
         author_id = comment.author.id
         author_login = comment.author.login.casefold()
         owned = (author_id and author_id in bot_ids) or (author_login and author_login in bot_logins)
-        if comment.author.isBot and not bot_ids and not bot_logins:
-            owned = True
         if owned:
             return
         raise ProviderError(

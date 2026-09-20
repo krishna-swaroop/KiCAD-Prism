@@ -55,9 +55,13 @@ class GitHubIssueAdapter:
         auth: GitHubAppAuth,
         *,
         http: TrackerHttp | None = None,
+        bot_user_id: str | None = None,
+        bot_login: str | None = None,
     ) -> None:
         self.auth = auth
         self.http = http or auth.http
+        self.bot_user_id = (bot_user_id or "").strip()
+        self.bot_login = (bot_login or "").strip()
 
     def capabilities(self) -> ProviderCapabilities:
         kind = _instance_kind(self.auth.credentials.instance_kind)
@@ -118,8 +122,13 @@ class GitHubIssueAdapter:
         needle = (marker or "").strip()
         if not needle:
             return None
+        if not self.bot_user_id and not self.bot_login:
+            # D2: marker text alone is not ownership. Recovery needs bot identity.
+            return None
         cursor: Optional[str] = None
-        params: dict[str, Any] = {"state": "all", "per_page": 100, "filter": "all"}
+        params: dict[str, Any] = {"state": "all", "per_page": 100}
+        if self.bot_login:
+            params["creator"] = self.bot_login
         if since:
             params["since"] = since
         owner, repo = _owner_repo(dest)
@@ -130,8 +139,11 @@ class GitHubIssueAdapter:
             for item in items:
                 if _is_pull_request(item):
                     continue
-                if needle in str(item.get("body") or ""):
-                    return self._issue_from(item, dest, etag=response.etag)
+                if needle not in str(item.get("body") or ""):
+                    continue
+                if not self._authored_by_bot(item):
+                    continue
+                return self._issue_from(item, dest, etag=response.etag)
             cursor = response.next_page()
             if not cursor:
                 return None
@@ -324,6 +336,16 @@ class GitHubIssueAdapter:
         )
         assert_no_owner_repo(issue)
         return issue
+
+    def _authored_by_bot(self, payload: Mapping[str, Any]) -> bool:
+        user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+        author_id = str(user.get("id") or "")
+        author_login = str(user.get("login") or "")
+        if self.bot_user_id and author_id != self.bot_user_id:
+            return False
+        if self.bot_login and author_login.casefold() != self.bot_login.casefold():
+            return False
+        return bool(self.bot_user_id or self.bot_login)
 
     def _request(
         self,

@@ -116,7 +116,14 @@ class GitHubIssueAdapterTests(unittest.TestCase):
         self.calls: list[dict] = []
         self._routes: dict[tuple[str, str], list[_Raw]] = [] if False else {}
 
-    def _adapter(self, *, kind: str = "github.com", base_url: str = "") -> GitHubIssueAdapter:
+    def _adapter(
+        self,
+        *,
+        kind: str = "github.com",
+        base_url: str = "",
+        bot_user_id: str | None = "199001",
+        bot_login: str | None = "prism[bot]",
+    ) -> GitHubIssueAdapter:
         creds = GitHubAppCredentials(
             app_id="772215",
             installation_id="88001122",
@@ -137,7 +144,9 @@ class GitHubIssueAdapterTests(unittest.TestCase):
                 "permissions": {"issues": "write"},
             },
         )
-        return GitHubIssueAdapter(auth, http=http)
+        return GitHubIssueAdapter(
+            auth, http=http, bot_user_id=bot_user_id, bot_login=bot_login
+        )
 
     def _sender(self, method, url, **kwargs):  # noqa: ANN001
         self.calls.append(
@@ -388,6 +397,39 @@ class GitHubIssueAdapterTests(unittest.TestCase):
         headers = {key.casefold(): value for key, value in self.calls[-1]["headers"].items()}
         self.assertEqual(headers.get("if-none-match"), 'W/"1c3e"')
         self.assertNotIn("if-match", headers)
+
+    def test_recovery_scan_uses_creator_and_bot_user_id(self) -> None:
+        adapter = self._adapter()
+        human = _issue_payload(
+            number=50,
+            issue_id=50,
+            body=f"copied {MARKER}",
+        )
+        human["user"] = {"id": 5550001, "login": "arjun-gh", "type": "User"}
+        self._enqueue(
+            "GET",
+            f"{API}/repos/{REPO}/issues",
+            200,
+            [human, _issue_payload(number=412, issue_id=198400412, body=f"found {MARKER}")],
+        )
+        found = adapter.find_by_marker(DEST, MARKER)
+        self.assertIsNotNone(found)
+        self.assertEqual(found.externalId, "198400412")
+        params = self.calls[-1]["params"]
+        self.assertEqual(params["creator"], "prism[bot]")
+        self.assertEqual(params["state"], "all")
+        self.assertNotIn("filter", params)
+
+    def test_recovery_without_bot_identity_does_not_claim_marker(self) -> None:
+        adapter = self._adapter(bot_user_id="", bot_login="")
+        self._enqueue(
+            "GET",
+            f"{API}/repos/{REPO}/issues",
+            200,
+            [_issue_payload(number=412, issue_id=198400412, body=MARKER)],
+        )
+        self.assertIsNone(adapter.find_by_marker(DEST, MARKER))
+        self.assertFalse(any(call["method"] == "GET" and "/issues" in call["url"] for call in self.calls if "access_tokens" not in call["url"]))
 
 
 if __name__ == "__main__":
