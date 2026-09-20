@@ -87,7 +87,7 @@ describe("frozen DTOs", () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     method: "GET",
-                    path: "/api/admin/trackers/connectors/",
+                    path: "/api/admin/trackers/connectors",
                     auth: "admin",
                 }),
             ]),

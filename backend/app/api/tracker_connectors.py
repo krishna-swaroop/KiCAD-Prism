@@ -71,12 +71,12 @@ def _http_error(exc: Exception) -> HTTPException:
     raise exc
 
 
-@router.get("/")
+@router.get("")
 async def list_connectors(_admin: AuthenticatedUser = Depends(require_admin)) -> list[dict[str, Any]]:
     return service.list_connectors()
 
 
-@router.post("/")
+@router.post("")
 async def create_connector(
     body: CreateConnectorRequest,
     admin: AuthenticatedUser = Depends(require_admin),

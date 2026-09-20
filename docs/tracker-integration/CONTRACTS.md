@@ -486,8 +486,8 @@ the public `TrackerConnector` plus `test: ConnectorTestResult`.
 
 | Method | Path | Body / result |
 | --- | --- | --- |
-| GET | `/api/admin/trackers/connectors/` | `TrackerConnector[]` |
-| POST | `/api/admin/trackers/connectors/` | create → `TrackerConnector` |
+| GET | `/api/admin/trackers/connectors` | `TrackerConnector[]` |
+| POST | `/api/admin/trackers/connectors` | create → `TrackerConnector` |
 | GET | `/api/admin/trackers/connectors/{connectorId}` | `TrackerConnector` |
 | PATCH | `/api/admin/trackers/connectors/{connectorId}` | `TrackerConnector` |
 | POST | `/api/admin/trackers/connectors/{connectorId}/pause` | `TrackerConnector` |

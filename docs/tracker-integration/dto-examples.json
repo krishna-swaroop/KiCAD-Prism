@@ -331,8 +331,8 @@
       "bot": { "id": "199001", "login": "prism[bot]" }
     },
     "AdminConnectorRoutes": [
-      { "method": "GET", "path": "/api/admin/trackers/connectors/", "auth": "admin" },
-      { "method": "POST", "path": "/api/admin/trackers/connectors/", "auth": "admin" },
+      { "method": "GET", "path": "/api/admin/trackers/connectors", "auth": "admin" },
+      { "method": "POST", "path": "/api/admin/trackers/connectors", "auth": "admin" },
       { "method": "GET", "path": "/api/admin/trackers/connectors/{connectorId}", "auth": "admin" },
       { "method": "PATCH", "path": "/api/admin/trackers/connectors/{connectorId}", "auth": "admin" },
       { "method": "POST", "path": "/api/admin/trackers/connectors/{connectorId}/pause", "auth": "admin" },
