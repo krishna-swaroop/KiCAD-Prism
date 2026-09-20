@@ -73,6 +73,14 @@ class CreateReplyRequest(BaseModel):
     content: str
 
 
+class UpdateReplyRequest(BaseModel):
+    """ID-addressed reply prose edit. ``expectedRevision`` is the revision
+    the client displayed; omitting it accepts whatever is current."""
+
+    content: str
+    expectedRevision: Optional[int] = None
+
+
 class UpdateCommentRequest(BaseModel):
     """Root edits and status changes; anchor and location are immutable.
 
@@ -589,6 +597,92 @@ async def add_reply(
         return result
     if not result:
         raise HTTPException(status_code=404, detail="Comment not found")
+    return result
+
+
+@router.patch(
+    "/{project_id}/comments/{comment_id}/replies/{reply_id}",
+    dependencies=[Depends(require_comment_writer)],
+)
+async def update_reply(
+    project_id: str,
+    comment_id: str,
+    reply_id: str,
+    request: UpdateReplyRequest,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Edit a reply's prose. Owner or admin; remote-origin replies stay read-only.
+
+    A stale ``expectedRevision`` is a 409 that writes nothing. The parent
+    comment is returned so the TR-06 client can replace the thread in place.
+    """
+    content = _normalize_content(request.content)
+
+    def write():
+        project = get_project_for_role_or_404(project_id, user.role)
+        actor = _actor(user)
+        current = comments_store.get_reply(project.id, comment_id, reply_id)
+        if current is None:
+            return None
+        comment_permissions.authorize(CommentAction.EDIT, actor, target=_authored(current))
+        updated = comments_store.edit_reply(
+            project_id=project.id,
+            project_path=project.path,
+            comment_id=comment_id,
+            reply_id=reply_id,
+            content=content,
+            editor=_editor(actor),
+            expected_revision=request.expectedRevision,
+        )
+        return _with_permissions(updated, actor) if updated else None
+
+    result = await _run_mutation(write)
+    if isinstance(result, JSONResponse):
+        return result
+    if not result:
+        raise HTTPException(status_code=404, detail="Reply not found")
+    return result
+
+
+@router.delete(
+    "/{project_id}/comments/{comment_id}/replies/{reply_id}",
+    dependencies=[Depends(require_comment_writer)],
+)
+async def delete_reply(
+    project_id: str,
+    comment_id: str,
+    reply_id: str,
+    expectedRevision: Optional[int] = None,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Tombstone one reply (owner or admin). History is retained; the root is not.
+
+    Returns the live parent comment so listings stay in sync. A second
+    delete is 404 because the live row is gone.
+    """
+
+    def write():
+        project = get_project_for_role_or_404(project_id, user.role)
+        actor = _actor(user)
+        current = comments_store.get_reply(project.id, comment_id, reply_id)
+        if current is None:
+            return None
+        comment_permissions.authorize(CommentAction.DELETE, actor, target=_authored(current))
+        updated = comments_store.delete_reply(
+            project_id=project.id,
+            project_path=project.path,
+            comment_id=comment_id,
+            reply_id=reply_id,
+            editor=_editor(actor),
+            expected_revision=expectedRevision,
+        )
+        return _with_permissions(updated, actor) if updated else None
+
+    result = await _run_mutation(write)
+    if isinstance(result, JSONResponse):
+        return result
+    if not result:
+        raise HTTPException(status_code=404, detail="Reply not found")
     return result
 
 
