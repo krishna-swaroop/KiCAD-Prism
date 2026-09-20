@@ -90,6 +90,8 @@ class ImmutableAnchorTests(unittest.TestCase):
         patches = [
             patch.object(comments_api, "comments_store", self.store),
             patch.object(comments_api, "get_project_for_role_or_404", return_value=self.project),
+            patch.object(comments_api, "_load_mention_indexes", return_value=({}, {})),
+            patch.object(comments_api, "_promote_min_role", return_value="designer"),
         ]
         for item in patches:
             item.start()
@@ -223,7 +225,13 @@ class ImmutableAnchorTests(unittest.TestCase):
             side_effect=AssertionError("full checkout must not run"),
         ):
             created = self._create(user, revision={"commit": self.fixture.sha_a})
-        self.assertEqual(created["filePath"], "board.kicad_pcb")
+        self.assertEqual(created["anchor"]["state"], "pinned")
+        with self.store._connect() as conn:
+            row = conn.execute(
+                "SELECT file_path FROM comments WHERE project_id = %s ORDER BY id DESC LIMIT 1",
+                ("prj_test",),
+            ).fetchone()
+        self.assertEqual(row["file_path"], "board.kicad_pcb")
 
     def test_admin_manual_pin_of_unpinned_legacy_row(self) -> None:  # F2.admin_manual_pin
         designer = session("designer", user_id="u_d")

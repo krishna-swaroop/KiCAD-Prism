@@ -29,6 +29,7 @@ from app.services.trackers.promotion import (  # noqa: E402
     enqueue_create_issue,
     maybe_auto_promote_root,
 )
+from app.services.trackers.connector_service import ConnectorService  # noqa: E402
 from app.services.trackers.publication_policy import PublicationPolicyService  # noqa: E402
 from app.services.trackers.store import TrackerStore  # noqa: E402
 from tests.test_tracker_tr_01 import DisposableSchemaStore, POSTGRES_URL, SHARED_APPLICATION_DATABASE, psycopg  # noqa: E402
@@ -164,6 +165,22 @@ class PromotionPostgresTests(unittest.TestCase):
             prepare=False,
         )
 
+    def _observe_container(
+        self,
+        connector_id: str,
+        *,
+        container_kind: str,
+        container_path: str,
+        remote_container_id: str,
+        generation: int = 1,
+        visibility_hint: str | None = None,
+    ) -> dict[str, str]:
+        return {
+            "visibility": visibility_hint or "private",
+            "containerPath": container_path,
+            "remoteContainerId": remote_container_id,
+        }
+
     def _seed_destination(self) -> None:
         self.tracker_store.upsert_connector(
             connector_id="cn_gh1", provider="github", instance_kind="github.com",
@@ -186,10 +203,17 @@ class PromotionPostgresTests(unittest.TestCase):
             acknowledged_by="u_admin",
         )
         self.conn.commit()
+        settings = _settings()
         PublicationPolicyService(
             connect=self._factory,
-            settings=_settings(),
+            settings=settings,
             workspace_schema=self.schema,
+            connector_service=ConnectorService(
+                connect=self._factory,
+                settings=settings,
+                container_observer=self._observe_container,
+                workspace_schema=self.schema,
+            ),
         ).update_settings(
             "prj_a",
             actor_user_id="u_admin",
