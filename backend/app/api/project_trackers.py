@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+import asyncio
+from typing import Any, Callable, Optional, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,6 +19,12 @@ from app.services.trackers.publication_policy import (
 
 router = APIRouter(prefix="/api/projects", tags=["project-trackers"])
 service = PublicationPolicyService()
+
+T = TypeVar("T")
+
+
+async def _run_service(call: Callable[[], T]) -> T:
+    return await asyncio.to_thread(call)
 
 
 class DestinationBody(BaseModel):
@@ -87,9 +94,11 @@ async def get_project_tracker(
 ) -> dict[str, Any]:
     project = get_project_for_role_or_404(project_id, user.role)
     try:
-        return service.get_settings(project_id)
+        return await _run_service(lambda: service.get_settings(project_id))
     except ProjectTrackerNotFound:
-        return service.get_or_default(project_id, repo_url=project.repo_url)
+        return await _run_service(
+            lambda: service.get_or_default(project_id, repo_url=project.repo_url)
+        )
 
 
 @router.put("/{project_id}/tracker")
@@ -100,15 +109,17 @@ async def update_project_tracker(
 ) -> dict[str, Any]:
     get_project_for_role_or_404(project_id, admin.role)
     try:
-        return service.update_settings(
-            project_id,
-            actor_user_id=_actor(admin),
-            connector_id=body.connectorId,
-            destination=body.destination.model_dump(),
-            auto_min_severity=body.autoMinSeverity,
-            auto_task_class=body.autoTaskClass,
-            promote_min_role=body.promoteMinRole,
-            labels=body.labels.model_dump() if body.labels else None,
+        return await _run_service(
+            lambda: service.update_settings(
+                project_id,
+                actor_user_id=_actor(admin),
+                connector_id=body.connectorId,
+                destination=body.destination.model_dump(),
+                auto_min_severity=body.autoMinSeverity,
+                auto_task_class=body.autoTaskClass,
+                promote_min_role=body.promoteMinRole,
+                labels=body.labels.model_dump() if body.labels else None,
+            )
         )
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -122,6 +133,12 @@ async def acknowledge_project_tracker(
 ) -> dict[str, Any]:
     get_project_for_role_or_404(project_id, admin.role)
     try:
-        return service.acknowledge(project_id, actor_user_id=_actor(admin), visibility=body.visibility)
+        return await _run_service(
+            lambda: service.acknowledge(
+                project_id,
+                actor_user_id=_actor(admin),
+                visibility=body.visibility,
+            )
+        )
     except Exception as exc:
         raise _http_error(exc) from exc

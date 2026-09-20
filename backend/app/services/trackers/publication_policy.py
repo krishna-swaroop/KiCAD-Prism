@@ -154,17 +154,25 @@ class PublicationPolicyService:
             )
             if connector_changed or container_changed:
                 generation = int((current or {}).get("destination_generation") or 0) + 1
-            visibility = destination.get("visibility")
+            observed = self.connector_service.observe_container(
+                connector_id,
+                container_kind=str(destination.get("containerKind") or "repo"),
+                container_path=str(destination.get("containerPath") or ""),
+                remote_container_id=str(destination.get("remoteContainerId") or ""),
+                generation=generation,
+                visibility_hint=str(destination.get("visibility") or "") or None,
+            )
+            visibility = str(observed.get("visibility") or "unknown")
             store = TrackerStore(conn)
             store.set_project_tracker(
                 project_tracker_id=str((current or {}).get("id") or f"pt_{uuid4().hex[:12]}"),
                 project_id=project_id,
                 connector_id=connector_id,
                 container_kind=str(destination.get("containerKind") or "repo"),
-                container_path=str(destination.get("containerPath") or ""),
-                remote_container_id=str(destination.get("remoteContainerId") or ""),
+                container_path=str(observed.get("containerPath") or destination.get("containerPath") or ""),
+                remote_container_id=str(observed.get("remoteContainerId") or destination.get("remoteContainerId") or ""),
                 generation=generation,
-                visibility=str(visibility) if visibility is not None else None,
+                visibility=visibility,
             )
             if auto_min_severity is not None or auto_task_class is not None or promote_min_role is not None or labels is not None:
                 conn.execute(
@@ -205,24 +213,44 @@ class PublicationPolicyService:
             row = self._row(conn, project_id)
             if row is None:
                 raise ProjectTrackerNotFound(project_id)
+            observed = self.connector_service.observe_container(
+                str(row["connector_id"]),
+                container_kind=str(row.get("container_kind") or "repo"),
+                container_path=str(row.get("container_path") or ""),
+                remote_container_id=str(row.get("remote_container_id") or ""),
+                generation=int(row.get("destination_generation") or 1),
+                visibility_hint=visibility,
+            )
+            observed_visibility = str(observed.get("visibility") or "unknown")
             store = TrackerStore(conn)
             store.acknowledge_destination(
                 ack_id=f"ack_{uuid4().hex[:12]}",
                 connector_id=str(row["connector_id"]),
-                remote_container_id=str(row["remote_container_id"]),
-                visibility=visibility,
+                remote_container_id=str(observed.get("remoteContainerId") or row["remote_container_id"]),
+                visibility=observed_visibility,
                 acknowledged_by=actor_user_id,
             )
             conn.execute(
-                "UPDATE project_trackers SET visibility = %s WHERE project_id = %s",
-                (visibility, project_id),
+                """
+                UPDATE project_trackers
+                SET visibility = %s,
+                    container_path = COALESCE(%s, container_path),
+                    remote_container_id = COALESCE(%s, remote_container_id)
+                WHERE project_id = %s
+                """,
+                (
+                    observed_visibility,
+                    observed.get("containerPath"),
+                    observed.get("remoteContainerId"),
+                    project_id,
+                ),
             )
             store.audit(
                 action="project_tracker.acknowledge",
                 actor_user_id=actor_user_id,
                 project_id=project_id,
                 connector_id=str(row["connector_id"]),
-                detail={"visibility": visibility},
+                detail={"visibility": observed_visibility, "requestedVisibility": visibility},
             )
             conn.commit()
             row = self._row(conn, project_id)
@@ -269,7 +297,7 @@ class PublicationPolicyService:
             )
             if visibility == "public" and ack is None:
                 raise DispatchPause("visibility", "Public destination acknowledgement is required")
-            if destination_generation is not None and int(destination_generation) > int(row["destination_generation"]):
+            if destination_generation is not None and int(destination_generation) != int(row["destination_generation"]):
                 raise DispatchPause(
                     "destination_generation",
                     "Operation targets an unknown destination generation",

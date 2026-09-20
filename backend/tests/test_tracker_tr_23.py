@@ -153,10 +153,12 @@ class PublicationPolicyPostgresTests(unittest.TestCase):
         comments_schema_migrations.apply_comments_migrations(self.conn)
         self.conn.commit()
         self.settings = _settings()
+        self._observed_visibility: dict[str, str] = {}
         connector_service = ConnectorService(
             connect=self._factory,
             settings=self.settings,
             tester=lambda row, material: {"ok": True, "writesEnabled": True, "bot": {"id": "1", "login": "bot"}},
+            container_observer=self._observe_container,
             workspace_schema=self.schema,
         )
         self.service = PublicationPolicyService(
@@ -198,6 +200,29 @@ class PublicationPolicyPostgresTests(unittest.TestCase):
             credentials={"appId": "1", "installationId": "2", "privateKey": "fixture-key"},
             connector_id="cn_gh1",
         )
+
+    def _observe_container(
+        self,
+        connector_id: str,
+        *,
+        container_kind: str,
+        container_path: str,
+        remote_container_id: str,
+        generation: int = 1,
+        visibility_hint: str | None = None,
+    ) -> dict[str, str]:
+        visibility = self._observed_visibility.get(
+            remote_container_id,
+            visibility_hint or "unknown",
+        )
+        return {
+            "visibility": visibility,
+            "containerPath": container_path,
+            "remoteContainerId": remote_container_id,
+        }
+
+    def _set_observed_visibility(self, remote_container_id: str, visibility: str) -> None:
+        self._observed_visibility[remote_container_id] = visibility
 
     def _update(self, **destination):
         return self.service.update_settings(
@@ -246,8 +271,12 @@ class PublicationPolicyPostgresTests(unittest.TestCase):
             "SELECT destination_generation FROM sync_ops WHERE id = 'op_old'"
         ).fetchone()
         self.assertEqual(int(old_op["destination_generation"]), 1)
+        self._set_observed_visibility("222", "private")
         self.service.acknowledge("prj_a", actor_user_id="u_admin", visibility="private")
-        self.service.evaluate_dispatch("prj_a", actor_role="designer", destination_generation=1)
+        with self.assertRaises(DispatchPause) as caught:
+            self.service.evaluate_dispatch("prj_a", actor_role="designer", destination_generation=1)
+        self.assertEqual(caught.exception.reason, "destination_generation")
+        self._set_observed_visibility("222", "public")
         self.conn.execute(
             "UPDATE project_trackers SET visibility = 'public' WHERE project_id = 'prj_a'"
         )
@@ -256,7 +285,16 @@ class PublicationPolicyPostgresTests(unittest.TestCase):
             self.service.evaluate_dispatch("prj_a", actor_role="designer", destination_generation=2)
         self.assertEqual(caught.exception.reason, "visibility")
 
+    def test_self_declared_private_stores_observed_public(self) -> None:
+        self._set_observed_visibility("111", "public")
+        saved = self._update(visibility="private", remoteContainerId="111")
+        self.assertEqual(saved["destination"]["visibility"], "public")
+        with self.assertRaises(DispatchPause) as caught:
+            self.service.evaluate_dispatch("prj_a", actor_role="designer")
+        self.assertEqual(caught.exception.reason, "visibility")
+
     def test_public_without_ack_pauses_dispatch(self) -> None:
+        self._set_observed_visibility("111", "public")
         self._update(visibility="public")
         with self.assertRaises(DispatchPause) as caught:
             self.service.evaluate_dispatch("prj_a", actor_role="designer")
@@ -266,12 +304,14 @@ class PublicationPolicyPostgresTests(unittest.TestCase):
         self.service.evaluate_dispatch("prj_a", actor_role="designer")
 
     def test_unknown_visibility_pauses_dispatch(self) -> None:
+        self._set_observed_visibility("111", "unknown")
         self._update(visibility="unknown")
         with self.assertRaises(DispatchPause) as caught:
             self.service.evaluate_dispatch("prj_a", actor_role="designer")
         self.assertEqual(caught.exception.reason, "visibility_unknown")
 
     def test_viewer_cannot_publish_by_default(self) -> None:
+        self._set_observed_visibility("111", "private")
         self._update()
         self.service.acknowledge("prj_a", actor_user_id="u_admin", visibility="private")
         with self.assertRaises(PublicationDenied) as caught:
