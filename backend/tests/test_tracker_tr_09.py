@@ -6,9 +6,12 @@ They import only ``app.services.trackers`` — not FastAPI routers or the UI.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import hmac
 import json
+import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -277,8 +280,49 @@ class FakeAdapterTests(unittest.TestCase):
     """Adapters can implement the protocols without API/UI imports (acceptance)."""
 
     def test_fakes_do_not_import_api_or_frontend(self) -> None:
-        imported = {name for name in sys.modules if name.startswith("app.api") or name.startswith("frontend")}
-        self.assertFalse(imported)
+        # Full-suite discover imports API tests first, so this process's
+        # sys.modules is not the tracker import graph. Inspect sources and
+        # re-import tracker packages in an isolated interpreter.
+        backend_root = Path(__file__).resolve().parents[1]
+        forbidden_prefixes = ("app.api", "frontend", "fastapi", "starlette")
+        sources = list((backend_root / "app" / "services" / "trackers").glob("*.py"))
+        sources.append(Path(__file__))
+        for path in sources:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            names: list[str] = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    names.extend(alias.name for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    names.append(node.module)
+            leaked = [
+                name
+                for name in names
+                if any(
+                    name == prefix or name.startswith(prefix + ".")
+                    for prefix in forbidden_prefixes
+                )
+            ]
+            self.assertEqual(leaked, [], msg=str(path))
+
+        env = os.environ.copy()
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = str(backend_root) + (os.pathsep + existing if existing else "")
+        probe = (
+            "import sys\n"
+            "from app.services.trackers import capabilities, contracts, errors\n"
+            "imported = [n for n in sys.modules if n.startswith('app.api') or n.startswith('frontend')]\n"
+            "raise SystemExit(1 if imported else 0)\n"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            env=env,
+            cwd=str(backend_root.parent),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
 
     def test_identity_pkce_and_whoami(self) -> None:  # F3.oauth_pkce_required
         ident = _FakeIdentity()
