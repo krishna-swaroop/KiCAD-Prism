@@ -1,6 +1,6 @@
 # Tracker integration — frozen contracts
 
-**Version 1.0 · 2026-09-20 · ticket TR-00.** Source of truth for
+**Version 1.1 · 2026-09-20 · tickets TR-00, review H3.** Source of truth for
 [RFC #310 draft v2](https://github.com/krishna-swaroop/KiCAD-Prism/issues/310)
 where the RFC was underspecified or promised more than the providers can give.
 Every decision below names the evidence it rests on and the fixture set that
@@ -403,8 +403,8 @@ outbound ops (loop prevention at the write boundary, not only by hashing).
 
 | Schema | Tables | Owner ticket |
 | --- | --- | --- |
-| `comments` | `comments` (+ identity/anchor columns), `comment_replies` (+ identity/revision), `comment_revisions`, `tracked_threads`, `tracked_replies`, `sync_ops`, `remote_hints`, `sync_checkpoints` | TR-01 (identity/revisions), TR-12 (links), TR-13 (ops/hints/checkpoints) |
-| `workspace` | `tracker_connectors`, `user_identities`, `project_trackers`, `destination_acks`, `tracker_audit` | TR-12 |
+| `comments` | `comments` (+ identity/anchor columns), `comment_replies` (+ identity/revision), `comment_revisions`, `tracked_threads`, `tracked_replies`, `sync_ops`, `remote_hints`, `sync_checkpoints` | TR-01 (identity/revisions), TR-12 (links), TR-13 (store), **comments ledger v4** (`sync_ops_inbox_and_delete_cascade`) creates `sync_ops` / inbox / checkpoints at deploy time |
+| `workspace` | `tracker_connectors`, `user_identities`, `project_trackers`, `destination_acks`, `tracker_audit` | TR-12 (v23); connector FK `ON DELETE CASCADE` is workspace v24 |
 
 Comments-schema changes stay in `comments_store_service.initialize()`'s
 additive, advisory-locked pattern. Workspace tables use the versioned registry
@@ -475,8 +475,28 @@ Markers are opaque identifiers, not proof of ownership (D2). Body blocks:
 ## 8. DTO examples
 
 See [dto-examples.json](dto-examples.json). Backend Pydantic models and the
-frontend `types/comments.ts` / `types/tracker.ts` implement these shapes
+frontend `types/comments.ts` / `types/trackers.ts` implement these shapes
 verbatim; additive fields are allowed, renames are contract revisions.
+
+### Admin connector HTTP (frozen)
+
+Admin-only. Secrets never appear on reads. Bot identity is a nested
+`{id, login}` object, not a flat `botForgeUserId`. Test connection returns
+the public `TrackerConnector` plus `test: ConnectorTestResult`.
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| GET | `/api/admin/trackers/connectors` | `TrackerConnector[]` |
+| POST | `/api/admin/trackers/connectors` | create → `TrackerConnector` |
+| GET | `/api/admin/trackers/connectors/{connectorId}` | `TrackerConnector` |
+| PATCH | `/api/admin/trackers/connectors/{connectorId}` | `TrackerConnector` |
+| POST | `/api/admin/trackers/connectors/{connectorId}/pause` | `TrackerConnector` |
+| POST | `/api/admin/trackers/connectors/{connectorId}/resume` | `TrackerConnector` |
+| POST | `/api/admin/trackers/connectors/{connectorId}/revoke` | `TrackerConnector` |
+| POST | `/api/admin/trackers/connectors/{connectorId}/test` | `TrackerConnector` + `test` |
+| GET | `/api/admin/trackers/connectors/{connectorId}/health` | `ConnectorHealth` |
+
+User OAuth identity routes stay under `/api/trackers/…` (session user, not admin).
 
 ---
 
@@ -502,3 +522,4 @@ matches `expect`. A skipped PostgreSQL or provider suite is an unmet gate.
 | Version | Date | Change |
 | --- | --- | --- |
 | 1.0 | 2026-09-20 | Initial frozen packet (TR-00). |
+| 1.1 | 2026-09-20 | Freeze `TrackerConnector` (`bot:{id,login}`), `ConnectorTestResult`, admin connector route table, comments ledger v4 owning sync/inbox tables (review H3). |

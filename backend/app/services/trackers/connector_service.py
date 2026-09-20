@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, Optional
 from uuid import uuid4
 
@@ -31,6 +32,30 @@ class ConnectorNotFound(KeyError):
     """No connector row for this id."""
 
 
+def _qual(schema: str, table: str) -> str:
+    if not schema.replace("_", "").isalnum():
+        raise ValueError("invalid schema name")
+    return f'"{schema}".{table}'
+
+
+def _iso8601_duration(delta: timedelta) -> str:
+    total = max(0, int(delta.total_seconds()))
+    if total < 60:
+        return f"PT{total}S"
+    minutes, seconds = divmod(total, 60)
+    if minutes < 60:
+        return f"PT{minutes}M" if seconds == 0 else f"PT{minutes}M{seconds}S"
+    hours, minutes = divmod(minutes, 60)
+    if seconds == 0 and minutes == 0:
+        return f"PT{hours}H"
+    parts = f"{hours}H"
+    if minutes:
+        parts += f"{minutes}M"
+    if seconds:
+        parts += f"{seconds}S"
+    return f"PT{parts}"
+
+
 class ConnectorService:
     def __init__(
         self,
@@ -38,10 +63,14 @@ class ConnectorService:
         connect: Callable[[], Any] | None = None,
         settings: Any | None = None,
         tester: Callable[..., dict] | None = None,
+        comments_schema: str = "comments",
+        workspace_schema: str = "workspace",
     ) -> None:
         self._connect = connect
         self.settings = settings or default_settings
         self._tester = tester
+        self.comments_schema = comments_schema
+        self.workspace_schema = workspace_schema
 
     @contextmanager
     def connection(self):
@@ -70,6 +99,62 @@ class ConnectorService:
             except KeyError as exc:
                 raise ConnectorNotFound(connector_id) from exc
             return self._public(row, conn)
+
+    def health(self, connector_id: str) -> dict[str, Any]:
+        """Secret-free ConnectorHealth from live connector state and sync_ops counts."""
+
+        with self.connection() as conn:
+            row = self._require(conn, connector_id)
+            metrics = self._sync_op_metrics(conn, connector_id)
+            paused_reason = str(row.get("paused_reason") or "")
+            quarantined = int(metrics["quarantinedOps"])
+            failed = int(metrics["failedOps"])
+            degraded = quarantined > 0 or failed > 0 or paused_reason == "auth_lost"
+            return {
+                "connectorId": connector_id,
+                "paused": bool(row.get("paused")),
+                "lastWebhookAt": None,
+                "lastPollAt": None,
+                "lastSweepAt": None,
+                "pendingOps": metrics["pendingOps"],
+                "sentOps": metrics["sentOps"],
+                "quarantinedOps": quarantined,
+                "failedOps": failed,
+                "oldestPendingOpAge": metrics["oldestPendingOpAge"],
+                "oldestUnappliedHintAge": None,
+                "rateLimitResumeAt": None,
+                "degraded": degraded,
+                "lastError": None,
+            }
+
+    def _sync_op_metrics(self, conn: Any, connector_id: str) -> dict[str, Any]:
+        ops = _qual(self.comments_schema, "sync_ops")
+        threads = _qual(self.comments_schema, "tracked_threads")
+        row = conn.execute(
+            f"""
+            SELECT
+                COUNT(*) FILTER (WHERE o.state = 'pending')::int AS pending_ops,
+                COUNT(*) FILTER (WHERE o.state IN ('sent', 'recovering'))::int AS sent_ops,
+                COUNT(*) FILTER (WHERE o.state = 'quarantine')::int AS quarantined_ops,
+                COUNT(*) FILTER (WHERE o.state = 'failed')::int AS failed_ops,
+                MIN(o.created_at) FILTER (WHERE o.state = 'pending') AS oldest_pending
+            FROM {ops} o
+            JOIN {threads} t ON t.id = o.tracked_thread_id
+            WHERE t.connector_id = %s
+            """,
+            (connector_id,),
+        ).fetchone()
+        oldest_pending = (row or {}).get("oldest_pending")
+        oldest_age = None
+        if isinstance(oldest_pending, datetime):
+            oldest_age = _iso8601_duration(datetime.now(timezone.utc) - oldest_pending.astimezone(timezone.utc))
+        return {
+            "pendingOps": int((row or {}).get("pending_ops") or 0),
+            "sentOps": int((row or {}).get("sent_ops") or 0),
+            "quarantinedOps": int((row or {}).get("quarantined_ops") or 0),
+            "failedOps": int((row or {}).get("failed_ops") or 0),
+            "oldestPendingOpAge": oldest_age,
+        }
 
     def create(
         self,

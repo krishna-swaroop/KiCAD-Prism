@@ -99,9 +99,10 @@ class RoutingContractTests(unittest.TestCase):
         app = FastAPI()
         app.include_router(connectors_api.router)
         paths = set(app.openapi()["paths"])
-        self.assertIn("/api/admin/trackers/connectors/", paths)
+        self.assertIn("/api/admin/trackers/connectors", paths)
         self.assertIn("/api/admin/trackers/connectors/{connector_id}/test", paths)
         self.assertIn("/api/admin/trackers/connectors/{connector_id}/revoke", paths)
+        self.assertIn("/api/admin/trackers/connectors/{connector_id}/health", paths)
 
     def test_viewer_and_designer_fail_require_admin(self) -> None:
         from app.core.security import require_admin
@@ -157,7 +158,13 @@ class ConnectorAdminApiTests(unittest.TestCase):
         migrate_workspace_tracker_tables(self.conn)
         self.conn.commit()
         self.settings = _settings()
-        self.service = ConnectorService(connect=self._factory, settings=self.settings, tester=self._tester)
+        self.service = ConnectorService(
+            connect=self._factory,
+            settings=self.settings,
+            tester=self._tester,
+            comments_schema=self.schema,
+            workspace_schema=self.schema,
+        )
         self._probe = {
             "ok": True,
             "writesEnabled": True,
@@ -219,8 +226,11 @@ class ConnectorAdminApiTests(unittest.TestCase):
         self.assertNotIn("privateKey", dumped)
         self.assertTrue(created["credentialConfigured"])
         self.assertFalse(created["writesEnabled"])
+        self.assertEqual(created["bot"]["id"], None)
         listed = run(connectors_api.list_connectors(self.admin))
         self.assertEqual(listed[0]["id"], "cn_gh1")
+        self.assertIn("bot", listed[0])
+        self.assertNotIn("botForgeUserId", created)
         envelope = self.conn.execute(
             "SELECT credential_envelope FROM tracker_connectors WHERE id = 'cn_gh1'"
         ).fetchone()["credential_envelope"]
@@ -268,6 +278,63 @@ class ConnectorAdminApiTests(unittest.TestCase):
         ).fetchall()
         self.assertTrue(any(item["action"] == "connector.revoke" for item in audit))
         self.assertTrue(all(INSTALLATION_MATERIAL not in json.dumps(dict(item), default=str) for item in audit))
+
+    def test_health_route_matches_frozen_connector_health(self) -> None:
+        self._create()
+        health = run(connectors_api.connector_health("cn_gh1", self.admin))
+        self.assertEqual(health["connectorId"], "cn_gh1")
+        self.assertFalse(health["paused"])
+        self.assertEqual(health["pendingOps"], 0)
+        self.assertFalse(health["degraded"])
+        dumped = json.dumps(health)
+        self.assertNotIn(INSTALLATION_MATERIAL, dumped)
+        self.assertNotIn("privateKey", dumped)
+
+    def test_health_counts_sync_ops_and_marks_degraded(self) -> None:
+        self._create()
+        self.conn.execute(
+            """
+            INSERT INTO project_trackers (
+                id, project_id, connector_id, container_kind, container_path,
+                remote_container_id, destination_generation
+            ) VALUES ('pt_a', 'prj_a', 'cn_gh1', 'repo', 'acme/openswitch', '111', 1)
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO comments(id, project_id, author, content)
+            VALUES ('c_1', 'prj_a', 'Priya', 'stub')
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO tracked_threads (
+                id, comment_id, project_tracker_id, destination_generation,
+                connector_id, remote_container_id, external_id, link_state
+            ) VALUES (
+                'tt_1', 'c_1', 'pt_a', 1, 'cn_gh1', '111', '42', 'linked'
+            )
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO sync_ops (
+                id, tracked_thread_id, op, state, destination_generation
+            ) VALUES
+                ('op_pending', 'tt_1', 'add_comment', 'pending', 1),
+                ('op_sent', 'tt_1', 'add_comment', 'sent', 1),
+                ('op_quarantine', 'tt_1', 'add_comment', 'quarantine', 1),
+                ('op_failed', 'tt_1', 'add_comment', 'failed', 1)
+            """
+        )
+        self.conn.commit()
+        health = run(connectors_api.connector_health("cn_gh1", self.admin))
+        self.assertEqual(health["pendingOps"], 1)
+        self.assertEqual(health["sentOps"], 1)
+        self.assertEqual(health["quarantinedOps"], 1)
+        self.assertEqual(health["failedOps"], 1)
+        self.assertTrue(health["degraded"])
+        self.assertIsNotNone(health["oldestPendingOpAge"])
 
 
 if __name__ == "__main__":

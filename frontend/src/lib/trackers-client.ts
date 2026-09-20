@@ -10,6 +10,7 @@ import { ApiHttpError, fetchApi } from "@/lib/api";
 import type {
     CommentTrackerProjection,
     ConnectorHealth,
+    ConnectorTestResult,
     CreateConnectorRequest,
     LegacyForgeProjection,
     OAuthBeginResponse,
@@ -72,13 +73,13 @@ export class TrackerApiError extends ApiHttpError {
 }
 
 export const TRACKER_ROUTES = {
-    connectors: "/api/trackers/connectors",
-    connector: (id: string) => `/api/trackers/connectors/${encodeURIComponent(id)}`,
-    connectorTest: (id: string) => `/api/trackers/connectors/${encodeURIComponent(id)}/test`,
-    connectorPause: (id: string) => `/api/trackers/connectors/${encodeURIComponent(id)}/pause`,
-    connectorResume: (id: string) => `/api/trackers/connectors/${encodeURIComponent(id)}/resume`,
-    connectorRevoke: (id: string) => `/api/trackers/connectors/${encodeURIComponent(id)}/revoke`,
-    connectorHealth: (id: string) => `/api/trackers/connectors/${encodeURIComponent(id)}/health`,
+    connectors: "/api/admin/trackers/connectors",
+    connector: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}`,
+    connectorTest: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/test`,
+    connectorPause: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/pause`,
+    connectorResume: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/resume`,
+    connectorRevoke: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/revoke`,
+    connectorHealth: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/health`,
     identities: "/api/trackers/identities",
     identityBegin: (connectorId: string) =>
         `/api/trackers/connectors/${encodeURIComponent(connectorId)}/oauth/begin`,
@@ -170,7 +171,7 @@ export function updateConnector(connectorId: string, payload: UpdateConnectorReq
     return request(TRACKER_ROUTES.connector(connectorId), json("PATCH", payload), "Failed to update connector");
 }
 
-export function testConnector(connectorId: string): Promise<TrackerConnector> {
+export function testConnector(connectorId: string): Promise<TrackerConnector & { test: ConnectorTestResult }> {
     return request(TRACKER_ROUTES.connectorTest(connectorId), { method: "POST" }, "Failed to test connector");
 }
 
@@ -278,11 +279,12 @@ export const trackerUiMocks = {
         displayName: "GitHub.com",
         instanceKind: "github.com",
         baseUrl: "",
-        botForgeUserId: "199001",
-        botLogin: "prism[bot]",
+        bot: { id: "199001", login: "prism[bot]" },
         credentialConfigured: true,
         paused: false,
         pausedReason: null,
+        writesEnabled: true,
+        auditCount: 1,
     } satisfies TrackerConnector,
     pausedConnector: {
         id: "cn_gh1",
@@ -290,11 +292,12 @@ export const trackerUiMocks = {
         displayName: "GitHub.com",
         instanceKind: "github.com",
         baseUrl: "",
-        botForgeUserId: "199001",
-        botLogin: "prism[bot]",
+        bot: { id: "199001", login: "prism[bot]" },
         credentialConfigured: true,
         paused: true,
         pausedReason: "auth",
+        writesEnabled: false,
+        auditCount: 1,
     } satisfies TrackerConnector,
     health: {
         connectorId: "cn_gh1",

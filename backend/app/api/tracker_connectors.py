@@ -71,12 +71,12 @@ def _http_error(exc: Exception) -> HTTPException:
     raise exc
 
 
-@router.get("/")
+@router.get("")
 async def list_connectors(_admin: AuthenticatedUser = Depends(require_admin)) -> list[dict[str, Any]]:
     return service.list_connectors()
 
 
-@router.post("/")
+@router.post("")
 async def create_connector(
     body: CreateConnectorRequest,
     admin: AuthenticatedUser = Depends(require_admin),
@@ -91,6 +91,17 @@ async def create_connector(
             credentials=body.credentials.model_dump() if body.credentials else None,
             connector_id=body.id,
         )
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+@router.get("/{connector_id}/health")
+async def connector_health(
+    connector_id: str,
+    _admin: AuthenticatedUser = Depends(require_admin),
+) -> dict[str, Any]:
+    try:
+        return service.health(connector_id)
     except Exception as exc:
         raise _http_error(exc) from exc
 

@@ -79,17 +79,32 @@ export interface ProviderCapabilities {
  * Admin-visible connector. `credentialConfigured` is the only secret signal;
  * ciphertext and PEMs never appear on this object.
  */
+export interface TrackerBotIdentity {
+    id: string | null;
+    login: string | null;
+}
+
 export interface TrackerConnector {
     id: string;
     provider: string;
     displayName: string;
     instanceKind: string;
     baseUrl: string;
-    botForgeUserId?: string | null;
-    botLogin?: string | null;
+    bot: TrackerBotIdentity;
     credentialConfigured: boolean;
     paused: boolean;
     pausedReason?: string | null;
+    writesEnabled?: boolean;
+    auditCount?: number;
+}
+
+export interface ConnectorTestResult {
+    ok: boolean;
+    writesEnabled: boolean;
+    pausedReason?: string | null;
+    visibility?: string | null;
+    permissions?: Record<string, string>;
+    bot?: TrackerBotIdentity;
 }
 
 export interface ConnectorHealth {
