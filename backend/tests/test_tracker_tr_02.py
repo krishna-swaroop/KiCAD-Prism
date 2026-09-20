@@ -172,7 +172,29 @@ class OwnershipAndActionTests(unittest.TestCase):
         caps = cp.capabilities(self.alex1, LEGACY, linked=False)
         self.assertEqual(caps, {"canReply": True, "canEdit": False, "canDelete": False, "canResolve": True, "canPublish": True})
         caps = cp.capabilities(self.admin, REMOTE, linked=True, promote_min_role="admin")
-        self.assertEqual(caps, {"canReply": True, "canEdit": True, "canDelete": True, "canResolve": True, "canPublish": True})
+        self.assertEqual(caps, {"canReply": True, "canEdit": False, "canDelete": False, "canResolve": True, "canPublish": True})
+
+    def test_guest_with_admin_role_never_publishes(self) -> None:
+        actor = cp.resolve_actor(AuthenticatedUser(email="guest@local", name="Guest", role="admin"))
+        self.assertEqual(actor.actor_kind, cp.ACTOR_KIND_GUEST)
+        self.assertFalse(cp.capabilities(actor, authored("guest:local", "guest"))["canPublish"])
+        self.assertFalse(cp.allowed(cp.CommentAction.PROMOTE, actor))
+        self.assertFalse(cp.allowed(cp.CommentAction.RETRY, actor))
+        self.assertFalse(cp.allowed(cp.CommentAction.SHARE, actor))
+
+    def test_admin_cannot_edit_remote_origin_reply(self) -> None:
+        self.assertFalse(cp.allowed(cp.CommentAction.EDIT, self.admin, target=REMOTE))
+        self.assertFalse(cp.allowed(cp.CommentAction.DELETE, self.admin, target=REMOTE))
+        with self.assertRaises(cp.CommentPermissionError) as ctx:
+            cp.authorize(cp.CommentAction.EDIT, self.admin, target=REMOTE)
+        self.assertEqual(ctx.exception.code, "remote_object_read_only")
+
+    def test_service_admin_cannot_retry_or_share(self) -> None:
+        actor = cp.resolve_actor(service_client(["api:write"], role="admin", client_id="svc1"))
+        self.assertFalse(cp.allowed(cp.CommentAction.RETRY, actor))
+        self.assertFalse(cp.allowed(cp.CommentAction.SHARE, actor))
+        # Promote still follows publication; an admin-role service may promote.
+        cp.authorize(cp.CommentAction.PROMOTE, actor)
 
 
 if __name__ == "__main__":

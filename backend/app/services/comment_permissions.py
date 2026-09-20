@@ -207,15 +207,22 @@ def authorize(
     if action in (CommentAction.EDIT, CommentAction.DELETE):
         if target is None:
             raise ValueError(f"{action.value} needs a target")
-        if actor.is_admin or is_owner(actor, target):
-            return
+        # D5: Prism never edits or deletes forge-origin replies, including admins.
         if target.author_kind == ACTOR_KIND_REMOTE:
             raise CommentPermissionError("remote_object_read_only", "Replies from the tracker cannot be changed in Prism")
+        if actor.is_admin or is_owner(actor, target):
+            return
         if target.author_kind == ACTOR_KIND_LEGACY:
             raise CommentPermissionError("legacy_admin_only", "Only an admin can change a comment written before authorship was recorded")
         raise CommentPermissionError("not_owner", "Only the author or an admin can change this comment")
 
     if action == CommentAction.RESOLVE:
+        if actor.actor_kind == ACTOR_KIND_GUEST and linked:
+            raise CommentPermissionError(
+                "publication_required",
+                f"Resolving a linked thread requires the {promote_min_role} role on this project",
+                required_role=promote_min_role,
+            )
         if not actor.has_status_authority:
             raise CommentPermissionError("status_role_required", "Designer role required to resolve or reopen", required_role=STATUS_MIN_ROLE)
         if linked and not actor.can_publish(promote_min_role):
@@ -227,6 +234,19 @@ def authorize(
         return
 
     if action in (CommentAction.PROMOTE, CommentAction.RETRY, CommentAction.SHARE):
+        # D4/D6: guest never publishes, even when DEV_GUEST_ROLE=admin.
+        if actor.actor_kind == ACTOR_KIND_GUEST:
+            raise CommentPermissionError(
+                "publication_required",
+                "Guest identity cannot publish to the tracker",
+                required_role=promote_min_role,
+            )
+        # D4: service/external may not Retry or Share, even with an admin role.
+        if action in (CommentAction.RETRY, CommentAction.SHARE) and actor.actor_kind == ACTOR_KIND_SERVICE:
+            raise CommentPermissionError(
+                "publication_required",
+                "Service identities cannot retry or share tracker operations",
+            )
         if actor.is_admin:
             return
         if action != CommentAction.PROMOTE and not actor.has_status_authority:
@@ -267,5 +287,7 @@ def capabilities(
         "canEdit": allowed(CommentAction.EDIT, actor, target=target),
         "canDelete": allowed(CommentAction.DELETE, actor, target=target),
         "canResolve": allowed(CommentAction.RESOLVE, actor, linked=linked, promote_min_role=promote_min_role),
-        "canPublish": actor.is_admin or actor.can_publish(promote_min_role),
+        # Guest-admin must not show Promote; can_publish() already denies guests
+        # before any role check.
+        "canPublish": actor.can_publish(promote_min_role),
     }
