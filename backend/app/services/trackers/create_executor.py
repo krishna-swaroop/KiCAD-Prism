@@ -212,9 +212,10 @@ def _default_connect() -> Iterator[Any]:
 
 
 def execute_claimed_op(claimed: Mapping[str, Any]) -> str | None:
-    """Dispatch one claimed ``create_issue`` op. Confirms in-DB when complete."""
+    """Dispatch one claimed outbound op. Confirms in-DB when complete."""
 
     dispatch = str(claimed.get("dispatch") or EXECUTE_DISPATCH)
+    op_kind = str(claimed.get("op") or "")
     with _default_connect() as conn:
         ops = OpStore(conn)
         op_id = str(claimed["id"])
@@ -224,7 +225,16 @@ def execute_claimed_op(claimed: Mapping[str, Any]) -> str | None:
             conn.commit()
             return None
         if dispatch == RECOVERY_DISPATCH:
-            _recover_create(conn, fresh, ops)
+            if op_kind == "set_state":
+                from app.services.trackers.state_executor import execute_set_state_op
+
+                execute_set_state_op(fresh, conn)
+            else:
+                _recover_create(conn, fresh, ops)
+        elif op_kind == "set_state":
+            from app.services.trackers.state_executor import execute_set_state_op
+
+            execute_set_state_op(fresh, conn)
         else:
             _execute_create(conn, fresh, ops)
         conn.commit()
@@ -290,6 +300,8 @@ def _load_execution_context(conn: Any, op: Mapping[str, Any]) -> _ExecutionConte
         "external_number": thread_row.get("external_number"),
         "external_url": thread_row.get("external_url"),
         "link_state": thread_row.get("link_state"),
+        "remote_state": thread_row.get("remote_state"),
+        "remote_version": thread_row.get("remote_version"),
         "pending_op_id": thread_row.get("pending_op_id"),
     }
     return _ExecutionContext(

@@ -37,6 +37,8 @@ from app.services.trackers.promotion import (
     maybe_auto_promote_root,
     share_reply,
 )
+from app.services.trackers.publication_policy import PublicationDenied
+from app.services.trackers.state_mutations import enqueue_set_state
 
 # 1.1 adds authorUserId/authorKind, reply ids, revision/updatedAt and the anchor
 # block. Every addition is optional for readers; 1.0 files still import.
@@ -883,6 +885,7 @@ class CommentsStoreService:
         status: str,
         editor: Optional[Editor] = None,
         expected_revision: Optional[int] = None,
+        promotion_actor: Optional[PromotionActor] = None,
     ) -> Optional[Dict]:
         """Resolve or reopen; raises RevisionConflict when the thread moved on."""
         self.initialize()
@@ -892,11 +895,35 @@ class CommentsStoreService:
                 self._bootstrap_project_if_needed(conn, project_id, project_path)
                 if not self._live_root_exists(conn, project_id, comment_id):
                     return None
+                if promotion_actor is not None:
+                    from app.services.trackers.promotion import _live_thread, evaluate_dispatch
+
+                    thread = _live_thread(conn, comment_id)
+                    if thread is not None and str(thread.get("external_id") or "") not in ("", "pending"):
+                        evaluate_dispatch(
+                            conn,
+                            project_id,
+                            promotion_actor.role,
+                            workspace_schema=self.workspace_schema,
+                        )
                 comments_revisions.set_root_status(
                     conn, project_id=project_id, comment_id=comment_id, status=status,
                     editor=editor or _SYSTEM_EDITOR, expected_revision=expected_revision,
                 )
-                return self._get_comment_with_replies(conn, project_id, comment_id)
+                updated = self._get_comment_with_replies(conn, project_id, comment_id)
+                if promotion_actor is not None and updated is not None:
+                    try:
+                        enqueue_set_state(
+                            conn,
+                            project_id=project_id,
+                            comment_id=comment_id,
+                            actor=promotion_actor,
+                            local_revision=int(updated.get("revision") or 1),
+                            workspace_schema=self.workspace_schema,
+                        )
+                    except PublicationDenied:
+                        raise
+                return updated
 
     def get_comment(self, project_id: str, project_path: str, comment_id: str) -> Optional[Dict]:
         """One live root with its live replies, or None."""
