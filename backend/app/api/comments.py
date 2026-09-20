@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.api._helpers import get_project_for_role_or_404
 from app.core.security import AuthenticatedUser, require_comment_writer, require_designer, require_viewer
-from app.services import access_service, comment_permissions
+from app.services import comment_permissions
 from app.services.comment_anchor_service import (
     AnchorValidationError,
     resolve_canvas_anchor,
@@ -42,6 +42,14 @@ from app.services.comments_store_service import (
     DEFAULT_COMMENT_CLASS,
     DEFAULT_COMMENT_SEVERITY,
     comments_store,
+)
+from app.services.postgres_database import database
+from app.services.trackers.mentions import (
+    build_candidate_indexes,
+    enrich_stored_mentions,
+    list_mention_candidates as query_mention_candidates,
+    normalize_incoming_mentions,
+    storage_user_ids,
 )
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
@@ -79,7 +87,7 @@ class CreateCommentRequest(BaseModel):
     elementType: Optional[str] = None
     commentClass: Optional[str] = DEFAULT_COMMENT_CLASS
     severity: Optional[str] = DEFAULT_COMMENT_SEVERITY
-    mentions: Optional[List[str]] = None
+    mentions: Optional[List["Mention"]] = None
     revision: Optional[CreateDisplayedRevision] = None
     metadata: Optional[dict] = None
 
@@ -107,7 +115,7 @@ class UpdateCommentRequest(BaseModel):
     content: Optional[str] = None
     severity: Optional[str] = None
     commentClass: Optional[str] = None
-    mentions: Optional[List[str]] = None
+    mentions: Optional[List["Mention"]] = None
     status: Optional[str] = None  # "OPEN" or "RESOLVED"
     expectedRevision: Optional[int] = None
 
@@ -182,7 +190,7 @@ class Comment(BaseModel):
     elementType: Optional[str] = None
     commentClass: str = DEFAULT_COMMENT_CLASS
     severity: str = DEFAULT_COMMENT_SEVERITY
-    mentions: List[str] = Field(default_factory=list)
+    mentions: List["Mention"] = Field(default_factory=list)
     scope: str = "canvas"
     baseCommit: Optional[str] = None
     compareCommit: Optional[str] = None
@@ -209,9 +217,16 @@ class CommentsFile(BaseModel):
     comments: List[Comment] = Field(default_factory=list)
 
 
+class Mention(BaseModel):
+    userId: str
+    displayName: str
+
+
 class MentionCandidate(BaseModel):
-    email: str
+    userId: str
+    displayName: str
     role: str
+    linkedProviders: List[str] = Field(default_factory=list)
 
 
 class CreateComparisonCommentRequest(BaseModel):
@@ -225,7 +240,7 @@ class CreateComparisonCommentRequest(BaseModel):
     anchorKind: str = "comparison"
     commentClass: Optional[str] = DEFAULT_COMMENT_CLASS
     severity: Optional[str] = DEFAULT_COMMENT_SEVERITY
-    mentions: Optional[List[str]] = None
+    mentions: Optional[List[Mention]] = None
     selectedSide: Optional[str] = None
 
 
@@ -244,8 +259,45 @@ def _authored(comment: dict) -> AuthoredObject:
     )
 
 
+def _mention_context():
+    def read():
+        with database.connection() as conn:
+            conn.execute("SET search_path TO workspace, public")
+            candidates = query_mention_candidates(conn)
+            by_id, email_index = build_candidate_indexes(candidates, conn=conn)
+            return candidates, by_id, email_index
+
+    return read()
+
+
+def _normalize_comment_mentions(
+    *,
+    content: str,
+    raw_mentions: Optional[List],
+) -> tuple[str, List[str]]:
+    candidates, by_id, email_index = _mention_context()
+    normalized_content, mentions = normalize_incoming_mentions(
+        content=content,
+        raw_mentions=raw_mentions,
+        candidates_by_id=by_id,
+        email_index=email_index,
+    )
+    return normalized_content, storage_user_ids(mentions)
+
+
+def _wire_comment_mentions(comment: dict) -> dict:
+    _, by_id, email_index = _mention_context()
+    comment["mentions"] = enrich_stored_mentions(
+        comment.get("mentions"),
+        candidates_by_id=by_id,
+        email_index=email_index,
+    )
+    return comment
+
+
 def _with_permissions(comment: dict, actor: ActorIdentity) -> dict:
     """Attach the caller's capabilities so the UI never re-derives policy."""
+    _wire_comment_mentions(comment)
     comment["permissions"] = comment_permissions.capabilities(actor, _authored(comment))
     for reply in comment.get("replies", []):
         reply["permissions"] = comment_permissions.capabilities(actor, _authored(reply))
@@ -384,10 +436,9 @@ async def list_mention_candidates(
     """
     def read() -> List[MentionCandidate]:
         get_project_for_role_or_404(project_id, user.role)
-        return [
-            MentionCandidate(email=item["email"], role=item["role"])
-            for item in access_service.list_role_assignments()
-        ]
+        with database.connection() as conn:
+            conn.execute("SET search_path TO workspace, public")
+            return [MentionCandidate(**candidate.to_wire()) for candidate in query_mention_candidates(conn)]
 
     return await asyncio.to_thread(read)
 
@@ -401,8 +452,12 @@ async def get_comments(project_id: str, user: AuthenticatedUser = Depends(requir
         project = get_project_for_role_or_404(project_id, user.role)
         listing = comments_store.get_comments_file(project.id, project.path)
         actor = _read_actor(user)
+        comments = listing["comments"]
         if actor is not None:
-            listing["comments"] = [_with_permissions(c, actor) for c in listing["comments"]]
+            comments = [_with_permissions(c, actor) for c in comments]
+        else:
+            comments = [_wire_comment_mentions(c) for c in comments]
+        listing["comments"] = comments
         return listing
 
     return await asyncio.to_thread(read)
@@ -439,8 +494,12 @@ async def get_comparison_comments(
             comparison_domain=domain_norm,
         )
         actor = _read_actor(user)
+        comments = listing["comments"]
         if actor is not None:
-            listing["comments"] = [_with_permissions(c, actor) for c in listing["comments"]]
+            comments = [_with_permissions(c, actor) for c in comments]
+        else:
+            comments = [_wire_comment_mentions(c) for c in comments]
+        listing["comments"] = comments
         return listing
 
     return await asyncio.to_thread(read)
@@ -466,11 +525,16 @@ async def create_comparison_comment(
     content = _normalize_content(request.content)
     comment_class = _normalize_comment_class(request.commentClass)
     severity = _normalize_severity(request.severity)
+    raw_mentions = [item.model_dump() for item in request.mentions] if request.mentions else None
 
     def write():
         project = get_project_for_role_or_404(project_id, user.role)
         actor = _actor(user)
         comment_permissions.authorize(CommentAction.CREATE, actor)
+        normalized_content, mention_ids = _normalize_comment_mentions(
+            content=content,
+            raw_mentions=raw_mentions,
+        )
         anchor = resolve_comparison_anchor(
             project,
             base_commit=request.baseCommit,
@@ -484,7 +548,7 @@ async def create_comparison_comment(
             project_path=project.path,
             context=domain,
             location={"x": 0.0, "y": 0.0, "layer": "", "page": request.filePath or ""},
-            content=content,
+            content=normalized_content,
             author=actor.display_name,
             author_user_id=actor.actor_id,
             author_kind=actor.actor_kind,
@@ -493,7 +557,7 @@ async def create_comparison_comment(
             element_type=anchor_kind,
             comment_class=comment_class,
             severity=severity,
-            mentions=request.mentions,
+            mentions=mention_ids,
             scope="comparison",
             base_commit=anchor.base_commit,
             compare_commit=anchor.compare_commit,
@@ -527,11 +591,16 @@ async def create_comment(
     location["bounds"] = _normalize_bounds(request.location.bounds)
     comment_class = _normalize_comment_class(request.commentClass)
     severity = _normalize_severity(request.severity)
+    raw_mentions = [item.model_dump() for item in request.mentions] if request.mentions else None
 
     def write():
         project = get_project_for_role_or_404(project_id, user.role)
         actor = _actor(user)
         comment_permissions.authorize(CommentAction.CREATE, actor)
+        normalized_content, mention_ids = _normalize_comment_mentions(
+            content=content,
+            raw_mentions=raw_mentions,
+        )
         revision = request.revision.model_dump() if request.revision is not None else None
         anchor = resolve_canvas_anchor(
             project, revision=revision, context=context, file_path=None,
@@ -541,7 +610,7 @@ async def create_comment(
             project_path=project.path,
             context=context,
             location=location,
-            content=content,
+            content=normalized_content,
             author=actor.display_name,
             author_user_id=actor.actor_id,
             author_kind=actor.actor_kind,
@@ -550,7 +619,7 @@ async def create_comment(
             element_type=request.elementType,
             comment_class=comment_class,
             severity=severity,
-            mentions=request.mentions,
+            mentions=mention_ids,
             metadata=request.metadata,
             file_path=anchor.file_path,
             anchor_commit=anchor.commit,
@@ -579,7 +648,7 @@ async def update_comment(
         "content": _normalize_content(request.content) if request.content is not None else None,
         "severity": _normalize_severity(request.severity) if request.severity is not None else None,
         "comment_class": _normalize_comment_class(request.commentClass) if request.commentClass is not None else None,
-        "mentions": request.mentions,
+        "mentions": [item.model_dump() for item in request.mentions] if request.mentions is not None else None,
     }
     has_edit = any(value is not None for value in edits.values())
     status = _normalize_status(request.status) if request.status is not None else None
@@ -599,8 +668,19 @@ async def update_comment(
             comment_permissions.authorize(CommentAction.RESOLVE, actor)
         updated = current
         if has_edit:
+            edit_kwargs = dict(edits)
+            if edit_kwargs.get("content") is not None or edit_kwargs.get("mentions") is not None:
+                base_content = edit_kwargs.get("content")
+                if base_content is None:
+                    base_content = str(current.get("content") or "")
+                normalized_content, mention_ids = _normalize_comment_mentions(
+                    content=base_content,
+                    raw_mentions=edit_kwargs.get("mentions"),
+                )
+                edit_kwargs["content"] = normalized_content
+                edit_kwargs["mentions"] = mention_ids
             updated = comments_store.edit_comment(
-                project.id, project.path, comment_id, _editor(actor), expected_revision=expected, **edits,
+                project.id, project.path, comment_id, _editor(actor), expected_revision=expected, **edit_kwargs,
             )
             expected = updated["revision"] if updated else None
         if status is not None and updated is not None:

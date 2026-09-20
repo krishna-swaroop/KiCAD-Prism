@@ -121,7 +121,7 @@ export interface Comment {
     elementId?: string;
     commentClass: CommentClass;
     severity: CommentSeverity;
-    mentions: string[];
+    mentions: Mention[];
     metadata?: Record<string, unknown>;
     scope?: "canvas" | "comparison";
     baseCommit?: string;
@@ -173,7 +173,7 @@ export interface CreateCommentRequest {
     elementType?: string;
     commentClass?: CommentClass;
     severity?: CommentSeverity;
-    mentions?: string[];
+    mentions?: Mention[];
     revision?: CreateCommentDisplayedRevision;
     metadata?: Record<string, unknown>;
 }
@@ -189,7 +189,7 @@ export interface CreateComparisonCommentRequest {
     anchorKind?: "comparison" | "file" | "item" | "group";
     commentClass?: CommentClass;
     severity?: CommentSeverity;
-    mentions?: string[];
+    mentions?: Mention[];
     selectedSide?: "base" | "compare" | null;
 }
 
@@ -206,7 +206,7 @@ export interface UpdateCommentRequest {
     content?: string;
     severity?: CommentSeverity;
     commentClass?: CommentClass;
-    mentions?: string[];
+    mentions?: Mention[];
     status?: CommentStatus;
     expectedRevision?: number;
 }
@@ -252,8 +252,10 @@ export interface CommentMutationErrorPayload {
 }
 
 export interface MentionCandidate {
-    email: string;
+    userId: string;
+    displayName: string;
     role: string;
+    linkedProviders?: string[];
 }
 
 export function commentClassLabel(value: CommentClass): string {
