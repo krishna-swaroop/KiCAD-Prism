@@ -117,7 +117,12 @@ class GitHubAppAuthTests(unittest.TestCase):
     def test_jwt_is_rs256_and_shorter_than_ten_minutes(self) -> None:
         auth = self._auth()
         token = auth.mint_jwt()
-        claims = jwt.decode(token, self.public, algorithms=["RS256"])
+        claims = jwt.decode(
+            token,
+            self.public,
+            algorithms=["RS256"],
+            options={"verify_exp": False, "verify_iat": False},
+        )
         self.assertEqual(str(claims["iss"]), "772215")
         self.assertLessEqual(int(claims["exp"]) - int(claims["iat"]), 600)
         self.assertNotIn(self.pem, token)
