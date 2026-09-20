@@ -105,7 +105,7 @@ def resolve_destination_context(
         SELECT container_path, destination_generation
         FROM {qual}
         WHERE connector_id = %s AND remote_container_id = %s
-        ORDER BY destination_generation DESC, updated_at DESC NULLS LAST, id ASC
+        ORDER BY destination_generation DESC, created_at DESC NULLS LAST, id ASC
         LIMIT 1
         """,
         (connector_id, remote_container_id),
