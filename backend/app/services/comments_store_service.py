@@ -826,6 +826,17 @@ class CommentsStoreService:
             (project_id, comment_id),
         ).fetchone())
 
+    def _lock_live_root(self, conn, project_id: str, comment_id: str) -> bool:
+        """Lock a live root so a concurrent tombstone cannot race a reply insert."""
+        return bool(conn.execute(
+            """
+            SELECT 1 FROM comments
+            WHERE project_id = %s AND id = %s AND deleted_at IS NULL
+            FOR UPDATE
+            """,
+            (project_id, comment_id),
+        ).fetchone())
+
     def edit_comment(
         self,
         project_id: str,
@@ -941,7 +952,7 @@ class CommentsStoreService:
             with conn.transaction():
                 self._bootstrap_project_if_needed(conn, project_id, project_path)
 
-                if not self._live_root_exists(conn, project_id, comment_id):
+                if not self._lock_live_root(conn, project_id, comment_id):
                     return None
 
                 conn.execute(
@@ -950,11 +961,20 @@ class CommentsStoreService:
                         id, comment_id, project_id, author, timestamp, content,
                         author_user_id, author_kind, revision, updated_at, origin
                     )
-                    VALUES(%s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s)
+                    SELECT %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s
+                    FROM comments
+                    WHERE project_id = %s AND id = %s AND deleted_at IS NULL
                     """,
                     (reply_id, comment_id, project_id, author, timestamp, content,
-                     author_user_id, author_kind_norm, timestamp, origin),
+                     author_user_id, author_kind_norm, timestamp, origin,
+                     project_id, comment_id),
                 )
+                inserted = conn.execute(
+                    "SELECT 1 FROM comment_replies WHERE project_id = %s AND id = %s",
+                    (project_id, reply_id),
+                ).fetchone()
+                if not inserted:
+                    return None
                 comments_revisions.record_revision(
                     conn, project_id=project_id, target_kind=comments_revisions.REPLY, target_id=reply_id,
                     revision=1, change_kind=comments_revisions.CHANGE_CREATE,

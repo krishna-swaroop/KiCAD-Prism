@@ -60,6 +60,69 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def ensure_create_revision(
+    conn,
+    *,
+    project_id: str,
+    target_kind: str,
+    table: str,
+    target_id: str,
+) -> None:
+    """If this object has no history, snapshot its current row as a create.
+
+    Covers JSON imports and any pre-identity row whose upgrade backfill
+    was skipped. Uses only columns every comments/replies table has after
+    migration 1.
+    """
+    existing = conn.execute(
+        "SELECT 1 FROM comment_revisions WHERE target_kind = %s AND target_id = %s LIMIT 1",
+        (target_kind, target_id),
+    ).fetchone()
+    if existing:
+        return
+    if target_kind == ROOT:
+        row = conn.execute(
+            """
+            SELECT content, status, author, author_user_id, author_kind, revision
+            FROM comments WHERE project_id = %s AND id = %s
+            """,
+            (project_id, target_id),
+        ).fetchone()
+        if not row:
+            return
+        record_revision(
+            conn, project_id=project_id, target_kind=ROOT, target_id=target_id,
+            revision=int(row["revision"] or 1), change_kind=CHANGE_CREATE,
+            editor=Editor(
+                user_id=row.get("author_user_id"),
+                kind=row.get("author_kind") or "legacy",
+                display=row.get("author") or "",
+            ),
+            content=row["content"], status=row.get("status"),
+        )
+        return
+    row = conn.execute(
+        """
+        SELECT content, author, author_user_id, author_kind, revision, origin
+        FROM comment_replies WHERE project_id = %s AND id = %s
+        """,
+        (project_id, target_id),
+    ).fetchone()
+    if not row:
+        return
+    record_revision(
+        conn, project_id=project_id, target_kind=REPLY, target_id=target_id,
+        revision=int(row["revision"] or 1), change_kind=CHANGE_CREATE,
+        editor=Editor(
+            user_id=row.get("author_user_id"),
+            kind=row.get("author_kind") or "legacy",
+            display=row.get("author") or "",
+            origin=row.get("origin") or ORIGIN_PRISM,
+        ),
+        content=row["content"],
+    )
+
+
 def record_revision(
     conn,
     *,
@@ -161,6 +224,9 @@ def edit_root(
         assignments["mentions"] = json.dumps(mentions)
     if not assignments:
         raise ValueError("edit_root needs at least one field")
+    ensure_create_revision(
+        conn, project_id=project_id, target_kind=ROOT, table="comments", target_id=comment_id,
+    )
     revision = _bump(
         conn, "comments", project_id=project_id, target_id=comment_id,
         expected_revision=expected_revision, assignments=assignments, target_kind=ROOT,
@@ -182,6 +248,9 @@ def set_root_status(
     editor: Editor,
     expected_revision: Optional[int],
 ) -> int:
+    ensure_create_revision(
+        conn, project_id=project_id, target_kind=ROOT, table="comments", target_id=comment_id,
+    )
     revision = _bump(
         conn, "comments", project_id=project_id, target_id=comment_id,
         expected_revision=expected_revision, assignments={"status": status}, target_kind=ROOT,
@@ -202,6 +271,9 @@ def edit_reply(
     editor: Editor,
     expected_revision: Optional[int],
 ) -> int:
+    ensure_create_revision(
+        conn, project_id=project_id, target_kind=REPLY, table="comment_replies", target_id=reply_id,
+    )
     revision = _bump(
         conn, "comment_replies", project_id=project_id, target_id=reply_id,
         expected_revision=expected_revision, assignments={"content": content}, target_kind=REPLY,
@@ -242,6 +314,9 @@ def tombstone_root(
     expected_revision: Optional[int],
 ) -> int:
     """Tombstone a root and every live reply under it, keeping all history."""
+    ensure_create_revision(
+        conn, project_id=project_id, target_kind=ROOT, table="comments", target_id=comment_id,
+    )
     revision = _bump(
         conn, "comments", project_id=project_id, target_id=comment_id,
         expected_revision=expected_revision,

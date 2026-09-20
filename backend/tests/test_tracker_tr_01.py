@@ -162,7 +162,19 @@ class CommentsPersistencePostgresTests(unittest.TestCase):
         self.store.initialize()  # second start: ledger says nothing to do
 
         ledger = self._raw("SELECT version FROM comment_schema_migrations ORDER BY version")
-        self.assertEqual([row["version"] for row in ledger], [1])
+        self.assertEqual([row["version"] for row in ledger], [1, 2])
+
+        snapshot = self.store.get_comments_file(self.project_id, self.project_path)
+        self.assertEqual(snapshot["meta"]["version"], "1.1")
+        [root] = snapshot["comments"]
+        self.assertEqual((root["id"], root["author"], root["authorKind"], root["authorUserId"]), ("c_old", "Alex Chen", "legacy", None))
+        self.assertEqual(root["updatedAt"], root["timestamp"])
+        self.assertEqual(root["anchor"]["state"], "unpinned")
+        [reply] = root["replies"]
+        self.assertEqual((reply["id"], reply["author"], reply["authorKind"]), ("r_old", "swaroop", "legacy"))
+        history = self.store.get_history(self.project_id, comments_revisions.ROOT, "c_old")
+        self.assertEqual([h["changeKind"] for h in history], ["create"])
+        self.assertEqual(history[0]["content"], "old root")
 
         snapshot = self.store.get_comments_file(self.project_id, self.project_path)
         self.assertEqual(snapshot["meta"]["version"], "1.1")
@@ -272,6 +284,65 @@ class CommentsPersistencePostgresTests(unittest.TestCase):
         self.assertEqual(rows, [{"gone": True}])
         kinds = [h["changeKind"] for h in self.store.get_history(self.project_id, comments_revisions.REPLY, reply["id"])]
         self.assertEqual(kinds, ["create", "delete"])
+
+    def test_legacy_first_edit_preserves_original_content(self) -> None:
+        self._create_legacy_schema_with_rows()
+        self.store.initialize()
+        self.store.edit_comment(
+            self.project_id, self.project_path, "c_old", ADMIN, expected_revision=1, content="replacement",
+        )
+        hist = self.store.get_history(self.project_id, comments_revisions.ROOT, "c_old")
+        self.assertIn("old root", [entry["content"] for entry in hist])
+        self.assertEqual([(h["revision"], h["changeKind"]) for h in hist], [(1, "create"), (2, "edit")])
+        self.assertEqual(hist[1]["content"], "replacement")
+
+    def test_add_reply_after_tombstone_is_rejected(self) -> None:
+        self.store.initialize()
+        root = self.store.create_comment(
+            self.project_id, self.project_path, "PCB", {"x": 0, "y": 0}, "root",
+            author="Author", author_user_id="u1",
+        )
+        self.assertTrue(self.store.delete_comment(self.project_id, self.project_path, root["id"], editor=PRIYA, expected_revision=1))
+        self.assertIsNone(self.store.add_reply(self.project_id, self.project_path, root["id"], "late", "Author", author_user_id="u1"))
+        rows = self._raw("SELECT id FROM comment_replies WHERE comment_id = %s AND deleted_at IS NULL", (root["id"],))
+        self.assertEqual(rows, [])
+
+    def test_concurrent_reply_and_tombstone_leaves_no_live_reply(self) -> None:
+        import threading
+
+        self.store.initialize()
+        root = self.store.create_comment(
+            self.project_id, self.project_path, "PCB", {"x": 0, "y": 0}, "root",
+            author="Author", author_user_id="u1",
+        )
+        errors: list[str] = []
+
+        def writer():
+            try:
+                self.store.add_reply(
+                    self.project_id, self.project_path, root["id"], "late reply", "Author", author_user_id="u1",
+                )
+            except Exception as exc:  # pragma: no cover - serialized outcomes should not error
+                errors.append(type(exc).__name__)
+
+        def deleter():
+            try:
+                self.store.delete_comment(self.project_id, self.project_path, root["id"], editor=PRIYA)
+            except Exception as exc:  # pragma: no cover
+                errors.append(type(exc).__name__)
+
+        threads = [threading.Thread(target=writer), threading.Thread(target=deleter)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+            self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        live = self._raw(
+            "SELECT id FROM comment_replies WHERE comment_id = %s AND deleted_at IS NULL",
+            (root["id"],),
+        )
+        self.assertEqual(live, [])
 
     def test_reply_edit_and_delete_are_id_addressed_and_version_checked(self) -> None:  # F8.local_reply_edit/_delete
         self.store.initialize()

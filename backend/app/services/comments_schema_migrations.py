@@ -83,8 +83,52 @@ def _m001_identity_revisions_tombstones(conn) -> None:
     )
 
 
+def _m002_backfill_create_revisions(conn) -> None:
+    """Snapshot pre-identity rows into history so a later edit cannot erase them.
+
+    Idempotent: skips any target that already has a revision row. Uses only
+    columns the identity migration guarantees (content/status/author), because
+    older databases may not yet have severity or class.
+    """
+    conn.execute(
+        """
+        INSERT INTO comment_revisions (
+            project_id, target_kind, target_id, revision, change_kind,
+            content, status, editor_user_id, editor_kind, editor_display, origin
+        )
+        SELECT
+            c.project_id, 'root', c.id, COALESCE(c.revision, 1), 'create',
+            c.content, c.status, c.author_user_id,
+            COALESCE(NULLIF(c.author_kind, ''), 'legacy'), COALESCE(c.author, ''), 'prism'
+        FROM comments c
+        WHERE NOT EXISTS (
+            SELECT 1 FROM comment_revisions r
+            WHERE r.target_kind = 'root' AND r.target_id = c.id
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO comment_revisions (
+            project_id, target_kind, target_id, revision, change_kind,
+            content, editor_user_id, editor_kind, editor_display, origin
+        )
+        SELECT
+            r.project_id, 'reply', r.id, COALESCE(r.revision, 1), 'create',
+            r.content, r.author_user_id,
+            COALESCE(NULLIF(r.author_kind, ''), 'legacy'), COALESCE(r.author, ''), 'prism'
+        FROM comment_replies r
+        WHERE NOT EXISTS (
+            SELECT 1 FROM comment_revisions h
+            WHERE h.target_kind = 'reply' AND h.target_id = r.id
+        )
+        """
+    )
+
+
 MIGRATIONS: List[Tuple[int, str, Callable[[object], None]]] = [
     (1, "identity_revisions_tombstones", _m001_identity_revisions_tombstones),
+    (2, "backfill_create_revisions", _m002_backfill_create_revisions),
 ]
 
 
