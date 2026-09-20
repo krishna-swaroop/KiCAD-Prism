@@ -5,15 +5,30 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from app.services.trackers.github_webhooks import GitHubWebhookService, WebhookRejected
+from app.services.trackers.github_webhooks import (
+    GitHubWebhookService,
+    MAX_BODY_BYTES,
+    WebhookRejected,
+)
 
 router = APIRouter(prefix="/api/trackers/webhooks", tags=["tracker-webhooks"])
 service = GitHubWebhookService()
 
 
+async def _read_body_with_limit(request: Request, max_bytes: int) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_bytes:
+            raise WebhookRejected("payload_too_large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.post("/github/{connector_id}")
 async def github_webhook(connector_id: str, request: Request) -> JSONResponse:
-    raw = await request.body()
+    raw = await _read_body_with_limit(request, MAX_BODY_BYTES)
     try:
         result = service.ingest(connector_id, dict(request.headers), raw)
     except WebhookRejected as exc:

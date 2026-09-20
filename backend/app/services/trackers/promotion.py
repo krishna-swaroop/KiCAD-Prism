@@ -75,22 +75,22 @@ def is_anchor_promotable(comment: Mapping[str, Any]) -> bool:
 
 
 def load_policy_row(conn: Any, project_id: str, *, workspace_schema: str = WORKSPACE_SCHEMA) -> Optional[dict]:
-    try:
-        return conn.execute(
-            f"""
-            SELECT pt.*, tc.paused AS connector_paused, tc.provider AS connector_provider
-            FROM {_qual(workspace_schema, "project_trackers")} pt
-            LEFT JOIN {_qual(workspace_schema, "tracker_connectors")} tc ON tc.id = pt.connector_id
-            WHERE pt.project_id = %s
-            """,
-            (project_id,),
-        ).fetchone()
-    except Exception as exc:
-        from psycopg.errors import InvalidCatalogName, UndefinedTable
+    from psycopg.errors import InvalidCatalogName, UndefinedTable
 
-        if isinstance(exc, (UndefinedTable, InvalidCatalogName)):
-            return None
-        raise
+    try:
+        with conn.transaction():
+            row = conn.execute(
+                f"""
+                SELECT pt.*, tc.paused AS connector_paused, tc.provider AS connector_provider
+                FROM {_qual(workspace_schema, "project_trackers")} pt
+                LEFT JOIN {_qual(workspace_schema, "tracker_connectors")} tc ON tc.id = pt.connector_id
+                WHERE pt.project_id = %s
+                """,
+                (project_id,),
+            ).fetchone()
+    except (UndefinedTable, InvalidCatalogName):
+        return None
+    return dict(row) if row else None
 
 
 def _acknowledged(conn: Any, *, connector_id: str, remote_container_id: str, visibility: str,
@@ -458,71 +458,123 @@ def share_reply(
     return PromotionResult(action="enqueued", op_id=op_id, thread_id=thread_id)
 
 
-def _reply_sync_projection(conn: Any, reply_id: str, thread_id: str | None) -> Optional[dict]:
-    if not thread_id:
-        return None
-    link = conn.execute(
-        """
-        SELECT tr.external_comment_id, tr.external_url
-        FROM tracked_replies tr
-        WHERE tr.reply_id = %s
-        """,
-        (reply_id,),
-    ).fetchone()
-    pending = conn.execute(
-        """
-        SELECT id, state FROM sync_ops
-        WHERE tracked_thread_id = %s
-          AND op = 'add_comment'
-          AND local_revision IS NOT NULL
-          AND state = ANY(%s)
-        ORDER BY created_at DESC, id DESC
-        LIMIT 5
-        """,
-        (thread_id, list(LIVE_CREATE_STATES)),
-    ).fetchall()
-    if link:
-        return {
-            "state": "confirmed",
-            "externalCommentId": str(link["external_comment_id"]),
-            "externalUrl": link.get("external_url"),
-        }
-    return None
+@dataclass(frozen=True)
+class _ListingProjectionContext:
+    policy: Optional[dict]
+    threads_by_comment: dict[str, dict]
+    pending_by_thread: dict[str, dict]
+    links_by_reply: dict[str, dict]
 
 
-def attach_tracker_projection(
+def _reply_sync_from_link(link: Mapping[str, Any]) -> dict:
+    return {
+        "state": "confirmed",
+        "externalCommentId": str(link["external_comment_id"]),
+        "externalUrl": link.get("external_url"),
+    }
+
+
+def _unsynced_local_sync() -> dict:
+    return {"state": "unsynced_local", "reason": "publication_required"}
+
+
+def _reply_is_unsynced_local(reply: Mapping[str, Any], *, unsynced_reply_ids: Optional[set[str]] = None) -> bool:
+    reply_id = str(reply.get("id") or "")
+    if unsynced_reply_ids and reply_id in unsynced_reply_ids:
+        return True
+    return str(reply.get("syncState") or "") == "unsynced_local"
+
+
+def _load_listing_projection_context(
     conn: Any,
     project_id: str,
-    comment: dict,
+    comments: list[dict],
     *,
     workspace_schema: str = WORKSPACE_SCHEMA,
+) -> _ListingProjectionContext:
+    """One policy load and batched thread/reply lookups for a comment listing."""
+
+    policy = load_policy_row(conn, project_id, workspace_schema=workspace_schema)
+    comment_ids = [str(comment["id"]) for comment in comments if is_anchor_promotable(comment)]
+    threads_by_comment: dict[str, dict] = {}
+    if comment_ids:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT ON (comment_id) *
+            FROM tracked_threads
+            WHERE comment_id = ANY(%s) AND unlinked_at IS NULL
+            ORDER BY comment_id, id DESC
+            """,
+            (comment_ids,),
+        ).fetchall()
+        for row in rows:
+            threads_by_comment[str(row["comment_id"])] = dict(row)
+
+    thread_ids = [str(thread["id"]) for thread in threads_by_comment.values()]
+    pending_by_thread: dict[str, dict] = {}
+    if thread_ids:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT ON (tracked_thread_id) tracked_thread_id, id, op, state
+            FROM sync_ops
+            WHERE tracked_thread_id = ANY(%s) AND state = ANY(%s)
+            ORDER BY tracked_thread_id, created_at ASC, id ASC
+            """,
+            (thread_ids, list(LIVE_CREATE_STATES)),
+        ).fetchall()
+        for row in rows:
+            pending_by_thread[str(row["tracked_thread_id"])] = dict(row)
+
+    reply_ids = [
+        str(reply.get("id"))
+        for comment in comments
+        for reply in comment.get("replies", [])
+        if reply.get("id")
+    ]
+    links_by_reply: dict[str, dict] = {}
+    if reply_ids:
+        rows = conn.execute(
+            """
+            SELECT reply_id, external_comment_id, external_url
+            FROM tracked_replies
+            WHERE reply_id = ANY(%s)
+            """,
+            (reply_ids,),
+        ).fetchall()
+        for row in rows:
+            links_by_reply[str(row["reply_id"])] = dict(row)
+
+    return _ListingProjectionContext(
+        policy=policy,
+        threads_by_comment=threads_by_comment,
+        pending_by_thread=pending_by_thread,
+        links_by_reply=links_by_reply,
+    )
+
+
+def _attach_one_tracker_projection(
+    comment: dict,
+    ctx: _ListingProjectionContext,
+    *,
     unsynced_reply_ids: Optional[set[str]] = None,
 ) -> dict:
     if not is_anchor_promotable(comment):
         comment["tracker"] = {"linkState": None, "notPromotableReason": "unpinned_anchor"}
         return comment
 
-    thread = _live_thread(conn, str(comment["id"]))
-    policy = load_policy_row(conn, project_id, workspace_schema=workspace_schema)
+    policy = ctx.policy
+    thread = ctx.threads_by_comment.get(str(comment["id"]))
     if thread is None:
         tracker: dict[str, Any] = {"linkState": None}
         if policy is not None and not should_auto_promote(comment, policy):
             tracker["notPromotableReason"] = "below_auto_threshold"
         comment["tracker"] = tracker
         for reply in comment.get("replies", []):
-            if unsynced_reply_ids and str(reply.get("id")) in unsynced_reply_ids:
-                reply["sync"] = {"state": "unsynced_local", "reason": "publication_required"}
+            if _reply_is_unsynced_local(reply, unsynced_reply_ids=unsynced_reply_ids):
+                reply["sync"] = _unsynced_local_sync()
         return comment
 
-    pending_op = conn.execute(
-        """
-        SELECT id, op, state FROM sync_ops
-        WHERE tracked_thread_id = %s AND state = ANY(%s)
-        ORDER BY created_at ASC, id ASC
-        LIMIT 1
-        """,
-        (str(thread["id"]), list(LIVE_CREATE_STATES)),
-    ).fetchone()
+    pending_op = ctx.pending_by_thread.get(str(thread["id"]))
     external_id = str(thread.get("external_id") or "")
     external_number = thread.get("external_number")
     linked = external_id not in ("", "pending")
@@ -551,15 +603,49 @@ def attach_tracker_projection(
         comment["forgeIssueUrl"] = thread.get("external_url")
         comment["forgeSyncState"] = comment["tracker"]["syncState"]
 
-    thread_id = str(thread["id"])
     for reply in comment.get("replies", []):
-        if unsynced_reply_ids and str(reply.get("id")) in unsynced_reply_ids:
-            reply["sync"] = {"state": "unsynced_local", "reason": "publication_required"}
+        if _reply_is_unsynced_local(reply, unsynced_reply_ids=unsynced_reply_ids):
+            reply["sync"] = _unsynced_local_sync()
             continue
-        sync = _reply_sync_projection(conn, str(reply.get("id")), thread_id)
-        if sync:
-            reply["sync"] = sync
+        link = ctx.links_by_reply.get(str(reply.get("id") or ""))
+        if link:
+            reply["sync"] = _reply_sync_from_link(link)
     return comment
+
+
+def attach_tracker_projections(
+    conn: Any,
+    project_id: str,
+    comments: list[dict],
+    *,
+    workspace_schema: str = WORKSPACE_SCHEMA,
+    unsynced_reply_ids: Optional[set[str]] = None,
+) -> list[dict]:
+    if not comments:
+        return comments
+    ctx = _load_listing_projection_context(
+        conn, project_id, comments, workspace_schema=workspace_schema,
+    )
+    for comment in comments:
+        _attach_one_tracker_projection(comment, ctx, unsynced_reply_ids=unsynced_reply_ids)
+    return comments
+
+
+def attach_tracker_projection(
+    conn: Any,
+    project_id: str,
+    comment: dict,
+    *,
+    workspace_schema: str = WORKSPACE_SCHEMA,
+    unsynced_reply_ids: Optional[set[str]] = None,
+) -> dict:
+    return attach_tracker_projections(
+        conn,
+        project_id,
+        [comment],
+        workspace_schema=workspace_schema,
+        unsynced_reply_ids=unsynced_reply_ids,
+    )[0]
 
 
 __all__ = [
@@ -568,6 +654,7 @@ __all__ = [
     "after_reply_added",
     "after_root_severity_change",
     "attach_tracker_projection",
+    "attach_tracker_projections",
     "enqueue_create_issue",
     "evaluate_dispatch",
     "is_anchor_promotable",

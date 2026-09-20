@@ -91,6 +91,15 @@ def _m001_identity_revisions_tombstones(conn) -> None:
     )
 
 
+def _m006_reply_sync_state(conn) -> None:
+    """Persist viewer-local replies that were denied publication (D4)."""
+
+    conn.execute(
+        "ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS sync_state TEXT",
+        prepare=False,
+    )
+
+
 def _m004_sync_ops_inbox_and_delete_cascade(conn) -> None:
     """Create durable sync/inbox tables and cascade tracker FKs on comment delete.
 
@@ -160,6 +169,7 @@ MIGRATIONS: List[Tuple[int, str, Callable[[object], None]]] = [
     (3, "tracked_threads_and_replies", migrate_comments_tracked_links),
     (4, "sync_ops_inbox_and_delete_cascade", _m004_sync_ops_inbox_and_delete_cascade),
     (5, "tracked_threads_external_number", _m005_tracked_threads_external_number),
+    (6, "reply_sync_state", _m006_reply_sync_state),
 ]
 
 
