@@ -1,0 +1,15 @@
+{
+  "set": "F10",
+  "title": "Second providers and dashboard",
+  "decisions": ["C9"],
+  "owner": "TR-47",
+  "cases": [
+    {"id": "F10.gitlab_notes_are_comments", "owner": "TR-48", "given": "GitLab issue notes API fixtures incl. system notes", "when": "list_comments", "expect": "system notes excluded; user notes mapped to RemoteComment; bot identity by user id", "proves": "C9"},
+    {"id": "F10.gitlab_group_vs_project", "owner": "TR-47", "given": "destination kind group and project", "when": "get_container", "expect": "immutable numeric id and visibility for both; group destinations map issues to a project (decision recorded in TR-47)", "proves": "C9"},
+    {"id": "F10.gitlab_no_state_events", "owner": "TR-48", "given": "resource state events API present", "when": "capabilities", "expect": "hasStateEvents=true via resource_state_events; fixture proves ordering", "proves": "D1"},
+    {"id": "F10.gitea_forgejo_versions", "owner": "TR-51", "given": "Gitea 1.22 and Forgejo 9 fixtures", "when": "contract suite", "expect": "separate version fixtures; capability differences recorded; same contract suite passes", "proves": "C9"},
+    {"id": "F10.dashboard_user_visibility", "owner": "TR-55", "given": "issue visible to bot but not to user u_1", "when": "u_1 dashboard", "expect": "not shown; queries use u_1's token only", "proves": "C9"},
+    {"id": "F10.dashboard_cache_invalidation", "owner": "TR-55", "given": "cached dashboard; identity revoked", "when": "next read", "expect": "forge sections empty with 'connect account' prompt; cache dropped", "proves": "C9"},
+    {"id": "F10.dashboard_deep_link_only_for_linked", "owner": "TR-56", "given": "forge issue not created by Prism", "when": "rendered", "expect": "links to the forge; no marker deep link promised", "proves": "C9"}
+  ]
+}

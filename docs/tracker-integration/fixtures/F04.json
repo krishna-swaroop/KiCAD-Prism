@@ -1,0 +1,21 @@
+{
+  "set": "F4",
+  "title": "Issue and reply lifecycle, authors, editors, markers",
+  "decisions": ["D3", "D5", "D9"],
+  "owner": "TR-16",
+  "cases": [
+    {"id": "F4.issue_create_pages", "owner": "TR-16", "given": "recorded HTTP fixtures for POST /issues, GET /issues/{n}, GET /issues/{n}/comments (3 pages), GET /issues/{n}/events", "when": "adapter runs", "expect": "typed DTOs; pull requests filtered from issue listings; pagination followed via Link headers to completion", "proves": "D9"},
+    {"id": "F4.external_author_reply", "owner": "TR-28", "given": "comment by arjun-gh (not bot)", "when": "hint applied", "expect": "reply origin='remote', authorKind='remote', remoteAttribution login=arjun-gh; no Prism user created", "proves": "D3"},
+    {"id": "F4.bot_body_edited_by_human", "owner": "TR-28", "given": "bot-authored comment 2211003 mirrored from r_1 with expected_body_hash H1; fetched body hash H2 ≠ H1; hint actor=arjun-gh", "when": "hint applied", "expect": "r_1 gets revision 2, editorKind='remote_actor', editorDisplay='arjun-gh (GitHub)'; not dropped as echo", "proves": "D3"},
+    {"id": "F4.unknown_editor_via_poll", "owner": "TR-32", "given": "same as above but discovered by list_updates (no actor)", "when": "applied", "expect": "revision 2 with editorKind='remote_unknown', display 'edited on GitHub'", "proves": "D3"},
+    {"id": "F4.echo_exact_hash", "owner": "TR-28", "given": "op add_comment confirmed with expected_body_hash H1; webhook for 2211003 with sender=bot; fetched hash H1", "when": "hint applied", "expect": "hint state='ignored' (echo); no revision", "proves": "D3"},
+    {"id": "F4.echo_hash_mismatch", "owner": "TR-28", "given": "webhook sender=bot but fetched hash ≠ every op hash", "when": "hint applied", "expect": "treated as real edit with editorKind='remote_unknown' unless events name an actor", "proves": "D3"},
+    {"id": "F4.manually_edited_bot_body", "owner": "TR-30", "given": "issue body rewritten by a human without Prism block delimiters", "when": "sweep or hint fetches it", "expect": "link.body_authority='forge'; Prism stops writing title/body; state/labels/replies keep syncing; UI message shown; identity via stored external id", "proves": "D5"},
+    {"id": "F4.human_title_edit", "owner": "TR-30", "given": "remote title ≠ last_title_hash", "when": "local severity changes", "expect": "labels and context block updated; title untouched", "proves": "D5"},
+    {"id": "F4.external_reply_edit", "owner": "TR-29", "given": "remote-origin reply r_9", "when": "Prism user attempts edit/delete", "expect": "403 not editable; no remote write ever attempted", "proves": "D5"},
+    {"id": "F4.copied_marker", "owner": "TR-18", "given": "a human copies an issue body (with marker) into a new issue #500", "when": "recovery scan or hint sees #500", "expect": "not matched: issue.user.id ≠ bot id; ignored with audit", "proves": "D2"},
+    {"id": "F4.forged_marker", "owner": "TR-18", "given": "bot-authored issue on connector cn_gh2 carrying a marker for connector cn_gh1", "when": "scan on cn_gh1", "expect": "not matched: connector mismatch", "proves": "D2"},
+    {"id": "F4.two_projects_same_repo", "owner": "TR-28", "given": "projects P1 and P2 both target acme/openswitch; P1 links #412", "when": "hint for #412 arrives", "expect": "applied to P1's link only; no dedupe by object id blocks P2 from later linking #413; delivery dedupe keyed by delivery id", "proves": "D9"},
+    {"id": "F4.reply_before_create_confirmed", "owner": "TR-29", "given": "root promoted, create op still pending; user replies", "when": "outbox drains", "expect": "add_comment waits behind create_issue; sent only after confirmation", "proves": "C5"}
+  ]
+}
