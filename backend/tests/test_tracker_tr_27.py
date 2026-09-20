@@ -239,7 +239,21 @@ class GitHubWebhookPostgresTests(unittest.TestCase):
         self.assertEqual(len(hints), 1)
         self.assertEqual(hints[0]["objectKind"], "comment")
         self.assertEqual(hints[0]["externalCommentId"], "2211044")
+        self.assertEqual(hints[0]["externalId"], "412")
+        self.assertNotEqual(hints[0]["externalId"], str(payload["issue"]["id"]))
         self.assertNotIn("body", json.dumps(hints))
+
+    def test_issue_webhook_hint_uses_number_not_immutable_id(self) -> None:
+        payload = {
+            "action": "opened",
+            "issue": {"id": 9001, "number": 412},
+            "repository": {"id": 987654321, "full_name": "acme/openswitch"},
+            "sender": {"id": 5550001, "login": "arjun-gh", "type": "User"},
+        }
+        hints = parse_github_event("issues", payload, connector_id="cn_gh1", delivery_id="d2")
+        self.assertEqual(len(hints), 1)
+        self.assertEqual(hints[0]["externalId"], "412")
+        self.assertNotEqual(hints[0]["externalId"], "9001")
 
     def test_http_invalid_signature_returns_401(self) -> None:
         body = self._payload()

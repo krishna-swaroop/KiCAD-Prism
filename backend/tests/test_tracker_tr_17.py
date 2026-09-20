@@ -37,6 +37,8 @@ F8 = json.loads((DOCS / "fixtures" / "F08.json").read_text(encoding="utf-8"))
 INSTALLATION_TOKEN = "installation-token-fixture-tr17-not-a-credential"
 API = "https://api.github.com"
 REPO = "acme/openswitch"
+ISSUE_ID = "198400412"
+ISSUE_NUMBER = "412"
 DEST = Destination(
     connectorId="cn_gh1",
     containerKind="repo",
@@ -152,9 +154,11 @@ class GitHubCommentAdapterTests(unittest.TestCase):
     def test_create_read_edit_delete_own_comment(self) -> None:
         adapter = self._adapter()
         self._enqueue("POST", f"{API}/repos/{REPO}/issues/412/comments", 201, _comment())
-        created = adapter.add_comment(DEST, "412", H1_BODY, "op_add")
+        created = adapter.add_comment(DEST, ISSUE_NUMBER, H1_BODY, "op_add", issue_id=ISSUE_ID)
         self.assertEqual(created.externalCommentId, "2211003")
-        self.assertEqual(created.externalId, "412")
+        self.assertEqual(created.externalId, ISSUE_ID)
+        self.assertEqual(created.externalNumber, int(ISSUE_NUMBER))
+        self.assertNotEqual(created.externalId, str(created.externalNumber))
         self.assertEqual(created.author.login, "prism[bot]")
         self.assertTrue(created.author.isBot)
         self.assertIsNone(created.actor)

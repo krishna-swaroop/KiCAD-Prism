@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Mapping, Optional, Protocol
+from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 from uuid import uuid4
 
 from app.services.comments_revisions import Editor, edit_reply, record_revision, tombstone_reply
@@ -34,7 +34,7 @@ from app.services.trackers.provenance import (
     resolve_editor,
     stored_hash_matches,
 )
-from app.services.trackers.store import TrackerStore
+from app.services.trackers.store import TrackerStore, issue_number_for_api, resolve_threads_for_issue_ref
 
 IssueFetcher = Callable[[str, str, str], IssueRead]
 CommentFetcher = Callable[[str, str, str], CommentRead]
@@ -74,20 +74,22 @@ def _threads_for_issue(
     container_id: str,
     external_id: str,
 ) -> list[dict]:
-    rows = conn.execute(
-        """
-        SELECT t.*, c.project_id
-        FROM tracked_threads t
-        JOIN comments c ON c.id = t.comment_id
-        WHERE t.connector_id = %s
-          AND t.remote_container_id = %s
-          AND t.external_id = %s
-          AND t.unlinked_at IS NULL
-        ORDER BY t.id ASC
-        """,
-        (connector_id, container_id, str(external_id)),
-    ).fetchall()
-    return [dict(row) for row in rows]
+    return resolve_threads_for_issue_ref(
+        conn,
+        connector_id=connector_id,
+        container_id=container_id,
+        issue_ref=external_id,
+    )
+
+
+def _issue_fetch_ref(threads: Sequence[Mapping[str, Any]], hint_ref: str) -> str:
+    """Prefer the stored repo number for provider GET routes."""
+
+    if threads:
+        number = issue_number_for_api(threads[0])
+        if number:
+            return number
+    return str(hint_ref or "")
 
 
 def _thread_ops(conn: Any, thread_id: str) -> list[dict]:
@@ -244,6 +246,7 @@ def _complete_create_from_issue(
         """
         UPDATE tracked_threads
         SET external_id = %s,
+            external_number = %s,
             external_url = %s,
             remote_state = %s,
             remote_version = %s::jsonb,
@@ -252,6 +255,7 @@ def _complete_create_from_issue(
         """,
         (
             str(issue.externalId),
+            str(issue.number) if issue.number is not None else None,
             issue.url,
             issue.state,
             json.dumps(dict(issue.version.model_dump())),
@@ -523,8 +527,18 @@ def fetch_then_apply_hint(
             return ApplyResult(hint_id, "failed", detail)
         issue_id = str(fetched.externalId or external_id)
         threads = _threads_for_issue(
-            conn, connector_id=connector_id, container_id=container_id, external_id=issue_id
+            conn,
+            connector_id=connector_id,
+            container_id=container_id,
+            external_id=issue_id,
         )
+        if not threads and fetched.externalNumber is not None:
+            threads = _threads_for_issue(
+                conn,
+                connector_id=connector_id,
+                container_id=container_id,
+                external_id=str(fetched.externalNumber),
+            )
         if not threads:
             detail = {"reason": "no_linked_thread", "externalId": issue_id}
             if finish:
@@ -559,7 +573,11 @@ def fetch_then_apply_hint(
         assert_inbound_suppresses_outbound(conn, before=ops_before)
         return ApplyResult(hint_id, outcome, detail)
 
-    fetched_issue = fetcher.fetch_issue(connector_id, container_id, external_id)
+    threads = _threads_for_issue(
+        conn, connector_id=connector_id, container_id=container_id, external_id=external_id
+    )
+    fetch_ref = _issue_fetch_ref(threads, external_id)
+    fetched_issue = fetcher.fetch_issue(connector_id, container_id, fetch_ref)
     if isinstance(fetched_issue, (UncertainAbsence, GoneConfirmed)) or not isinstance(
         fetched_issue, RemoteIssue
     ):
@@ -568,9 +586,13 @@ def fetch_then_apply_hint(
             _finish_hint(inbox, hint, state="failed", detail=detail)
         return ApplyResult(hint_id, "failed", detail)
 
-    threads = _threads_for_issue(
-        conn, connector_id=connector_id, container_id=container_id, external_id=external_id
-    )
+    if not threads:
+        threads = _threads_for_issue(
+            conn,
+            connector_id=connector_id,
+            container_id=container_id,
+            external_id=str(fetched_issue.externalId),
+        )
     pending_threads = conn.execute(
         """
         SELECT t.*, c.project_id

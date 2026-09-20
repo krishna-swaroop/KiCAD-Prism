@@ -56,7 +56,15 @@ class GitHubCommentAdapter:
         self.bot_user_id = (bot_user_id or "").strip()
         self.bot_login = (bot_login or "").strip()
 
-    def add_comment(self, dest: Destination, ext_id: str, body: str, op_id: str) -> RemoteComment:
+    def add_comment(
+        self,
+        dest: Destination,
+        ext_id: str,
+        body: str,
+        op_id: str,
+        *,
+        issue_id: str | None = None,
+    ) -> RemoteComment:
         del op_id
         owner, repo = _owner_repo(dest)
         response = self._request(
@@ -64,7 +72,12 @@ class GitHubCommentAdapter:
             self.auth.url(f"/repos/{owner}/{repo}/issues/{ext_id}/comments"),
             json_body={"body": body},
         )
-        return self._comment_from(self._json_object(response), issue_ref=str(ext_id), etag=response.etag)
+        return self._comment_from(
+            self._json_object(response),
+            issue_id=issue_id,
+            issue_number=str(ext_id),
+            etag=response.etag,
+        )
 
     def edit_comment(self, dest: Destination, ext_cid: str, body: str) -> RemoteComment:
         current = self._require_comment(dest, ext_cid)
@@ -78,7 +91,8 @@ class GitHubCommentAdapter:
         )
         return self._comment_from(
             self._json_object(response),
-            issue_ref=current.externalId,
+            issue_id=current.externalId,
+            issue_number=str(current.externalNumber) if current.externalNumber is not None else None,
             etag=response.etag,
         )
 
@@ -103,7 +117,12 @@ class GitHubCommentAdapter:
         return self._comment_from(self._json_object(response), etag=response.etag)
 
     def list_comments(
-        self, dest: Destination, issue: str, cursor: Optional[PageCursor] = None
+        self,
+        dest: Destination,
+        issue: str,
+        cursor: Optional[PageCursor] = None,
+        *,
+        issue_id: str | None = None,
     ) -> tuple[list[RemoteComment], Optional[PageCursor]]:
         owner, repo = _owner_repo(dest)
         url = (cursor.value if cursor and cursor.value else
@@ -118,7 +137,12 @@ class GitHubCommentAdapter:
             raise
         items = self._json_list(response)
         comments = [
-            self._comment_from(item, issue_ref=str(issue), etag=response.etag)
+            self._comment_from(
+                item,
+                issue_id=issue_id,
+                issue_number=str(issue),
+                etag=response.etag,
+            )
             for item in items
             if isinstance(item, dict)
         ]
@@ -128,7 +152,12 @@ class GitHubCommentAdapter:
         return comments, PageCursor(value="", exhausted=True)
 
     def find_comment_by_marker(
-        self, dest: Destination, issue: str, marker: str
+        self,
+        dest: Destination,
+        issue: str,
+        marker: str,
+        *,
+        issue_id: str | None = None,
     ) -> Optional[RemoteComment]:
         needle = (marker or "").strip()
         if not needle:
@@ -143,7 +172,7 @@ class GitHubCommentAdapter:
         cursor: Optional[PageCursor] = None
         seen_empty_complete = False
         while True:
-            page, cursor = self.list_comments(dest, issue, cursor)
+            page, cursor = self.list_comments(dest, issue, cursor, issue_id=issue_id)
             for comment in page:
                 if needle not in (comment.body or ""):
                     continue
@@ -210,15 +239,18 @@ class GitHubCommentAdapter:
         self,
         payload: Mapping[str, Any],
         *,
-        issue_ref: str | None = None,
+        issue_id: str | None = None,
+        issue_number: str | None = None,
         etag: str | None = None,
     ) -> RemoteComment:
         author_raw = payload.get("user") if isinstance(payload.get("user"), dict) else {}
         issue_url = str(payload.get("issue_url") or "")
-        derived_issue = issue_ref or issue_url.rstrip("/").rsplit("/", 1)[-1]
+        derived_number = issue_number or issue_url.rstrip("/").rsplit("/", 1)[-1]
+        parsed_number = int(derived_number) if str(derived_number or "").isdigit() else None
         comment = RemoteComment(
             externalCommentId=str(payload.get("id") or ""),
-            externalId=str(derived_issue or ""),
+            externalId=str(issue_id or ""),
+            externalNumber=parsed_number,
             url=str(payload.get("html_url") or payload.get("url") or ""),
             body=str(payload.get("body") or ""),
             author=_forge_user(author_raw),

@@ -56,7 +56,9 @@ F8 = json.loads((DOCS / "fixtures" / "F08.json").read_text(encoding="utf-8"))
 
 CONNECTOR = "cn_gh1"
 CONTAINER = "111"
-ISSUE = "412"
+ISSUE_ID = "198400412"
+ISSUE_NUMBER = "412"
+ISSUE = ISSUE_NUMBER
 BOT_ID = "199001"
 BOT_LOGIN = "prism[bot]"
 HUMAN_LOGIN = "arjun-gh"
@@ -91,8 +93,9 @@ def _forge_user(*, user_id: str, login: str, is_bot: bool = False) -> ForgeUser:
 def _remote_comment(*, body: str, author: ForgeUser | None = None) -> RemoteComment:
     return RemoteComment(
         externalCommentId=EXT_COMMENT,
-        externalId=ISSUE,
-        url=f"https://github.com/acme/openswitch/issues/{ISSUE}#issuecomment-{EXT_COMMENT}",
+        externalId=ISSUE_ID,
+        externalNumber=int(ISSUE_NUMBER),
+        url=f"https://github.com/acme/openswitch/issues/{ISSUE_NUMBER}#issuecomment-{EXT_COMMENT}",
         body=body,
         author=author or _forge_user(user_id=HUMAN_ID, login=HUMAN_LOGIN),
         version=RemoteVersion(updatedAt="2026-09-20T16:00:00Z"),
@@ -103,9 +106,9 @@ def _remote_issue(*, body: str, state: str = "open", author: ForgeUser | None = 
     from app.services.trackers.contracts import IssueContainerRef
 
     return RemoteIssue(
-        externalId=ISSUE,
-        url=f"https://github.com/acme/openswitch/issues/{ISSUE}",
-        number=int(ISSUE),
+        externalId=ISSUE_ID,
+        url=f"https://github.com/acme/openswitch/issues/{ISSUE_NUMBER}",
+        number=int(ISSUE_NUMBER),
         title="Tracker fixture",
         body=body,
         state=state,  # type: ignore[arg-type]
@@ -241,7 +244,8 @@ class InboundPostgresTests(unittest.TestCase):
         project_id: str,
         comment_id: str,
         thread_id: str,
-        external_id: str = ISSUE,
+        external_id: str = ISSUE_ID,
+        external_number: str | None = ISSUE_NUMBER,
     ) -> None:
         self.store.set_project_tracker(
             project_tracker_id=f"pt_{project_id}",
@@ -264,7 +268,8 @@ class InboundPostgresTests(unittest.TestCase):
             connector_id=CONNECTOR,
             remote_container_id=CONTAINER,
             external_id=external_id,
-            external_url=f"https://github.com/acme/openswitch/issues/{external_id}",
+            external_number=external_number,
+            external_url=f"https://github.com/acme/openswitch/issues/{external_number or external_id}",
         )
 
     def _seed_prism_reply(self, *, thread_id: str, body: str) -> None:
@@ -524,8 +529,11 @@ class InboundPostgresTests(unittest.TestCase):
         )
         self.assertEqual(result.outcome, "applied")
         self.assertEqual(self.ops.get(OP_CREATE)["state"], "confirmed")
-        thread = self.conn.execute("SELECT external_id FROM tracked_threads WHERE id = 'tt_a'").fetchone()
-        self.assertEqual(thread["external_id"], ISSUE)
+        thread = self.conn.execute(
+            "SELECT external_id, external_number FROM tracked_threads WHERE id = 'tt_a'"
+        ).fetchone()
+        self.assertEqual(thread["external_id"], ISSUE_ID)
+        self.assertEqual(thread["external_number"], ISSUE_NUMBER)
 
     def test_f7_reordered_issue_hints_converge_on_fetch(self) -> None:
         self._seed_project(project_id="prj_a", comment_id=COMMENT_ID, thread_id="tt_a")
