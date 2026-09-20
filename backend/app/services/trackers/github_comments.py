@@ -133,12 +133,26 @@ class GitHubCommentAdapter:
         needle = (marker or "").strip()
         if not needle:
             return None
+        bot_ids = {value for value in (self.bot_user_id,) if value}
+        bot_logins = {value.casefold() for value in (self.bot_login,) if value}
+        if not bot_ids and not bot_logins:
+            raise ProviderError(
+                "capability_missing",
+                "GitHub bot identity is unknown; cannot scan comments by marker.",
+            )
         cursor: Optional[PageCursor] = None
         seen_empty_complete = False
         while True:
             page, cursor = self.list_comments(dest, issue, cursor)
             for comment in page:
-                if needle in (comment.body or ""):
+                if needle not in (comment.body or ""):
+                    continue
+                author_id = comment.author.id
+                author_login = comment.author.login.casefold()
+                owned = (author_id and author_id in bot_ids) or (
+                    author_login and author_login in bot_logins
+                )
+                if owned:
                     return comment
             if cursor is None or cursor.exhausted:
                 seen_empty_complete = True
@@ -167,11 +181,14 @@ class GitHubCommentAdapter:
     def _require_own(self, comment: RemoteComment, *, action: str) -> None:
         bot_ids = {value for value in (self.bot_user_id,) if value}
         bot_logins = {value.casefold() for value in (self.bot_login,) if value}
+        if not bot_ids and not bot_logins:
+            raise ProviderError(
+                "capability_missing",
+                f"GitHub bot identity is unknown; refuse to {action} a remote comment.",
+            )
         author_id = comment.author.id
         author_login = comment.author.login.casefold()
         owned = (author_id and author_id in bot_ids) or (author_login and author_login in bot_logins)
-        if comment.author.isBot and not bot_ids and not bot_logins:
-            owned = True
         if owned:
             return
         raise ProviderError(
