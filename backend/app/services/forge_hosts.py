@@ -133,6 +133,23 @@ def resolve_forge_host(
     return hosts.get(hostname.casefold())
 
 
+def allowed_request_hosts(raw_extra: str) -> frozenset[str]:
+    """Hostnames tracker HTTP may contact: registry hosts plus their API roots.
+
+    ``uploads.github.com`` is a GitHub upload endpoint used by Release Studio;
+    tracker adapters do not send tokens there. Callers that need it pass it
+    explicitly. GHES extra GitHub hosts remain a later provider ticket.
+    """
+
+    hosts = parse_forge_hosts(raw_extra)
+    allowed: set[str] = set(hosts)
+    for item in hosts.values():
+        hostname = urlsplit(item.api_root).hostname
+        if hostname:
+            allowed.add(hostname.casefold())
+    return frozenset(allowed)
+
+
 def _parse_structured_entries(raw: str) -> list[dict[str, object]]:
     try:
         payload = json.loads(raw)
