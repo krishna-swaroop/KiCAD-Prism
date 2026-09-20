@@ -19,6 +19,7 @@ import {
     type Comment,
     type CommentContext,
     type CommentLocation,
+    type CommentReply,
 } from "@/types/comments";
 
 /** Identity of the schematic sheet a viewer currently shows. */
@@ -39,14 +40,54 @@ export interface ScreenPoint {
     y: number;
 }
 
-/** Fill the optional fields older comment files omit. */
-export function normalizeComment(raw: Comment): Comment {
+/** A reply as a pre-1.1 server or comments.json 1.0 file wrote it. */
+type LegacyReply = Partial<CommentReply> & Pick<CommentReply, "author" | "timestamp" | "content">;
+
+type LegacyComment = Partial<Comment> &
+    Pick<Comment, "id" | "author" | "timestamp" | "status" | "context" | "location" | "content"> & {
+        replies?: LegacyReply[];
+    };
+
+function normalizeReply(raw: LegacyReply, commentId: string, index: number): CommentReply {
     return {
         ...raw,
+        // Servers before format 1.1 sent replies without ids. A positional key
+        // keeps React lists and selection stable until the thread reloads from
+        // a server that has the real id; it is never sent back.
+        id: raw.id ?? `legacy:${commentId}:${index}`,
+        authorKind: raw.authorKind ?? "legacy",
+        updatedAt: raw.updatedAt ?? raw.timestamp,
+        revision: raw.revision ?? 1,
+        origin: raw.origin ?? "prism",
+    };
+}
+
+/**
+ * Fill the optional fields older comment files and servers omit.
+ *
+ * Anything without a stable author key is `legacy` (no owner), and anything
+ * without an anchor is `unpinned`; both are the contract's reading of
+ * pre-identity data, never a guess at who wrote it or which commit it meant.
+ */
+export function normalizeComment(raw: LegacyComment): Comment {
+    const replies = (raw.replies ?? []).map((reply, index) => normalizeReply(reply, raw.id, index));
+    return {
+        ...raw,
+        authorKind: raw.authorKind ?? "legacy",
+        updatedAt: raw.updatedAt ?? raw.timestamp,
+        revision: raw.revision ?? 1,
         commentClass: raw.commentClass ?? DEFAULT_COMMENT_CLASS,
         severity: raw.severity ?? DEFAULT_COMMENT_SEVERITY,
         mentions: raw.mentions ?? [],
-        replies: raw.replies ?? [],
+        replies,
+        anchor: raw.anchor ?? {
+            state: "unpinned",
+            source: null,
+            commit: null,
+            sourceRevisionKey: null,
+            baseCommit: raw.baseCommit ?? null,
+            compareCommit: raw.compareCommit ?? null,
+        },
     };
 }
 
