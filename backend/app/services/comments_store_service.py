@@ -820,6 +820,14 @@ class CommentsStoreService:
                 )
                 return self._get_comment_with_replies(conn, project_id, comment_id)
 
+    def get_comment(self, project_id: str, project_path: str, comment_id: str) -> Optional[Dict]:
+        """One live root with its live replies, or None."""
+        self.initialize()
+        with self._connect() as conn:
+            with conn.transaction():
+                self._bootstrap_project_if_needed(conn, project_id, project_path)
+                return self._get_comment_with_replies(conn, project_id, comment_id)
+
     def _live_root_exists(self, conn, project_id: str, comment_id: str) -> bool:
         return bool(conn.execute(
             "SELECT 1 FROM comments WHERE project_id = %s AND id = %s AND deleted_at IS NULL",
