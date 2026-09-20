@@ -27,6 +27,15 @@ from typing import Dict, List, Optional, Tuple
 from app.services import comments_revisions, comments_schema_migrations, project_service
 from app.services.comments_revisions import Editor, RevisionConflict  # noqa: F401  (re-exported for callers)
 from app.services.postgres_database import database
+from app.services.trackers.promotion import (
+    PromotionActor,
+    after_reply_added,
+    after_root_severity_change,
+    attach_tracker_projection,
+    manual_promote_root,
+    maybe_auto_promote_root,
+    share_reply,
+)
 
 # 1.1 adds authorUserId/authorKind, reply ids, revision/updatedAt and the anchor
 # block. Every addition is optional for readers; 1.0 files still import.
@@ -276,6 +285,7 @@ class CommentsStoreService:
 
     # Tests point a subclass at a disposable schema; production is "comments".
     schema = "comments"
+    workspace_schema = "workspace"
 
     def __init__(self) -> None:
         self._init_lock = threading.Lock()
@@ -600,16 +610,25 @@ class CommentsStoreService:
 
         comments: List[Dict] = []
         for row in comment_rows:
-            comments.append(
-                _row_to_comment_dict(row, replies_by_comment.get(row["id"], []))
+            comment = _row_to_comment_dict(row, replies_by_comment.get(row["id"], []))
+            attach_tracker_projection(
+                conn, project_id, comment, workspace_schema=self.workspace_schema,
             )
+            comments.append(comment)
 
         return {
             "meta": dict(COMMENTS_META),
             "comments": comments,
         }
 
-    def _get_comment_with_replies(self, conn, project_id: str, comment_id: str) -> Optional[Dict]:
+    def _get_comment_with_replies(
+        self,
+        conn,
+        project_id: str,
+        comment_id: str,
+        *,
+        unsynced_reply_ids: Optional[set[str]] = None,
+    ) -> Optional[Dict]:
         row = conn.execute(
             f"""
             SELECT {_COMMENT_COLUMNS}
@@ -632,7 +651,15 @@ class CommentsStoreService:
             (project_id, comment_id),
         ).fetchall()
 
-        return _row_to_comment_dict(row, [_row_to_reply_dict(reply) for reply in reply_rows])
+        comment = _row_to_comment_dict(row, [_row_to_reply_dict(reply) for reply in reply_rows])
+        attach_tracker_projection(
+            conn,
+            project_id,
+            comment,
+            workspace_schema=self.workspace_schema,
+            unsynced_reply_ids=unsynced_reply_ids,
+        )
+        return comment
 
     def get_comments_file(self, project_id: str, project_path: str) -> Dict:
         self.initialize()
@@ -670,6 +697,7 @@ class CommentsStoreService:
         anchor_source: Optional[str] = None,
         selected_side: Optional[str] = None,
         project_relative_path: Optional[str] = None,
+        promotion_actor: Optional[PromotionActor] = None,
     ) -> Dict:
         """Insert a root comment at revision 1 and record its creation.
 
@@ -775,6 +803,21 @@ class CommentsStoreService:
                 created = self._get_comment_with_replies(conn, project_id, comment_id)
                 if not created:
                     raise RuntimeError("Failed to fetch created comment.")
+
+                if promotion_actor is not None:
+                    outcome = maybe_auto_promote_root(
+                        conn,
+                        project_id=project_id,
+                        comment=created,
+                        actor=promotion_actor,
+                        workspace_schema=self.workspace_schema,
+                    )
+                    created = self._get_comment_with_replies(conn, project_id, comment_id)
+                    if not created:
+                        raise RuntimeError("Failed to fetch created comment.")
+                    if outcome.action == "denied" and outcome.code:
+                        tracker = created.setdefault("tracker", {})
+                        tracker.setdefault("notPromotableReason", outcome.code)
 
                 return created
 
@@ -886,6 +929,7 @@ class CommentsStoreService:
         severity: Optional[str] = None,
         comment_class: Optional[str] = None,
         mentions: Optional[List[str]] = None,
+        promotion_actor: Optional[PromotionActor] = None,
     ) -> Optional[Dict]:
         """Edit a root's prose/severity/class/mentions as one revision.
 
@@ -897,6 +941,11 @@ class CommentsStoreService:
                 self._bootstrap_project_if_needed(conn, project_id, project_path)
                 if not self._live_root_exists(conn, project_id, comment_id):
                     return None
+                previous = conn.execute(
+                    "SELECT severity FROM comments WHERE project_id = %s AND id = %s AND deleted_at IS NULL",
+                    (project_id, comment_id),
+                ).fetchone()
+                previous_severity = str((previous or {}).get("severity") or DEFAULT_COMMENT_SEVERITY)
                 comments_revisions.edit_root(
                     conn, project_id=project_id, comment_id=comment_id, editor=editor,
                     expected_revision=expected_revision, content=content,
@@ -904,7 +953,18 @@ class CommentsStoreService:
                     comment_class=_normalize_comment_class(comment_class) if comment_class is not None else None,
                     mentions=_normalize_mentions(mentions) if mentions is not None else None,
                 )
-                return self._get_comment_with_replies(conn, project_id, comment_id)
+                updated = self._get_comment_with_replies(conn, project_id, comment_id)
+                if updated is not None and promotion_actor is not None and severity is not None:
+                    after_root_severity_change(
+                        conn,
+                        project_id=project_id,
+                        comment=updated,
+                        previous_severity=previous_severity,
+                        actor=promotion_actor,
+                        workspace_schema=self.workspace_schema,
+                    )
+                    updated = self._get_comment_with_replies(conn, project_id, comment_id)
+                return updated
 
     def pin_comment_anchor(
         self,
@@ -1047,6 +1107,7 @@ class CommentsStoreService:
         author_user_id: Optional[str] = None,
         author_kind: Optional[str] = None,
         origin: str = comments_revisions.ORIGIN_PRISM,
+        promotion_actor: Optional[PromotionActor] = None,
     ) -> Optional[Tuple[Dict, Dict]]:
         self.initialize()
         timestamp = _utc_now_iso()
@@ -1088,12 +1149,86 @@ class CommentsStoreService:
                     content=content,
                 )
 
-                updated_comment = self._get_comment_with_replies(conn, project_id, comment_id)
+                unsynced_reply_ids: set[str] = set()
+                if promotion_actor is not None:
+                    parent = self._get_comment_with_replies(conn, project_id, comment_id)
+                    created_reply = self._live_reply(conn, project_id, comment_id, reply_id)
+                    if parent and created_reply:
+                        reply_dict = _row_to_reply_dict(created_reply)
+                        outcome = after_reply_added(
+                            conn,
+                            project_id=project_id,
+                            comment=parent,
+                            reply=reply_dict,
+                            actor=promotion_actor,
+                            workspace_schema=self.workspace_schema,
+                        )
+                        if outcome.action == "unsynced":
+                            unsynced_reply_ids.add(reply_id)
+
+                updated_comment = self._get_comment_with_replies(
+                    conn, project_id, comment_id, unsynced_reply_ids=unsynced_reply_ids or None,
+                )
                 if not updated_comment:
                     return None
 
                 created = self._live_reply(conn, project_id, comment_id, reply_id)
-                return (updated_comment, _row_to_reply_dict(created))
+                reply_payload = _row_to_reply_dict(created)
+                if reply_id in unsynced_reply_ids:
+                    reply_payload["sync"] = {
+                        "state": "unsynced_local",
+                        "reason": "publication_required",
+                    }
+                return (updated_comment, reply_payload)
+
+    def promote_comment(
+        self,
+        project_id: str,
+        project_path: str,
+        comment_id: str,
+        actor: PromotionActor,
+    ) -> Optional[Dict]:
+        self.initialize()
+        with self._connect() as conn:
+            with conn.transaction():
+                self._bootstrap_project_if_needed(conn, project_id, project_path)
+                current = self._get_comment_with_replies(conn, project_id, comment_id)
+                if current is None:
+                    return None
+                manual_promote_root(
+                    conn,
+                    project_id=project_id,
+                    comment=current,
+                    actor=actor,
+                    workspace_schema=self.workspace_schema,
+                )
+                return self._get_comment_with_replies(conn, project_id, comment_id)
+
+    def share_reply(
+        self,
+        project_id: str,
+        project_path: str,
+        comment_id: str,
+        reply_id: str,
+        actor: PromotionActor,
+    ) -> Optional[Dict]:
+        self.initialize()
+        with self._connect() as conn:
+            with conn.transaction():
+                self._bootstrap_project_if_needed(conn, project_id, project_path)
+                current = self._get_comment_with_replies(conn, project_id, comment_id)
+                reply = self._live_reply(conn, project_id, comment_id, reply_id)
+                if current is None or reply is None:
+                    return None
+                share_reply(
+                    conn,
+                    project_id=project_id,
+                    comment=current,
+                    reply=_row_to_reply_dict(reply),
+                    actor=actor,
+                    workspace_schema=self.workspace_schema,
+                )
+                return self._get_comment_with_replies(conn, project_id, comment_id)
 
     def delete_project_comments(self, project_id: str) -> None:
         """Remove every comment listing stored for a deleted project."""

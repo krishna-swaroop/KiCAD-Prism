@@ -44,6 +44,7 @@ from app.services.comments_store_service import (
     comments_store,
 )
 from app.services.postgres_database import database
+from app.core.roles import Role
 from app.services.trackers.mentions import (
     build_candidate_indexes,
     enrich_stored_mentions,
@@ -51,6 +52,8 @@ from app.services.trackers.mentions import (
     normalize_incoming_mentions,
     storage_user_ids,
 )
+from app.services.trackers.promotion import PromotionActor
+from app.services.trackers.publication_policy import PublicationDenied
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
@@ -252,6 +255,22 @@ def _editor(actor: ActorIdentity) -> Editor:
     return Editor(user_id=actor.actor_id, kind=actor.actor_kind, display=actor.display_name)
 
 
+def _promotion_actor(actor: ActorIdentity) -> PromotionActor:
+    return PromotionActor(user_id=actor.actor_id, role=actor.role, kind=actor.actor_kind)
+
+
+def _promote_min_role(project_id: str) -> Role:
+    with database.connection() as conn:
+        conn.execute("SET search_path TO workspace, public")
+        row = conn.execute(
+            "SELECT promote_min_role FROM project_trackers WHERE project_id = %s",
+            (project_id,),
+        ).fetchone()
+    if row and row.get("promote_min_role"):
+        return str(row["promote_min_role"])  # type: ignore[return-value]
+    return "designer"
+
+
 def _authored(comment: dict) -> AuthoredObject:
     return AuthoredObject(
         author_user_id=comment.get("authorUserId"),
@@ -295,10 +314,14 @@ def _wire_comment_mentions(comment: dict) -> dict:
     return comment
 
 
-def _with_permissions(comment: dict, actor: ActorIdentity) -> dict:
+def _with_permissions(comment: dict, actor: ActorIdentity, *, project_id: str | None = None) -> dict:
     """Attach the caller's capabilities so the UI never re-derives policy."""
     _wire_comment_mentions(comment)
-    comment["permissions"] = comment_permissions.capabilities(actor, _authored(comment))
+    linked = str((comment.get("tracker") or {}).get("linkState") or "") == "linked"
+    promote_min_role = _promote_min_role(project_id) if project_id else "designer"
+    comment["permissions"] = comment_permissions.capabilities(
+        actor, _authored(comment), linked=linked, promote_min_role=promote_min_role,
+    )
     for reply in comment.get("replies", []):
         reply["permissions"] = comment_permissions.capabilities(actor, _authored(reply))
     return comment
@@ -454,7 +477,7 @@ async def get_comments(project_id: str, user: AuthenticatedUser = Depends(requir
         actor = _read_actor(user)
         comments = listing["comments"]
         if actor is not None:
-            comments = [_with_permissions(c, actor) for c in comments]
+            comments = [_with_permissions(c, actor, project_id=project.id) for c in comments]
         else:
             comments = [_wire_comment_mentions(c) for c in comments]
         listing["comments"] = comments
@@ -496,7 +519,7 @@ async def get_comparison_comments(
         actor = _read_actor(user)
         comments = listing["comments"]
         if actor is not None:
-            comments = [_with_permissions(c, actor) for c in comments]
+            comments = [_with_permissions(c, actor, project_id=project.id) for c in comments]
         else:
             comments = [_wire_comment_mentions(c) for c in comments]
         listing["comments"] = comments
@@ -570,8 +593,9 @@ async def create_comparison_comment(
             anchor_source=anchor.source,
             selected_side=anchor.selected_side,
             project_relative_path=anchor.project_relative_path,
+            promotion_actor=_promotion_actor(actor),
         )
-        return _with_permissions(created, actor)
+        return _with_permissions(created, actor, project_id=project.id)
 
     return await _run_mutation(write)
 
@@ -626,8 +650,9 @@ async def create_comment(
             anchor_revision_key=anchor.source_revision_key,
             anchor_source=anchor.source,
             project_relative_path=anchor.project_relative_path,
+            promotion_actor=_promotion_actor(actor),
         )
-        return _with_permissions(created, actor)
+        return _with_permissions(created, actor, project_id=project.id)
 
     return await _run_mutation(write)
 
@@ -680,14 +705,15 @@ async def update_comment(
                 edit_kwargs["content"] = normalized_content
                 edit_kwargs["mentions"] = mention_ids
             updated = comments_store.edit_comment(
-                project.id, project.path, comment_id, _editor(actor), expected_revision=expected, **edit_kwargs,
+                project.id, project.path, comment_id, _editor(actor), expected_revision=expected,
+                promotion_actor=_promotion_actor(actor), **edit_kwargs,
             )
             expected = updated["revision"] if updated else None
         if status is not None and updated is not None:
             updated = comments_store.update_comment_status(
                 project.id, project.path, comment_id, status, editor=_editor(actor), expected_revision=expected,
             )
-        return _with_permissions(updated, actor) if updated else None
+        return _with_permissions(updated, actor, project_id=project.id) if updated else None
 
     updated_comment = await _run_mutation(write)
     if isinstance(updated_comment, JSONResponse):
@@ -735,7 +761,42 @@ async def pin_comment(
             project_relative_path=anchor.project_relative_path,
             expected_revision=request.expectedRevision,
         )
-        return _with_permissions(updated, actor) if updated else None
+        return _with_permissions(updated, actor, project_id=project.id) if updated else None
+
+    result = await _run_mutation(write)
+    if isinstance(result, JSONResponse):
+        return result
+    if not result:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    return result
+
+
+@router.post(
+    "/{project_id}/comments/{comment_id}/promote",
+    dependencies=[Depends(require_comment_writer)],
+)
+async def promote_comment(
+    project_id: str,
+    comment_id: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Manually promote a pinned root to the project tracker destination."""
+
+    def write():
+        project = get_project_for_role_or_404(project_id, user.role)
+        actor = _actor(user)
+        current = comments_store.get_comment(project.id, project.path, comment_id)
+        if current is None:
+            return None
+        comment_permissions.authorize(
+            CommentAction.PROMOTE,
+            actor,
+            promote_min_role=_promote_min_role(project.id),
+        )
+        updated = comments_store.promote_comment(
+            project.id, project.path, comment_id, _promotion_actor(actor),
+        )
+        return _with_permissions(updated, actor, project_id=project.id) if updated else None
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
@@ -769,12 +830,16 @@ async def add_reply(
             author=actor.display_name,
             author_user_id=actor.actor_id,
             author_kind=actor.actor_kind,
+            promotion_actor=_promotion_actor(actor),
         )
         if not result:
             return None
         comment, reply = result
-        reply["permissions"] = comment_permissions.capabilities(actor, _authored(reply))
-        return {"comment": _with_permissions(comment, actor), "reply": reply}
+        linked = str((comment.get("tracker") or {}).get("linkState") or "") == "linked"
+        reply["permissions"] = comment_permissions.capabilities(
+            actor, _authored(reply), linked=linked, promote_min_role=_promote_min_role(project.id),
+        )
+        return {"comment": _with_permissions(comment, actor, project_id=project.id), "reply": reply}
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
@@ -818,7 +883,46 @@ async def update_reply(
             editor=_editor(actor),
             expected_revision=request.expectedRevision,
         )
-        return _with_permissions(updated, actor) if updated else None
+        return _with_permissions(updated, actor, project_id=project.id) if updated else None
+
+    result = await _run_mutation(write)
+    if isinstance(result, JSONResponse):
+        return result
+    if not result:
+        raise HTTPException(status_code=404, detail="Reply not found")
+    return result
+
+
+@router.post(
+    "/{project_id}/comments/{comment_id}/replies/{reply_id}/share",
+    dependencies=[Depends(require_comment_writer)],
+)
+async def share_reply_to_tracker(
+    project_id: str,
+    comment_id: str,
+    reply_id: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """Share a locally saved reply that could not be published automatically."""
+
+    def write():
+        project = get_project_for_role_or_404(project_id, user.role)
+        actor = _actor(user)
+        current = comments_store.get_reply(project.id, comment_id, reply_id)
+        if current is None:
+            return None
+        comment_permissions.authorize(
+            CommentAction.SHARE,
+            actor,
+            promote_min_role=_promote_min_role(project.id),
+        )
+        try:
+            updated = comments_store.share_reply(
+                project.id, project.path, comment_id, reply_id, _promotion_actor(actor),
+            )
+        except PublicationDenied as exc:
+            raise comment_permissions.CommentPermissionError(exc.code, str(exc)) from exc
+        return _with_permissions(updated, actor, project_id=project.id) if updated else None
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
@@ -860,7 +964,7 @@ async def delete_reply(
             editor=_editor(actor),
             expected_revision=expectedRevision,
         )
-        return _with_permissions(updated, actor) if updated else None
+        return _with_permissions(updated, actor, project_id=project.id) if updated else None
 
     result = await _run_mutation(write)
     if isinstance(result, JSONResponse):
