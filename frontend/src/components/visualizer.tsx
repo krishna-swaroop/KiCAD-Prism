@@ -1260,7 +1260,10 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 commentClass: payload.commentClass,
                 severity: payload.severity,
                 mentions: payload.mentions,
-                revision: displayedCanvasRevision(commit),
+                revision: displayedCanvasRevision(
+                    commit,
+                    semanticIndex?.sourceRevisionKey,
+                ),
             });
             setComments((prev) => [...prev, created]);
             setShowCommentForm(false);
@@ -1272,7 +1275,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         } finally {
             setIsSubmittingComment(false);
         }
-    }, [commit, pendingContext, pendingLocation, projectId]);
+    }, [commit, pendingContext, pendingLocation, projectId, semanticIndex?.sourceRevisionKey]);
 
     const reloadComments = useCallback(async () => {
         try {

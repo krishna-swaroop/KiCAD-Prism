@@ -269,4 +269,17 @@ describe("commentLocationFromArea", () => {
             }),
         ).toEqual({ x: 1, y: 2, layer: "", page: "/root/power/", bounds: [1, 2, 3, 4] });
     });
+
+    it("prefers sheetPath over page for repeated schematic instances", () => {
+        expect(
+            commentLocationFromArea({
+                context: "SCH",
+                x: 4,
+                y: 5,
+                bounds: [4, 5, 1, 1],
+                sheetPath: "/Port2/",
+                page: "Port.kicad_sch",
+            }),
+        ).toEqual({ x: 4, y: 5, layer: "", page: "/Port2/", bounds: [4, 5, 1, 1] });
+    });
 });

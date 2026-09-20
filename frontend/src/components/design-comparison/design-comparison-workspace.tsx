@@ -176,6 +176,7 @@ export function DesignComparisonWorkspace({
     };
     const [previewSelection, setPreviewSelection] =
         useState<ComparisonSelection>(null);
+    const [selectedSide, setSelectedSide] = useState<"base" | "compare">("compare");
     const semanticFocusRef = useRef<SemanticFocus | null>(null);
 
     useEffect(() => {
@@ -717,6 +718,8 @@ export function DesignComparisonWorkspace({
                     }
                     rightRailTab={comparisonRightRailTab}
                     onRightRailTabChange={setComparisonRightRailTab}
+                    selectedSide={selectedSide}
+                    onSelectedSideChange={setSelectedSide}
                 />
             </div>
         );
@@ -952,6 +955,7 @@ export function DesignComparisonWorkspace({
                                                     anchor={discussionAnchor}
                                                     comments={comments}
                                                     canComment={canComment}
+                                                    selectedSide={selectedSide}
                                                     onCommentsChange={setComments}
                                                     onClose={() => undefined}
                                                     embedded

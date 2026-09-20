@@ -24,7 +24,6 @@ export {
     revokeConnector,
     stripTrackerSecrets,
     testConnector,
-    trackerUiMocks,
     unlinkIdentity,
     updateConnector,
     updateProjectTracker,
