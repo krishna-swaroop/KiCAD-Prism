@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.release_studio.canonical import write_deterministic_zip
 from app.services.forge_hosts import ForgeHostConfigError, resolve_forge_host
 from app.services.git_remote_url import ParsedRemote, RemoteUrlError, parse_remote_url
+from app.services.trackers.http import RELEASE_TIMEOUT, send as send_forge_http
 
 _TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -460,15 +461,17 @@ def _request(
     params: dict[str, Any] | None = None,
 ) -> Any:
     try:
-        response = requests.request(
+        response = send_forge_http(
             method,
             url,
             headers=headers,
-            json=json_body,
+            json_body=json_body,
             data=data,
             params=params,
-            timeout=60,
+            timeout=RELEASE_TIMEOUT,
             allow_redirects=False,
+            sender=requests.request,
+            verify=True,
         )
     except requests.RequestException as exc:
         raise ForgePublishError(f"{forge} could not be reached: {exc}") from exc
