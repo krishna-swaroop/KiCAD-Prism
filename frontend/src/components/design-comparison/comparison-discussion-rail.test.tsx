@@ -2,16 +2,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ComparisonDiscussionRail } from "./comparison-discussion-rail";
-import { fetchApi, readApiError } from "@/lib/api";
+import { fetchApi } from "@/lib/api";
 import type { Comment } from "@/types/comments";
 
-vi.mock("@/lib/api", () => ({
-    fetchApi: vi.fn(),
-    readApiError: vi.fn(),
-}));
+vi.mock("@/lib/api", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+    return { ...actual, fetchApi: vi.fn() };
+});
 
 const mockedFetch = vi.mocked(fetchApi);
-const mockedReadError = vi.mocked(readApiError);
 
 /**
  * A rejected request used to leave the reply button disabled until remount:
@@ -35,6 +34,13 @@ const comment: Comment = {
     commentClass: "general",
     severity: "info",
     mentions: [],
+    permissions: {
+        canReply: true,
+        canEdit: false,
+        canDelete: false,
+        canResolve: true,
+        canPublish: false,
+    },
 };
 
 const baseProps = {
@@ -60,7 +66,6 @@ function openReplyComposer() {
 
 beforeEach(() => {
     mockedFetch.mockReset();
-    mockedReadError.mockReset();
 });
 
 afterEach(() => {
@@ -82,14 +87,13 @@ describe("ComparisonDiscussionRail addReply", () => {
 
     it("re-enables the reply button after an API error response", async () => {
         mockedFetch.mockResolvedValue(new Response(null, { status: 500 }));
-        mockedReadError.mockResolvedValue("Server exploded");
 
         render(<ComparisonDiscussionRail {...baseProps} />);
         const submit = openReplyComposer();
         fireEvent.click(submit);
 
         await waitFor(() => expect(screen.getByRole("button", { name: "Reply" })).not.toBeDisabled());
-        expect(mockedReadError).toHaveBeenCalled();
+        expect(screen.getByRole("alert").textContent).toMatch(/Failed to add reply/i);
     });
 
     it("still delivers the reply on the happy path", async () => {

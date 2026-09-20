@@ -13,6 +13,20 @@ import { CommentCard } from "./comment-card";
 import { CommentPanel } from "./comment-panel";
 import { ViewerOverlayRail, SELECTION_INSPECTOR_RAIL_RESIZE } from "./viewer-overlay-rail";
 import { fetchApi, readApiError } from "@/lib/api";
+import {
+    CommentMutationError,
+    createComment,
+    deleteComment as deleteCommentRemote,
+    deleteReply as deleteReplyRemote,
+    listComments,
+    listMentionCandidates,
+    replyToComment as replyToCommentRemote,
+    setCommentStatus,
+    updateComment,
+    updateReply,
+} from "@/lib/comments-client";
+import { displayedCanvasRevision } from "@/components/tracker-integration/comment-editor";
+import type { CommentReply } from "@/types/comments";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
 import { canWriteCatalog } from "@/lib/roles";
 import { crossProbeRequestForSelection, enrichPrismSelection, netStatisticsRefForSelection, normalizeEcadSelection } from "@/lib/prism-selection";
@@ -32,7 +46,6 @@ import {
     commentLocationFromArea,
     commentOverlaySet,
     commentScreenPosition,
-    normalizeComment,
     worldToViewportScreen,
     type ActiveSchematicPage,
 } from "@/lib/comment-overlays";
@@ -65,7 +78,7 @@ import type {
     EcadViewportInsets,
 } from "@/types/ecad-viewer";
 import type { PrismSelection, PrismSelectionContext, PrismSemanticIndex } from "@/types/prism-selection";
-import type { Comment, CommentContext, CommentLocation, CommentsFile, MentionCandidate } from "@/types/comments";
+import type { Comment, CommentContext, CommentLocation, MentionCandidate } from "@/types/comments";
 
 interface VisualizerProps {
     projectId: string;
@@ -559,7 +572,8 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
     ]);
 
     const canImportLibraryComponent = canWriteCatalog(user?.role);
-    const canModifyComments = user?.role === "admin" || user?.role === "designer";
+    const canComment = Boolean(user);
+    const canModifyCommentsFallback = user?.role === "admin" || user?.role === "designer";
 
     const handleImportSelectedComponent = useCallback(async () => {
         if (!globalSelection || globalSelection.kind === "net" || componentImportPending) return;
@@ -614,11 +628,11 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             const baseUrl = `/api/projects/${projectId}`;
 
             try {
-                const [ibomRes, supportRes, commentsRes, mentionsRes] = await Promise.all([
+                const [ibomRes, supportRes, commentsList, candidates] = await Promise.all([
                     fetch(appendCommit(`${baseUrl}/ibom`), { signal }),
                     fetch(appendCommit(`${baseUrl}/viewer/support-files`), { signal }),
-                    fetchApi(`${baseUrl}/comments`, { signal }),
-                    fetchApi(`${baseUrl}/comments/mention-candidates`, { signal }),
+                    listComments(projectId, signal).catch(() => [] as Comment[]),
+                    listMentionCandidates(projectId, signal).catch(() => [] as MentionCandidate[]),
                 ]);
                 if (cancelled) return;
 
@@ -634,20 +648,8 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 } else {
                     setViewerSupportFiles([]);
                 }
-                if (commentsRes.ok) {
-                    const payload = await commentsRes.json() as CommentsFile;
-                    if (cancelled) return;
-                    setComments((payload.comments ?? []).map(normalizeComment));
-                } else {
-                    setComments([]);
-                }
-                if (mentionsRes.ok) {
-                    const candidates = await mentionsRes.json() as MentionCandidate[];
-                    if (cancelled) return;
-                    setMentionCandidates(candidates);
-                } else {
-                    setMentionCandidates([]);
-                }
+                setComments(commentsList);
+                setMentionCandidates(candidates);
 
             } catch (err) {
                 if (!cancelled && !isAbortError(err)) {
@@ -1248,23 +1250,18 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         if (!pendingLocation || !pendingContext) return;
         setIsSubmittingComment(true);
         try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments`, {
-                method: "POST",
-                body: JSON.stringify({
-                    context: pendingContext,
-                    location: pendingLocation,
-                    content: payload.content,
-                    author: user?.name,
-                    elementId: pendingElementRef.current?.elementId,
-                    elementRef: pendingElementRef.current?.elementRef,
-                    elementType: pendingElementRef.current?.elementType,
-                    commentClass: payload.commentClass,
-                    severity: payload.severity,
-                    mentions: payload.mentions,
-                }),
+            const created = await createComment(projectId, {
+                context: pendingContext,
+                location: pendingLocation,
+                content: payload.content,
+                elementId: pendingElementRef.current?.elementId,
+                elementRef: pendingElementRef.current?.elementRef,
+                elementType: pendingElementRef.current?.elementType,
+                commentClass: payload.commentClass,
+                severity: payload.severity,
+                mentions: payload.mentions,
+                revision: displayedCanvasRevision(commit),
             });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to post comment"));
-            const created = normalizeComment(await response.json() as Comment);
             setComments((prev) => [...prev, created]);
             setShowCommentForm(false);
             setPendingLocation(null);
@@ -1275,48 +1272,94 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         } finally {
             setIsSubmittingComment(false);
         }
-    }, [pendingContext, pendingLocation, projectId, user?.name]);
+    }, [commit, pendingContext, pendingLocation, projectId]);
 
-    const resolveComment = useCallback(async (commentId: string, resolved: boolean) => {
+    const reloadComments = useCallback(async () => {
         try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${commentId}`, {
-                method: "PATCH",
-                body: JSON.stringify({ status: resolved ? "RESOLVED" : "OPEN" }),
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to update comment"));
-            const updated = normalizeComment(await response.json() as Comment);
-            setComments((prev) => prev.map((entry) => (entry.id === commentId ? updated : entry)));
+            setComments(await listComments(projectId));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to update comment");
+            toast.error(error instanceof Error ? error.message : "Failed to reload comments");
         }
     }, [projectId]);
+
+    const replaceComment = useCallback((updated: Comment) => {
+        setComments((prev) => prev.map((entry) => (entry.id === updated.id ? updated : entry)));
+    }, []);
+
+    const toastMutation = useCallback((error: unknown, fallback: string) => {
+        const message = error instanceof CommentMutationError && error.isConflict
+            ? "This thread changed. Reload and try again."
+            : error instanceof Error ? error.message : fallback;
+        toast.error(message);
+        if (error instanceof CommentMutationError && error.isConflict) {
+            void reloadComments();
+        }
+    }, [reloadComments]);
+
+    const resolveComment = useCallback(async (commentId: string, resolved: boolean) => {
+        const current = comments.find((entry) => entry.id === commentId);
+        try {
+            const updated = await setCommentStatus(
+                projectId,
+                { id: commentId, revision: current?.revision ?? 1 },
+                resolved,
+            );
+            replaceComment(updated);
+        } catch (error) {
+            toastMutation(error, "Failed to update comment");
+        }
+    }, [comments, projectId, replaceComment, toastMutation]);
 
     const replyToComment = useCallback(async (commentId: string, content: string) => {
         try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${commentId}/replies`, {
-                method: "POST",
-                body: JSON.stringify({ content, author: user?.name }),
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to add reply"));
-            const payload = await response.json() as { comment: Comment };
-            setComments((prev) => prev.map((entry) => (entry.id === commentId ? normalizeComment(payload.comment) : entry)));
+            const result = await replyToCommentRemote(projectId, commentId, { content });
+            replaceComment(result.comment);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to add reply");
+            toastMutation(error, "Failed to add reply");
+            throw error;
         }
-    }, [projectId, user?.name]);
+    }, [projectId, replaceComment, toastMutation]);
+
+    const editComment = useCallback(async (commentId: string, content: string, expectedRevision: number) => {
+        try {
+            replaceComment(await updateComment(projectId, commentId, { content, expectedRevision }));
+        } catch (error) {
+            toastMutation(error, "Failed to update comment");
+            throw error;
+        }
+    }, [projectId, replaceComment, toastMutation]);
+
+    const editReply = useCallback(async (commentId: string, reply: CommentReply, content: string) => {
+        try {
+            replaceComment(await updateReply(projectId, commentId, reply.id, {
+                content,
+                expectedRevision: reply.revision,
+            }));
+        } catch (error) {
+            toastMutation(error, "Failed to update reply");
+            throw error;
+        }
+    }, [projectId, replaceComment, toastMutation]);
+
+    const deleteReply = useCallback(async (commentId: string, reply: CommentReply) => {
+        try {
+            replaceComment(await deleteReplyRemote(projectId, commentId, reply.id, reply.revision));
+        } catch (error) {
+            toastMutation(error, "Failed to delete reply");
+            throw error;
+        }
+    }, [projectId, replaceComment, toastMutation]);
 
     const deleteComment = useCallback(async (commentId: string) => {
+        const current = comments.find((entry) => entry.id === commentId);
         try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${commentId}`, {
-                method: "DELETE",
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to delete comment"));
+            await deleteCommentRemote(projectId, commentId, current?.revision);
             setComments((prev) => prev.filter((entry) => entry.id !== commentId));
-            setSelectedCommentId((current) => (current === commentId ? null : current));
+            setSelectedCommentId((currentId) => (currentId === commentId ? null : currentId));
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to delete comment");
+            toastMutation(error, "Failed to delete comment");
         }
-    }, [projectId]);
+    }, [comments, projectId, toastMutation]);
 
     const handleCommentClick = useCallback((comment: Comment) => {
         const targetTab: VisualizerTab = comment.context === "SCH" ? "sch" : "pcb";
@@ -1365,7 +1408,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 }
             }
             if (
-                canModifyComments
+                canComment
                 && (activeTab === "sch" || activeTab === "pcb")
                 && event.key.toLowerCase() === "c"
                 && !event.metaKey
@@ -1422,7 +1465,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         // ecad-viewer still receives every key Prism does not handle.
         window.addEventListener("keydown", handleKeyboard, true);
         return () => window.removeEventListener("keydown", handleKeyboard, true);
-    }, [activeTab, canModifyComments, clearSelectionAndHighlights]);
+    }, [activeTab, canComment, clearSelectionAndHighlights]);
 
     const schematicRootSource = useMemo<ViewerBlobSource | null>(
         () => (schematicContent ? { filename: "root.kicad_sch", content: schematicContent } : null),
@@ -1480,7 +1523,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                         onRetry={() => { void generateSemanticIdentity(); }}
                     />
                 )}
-                {(activeTab === "sch" || activeTab === "pcb") && canModifyComments && (
+                {(activeTab === "sch" || activeTab === "pcb") && canComment && (
                     <Button
                         variant={commentMode ? "default" : "ghost"}
                         size="sm"
@@ -1716,9 +1759,13 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 onReply={replyToComment}
                                 onDelete={deleteComment}
                                 onCommentClick={handleCommentClick}
-                                canModify={canModifyComments}
+                                canModify={canModifyCommentsFallback}
                                 highlightedId={selectedCommentId}
                                 embedded
+                                onEdit={editComment}
+                                onEditReply={editReply}
+                                onDeleteReply={deleteReply}
+                                onReload={reloadComments}
                             />
                         ) : inspectorHasContent ? (
                             <SelectionInspector
@@ -1775,11 +1822,15 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 <CommentCard
                     comment={selectedComment}
                     screenPosition={commentCardScreenPosition}
-                    canModify={canModifyComments}
+                    canModify={canModifyCommentsFallback}
                     onClose={() => setSelectedCommentId(null)}
                     onResolve={(commentId, resolved) => void resolveComment(commentId, resolved)}
                     onReply={replyToComment}
                     onDelete={deleteComment}
+                    onEdit={editComment}
+                    onEditReply={editReply}
+                    onDeleteReply={deleteReply}
+                    onReload={reloadComments}
                 />
             )}
         </div>
