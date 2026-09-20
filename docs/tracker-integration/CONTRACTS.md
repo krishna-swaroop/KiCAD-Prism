@@ -152,8 +152,10 @@ Polling (`since=`) yields objects, not actors.
 
 Auth types (`AuthenticatedUser.auth_type`): `session` (OIDC user with role),
 `kicad_provider` (KiCad remote-symbol token; read-only for Prism resources
-today and stays so), `service` (service client with scopes), `external`
-(external API JWT), `guest` (AUTH_ENABLED=false). Roles: `viewer`, `qa`,
+today and stays so), `service_client` (service client with scopes),
+`external_service` (external API JWT), and the guest identity returned when
+`AUTH_ENABLED=false` (`auth_type` stays `session`; recognised by the absence of
+a session id and the `guest@local` address). Roles: `viewer`, `qa`,
 `designer`, `admin` (`qa` ranks with `viewer` for comments).
 
 **Matrix.** "Publication" means the actor's role satisfies the project's
@@ -239,8 +241,8 @@ moderation of others' content.
 | --- | --- | --- |
 | session with `session.user_id` | that id | `user` |
 | session with empty `user_id` | `users.user_id` looked up by the session email in `access_service` at request time (the row exists for every role-assigned user); if none, the request is refused for mutations | `user` |
-| service client | `service:<client_id>` | `service` |
-| external JWT | `external:<sub>` | `service` |
+| `service_client` | `service:<client_id>` | `service` |
+| `external_service` | `external:<client_id>` (the token's subject) | `service` |
 | guest (auth disabled) | `guest:local` | `guest` |
 | kicad_provider | — (cannot mutate) | — |
 
