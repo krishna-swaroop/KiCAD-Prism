@@ -640,6 +640,11 @@ async def pin_comment(
         current = comments_store.get_comment(project.id, project.path, comment_id)
         if current is None:
             return None
+        existing = current.get("anchor") or {}
+        if existing.get("state") == "pinned" or (
+            existing.get("baseCommit") and existing.get("compareCommit")
+        ):
+            raise ValueError("anchor fields are immutable")
         context = str(current.get("context") or "PCB")
         anchor = resolve_manual_pin(project, commit=request.commit, context=context)
         updated = comments_store.pin_comment_anchor(

@@ -144,6 +144,17 @@ def _mentions_from_content(content: str, known_emails: Optional[List[str]] = Non
     return [email for email in mentions if email in allowed]
 
 
+def _anchor_already_pinned(row) -> bool:
+    """Pinned state or a stored comparison pair is an identity, not a draft.
+
+    Comparison creates without ``selectedSide`` are ``anchor_state=pinned``
+    with a null ``anchor_commit``; the ordered pair is what pins them.
+    """
+    if (row.get("anchor_state") or ANCHOR_STATE_UNPINNED) == ANCHOR_STATE_PINNED:
+        return True
+    return bool(_optional_str(row.get("base_commit")) and _optional_str(row.get("compare_commit")))
+
+
 def _anchor_block(row) -> Dict:
     """Where the comment is pinned, and how we know (contract D6).
 
@@ -920,7 +931,7 @@ class CommentsStoreService:
                 ).fetchone()
                 if row is None:
                     return None
-                if row.get("anchor_state") == ANCHOR_STATE_PINNED and row.get("anchor_commit"):
+                if _anchor_already_pinned(row):
                     raise ValueError("anchor fields are immutable")
                 params: List[object] = [
                     commit, source_revision_key, "manual", ANCHOR_STATE_PINNED,
@@ -928,9 +939,10 @@ class CommentsStoreService:
                     _optional_str(project_relative_path) or row.get("project_relative_path"),
                     now, project_id, comment_id,
                 ]
-                guard = ""
+                guard = " AND anchor_state = %s"
+                params.append(ANCHOR_STATE_UNPINNED)
                 if expected_revision is not None:
-                    guard = " AND revision = %s"
+                    guard += " AND revision = %s"
                     params.append(expected_revision)
                 updated = conn.execute(
                     f"""
@@ -944,7 +956,17 @@ class CommentsStoreService:
                     tuple(params),
                 ).fetchone()
                 if updated is None:
-                    raise comments_revisions.RevisionConflict("root", comment_id, int(row["revision"] or 1))
+                    latest = conn.execute(
+                        f"SELECT {_COMMENT_COLUMNS} FROM comments WHERE project_id = %s AND id = %s AND deleted_at IS NULL",
+                        (project_id, comment_id),
+                    ).fetchone()
+                    if latest is None:
+                        return None
+                    if _anchor_already_pinned(latest):
+                        raise ValueError("anchor fields are immutable")
+                    raise comments_revisions.RevisionConflict(
+                        "root", comment_id, int(latest["revision"] or 1),
+                    )
                 comments_revisions.record_revision(
                     conn, project_id=project_id, target_kind=comments_revisions.ROOT, target_id=comment_id,
                     revision=int(updated["revision"]), change_kind=comments_revisions.CHANGE_EDIT, editor=editor,
