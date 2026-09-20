@@ -6,6 +6,24 @@
  */
 export * from "@/types/trackers";
 export {
+    DestinationDisclosure,
+    destinationPolicyAlerts,
+    destinationSourceLabel,
+    formatDestinationLine,
+    isImportedDefaultDestination,
+    visibilityAckState,
+    visibilityBadgeVariant,
+    visibilityLabel,
+} from "./destination-disclosure";
+export type { DestinationDisclosureProps, DestinationDisclosureVariant, VisibilityAckState } from "./destination-disclosure";
+export {
+    ProjectTrackerSettingsPanel,
+    autoPromoteSummary,
+    describeProjectTrackerError,
+    promoteRoleExplanation,
+} from "./project-tracker-settings";
+export type { ProjectTrackerSettingsPanelProps, ProjectTrackerSettingsPhase } from "./project-tracker-settings";
+export {
     TRACKER_ROUTES,
     TrackerApiError,
     acknowledgeDestination,
