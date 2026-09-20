@@ -334,19 +334,16 @@ class IdentityOAuthPostgresTests(unittest.TestCase):
         begin = run(identity_api.begin_oauth("cn_gh1", request=_request(), user=self.user))
         state = begin.authorizeUrl.split("state=")[1].split("&")[0]
         expired = session("designer", user_id="u_1", session_id="sid_changed")
-        with self.assertRaises(HTTPException) as caught:
-            run(
-                identity_api.oauth_callback(
-                    request=_request(),
-                    code="good-code",
-                    state=state,
-                    user=expired,
-                )
+        response = run(
+            identity_api.oauth_callback(
+                request=_request(),
+                code="good-code",
+                state=state,
+                user=expired,
             )
-        self.assertEqual(caught.exception.status_code, 409)
-        detail = caught.exception.detail
-        if isinstance(detail, dict):
-            self.assertEqual(detail.get("code"), "session_expired")
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("tracker_oauth_error=session_expired", response.headers["location"])
         rows = self.conn.execute("SELECT COUNT(*) AS n FROM user_identities").fetchone()
         self.assertEqual(int(rows["n"]), 0)
 

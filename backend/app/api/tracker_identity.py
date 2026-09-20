@@ -39,6 +39,12 @@ def _actor(user: AuthenticatedUser) -> str:
     return user.user_id or user.email
 
 
+def _query_return_to(value: object) -> str:
+    """Coerce FastAPI query defaults when route handlers are called from unit tests."""
+
+    return value if isinstance(value, str) else "/"
+
+
 def _http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, IdentityNotFound):
         return HTTPException(status_code=404, detail="Identity not found")
@@ -90,7 +96,7 @@ async def begin_oauth(
             session_id=user.session_id,
             connector_id=connector_id,
             callback_url=callback_url,
-            return_to=validate_relative_return_to(returnTo),
+            return_to=validate_relative_return_to(_query_return_to(returnTo)),
         )
     except Exception as exc:
         raise _http_error(exc) from exc
