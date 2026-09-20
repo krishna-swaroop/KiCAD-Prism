@@ -1,9 +1,9 @@
-"""Bounded tracker job handlers registered into the Prism worker (TR-14).
+"""Bounded tracker job handlers registered into the Prism worker (TR-14/TR-62).
 
 Dispatch/poll/sweep run in the existing prism pool. Claimed ``sent`` ops take
 the recovery path and are never resent (D2). ``mark_sent`` commits before any
-provider I/O; confirm/fail use a new transaction (C2/H2). Inbound hints stay
-pending until an apply ticket mounts a reducer (M3). Poll/sweep cadence
+provider I/O; confirm/fail use a new transaction (C2/H2). Inbound hints are
+applied through the shared composition reducer (TR-62). Poll/sweep cadence
 follows C7 (M4).
 """
 
@@ -45,13 +45,18 @@ def run_tracker_dispatch_job(context: JobContext) -> JobResult:
     context.check_cancelled()
     payload = context.payload
     connector_id = str(payload.get("connectorId") or "")
+    container_id = str(payload.get("remoteContainerId") or "")
     executor = _executor(context)
     with _comments_connect(context) as conn:
+        hints_applied = _apply_destination_hints(conn, connector_id, container_id)
         paused = _connector_paused(conn, connector_id)
         ops = OpStore(conn)
         claimed = ops.claim(context.worker_id, lease_seconds=60)
         if claimed is None:
-            return _retain_inbound_hints(conn)
+            conn.commit()
+            if hints_applied:
+                return JobResult(message="Applied inbound hints", details={"hintsApplied": hints_applied})
+            return _retain_or_idle(conn)
         prepared = _prepare_claimed_op(
             ops, claimed, paused=paused, has_executor=executor is not None
         )
@@ -93,31 +98,52 @@ def _run_checkpoint_job(context: JobContext, *, kind: str) -> JobResult:
                 code="tracker_checkpoint_busy",
                 retry_after_seconds=fallback,
             )
+        runtime = _runtime()
         if kind == "poll":
+            result = runtime.run_poll(
+                conn,
+                connector_id=connector_id,
+                remote_container_id=container_id,
+            )
             interval = poll_interval_seconds(conn, connector_id)
         else:
+            result = runtime.run_sweep(
+                conn,
+                connector_id=connector_id,
+                remote_container_id=container_id,
+            )
             interval = sweep_interval_seconds(conn, connector_id, container_id)
         conn.execute(
             """
             UPDATE sync_checkpoints
-            SET next_run_at = NOW() + (%s * INTERVAL '1 second'),
-                claimed_by = NULL,
-                lease_expires_at = NULL
+            SET claimed_by = NULL,
+                lease_expires_at = NULL,
+                next_run_at = COALESCE(next_run_at, NOW() + (%s * INTERVAL '1 second'))
             WHERE kind = %s AND scope_key = %s AND fence = %s
             """,
             (interval, kind, scope, int(claimed["fence"])),
         )
         conn.commit()
-    return JobResult(message=f"Scheduled next {kind}", details={"intervalSeconds": interval})
+    return result
 
 
-def _retain_inbound_hints(conn: Any) -> JobResult:
-    """Do not finish hints as ignored. Apply is a later ticket (M3)."""
+def _apply_destination_hints(conn: Any, connector_id: str, container_id: str) -> int:
+    if not connector_id or not container_id:
+        return 0
+    try:
+        return _runtime().apply_pending_hints(
+            conn,
+            connector_id=connector_id,
+            remote_container_id=container_id,
+        )
+    except Exception:
+        return 0
 
+
+def _retain_or_idle(conn: Any) -> JobResult:
     pending = conn.execute(
         "SELECT 1 FROM remote_hints WHERE state = 'pending' LIMIT 1"
     ).fetchone()
-    conn.commit()
     if pending:
         raise RetryableJobError(
             "Inbound hints retained pending apply",
@@ -129,6 +155,10 @@ def _retain_inbound_hints(conn: Any) -> JobResult:
         code="tracker_idle",
         retry_after_seconds=OUTBOX_POLL_SECONDS,
     )
+
+
+# TR-26 mount_create_executor snapshots this name before TR-62 renamed the helper.
+_retain_inbound_hints = _retain_or_idle
 
 
 def _prepare_claimed_op(
@@ -282,7 +312,7 @@ def _enter_unknown_outcome_recovery(
     *,
     error: Mapping[str, Any],
 ) -> None:
-    """Unknown write outcome (D2): sent → recovering → quarantine, never fail on the spot."""
+    """Unknown write outcome (D2): sent → recovering → quarantine, not fail on the spot."""
 
     ops.enter_recovery(op_id, fence)
     ops.enter_quarantine(
@@ -346,9 +376,33 @@ def _connector_paused(conn: Any, connector_id: str) -> bool:
     return bool(row and row.get("paused"))
 
 
+def _runtime():
+    from app.services.trackers.composition import get_tracker_runtime
+
+    return get_tracker_runtime()
+
+
 def _executor(context: JobContext) -> DispatchExecutor | None:
-    value = context.payload.get("_executor")
-    return value if callable(value) else None
+    payload_executor = context.payload.get("_executor")
+    if callable(payload_executor):
+        return payload_executor
+
+    def _dispatch(claimed: dict[str, Any]) -> str | None:
+        with _comments_connect(context) as conn:
+            return _runtime().dispatch_executor(conn, claimed)
+
+    from app.services.trackers.composition import has_outbound_executor
+
+    has_outbound = has_outbound_executor()
+    if not has_outbound:
+        def _recovery_only(claimed: dict[str, Any]) -> str | None:
+            if str(claimed.get("dispatch") or EXECUTE_DISPATCH) != RECOVERY_DISPATCH:
+                return None
+            with _comments_connect(context) as conn:
+                return _runtime().dispatch_executor(conn, claimed)
+
+        return _recovery_only
+    return _dispatch
 
 
 @contextmanager
