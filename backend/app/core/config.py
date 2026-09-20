@@ -7,10 +7,11 @@ Configuration can be set via:
 
 See .env.example for available configuration options.
 """
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings
 from typing import List
 import os
+import re
 
 
 # Placeholders that appear in this repository's examples and in copy-pasted guides.
@@ -24,6 +25,7 @@ _WEAK_SESSION_SECRETS = {
     "your-session-secret",
     "replace-with-a-long-random-string",
 }
+_TRACKER_KEY_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
 class Settings(BaseSettings):
@@ -292,6 +294,32 @@ class Settings(BaseSettings):
             "and token_name values. github.com and gitlab.com are always included. "
             "A hostname that merely contains 'gitlab' is not treated as GitLab."
         ),
+    )
+
+    # Tracker credential envelope (TR-10). Root key stays outside Postgres.
+    # Absent = encryption disabled. Present but invalid = locked. No plaintext fallback.
+    TRACKER_CREDENTIAL_ROOT_KEY: SecretStr = Field(
+        default=SecretStr(""),
+        description=(
+            "32-byte tracker credential root key as 64 hex characters or standard "
+            "base64. Wraps per-record data keys. Never stored in Postgres. Leave "
+            "empty to disable tracker secret encryption (helpers raise locked)."
+        ),
+    )
+    TRACKER_CREDENTIAL_ROOT_KEY_ID: str = Field(
+        default="v1",
+        description="Key id written into new envelopes. Change this when rotating.",
+    )
+    TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY: SecretStr = Field(
+        default=SecretStr(""),
+        description=(
+            "Previous 32-byte root key kept during rotation so existing envelopes "
+            "remain readable until rewrap. Empty when no grace period is needed."
+        ),
+    )
+    TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID: str = Field(
+        default="",
+        description="Key id of TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY. Must differ from the current id.",
     )
 
     COMMENTS_API_BASE_URL: str = Field(
@@ -767,7 +795,76 @@ class Settings(BaseSettings):
                 "password, so a bootstrap secret is not left in the environment."
             )
 
+        status = self.tracker_credential_status()
+        if status == "disabled":
+            warnings.append(
+                "TRACKER_CREDENTIAL_ROOT_KEY is unset: tracker credential encryption "
+                "is disabled. Connector and OAuth tokens cannot be stored."
+            )
+        elif status == "locked":
+            warnings.extend(self.tracker_credential_key_errors())
+
         return warnings
+
+    def _tracker_secret_text(self, value: SecretStr | str | None) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, SecretStr):
+            return value.get_secret_value()
+        return str(value)
+
+    def tracker_credential_key_errors(self) -> List[str]:
+        """Reasons tracker encryption is locked. Never includes key material."""
+
+        from app.services.trackers.secrets import root_key_problem
+
+        errors: List[str] = []
+        current = self._tracker_secret_text(self.TRACKER_CREDENTIAL_ROOT_KEY).strip()
+        previous = self._tracker_secret_text(self.TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY).strip()
+        current_id = (self.TRACKER_CREDENTIAL_ROOT_KEY_ID or "").strip()
+        previous_id = (self.TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID or "").strip()
+
+        if current:
+            problem = root_key_problem(current)
+            if problem:
+                errors.append(f"TRACKER_CREDENTIAL_ROOT_KEY is locked: {problem}")
+            if not current_id:
+                errors.append("TRACKER_CREDENTIAL_ROOT_KEY_ID is required when the root key is set")
+            elif not _TRACKER_KEY_ID_RE.fullmatch(current_id):
+                errors.append("TRACKER_CREDENTIAL_ROOT_KEY_ID must be 1–64 characters [A-Za-z0-9._-]")
+        elif current_id and current_id != "v1":
+            errors.append("TRACKER_CREDENTIAL_ROOT_KEY_ID is set without TRACKER_CREDENTIAL_ROOT_KEY")
+
+        if previous:
+            problem = root_key_problem(previous)
+            if problem:
+                errors.append(f"TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY is locked: {problem}")
+            if not previous_id:
+                errors.append(
+                    "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID is required when the previous root key is set"
+                )
+            elif not _TRACKER_KEY_ID_RE.fullmatch(previous_id):
+                errors.append(
+                    "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID must be 1–64 characters [A-Za-z0-9._-]"
+                )
+            elif previous_id == current_id:
+                errors.append("TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID must differ from the current key id")
+        elif previous_id:
+            errors.append(
+                "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID is set without TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY"
+            )
+
+        return errors
+
+    def tracker_credential_status(self) -> str:
+        """disabled (no key), locked (present but unusable), or ready."""
+
+        if self.tracker_credential_key_errors():
+            return "locked"
+        current = self._tracker_secret_text(self.TRACKER_CREDENTIAL_ROOT_KEY).strip()
+        if not current:
+            return "disabled"
+        return "ready"
 
     def auth_configuration_errors(self) -> List[str]:
         """Return every reason this deployment must not serve authenticated traffic."""
