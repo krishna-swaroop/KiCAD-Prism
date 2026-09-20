@@ -26,6 +26,12 @@ import {
     updateReply,
 } from "@/lib/comments-client";
 import { displayedCanvasRevision } from "@/components/tracker-integration/comment-editor";
+import {
+    canvasVisualizerTab,
+    deepLinkSceneKey,
+    markerMissingMessage,
+    readTrackerDeepLink,
+} from "@/lib/tracker-deep-link";
 import type { CommentReply } from "@/types/comments";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
 import { canWriteCatalog } from "@/lib/roles";
@@ -347,15 +353,33 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
     // Open on the tab a caller asked for (e.g. clicking a changed .kicad_pcb in
     // the history file list), read once on mount; defaults to the schematic.
     const [searchParams, setSearchParams] = useSearchParams();
+    const deepLinkIntent = useMemo(
+        () => readTrackerDeepLink(searchParams),
+        [searchParams],
+    );
+    const deepLinkCommentId = deepLinkIntent.kind === "canvas"
+        ? deepLinkIntent.commentId
+        : null;
+    const deepLinkScene = useMemo(
+        () => deepLinkSceneKey(projectId, deepLinkIntent),
+        [deepLinkIntent, projectId],
+    );
+    const appliedDeepLinkSceneRef = useRef<string | null>(null);
     const [activeTab, setActiveTab] = useState<VisualizerTab>(() => {
         const requested = searchParams.get("tab");
-        return requested === "pcb"
+        if (
+            requested === "pcb"
             || requested === "3d"
             || requested === "bom"
             || requested === "stackup"
             || requested === "assembly"
-            ? requested
-            : "sch";
+        ) {
+            return requested;
+        }
+        if (searchParams.get("view")) {
+            return canvasVisualizerTab(searchParams.get("view"));
+        }
+        return "sch";
     });
     const [threeDActivated, setThreeDActivated] = useState(false);
     /**
@@ -1375,6 +1399,54 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         setSelectedCommentId(comment.id);
         setCommentCardScreenPosition(commentScreenPosition(viewer, comment));
     }, []);
+
+    useEffect(() => {
+        appliedDeepLinkSceneRef.current = null;
+    }, [deepLinkScene]);
+
+    useEffect(() => {
+        if (!viewerActive || !deepLinkCommentId || !deepLinkScene) return;
+        if (appliedDeepLinkSceneRef.current === deepLinkScene) return;
+
+        const comment = comments.find((entry) => entry.id === deepLinkCommentId);
+        if (!comment) return;
+
+        if (commit && comment.anchor?.commit && comment.anchor.commit !== commit) {
+            return;
+        }
+
+        const targetTab: VisualizerTab = comment.context === "SCH" ? "sch" : "pcb";
+        const viewerReady = targetTab === "sch"
+            ? schematicContentLoaded && schematicReadyGeneration > 0
+            : pcbContentLoaded && pcbReadyGeneration > 0;
+        if (!viewerReady) return;
+
+        handleCommentClick(comment);
+        // react-doctor-disable-next-line no-adjust-state-on-prop-change - marker focus is deferred until the pinned scene is ready
+        setRightRailTab("comments");
+        appliedDeepLinkSceneRef.current = deepLinkScene;
+    }, [
+        comments,
+        commit,
+        deepLinkCommentId,
+        deepLinkScene,
+        handleCommentClick,
+        pcbContentLoaded,
+        pcbReadyGeneration,
+        schematicContentLoaded,
+        schematicReadyGeneration,
+        viewerActive,
+    ]);
+
+    useEffect(() => {
+        if (!viewerActive || !deepLinkCommentId || !comments.length) return;
+        if (appliedDeepLinkSceneRef.current === deepLinkScene) return;
+        const exists = comments.some((entry) => entry.id === deepLinkCommentId);
+        if (!exists && deepLinkScene) {
+            toast.error(markerMissingMessage(deepLinkCommentId));
+            appliedDeepLinkSceneRef.current = deepLinkScene;
+        }
+    }, [comments, deepLinkCommentId, deepLinkScene, viewerActive]);
 
     const selectedComment = useMemo(
         () => comments.find((entry) => entry.id === selectedCommentId) ?? null,

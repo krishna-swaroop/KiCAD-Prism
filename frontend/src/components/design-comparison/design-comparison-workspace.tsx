@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
     AlertCircle,
     Cpu,
@@ -12,6 +13,7 @@ import {
     Square,
     ToggleLeft,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -71,6 +73,12 @@ import type {
     ChangeItem,
     ChangeKind,
 } from "./types";
+import {
+    comparisonSideFromParam,
+    deepLinkSceneKey,
+    markerMissingMessage,
+    readTrackerDeepLink,
+} from "@/lib/tracker-deep-link";
 
 type WorkspaceTab = ComparisonUrlTab;
 export type PresentationMode = ComparisonPresentationMode;
@@ -176,7 +184,26 @@ export function DesignComparisonWorkspace({
     };
     const [previewSelection, setPreviewSelection] =
         useState<ComparisonSelection>(null);
-    const [selectedSide, setSelectedSide] = useState<"base" | "compare">("compare");
+    const [searchParams] = useSearchParams();
+    const deepLinkIntent = useMemo(
+        () => readTrackerDeepLink(searchParams),
+        [searchParams],
+    );
+    const deepLinkCommentId = deepLinkIntent.kind === "comparison"
+        ? deepLinkIntent.commentId
+        : null;
+    const deepLinkScene = useMemo(
+        () => deepLinkSceneKey(projectId, deepLinkIntent),
+        [deepLinkIntent, projectId],
+    );
+    const appliedDeepLinkSceneRef = useRef<string | null>(null);
+    const [selectedSide, setSelectedSide] = useState<"base" | "compare">(() => {
+        if (deepLinkIntent.kind === "comparison" && deepLinkIntent.selectedSide) {
+            return deepLinkIntent.selectedSide;
+        }
+        const side = comparisonSideFromParam(searchParams.get("side"));
+        return side ?? "compare";
+    });
     const semanticFocusRef = useRef<SemanticFocus | null>(null);
 
     useEffect(() => {
@@ -186,6 +213,10 @@ export function DesignComparisonWorkspace({
             compare: head,
         });
     }, [projectId, base, head]);
+
+    useEffect(() => {
+        appliedDeepLinkSceneRef.current = null;
+    }, [deepLinkScene]);
 
     const handleClose = () => {
         onClose();
@@ -462,6 +493,56 @@ export function DesignComparisonWorkspace({
         };
         setReviewSelection({ kind: "item", id: change.id, documentPath });
     };
+
+    useEffect(() => {
+        if (!deepLinkCommentId || !deepLinkScene || jobStatus !== "ready" || !result) {
+            return;
+        }
+        if (appliedDeepLinkSceneRef.current === deepLinkScene) return;
+
+        const comment = comments.find((entry) => entry.id === deepLinkCommentId);
+        if (!comment) {
+            if (comments.length > 0) {
+                toast.error(markerMissingMessage(deepLinkCommentId));
+                appliedDeepLinkSceneRef.current = deepLinkScene;
+            }
+            return;
+        }
+
+        const anchorSide = comment.anchor?.selectedSide
+            ?? (deepLinkIntent.kind === "comparison" ? deepLinkIntent.selectedSide : null);
+        if (anchorSide === "base" || anchorSide === "compare") {
+            setSelectedSide(anchorSide);
+        }
+
+        if (comment.semanticItemId) {
+            const change = domainChanges.find((entry) => (
+                entry.id === comment.semanticItemId
+                || entry.semantic_id === comment.semanticItemId
+            ));
+            if (change) {
+                semanticFocusRef.current = {
+                    semanticId: change.semantic_id,
+                    reference: change.reference,
+                    net: change.net,
+                };
+                setReviewSelection({ kind: "item", id: change.id });
+            } else {
+                setReviewSelection({ kind: "item", id: comment.semanticItemId });
+            }
+        }
+
+        appliedDeepLinkSceneRef.current = deepLinkScene;
+    }, [
+        comments,
+        deepLinkCommentId,
+        deepLinkIntent,
+        deepLinkScene,
+        domainChanges,
+        jobStatus,
+        result,
+        setReviewSelection,
+    ]);
 
     const selectInstance = (group: ChangeGroup, reference: string) => {
         const changes = group.changes.filter(
