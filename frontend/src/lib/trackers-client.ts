@@ -36,6 +36,8 @@ const SECRET_KEYS = new Set([
     "client_secret",
     "webhookSecret",
     "webhook_secret",
+    "oauthClientSecret",
+    "oauth_client_secret",
     "installationMaterial",
     "pem",
     "authorization",
@@ -217,8 +219,16 @@ export function listIdentities(): Promise<UserIdentity[]> {
     return request(TRACKER_ROUTES.identities, undefined, "Failed to list connected accounts");
 }
 
-export function beginIdentityLink(connectorId: string): Promise<OAuthBeginResponse> {
-    return request(TRACKER_ROUTES.identityBegin(connectorId), { method: "POST" }, "Failed to start account linking");
+export function beginIdentityLink(connectorId: string, returnTo?: string): Promise<OAuthBeginResponse> {
+    const query =
+        returnTo && returnTo.trim()
+            ? `?${new URLSearchParams({ returnTo: returnTo.trim() }).toString()}`
+            : "";
+    return request(
+        `${TRACKER_ROUTES.identityBegin(connectorId)}${query}`,
+        { method: "POST" },
+        "Failed to start account linking",
+    );
 }
 
 export function unlinkIdentity(connectorId: string): Promise<void> {

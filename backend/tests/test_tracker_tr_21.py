@@ -30,7 +30,11 @@ from app.services.trackers.identity_service import (  # noqa: E402
     bump_user_cache,
     user_cache_version,
 )
-from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
+from app.services.trackers.identity_service import build_oauth_return_url  # noqa: E402
+from app.services.trackers.migrations import (  # noqa: E402
+    migrate_tracker_webhook_oauth_tables,
+    migrate_workspace_tracker_tables,
+)
 from app.services.trackers.secrets import decrypt_secret  # noqa: E402
 
 try:
@@ -192,6 +196,7 @@ class IdentityOAuthPostgresTests(unittest.TestCase):
             prepare=False,
         )
         migrate_workspace_tracker_tables(self.conn)
+        migrate_tracker_webhook_oauth_tables(self.conn)
         comments_schema_migrations.apply_comments_migrations(self.conn)
         self.conn.commit()
         self.settings = _settings()
@@ -247,7 +252,14 @@ class IdentityOAuthPostgresTests(unittest.TestCase):
         self.service.configure_oauth_client("cn_gh1", client_id="ov_client_fixture", client_secret=CLIENT_SECRET)
 
     def test_begin_callback_list_and_unlink(self) -> None:
-        begin = run(identity_api.begin_oauth("cn_gh1", request=_request(), user=self.user))
+        begin = run(
+            identity_api.begin_oauth(
+                "cn_gh1",
+                request=_request(),
+                returnTo="/workspace?tab=accounts",
+                user=self.user,
+            )
+        )
         self.assertIn("github.com/login/oauth/authorize", begin.authorizeUrl)
         state = begin.authorizeUrl.split("state=")[1].split("&")[0]
         linked = run(
@@ -258,7 +270,11 @@ class IdentityOAuthPostgresTests(unittest.TestCase):
                 user=self.user,
             )
         )
-        self.assertTrue(linked.body is not None)
+        self.assertEqual(linked.status_code, 302)
+        self.assertEqual(
+            linked.headers["location"],
+            build_oauth_return_url("/workspace?tab=accounts", linked=True),
+        )
         listed = run(identity_api.list_identities(self.user))
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["forgeLogin"], "arjun-gh")

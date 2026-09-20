@@ -319,8 +319,18 @@
       "pausedReason": null,
       "bot": { "id": "199001", "login": "prism[bot]" },
       "credentialConfigured": true,
+      "webhookConfigured": true,
+      "oauthClientConfigured": true,
       "writesEnabled": true,
       "auditCount": 1
+    },
+    "ConnectorCredentials": {
+      "appId": "772215",
+      "installationId": "88001122",
+      "privateKey": "<write-only PEM>",
+      "webhookSecret": "<write-only webhook secret>",
+      "oauthClientId": "Ov23liExampleClient",
+      "oauthClientSecret": "<write-only OAuth client secret>"
     },
     "ConnectorTestResult": {
       "ok": true,

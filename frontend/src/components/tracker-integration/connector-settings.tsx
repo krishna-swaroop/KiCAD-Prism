@@ -38,6 +38,9 @@ export interface ConnectorCredentialFields {
     appId: string;
     installationId: string;
     privateKey: string;
+    webhookSecret: string;
+    oauthClientId: string;
+    oauthClientSecret: string;
 }
 
 export interface ConnectorSettingsProps {
@@ -53,6 +56,9 @@ const EMPTY_CREDENTIALS: ConnectorCredentialFields = {
     appId: "",
     installationId: "",
     privateKey: "",
+    webhookSecret: "",
+    oauthClientId: "",
+    oauthClientSecret: "",
 };
 
 /** Frozen public webhook path for provider configuration guidance (TR-27 registers the route). */
@@ -88,10 +94,20 @@ function credentialsPayload(fields: ConnectorCredentialFields): Record<string, s
     const appId = fields.appId.trim();
     const installationId = fields.installationId.trim();
     const privateKey = fields.privateKey.trim();
-    if (!appId && !installationId && !privateKey) {
+    const webhookSecret = fields.webhookSecret.trim();
+    const oauthClientId = fields.oauthClientId.trim();
+    const oauthClientSecret = fields.oauthClientSecret.trim();
+    if (!appId && !installationId && !privateKey && !webhookSecret && !oauthClientId && !oauthClientSecret) {
         return undefined;
     }
-    return { appId, installationId, privateKey };
+    const payload: Record<string, string> = {};
+    if (appId) payload.appId = appId;
+    if (installationId) payload.installationId = installationId;
+    if (privateKey) payload.privateKey = privateKey;
+    if (webhookSecret) payload.webhookSecret = webhookSecret;
+    if (oauthClientId) payload.oauthClientId = oauthClientId;
+    if (oauthClientSecret) payload.oauthClientSecret = oauthClientSecret;
+    return payload;
 }
 
 function connectorPhase(
@@ -388,7 +404,7 @@ export function ConnectorSettings({
                 ) : null}
 
                 <fieldset className="space-y-3 rounded-md border border-border p-3">
-                    <legend className="px-1 text-sm font-medium">App credentials</legend>
+                    <legend className="px-1 text-sm font-medium">GitHub App installation</legend>
                     <p className="text-xs text-muted-foreground">{credentialRotationHint(Boolean(connector?.credentialConfigured))}</p>
                     <div className="space-y-1.5">
                         <Label htmlFor="tracker-app-id">App ID</Label>
@@ -424,6 +440,53 @@ export function ConnectorSettings({
                             className="min-h-24 font-mono text-xs"
                             autoComplete="off"
                             spellCheck={false}
+                        />
+                    </div>
+                </fieldset>
+
+                <fieldset className="space-y-3 rounded-md border border-border p-3">
+                    <legend className="px-1 text-sm font-medium">Webhook and user OAuth</legend>
+                    <p className="text-xs text-muted-foreground">
+                        {connector?.webhookConfigured || connector?.oauthClientConfigured
+                            ? "Leave fields blank to keep stored values; fill them to rotate webhook or OAuth app credentials."
+                            : "Paste the GitHub webhook secret and OAuth app credentials used for signed deliveries and personal account linking."}
+                    </p>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="tracker-webhook-secret">Webhook secret</Label>
+                        <Input
+                            id="tracker-webhook-secret"
+                            type="password"
+                            value={credentials.webhookSecret}
+                            onChange={(event) =>
+                                setCredentials((prev) => ({ ...prev, webhookSecret: event.target.value }))
+                            }
+                            placeholder={connector?.webhookConfigured ? "Leave blank to keep stored value" : "whsec_…"}
+                            autoComplete="off"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="tracker-oauth-client-id">OAuth client ID</Label>
+                        <Input
+                            id="tracker-oauth-client-id"
+                            value={credentials.oauthClientId}
+                            onChange={(event) =>
+                                setCredentials((prev) => ({ ...prev, oauthClientId: event.target.value }))
+                            }
+                            placeholder={connector?.oauthClientConfigured ? "Leave blank to keep stored value" : "Ov23li…"}
+                            autoComplete="off"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="tracker-oauth-client-secret">OAuth client secret</Label>
+                        <Input
+                            id="tracker-oauth-client-secret"
+                            type="password"
+                            value={credentials.oauthClientSecret}
+                            onChange={(event) =>
+                                setCredentials((prev) => ({ ...prev, oauthClientSecret: event.target.value }))
+                            }
+                            placeholder={connector?.oauthClientConfigured ? "Leave blank to keep stored value" : "OAuth app client secret"}
+                            autoComplete="off"
                         />
                     </div>
                 </fieldset>

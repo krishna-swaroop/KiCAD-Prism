@@ -14,6 +14,13 @@ from typing import Any, Callable, Mapping, Optional
 from uuid import uuid4
 
 from app.core.config import settings as default_settings
+from app.services.trackers.credential_sidecars import (
+    clear_sidecars,
+    oauth_client_configured,
+    store_oauth_client,
+    store_webhook_secret,
+    webhook_configured,
+)
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.secrets import (
     SecretStoreLocked,
@@ -172,7 +179,7 @@ class ConnectorService:
         self._validate_identity(provider, instance_kind, base_url)
         cid = (connector_id or f"cn_{uuid4().hex[:12]}").strip()
         envelope = None
-        if credentials:
+        if credentials and self._has_app_fields(credentials):
             envelope = self._encrypt(cid, credentials)
         with self.connection() as conn:
             store = TrackerStore(conn)
@@ -191,6 +198,8 @@ class ConnectorService:
                 base_url=base_url,
                 credential_envelope=envelope,
             )
+            if credentials:
+                self._apply_credential_sidecars(conn, cid, credentials)
             store.audit(
                 action="connector.create",
                 actor_user_id=actor_user_id,
@@ -221,7 +230,9 @@ class ConnectorService:
             self._validate_identity(str(current["provider"]), kind, url)
             envelope = None
             if credentials:
-                envelope = self._encrypt(connector_id, credentials)
+                envelope = self._merge_app_envelope(connector_id, credentials, current)
+            if credentials:
+                self._apply_credential_sidecars(conn, connector_id, credentials)
             store.upsert_connector(
                 connector_id=connector_id,
                 provider=str(current["provider"]),
@@ -282,6 +293,7 @@ class ConnectorService:
                 """,
                 (connector_id,),
             )
+            clear_sidecars(conn, connector_id)
             TrackerStore(conn).audit(
                 action="connector.revoke",
                 actor_user_id=actor_user_id,
@@ -447,12 +459,19 @@ class ConnectorService:
         )
         return GitHubAppAuth(creds).test_connection()
 
-    def _encrypt(self, connector_id: str, credentials: Mapping[str, str]) -> str:
-        payload = {
+    def _app_payload(self, credentials: Mapping[str, str]) -> dict[str, str]:
+        return {
             "appId": str(credentials.get("appId") or credentials.get("app_id") or ""),
             "installationId": str(credentials.get("installationId") or credentials.get("installation_id") or ""),
             "privateKey": str(credentials.get("privateKey") or credentials.get("private_key") or ""),
         }
+
+    def _has_app_fields(self, credentials: Mapping[str, str]) -> bool:
+        payload = self._app_payload(credentials)
+        return any(payload.values())
+
+    def _encrypt(self, connector_id: str, credentials: Mapping[str, str]) -> str:
+        payload = self._app_payload(credentials)
         if not payload["appId"] or not payload["installationId"] or not payload["privateKey"]:
             raise ProviderError("invalid_request", "GitHub App id, installation id and private key are required.")
         if self._uses_env_bootstrap(payload):
@@ -461,6 +480,45 @@ class ConnectorService:
             return encrypt_secret(json.dumps(payload), _context(connector_id), settings=self.settings)
         except SecretStoreLocked:
             raise
+
+    def _merge_app_envelope(
+        self,
+        connector_id: str,
+        credentials: Mapping[str, str],
+        current: Mapping[str, Any],
+    ) -> str | None:
+        if not self._has_app_fields(credentials):
+            return None
+        payload = self._app_payload(credentials)
+        existing_blob = current.get("credential_envelope")
+        if existing_blob:
+            merged = json.loads(
+                decrypt_secret(existing_blob, _context(connector_id), settings=self.settings).decode()
+            )
+            for key in ("appId", "installationId", "privateKey"):
+                if payload[key]:
+                    merged[key] = payload[key]
+            payload = merged
+        if not payload["appId"] or not payload["installationId"] or not payload["privateKey"]:
+            raise ProviderError("invalid_request", "GitHub App id, installation id and private key are required.")
+        return self._encrypt(connector_id, payload)
+
+    def _apply_credential_sidecars(self, conn: Any, connector_id: str, credentials: Mapping[str, str]) -> None:
+        webhook_secret = str(credentials.get("webhookSecret") or credentials.get("webhook_secret") or "").strip()
+        if webhook_secret:
+            store_webhook_secret(conn, connector_id, webhook_secret, settings=self.settings)
+        oauth_client_id = str(credentials.get("oauthClientId") or credentials.get("oauth_client_id") or "").strip()
+        oauth_client_secret = str(
+            credentials.get("oauthClientSecret") or credentials.get("oauth_client_secret") or ""
+        ).strip()
+        if oauth_client_id or oauth_client_secret:
+            store_oauth_client(
+                conn,
+                connector_id,
+                client_id=oauth_client_id,
+                client_secret=oauth_client_secret,
+                settings=self.settings,
+            )
 
     def _uses_env_bootstrap(self, material: Mapping[str, str]) -> bool:
         token = str(getattr(self.settings, "GITHUB_TOKEN", "") or "")
@@ -537,6 +595,8 @@ class ConnectorService:
                 "login": row.get("bot_login"),
             },
             "credentialConfigured": bool(row.get("credentialConfigured")),
+            "webhookConfigured": webhook_configured(conn, str(row["id"])),
+            "oauthClientConfigured": oauth_client_configured(conn, str(row["id"])),
             "writesEnabled": writes_enabled,
             "auditCount": int((audit_count or {}).get("n") or 0),
         }

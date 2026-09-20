@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.core.security import AuthenticatedUser, get_current_user, require_admin
@@ -15,6 +15,8 @@ from app.services.trackers.identity_service import (
     IdentityNotFound,
     IdentityService,
     OAuthStateError,
+    build_oauth_return_url,
+    validate_relative_return_to,
 )
 from app.services.trackers.secrets import SecretStoreLocked
 
@@ -75,6 +77,7 @@ async def list_identities(user: AuthenticatedUser = Depends(get_current_user)) -
 async def begin_oauth(
     connector_id: str,
     request: Request,
+    returnTo: str = Query(default="/"),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> OAuthBeginResponse:
     if user.auth_type != "session":
@@ -87,6 +90,7 @@ async def begin_oauth(
             session_id=user.session_id,
             connector_id=connector_id,
             callback_url=callback_url,
+            return_to=validate_relative_return_to(returnTo),
         )
     except Exception as exc:
         raise _http_error(exc) from exc
@@ -112,8 +116,13 @@ async def oauth_callback(
             actor_user_id=_actor(user),
         )
     except Exception as exc:
+        if isinstance(exc, OAuthStateError) and str(exc) == "session_expired":
+            target = build_oauth_return_url("/", linked=False, error_code="session_expired")
+            return RedirectResponse(target, status_code=302)
         raise _http_error(exc) from exc
-    return JSONResponse({"linked": True, "identity": identity})
+    return_to = str(identity.pop("returnTo", "/"))
+    target = build_oauth_return_url(return_to, linked=True)
+    return RedirectResponse(target, status_code=302)
 
 
 @router.delete("/identities/{connector_id}", status_code=204)

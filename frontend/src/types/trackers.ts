@@ -92,6 +92,8 @@ export interface TrackerConnector {
     baseUrl: string;
     bot: TrackerBotIdentity;
     credentialConfigured: boolean;
+    webhookConfigured?: boolean;
+    oauthClientConfigured?: boolean;
     paused: boolean;
     pausedReason?: string | null;
     writesEnabled?: boolean;
