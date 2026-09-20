@@ -29,16 +29,23 @@ from app.services.comments_revisions import Editor, RevisionConflict  # noqa: F4
 from app.services.postgres_database import database
 from app.services.trackers.promotion import (
     PromotionActor,
-    after_reply_added,
     after_root_severity_change,
     attach_tracker_projection,
     attach_tracker_projections,
     manual_promote_root,
     maybe_auto_promote_root,
+)
+from app.services.trackers.reply_executor import mount_reply_executor
+from app.services.trackers.reply_mutations import (
+    after_reply_added,
+    after_reply_deleted,
+    after_reply_edited,
     share_reply,
 )
 from app.services.trackers.publication_policy import PublicationDenied
 from app.services.trackers.state_mutations import enqueue_set_state
+
+mount_reply_executor()
 
 # 1.1 adds authorUserId/authorKind, reply ids, revision/updatedAt and the anchor
 # block. Every addition is optional for readers; 1.0 files still import.
@@ -1075,6 +1082,7 @@ class CommentsStoreService:
         content: str,
         editor: Editor,
         expected_revision: Optional[int],
+        promotion_actor: Optional[PromotionActor] = None,
     ) -> Optional[Dict]:
         self.initialize()
         with self._connect() as conn:
@@ -1086,7 +1094,20 @@ class CommentsStoreService:
                     conn, project_id=project_id, reply_id=reply_id, content=content,
                     editor=editor, expected_revision=expected_revision,
                 )
-                return self._get_comment_with_replies(conn, project_id, comment_id)
+                updated = self._get_comment_with_replies(conn, project_id, comment_id)
+                if updated is not None and promotion_actor is not None:
+                    edited_reply = self._live_reply(conn, project_id, comment_id, reply_id)
+                    if edited_reply:
+                        after_reply_edited(
+                            conn,
+                            project_id=project_id,
+                            comment=updated,
+                            reply=_row_to_reply_dict(edited_reply),
+                            actor=promotion_actor,
+                            workspace_schema=self.workspace_schema,
+                        )
+                        updated = self._get_comment_with_replies(conn, project_id, comment_id)
+                return updated
 
     def delete_reply(
         self,
@@ -1096,18 +1117,31 @@ class CommentsStoreService:
         reply_id: str,
         editor: Editor,
         expected_revision: Optional[int] = None,
+        promotion_actor: Optional[PromotionActor] = None,
     ) -> Optional[Dict]:
         """Tombstone one reply; history and the row itself are kept."""
         self.initialize()
         with self._connect() as conn:
             with conn.transaction():
                 self._bootstrap_project_if_needed(conn, project_id, project_path)
-                if not self._live_reply(conn, project_id, comment_id, reply_id):
+                live_reply = self._live_reply(conn, project_id, comment_id, reply_id)
+                if not live_reply:
                     return None
+                reply_snapshot = _row_to_reply_dict(live_reply)
                 comments_revisions.tombstone_reply(
                     conn, project_id=project_id, reply_id=reply_id, editor=editor, expected_revision=expected_revision,
                 )
-                return self._get_comment_with_replies(conn, project_id, comment_id)
+                updated = self._get_comment_with_replies(conn, project_id, comment_id)
+                if updated is not None and promotion_actor is not None:
+                    after_reply_deleted(
+                        conn,
+                        project_id=project_id,
+                        comment=updated,
+                        reply=reply_snapshot,
+                        actor=promotion_actor,
+                        workspace_schema=self.workspace_schema,
+                    )
+                return updated
 
     def _live_reply(self, conn, project_id: str, comment_id: str, reply_id: str):
         return conn.execute(
