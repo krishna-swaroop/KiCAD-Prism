@@ -420,16 +420,19 @@ class GitHubIssueAdapterTests(unittest.TestCase):
         self.assertEqual(params["state"], "all")
         self.assertNotIn("filter", params)
 
-    def test_recovery_without_bot_identity_does_not_claim_marker(self) -> None:
+    def test_recovery_without_bot_identity_raises_capability_missing(self) -> None:
         adapter = self._adapter(bot_user_id="", bot_login="")
-        self._enqueue(
-            "GET",
-            f"{API}/repos/{REPO}/issues",
-            200,
-            [_issue_payload(number=412, issue_id=198400412, body=MARKER)],
+        with self.assertRaises(ProviderError) as caught:
+            adapter.find_by_marker(DEST, MARKER)
+        self.assertEqual(caught.exception.class_, "capability_missing")
+        self.assertIn("unknown", caught.exception.message.casefold())
+        self.assertFalse(
+            any(
+                call["method"] == "GET" and "/issues" in call["url"]
+                for call in self.calls
+                if "access_tokens" not in call["url"]
+            )
         )
-        self.assertIsNone(adapter.find_by_marker(DEST, MARKER))
-        self.assertFalse(any(call["method"] == "GET" and "/issues" in call["url"] for call in self.calls if "access_tokens" not in call["url"]))
 
 
 if __name__ == "__main__":

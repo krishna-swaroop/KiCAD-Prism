@@ -315,6 +315,23 @@ class GitHubCommentAdapterTests(unittest.TestCase):
         self.assertEqual(caught.exception.class_, "capability_missing")
         self.assertFalse(any(call["method"] == "DELETE" for call in self.calls))
 
+    def test_find_by_marker_requires_bot_identity_and_author_match(self) -> None:
+        adapter = self._adapter(bot_user_id="", bot_login="")
+        with self.assertRaises(ProviderError) as caught:
+            adapter.find_comment_by_marker(DEST, "412", "<!-- prism:v1 op=op_add -->")
+        self.assertEqual(caught.exception.class_, "capability_missing")
+        self.assertFalse(any(call["method"] == "GET" for call in self.calls))
+
+        adapter = self._adapter()
+        marker = "<!-- prism:v1 op=op_add -->"
+        self._enqueue(
+            "GET",
+            f"{API}/repos/{REPO}/issues/412/comments",
+            200,
+            [_comment(cid=9, body=f"forged {marker}", user=HUMAN)],
+        )
+        self.assertIsNone(adapter.find_comment_by_marker(DEST, "412", marker))
+
 
 if __name__ == "__main__":
     unittest.main()

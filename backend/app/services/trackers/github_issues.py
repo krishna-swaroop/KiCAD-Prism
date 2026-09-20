@@ -123,8 +123,10 @@ class GitHubIssueAdapter:
         if not needle:
             return None
         if not self.bot_user_id and not self.bot_login:
-            # D2: marker text alone is not ownership. Recovery needs bot identity.
-            return None
+            raise ProviderError(
+                "capability_missing",
+                "GitHub bot identity is unknown; cannot scan issues by marker.",
+            )
         cursor: Optional[str] = None
         params: dict[str, Any] = {"state": "all", "per_page": 100}
         if self.bot_login:
