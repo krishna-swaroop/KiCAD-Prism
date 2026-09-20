@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 from typing import Callable, List, Tuple
 
+from app.services.trackers.migrations import migrate_comments_tracked_links
+
 logger = logging.getLogger(__name__)
 
 LEDGER_TABLE = "comment_schema_migrations"
@@ -129,6 +131,7 @@ def _m002_backfill_create_revisions(conn) -> None:
 MIGRATIONS: List[Tuple[int, str, Callable[[object], None]]] = [
     (1, "identity_revisions_tombstones", _m001_identity_revisions_tombstones),
     (2, "backfill_create_revisions", _m002_backfill_create_revisions),
+    (3, "tracked_threads_and_replies", migrate_comments_tracked_links),
 ]
 
 
