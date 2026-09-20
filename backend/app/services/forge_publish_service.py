@@ -472,6 +472,7 @@ def _request(
             allow_redirects=False,
             sender=requests.request,
             verify=True,
+            max_body=0,
         )
     except requests.RequestException as exc:
         raise ForgePublishError(f"{forge} could not be reached: {exc}") from exc

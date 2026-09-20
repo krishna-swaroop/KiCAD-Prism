@@ -7,6 +7,7 @@ Bot writes use installation credentials only. A revoked installation is
 
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ AUTH_APP = "app"
 AUTH_INSTALLATION = "installation"
 ACCEPT = "application/vnd.github+json"
 API_VERSION = "2022-11-28"
+_NUMERIC_REPOSITORY_ID = re.compile(r"^[0-9]+$")
 
 Clock = Callable[[], datetime]
 
@@ -201,7 +203,8 @@ class GitHubAppAuth:
         if not permissions_ok:
             paused_reason = "permissions"
         if remote_container_id:
-            visibility = self._container_visibility(remote_container_id, token)
+            repo_id = _numeric_repository_id(remote_container_id)
+            visibility = self._container_visibility(repo_id, token)
             if visibility == "unknown" and paused_reason is None:
                 paused_reason = "visibility_unknown"
         writes_enabled = paused_reason is None and bool(bot["id"])
@@ -271,9 +274,10 @@ class GitHubAppAuth:
         )
 
     def _container_visibility(self, remote_container_id: str, token: InstallationToken) -> str:
+        repo_id = _numeric_repository_id(remote_container_id)
         response = self.http.request(
             "GET",
-            self.url(f"/repositories/{remote_container_id}"),
+            self.url(f"/repositories/{repo_id}"),
             headers=self._headers(token.token),
         )
         try:
@@ -309,6 +313,13 @@ class GitHubAppAuth:
             "Accept": ACCEPT,
             "X-GitHub-Api-Version": API_VERSION,
         }
+
+
+def _numeric_repository_id(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not _NUMERIC_REPOSITORY_ID.fullmatch(normalized):
+        raise ProviderError("invalid_request", "remote_container_id must be a numeric repository id.")
+    return normalized
 
 
 def _parse_github_time(value: Any, *, fallback: datetime) -> datetime:

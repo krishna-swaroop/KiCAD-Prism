@@ -125,9 +125,10 @@ def send(
         timeout=timeout,
         allow_redirects=allow_redirects,
         verify=verify,
+        stream=True,
     )
     headers_out = _headers_of(response)
-    content = _content_of(response)
+    content = _content_of(response, max_body=max_body)
     if max_body and len(content) > max_body:
         raise requests.RequestException("forge response exceeded the configured body limit")
     return ForgeHttpResponse(
@@ -292,11 +293,33 @@ def _headers_of(response: Any) -> dict[str, str]:
     return {str(key).casefold(): str(value) for key, value in items if value is not None}
 
 
-def _content_of(response: Any) -> bytes:
+def _content_of(response: Any, *, max_body: int = MAX_BODY_BYTES) -> bytes:
+    stream = getattr(response, "iter_content", None)
+    if callable(stream) and max_body:
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in stream(65536):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > max_body:
+                close = getattr(response, "close", None)
+                if callable(close):
+                    close()
+                raise requests.RequestException("forge response exceeded the configured body limit")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
     content = getattr(response, "content", None)
     if content is not None:
-        return bytes(content)
+        body = bytes(content)
+        if max_body and len(body) > max_body:
+            raise requests.RequestException("forge response exceeded the configured body limit")
+        return body
     text = getattr(response, "text", None)
     if text is None:
         return b""
-    return str(text).encode("utf-8", "replace")
+    body = str(text).encode("utf-8", "replace")
+    if max_body and len(body) > max_body:
+        raise requests.RequestException("forge response exceeded the configured body limit")
+    return body

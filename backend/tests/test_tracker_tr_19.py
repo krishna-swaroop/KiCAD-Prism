@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from pydantic import SecretStr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -335,6 +336,53 @@ class ConnectorAdminApiTests(unittest.TestCase):
         self.assertEqual(health["failedOps"], 1)
         self.assertTrue(health["degraded"])
         self.assertIsNotNone(health["oldestPendingOpAge"])
+
+    def test_create_rejects_existing_connector_id(self) -> None:
+        self._create()
+        with self.assertRaises(HTTPException) as caught:
+            run(
+                connectors_api.create_connector(
+                    connectors_api.CreateConnectorRequest(
+                        id="cn_gh1",
+                        provider="github",
+                        instanceKind="github.com",
+                        displayName="Duplicate",
+                    ),
+                    self.admin,
+                )
+            )
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertIn("already exists", caught.exception.detail["message"])
+
+    def test_validation_errors_do_not_echo_private_key(self) -> None:
+        from types import SimpleNamespace
+
+        exc = RequestValidationError(
+            [
+                {
+                    "type": "string_type",
+                    "loc": ("body", "credentials", "appId"),
+                    "msg": "Input should be a valid string",
+                    "input": 772215,
+                },
+                {
+                    "type": "string_type",
+                    "loc": ("body", "credentials", "privateKey"),
+                    "msg": "Input should be a valid string",
+                    "input": INSTALLATION_MATERIAL,
+                },
+            ]
+        )
+        response = run(
+            connectors_api._validation_exception_handler(
+                SimpleNamespace(url=SimpleNamespace(path="/api/admin/trackers/connectors")),
+                exc,
+            )
+        )
+        self.assertEqual(response.status_code, 422)
+        body_text = response.body.decode()
+        self.assertNotIn(INSTALLATION_MATERIAL, body_text)
+        self.assertNotIn('"input"', body_text)
 
 
 if __name__ == "__main__":

@@ -200,6 +200,52 @@ class ReleaseCompatibilityTests(unittest.TestCase):
                     forge="GitHub",
                 )
 
+    def test_tracker_send_streams_and_stops_at_two_mib(self) -> None:
+        cap = 2 * 1024 * 1024
+        chunk = b"x" * 65536
+
+        class _StreamRaw:
+            def __init__(self) -> None:
+                self.sent = 0
+
+            def read(self, size: int = -1) -> bytes:
+                if self.sent >= cap + 1:
+                    return b""
+                self.sent += len(chunk)
+                return chunk
+
+        class _StreamingResponse:
+            status_code = 200
+            headers = {}
+            reason = "OK"
+            url = API
+
+            def __init__(self) -> None:
+                self.raw = _StreamRaw()
+
+            def iter_content(self, chunk_size: int = 65536):  # noqa: ARG002
+                while True:
+                    data = self.raw.read(chunk_size)
+                    if not data:
+                        break
+                    yield data
+
+            def close(self) -> None:
+                return None
+
+        with self.assertRaises(requests.RequestException):
+            send("GET", API, sender=lambda *args, **kwargs: _StreamingResponse())
+
+    def test_release_request_is_not_capped_at_two_mib(self) -> None:
+        payload = b"y" * (2 * 1024 * 1024 + 1)
+        response = send(
+            "GET",
+            API,
+            sender=lambda *args, **kwargs: _Raw(200, content=payload),
+            max_body=0,
+        )
+        self.assertEqual(len(response.content), len(payload))
+
 
 if __name__ == "__main__":
     unittest.main()

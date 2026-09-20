@@ -331,6 +331,36 @@ class GitHubAppAuthTests(unittest.TestCase):
         self.assertNotEqual(app_auth, repo_auth)
         self.assertNotIn(USER_TOKEN, repo_auth)
 
+    def test_non_numeric_remote_container_id_is_rejected(self) -> None:
+        root = GITHUB_COM_API
+        self._enqueue("GET", f"{root}/app", 200, {"id": 772215, "slug": "prism-tracker"})
+        self._enqueue(
+            "GET",
+            f"{root}/app/installations/88001122",
+            200,
+            {"id": 88001122, "permissions": {"issues": "write"}},
+        )
+        self._enqueue(
+            "GET",
+            f"{root}/users/prism-tracker[bot]",
+            200,
+            {"id": 424242, "login": "prism-tracker[bot]"},
+        )
+        self._enqueue(
+            "POST",
+            f"{root}/app/installations/88001122/access_tokens",
+            201,
+            {
+                "token": INSTALLATION_TOKEN_A,
+                "expires_at": "2026-09-20T16:00:00Z",
+                "permissions": {"issues": "write"},
+            },
+        )
+        with self.assertRaises(ProviderError) as caught:
+            self._auth().test_connection(remote_container_id="../app")
+        self.assertEqual(caught.exception.class_, "invalid_request")
+        self.assertFalse(any("/repositories/" in call["url"] for call in self.calls))
+
     def test_insufficient_permissions_pause_writes(self) -> None:
         root = GITHUB_COM_API
         self._enqueue("GET", f"{root}/app", 200, {"id": 772215, "slug": "prism-tracker"})
