@@ -22,14 +22,15 @@ from app.services.trackers.composition import (  # noqa: E402
     get_tracker_runtime,
     has_outbound_executor,
     initialize_tracker_composition,
-    mount_outbound_executor,
     reset_tracker_runtime,
 )
+from app.services.trackers.create_executor import unmount_create_executor  # noqa: E402
 from app.services.trackers.contracts import RemoteChange, UpdateCursor  # noqa: E402
 from app.services.trackers.inbox_store import InboxStore, apply_schema as apply_inbox_schema  # noqa: E402
 from app.services.trackers.jobs import run_tracker_dispatch_job, run_tracker_poll_job, run_tracker_sweep_job  # noqa: E402
 from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
 from app.services.trackers.op_store import OpStore, apply_schema as apply_op_schema  # noqa: E402
+from app.services.trackers import scheduler as tracker_scheduler  # noqa: E402
 from app.services.trackers.scheduler import (  # noqa: E402
     DISPATCH_KIND,
     POLL_KIND,
@@ -38,6 +39,7 @@ from app.services.trackers.scheduler import (  # noqa: E402
     mount_hints_applier,
     reset_scheduler_throttle,
 )
+from app.services.trackers.errors import ProviderError  # noqa: E402
 from app.services.trackers.store import TrackerStore  # noqa: E402
 from test_tracker_tr_28 import (  # noqa: E402
     BOT_ID,
@@ -107,6 +109,8 @@ class CompositionUnitTests(unittest.TestCase):
     def test_initialize_mounts_runtime_and_handlers(self) -> None:
         initialize_tracker_composition()
         self.assertTrue(hints_applier_mounted())
+        self.assertTrue(tracker_scheduler.hint_dispatch_enabled())
+        self.assertTrue(has_outbound_executor())
         self.assertIsNotNone(get_tracker_runtime())
         load_builtin_job_handlers()
         kinds = registered_job_kinds()
@@ -114,9 +118,10 @@ class CompositionUnitTests(unittest.TestCase):
         self.assertIn(POLL_KIND, kinds)
         self.assertIn(SWEEP_KIND, kinds)
 
-    def test_outbound_executor_optional_until_tr_26(self) -> None:
+    def test_reset_unmounts_create_executor(self) -> None:
+        initialize_tracker_composition()
+        self.assertTrue(has_outbound_executor())
         reset_tracker_runtime()
-        mount_outbound_executor(None)
         self.assertFalse(has_outbound_executor())
 
     def test_main_registers_composition_bootstrap(self) -> None:
@@ -280,11 +285,37 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
         result = run_tracker_sweep_job(context)
         self.assertIn("sweep", result.message.casefold())
 
-    def test_dispatch_defers_when_hints_unapplied_without_provider(self) -> None:
+    def test_dispatch_without_credentials_surfaces_provider_error(self) -> None:
         self._seed_destination(with_credentials=False)
         self.inbox.enqueue(
             connector_id=CONNECTOR,
             delivery_id="del_tr62",
+            hints=[
+                {
+                    "objectKind": "issue",
+                    "remoteContainerId": CONTAINER,
+                    "externalId": ISSUE,
+                    "event": "edited",
+                }
+            ],
+        )
+        self.conn.commit()
+        context = FakeContext(
+            {
+                "connectorId": CONNECTOR,
+                "remoteContainerId": CONTAINER,
+                "_connect": self._factory(self.conn),
+            }
+        )
+        with self.assertRaises(ProviderError):
+            run_tracker_dispatch_job(context)
+
+    def test_dispatch_defers_hints_when_create_executor_unmounted(self) -> None:
+        unmount_create_executor()
+        self._seed_destination(with_credentials=False)
+        self.inbox.enqueue(
+            connector_id=CONNECTOR,
+            delivery_id="del_tr62_unmounted",
             hints=[
                 {
                     "objectKind": "issue",

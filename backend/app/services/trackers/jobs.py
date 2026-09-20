@@ -157,6 +157,10 @@ def _retain_or_idle(conn: Any) -> JobResult:
     )
 
 
+# TR-26 mount_create_executor snapshots this name before TR-62 renamed the helper.
+_retain_inbound_hints = _retain_or_idle
+
+
 def _prepare_claimed_op(
     ops: OpStore,
     claimed: dict[str, Any],

@@ -7,7 +7,7 @@ dispatch into one initialization path shared by the API and prism-worker.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Mapping, Optional
 
 from app.services.job_runtime import JobResult
 from app.services.trackers.github_recovery import (
@@ -18,52 +18,26 @@ from app.services.trackers.github_recovery import (
     recovery_since,
 )
 from app.services.trackers.inbound import apply_destination_hints
-from app.services.trackers.jobs import DispatchExecutor
-from app.services.trackers.op_store import EXECUTE_DISPATCH, RECOVERY_DISPATCH
+from app.services.trackers.op_store import EXECUTE_DISPATCH
 from app.services.trackers.poller import poll_destination_updates
 from app.services.trackers.provider_registry import (
     DestinationContext,
     ProviderRegistry,
     resolve_destination_context,
 )
+from app.services.trackers.create_executor import mount_create_executor, unmount_create_executor
 from app.services.trackers.scheduler import mount_hints_applier
 from app.services.trackers.sweeper import sweep_destination_links
-from app.services.trackers.store import TrackerStore
 
 logger = logging.getLogger(__name__)
 
 _runtime: "TrackerRuntime | None" = None
-_outbound_executor: DispatchExecutor | None = None
 
 
 def has_outbound_executor() -> bool:
-    return _outbound_executor is not None or _try_load_tr26_executor() is not None
+    from app.services.trackers import create_executor
 
-
-def mount_outbound_executor(executor: DispatchExecutor | None) -> None:
-    """TR-26 registers create/reply executors; enables hint-only dispatch when set."""
-
-    global _outbound_executor
-    _outbound_executor = executor
-    if executor is not None:
-        _patch_hint_dispatch(True)
-
-
-def _patch_hint_dispatch(enabled: bool) -> None:
-    from app.services.trackers import scheduler
-
-    def hint_dispatch_enabled() -> bool:
-        return enabled and scheduler.hints_applier_mounted()
-
-    scheduler.hint_dispatch_enabled = hint_dispatch_enabled  # type: ignore[method-assign]
-
-
-def _try_load_tr26_executor() -> DispatchExecutor | None:
-    try:
-        from app.services.trackers.create_executor import execute_sync_op
-    except ImportError:
-        return None
-    return execute_sync_op
+    return bool(getattr(create_executor, "_mounted", False))
 
 
 class TrackerRuntime:
@@ -193,12 +167,13 @@ class TrackerRuntime:
         )
 
     def dispatch_executor(self, conn: Any, claimed: Mapping[str, Any]) -> str | None:
-        executor = _outbound_executor or _try_load_tr26_executor()
         dispatch = str(claimed.get("dispatch") or EXECUTE_DISPATCH)
         if dispatch == EXECUTE_DISPATCH:
-            if executor is None:
+            if not has_outbound_executor():
                 return None
-            return executor(claimed)
+            from app.services.trackers.create_executor import execute_claimed_op
+
+            return execute_claimed_op(claimed)
         return self._recover_op(conn, claimed)
 
     def _recover_op(self, conn: Any, claimed: Mapping[str, Any]) -> str | None:
@@ -268,23 +243,18 @@ def get_tracker_runtime() -> TrackerRuntime:
 def reset_tracker_runtime() -> None:
     """Test helper: drop the singleton runtime."""
 
-    global _runtime, _outbound_executor
+    global _runtime
+    unmount_create_executor()
     _runtime = None
-    _outbound_executor = None
-    _patch_hint_dispatch(False)
 
 
 def initialize_tracker_composition() -> None:
-    """Mount inbound applier and optional TR-26 outbound executor at app startup."""
+    """Mount poll/sweep runtime and TR-26 outbound create executor at app startup."""
 
     mount_hints_applier(True)
-    executor = _try_load_tr26_executor()
-    if executor is not None:
-        mount_outbound_executor(executor)
-        logger.info("Tracker outbound executor mounted from create_executor (TR-26).")
-    else:
-        logger.info("Tracker inbound composition mounted; outbound executor awaits TR-26.")
     get_tracker_runtime()
+    mount_create_executor()
+    logger.info("Tracker composition mounted (poll/sweep runtime + create executor).")
 
 
 __all__ = [
@@ -292,6 +262,5 @@ __all__ = [
     "get_tracker_runtime",
     "has_outbound_executor",
     "initialize_tracker_composition",
-    "mount_outbound_executor",
     "reset_tracker_runtime",
 ]
