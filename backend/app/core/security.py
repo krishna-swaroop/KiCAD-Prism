@@ -151,6 +151,22 @@ async def require_designer(user: AuthenticatedUser = Depends(get_current_user)) 
     return user
 
 
+async def require_comment_writer(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    """Any project participant may write comments; provider tokens may not.
+
+    Viewers and QA collaborate on threads (tracker contract D4), so this is
+    deliberately below ``require_designer``. It still refuses the KiCad
+    remote-provider token, which is read-only for every Prism resource, and
+    requires ``api:write`` from bearer callers. Ownership, status authority
+    and publication are decided per object by ``comment_permissions``, not
+    here; the route must still look the project up by role.
+    """
+    if user.auth_type == "kicad_provider":
+        raise HTTPException(status_code=403, detail="KiCad remote-provider tokens cannot modify Prism resources")
+    _require_bearer_scope(user, "api:write")
+    return user
+
+
 async def require_admin(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
     if user.auth_type == "kicad_provider":
         raise HTTPException(status_code=403, detail="KiCad remote-provider tokens cannot access admin APIs")
