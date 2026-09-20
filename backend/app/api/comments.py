@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.api._helpers import get_project_for_role_or_404
 from app.core.security import AuthenticatedUser, require_comment_writer, require_designer, require_viewer
@@ -87,6 +87,16 @@ class UpdateCommentRequest(BaseModel):
     mentions: Optional[List[str]] = None
     status: Optional[str] = None  # "OPEN" or "RESOLVED"
     expectedRevision: Optional[int] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_immutable_anchor_fields(cls, data):
+        """F2.anchor_immutable_on_patch: location/revision cannot be rewritten."""
+        if isinstance(data, dict):
+            blocked = [name for name in ("location", "revision") if name in data]
+            if blocked:
+                raise ValueError("anchor fields are immutable")
+        return data
 
 
 class DeleteCommentRequest(BaseModel):

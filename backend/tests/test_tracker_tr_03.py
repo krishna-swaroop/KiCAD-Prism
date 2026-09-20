@@ -68,6 +68,16 @@ class RequestModelTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         lookup.assert_not_called()
 
+    def test_patch_rejects_location_and_revision_fields(self) -> None:  # F2.anchor_immutable_on_patch
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError) as loc:
+            comments_api.UpdateCommentRequest(content="x", location={"x": 1, "y": 2})
+        self.assertTrue(any("immutable" in str(err).lower() or "location" in str(err) for err in loc.exception.errors()))
+        with self.assertRaises(ValidationError) as rev:
+            comments_api.UpdateCommentRequest(revision={"commit": "a" * 40})
+        self.assertTrue(any("immutable" in str(err).lower() or "revision" in str(err) for err in rev.exception.errors()))
+
     def test_permission_and_conflict_bodies_are_machine_readable(self) -> None:
         from app.services.comment_permissions import CommentPermissionError
         from app.services.comments_revisions import RevisionConflict
