@@ -124,6 +124,7 @@ function createComparisonPayload(payload: CreateComparisonCommentRequest): Creat
         commentClass: payload.commentClass,
         severity: payload.severity,
         mentions: payload.mentions,
+        selectedSide: payload.selectedSide,
     };
 }
 

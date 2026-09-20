@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { fetchApi } from "@/lib/api";
-import type { Comment, CommentsFile } from "@/types/comments";
+import { listComparisonComments } from "@/lib/comments-client";
+import type { Comment, CommentContext } from "@/types/comments";
 
 /**
  * Review threads anchored to this revision pair.
@@ -12,6 +12,7 @@ export function useComparisonComments(
     projectId: string,
     base: string,
     compare: string,
+    domain?: CommentContext,
 ): [Comment[], (comments: Comment[]) => void] {
     const [comments, setComments] = useState<Comment[]>([]);
 
@@ -20,17 +21,14 @@ export function useComparisonComments(
         let cancelled = false;
         void (async () => {
             try {
-                const params = new URLSearchParams({ base, compare });
-                const response = await fetchApi(
-                    `/api/projects/${projectId}/comparison-comments?${params}`,
-                    { signal: controller.signal },
+                const listed = await listComparisonComments(
+                    projectId,
+                    base,
+                    compare,
+                    domain,
+                    controller.signal,
                 );
-                if (cancelled) return;
-                if (!response.ok) return;
-                const payload = (await response.json()) as CommentsFile;
-                if (!cancelled) {
-                    setComments(payload.comments ?? []);
-                }
+                if (!cancelled) setComments(listed);
             } catch (caught) {
                 // The cleanup aborts this fetch on every re-run; that rejection
                 // is expected, not an error. Without this catch it surfaced as
@@ -38,14 +36,17 @@ export function useComparisonComments(
                 if (caught instanceof DOMException && caught.name === "AbortError") {
                     return;
                 }
-                throw caught;
+                if (caught instanceof Error && caught.name === "AbortError") {
+                    return;
+                }
+                if (!cancelled) setComments([]);
             }
         })();
         return () => {
             cancelled = true;
             controller.abort();
         };
-    }, [projectId, base, compare]);
+    }, [projectId, base, compare, domain]);
 
     return [comments, setComments];
 }

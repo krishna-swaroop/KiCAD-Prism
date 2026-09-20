@@ -190,6 +190,7 @@ export interface CreateComparisonCommentRequest {
     commentClass?: CommentClass;
     severity?: CommentSeverity;
     mentions?: string[];
+    selectedSide?: "base" | "compare" | null;
 }
 
 export interface CreateReplyRequest {

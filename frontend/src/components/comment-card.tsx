@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import {
     CheckCircle,
     Circle,
     MessageSquareReply,
+    Pencil,
     Trash2,
     X,
 } from "lucide-react";
@@ -11,16 +12,26 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { CommentSeverityBadge } from "@/components/comment-severity-badge";
 import { cn } from "@/lib/utils";
-import { commentClassLabel, type Comment } from "@/types/comments";
+import { commentClassLabel, type Comment, type CommentReply } from "@/types/comments";
+import {
+    CommentEditor,
+    actionAllowed,
+    describeMutationError,
+} from "@/components/tracker-integration/comment-editor";
 
 interface CommentCardProps {
     comment: Comment;
     screenPosition: { x: number; y: number } | null;
-    canModify: boolean;
+    /** Fallback when a legacy listing has no `permissions` block. */
+    canModify?: boolean;
     onClose: () => void;
-    onResolve: (commentId: string, resolved: boolean) => void;
+    onResolve: (commentId: string, resolved: boolean) => void | Promise<void>;
     onReply: (commentId: string, content: string) => Promise<void>;
     onDelete: (commentId: string) => Promise<void>;
+    onEdit?: (commentId: string, content: string, expectedRevision: number) => Promise<void>;
+    onEditReply?: (commentId: string, reply: CommentReply, content: string) => Promise<void>;
+    onDeleteReply?: (commentId: string, reply: CommentReply) => Promise<void>;
+    onReload?: () => void | Promise<void>;
 }
 
 /**
@@ -29,25 +40,30 @@ interface CommentCardProps {
 export function CommentCard({
     comment,
     screenPosition,
-    canModify,
+    canModify = false,
     onClose,
     onResolve,
     onReply,
     onDelete,
+    onEdit,
+    onEditReply,
+    onDeleteReply,
+    onReload,
 }: CommentCardProps) {
     const [replyOpen, setReplyOpen] = useState(false);
-    const [replyContent, setReplyContent] = useState("");
+    const [editing, setEditing] = useState(false);
+    const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
-    const replyRef = useRef<HTMLTextAreaElement>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [conflict, setConflict] = useState(false);
     const isResolved = comment.status === "RESOLVED";
-
-    // Opening the reply box is a deliberate request to type in it, so focus
-    // follows the reveal. The card is a non-modal dialog and never takes focus
-    // on its own.
-    useEffect(() => {
-        if (replyOpen) replyRef.current?.focus();
-    }, [replyOpen]);
+    const canReply = actionAllowed(comment.permissions, "canReply", canModify);
+    const canEdit = actionAllowed(comment.permissions, "canEdit", canModify);
+    const canDelete = actionAllowed(comment.permissions, "canDelete", canModify);
+    const canResolve = actionAllowed(comment.permissions, "canResolve", canModify);
+    const liveReplies = comment.replies.filter((reply) => !reply.deletedAt);
+    const showActions = canReply || canEdit || canDelete || canResolve;
 
     const style: CSSProperties = screenPosition
         ? {
@@ -60,13 +76,19 @@ export function CommentCard({
               transform: "translateX(-50%)",
           };
 
-    const submitReply = async () => {
-        if (!replyContent.trim() || busy) return;
+    const run = async (work: () => Promise<void>, fallback: string) => {
         setBusy(true);
+        setError(null);
+        setConflict(false);
         try {
-            await onReply(comment.id, replyContent.trim());
-            setReplyContent("");
-            setReplyOpen(false);
+            await work();
+            return true;
+        } catch (caught) {
+            const described = describeMutationError(caught, fallback);
+            setError(described.message);
+            setConflict(described.conflict);
+            if (described.conflict) await onReload?.();
+            return false;
         } finally {
             setBusy(false);
         }
@@ -108,7 +130,28 @@ export function CommentCard({
                 <CommentSeverityBadge severity={comment.severity ?? "info"} />
             </div>
 
-            <p className="whitespace-pre-wrap px-3 py-2 text-sm">{comment.content}</p>
+            {editing && onEdit ? (
+                <div className="px-3 py-2">
+                    <CommentEditor
+                        id={`comment-card-edit-${comment.id}`}
+                        label="Edit comment"
+                        initialValue={comment.content}
+                        submitLabel="Save"
+                        busy={busy}
+                        error={error}
+                        conflict={conflict}
+                        onReload={onReload ? () => void onReload() : undefined}
+                        onCancel={() => { setEditing(false); setError(null); setConflict(false); }}
+                        onSubmit={async (content) => {
+                            if (await run(() => onEdit(comment.id, content, comment.revision), "Failed to update comment")) {
+                                setEditing(false);
+                            }
+                        }}
+                    />
+                </div>
+            ) : (
+                <p className="whitespace-pre-wrap px-3 py-2 text-sm">{comment.content}</p>
+            )}
 
             {comment.mentions && comment.mentions.length > 0 && (
                 <div className="flex flex-wrap gap-1 px-3 pb-2">
@@ -120,90 +163,135 @@ export function CommentCard({
                 </div>
             )}
 
-            {comment.replies.length > 0 && (
+            {liveReplies.length > 0 && (
                 <div className="space-y-2 border-t bg-muted/30 px-3 py-2">
-                    {comment.replies.slice(-3).map((reply) => (
-                        <div key={`${reply.timestamp}-${reply.author}-${reply.content}`} className="text-xs">
-                            <span className="font-medium">{reply.author}</span>
-                            <span className="text-muted-foreground"> · {reply.content}</span>
-                        </div>
-                    ))}
+                    {liveReplies.slice(-3).map((reply) => {
+                        const replyCanEdit = actionAllowed(reply.permissions, "canEdit", false);
+                        const replyCanDelete = actionAllowed(reply.permissions, "canDelete", false);
+                        return (
+                            <div key={reply.id} className="text-xs">
+                                {editingReplyId === reply.id && onEditReply ? (
+                                    <CommentEditor
+                                        id={`comment-card-edit-reply-${reply.id}`}
+                                        label="Edit reply"
+                                        initialValue={reply.content}
+                                        submitLabel="Save"
+                                        busy={busy}
+                                        error={error}
+                                        conflict={conflict}
+                                        onReload={onReload ? () => void onReload() : undefined}
+                                        onCancel={() => { setEditingReplyId(null); setError(null); setConflict(false); }}
+                                        onSubmit={async (content) => {
+                                            if (await run(() => onEditReply(comment.id, reply, content), "Failed to update reply")) {
+                                                setEditingReplyId(null);
+                                            }
+                                        }}
+                                    />
+                                ) : (
+                                    <>
+                                        <span className="font-medium">{reply.author}</span>
+                                        <span className="text-muted-foreground"> · {reply.content}</span>
+                                        {(replyCanEdit || replyCanDelete) && (
+                                            <span className="ml-1 inline-flex gap-1">
+                                                {replyCanEdit && onEditReply && (
+                                                    <button
+                                                        type="button"
+                                                        className="underline"
+                                                        onClick={() => setEditingReplyId(reply.id)}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                )}
+                                                {replyCanDelete && onDeleteReply && (
+                                                    <button
+                                                        type="button"
+                                                        className="underline text-destructive"
+                                                        onClick={() => void onDeleteReply(comment.id, reply)}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                )}
+                                            </span>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
-            {replyOpen && canModify && (
+            {replyOpen && canReply && (
                 <div className="border-t px-3 py-2">
-                    <label htmlFor={`comment-card-reply-${comment.id}`} className="mb-1 block text-xs font-medium">
-                        Reply
-                    </label>
-                    <textarea
-                        ref={replyRef}
+                    <CommentEditor
                         id={`comment-card-reply-${comment.id}`}
-                        value={replyContent}
-                        onChange={(e) => setReplyContent(e.target.value)}
+                        label="Reply"
+                        submitLabel="Reply"
                         placeholder="Write a reply…"
-                        className="h-16 w-full resize-none rounded-md border bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                                e.preventDefault();
-                                void submitReply();
+                        busy={busy}
+                        error={error}
+                        conflict={conflict}
+                        onReload={onReload ? () => void onReload() : undefined}
+                        onCancel={() => { setReplyOpen(false); setError(null); setConflict(false); }}
+                        onSubmit={async (content) => {
+                            if (await run(() => onReply(comment.id, content), "Failed to add reply")) {
+                                setReplyOpen(false);
                             }
                         }}
                     />
-                    <div className="mt-2 flex justify-end gap-2">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setReplyOpen(false)}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            type="button"
-                            size="sm"
-                            disabled={busy || !replyContent.trim()}
-                            onClick={() => void submitReply()}
-                        >
-                            Reply
-                        </Button>
-                    </div>
                 </div>
             )}
 
-            {canModify && (
+            {showActions && (
                 <div className="flex items-center justify-end gap-1 border-t px-2 py-1.5">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label="Reply"
-                        onClick={() => setReplyOpen((open) => !open)}
-                    >
-                        <MessageSquareReply className="h-4 w-4" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className={cn("h-8 w-8", isResolved && "text-success")}
-                        aria-label={isResolved ? "Reopen comment" : "Resolve comment"}
-                        onClick={() => onResolve(comment.id, !isResolved)}
-                    >
-                        {isResolved ? (
-                            <CheckCircle className="h-4 w-4" />
-                        ) : (
-                            <Circle className="h-4 w-4" />
-                        )}
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        aria-label="Delete comment"
-                        onClick={() => setConfirmDelete(true)}
-                    >
-                        <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canReply && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Reply"
+                            onClick={() => setReplyOpen((open) => !open)}
+                        >
+                            <MessageSquareReply className="h-4 w-4" />
+                        </Button>
+                    )}
+                    {canEdit && onEdit && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Edit comment"
+                            onClick={() => setEditing((open) => !open)}
+                        >
+                            <Pencil className="h-4 w-4" />
+                        </Button>
+                    )}
+                    {canResolve && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("h-8 w-8", isResolved && "text-success")}
+                            aria-label={isResolved ? "Reopen comment" : "Resolve comment"}
+                            onClick={() => onResolve(comment.id, !isResolved)}
+                        >
+                            {isResolved ? (
+                                <CheckCircle className="h-4 w-4" />
+                            ) : (
+                                <Circle className="h-4 w-4" />
+                            )}
+                        </Button>
+                    )}
+                    {canDelete && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            aria-label="Delete comment"
+                            onClick={() => setConfirmDelete(true)}
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    )}
                 </div>
             )}
 
