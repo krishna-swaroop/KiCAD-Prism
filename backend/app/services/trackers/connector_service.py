@@ -71,6 +71,28 @@ class ConnectorService:
                 raise ConnectorNotFound(connector_id) from exc
             return self._public(row, conn)
 
+    def health(self, connector_id: str) -> dict[str, Any]:
+        """Secret-free ConnectorHealth. Metric fill is a later ticket; paused is live."""
+
+        with self.connection() as conn:
+            row = self._require(conn, connector_id)
+            return {
+                "connectorId": connector_id,
+                "paused": bool(row.get("paused")),
+                "lastWebhookAt": None,
+                "lastPollAt": None,
+                "lastSweepAt": None,
+                "pendingOps": 0,
+                "sentOps": 0,
+                "quarantinedOps": 0,
+                "failedOps": 0,
+                "oldestPendingOpAge": None,
+                "oldestUnappliedHintAge": None,
+                "rateLimitResumeAt": None,
+                "degraded": False,
+                "lastError": None,
+            }
+
     def create(
         self,
         *,

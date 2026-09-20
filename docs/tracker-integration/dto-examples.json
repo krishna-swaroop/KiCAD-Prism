@@ -1,6 +1,6 @@
 {
-  "$schema_note": "Canonical examples frozen by TR-00 (contracts v1.0). Keys are exact wire names. Additive fields are allowed; renames are contract revisions.",
-  "version": "1.0",
+  "$schema_note": "Canonical examples frozen by TR-00 (contracts v1.1). Keys are exact wire names. Additive fields are allowed; renames are contract revisions.",
+  "version": "1.1",
   "comments": {
     "CreateCommentRequest": {
       "context": "PCB",
@@ -308,6 +308,38 @@
       "linkedAt": "2026-09-19T11:20:00Z",
       "expiresAt": "2026-09-20T19:20:00Z",
       "status": "active"
-    }
+    },
+    "TrackerConnector": {
+      "id": "cn_gh1",
+      "provider": "github",
+      "displayName": "GitHub.com",
+      "instanceKind": "github.com",
+      "baseUrl": "",
+      "paused": false,
+      "pausedReason": null,
+      "bot": { "id": "199001", "login": "prism[bot]" },
+      "credentialConfigured": true,
+      "writesEnabled": true,
+      "auditCount": 1
+    },
+    "ConnectorTestResult": {
+      "ok": true,
+      "writesEnabled": true,
+      "pausedReason": null,
+      "visibility": "private",
+      "permissions": { "issues": "write" },
+      "bot": { "id": "199001", "login": "prism[bot]" }
+    },
+    "AdminConnectorRoutes": [
+      { "method": "GET", "path": "/api/admin/trackers/connectors/", "auth": "admin" },
+      { "method": "POST", "path": "/api/admin/trackers/connectors/", "auth": "admin" },
+      { "method": "GET", "path": "/api/admin/trackers/connectors/{connectorId}", "auth": "admin" },
+      { "method": "PATCH", "path": "/api/admin/trackers/connectors/{connectorId}", "auth": "admin" },
+      { "method": "POST", "path": "/api/admin/trackers/connectors/{connectorId}/pause", "auth": "admin" },
+      { "method": "POST", "path": "/api/admin/trackers/connectors/{connectorId}/resume", "auth": "admin" },
+      { "method": "POST", "path": "/api/admin/trackers/connectors/{connectorId}/revoke", "auth": "admin" },
+      { "method": "POST", "path": "/api/admin/trackers/connectors/{connectorId}/test", "auth": "admin" },
+      { "method": "GET", "path": "/api/admin/trackers/connectors/{connectorId}/health", "auth": "admin" }
+    ]
   }
 }

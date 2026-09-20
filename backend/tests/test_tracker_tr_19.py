@@ -102,6 +102,7 @@ class RoutingContractTests(unittest.TestCase):
         self.assertIn("/api/admin/trackers/connectors/", paths)
         self.assertIn("/api/admin/trackers/connectors/{connector_id}/test", paths)
         self.assertIn("/api/admin/trackers/connectors/{connector_id}/revoke", paths)
+        self.assertIn("/api/admin/trackers/connectors/{connector_id}/health", paths)
 
     def test_viewer_and_designer_fail_require_admin(self) -> None:
         from app.core.security import require_admin
@@ -219,8 +220,11 @@ class ConnectorAdminApiTests(unittest.TestCase):
         self.assertNotIn("privateKey", dumped)
         self.assertTrue(created["credentialConfigured"])
         self.assertFalse(created["writesEnabled"])
+        self.assertEqual(created["bot"]["id"], None)
         listed = run(connectors_api.list_connectors(self.admin))
         self.assertEqual(listed[0]["id"], "cn_gh1")
+        self.assertIn("bot", listed[0])
+        self.assertNotIn("botForgeUserId", created)
         envelope = self.conn.execute(
             "SELECT credential_envelope FROM tracker_connectors WHERE id = 'cn_gh1'"
         ).fetchone()["credential_envelope"]
@@ -268,6 +272,16 @@ class ConnectorAdminApiTests(unittest.TestCase):
         ).fetchall()
         self.assertTrue(any(item["action"] == "connector.revoke" for item in audit))
         self.assertTrue(all(INSTALLATION_MATERIAL not in json.dumps(dict(item), default=str) for item in audit))
+
+    def test_health_route_matches_frozen_connector_health(self) -> None:
+        self._create()
+        health = run(connectors_api.connector_health("cn_gh1", self.admin))
+        self.assertEqual(health["connectorId"], "cn_gh1")
+        self.assertFalse(health["paused"])
+        self.assertEqual(health["pendingOps"], 0)
+        dumped = json.dumps(health)
+        self.assertNotIn(INSTALLATION_MATERIAL, dumped)
+        self.assertNotIn("privateKey", dumped)
 
 
 if __name__ == "__main__":
