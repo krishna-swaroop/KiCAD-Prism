@@ -6,6 +6,10 @@ Design:
 - Per-project isolation is enforced via project_id on every row.
 - Existing .comments/comments.json is imported once per project on first access.
 - comments.json is exported from DB when users press "Push Comments".
+- Authorship is a stable actor key (``author_user_id``/``author_kind``) with the
+  display text kept beside it; rows written before that existed are ``legacy``
+  and have no owner. Edits advance ``revision`` and append to
+  ``comment_revisions``; deletes are tombstones. Reads only return live rows.
 """
 
 from __future__ import annotations
@@ -20,13 +24,41 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from app.services import project_service
+from app.services import comments_revisions, comments_schema_migrations, project_service
+from app.services.comments_revisions import Editor, RevisionConflict  # noqa: F401  (re-exported for callers)
 from app.services.postgres_database import database
 
+# 1.1 adds authorUserId/authorKind, reply ids, revision/updatedAt and the anchor
+# block. Every addition is optional for readers; 1.0 files still import.
 COMMENTS_META = {
-    "version": "1.0",
+    "version": "1.1",
     "generator": "KiCad-Prism-Web",
 }
+
+AUTHOR_KIND_LEGACY = "legacy"
+AUTHOR_KIND_USER = "user"
+ANCHOR_STATE_PINNED = "pinned"
+ANCHOR_STATE_UNPINNED = "unpinned"
+
+_SYSTEM_EDITOR = Editor(user_id=None, kind="system", display="")
+
+_COMMENT_COLUMNS = """
+    id, author, timestamp, status, context,
+    location_x, location_y, location_layer, location_page, content,
+    area_x, area_y, area_w, area_h,
+    element_id, element_ref, element_type,
+    comment_class, severity, mentions, metadata,
+    scope, base_commit, compare_commit, comparison_domain,
+    file_path, semantic_item_id, anchor_kind,
+    forge_provider, forge_issue_id, forge_issue_url, forge_sync_state,
+    author_user_id, author_kind, revision, updated_at, deleted_at,
+    anchor_commit, anchor_revision_key, anchor_source, anchor_state
+"""
+
+_REPLY_COLUMNS = """
+    id, comment_id, author, timestamp, content,
+    author_user_id, author_kind, revision, updated_at, deleted_at, origin
+"""
 
 COMMENT_CLASSES = ("general", "observation", "question", "task")
 COMMENT_SEVERITIES = ("info", "minor", "major", "critical")
@@ -111,6 +143,41 @@ def _mentions_from_content(content: str, known_emails: Optional[List[str]] = Non
     return [email for email in mentions if email in allowed]
 
 
+def _anchor_block(row) -> Dict:
+    """Where the comment is pinned, and how we know (contract D6).
+
+    ``unpinned`` rows are readable and visibly unpinned; they never gain a
+    commit by inference. The comparison pair is carried alongside so one
+    block answers "which revision" for both canvas and comparison scopes.
+    """
+    state = row.get("anchor_state") or ANCHOR_STATE_UNPINNED
+    return {
+        "state": state,
+        "source": row.get("anchor_source"),
+        "commit": row.get("anchor_commit"),
+        "sourceRevisionKey": row.get("anchor_revision_key"),
+        "baseCommit": row.get("base_commit"),
+        "compareCommit": row.get("compare_commit"),
+    }
+
+
+def _row_to_reply_dict(row) -> Dict:
+    reply = {
+        "id": row["id"],
+        "author": row["author"],
+        "authorUserId": row.get("author_user_id"),
+        "authorKind": row.get("author_kind") or AUTHOR_KIND_LEGACY,
+        "timestamp": _iso_timestamp(row["timestamp"]),
+        "updatedAt": _iso_timestamp(row.get("updated_at") or row["timestamp"]),
+        "revision": int(row.get("revision") or 1),
+        "content": row["content"],
+        "origin": row.get("origin") or comments_revisions.ORIGIN_PRISM,
+    }
+    if row.get("deleted_at"):
+        reply["deletedAt"] = _iso_timestamp(row["deleted_at"])
+    return reply
+
+
 def _row_to_comment_dict(row, replies: List[Dict]) -> Dict:
     location = {
         "x": row["location_x"],
@@ -125,7 +192,11 @@ def _row_to_comment_dict(row, replies: List[Dict]) -> Dict:
     comment = {
         "id": row["id"],
         "author": row["author"],
+        "authorUserId": row.get("author_user_id"),
+        "authorKind": row.get("author_kind") or AUTHOR_KIND_LEGACY,
         "timestamp": _iso_timestamp(row["timestamp"]),
+        "updatedAt": _iso_timestamp(row.get("updated_at") or row["timestamp"]),
+        "revision": int(row.get("revision") or 1),
         "status": row["status"],
         "context": row["context"],
         "location": location,
@@ -134,7 +205,10 @@ def _row_to_comment_dict(row, replies: List[Dict]) -> Dict:
         "commentClass": _normalize_comment_class(row.get("comment_class")),
         "severity": _normalize_severity(row.get("severity")),
         "mentions": _normalize_mentions(row.get("mentions")),
+        "anchor": _anchor_block(row),
     }
+    if row.get("deleted_at"):
+        comment["deletedAt"] = _iso_timestamp(row["deleted_at"])
     element_id = row.get("element_id")
     element_ref = row.get("element_ref")
     element_type = row.get("element_type")
@@ -181,6 +255,9 @@ def _row_to_comment_dict(row, replies: List[Dict]) -> Dict:
 class CommentsStoreService:
     """PostgreSQL-backed comments service."""
 
+    # Tests point a subclass at a disposable schema; production is "comments".
+    schema = "comments"
+
     def __init__(self) -> None:
         self._init_lock = threading.Lock()
         self._initialized = False
@@ -196,8 +273,8 @@ class CommentsStoreService:
 
             with self._connect() as conn:
                 conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("prism-schema",))
-                conn.execute("CREATE SCHEMA IF NOT EXISTS comments")
-                conn.execute("SET search_path TO comments, public")
+                conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.schema}"')
+                conn.execute(f'SET search_path TO "{self.schema}", public')
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS comments (
@@ -278,6 +355,7 @@ class CommentsStoreService:
                     )
                     """
                 )
+                comments_schema_migrations.apply_comments_migrations(conn)
                 conn.commit()
 
             self._initialized = True
@@ -285,7 +363,7 @@ class CommentsStoreService:
     @contextmanager
     def _connect(self):
         with database.connection() as conn:
-            conn.execute("SET search_path TO comments, public")
+            conn.execute(f'SET search_path TO "{self.schema}", public')
             yield conn
 
     def _bootstrap_project_if_needed(self, conn, project_id: str, project_path: str) -> None:
@@ -348,6 +426,13 @@ class CommentsStoreService:
         return payload
 
     def _import_comments_payload(self, conn, project_id: str, payload: Dict) -> None:
+        """Load a comments.json (1.0 or 1.1) once, as legacy rows.
+
+        A file in the repository is not an authentication source: even when
+        it carries ``authorUserId`` the imported rows get no owner, only the
+        display text. Reply ids from the file are kept so later exports and
+        desktop consumers see stable ids.
+        """
         comments = payload.get("comments", [])
 
         for raw_comment in comments:
@@ -399,9 +484,10 @@ class CommentsStoreService:
                     location_x, location_y, location_layer, location_page, content,
                     area_x, area_y, area_w, area_h,
                     element_id, element_ref, element_type,
-                    comment_class, severity, mentions
+                    comment_class, severity, mentions,
+                    author_kind, updated_at
                 )
-                VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
@@ -426,6 +512,8 @@ class CommentsStoreService:
                     comment_class,
                     severity,
                     json.dumps(mentions),
+                    AUTHOR_KIND_LEGACY,
+                    timestamp,
                 ),
             )
 
@@ -445,9 +533,10 @@ class CommentsStoreService:
                 conn.execute(
                     """
                     INSERT INTO comment_replies(
-                        id, comment_id, project_id, author, timestamp, content
+                        id, comment_id, project_id, author, timestamp, content,
+                        author_kind, updated_at
                     )
-                    VALUES(%s, %s, %s, %s, %s, %s)
+                    VALUES(%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
@@ -457,32 +546,27 @@ class CommentsStoreService:
                         reply_author,
                         reply_timestamp,
                         reply_content,
+                        AUTHOR_KIND_LEGACY,
+                        reply_timestamp,
                     ),
                 )
 
     def _build_snapshot(self, conn, project_id: str) -> Dict:
         comment_rows = conn.execute(
-            """
-            SELECT id, author, timestamp, status, context,
-                   location_x, location_y, location_layer, location_page, content,
-                   area_x, area_y, area_w, area_h,
-                   element_id, element_ref, element_type,
-                   comment_class, severity, mentions, metadata,
-                   scope, base_commit, compare_commit, comparison_domain,
-                   file_path, semantic_item_id, anchor_kind,
-                   forge_provider, forge_issue_id, forge_issue_url, forge_sync_state
+            f"""
+            SELECT {_COMMENT_COLUMNS}
             FROM comments
-            WHERE project_id = %s AND scope <> 'comparison'
+            WHERE project_id = %s AND scope <> 'comparison' AND deleted_at IS NULL
             ORDER BY timestamp ASC, id ASC
             """,
             (project_id,),
         ).fetchall()
 
         reply_rows = conn.execute(
-            """
-            SELECT id, comment_id, author, timestamp, content
+            f"""
+            SELECT {_REPLY_COLUMNS}
             FROM comment_replies
-            WHERE project_id = %s
+            WHERE project_id = %s AND deleted_at IS NULL
             ORDER BY timestamp ASC, id ASC
             """,
             (project_id,),
@@ -491,13 +575,7 @@ class CommentsStoreService:
         replies_by_comment: Dict[str, List[Dict]] = {}
 
         for row in reply_rows:
-            replies_by_comment.setdefault(row["comment_id"], []).append(
-                {
-                    "author": row["author"],
-                    "timestamp": _iso_timestamp(row["timestamp"]),
-                    "content": row["content"],
-                }
-            )
+            replies_by_comment.setdefault(row["comment_id"], []).append(_row_to_reply_dict(row))
 
         comments: List[Dict] = []
         for row in comment_rows:
@@ -512,17 +590,10 @@ class CommentsStoreService:
 
     def _get_comment_with_replies(self, conn, project_id: str, comment_id: str) -> Optional[Dict]:
         row = conn.execute(
-            """
-            SELECT id, author, timestamp, status, context,
-                   location_x, location_y, location_layer, location_page, content,
-                   area_x, area_y, area_w, area_h,
-                   element_id, element_ref, element_type,
-                   comment_class, severity, mentions, metadata,
-                   scope, base_commit, compare_commit, comparison_domain,
-                   file_path, semantic_item_id, anchor_kind,
-                   forge_provider, forge_issue_id, forge_issue_url, forge_sync_state
+            f"""
+            SELECT {_COMMENT_COLUMNS}
             FROM comments
-            WHERE project_id = %s AND id = %s
+            WHERE project_id = %s AND id = %s AND deleted_at IS NULL
             """,
             (project_id, comment_id),
         ).fetchone()
@@ -531,24 +602,16 @@ class CommentsStoreService:
             return None
 
         reply_rows = conn.execute(
-            """
-            SELECT author, timestamp, content
+            f"""
+            SELECT {_REPLY_COLUMNS}
             FROM comment_replies
-            WHERE project_id = %s AND comment_id = %s
+            WHERE project_id = %s AND comment_id = %s AND deleted_at IS NULL
             ORDER BY timestamp ASC, id ASC
             """,
             (project_id, comment_id),
         ).fetchall()
 
-        replies = [
-            {
-                "author": reply["author"],
-                "timestamp": _iso_timestamp(reply["timestamp"]),
-                "content": reply["content"],
-            }
-            for reply in reply_rows
-        ]
-        return _row_to_comment_dict(row, replies)
+        return _row_to_comment_dict(row, [_row_to_reply_dict(reply) for reply in reply_rows])
 
     def get_comments_file(self, project_id: str, project_path: str) -> Dict:
         self.initialize()
@@ -579,10 +642,27 @@ class CommentsStoreService:
         file_path: Optional[str] = None,
         semantic_item_id: Optional[str] = None,
         anchor_kind: Optional[str] = None,
+        author_user_id: Optional[str] = None,
+        author_kind: Optional[str] = None,
+        anchor_commit: Optional[str] = None,
+        anchor_revision_key: Optional[str] = None,
+        anchor_source: Optional[str] = None,
     ) -> Dict:
+        """Insert a root comment at revision 1 and record its creation.
+
+        ``author`` is the display text. Ownership comes only from
+        ``author_user_id``; without one the row is ``legacy`` and has no
+        owner, which is how pre-identity callers keep working. The anchor
+        is ``pinned`` only when the caller supplies a validated commit;
+        nothing here infers one.
+        """
         self.initialize()
         context_norm = context.upper()
         timestamp = _utc_now_iso()
+        author_user_id = _optional_str(author_user_id)
+        author_kind_norm = _optional_str(author_kind) or (AUTHOR_KIND_USER if author_user_id else AUTHOR_KIND_LEGACY)
+        anchor_commit = _optional_str(anchor_commit)
+        anchor_state = ANCHOR_STATE_PINNED if anchor_commit else ANCHOR_STATE_UNPINNED
         area = _parse_area_bounds(location.get("bounds"))
         class_norm = _normalize_comment_class(comment_class)
         severity_norm = _normalize_severity(severity)
@@ -605,12 +685,16 @@ class CommentsStoreService:
                         element_id, element_ref, element_type,
                         comment_class, severity, mentions, metadata,
                         scope, base_commit, compare_commit, comparison_domain,
-                        file_path, semantic_item_id, anchor_kind
+                        file_path, semantic_item_id, anchor_kind,
+                        author_user_id, author_kind, revision, updated_at,
+                        anchor_commit, anchor_revision_key, anchor_source, anchor_state
                     )
                     VALUES(
                         %s, %s, %s, %s, 'OPEN', %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb,
-                        %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, 1, %s,
+                        %s, %s, %s, %s
                     )
                     """,
                     (
@@ -642,7 +726,20 @@ class CommentsStoreService:
                         _optional_str(file_path),
                         _optional_str(semantic_item_id),
                         _optional_str(anchor_kind),
+                        author_user_id,
+                        author_kind_norm,
+                        timestamp,
+                        anchor_commit,
+                        _optional_str(anchor_revision_key),
+                        _optional_str(anchor_source),
+                        anchor_state,
                     ),
+                )
+                comments_revisions.record_revision(
+                    conn, project_id=project_id, target_kind=comments_revisions.ROOT, target_id=comment_id,
+                    revision=1, change_kind=comments_revisions.CHANGE_CREATE,
+                    editor=Editor(user_id=author_user_id, kind=author_kind_norm, display=author),
+                    content=content, severity=severity_norm, comment_class=class_norm, mentions=mentions_norm,
                 )
 
                 created = self._get_comment_with_replies(conn, project_id, comment_id)
@@ -663,18 +760,12 @@ class CommentsStoreService:
         with self._connect() as conn:
             with conn.transaction():
                 self._bootstrap_project_if_needed(conn, project_id, project_path)
-                query = """
-                    SELECT id, author, timestamp, status, context,
-                           location_x, location_y, location_layer, location_page, content,
-                           area_x, area_y, area_w, area_h,
-                           element_id, element_ref, element_type,
-                           comment_class, severity, mentions, metadata,
-                           scope, base_commit, compare_commit, comparison_domain,
-                           file_path, semantic_item_id, anchor_kind,
-                           forge_provider, forge_issue_id, forge_issue_url, forge_sync_state
+                query = f"""
+                    SELECT {_COMMENT_COLUMNS}
                     FROM comments
                     WHERE project_id = %s
                       AND scope = 'comparison'
+                      AND deleted_at IS NULL
                       AND base_commit = %s
                       AND compare_commit = %s
                 """
@@ -688,22 +779,16 @@ class CommentsStoreService:
                 replies_by_comment: Dict[str, List[Dict]] = {}
                 if comment_ids:
                     reply_rows = conn.execute(
-                        """
-                        SELECT comment_id, author, timestamp, content
+                        f"""
+                        SELECT {_REPLY_COLUMNS}
                         FROM comment_replies
-                        WHERE project_id = %s AND comment_id = ANY(%s)
+                        WHERE project_id = %s AND comment_id = ANY(%s) AND deleted_at IS NULL
                         ORDER BY timestamp ASC, id ASC
                         """,
                         (project_id, comment_ids),
                     ).fetchall()
                     for reply in reply_rows:
-                        replies_by_comment.setdefault(reply["comment_id"], []).append(
-                            {
-                                "author": reply["author"],
-                                "timestamp": _iso_timestamp(reply["timestamp"]),
-                                "content": reply["content"],
-                            }
-                        )
+                        replies_by_comment.setdefault(reply["comment_id"], []).append(_row_to_reply_dict(reply))
                 return {
                     "meta": dict(COMMENTS_META),
                     "comments": [
@@ -718,26 +803,122 @@ class CommentsStoreService:
         project_path: str,
         comment_id: str,
         status: str,
+        editor: Optional[Editor] = None,
+        expected_revision: Optional[int] = None,
     ) -> Optional[Dict]:
+        """Resolve or reopen; raises RevisionConflict when the thread moved on."""
         self.initialize()
 
         with self._connect() as conn:
             with conn.transaction():
                 self._bootstrap_project_if_needed(conn, project_id, project_path)
-
-                cur = conn.execute(
-                    """
-                    UPDATE comments
-                    SET status = %s
-                    WHERE project_id = %s AND id = %s
-                    """,
-                    (status, project_id, comment_id),
-                )
-
-                if cur.rowcount == 0:
+                if not self._live_root_exists(conn, project_id, comment_id):
                     return None
-
+                comments_revisions.set_root_status(
+                    conn, project_id=project_id, comment_id=comment_id, status=status,
+                    editor=editor or _SYSTEM_EDITOR, expected_revision=expected_revision,
+                )
                 return self._get_comment_with_replies(conn, project_id, comment_id)
+
+    def _live_root_exists(self, conn, project_id: str, comment_id: str) -> bool:
+        return bool(conn.execute(
+            "SELECT 1 FROM comments WHERE project_id = %s AND id = %s AND deleted_at IS NULL",
+            (project_id, comment_id),
+        ).fetchone())
+
+    def edit_comment(
+        self,
+        project_id: str,
+        project_path: str,
+        comment_id: str,
+        editor: Editor,
+        expected_revision: Optional[int],
+        content: Optional[str] = None,
+        severity: Optional[str] = None,
+        comment_class: Optional[str] = None,
+        mentions: Optional[List[str]] = None,
+    ) -> Optional[Dict]:
+        """Edit a root's prose/severity/class/mentions as one revision.
+
+        Anchor and location are immutable and deliberately not accepted here.
+        """
+        self.initialize()
+        with self._connect() as conn:
+            with conn.transaction():
+                self._bootstrap_project_if_needed(conn, project_id, project_path)
+                if not self._live_root_exists(conn, project_id, comment_id):
+                    return None
+                comments_revisions.edit_root(
+                    conn, project_id=project_id, comment_id=comment_id, editor=editor,
+                    expected_revision=expected_revision, content=content,
+                    severity=_normalize_severity(severity) if severity is not None else None,
+                    comment_class=_normalize_comment_class(comment_class) if comment_class is not None else None,
+                    mentions=_normalize_mentions(mentions) if mentions is not None else None,
+                )
+                return self._get_comment_with_replies(conn, project_id, comment_id)
+
+    def edit_reply(
+        self,
+        project_id: str,
+        project_path: str,
+        comment_id: str,
+        reply_id: str,
+        content: str,
+        editor: Editor,
+        expected_revision: Optional[int],
+    ) -> Optional[Dict]:
+        self.initialize()
+        with self._connect() as conn:
+            with conn.transaction():
+                self._bootstrap_project_if_needed(conn, project_id, project_path)
+                if not self._live_reply(conn, project_id, comment_id, reply_id):
+                    return None
+                comments_revisions.edit_reply(
+                    conn, project_id=project_id, reply_id=reply_id, content=content,
+                    editor=editor, expected_revision=expected_revision,
+                )
+                return self._get_comment_with_replies(conn, project_id, comment_id)
+
+    def delete_reply(
+        self,
+        project_id: str,
+        project_path: str,
+        comment_id: str,
+        reply_id: str,
+        editor: Editor,
+        expected_revision: Optional[int] = None,
+    ) -> Optional[Dict]:
+        """Tombstone one reply; history and the row itself are kept."""
+        self.initialize()
+        with self._connect() as conn:
+            with conn.transaction():
+                self._bootstrap_project_if_needed(conn, project_id, project_path)
+                if not self._live_reply(conn, project_id, comment_id, reply_id):
+                    return None
+                comments_revisions.tombstone_reply(
+                    conn, project_id=project_id, reply_id=reply_id, editor=editor, expected_revision=expected_revision,
+                )
+                return self._get_comment_with_replies(conn, project_id, comment_id)
+
+    def _live_reply(self, conn, project_id: str, comment_id: str, reply_id: str):
+        return conn.execute(
+            f"""
+            SELECT {_REPLY_COLUMNS} FROM comment_replies
+            WHERE project_id = %s AND comment_id = %s AND id = %s AND deleted_at IS NULL
+            """,
+            (project_id, comment_id, reply_id),
+        ).fetchone()
+
+    def get_reply(self, project_id: str, comment_id: str, reply_id: str) -> Optional[Dict]:
+        self.initialize()
+        with self._connect() as conn:
+            row = self._live_reply(conn, project_id, comment_id, reply_id)
+            return _row_to_reply_dict(row) if row else None
+
+    def get_history(self, project_id: str, target_kind: str, target_id: str) -> List[Dict]:
+        self.initialize()
+        with self._connect() as conn:
+            return comments_revisions.history(conn, project_id=project_id, target_kind=target_kind, target_id=target_id)
 
     def add_reply(
         self,
@@ -746,43 +927,47 @@ class CommentsStoreService:
         comment_id: str,
         content: str,
         author: str,
+        author_user_id: Optional[str] = None,
+        author_kind: Optional[str] = None,
+        origin: str = comments_revisions.ORIGIN_PRISM,
     ) -> Optional[Tuple[Dict, Dict]]:
         self.initialize()
         timestamp = _utc_now_iso()
         reply_id = f"r_{uuid.uuid4().hex[:8]}"
+        author_user_id = _optional_str(author_user_id)
+        author_kind_norm = _optional_str(author_kind) or (AUTHOR_KIND_USER if author_user_id else AUTHOR_KIND_LEGACY)
 
         with self._connect() as conn:
             with conn.transaction():
                 self._bootstrap_project_if_needed(conn, project_id, project_path)
 
-                exists = conn.execute(
-                    "SELECT 1 FROM comments WHERE project_id = %s AND id = %s",
-                    (project_id, comment_id),
-                ).fetchone()
-
-                if not exists:
+                if not self._live_root_exists(conn, project_id, comment_id):
                     return None
 
                 conn.execute(
                     """
-                    INSERT INTO comment_replies(id, comment_id, project_id, author, timestamp, content)
-                    VALUES(%s, %s, %s, %s, %s, %s)
+                    INSERT INTO comment_replies(
+                        id, comment_id, project_id, author, timestamp, content,
+                        author_user_id, author_kind, revision, updated_at, origin
+                    )
+                    VALUES(%s, %s, %s, %s, %s, %s, %s, %s, 1, %s, %s)
                     """,
-                    (reply_id, comment_id, project_id, author, timestamp, content),
+                    (reply_id, comment_id, project_id, author, timestamp, content,
+                     author_user_id, author_kind_norm, timestamp, origin),
+                )
+                comments_revisions.record_revision(
+                    conn, project_id=project_id, target_kind=comments_revisions.REPLY, target_id=reply_id,
+                    revision=1, change_kind=comments_revisions.CHANGE_CREATE,
+                    editor=Editor(user_id=author_user_id, kind=author_kind_norm, display=author, origin=origin),
+                    content=content,
                 )
 
                 updated_comment = self._get_comment_with_replies(conn, project_id, comment_id)
                 if not updated_comment:
                     return None
 
-                return (
-                    updated_comment,
-                    {
-                        "author": author,
-                        "timestamp": timestamp,
-                        "content": content,
-                    },
-                )
+                created = self._live_reply(conn, project_id, comment_id, reply_id)
+                return (updated_comment, _row_to_reply_dict(created))
 
     def delete_project_comments(self, project_id: str) -> None:
         """Remove every comment listing stored for a deleted project."""
@@ -799,18 +984,32 @@ class CommentsStoreService:
                     (project_id,),
                 )
 
-    def delete_comment(self, project_id: str, project_path: str, comment_id: str) -> bool:
+    def delete_comment(
+        self,
+        project_id: str,
+        project_path: str,
+        comment_id: str,
+        editor: Optional[Editor] = None,
+        expected_revision: Optional[int] = None,
+    ) -> bool:
+        """Tombstone a root and its live replies.
+
+        The rows stay for history and for the tracker's unlink lineage;
+        every read path filters ``deleted_at``. ``delete_project_comments``
+        remains the one hard delete, used when the project itself goes.
+        """
         self.initialize()
 
         with self._connect() as conn:
             with conn.transaction():
                 self._bootstrap_project_if_needed(conn, project_id, project_path)
-
-                cur = conn.execute(
-                    "DELETE FROM comments WHERE project_id = %s AND id = %s",
-                    (project_id, comment_id),
+                if not self._live_root_exists(conn, project_id, comment_id):
+                    return False
+                comments_revisions.tombstone_root(
+                    conn, project_id=project_id, comment_id=comment_id,
+                    editor=editor or _SYSTEM_EDITOR, expected_revision=expected_revision,
                 )
-                return cur.rowcount > 0
+                return True
 
     def export_comments_json(self, project_id: str, project_path: str) -> str:
         self.initialize()

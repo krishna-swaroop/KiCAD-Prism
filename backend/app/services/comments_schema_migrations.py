@@ -1,0 +1,122 @@
+"""Versioned, additive migrations for the ``comments`` schema.
+
+``CommentsStoreService.initialize()`` creates the base tables with
+``CREATE TABLE IF NOT EXISTS`` and then applies these in order under the
+schema advisory lock, recording each in ``comment_schema_migrations`` so a
+restart never re-runs or skips one. Every step must be safe to apply to a
+populated database and safe to apply twice: ``ADD COLUMN IF NOT EXISTS``,
+backfills guarded by ``WHERE ... IS NULL``, indexes ``IF NOT EXISTS``.
+
+Table names are unqualified on purpose; the caller has already set the
+search path to the comments schema (or a disposable test schema).
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Callable, List, Tuple
+
+logger = logging.getLogger(__name__)
+
+LEDGER_TABLE = "comment_schema_migrations"
+
+
+def _m001_identity_revisions_tombstones(conn) -> None:
+    """Stable authorship, edit revisions, tombstones and anchor provenance.
+
+    Rows that exist before this migration were written with free-text
+    authors and no pinned revision: they become ``author_kind='legacy'`` and
+    ``anchor_state='unpinned'`` by the column defaults, exactly the D6
+    reading. New writes set both explicitly.
+    """
+    conn.execute(
+        ";\n".join((
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS author_user_id TEXT",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS author_kind TEXT NOT NULL DEFAULT 'legacy'",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS revision INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS deleted_by TEXT",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS anchor_commit TEXT",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS anchor_revision_key TEXT",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS anchor_source TEXT",
+            "ALTER TABLE comments ADD COLUMN IF NOT EXISTS anchor_state TEXT NOT NULL DEFAULT 'unpinned'",
+            "ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS author_user_id TEXT",
+            "ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS author_kind TEXT NOT NULL DEFAULT 'legacy'",
+            "ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS revision INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
+            "ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
+            "ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS deleted_by TEXT",
+            "ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'prism'",
+        )),
+        prepare=False,
+    )
+    conn.execute("UPDATE comments SET updated_at = timestamp WHERE updated_at IS NULL")
+    conn.execute("UPDATE comment_replies SET updated_at = timestamp WHERE updated_at IS NULL")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS comment_revisions (
+            id BIGSERIAL PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            target_kind TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            change_kind TEXT NOT NULL,
+            content TEXT,
+            severity TEXT,
+            comment_class TEXT,
+            status TEXT,
+            mentions JSONB,
+            editor_user_id TEXT,
+            editor_kind TEXT NOT NULL,
+            editor_display TEXT NOT NULL DEFAULT '',
+            origin TEXT NOT NULL DEFAULT 'prism',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (target_kind, target_id, revision)
+        );
+        CREATE INDEX IF NOT EXISTS idx_comment_revisions_target
+            ON comment_revisions(project_id, target_kind, target_id, revision);
+        CREATE INDEX IF NOT EXISTS idx_comments_project_live
+            ON comments(project_id, deleted_at);
+        """,
+        prepare=False,
+    )
+
+
+MIGRATIONS: List[Tuple[int, str, Callable[[object], None]]] = [
+    (1, "identity_revisions_tombstones", _m001_identity_revisions_tombstones),
+]
+
+
+def applied_versions(conn) -> set[int]:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    return {int(row["version"]) for row in conn.execute(f"SELECT version FROM {LEDGER_TABLE}").fetchall()}
+
+
+def apply_comments_migrations(conn) -> List[int]:
+    """Apply every pending migration in order; return the versions applied.
+
+    Runs inside the caller's transaction and advisory lock, so a crash in the
+    middle of a step rolls the step and its ledger row back together.
+    """
+    applied = applied_versions(conn)
+    newly: List[int] = []
+    for version, name, migration in MIGRATIONS:
+        if version in applied:
+            continue
+        logger.info("Applying comments schema migration %s (%s)", version, name)
+        migration(conn)
+        conn.execute(
+            f"INSERT INTO {LEDGER_TABLE}(version, name) VALUES (%s, %s)",
+            (version, name),
+        )
+        newly.append(version)
+    return newly
