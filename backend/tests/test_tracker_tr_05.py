@@ -227,8 +227,8 @@ class ImmutableAnchorTests(unittest.TestCase):
         current = self.store.get_comment("prj_test", self.project.path, created["id"])
         self.assertEqual(current["anchor"]["commit"], self.fixture.sha_a)
 
-    def test_admin_cannot_rewrite_pinned_comparison_without_selected_side(self) -> None:
-        """Default comparison create omits selectedSide; the pair still pins the row."""
+    def test_comparison_without_selected_side_defaults_to_compare(self) -> None:
+        """Omitted selectedSide pins the compare revision and rejects manual rewrite."""
         viewer = session("viewer", user_id="u_v")
         admin = session("admin", user_id="u_a")
         created = run(comments_api.create_comparison_comment(
@@ -241,8 +241,8 @@ class ImmutableAnchorTests(unittest.TestCase):
         ))
         self.assertEqual(created["anchor"]["state"], "pinned")
         self.assertEqual(created["anchor"]["source"], "client")
-        self.assertIsNone(created["anchor"]["commit"])
-        self.assertIsNone(created["anchor"]["selectedSide"])
+        self.assertEqual(created["anchor"]["commit"], self.fixture.sha_b)
+        self.assertEqual(created["anchor"]["selectedSide"], "compare")
         self.assertEqual(
             (created["anchor"]["baseCommit"], created["anchor"]["compareCommit"]),
             (self.fixture.sha_a, self.fixture.sha_b),
@@ -256,7 +256,7 @@ class ImmutableAnchorTests(unittest.TestCase):
         self.assertEqual((refused.status_code, body(refused)["code"]), (422, "anchor_immutable"))
         current = self.store.get_comment("prj_test", self.project.path, created["id"])
         self.assertEqual(current["anchor"]["source"], "client")
-        self.assertIsNone(current["anchor"]["commit"])
+        self.assertEqual(current["anchor"]["commit"], self.fixture.sha_b)
         self.assertEqual(current["anchor"]["state"], "pinned")
         self.assertEqual(current["revision"], revision_before)
         self.assertEqual(

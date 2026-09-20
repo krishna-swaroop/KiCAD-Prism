@@ -174,6 +174,13 @@ class ConnectorService:
             envelope = self._encrypt(cid, credentials)
         with self.connection() as conn:
             store = TrackerStore(conn)
+            if connector_id:
+                try:
+                    store.get_connector(cid)
+                except KeyError:
+                    pass
+                else:
+                    raise ProviderError("invalid_request", "Connector id already exists.")
             store.upsert_connector(
                 connector_id=cid,
                 provider=provider,

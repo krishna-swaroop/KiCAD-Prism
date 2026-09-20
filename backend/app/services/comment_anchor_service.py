@@ -9,10 +9,15 @@ comments store; this is only the check-and-shape step (contract C1 / D6).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Optional
 
-from app.services import project_source_snapshot, semantic_visualizer_service
+from app.services import (
+    path_config_service,
+    project_source_snapshot,
+    semantic_index_service,
+    semantic_visualizer_service,
+)
 
 ANCHOR_PINNED = "pinned"
 ANCHOR_UNPINNED = "unpinned"
@@ -90,23 +95,46 @@ def _project_relative_path(project: Any) -> Optional[str]:
         return str(anchor).replace("\\", "/") if anchor else None
 
 
+def _project_dir_in_repo(project: Any) -> tuple[Path, str]:
+    repo_root = semantic_visualizer_service._repo_root(Path(project.path))
+    anchor = path_config_service.anchor_for_project(project)
+    anchor_source = project_source_snapshot._anchor_source(project, require_file=True)
+    if anchor_source is not None:
+        project_rel = anchor_source.relative_to(repo_root).as_posix()
+    else:
+        project_rel = semantic_visualizer_service._project_relative_path(
+            repo_root, Path(project.path), anchor
+        )
+    project_dir = PurePosixPath(project_rel).parent.as_posix()
+    if project_dir == ".":
+        project_dir = ""
+    return repo_root, project_dir
+
+
 def _source_file(project: Any, commit: Optional[str], context: str) -> Optional[str]:
     """The project's own PCB or SCH file at ``commit``, if it exists.
 
-    Absence is left blank. We do not pick a sibling document or HEAD.
+    Uses ``git ls-tree`` for one revision listing instead of checking out the
+    whole commit tree. Absence is left blank; we do not pick a sibling or HEAD.
     """
     if not commit:
         return None
     try:
-        with project_source_snapshot.project_source_snapshot(project, commit) as snapshot:
-            pcb, sch = project_source_snapshot.source_files(snapshot)
-            chosen = pcb if context.upper() == "PCB" else sch
-            if chosen is None:
-                return None
-            try:
-                return chosen.relative_to(snapshot.root).as_posix()
-            except ValueError:
-                return chosen.name
+        repo_root, project_dir = _project_dir_in_repo(project)
+        entries = semantic_index_service._source_entries_in_commit(
+            repo_root, commit, project_dir
+        )
+        suffix = ".kicad_pcb" if context.upper() == "PCB" else ".kicad_sch"
+        candidates = [path for path, _ in entries if path.endswith(suffix)]
+        if not candidates:
+            return None
+        anchor = path_config_service.anchor_for_project(project) or ""
+        stem = PurePosixPath(anchor).stem if anchor else ""
+        if stem:
+            for path in sorted(candidates):
+                if PurePosixPath(path).stem == stem:
+                    return path
+        return sorted(candidates)[0]
     except (ValueError, OSError):
         return None
 
@@ -187,15 +215,15 @@ def resolve_comparison_anchor(
     compare = _full_sha(compare_commit, "compareCommit")
     if not base or not compare:
         raise AnchorValidationError("comparison requires baseCommit and compareCommit", code="invalid_commit")
-    side = (selected_side or "").strip().lower() or None
-    if side not in (None, "base", "compare"):
+    side = (selected_side or "").strip().lower() or "compare"
+    if side not in {"base", "compare"}:
         raise AnchorValidationError("selectedSide must be 'base' or 'compare'", code="invalid_commit")
 
     base_key, base_sha = _identity(project, base)
-    _, compare_sha = _identity(project, compare)
-    displayed = compare_sha if side == "compare" else base_sha if side == "base" else None
-    source_key = base_key
-    stored_file = file_path or (_source_file(project, displayed or compare_sha, context) if displayed or compare_sha else file_path)
+    compare_key, compare_sha = _identity(project, compare)
+    displayed = compare_sha if side == "compare" else base_sha
+    source_key = compare_key if side == "compare" else base_key
+    stored_file = file_path or _source_file(project, displayed, context)
     return ResolvedAnchor(
         state=ANCHOR_PINNED,
         source=SOURCE_CLIENT,
