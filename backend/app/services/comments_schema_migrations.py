@@ -16,7 +16,9 @@ from __future__ import annotations
 import logging
 from typing import Callable, List, Tuple
 
-from app.services.trackers.migrations import migrate_comments_tracked_links
+from app.services.trackers.inbox_store import apply_schema as apply_inbox_schema
+from app.services.trackers.migrations import cascade_comments_tracker_fks, migrate_comments_tracked_links
+from app.services.trackers.op_store import apply_schema as apply_op_schema
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,20 @@ def _m001_identity_revisions_tombstones(conn) -> None:
     )
 
 
+def _m004_sync_ops_inbox_and_delete_cascade(conn) -> None:
+    """Create durable sync/inbox tables and cascade tracker FKs on comment delete.
+
+    ``op_store.apply_schema`` / ``inbox_store.apply_schema`` were previously
+    test-only. Deployment runs comments migrations at store initialize, so
+    TR-14's worker loop can see ``sync_ops`` / ``remote_hints``. ON DELETE
+    CASCADE (H4) is applied after CREATE so existing databases pick it up.
+    """
+
+    apply_op_schema(conn)
+    apply_inbox_schema(conn)
+    cascade_comments_tracker_fks(conn)
+
+
 def _m002_backfill_create_revisions(conn) -> None:
     """Snapshot pre-identity rows into history so a later edit cannot erase them.
 
@@ -132,6 +148,7 @@ MIGRATIONS: List[Tuple[int, str, Callable[[object], None]]] = [
     (1, "identity_revisions_tombstones", _m001_identity_revisions_tombstones),
     (2, "backfill_create_revisions", _m002_backfill_create_revisions),
     (3, "tracked_threads_and_replies", migrate_comments_tracked_links),
+    (4, "sync_ops_inbox_and_delete_cascade", _m004_sync_ops_inbox_and_delete_cascade),
 ]
 
 

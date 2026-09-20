@@ -16,6 +16,8 @@ from app.services.trackers.schema import FORBIDDEN_COLUMNS, WORKSPACE_TABLES  # 
 from app.services.trackers.store import TrackerStore  # noqa: E402
 from app.services.workspace_schema_migrations import MIGRATIONS as WS_MIGRATIONS  # noqa: E402
 from app.services.trackers.migrations import (  # noqa: E402
+    WORKSPACE_FK_CASCADE_NAME,
+    WORKSPACE_FK_CASCADE_VERSION,
     WORKSPACE_MIGRATION_NAME,
     WORKSPACE_MIGRATION_VERSION,
     migrate_comments_tracked_links,
@@ -50,17 +52,22 @@ SHARED_APPLICATION_DATABASE = bool(
 class RegistryTests(unittest.TestCase):
     def test_workspace_23_is_registered_once_after_22(self) -> None:
         versions = [version for version, _, _ in WS_MIGRATIONS]
+        names = {version: name for version, name, _ in WS_MIGRATIONS}
         self.assertEqual(versions, sorted(versions))
         self.assertEqual(len(versions), len(set(versions)))
-        self.assertEqual(max(versions), WORKSPACE_MIGRATION_VERSION)
-        self.assertEqual(WS_MIGRATIONS[-1][0], 23)
-        self.assertEqual(WS_MIGRATIONS[-1][1], WORKSPACE_MIGRATION_NAME)
+        self.assertIn(WORKSPACE_MIGRATION_VERSION, versions)
+        self.assertEqual(names[WORKSPACE_MIGRATION_VERSION], WORKSPACE_MIGRATION_NAME)
+        self.assertEqual(max(versions), WORKSPACE_FK_CASCADE_VERSION)
+        self.assertEqual(WS_MIGRATIONS[-1][0], WORKSPACE_FK_CASCADE_VERSION)
+        self.assertEqual(WS_MIGRATIONS[-1][1], WORKSPACE_FK_CASCADE_NAME)
 
     def test_comments_migration_3_is_tracked_links(self) -> None:
         versions = [version for version, name, _ in comments_schema_migrations.MIGRATIONS]
         self.assertIn(3, versions)
         names = {name for _, name, _ in comments_schema_migrations.MIGRATIONS}
         self.assertIn("tracked_threads_and_replies", names)
+        self.assertIn(4, versions)
+        self.assertIn("sync_ops_inbox_and_delete_cascade", names)
 
 
 @unittest.skipUnless(POSTGRES_URL, "TEST_POSTGRES_URL is required for tracker persistence tests")

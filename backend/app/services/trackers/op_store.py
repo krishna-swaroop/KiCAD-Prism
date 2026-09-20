@@ -51,7 +51,7 @@ def apply_schema(conn: Any) -> None:
         """
         CREATE TABLE IF NOT EXISTS sync_ops (
             id TEXT PRIMARY KEY,
-            tracked_thread_id TEXT NOT NULL REFERENCES tracked_threads(id),
+            tracked_thread_id TEXT NOT NULL REFERENCES tracked_threads(id) ON DELETE CASCADE,
             op TEXT NOT NULL,
             state TEXT NOT NULL DEFAULT 'pending',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

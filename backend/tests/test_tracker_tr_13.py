@@ -72,7 +72,9 @@ class ContractSnapshotTests(unittest.TestCase):
         self.assertEqual(list(OP_STATES), tracker["SyncOp_states"])
         self.assertEqual(list(HINT_STATES), ["pending", "applied", "ignored", "failed"])
         self.assertEqual(list(CHECKPOINT_KINDS), ["poll", "sweep", "recovery"])
-        self.assertEqual(WS_MIGRATIONS[-1][0], 23)
+        versions = [version for version, _, _ in WS_MIGRATIONS]
+        self.assertIn(23, versions)
+        self.assertEqual(max(versions), 24)
 
     def test_sanitize_error_redacts_tokens_and_caps_length(self) -> None:
         payload = sanitize_error(
