@@ -197,6 +197,12 @@ async def lifespan(app: FastAPI):
         initialize_tracker_webhook_service()
     except Exception:
         logger.exception("Tracker webhook schema initialization failed")
+    from app.services.trackers.composition import initialize_tracker_composition
+
+    try:
+        initialize_tracker_composition()
+    except Exception:
+        logger.exception("Tracker runtime composition initialization failed")
     if settings.AUTH_ENABLED:
         session_store_service.initialize_session_store()
         session_store_service.prune_expired_sessions()
