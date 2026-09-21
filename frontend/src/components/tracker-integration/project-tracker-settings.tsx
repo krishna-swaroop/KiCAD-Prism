@@ -5,12 +5,16 @@
  * receive a safe read-only projection. Host integration mounts this in TR-42.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw, Settings2, ShieldAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AlertTriangle, RefreshCw, Settings2, ShieldAlert, Tag } from "lucide-react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -46,6 +50,8 @@ export type ProjectTrackerSettingsPhase = "loading" | "ready" | "offline";
 export interface ProjectTrackerSettingsPanelProps {
     projectId: string;
     isAdmin: boolean;
+    /** Render sections without the Card shell (the project dialog supplies its own title). */
+    chromeless?: boolean;
     className?: string;
     onSettingsChange?: (settings: ProjectTrackerSettings) => void;
 }
@@ -181,6 +187,7 @@ export function describeProjectTrackerError(error: unknown, fallback = "Project 
 export function ProjectTrackerSettingsPanel({
     projectId,
     isAdmin,
+    chromeless = false,
     className,
     onSettingsChange,
 }: ProjectTrackerSettingsPanelProps) {
@@ -352,381 +359,381 @@ export function ProjectTrackerSettingsPanel({
         );
     }
 
-    return (
-        <>
-            <Card className={className} data-tracker-phase="ready">
-                <CardHeader>
-                    <CardTitle className="flex flex-wrap items-center gap-2">
-                        <Settings2 className="h-4 w-4" aria-hidden="true" />
-                        Tracker publication
-                        {!isAdmin ? <Badge variant="secondary">Read-only</Badge> : null}
-                    </CardTitle>
-                    <CardDescription>
-                        Destination and publication rules for this project. Existing linked threads keep their original
-                        destination generation.
-                    </CardDescription>
-                </CardHeader>
-
-                <CardContent className="space-y-5">
-                    {formError ? (
-                        <p
-                            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                            role="alert"
+    const destinationSection = (
+        <section className="space-y-3" data-testid="destination-section">
+            <SectionHeading
+                title="Destination"
+                description="Where promoted comments become issues."
+            />
+            <DestinationDisclosure destination={settings.destination} acknowledgement={settings.acknowledgement} />
+            {!isAdmin ? (
+                <p className="text-xs text-muted-foreground">
+                    {formatDestinationLine(settings.destination)} —{" "}
+                    {destinationSourceLabel(settings.destination) === "imported"
+                        ? "the project repository, resolved when an administrator saves"
+                        : destinationIsProjectRepo(settings.destination, projectRepoPath)
+                          ? "the project repository"
+                          : "a separate issue-tracking repository"}
+                    .
+                </p>
+            ) : null}
+            {isAdmin ? (
+                <div className="space-y-3">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="tracker-connector">Connection</Label>
+                        <Select
+                            value={draft.connectorId}
+                            onValueChange={(value) => {
+                                setDraft((prev) => (prev ? { ...prev, connectorId: value } : prev));
+                                setRepositories(null);
+                                setRepositoriesState("idle");
+                                setManualRepository(false);
+                            }}
                         >
-                            {formError}
+                            <SelectTrigger id="tracker-connector" className="w-full max-w-md">
+                                <SelectValue placeholder="Select a connection" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {connectors.map((connector) => (
+                                    <SelectItem key={connector.id} value={connector.id}>
+                                        {connector.displayName}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <p id="tracker-repository-label" className="text-xs font-medium">Repository</p>
+                        <RadioGroup
+                            aria-labelledby="tracker-repository-label"
+                            value={draft.useOverride ? "other" : "project"}
+                            onValueChange={(value) =>
+                                setDraft((prev) => {
+                                    if (!prev) return prev;
+                                    if (value === "project") return { ...prev, useOverride: false };
+                                    const ownRepo = destinationIsProjectRepo(settings.destination, projectRepoPath);
+                                    return {
+                                        ...prev,
+                                        useOverride: true,
+                                        containerPath: ownRepo ? "" : prev.containerPath,
+                                        remoteContainerId: ownRepo ? "" : prev.remoteContainerId,
+                                    };
+                                })
+                            }
+                            className="gap-2"
+                        >
+                            <RepositoryOption
+                                value="project"
+                                selected={!draft.useOverride}
+                                disabled={!projectRepoPath}
+                                label="This project's repository"
+                                aria-label="This project's repository"
+                                description={
+                                    <span data-testid="project-repo-option">
+                                        {projectRepoPath
+                                            ? `Issues are created in ${projectRepoPath}, next to the design files.`
+                                            : "This project has no GitHub remote, so a separate repository is required."}
+                                    </span>
+                                }
+                            >
+                                {projectRepoInstalled === false ? (
+                                    <Alert variant="warning" className="mt-2" data-testid="project-repo-not-installed">
+                                        <AlertTriangle />
+                                        <AlertDescription>
+                                            The GitHub App is not installed on {projectRepoPath}. Install it there (GitHub → Settings →
+                                            Applications) or pick another repository; otherwise publishing pauses as “visibility unknown”.
+                                        </AlertDescription>
+                                    </Alert>
+                                ) : null}
+                            </RepositoryOption>
+                            <RepositoryOption
+                                value="other"
+                                selected={draft.useOverride}
+                                label="Another repository"
+                                aria-label="Another repository"
+                                description="A dedicated issue-tracking repository the GitHub App is installed on."
+                            >
+                                {draft.useOverride ? (
+                                    <div className="mt-2 space-y-2">
+                                        {!manualRepository && repositoriesState === "loading" ? (
+                                            <Skeleton className="h-8 w-full max-w-md" />
+                                        ) : null}
+                                        {!manualRepository && repositoriesState === "ready" && repositories ? (
+                                            <Select
+                                                value={draft.remoteContainerId || undefined}
+                                                onValueChange={(value) => {
+                                                    const picked = repositories.find((item) => item.id === value);
+                                                    setDraft((prev) =>
+                                                        prev && picked
+                                                            ? { ...prev, containerPath: picked.fullName, remoteContainerId: picked.id }
+                                                            : prev,
+                                                    );
+                                                }}
+                                            >
+                                                <SelectTrigger className="w-full max-w-md" aria-label="Repository" data-testid="repository-picker">
+                                                    <SelectValue placeholder="Choose a repository" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {repositories.map((repository) => (
+                                                        <SelectItem key={repository.id} value={repository.id}>
+                                                            {repository.fullName}
+                                                            {repository.private ? " · private" : " · public"}
+                                                            {repository.archived ? " · archived" : ""}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        ) : null}
+                                        {manualRepository ? (
+                                            <div className="grid gap-3 sm:grid-cols-2">
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="tracker-container-path">Container path</Label>
+                                                    <Input
+                                                        id="tracker-container-path"
+                                                        value={draft.containerPath}
+                                                        onChange={(event) =>
+                                                            setDraft((prev) => (prev ? { ...prev, containerPath: event.target.value } : prev))
+                                                        }
+                                                        placeholder="acme/hardware-issues"
+                                                        autoComplete="off"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="tracker-remote-id">Remote container id</Label>
+                                                    <Input
+                                                        id="tracker-remote-id"
+                                                        value={draft.remoteContainerId}
+                                                        onChange={(event) =>
+                                                            setDraft((prev) => (prev ? { ...prev, remoteContainerId: event.target.value } : prev))
+                                                        }
+                                                        placeholder="987654321"
+                                                        autoComplete="off"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {repositoriesState === "failed" && !repositories
+                                                ? "Could not list the installation's repositories; enter the repository by hand. "
+                                                : null}
+                                            {repositoriesState === "ready" && repositories && repositories.length === 0
+                                                ? "The GitHub App is not installed on any repository yet. "
+                                                : null}
+                                            {repositoriesState === "ready" && repositories && repositories.length > 0 ? (
+                                                <Button
+                                                    type="button"
+                                                    variant="link"
+                                                    size="xs"
+                                                    className="h-auto p-0 text-[11px]"
+                                                    onClick={() => setManualRepository((value) => !value)}
+                                                >
+                                                    {manualRepository ? "Choose from the list instead" : "Enter a repository id by hand"}
+                                                </Button>
+                                            ) : null}
+                                        </p>
+                                    </div>
+                                ) : null}
+                            </RepositoryOption>
+                        </RadioGroup>
+                    </div>
+                    {!draft.useOverride ? (
+                        <p className="text-[11px] text-muted-foreground" data-testid="imported-default-note">
+                            {isImportedDefaultDestination(settings.destination)
+                                ? `Resolved on save: ${settings.destination.containerPath || projectRepoPath}`
+                                : `Using ${formatDestinationLine(settings.destination)}`}
                         </p>
                     ) : null}
+                </div>
+            ) : null}
+        </section>
+    );
 
-                    <section className="space-y-2">
-                        <h3 className="text-sm font-medium">Current destination</h3>
-                        <DestinationDisclosure
-                            destination={settings.destination}
-                            acknowledgement={settings.acknowledgement}
+    const policySection = (
+        <section className="space-y-3" data-testid="policy-section">
+            <SectionHeading title="Publishing rules" description="Which comments become issues on their own, and who may publish the rest." />
+            {isAdmin ? (
+                <>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="tracker-auto-severity">Auto-publish from severity</Label>
+                            <Select
+                                value={draft.autoMinSeverity}
+                                onValueChange={(value) => setDraft((prev) => (prev ? { ...prev, autoMinSeverity: value } : prev))}
+                            >
+                                <SelectTrigger id="tracker-auto-severity" className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {SEVERITY_OPTIONS.map((severity) => (
+                                        <SelectItem key={severity} value={severity}>
+                                            {severity}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="tracker-promote-role">Who may publish</Label>
+                            <Select
+                                value={draft.promoteMinRole}
+                                onValueChange={(value) => setDraft((prev) => (prev ? { ...prev, promoteMinRole: value } : prev))}
+                            >
+                                <SelectTrigger id="tracker-promote-role" className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {PROMOTE_ROLE_OPTIONS.map((role) => (
+                                        <SelectItem key={role} value={role}>
+                                            {roleLabel(role as "designer" | "viewer")} and above
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                        <Checkbox
+                            id="tracker-auto-task"
+                            checked={draft.autoTaskClass}
+                            onCheckedChange={(checked) => setDraft((prev) => (prev ? { ...prev, autoTaskClass: checked === true } : prev))}
                         />
-                        {!isAdmin ? (
-                            <p className="text-xs text-muted-foreground">
-                                {formatDestinationLine(settings.destination)} —{" "}
-                                {destinationSourceLabel(settings.destination) === "imported"
-                                    ? "imported from the project repository"
-                                    : "administrator override"}
-                                .
-                            </p>
-                        ) : null}
-                    </section>
-
-                    {isAdmin ? (
-                        <fieldset className="space-y-3 rounded-md border border-border p-3">
-                            <legend className="px-1 text-sm font-medium">Destination configuration</legend>
-
-                            <div className="space-y-1.5">
-                                <Label htmlFor="tracker-connector">Connector</Label>
-                                <Select
-                                    value={draft.connectorId}
-                                    onValueChange={(value) => setDraft((prev) => (prev ? { ...prev, connectorId: value } : prev))}
-                                >
-                                    <SelectTrigger id="tracker-connector" className="w-full max-w-md">
-                                        <SelectValue placeholder="Select connector" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {connectors.map((connector) => (
-                                            <SelectItem key={connector.id} value={connector.id}>
-                                                {connector.displayName}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2" role="radiogroup" aria-labelledby="tracker-repository-label">
-                                <p id="tracker-repository-label" className="text-sm font-medium">Repository</p>
-                                <div
-                                    className={cn(
-                                        "rounded-md border p-2.5",
-                                        !draft.useOverride && "border-primary/50 bg-primary/5",
-                                        !projectRepoPath && "opacity-60",
-                                    )}
-                                >
-                                    <div className="flex items-start gap-2">
-                                        <input
-                                            id="tracker-repo-project"
-                                            type="radio"
-                                            name="tracker-repository-mode"
-                                            className="mt-1"
-                                            checked={!draft.useOverride}
-                                            disabled={!projectRepoPath}
-                                            onChange={() => setDraft((prev) => (prev ? { ...prev, useOverride: false } : prev))}
-                                        />
-                                        <label htmlFor="tracker-repo-project" className="min-w-0 cursor-pointer text-sm">
-                                            <span className="font-medium">This project&apos;s repository</span>
-                                            <span className="block text-xs text-muted-foreground" data-testid="project-repo-option">
-                                                {projectRepoPath
-                                                    ? `Issues are created in ${projectRepoPath}, next to the design files.`
-                                                    : "This project has no GitHub remote, so a separate repository is required."}
-                                            </span>
-                                            {projectRepoInstalled === false ? (
-                                                <span
-                                                    className="mt-1 block text-xs text-warning"
-                                                    role="note"
-                                                    data-testid="project-repo-not-installed"
-                                                >
-                                                    The GitHub App is not installed on {projectRepoPath}. Install it there
-                                                    (GitHub → Settings → Applications) or pick another repository; otherwise
-                                                    publishing pauses as “visibility unknown”.
-                                                </span>
-                                            ) : null}
-                                        </label>
-                                    </div>
-                                </div>
-                                <div
-                                    className={cn(
-                                        "rounded-md border p-2.5",
-                                        draft.useOverride && "border-primary/50 bg-primary/5",
-                                    )}
-                                >
-                                    <div className="flex items-start gap-2">
-                                        <input
-                                            id="tracker-repo-other"
-                                            type="radio"
-                                            name="tracker-repository-mode"
-                                            className="mt-1"
-                                            checked={draft.useOverride}
-                                            onChange={() =>
-                                                setDraft((prev) => {
-                                                    if (!prev) return prev;
-                                                    const ownRepo = destinationIsProjectRepo(settings.destination, projectRepoPath);
-                                                    return {
-                                                        ...prev,
-                                                        useOverride: true,
-                                                        containerPath: ownRepo ? "" : prev.containerPath,
-                                                        remoteContainerId: ownRepo ? "" : prev.remoteContainerId,
-                                                    };
-                                                })
-                                            }
-                                        />
-                                        <label htmlFor="tracker-repo-other" className="min-w-0 cursor-pointer text-sm">
-                                            <span className="font-medium">Another repository</span>
-                                            <span className="block text-xs text-muted-foreground">
-                                                A dedicated issue-tracking repository the GitHub App is installed on.
-                                            </span>
-                                        </label>
-                                    </div>
-                                    {draft.useOverride ? (
-                                        <div className="mt-2 space-y-2 pl-6">
-                                            {!manualRepository && repositoriesState === "loading" ? (
-                                                <Skeleton className="h-9 w-full max-w-md" />
-                                            ) : null}
-                                            {!manualRepository && repositoriesState === "ready" && repositories ? (
-                                                <Select
-                                                    value={draft.remoteContainerId || undefined}
-                                                    onValueChange={(value) => {
-                                                        const picked = repositories.find((item) => item.id === value);
-                                                        setDraft((prev) =>
-                                                            prev && picked
-                                                                ? { ...prev, containerPath: picked.fullName, remoteContainerId: picked.id }
-                                                                : prev,
-                                                        );
-                                                    }}
-                                                >
-                                                    <SelectTrigger
-                                                        className="w-full max-w-md"
-                                                        aria-label="Repository"
-                                                        data-testid="repository-picker"
-                                                    >
-                                                        <SelectValue placeholder="Choose a repository" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {repositories.map((repository) => (
-                                                            <SelectItem key={repository.id} value={repository.id}>
-                                                                {repository.fullName}
-                                                                {repository.private ? " · private" : " · public"}
-                                                                {repository.archived ? " · archived" : ""}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            ) : null}
-                                            {manualRepository ? (
-                                                <div className="grid gap-3 sm:grid-cols-2">
-                                                    <div className="space-y-1.5">
-                                                        <Label htmlFor="tracker-container-path">Container path</Label>
-                                                        <Input
-                                                            id="tracker-container-path"
-                                                            value={draft.containerPath}
-                                                            onChange={(event) =>
-                                                                setDraft((prev) =>
-                                                                    prev ? { ...prev, containerPath: event.target.value } : prev,
-                                                                )
-                                                            }
-                                                            placeholder="acme/hardware-issues"
-                                                            autoComplete="off"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <Label htmlFor="tracker-remote-id">Remote container id</Label>
-                                                        <Input
-                                                            id="tracker-remote-id"
-                                                            value={draft.remoteContainerId}
-                                                            onChange={(event) =>
-                                                                setDraft((prev) =>
-                                                                    prev ? { ...prev, remoteContainerId: event.target.value } : prev,
-                                                                )
-                                                            }
-                                                            placeholder="987654321"
-                                                            autoComplete="off"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            ) : null}
-                                            <p className="text-xs text-muted-foreground">
-                                                {repositoriesState === "failed" && !repositories
-                                                    ? "Could not list the installation's repositories; enter the repository by hand. "
-                                                    : null}
-                                                {repositoriesState === "ready" && repositories && repositories.length === 0
-                                                    ? "The GitHub App is not installed on any repository yet. "
-                                                    : null}
-                                                {repositoriesState === "ready" && repositories && repositories.length > 0 ? (
-                                                    <button
-                                                        type="button"
-                                                        className="underline"
-                                                        onClick={() => setManualRepository((value) => !value)}
-                                                    >
-                                                        {manualRepository ? "Choose from the list instead" : "Enter a repository id by hand"}
-                                                    </button>
-                                                ) : null}
-                                            </p>
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                            {!draft.useOverride ? (
-                                <p className="text-xs text-muted-foreground" data-testid="imported-default-note">
-                                    {isImportedDefaultDestination(settings.destination)
-                                        ? `Resolved on save: ${settings.destination.containerPath || projectRepoPath}`
-                                        : `Using ${formatDestinationLine(settings.destination)}`}
-                                </p>
-                            ) : null}
-                        </fieldset>
-                    ) : null}
-
-                    <section className="space-y-3 rounded-md border border-border p-3">
-                        <h3 className="text-sm font-medium">Publication policy</h3>
-                        <p className="text-xs text-muted-foreground">{autoPromoteSummary(settings)}</p>
-                        <p className="text-xs text-muted-foreground">{promoteRoleExplanation(settings.promoteMinRole)}</p>
-
-                        {isAdmin ? (
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="tracker-auto-severity">Auto-promote minimum severity</Label>
-                                    <Select
-                                        value={draft.autoMinSeverity}
-                                        onValueChange={(value) =>
-                                            setDraft((prev) => (prev ? { ...prev, autoMinSeverity: value } : prev))
-                                        }
-                                    >
-                                        <SelectTrigger id="tracker-auto-severity">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {SEVERITY_OPTIONS.map((severity) => (
-                                                <SelectItem key={severity} value={severity}>
-                                                    {severity}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="tracker-promote-role">Minimum role to publish</Label>
-                                    <Select
-                                        value={draft.promoteMinRole}
-                                        onValueChange={(value) =>
-                                            setDraft((prev) => (prev ? { ...prev, promoteMinRole: value } : prev))
-                                        }
-                                    >
-                                        <SelectTrigger id="tracker-promote-role">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {PROMOTE_ROLE_OPTIONS.map((role) => (
-                                                <SelectItem key={role} value={role}>
-                                                    {roleLabel(role as "designer" | "viewer")}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                        ) : (
-                            <dl className="grid gap-2 text-sm sm:grid-cols-2">
-                                <div>
-                                    <dt className="text-muted-foreground">Auto-promote</dt>
-                                    <dd>{autoPromoteSummary(settings)}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-muted-foreground">Publish role</dt>
-                                    <dd>{roleLabel(settings.promoteMinRole as "designer" | "viewer")} minimum</dd>
-                                </div>
-                            </dl>
-                        )}
-
-                        {isAdmin ? (
-                            <div className="flex items-start gap-2">
-                                <Checkbox
-                                    id="tracker-auto-task"
-                                    checked={draft.autoTaskClass}
-                                    onCheckedChange={(checked) =>
-                                        setDraft((prev) =>
-                                            prev ? { ...prev, autoTaskClass: checked === true } : prev,
-                                        )
-                                    }
-                                />
-                                <Label htmlFor="tracker-auto-task">Auto-promote class task comments</Label>
-                            </div>
-                        ) : null}
-
-                        <div className="rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                            Labels: {settings.labels.base}, {settings.labels.severityPrefix}
-                            {settings.labels.classPrefix}, {settings.labels.boardPrefix}
+                        <Label htmlFor="tracker-auto-task" className="font-normal">
+                            Also auto-publish comments classed as <span className="font-medium">task</span>, whatever their severity
+                        </Label>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                        <span>{autoPromoteSummary({ autoMinSeverity: draft.autoMinSeverity, autoTaskClass: draft.autoTaskClass })}</span>{" "}
+                        <span>{promoteRoleExplanation(draft.promoteMinRole)}</span>
+                    </p>
+                </>
+            ) : (
+                <dl className="grid gap-2 text-xs sm:grid-cols-2">
+                    <div>
+                        <dt className="text-muted-foreground">Auto-publish</dt>
+                        <dd>{autoPromoteSummary(settings)}</dd>
+                    </div>
+                    <div>
+                        <dt className="text-muted-foreground">Who may publish</dt>
+                        <dd>{promoteRoleExplanation(settings.promoteMinRole)}</dd>
+                    </div>
+                </dl>
+            )}
+            <Collapsible>
+                <CollapsibleTrigger asChild>
+                    <Button type="button" variant="ghost" size="xs" className="-ml-2 text-muted-foreground">
+                        <Tag aria-hidden="true" />
+                        Issue labels
+                    </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                    <dl className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-4">
+                        <div>
+                            <dt className="text-muted-foreground">Base</dt>
+                            <dd className="font-mono">{settings.labels.base}</dd>
                         </div>
-                    </section>
-
-                    {policyAlerts.length > 0 ? (
-                        <section className="space-y-2" data-testid="policy-alerts-section">
-                            <h3 className="text-sm font-medium text-destructive">Publication paused</h3>
-                            <ul className="space-y-1">
-                                {policyAlerts.map((alert) => (
-                                    <li key={alert} className="text-xs text-destructive">
-                                        {alert}
-                                    </li>
-                                ))}
-                            </ul>
-                            {isAdmin && ackState !== "valid" && settings.destination.visibility === "public" ? (
-                                <PermissionHint
-                                    blocked={!isAdmin}
-                                    action="acknowledge public destination"
-                                    allowedRoles={["admin"]}
-                                >
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        disabled={acking}
-                                        onClick={() => setConfirmAckOpen(true)}
-                                    >
-                                        Acknowledge public visibility
-                                    </Button>
-                                </PermissionHint>
-                            ) : null}
-                        </section>
-                    ) : null}
-
-                    {!isAdmin ? (
-                        <div
-                            className="flex items-start gap-2 rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground"
-                            data-testid="viewer-readonly-note"
-                        >
-                            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                            <span>
-                                Destination overrides and publication policy changes require an administrator. Your role
-                                can read the active destination before promoting comments.
-                            </span>
+                        <div>
+                            <dt className="text-muted-foreground">Severity</dt>
+                            <dd className="font-mono">{settings.labels.severityPrefix}…</dd>
                         </div>
-                    ) : null}
-                </CardContent>
+                        <div>
+                            <dt className="text-muted-foreground">Class</dt>
+                            <dd className="font-mono">{settings.labels.classPrefix}…</dd>
+                        </div>
+                        <div>
+                            <dt className="text-muted-foreground">Board</dt>
+                            <dd className="font-mono">{settings.labels.boardPrefix}…</dd>
+                        </div>
+                    </dl>
+                </CollapsibleContent>
+            </Collapsible>
+        </section>
+    );
 
-                {isAdmin ? (
-                    <CardFooter className="flex flex-wrap gap-2 border-t">
-                        <PermissionHint
-                            blocked={!isAdmin}
-                            action="change project tracker settings"
-                            allowedRoles={["admin"]}
-                        >
-                            <Button type="button" disabled={saving || !isAdmin} onClick={handleSave}>
-                                {saving ? "Saving…" : "Save publication settings"}
-                            </Button>
-                        </PermissionHint>
-                    </CardFooter>
-                ) : null}
-            </Card>
+    const body = (
+        <div className="space-y-5">
+            {formError ? (
+                <Alert variant="destructive">
+                    <ShieldAlert />
+                    <AlertDescription>{formError}</AlertDescription>
+                </Alert>
+            ) : null}
+
+            {policyAlerts.length > 0 ? (
+                <Alert variant="warning" data-testid="policy-alerts-section">
+                    <AlertTriangle />
+                    <AlertTitle>Publishing is paused</AlertTitle>
+                    <AlertDescription>
+                        <ul className="list-disc space-y-0.5 pl-4">
+                            {policyAlerts.map((alert) => (
+                                <li key={alert}>{alert}</li>
+                            ))}
+                        </ul>
+                        {isAdmin && ackState !== "valid" && settings.destination.visibility === "public" ? (
+                            <PermissionHint blocked={!isAdmin} action="acknowledge public destination" allowedRoles={["admin"]}>
+                                <Button type="button" size="sm" variant="destructive" disabled={acking} onClick={() => setConfirmAckOpen(true)}>
+                                    Acknowledge public visibility
+                                </Button>
+                            </PermissionHint>
+                        ) : null}
+                    </AlertDescription>
+                </Alert>
+            ) : null}
+
+            {destinationSection}
+            <Separator />
+            {policySection}
+
+            {!isAdmin ? (
+                <Alert data-testid="viewer-readonly-note">
+                    <ShieldAlert />
+                    <AlertDescription>
+                        Destination and publishing rules are set by an administrator. You can see where comments will be
+                        published before promoting them.
+                    </AlertDescription>
+                </Alert>
+            ) : null}
+        </div>
+    );
+
+    const footer = isAdmin ? (
+        <div className="flex items-center justify-end gap-2">
+            <PermissionHint blocked={!isAdmin} action="change project tracker settings" allowedRoles={["admin"]}>
+                <Button type="button" size="sm" disabled={saving || !isAdmin} onClick={handleSave}>
+                    {saving ? "Saving…" : "Save publication settings"}
+                </Button>
+            </PermissionHint>
+        </div>
+    ) : null;
+
+    return (
+        <>
+            {chromeless ? (
+                <div className={cn("space-y-5", className)} data-tracker-phase="ready">
+                    {body}
+                    {footer ? (
+                        <>
+                            <Separator />
+                            {footer}
+                        </>
+                    ) : null}
+                </div>
+            ) : (
+                <Card className={cn("gap-0 py-0", className)} data-tracker-phase="ready">
+                    <CardHeader className="border-b py-3">
+                        <CardTitle className="flex flex-wrap items-center gap-2">
+                            <Settings2 className="size-4" aria-hidden="true" />
+                            Issue publishing
+                            {!isAdmin ? <Badge variant="secondary">Read-only</Badge> : null}
+                        </CardTitle>
+                        <CardDescription>
+                            Where this project&apos;s review comments become GitHub issues, and which ones do.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="py-4">{body}</CardContent>
+                    {footer ? <CardFooter className="border-t py-3">{footer}</CardFooter> : null}
+                </Card>
+            )}
 
             <ConfirmDialog
                 open={confirmDestinationOpen}
@@ -764,5 +771,53 @@ export function ProjectTrackerSettingsPanel({
                 onConfirm={() => void handleAcknowledge()}
             />
         </>
+    );
+}
+
+
+function SectionHeading({ title, description }: { title: string; description: string }) {
+    return (
+        <div>
+            <h3 className="text-sm font-medium">{title}</h3>
+            <p className="text-[11px] text-muted-foreground">{description}</p>
+        </div>
+    );
+}
+
+function RepositoryOption({
+    value,
+    selected,
+    disabled = false,
+    label,
+    description,
+    children,
+    ...aria
+}: {
+    value: string;
+    selected: boolean;
+    disabled?: boolean;
+    label: string;
+    description: ReactNode;
+    children?: ReactNode;
+    "aria-label": string;
+}) {
+    const id = `tracker-repo-${value}`;
+    return (
+        <div
+            className={cn(
+                "px-3 py-2.5 ring-1 ring-foreground/10 transition-colors",
+                selected && "bg-primary/5 ring-primary/40",
+                disabled && "opacity-60",
+            )}
+        >
+            <div className="flex items-start gap-2.5">
+                <RadioGroupItem id={id} value={value} disabled={disabled} aria-label={aria["aria-label"]} className="mt-0.5" />
+                <Label htmlFor={id} className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 font-normal">
+                    <span className="text-sm font-medium">{label}</span>
+                    <span className="text-[11px] text-muted-foreground">{description}</span>
+                </Label>
+            </div>
+            {children ? <div className="pl-6">{children}</div> : null}
+        </div>
     );
 }

@@ -103,7 +103,7 @@ export function DestinationDisclosure({
     return (
         <div
             className={cn(
-                variant === "compact" ? "space-y-1" : "space-y-2 rounded-md border border-border bg-muted/20 p-3",
+                variant === "compact" ? "space-y-1" : "space-y-2 bg-muted/30 px-3 py-2.5 ring-1 ring-foreground/10",
                 className,
             )}
             data-tracker-destination-source={source}
@@ -117,9 +117,11 @@ export function DestinationDisclosure({
                 <Badge variant={visibilityBadgeVariant(destination.visibility)} data-testid="destination-visibility">
                     {visibilityLabel(destination.visibility)}
                 </Badge>
-                <Badge variant="outline" data-testid="destination-source">
-                    {source === "imported" ? "Imported default" : "Override"}
-                </Badge>
+                {source === "imported" ? (
+                    <Badge variant="outline" data-testid="destination-source">
+                        Resolves on save
+                    </Badge>
+                ) : null}
                 {destination.visibility === "public" ? (
                     <Badge
                         variant={ackState === "valid" ? "success" : "destructive"}

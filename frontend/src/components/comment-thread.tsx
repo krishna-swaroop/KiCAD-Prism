@@ -6,9 +6,13 @@
  */
 
 import { useState, type ReactNode } from "react";
-import { Check, Cloud, ExternalLink, History, Link2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Cloud, ExternalLink, History, Link2 } from "lucide-react";
 
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { commentSeverityBadgeVariant } from "@/components/comment-severity-badge";
 import { cn } from "@/lib/utils";
 import {
     commentClassLabel,
@@ -16,7 +20,6 @@ import {
     type Comment,
     type CommentPermissions,
     type CommentReply,
-    type CommentSeverity,
 } from "@/types/comments";
 import type { CommentTrackerProjection, ProjectTrackerSettings } from "@/types/trackers";
 import { CommentEditor, actionAllowed } from "@/components/tracker-integration/comment-editor";
@@ -65,36 +68,29 @@ export function authorInitials(name: string): string {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-const AVATAR_HUES = [210, 262, 330, 20, 150, 45];
+const AVATAR_TONES = [
+    "bg-primary/15 text-primary",
+    "bg-success/15 text-success",
+    "bg-warning/15 text-warning",
+    "bg-destructive/10 text-destructive",
+    "bg-secondary text-secondary-foreground",
+];
 
-function avatarHue(seed: string): number {
+function avatarTone(seed: string): string {
     let hash = 0;
     for (let index = 0; index < seed.length; index += 1) hash = (hash * 31 + seed.charCodeAt(index)) | 0;
-    return AVATAR_HUES[Math.abs(hash) % AVATAR_HUES.length];
+    return AVATAR_TONES[Math.abs(hash) % AVATAR_TONES.length];
 }
 
-function Avatar({ name, remote = false, size = "md" }: { name: string; remote?: boolean; size?: "sm" | "md" }) {
-    const hue = avatarHue(name);
+function AuthorAvatar({ name, remote = false, size = "md" }: { name: string; remote?: boolean; size?: "sm" | "md" }) {
     return (
-        <span
-            aria-hidden="true"
-            className={cn(
-                "inline-flex shrink-0 select-none items-center justify-center rounded-full font-semibold text-white",
-                size === "md" ? "h-7 w-7 text-[11px]" : "h-5 w-5 text-[9px]",
-            )}
-            style={{ backgroundColor: `hsl(${hue} 45% 48%)` }}
-        >
-            {remote ? <Cloud className={size === "md" ? "h-3.5 w-3.5" : "h-3 w-3"} /> : authorInitials(name)}
-        </span>
+        <Avatar className={size === "md" ? "size-7" : "size-5"} aria-hidden="true">
+            <AvatarFallback className={cn(avatarTone(name), size === "sm" && "text-[9px]")}>
+                {remote ? <Cloud className={size === "md" ? "size-3.5" : "size-3"} /> : authorInitials(name)}
+            </AvatarFallback>
+        </Avatar>
     );
 }
-
-const SEVERITY_DOT: Record<CommentSeverity, string> = {
-    info: "bg-primary",
-    minor: "bg-success",
-    major: "bg-warning",
-    critical: "bg-destructive",
-};
 
 export function IconAction({
     label,
@@ -110,8 +106,8 @@ export function IconAction({
     return (
         <Button
             variant="ghost"
-            size="icon"
-            className={cn("h-7 w-7 text-muted-foreground hover:text-foreground", className)}
+            size="icon-sm"
+            className={cn("text-muted-foreground hover:text-foreground", className)}
             aria-label={label}
             title={label}
             onClick={(event) => {
@@ -124,38 +120,20 @@ export function IconAction({
     );
 }
 
-function ResolvedPill() {
-    return (
-        <span
-            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success"
-            data-testid="comment-status-pill"
-        >
-            <Check className="h-3 w-3" aria-hidden="true" />
-            Resolved
-        </span>
-    );
-}
-
-/** `R12 · Major · Task` — the whole classification in one muted line. */
+/** `R12 · Major · Task` — the whole classification in one line. */
 function CommentMetaLine({ comment, className }: { comment: Comment; className?: string }) {
     const severity = comment.severity ?? "info";
     return (
-        <div
-            className={cn("flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground", className)}
-            data-testid="comment-meta-line"
-        >
+        <div className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)} data-testid="comment-meta-line">
             {comment.elementRef ? (
-                <>
-                    <span className="truncate font-mono text-foreground/80">{comment.elementRef}</span>
-                    <span aria-hidden="true">·</span>
-                </>
+                <Badge variant="outline" className="h-5 px-1.5 font-mono text-[10px]">
+                    {comment.elementRef}
+                </Badge>
             ) : null}
-            <span className="inline-flex items-center gap-1" title={`Severity: ${commentSeverityLabel(severity)}`}>
-                <span className={cn("h-1.5 w-1.5 rounded-full", SEVERITY_DOT[severity])} aria-hidden="true" />
+            <Badge variant={commentSeverityBadgeVariant(severity)} className="h-5 px-1.5 text-[10px]">
                 {commentSeverityLabel(severity)}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span>{commentClassLabel(comment.commentClass ?? "general")}</span>
+            </Badge>
+            <span className="text-[11px] text-muted-foreground">{commentClassLabel(comment.commentClass ?? "general")}</span>
         </div>
     );
 }
@@ -171,21 +149,23 @@ export function CommentHeader({
 }) {
     return (
         <div className={cn("flex items-start gap-2.5", className)}>
-            <Avatar name={comment.author} />
-            <div className="min-w-0 flex-1">
+            <AuthorAvatar name={comment.author} />
+            <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold leading-5">{comment.author}</span>
-                    <span
-                        className="shrink-0 text-[11px] text-muted-foreground"
-                        title={new Date(comment.timestamp).toLocaleString()}
-                    >
+                    <span className="truncate text-sm font-medium leading-5">{comment.author}</span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground" title={new Date(comment.timestamp).toLocaleString()}>
                         {relativeTime(comment.timestamp)}
                     </span>
-                    {comment.status === "RESOLVED" ? <span className="ml-auto"><ResolvedPill /></span> : null}
+                    {comment.status === "RESOLVED" ? (
+                        <Badge variant="success" className="ml-auto h-5 px-1.5 text-[10px]" data-testid="comment-status-pill">
+                            <Check aria-hidden="true" />
+                            Resolved
+                        </Badge>
+                    ) : null}
                 </div>
-                <CommentMetaLine comment={comment} className="mt-0.5" />
+                <CommentMetaLine comment={comment} />
             </div>
-            {actions ? <div className="-mr-1.5 -mt-1 flex shrink-0 items-center">{actions}</div> : null}
+            {actions ? <div className="-mr-1 -mt-1 flex shrink-0 items-center">{actions}</div> : null}
         </div>
     );
 }
@@ -228,9 +208,10 @@ export function TrackerStrip({
     const status = compactStatusLabel(tracker);
     const notice = pausedReasonNotice(tracker.pausedReason) ?? bodyAuthorityNotice(tracker.bodyAuthority);
     const notPromotable = notPromotableLabel(tracker.notPromotableReason);
+    const problem = status === "sync failed" || status === "Inaccessible";
     return (
         <div
-            className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]", className)}
+            className={cn("flex flex-wrap items-center gap-x-2 gap-y-1", className)}
             data-testid="comment-tracker-strip"
             data-tracker-chip
             data-link-state={tracker.linkState ?? "none"}
@@ -239,20 +220,21 @@ export function TrackerStrip({
             onClick={(event) => event.stopPropagation()}
         >
             {tracker.linkState && linkedNumber ? (
-                <a
-                    href={tracker.externalUrl ?? undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
-                    data-testid="thread-link-chip"
-                    aria-label={`Linked to GitHub #${linkedNumber}`}
-                >
-                    <Link2 className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-                    GitHub #{linkedNumber}
-                    <ExternalLink className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-                </a>
+                <Badge variant="outline" asChild>
+                    <a
+                        href={tracker.externalUrl ?? undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-testid="thread-link-chip"
+                        aria-label={`Linked to GitHub #${linkedNumber}`}
+                    >
+                        <Link2 aria-hidden="true" />
+                        GitHub #{linkedNumber}
+                        <ExternalLink aria-hidden="true" />
+                    </a>
+                </Badge>
             ) : (
-                <span className="text-muted-foreground" data-testid="thread-link-chip" title={notPromotable ?? undefined}>
+                <span className="text-xs text-muted-foreground" data-testid="thread-link-chip" title={notPromotable ?? undefined}>
                     {tracker.linkState
                         ? tracker.linkState
                         : tracker.notPromotableReason === "unpinned_anchor"
@@ -261,15 +243,9 @@ export function TrackerStrip({
                 </span>
             )}
             {status ? (
-                <span
-                    className={cn(
-                        "text-muted-foreground",
-                        (status === "sync failed" || status === "Inaccessible") && "text-destructive",
-                    )}
-                    data-testid="thread-sync-chip"
-                >
+                <Badge variant={problem ? "destructive" : "secondary"} className="h-5 px-1.5 text-[10px]" data-testid="thread-sync-chip">
                     {status}
-                </span>
+                </Badge>
             ) : null}
             <span className="ml-auto inline-flex items-center gap-1">
                 <PromotionControl
@@ -283,25 +259,23 @@ export function TrackerStrip({
                     onTrackerChange={(next) => onTrackerChange?.(comment.id, next)}
                 />
                 {tracker.linkState ? (
-                    <button
-                        type="button"
-                        className={cn(
-                            "inline-flex h-6 items-center gap-1 rounded px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground",
-                            historyOpen && "bg-muted text-foreground",
-                        )}
+                    <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="text-muted-foreground"
                         aria-pressed={historyOpen}
                         aria-label="Sync history"
                         title="Sync history"
                         data-testid="sync-history-disclosure"
                         onClick={onToggleHistory}
                     >
-                        <History className="h-3 w-3" aria-hidden="true" />
-                    </button>
+                        <History aria-hidden="true" />
+                    </Button>
                 ) : null}
             </span>
             {notice ? (
                 <p
-                    className={cn("basis-full", tracker.pausedReason ? "text-destructive" : "text-warning")}
+                    className={cn("basis-full text-xs", tracker.pausedReason ? "text-destructive" : "text-warning")}
                     role={tracker.pausedReason ? "alert" : "note"}
                     data-testid={tracker.pausedReason ? "paused-reason" : "body-authority-note"}
                 >
@@ -360,92 +334,96 @@ export function ReplyList({
     const [expanded, setExpanded] = useState(true);
     if (replies.length === 0) return null;
     const label = replies.length === 1 ? "1 reply" : `${replies.length} replies`;
+    const list = (
+        <ol className="space-y-2.5">
+            {replies.map((reply) => {
+                const replyCanEdit = canEditReplies && actionAllowed(reply.permissions, "canEdit", false);
+                const replyCanDelete = Boolean(onDeleteReply) && actionAllowed(reply.permissions, "canDelete", false);
+                const discussionReply = reply as DiscussionReply;
+                const attribution = remoteAttributionLabel(discussionReply);
+                const attributionUrl = remoteAttributionLink(discussionReply.remoteAttribution);
+                const isEditing = editingReplyId === reply.id;
+                return (
+                    <li key={reply.id} className="flex gap-2">
+                        <AuthorAvatar name={reply.author} remote={reply.origin === "remote"} size="sm" />
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline gap-1.5 text-[11px]">
+                                {attributionUrl ? (
+                                    <a
+                                        href={attributionUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="truncate font-medium text-foreground underline-offset-2 hover:underline"
+                                        data-testid="reply-attribution-link"
+                                    >
+                                        {attribution}
+                                    </a>
+                                ) : (
+                                    <span className="truncate font-medium" data-testid="reply-attribution">
+                                        {attribution}
+                                    </span>
+                                )}
+                                <span className="shrink-0 text-muted-foreground" title={new Date(reply.timestamp).toLocaleString()}>
+                                    {relativeTime(reply.timestamp)}
+                                </span>
+                                {!isEditing && (replyCanEdit || replyCanDelete) ? (
+                                    <span className="ml-auto inline-flex shrink-0 items-center gap-0.5">
+                                        {replyCanEdit ? (
+                                            <Button variant="link" size="xs" className="h-5 px-1 text-[11px] text-muted-foreground" onClick={() => onStartEdit(reply)}>
+                                                Edit
+                                            </Button>
+                                        ) : null}
+                                        {replyCanDelete ? (
+                                            <Button variant="link" size="xs" className="h-5 px-1 text-[11px] text-muted-foreground hover:text-destructive" onClick={() => onDeleteReply?.(reply)}>
+                                                Delete
+                                            </Button>
+                                        ) : null}
+                                    </span>
+                                ) : null}
+                            </div>
+                            {isEditing ? (
+                                <CommentEditor
+                                    id={`${idPrefix}-edit-reply-${reply.id}`}
+                                    label="Edit reply"
+                                    hideLabel
+                                    compact
+                                    className="mt-1"
+                                    initialValue={reply.content}
+                                    submitLabel="Save"
+                                    busy={busy}
+                                    error={error}
+                                    conflict={conflict}
+                                    onReload={onReload}
+                                    onCancel={onCancelEdit}
+                                    onSubmit={(content) => onSubmitEdit(reply, content)}
+                                />
+                            ) : (
+                                <RemoteReply reply={discussionReply} permissions={permissions} compact bare />
+                            )}
+                        </div>
+                    </li>
+                );
+            })}
+        </ol>
+    );
     return (
         <div className={cn("px-3 py-2", className)} data-testid="comment-replies" onClick={(event) => event.stopPropagation()}>
             {collapsible ? (
-                <button
-                    type="button"
-                    className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
-                    onClick={() => setExpanded((open) => !open)}
-                    aria-expanded={expanded}
-                >
-                    {expanded ? "▾" : "▸"} {label}
-                </button>
+                <Collapsible open={expanded} onOpenChange={setExpanded}>
+                    <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="xs" className="-ml-2 mb-1 h-6 text-[10px] font-medium uppercase tracking-wide text-muted-foreground" aria-expanded={expanded}>
+                            {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+                            {label}
+                        </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>{list}</CollapsibleContent>
+                </Collapsible>
             ) : (
-                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+                <>
+                    <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+                    {list}
+                </>
             )}
-            {expanded ? (
-                <ol className="space-y-2.5">
-                    {replies.map((reply) => {
-                        const replyCanEdit = canEditReplies && actionAllowed(reply.permissions, "canEdit", false);
-                        const replyCanDelete = Boolean(onDeleteReply) && actionAllowed(reply.permissions, "canDelete", false);
-                        const discussionReply = reply as DiscussionReply;
-                        const attribution = remoteAttributionLabel(discussionReply);
-                        const attributionUrl = remoteAttributionLink(discussionReply.remoteAttribution);
-                        const isEditing = editingReplyId === reply.id;
-                        return (
-                            <li key={reply.id} className="flex gap-2">
-                                <Avatar name={reply.author} remote={reply.origin === "remote"} size="sm" />
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-baseline gap-1.5 text-[11px]">
-                                        {attributionUrl ? (
-                                            <a
-                                                href={attributionUrl}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="truncate font-semibold text-foreground hover:underline"
-                                                data-testid="reply-attribution-link"
-                                            >
-                                                {attribution}
-                                            </a>
-                                        ) : (
-                                            <span className="truncate font-semibold" data-testid="reply-attribution">
-                                                {attribution}
-                                            </span>
-                                        )}
-                                        <span className="shrink-0 text-muted-foreground" title={new Date(reply.timestamp).toLocaleString()}>
-                                            {relativeTime(reply.timestamp)}
-                                        </span>
-                                        {!isEditing && (replyCanEdit || replyCanDelete) ? (
-                                            <span className="ml-auto inline-flex shrink-0 gap-2 text-muted-foreground">
-                                                {replyCanEdit ? (
-                                                    <button type="button" className="hover:text-foreground hover:underline" onClick={() => onStartEdit(reply)}>
-                                                        Edit
-                                                    </button>
-                                                ) : null}
-                                                {replyCanDelete ? (
-                                                    <button type="button" className="hover:text-destructive hover:underline" onClick={() => onDeleteReply?.(reply)}>
-                                                        Delete
-                                                    </button>
-                                                ) : null}
-                                            </span>
-                                        ) : null}
-                                    </div>
-                                    {isEditing ? (
-                                        <CommentEditor
-                                            id={`${idPrefix}-edit-reply-${reply.id}`}
-                                            label="Edit reply"
-                                            hideLabel
-                                            compact
-                                            className="mt-1"
-                                            initialValue={reply.content}
-                                            submitLabel="Save"
-                                            busy={busy}
-                                            error={error}
-                                            conflict={conflict}
-                                            onReload={onReload}
-                                            onCancel={onCancelEdit}
-                                            onSubmit={(content) => onSubmitEdit(reply, content)}
-                                        />
-                                    ) : (
-                                        <RemoteReply reply={discussionReply} permissions={permissions} compact bare />
-                                    )}
-                                </div>
-                            </li>
-                        );
-                    })}
-                </ol>
-            ) : null}
         </div>
     );
 }
@@ -491,14 +469,15 @@ export function ReplyComposer({
                     onSubmit={onSubmit}
                 />
             ) : (
-                <button
-                    type="button"
-                    className="flex h-8 w-full items-center rounded-md border bg-muted/40 px-2.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start font-normal text-muted-foreground"
                     aria-label="Reply"
                     onClick={onOpen}
                 >
                     Write a reply…
-                </button>
+                </Button>
             )}
         </div>
     );

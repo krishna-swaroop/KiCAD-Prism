@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { CommentMutationError } from "@/lib/comments-client";
 import { cn } from "@/lib/utils";
 import type {
@@ -111,17 +112,14 @@ export function CommentEditor({
             <label htmlFor={id} className={cn("block text-xs font-medium", hideLabel && "sr-only")}>
                 {label}
             </label>
-            <textarea
+            <Textarea
                 ref={textareaRef}
                 id={id}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 placeholder={placeholder}
                 disabled={busy}
-                className={cn(
-                    "w-full resize-none rounded-md border bg-background p-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring",
-                    compact ? "h-14" : "h-16",
-                )}
+                className={cn("resize-none", compact ? "min-h-14" : "min-h-16")}
                 onKeyDown={(event) => {
                     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                         event.preventDefault();

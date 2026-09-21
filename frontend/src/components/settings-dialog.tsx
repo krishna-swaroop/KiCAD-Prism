@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, KeyRound, Link2, UserRound } from "lucide-react";
+import { Activity, GitBranch, Copy, FileCode, Shield, Plus, Trash2, KeyRound, Link2, MoreHorizontal, Pause, Play, UserRound } from "lucide-react";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
 import { changeOwnPassword, fetchAuthConfig } from "@/lib/auth";
@@ -17,9 +17,19 @@ import {
     ConnectedAccounts,
     type LinkableConnector,
 } from "@/components/tracker-integration/connected-accounts";
-import { listConnectors, pauseConnector, resumeConnector, testConnector } from "@/lib/trackers-client";
+import { deleteConnector, listConnectors, pauseConnector, resumeConnector, revokeConnector, testConnector } from "@/lib/trackers-client";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { TrackerConnector } from "@/types/trackers";
 
 interface SettingsDialogProps {
@@ -148,6 +158,7 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
     const [editing, setEditing] = useState<string | "new" | null>(null);
     const [healthOpenId, setHealthOpenId] = useState<string | null>(null);
     const [busyId, setBusyId] = useState<string | null>(null);
+    const deletion = useConfirmTarget<TrackerConnector>();
 
     const refreshConnectors = useCallback(async () => {
         if (!isAdmin) return;
@@ -156,7 +167,7 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
         try {
             setConnectors(await listConnectors());
         } catch (error) {
-            setListError(error instanceof Error ? error.message : "Failed to load connectors");
+            setListError(error instanceof Error ? error.message : "Failed to load connections");
             setConnectors([]);
         } finally {
             setLoadingList(false);
@@ -183,7 +194,7 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
         [upsertConnector],
     );
 
-    const runQuickAction = async (connector: TrackerConnector, action: "test" | "pause" | "resume") => {
+    const runAction = async (connector: TrackerConnector, action: "test" | "pause" | "resume" | "revoke") => {
         setBusyId(connector.id);
         try {
             if (action === "test") {
@@ -192,19 +203,39 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
                 if (result.test.writesEnabled) {
                     toast.success(`${connector.displayName}: connection OK${result.bot.login ? ` as ${result.bot.login}` : ""}.`);
                 } else {
-                    toast.error(`${connector.displayName}: test failed${result.test.pausedReason ? ` (${result.test.pausedReason.replace(/_/g, " ")})` : ""}.`);
+                    toast.error(
+                        `${connector.displayName}: test failed${result.test.pausedReason ? ` (${result.test.pausedReason.replace(/_/g, " ")})` : ""}.`,
+                    );
                 }
             } else if (action === "pause") {
                 upsertConnector(await pauseConnector(connector.id));
                 toast.success(`${connector.displayName} paused.`);
-            } else {
+            } else if (action === "resume") {
                 upsertConnector(await resumeConnector(connector.id));
                 toast.success(`${connector.displayName} resumed.`);
+            } else {
+                upsertConnector(await revokeConnector(connector.id));
+                toast.success(`${connector.displayName}: credentials revoked.`);
             }
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Connector request failed");
+            toast.error(error instanceof Error ? error.message : "Connection request failed");
         } finally {
             setBusyId(null);
+        }
+    };
+
+    const runDelete = async (connector: TrackerConnector) => {
+        setBusyId(connector.id);
+        try {
+            await deleteConnector(connector.id);
+            setConnectors((prev) => prev.filter((item) => item.id !== connector.id));
+            if (healthOpenId === connector.id) setHealthOpenId(null);
+            toast.success(`${connector.displayName} removed.`);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not remove the connection");
+        } finally {
+            setBusyId(null);
+            deletion.clear();
         }
     };
 
@@ -234,35 +265,33 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
                 <div>
                     <h3 className="text-lg font-medium">Issue tracking</h3>
                     <p className="text-sm text-muted-foreground">
-                        Connect GitHub so review comments can be published as issues and kept in sync.
-                        Each project then chooses its repository under its own publication settings.
+                        Connect GitHub so review comments can be published as issues and kept in sync. Each project
+                        then chooses its repository under its own publishing settings.
                     </p>
                 </div>
                 {connectors.length > 0 ? (
-                    <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setEditing("new")}
-                        data-testid="tracker-create-connector"
-                    >
-                        <Plus className="mr-1 h-4 w-4" />
+                    <Button type="button" size="sm" variant="outline" onClick={() => setEditing("new")} data-testid="tracker-create-connector">
+                        <Plus />
                         Add connection
                     </Button>
                 ) : null}
             </div>
 
-            {listError && (
-                <p className="text-sm text-destructive" role="alert">
-                    {listError}{" "}
-                    <button type="button" className="underline" onClick={() => void refreshConnectors()}>
-                        Retry
-                    </button>
-                </p>
-            )}
+            {listError ? (
+                <Alert variant="destructive">
+                    <AlertDescription>
+                        {listError}{" "}
+                        <Button type="button" variant="link" size="xs" className="h-auto p-0" onClick={() => void refreshConnectors()}>
+                            Retry
+                        </Button>
+                    </AlertDescription>
+                </Alert>
+            ) : null}
 
             {loadingList ? (
-                <p className="text-sm text-muted-foreground">Loading connections…</p>
+                <div className="space-y-3" aria-busy="true">
+                    <Skeleton className="h-28 w-full" />
+                </div>
             ) : connectors.length > 0 ? (
                 <ul className="space-y-3" data-testid="tracker-connector-list">
                     {connectors.map((connector) => (
@@ -275,49 +304,45 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
                                 onToggleHealth={() =>
                                     setHealthOpenId((current) => (current === connector.id ? null : connector.id))
                                 }
-                                onTest={() => void runQuickAction(connector, "test")}
-                                onPauseResume={() => void runQuickAction(connector, connector.paused ? "resume" : "pause")}
+                                onTest={() => void runAction(connector, "test")}
+                                onPauseResume={() => void runAction(connector, connector.paused ? "resume" : "pause")}
+                                onRevoke={() => void runAction(connector, "revoke")}
+                                onDelete={() => deletion.request(connector)}
                             />
                         </li>
                     ))}
                 </ul>
             ) : (
-                <div className="rounded-lg border border-dashed p-6 text-center" data-testid="tracker-empty-state">
-                    <Link2 className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden="true" />
-                    <p className="mt-2 text-sm font-medium">GitHub is not connected yet</p>
-                    <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                        Create a GitHub App, install it on the repositories that should receive issues, then
-                        enter its credentials here. Nothing is published until a project opts in.
-                    </p>
-                    <Button
-                        type="button"
-                        size="sm"
-                        className="mt-4"
-                        onClick={() => setEditing("new")}
-                        data-testid="tracker-create-connector"
-                    >
-                        <Plus className="mr-1 h-4 w-4" />
+                <Card className="items-center py-8 text-center" data-testid="tracker-empty-state">
+                    <Link2 className="size-6 text-muted-foreground" aria-hidden="true" />
+                    <CardTitle>GitHub is not connected yet</CardTitle>
+                    <CardDescription className="max-w-md px-4">
+                        Create a GitHub App, install it on the repositories that should receive issues, then enter its
+                        credentials here. Nothing is published until a project opts in.
+                    </CardDescription>
+                    <Button type="button" size="sm" className="mt-2" onClick={() => setEditing("new")} data-testid="tracker-create-connector">
+                        <Plus />
                         Connect GitHub
                     </Button>
-                </div>
+                </Card>
             )}
 
             <Sheet open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
-                <SheetContent className="w-full overflow-y-auto sm:max-w-xl" data-testid="tracker-configure-sheet">
-                    <SheetHeader>
+                <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl" data-testid="tracker-configure-sheet">
+                    <SheetHeader className="border-b px-6 py-4 text-left">
                         <SheetTitle>
                             {editing === "new" ? "Connect GitHub" : `Configure ${editingConnector?.displayName ?? "connection"}`}
                         </SheetTitle>
                         <SheetDescription>
                             {editing === "new"
-                                ? "GitHub App credentials are stored encrypted on the server and never shown again."
-                                : "Rotate credentials, set the webhook secret, or enable member sign-in. Leave a field blank to keep its stored value."}
+                                ? "Four steps: name the connection, enter the GitHub App credentials, wire the webhook, and optionally enable member sign-in."
+                                : "Rotate credentials, set the webhook secret, or enable member sign-in."}
                         </SheetDescription>
                     </SheetHeader>
                     {editing !== null ? (
                         <ConnectorSettings
                             key={editing}
-                            className="mt-4"
+                            className="border-0 ring-0"
                             connectorId={editing === "new" ? null : editing}
                             isAdmin={isAdmin}
                             prismOrigin={typeof window !== "undefined" ? window.location.origin : undefined}
@@ -326,6 +351,19 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
                     ) : null}
                 </SheetContent>
             </Sheet>
+
+            <ConfirmDialog
+                open={deletion.open}
+                onOpenChange={(open) => { if (!open) deletion.clear(); }}
+                title={`Remove ${deletion.target?.displayName ?? "connection"}?`}
+                description="Deletes the stored credentials, webhook secret, OAuth client and member links for this connection. Projects that still publish through it, or threads still linked through it, block removal — point them elsewhere first. Issues already on GitHub are not touched."
+                confirmLabel="Remove connection"
+                destructive
+                busy={busyId === deletion.target?.id}
+                onConfirm={() => {
+                    if (deletion.target) void runDelete(deletion.target);
+                }}
+            />
         </div>
     );
 }
@@ -356,6 +394,8 @@ function ConnectorCard({
     onToggleHealth,
     onTest,
     onPauseResume,
+    onRevoke,
+    onDelete,
 }: {
     connector: TrackerConnector;
     busy: boolean;
@@ -364,56 +404,82 @@ function ConnectorCard({
     onToggleHealth: () => void;
     onTest: () => void;
     onPauseResume: () => void;
+    onRevoke: () => void;
+    onDelete: () => void;
 }) {
     const status = connectorStatus(connector);
     const instance = connector.instanceKind === "ghes" ? connector.baseUrl || "GitHub Enterprise" : "github.com";
     return (
-        <article className="rounded-lg border bg-card p-4" data-testid="tracker-connector-card" data-connector-id={connector.id}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-sm font-semibold">{connector.displayName}</h4>
-                        <Badge variant={status.variant} data-testid="connector-status">{status.label}</Badge>
+        <Card data-size="sm" className="gap-3" data-testid="tracker-connector-card" data-connector-id={connector.id}>
+            <CardHeader>
+                <CardTitle className="flex flex-wrap items-center gap-2">
+                    {connector.displayName}
+                    <Badge variant={status.variant} data-testid="connector-status">{status.label}</Badge>
+                </CardTitle>
+                <CardDescription>
+                    GitHub App on {instance}
+                    {connector.bot.login ? ` · publishes as ${connector.bot.login}` : ""}
+                </CardDescription>
+                <CardAction>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="ghost" size="icon-sm" aria-label={`More actions for ${connector.displayName}`} disabled={busy}>
+                                <MoreHorizontal />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={onPauseResume} disabled={!connector.credentialConfigured}>
+                                {connector.paused ? <Play /> : <Pause />}
+                                {connector.paused ? "Resume" : "Pause"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={onRevoke} disabled={!connector.credentialConfigured}>
+                                <KeyRound />
+                                Revoke credentials
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem variant="destructive" onSelect={onDelete} data-testid="connector-delete">
+                                <Trash2 />
+                                Remove connection
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </CardAction>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">{status.detail}</p>
+                <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    <div className="flex items-center gap-1.5">
+                        <dt className="text-muted-foreground">Webhook</dt>
+                        <dd>{connector.webhookConfigured ? "configured" : "not set up (polling only)"}</dd>
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                        GitHub App on {instance}
-                        {connector.bot.login ? ` · publishes as ${connector.bot.login}` : ""}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{status.detail}</p>
-                    <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                        <div className="flex items-center gap-1">
-                            <dt className="text-muted-foreground">Webhook</dt>
-                            <dd>{connector.webhookConfigured ? "configured" : "not set up (polling only)"}</dd>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <dt className="text-muted-foreground">Member sign-in</dt>
-                            <dd>{connector.oauthClientConfigured ? "enabled" : "off"}</dd>
-                        </div>
-                    </dl>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                    <Button type="button" size="sm" variant="secondary" disabled={busy || !connector.credentialConfigured} onClick={onTest}>
-                        {busy ? "Working…" : "Test"}
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={busy || !connector.credentialConfigured} onClick={onPauseResume}>
-                        {connector.paused ? "Resume" : "Pause"}
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" onClick={onConfigure} data-testid="connector-configure">
-                        <KeyRound className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                    <div className="flex items-center gap-1.5">
+                        <dt className="text-muted-foreground">Member sign-in</dt>
+                        <dd>{connector.oauthClientConfigured ? "enabled" : "off"}</dd>
+                    </div>
+                </dl>
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <Button type="button" size="sm" onClick={onConfigure} data-testid="connector-configure">
+                        <KeyRound />
                         Configure
                     </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy || !connector.credentialConfigured} onClick={onTest}>
+                        {busy ? "Working…" : "Test connection"}
+                    </Button>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto text-muted-foreground"
+                        onClick={onToggleHealth}
+                        aria-expanded={healthOpen}
+                    >
+                        <Activity />
+                        {healthOpen ? "Hide health" : "Show health"}
+                    </Button>
                 </div>
-            </div>
-            <button
-                type="button"
-                className="mt-3 text-xs text-muted-foreground underline-offset-2 hover:underline"
-                onClick={onToggleHealth}
-                aria-expanded={healthOpen}
-            >
-                {healthOpen ? "Hide health" : "Show health"}
-            </button>
-            {healthOpen ? <ConnectorHealthPanel connectorId={connector.id} isAdmin className="mt-2" /> : null}
-        </article>
+                {healthOpen ? <ConnectorHealthPanel connectorId={connector.id} isAdmin /> : null}
+            </CardContent>
+        </Card>
     );
 }
 

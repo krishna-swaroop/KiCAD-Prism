@@ -177,7 +177,7 @@ export function CommentCard({
     return (
         <dialog
             open
-            className="fixed z-[110] m-0 flex flex-col overflow-hidden rounded-lg border border-border/70 bg-background/85 p-0 text-foreground shadow-xl backdrop-blur-md"
+            className="fixed z-[110] m-0 flex flex-col overflow-hidden rounded-none bg-popover/85 p-0 text-popover-foreground shadow-lg ring-1 ring-foreground/10 backdrop-blur-md"
             style={style}
             aria-label="Comment details"
             data-tracker-discussion-host="canvas-card"
@@ -224,7 +224,7 @@ export function CommentCard({
                     historyOpen={historyOpen}
                     onToggleHistory={() => setHistoryOpen((open) => !open)}
                     onTrackerChange={onTrackerChange}
-                    className="shrink-0 border-y bg-muted/40 px-3 py-1.5"
+                    className="shrink-0 border-y border-border/60 bg-muted/40 px-3 py-1.5"
                 />
             ) : null}
 

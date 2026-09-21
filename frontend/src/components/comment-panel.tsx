@@ -3,6 +3,7 @@ import { Check, MessageSquare, Pencil, RotateCcw, Trash2, X } from "lucide-react
 import type { Comment, CommentReply } from "@/types/comments";
 import type { CommentTrackerProjection, LegacyForgeProjection } from "@/types/trackers";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -94,20 +95,19 @@ export function CommentPanel({
             </div>
             )}
 
-            <div className="flex gap-2 border-b bg-muted/30 p-2">
+            <div className="flex gap-1 border-b bg-muted/30 p-2" role="tablist" aria-label="Filter comments">
                 {(["ALL", "OPEN", "RESOLVED"] as const).map((value) => (
-                    <button
+                    <Button
                         key={value}
                         type="button"
+                        role="tab"
+                        size="xs"
+                        variant={filter === value ? "secondary" : "ghost"}
+                        aria-selected={filter === value}
                         onClick={() => setFilter(value)}
-                        className={`rounded-full px-3 py-1 text-xs transition-colors ${
-                            filter === value
-                                ? "bg-primary font-medium text-primary-foreground"
-                                : "bg-transparent text-muted-foreground hover:bg-muted"
-                        }`}
                     >
                         {value === "ALL" ? "All" : value === "OPEN" ? "Open" : "Resolved"}
-                    </button>
+                    </Button>
                 ))}
             </div>
 
@@ -232,11 +232,9 @@ function PanelCommentCard({
     const reload = onReload ? () => void onReload() : undefined;
 
     return (
-        <article
-            className={cn(
-                "rounded-lg border bg-card text-card-foreground shadow-sm transition-shadow",
-                highlighted && "ring-2 ring-primary",
-            )}
+        <Card
+            data-size="sm"
+            className={cn("gap-0 py-0", highlighted && "ring-primary")}
             data-comment-id={comment.id}
             data-comment-status={comment.status}
         >
@@ -244,7 +242,7 @@ function PanelCommentCard({
             <div
                 role="button"
                 tabIndex={0}
-                className="cursor-pointer rounded-t-lg px-3 pt-3 pb-2 text-left hover:bg-muted/40"
+                className="cursor-pointer px-3 pt-3 pb-2 text-left hover:bg-muted/40"
                 onClick={onClick}
                 onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -380,6 +378,6 @@ function PanelCommentCard({
                     void onDelete(comment.id);
                 }}
             />
-        </article>
+        </Card>
     );
 }
