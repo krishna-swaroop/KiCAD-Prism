@@ -142,7 +142,7 @@ class RootMutationRouteTests(unittest.TestCase):
         viewer = session("viewer", user_id="u_v", name="Mira")
         created = self._create(viewer, author="Mallory")
         self.assertEqual((created["author"], created["authorUserId"], created["authorKind"]), ("Mira", "u_v", "user"))
-        self.assertEqual(created["permissions"], {"canReply": True, "canEdit": True, "canDelete": True, "canResolve": False, "canPublish": False})
+        self.assertEqual(created["permissions"], {"canReply": True, "canEdit": True, "canDelete": True, "canResolve": False, "canPublish": False, "canRetry": False})
 
         sha_a, sha_b = seed_two_commit_board(self.project.path)
         self.project.project_file = "board.kicad_pro"
@@ -246,7 +246,7 @@ class RootMutationRouteTests(unittest.TestCase):
         self.assertEqual(body(refused)["code"], "legacy_admin_only")
         listing = run(comments_api.get_comments("prj_test", designer))
         [row] = listing["comments"]
-        self.assertEqual(row["permissions"], {"canReply": True, "canEdit": False, "canDelete": False, "canResolve": True, "canPublish": True})
+        self.assertEqual(row["permissions"], {"canReply": True, "canEdit": False, "canDelete": False, "canResolve": True, "canPublish": True, "canRetry": False})
         plugin = AuthenticatedUser(email="p@x", name="Plugin", role="designer", auth_type="kicad_provider")
         listing = run(comments_api.get_comments("prj_test", plugin))
         self.assertNotIn("permissions", listing["comments"][0], "read-only identities get no capability block")
