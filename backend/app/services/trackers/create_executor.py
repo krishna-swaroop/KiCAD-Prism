@@ -324,52 +324,6 @@ def _issue_adapter(connector: Mapping[str, Any], *, http: Any | None = None) -> 
     )
 
 
-class _ConnectorInboundFetcher:
-    def __init__(self, conn: Any, connector_id: str, container_id: str) -> None:
-        row = conn.execute(
-            """
-            SELECT tc.*, pt.container_path
-            FROM tracker_connectors tc
-            JOIN project_trackers pt ON pt.connector_id = tc.id
-            WHERE tc.id = %s AND pt.remote_container_id = %s
-            LIMIT 1
-            """,
-            (connector_id, container_id),
-        ).fetchone()
-        if row is None:
-            raise ProviderError("invalid_request", "connector destination not found for inbound fetch")
-        self.bot_user_id = str(row.get("bot_forge_user_id") or "")
-        self.bot_login = str(row.get("bot_login") or "")
-        self._connector = dict(row)
-        self._container_id = container_id
-        self._issue_adapter = _issue_adapter(self._connector)
-        self._comment_adapter = GitHubCommentAdapter(
-            self._issue_adapter.auth,
-            http=self._issue_adapter.http,
-            bot_user_id=self.bot_user_id,
-            bot_login=self.bot_login,
-        )
-
-    def _destination(self) -> Destination:
-        return Destination(
-            connectorId=str(self._connector["id"]),
-            containerKind="repo",
-            containerPath=str(self._connector.get("container_path") or ""),
-            remoteContainerId=self._container_id,
-            generation=1,
-        )
-
-    def fetch_issue(self, connector_id: str, container_id: str, external_id: str) -> IssueRead:
-        return self._issue_adapter.get_issue(self._destination(), external_id, etag=None)
-
-    def fetch_comment(self, connector_id: str, container_id: str, external_comment_id: str) -> IssueRead:
-        return self._comment_adapter.get_comment(self._destination(), external_comment_id, etag=None)
-
-
-def _build_inbound_fetcher(conn: Any, connector_id: str, container_id: str) -> _ConnectorInboundFetcher:
-    return _ConnectorInboundFetcher(conn, connector_id, container_id)
-
-
 def _policy_check(conn: Any, ctx: _ExecutionContext) -> None:
     policy_check(
         conn,

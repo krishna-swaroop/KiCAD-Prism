@@ -94,11 +94,15 @@ def resolve_destination_context(
     *,
     connector_id: str,
     remote_container_id: str,
-    workspace_schema: str = "workspace",
+    workspace_schema: str | None = None,
 ) -> Optional[DestinationContext]:
     connector = _load_connector(conn, connector_id)
     if connector is None:
         return None
+    if workspace_schema is None:
+        from app.services.trackers.executor_support import workspace_schema as resolve_workspace_schema
+
+        workspace_schema = resolve_workspace_schema(conn)
     qual = f'"{workspace_schema}".project_trackers' if workspace_schema.replace("_", "").isalnum() else "project_trackers"
     row = conn.execute(
         f"""

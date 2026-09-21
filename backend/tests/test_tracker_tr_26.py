@@ -512,9 +512,16 @@ class CreateExecutorPostgresTests(unittest.TestCase):
             def fetch_comment(self, connector_id, container_id, external_comment_id):  # noqa: ANN001
                 raise RuntimeError("not used")
 
+        class Bundle:
+            bot_user_id = BOT_ID
+            bot_login = BOT_LOGIN
+
         with patch(
-            "app.services.trackers.create_executor._build_inbound_fetcher",
+            "app.services.trackers.provider_registry.ProviderRegistry.inbound_fetcher",
             return_value=Fetcher(),
+        ), patch(
+            "app.services.trackers.provider_registry.ProviderRegistry.bundle_for_connector",
+            return_value=Bundle(),
         ):
             context = FakeContext(
                 {

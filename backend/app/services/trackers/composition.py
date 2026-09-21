@@ -41,8 +41,6 @@ _runtime: "TrackerRuntime | None" = None
 _outbound_mounted = False
 _EXECUTE_BY_OP: MutableMapping[str, DispatchExecutor] = {}
 _RECOVER_BY_OP: MutableMapping[str, RecoverExecutor] = {}
-_original_dispatch_job: Callable[..., Any] | None = None
-_jobs_wired = False
 
 
 def has_outbound_executor() -> bool:
@@ -93,115 +91,11 @@ def _register_default_outbound_handlers() -> None:
         register_outbound_op(kind, execute=execute_thread_claimed_op, recover=recover_thread_op)
 
 
-def _wire_jobs_dispatch() -> None:
-    """Enable hint-aware dispatch job body once. Does not rebind ``jobs._executor``."""
-
-    global _jobs_wired, _original_dispatch_job
-    if _jobs_wired:
-        return
-
-    import app.services.trackers.jobs as jobs
-
-    _original_dispatch_job = jobs.run_tracker_dispatch_job
-
-    mount_hints_applier(True)
-
-    def _apply_destination_hints(conn, connector_id: str, container_id: str):  # noqa: ANN001
-        from app.services.job_runtime import RetryableJobError
-        from app.services.trackers.create_executor import _build_inbound_fetcher
-        from app.services.trackers.scheduler import OUTBOX_POLL_SECONDS
-
-        if not connector_id or not container_id:
-            pending = conn.execute(
-                """
-                SELECT connector_id, remote_container_id
-                FROM remote_hints
-                WHERE state = 'pending'
-                ORDER BY received_at ASC, id ASC
-                LIMIT 1
-                """
-            ).fetchone()
-            if pending:
-                connector_id = str(pending["connector_id"])
-                container_id = str(pending["remote_container_id"])
-        row = conn.execute(
-            """
-            SELECT 1 FROM remote_hints
-            WHERE state = 'pending'
-              AND connector_id = %s
-              AND remote_container_id = %s
-            LIMIT 1
-            """,
-            (connector_id, container_id),
-        ).fetchone()
-        if not row:
-            raise RetryableJobError(
-                "No due tracker operations",
-                code="tracker_idle",
-                retry_after_seconds=OUTBOX_POLL_SECONDS,
-            )
-        fetcher = _build_inbound_fetcher(conn, connector_id, container_id)
-        apply_destination_hints(
-            conn,
-            connector_id=connector_id,
-            container_id=container_id,
-            fetcher=fetcher,
-            bot_user_id=fetcher.bot_user_id or None,
-            bot_login=fetcher.bot_login or None,
-        )
-        return JobResult(message="Applied inbound hints")
-
-    def run_tracker_dispatch_job(context):  # noqa: ANN001
-        from app.services.trackers.jobs import (
-            _comments_connect,
-            _connector_paused,
-            _executor,
-            _prepare_claimed_op,
-            _run_executor_outside_txn,
-        )
-
-        context.check_cancelled()
-        payload = context.payload
-        connector_id = str(payload.get("connectorId") or "")
-        container_id = str(payload.get("remoteContainerId") or "")
-        executor = _executor(context)
-        with _comments_connect(context) as conn:
-            paused = _connector_paused(conn, connector_id)
-            ops = OpStore(conn)
-            claimed = ops.claim(context.worker_id, lease_seconds=60)
-            if claimed is None:
-                result = _apply_destination_hints(conn, connector_id, container_id)
-                conn.commit()
-                return result
-            prepared = _prepare_claimed_op(
-                ops, claimed, paused=paused, has_executor=executor is not None
-            )
-            conn.commit()
-        if not prepared["run_io"]:
-            return prepared["result"]
-        return _run_executor_outside_txn(context, prepared["claimed"], executor)
-
-    jobs.run_tracker_dispatch_job = run_tracker_dispatch_job
-    _jobs_wired = True
-
-
-def _unwire_jobs_dispatch() -> None:
-    global _jobs_wired, _original_dispatch_job
-    if not _jobs_wired:
-        return
-    import app.services.trackers.jobs as jobs
-
-    if _original_dispatch_job is not None:
-        jobs.run_tracker_dispatch_job = _original_dispatch_job
-    _original_dispatch_job = None
-    _jobs_wired = False
-
-
 def mount_outbound_executor() -> None:
     """Mark outbound dispatch mounted so ``jobs._executor`` returns the table dispatcher."""
 
     global _outbound_mounted
-    _wire_jobs_dispatch()
+    mount_hints_applier(True)
     _outbound_mounted = True
 
 
@@ -211,7 +105,6 @@ def unmount_outbound_executor() -> None:
     global _outbound_mounted
     _EXECUTE_BY_OP.clear()
     _RECOVER_BY_OP.clear()
-    _unwire_jobs_dispatch()
     _outbound_mounted = False
     # Keep per-module mount flags consistent after a full teardown.
     try:

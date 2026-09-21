@@ -9,6 +9,8 @@ follows C7 (M4).
 
 from __future__ import annotations
 
+import logging
+
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, Optional
@@ -34,6 +36,8 @@ DispatchExecutor = Callable[[dict[str, Any]], str | None]
 
 QUARANTINE_FIRST_MINUTES = 1
 
+logger = logging.getLogger(__name__)
+
 
 def register_tracker_job_handlers(register: Callable[[str, Callable], None]) -> None:
     register(DISPATCH_KIND, run_tracker_dispatch_job)
@@ -42,12 +46,17 @@ def register_tracker_job_handlers(register: Callable[[str, Callable], None]) -> 
 
 
 def run_tracker_dispatch_job(context: JobContext) -> JobResult:
+    """One dispatch pass for a destination: apply its pending inbound hints,
+    then execute at most one claimed outbound op."""
+
     context.check_cancelled()
     payload = context.payload
     connector_id = str(payload.get("connectorId") or "")
     container_id = str(payload.get("remoteContainerId") or "")
     executor = _executor(context)
     with _comments_connect(context) as conn:
+        if not connector_id or not container_id:
+            connector_id, container_id = _oldest_pending_hint_destination(conn)
         hints_applied = _apply_destination_hints(conn, connector_id, container_id)
         paused = _connector_paused(conn, connector_id)
         ops = OpStore(conn)
@@ -56,7 +65,7 @@ def run_tracker_dispatch_job(context: JobContext) -> JobResult:
             conn.commit()
             if hints_applied:
                 return JobResult(message="Applied inbound hints", details={"hintsApplied": hints_applied})
-            return _retain_or_idle(conn)
+            return _retain_or_idle(conn, connector_id, container_id)
         prepared = _prepare_claimed_op(
             ops, claimed, paused=paused, has_executor=executor is not None
         )
@@ -127,6 +136,21 @@ def _run_checkpoint_job(context: JobContext, *, kind: str) -> JobResult:
     return result
 
 
+def _oldest_pending_hint_destination(conn: Any) -> tuple[str, str]:
+    row = conn.execute(
+        """
+        SELECT connector_id, remote_container_id
+        FROM remote_hints
+        WHERE state = 'pending'
+        ORDER BY received_at ASC, id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return "", ""
+    return str(row["connector_id"]), str(row["remote_container_id"])
+
+
 def _apply_destination_hints(conn: Any, connector_id: str, container_id: str) -> int:
     if not connector_id or not container_id:
         return 0
@@ -138,12 +162,19 @@ def _apply_destination_hints(conn: Any, connector_id: str, container_id: str) ->
                 remote_container_id=container_id,
             )
     except Exception:
+        # The hints stay pending; ``_retain_or_idle`` reschedules this pass.
+        logger.exception("Inbound hints for %s/%s could not be applied", connector_id, container_id)
         return 0
 
 
-def _retain_or_idle(conn: Any) -> JobResult:
+def _retain_or_idle(conn: Any, connector_id: str, container_id: str) -> JobResult:
     pending = conn.execute(
-        "SELECT 1 FROM remote_hints WHERE state = 'pending' LIMIT 1"
+        """
+        SELECT 1 FROM remote_hints
+        WHERE state = 'pending' AND connector_id = %s AND remote_container_id = %s
+        LIMIT 1
+        """,
+        (connector_id, container_id),
     ).fetchone()
     if pending:
         raise RetryableJobError(
