@@ -145,8 +145,10 @@ reset production databases to force a key change.
    grace previous key) before starting workers that decrypt credentials.
 2. Start PostgreSQL and restore the dump; ciphertext rows stay intact even when
    the root key is wrong or missing.
-3. Keep connectors paused, or leave outbound idle, until **Test connection**
-   succeeds and connector health is ready on both services.
+3. `prism_backup.py restore` sets every connector `paused=TRUE` with
+   `paused_reason='restored'`. Leave them paused until **Test connection**
+   succeeds and connector health is ready on both services; then clear the
+   pause deliberately.
 4. Resume carefully: `pending` ops execute once; `sent` / `recovering` /
    `quarantine` ops claim as recovery and must not blind-create remote issues.
 5. Confirm webhook `remote_deliveries` and pending `remote_hints` survived; a

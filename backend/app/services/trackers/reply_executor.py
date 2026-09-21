@@ -10,6 +10,7 @@ no @wraps monkey-patch of ``create_executor.execute_claimed_op``.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from typing import Any, Callable, Iterator, Mapping
 
 from app.core.config import settings
 from app.services.trackers.contracts import Destination, RemoteComment
+from app.services.trackers.drafts import escape_generated_text, guard_generated_text_no_email
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.executor_support import (
     NON_CONSUMING_ERROR_CLASSES,
@@ -38,6 +40,8 @@ from app.services.trackers.promotion import DispatchPause, PublicationDenied, ev
 from app.services.trackers.provenance import body_hash, stored_hash_matches
 from app.services.trackers.reply_mutations import REPLY_OPS, decode_reply_target
 from app.services.trackers.store import TrackerStore, issue_number_for_api
+
+logger = logging.getLogger(__name__)
 
 _mounted = False
 _connect_factory: Callable[[], Any] | None = None
@@ -330,10 +334,23 @@ def _stale_intent(conn: Any, ctx: _ReplyContext, ops: OpStore) -> bool:
 
 
 def _reply_attribution(reply: Mapping[str, Any]) -> str | None:
+    """Build a D8-safe generated attribution line for outbound reply bodies."""
+
     author = str(reply.get("author") or "").strip()
     if not author:
         return None
-    return f"*{author}* (via Prism)"
+    display = escape_generated_text(author)
+    line = f"*{display}* (via Prism)"
+    try:
+        guard_generated_text_no_email(line, what="reply attribution")
+    except ValueError:
+        # D8: never send an email in Prism-generated attribution; omit the block.
+        logger.warning(
+            "omitting reply attribution for reply %s: generated text contains an email address",
+            reply.get("id"),
+        )
+        return None
+    return line
 
 
 def _confirm_reply_link(

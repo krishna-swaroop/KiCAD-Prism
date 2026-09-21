@@ -307,28 +307,30 @@ class IdentityOAuthPostgresTests(unittest.TestCase):
                 user=self.user,
             )
         )
-        with self.assertRaises(HTTPException) as replay:
-            run(
-                identity_api.oauth_callback(
-                    request=_request(),
-                    code="good-code",
-                    state=state,
-                    user=self.user,
-                )
+        replay = run(
+            identity_api.oauth_callback(
+                request=_request(),
+                code="good-code",
+                state=state,
+                user=self.user,
             )
-        self.assertEqual(replay.exception.status_code, 400)
+        )
+        self.assertEqual(replay.status_code, 302)
+        self.assertIn("tracker_oauth=error", replay.headers["location"])
+        self.assertIn("tracker_oauth_error=unknown_or_reused_state", replay.headers["location"])
         begin2 = run(identity_api.begin_oauth("cn_gh1", request=_request(), user=self.user))
         state2 = begin2.authorizeUrl.split("state=")[1].split("&")[0]
-        with self.assertRaises(HTTPException) as cross:
-            run(
-                identity_api.oauth_callback(
-                    request=_request(),
-                    code="good-code",
-                    state=state2,
-                    user=self.other,
-                )
+        cross = run(
+            identity_api.oauth_callback(
+                request=_request(),
+                code="good-code",
+                state=state2,
+                user=self.other,
             )
-        self.assertEqual(cross.exception.status_code, 403)
+        )
+        self.assertEqual(cross.status_code, 302)
+        self.assertIn("tracker_oauth=error", cross.headers["location"])
+        self.assertIn("tracker_oauth_error=cross_user_callback", cross.headers["location"])
 
     def test_expired_session_has_explicit_recovery(self) -> None:
         begin = run(identity_api.begin_oauth("cn_gh1", request=_request(), user=self.user))

@@ -69,6 +69,19 @@ def escape_generated_text(value: object) -> str:
     return html.escape(str(value or ""), quote=True)
 
 
+def generated_text_contains_email(text: object) -> bool:
+    """True when generated tracker text would violate D8 (no-email rule)."""
+
+    return bool(_EMAIL_RE.search(str(text or "")))
+
+
+def guard_generated_text_no_email(text: object, *, what: str = "generated draft") -> None:
+    """Raise when Prism-generated text contains an email address (D8)."""
+
+    if generated_text_contains_email(text):
+        raise ValueError(f"{what} contains an email address")
+
+
 def strip_untrusted_tracker_markup(content: str) -> str:
     """Remove forged markers/blocks so user prose cannot inject trusted markers."""
 
@@ -319,8 +332,7 @@ def build_issue_draft(input: DraftRenderInput) -> IssueDraft:
     )
     context_text = render_context_block_text(context_lines)
     generated_blob = "\n".join([requested_by, context_text, prism_url, *assignment.assignment_hints])
-    if _EMAIL_RE.search(generated_blob):
-        raise ValueError("generated draft contains an email address")
+    guard_generated_text_no_email(generated_blob, what="generated draft")
 
     marker = build_marker(
         connector_id=input.connector_id,
@@ -422,6 +434,8 @@ __all__ = [
     "build_issue_labels",
     "compose_issue_body",
     "escape_generated_text",
+    "generated_text_contains_email",
+    "guard_generated_text_no_email",
     "render_context_block_lines",
     "render_context_block_text",
     "render_issue_body_from_draft",

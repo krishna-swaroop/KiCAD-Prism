@@ -50,12 +50,20 @@ def user_cache_version(user_id: str) -> int:
 
 
 def validate_relative_return_to(path: str) -> str:
-    """Reject open redirects; only same-origin relative paths are allowed."""
+    """Reject open redirects; only same-origin relative paths are allowed.
+
+    Rejects scheme-relative URLs, absolute URLs, backslashes (Windows / open
+    redirect tricks), and ASCII control characters.
+    """
 
     candidate = (path or "/").strip()
     if not candidate.startswith("/") or candidate.startswith("//"):
         return "/"
     if "://" in candidate:
+        return "/"
+    if "\\" in candidate:
+        return "/"
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in candidate):
         return "/"
     return candidate
 
@@ -111,6 +119,25 @@ class IdentityService:
         with database.connection() as conn:
             conn.execute("SET search_path TO workspace, public")
             yield conn
+
+    def peek_oauth_return_to(self, state_token: str) -> str:
+        """Best-effort ``return_to`` from OAuth state for callback error redirects."""
+
+        try:
+            state_id, _, _ = self._decode_state(state_token)
+        except OAuthStateError:
+            return "/"
+        try:
+            with self.connection() as conn:
+                row = conn.execute(
+                    "SELECT return_to FROM tracker_oauth_states WHERE state_id = %s",
+                    (state_id,),
+                ).fetchone()
+        except Exception:
+            return "/"
+        if row is None:
+            return "/"
+        return validate_relative_return_to(str(row.get("return_to") or "/"))
 
     def begin_oauth(
         self,

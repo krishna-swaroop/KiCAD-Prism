@@ -223,13 +223,23 @@ def migrate_comments_tracked_links(conn: Any) -> None:
 
 
 def migrate_tracked_threads_external_number(conn: Any) -> None:
-    """Split immutable issue id from repo-scoped issue number (R2-H1)."""
+    """Split immutable issue id from repo-scoped issue number (R2-H1).
+
+    The ``external_number = external_id`` backfill is only safe when there are
+    no pre-existing linked rows (greenfield / empty ``tracked_threads``). On a
+    database that already stored immutable provider node ids in ``external_id``,
+    copying them into ``external_number`` would break REST routes that expect
+    the repo-scoped issue number. Do not rely on this copy for live datasets;
+    backfill numbers from the provider (or leave NULL so
+    ``issue_number_for_api`` logs the fallback) instead.
+    """
 
     conn.execute(
         """
         ALTER TABLE tracked_threads ADD COLUMN IF NOT EXISTS external_number TEXT;
         CREATE INDEX IF NOT EXISTS tracked_threads_container_number
             ON tracked_threads(connector_id, remote_container_id, external_number);
+        -- Greenfield-only: safe iff no pre-existing linked rows held node ids.
         UPDATE tracked_threads
         SET external_number = external_id
         WHERE external_number IS NULL
