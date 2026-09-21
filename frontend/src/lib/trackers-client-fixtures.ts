@@ -69,6 +69,7 @@ export const trackerUiMocks = {
     projectSettings: {
         projectId: "prj_47c2551996d0",
         connectorId: "cn_gh1",
+        projectRepoPath: "acme/openswitch",
         destination: {
             containerKind: "repo" as const,
             containerPath: "acme/openswitch",
