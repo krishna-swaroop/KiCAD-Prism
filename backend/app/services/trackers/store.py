@@ -241,16 +241,25 @@ class TrackerStore:
         external_url: str | None = None,
         link_state: str = "linked",
         lineage: list | None = None,
+        container_path: str | None = None,
     ) -> dict:
         if link_state not in LINK_STATES:
             raise ValueError(f"unknown link_state: {link_state}")
+        path = (container_path or "").strip() or None
+        if path is None:
+            row = self.conn.execute(
+                "SELECT container_path FROM project_trackers WHERE id = %s",
+                (project_tracker_id,),
+            ).fetchone()
+            if row and row.get("container_path"):
+                path = str(row["container_path"])
         self.conn.execute(
             """
             INSERT INTO tracked_threads (
                 id, comment_id, project_tracker_id, destination_generation,
-                connector_id, remote_container_id, external_id, external_number,
-                external_url, link_state, lineage
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                connector_id, remote_container_id, container_path, external_id,
+                external_number, external_url, link_state, lineage
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
             """,
             (
                 thread_id,
@@ -259,6 +268,7 @@ class TrackerStore:
                 destination_generation,
                 connector_id,
                 remote_container_id,
+                path,
                 str(external_id),
                 str(external_number) if external_number not in (None, "") else None,
                 external_url,

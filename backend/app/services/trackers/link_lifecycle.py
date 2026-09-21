@@ -28,6 +28,10 @@ from app.services.trackers.store import TrackerStore
 REPROMOTABLE_STATES = ("deleted",)
 PAUSED_TRANSFER_REASON = "transfer_unapproved"
 CROSS_HOST_TRANSFER_REASON = "transfer_cross_host"
+# D2: only pending ops may be cancelled locally. sent/recovering/quarantine
+# must stay on the recovery path so a successful remote create is never
+# discarded blindly after destination change or unlink (R4-M1).
+SUPERSEDEABLE_STATES = ("pending",)
 
 
 @dataclass(frozen=True)
@@ -105,12 +109,17 @@ def supersede_live_ops(
     *,
     reason: str,
 ) -> list[str]:
-    """Cancel in-flight work for a thread without deleting audit rows."""
+    """Cancel pending work for a thread without deleting audit rows.
+
+    Only ``pending`` ops are superseded (R4-M1 / D2). Ops already
+    ``sent`` / ``recovering`` / ``quarantine`` stay for recovery so a
+    successful remote write is never discarded locally.
+    """
 
     ops = OpStore(conn)
     superseded: list[str] = []
     for op in ops.list_thread(thread_id):
-        if str(op.get("state") or "") not in LIVE_STATES:
+        if str(op.get("state") or "") not in SUPERSEDEABLE_STATES:
             continue
         try:
             ops.supersede(str(op["id"]), int(op.get("fence") or 0), reason=reason)
@@ -220,7 +229,8 @@ def apply_verified_transfer(
             paused_reason = NULL,
             remote_state = %s,
             remote_version = %s::jsonb,
-            last_verified_at = NOW()
+            last_verified_at = NOW(),
+            container_path = COALESCE(%s, container_path)
         WHERE id = %s
         """,
         (
@@ -230,6 +240,7 @@ def apply_verified_transfer(
             issue.url,
             issue.state,
             json.dumps(dict(issue.version.model_dump())),
+            issue.container.path or None,
             thread_id,
         ),
     )
@@ -446,6 +457,7 @@ __all__ = [
     "CROSS_HOST_TRANSFER_REASON",
     "PAUSED_TRANSFER_REASON",
     "REPROMOTABLE_STATES",
+    "SUPERSEDEABLE_STATES",
     "TransferOutcome",
     "apply_moved_issue",
     "apply_verified_transfer",

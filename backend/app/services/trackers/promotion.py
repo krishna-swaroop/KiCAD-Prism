@@ -258,6 +258,7 @@ def enqueue_create_issue(
             remote_container_id=remote_container_id,
             external_id="pending",
             link_state="linked",
+            container_path=str(policy.get("container_path") or "") or None,
         )
         thread = {"id": thread_id}
     else:
