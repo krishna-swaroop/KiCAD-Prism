@@ -202,7 +202,13 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
     def _factory(self):
         yield self.conn
 
-    def _seed_destination(self, *, paused: bool = False, with_credentials: bool = False) -> None:
+    def _seed_destination(
+        self,
+        *,
+        paused: bool = False,
+        with_credentials: bool = False,
+        visibility: str = "private",
+    ) -> None:
         self.store.upsert_connector(
             connector_id=CONNECTOR,
             provider="github",
@@ -224,6 +230,7 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
             container_path="acme/widget",
             remote_container_id=CONTAINER,
             generation=1,
+            visibility=visibility,
         )
         self._mirror_project_tracker_to_workspace()
         self.conn.commit()
@@ -369,10 +376,21 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
         self.assertIn("sweep", result.message.casefold())
 
     def test_dispatch_without_credentials_surfaces_provider_error(self) -> None:
-        self._seed_destination(with_credentials=False)
+        self._seed_destination(with_credentials=False, visibility="private")
         self.conn.execute(
-            "INSERT INTO comments(id, project_id, author, content) VALUES (%s,%s,%s,%s)",
-            (COMMENT_ID, "proj_tr62", "Priya", "needs forge"),
+            """
+            INSERT INTO comments(
+                id, project_id, author, content, anchor_commit, anchor_state
+            ) VALUES (%s,%s,%s,%s,%s,%s)
+            """,
+            (
+                COMMENT_ID,
+                "proj_tr62",
+                "Priya",
+                "needs forge",
+                "3f2c9a1b7e4d5c6a8b9f0e1d2c3b4a5968778695",
+                "pinned",
+            ),
         )
         self.store.insert_thread(
             thread_id="thr_tr62_dispatch",
@@ -397,7 +415,12 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
                 "_connect": self._factory,
             }
         )
-        result = run_tracker_dispatch_job(context)
+        with mock.patch.object(
+            __import__("app.core.config", fromlist=["settings"]).settings,
+            "PUBLIC_BASE_URL",
+            "https://prism.example.com",
+        ):
+            result = run_tracker_dispatch_job(context)
         self.assertEqual(result.message, "Dispatched")
         row = self.ops.get("op_tr62")
         self.assertEqual(row["last_error"]["class"], "auth_lost")

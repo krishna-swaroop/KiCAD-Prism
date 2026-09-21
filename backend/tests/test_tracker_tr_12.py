@@ -74,6 +74,8 @@ class RegistryTests(unittest.TestCase):
         self.assertIn("sync_ops_inbox_and_delete_cascade", names)
         self.assertIn(5, versions)
         self.assertIn("tracked_threads_external_number", names)
+        self.assertIn(7, versions)
+        self.assertIn("tracked_threads_container_path", names)
 
 
 @unittest.skipUnless(POSTGRES_URL, "TEST_POSTGRES_URL is required for tracker persistence tests")

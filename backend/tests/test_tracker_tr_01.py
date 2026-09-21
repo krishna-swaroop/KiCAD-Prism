@@ -162,7 +162,9 @@ class CommentsPersistencePostgresTests(unittest.TestCase):
         self.store.initialize()  # second start: ledger says nothing to do
 
         ledger = self._raw("SELECT version FROM comment_schema_migrations ORDER BY version")
-        self.assertEqual([row["version"] for row in ledger], [1, 2, 3, 4, 5, 6])
+        expected = [version for version, _, _ in comments_schema_migrations.MIGRATIONS]
+        self.assertEqual([row["version"] for row in ledger], expected)
+        self.assertIn(7, expected)  # R4-M1 tracked_threads.container_path
 
         snapshot = self.store.get_comments_file(self.project_id, self.project_path)
         self.assertEqual(snapshot["meta"]["version"], "1.1")
