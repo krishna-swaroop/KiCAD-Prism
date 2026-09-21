@@ -408,7 +408,11 @@ class CommentsStoreService:
     @contextmanager
     def _connect(self):
         with database.connection() as conn:
-            conn.execute(f'SET search_path TO "{self.schema}", public')
+            # Tracker hooks that join a comments transaction (unlink audit,
+            # policy lookups) also touch workspace tables; keep that schema
+            # on the path so unqualified names resolve like they do on the
+            # worker (comments first, workspace second).
+            conn.execute(f'SET search_path TO "{self.schema}", "{self.workspace_schema}", public')
             yield conn
 
     def _bootstrap_project_if_needed(self, conn, project_id: str, project_path: str) -> None:

@@ -484,3 +484,31 @@ class ReplyAndRootMutationsCarryActorTests(unittest.TestCase):
         calls: list = []
         self._call(self._store(calls), lambda api, user: api.delete_comment("prj", "c_1", 2, user))
         self._assert_actor(calls, "delete_comment")
+
+
+@unittest.skipUnless(POSTGRES_URL, "TEST_POSTGRES_URL is required for tracker persistence tests")
+@unittest.skipUnless(psycopg is not None, "psycopg is required for tracker persistence tests")
+@unittest.skipIf(SHARED_APPLICATION_DATABASE, "TEST_POSTGRES_URL must not target PRISM_DATABASE_URL")
+class CommentsStoreSearchPathTests(unittest.TestCase):
+    """Live finding: POST .../tracker/unlink 500'd with ``relation
+    "tracker_audit" does not exist`` because the comments store connection
+    only had the comments schema on its path while the unlink audit writes
+    a workspace table."""
+
+    def test_store_connection_sees_workspace_tables(self) -> None:
+        from contextlib import contextmanager
+        from unittest.mock import patch
+
+        from app.services import comments_store_service as css
+
+        @contextmanager
+        def connection():
+            with psycopg.connect(POSTGRES_URL, row_factory=dict_row) as conn:
+                yield conn
+
+        store = css.CommentsStoreService()
+        with patch.object(css.database, "connection", connection):
+            with store._connect() as conn:
+                path = str(conn.execute("SHOW search_path").fetchone()["search_path"])
+        names = [part.strip().strip('"') for part in path.split(",")]
+        self.assertEqual(names[:2], [store.schema, store.workspace_schema])
