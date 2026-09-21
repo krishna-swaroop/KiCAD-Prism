@@ -9,7 +9,7 @@ import { filterLabelInstances, type LabelInstanceRef } from "@/lib/label-instanc
 import { WebGpu3dTab } from "./webgpu-3d-tab";
 import { EcadViewerControls } from "./ecad-viewer-controls";
 import { CommentForm, type CommentFormSubmitPayload } from "./comment-form";
-import { CommentCard } from "./comment-card";
+import { CommentCard, type CommentTrackerHostSettings } from "./comment-card";
 import { CommentPanel } from "./comment-panel";
 import { ViewerOverlayRail, SELECTION_INSPECTOR_RAIL_RESIZE } from "./viewer-overlay-rail";
 import { fetchApi, readApiError } from "@/lib/api";
@@ -26,6 +26,9 @@ import {
     updateReply,
 } from "@/lib/comments-client";
 import { displayedCanvasRevision } from "@/components/tracker-integration/comment-editor";
+import { isWorkPending } from "@/components/tracker-integration/tracked-thread-chip";
+import { getProjectTracker, projectionFromComment } from "@/lib/trackers-client";
+import type { CommentTrackerProjection, LegacyForgeProjection } from "@/types/trackers";
 import {
     canvasVisualizerTab,
     deepLinkSceneKey,
@@ -431,6 +434,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
     const [commentCardScreenPosition, setCommentCardScreenPosition] = useState<{ x: number; y: number } | null>(null);
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
     const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
+    const [trackerSettings, setTrackerSettings] = useState<CommentTrackerHostSettings | null>(null);
     const lastSelectionRef = useRef<EcadSemanticSelectionDetail | null>(null);
 
     const {
@@ -690,6 +694,49 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
             controller.abort();
         };
     }, [projectId, appendCommit]);
+
+    // Project tracker publication settings for destination disclosure / promote controls.
+    useEffect(() => {
+        let cancelled = false;
+        setTrackerSettings(null);
+        setSelectedCommentId(null);
+        setCommentMode(false);
+        setShowCommentForm(false);
+        setPendingLocation(null);
+        setPendingContext(null);
+        pendingElementRef.current = null;
+        void getProjectTracker(projectId)
+            .then((settings) => {
+                if (cancelled) return;
+                setTrackerSettings({
+                    destination: settings.destination,
+                    acknowledgement: settings.acknowledgement ?? null,
+                    promoteMinRole: settings.promoteMinRole,
+                    autoMinSeverity: settings.autoMinSeverity,
+                    autoTaskClass: settings.autoTaskClass,
+                });
+            })
+            .catch(() => {
+                if (!cancelled) setTrackerSettings(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId]);
+
+    // Refresh comment listings while any thread has in-flight tracker sync work.
+    useEffect(() => {
+        const hasPending = comments.some((entry) =>
+            isWorkPending(projectionFromComment(entry as Comment & LegacyForgeProjection)),
+        );
+        if (!hasPending) return;
+        const timer = window.setInterval(() => {
+            void listComments(projectId)
+                .then((listed) => setComments(listed))
+                .catch(() => undefined);
+        }, 4000);
+        return () => window.clearInterval(timer);
+    }, [comments, projectId]);
 
     useEffect(() => {
         if (semanticIndex) return;
@@ -1313,6 +1360,16 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         setComments((prev) => prev.map((entry) => (entry.id === updated.id ? updated : entry)));
     }, []);
 
+    const applyTrackerProjection = useCallback((commentId: string, tracker: CommentTrackerProjection) => {
+        setComments((prev) =>
+            prev.map((entry) =>
+                entry.id === commentId
+                    ? ({ ...entry, tracker } as Comment & { tracker: CommentTrackerProjection })
+                    : entry,
+            ),
+        );
+    }, []);
+
     const toastMutation = useCallback((error: unknown, fallback: string) => {
         const message = error instanceof CommentMutationError && error.isConflict
             ? "This thread changed. Reload and try again."
@@ -1837,10 +1894,13 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 canModify={canModifyCommentsFallback}
                                 highlightedId={selectedCommentId}
                                 embedded
+                                projectId={projectId}
+                                trackerSettings={trackerSettings}
                                 onEdit={editComment}
                                 onEditReply={editReply}
                                 onDeleteReply={deleteReply}
                                 onReload={reloadComments}
+                                onTrackerChange={applyTrackerProjection}
                             />
                         ) : inspectorHasContent ? (
                             <SelectionInspector
@@ -1891,6 +1951,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 context={pendingContext ?? "SCH"}
                 isSubmitting={isSubmittingComment}
                 mentionCandidates={mentionCandidates}
+                trackerSettings={trackerSettings}
             />}
 
             {selectedComment && (
@@ -1898,6 +1959,8 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                     comment={selectedComment}
                     screenPosition={commentCardScreenPosition}
                     canModify={canModifyCommentsFallback}
+                    projectId={projectId}
+                    trackerSettings={trackerSettings}
                     onClose={() => setSelectedCommentId(null)}
                     onResolve={(commentId, resolved) => void resolveComment(commentId, resolved)}
                     onReply={replyToComment}
@@ -1906,6 +1969,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                     onEditReply={editReply}
                     onDeleteReply={deleteReply}
                     onReload={reloadComments}
+                    onTrackerChange={applyTrackerProjection}
                 />
             )}
         </div>

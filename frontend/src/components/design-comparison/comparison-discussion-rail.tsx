@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, MessageSquare, Pencil, Reply, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,11 +12,21 @@ import {
     updateReply,
 } from "@/lib/comments-client";
 import type { Comment, CommentContext, CommentReply } from "@/types/comments";
+import type { CommentTrackerProjection, LegacyForgeProjection } from "@/types/trackers";
 import {
     CommentEditor,
     actionAllowed,
     describeMutationError,
 } from "@/components/tracker-integration/comment-editor";
+import { PromotionControl } from "@/components/tracker-integration/promotion-control";
+import { RemoteReply, type DiscussionReply } from "@/components/tracker-integration/remote-reply";
+import { SyncHistory } from "@/components/tracker-integration/sync-history";
+import { TrackedThreadChip } from "@/components/tracker-integration/tracked-thread-chip";
+import { getProjectTracker, projectionFromComment } from "@/lib/trackers-client";
+import {
+    commentAutoEligible,
+    type CommentTrackerHostSettings,
+} from "@/components/comment-card";
 
 interface DiscussionAnchor {
     id: string;
@@ -42,8 +52,18 @@ function replaceComment(comments: Comment[], updated: Comment): Comment[] {
     return comments.map((item) => (item.id === updated.id ? updated : item));
 }
 
+function applyTracker(comments: Comment[], commentId: string, tracker: CommentTrackerProjection): Comment[] {
+    return comments.map((item) =>
+        item.id === commentId
+            ? ({ ...item, tracker } as Comment & { tracker: CommentTrackerProjection })
+            : item,
+    );
+}
+
 function DiscussionThread({
     comment,
+    projectId,
+    trackerSettings,
     canComment,
     busy,
     error,
@@ -63,8 +83,11 @@ function DiscussionThread({
     onCancelReply,
     onStartReply,
     onStartReplyEdit,
+    onTrackerChange,
 }: {
     comment: Comment;
+    projectId: string;
+    trackerSettings: CommentTrackerHostSettings | null;
     canComment: boolean;
     busy: boolean;
     error: string | null;
@@ -84,16 +107,20 @@ function DiscussionThread({
     onCancelReply: () => void;
     onStartReply: (id: string) => void;
     onStartReplyEdit: (id: string) => void;
+    onTrackerChange: (commentId: string, tracker: CommentTrackerProjection) => void;
 }) {
     const canReply = actionAllowed(comment.permissions, "canReply", canComment);
     const canEdit = actionAllowed(comment.permissions, "canEdit", false);
     const canResolve = actionAllowed(comment.permissions, "canResolve", canComment);
     const liveReplies = comment.replies.filter((item) => !item.deletedAt);
+    const tracker = projectionFromComment(comment as Comment & LegacyForgeProjection);
+    const autoEligible = commentAutoEligible(comment, trackerSettings);
     return (
         <article
             className={`rounded-md border p-3 text-xs ${
                 comment.status === "RESOLVED" ? "opacity-60" : ""
             }`}
+            data-tracker-discussion-host="comparison-thread"
         >
             <div className="flex items-start justify-between gap-2">
                 <div>
@@ -131,6 +158,9 @@ function DiscussionThread({
                     )}
                 </div>
             </div>
+            <div className="mt-2">
+                <TrackedThreadChip tracker={tracker} variant="stacked" />
+            </div>
             {editingId === comment.id ? (
                 <div className="mt-2">
                     <CommentEditor
@@ -148,11 +178,25 @@ function DiscussionThread({
             ) : (
                 <p className="mt-2 whitespace-pre-wrap leading-relaxed">{comment.content}</p>
             )}
+            {trackerSettings && (
+                <div className="mt-2">
+                    <PromotionControl
+                        projectId={projectId}
+                        commentId={comment.id}
+                        tracker={tracker}
+                        permissions={comment.permissions}
+                        settings={trackerSettings}
+                        autoEligible={autoEligible}
+                        onTrackerChange={(next) => onTrackerChange(comment.id, next)}
+                    />
+                </div>
+            )}
             {!!liveReplies.length && (
                 <div className="mt-2 space-y-2 border-l pl-2">
                     {liveReplies.map((item) => {
                         const replyCanEdit = actionAllowed(item.permissions, "canEdit", false);
                         const replyCanDelete = actionAllowed(item.permissions, "canDelete", false);
+                        const discussionReply = item as DiscussionReply;
                         return (
                             <div key={item.id}>
                                 {editingReplyId === item.id ? (
@@ -169,8 +213,11 @@ function DiscussionThread({
                                     />
                                 ) : (
                                     <>
-                                        <span className="font-medium">{item.author}: </span>
-                                        {item.content}
+                                        <RemoteReply
+                                            reply={discussionReply}
+                                            permissions={comment.permissions}
+                                            className="border-0 bg-transparent p-0"
+                                        />
                                         {(replyCanEdit || replyCanDelete) && (
                                             <span className="ml-1">
                                                 {replyCanEdit && (
@@ -224,6 +271,11 @@ function DiscussionThread({
                     )}
                 </div>
             )}
+            {tracker.linkState && (
+                <div className="mt-2">
+                    <SyncHistory projectId={projectId} commentId={comment.id} />
+                </div>
+            )}
         </article>
     );
 }
@@ -248,6 +300,35 @@ export function ComparisonDiscussionRail({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [conflict, setConflict] = useState(false);
+    const [trackerSettings, setTrackerSettings] = useState<CommentTrackerHostSettings | null>(null);
+
+    useEffect(() => {
+        setContent("");
+        setReplyingTo(null);
+        setEditingId(null);
+        setEditingReplyId(null);
+        setError(null);
+        setConflict(false);
+        setTrackerSettings(null);
+        let cancelled = false;
+        void getProjectTracker(projectId)
+            .then((settings) => {
+                if (cancelled) return;
+                setTrackerSettings({
+                    destination: settings.destination,
+                    acknowledgement: settings.acknowledgement ?? null,
+                    promoteMinRole: settings.promoteMinRole,
+                    autoMinSeverity: settings.autoMinSeverity,
+                    autoTaskClass: settings.autoTaskClass,
+                });
+            })
+            .catch(() => {
+                if (!cancelled) setTrackerSettings(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId, base, compare, domain]);
 
     const reload = async () => {
         onCommentsChange(await listComparisonComments(projectId, base, compare, domain));
@@ -374,6 +455,7 @@ export function ComparisonDiscussionRail({
                     ? "w-full"
                     : "w-80 shrink-0 border-l max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-xl",
             )}
+            data-tracker-discussion-host="comparison-rail"
         >
             {!embedded && (
             <div className="flex items-center justify-between border-b px-3 py-2">
@@ -401,6 +483,8 @@ export function ComparisonDiscussionRail({
                     <DiscussionThread
                         key={comment.id}
                         comment={comment}
+                        projectId={projectId}
+                        trackerSettings={trackerSettings}
                         canComment={canComment}
                         busy={busy}
                         error={error}
@@ -420,6 +504,9 @@ export function ComparisonDiscussionRail({
                         onCancelReply={() => { setReplyingTo(null); setError(null); setConflict(false); }}
                         onStartReply={setReplyingTo}
                         onStartReplyEdit={setEditingReplyId}
+                        onTrackerChange={(commentId, tracker) => {
+                            onCommentsChange(applyTracker(comments, commentId, tracker));
+                        }}
                     />
                 ))}
             </div>

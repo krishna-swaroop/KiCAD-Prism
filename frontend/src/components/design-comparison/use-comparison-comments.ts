@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { listComparisonComments } from "@/lib/comments-client";
+import { isWorkPending } from "@/components/tracker-integration/tracked-thread-chip";
+import { projectionFromComment } from "@/lib/trackers-client";
 import type { Comment, CommentContext } from "@/types/comments";
+import type { LegacyForgeProjection } from "@/types/trackers";
 
 /**
  * Review threads anchored to this revision pair.
  *
  * Returns the setter alongside the list because the discussion rail posts new
  * comments and hands back the updated file rather than refetching.
+ *
+ * Clears prior comments synchronously when the pair/project changes so
+ * navigation cannot retain the previous thread list. Polls while any thread
+ * has pending tracker sync work (server remains URL/query authority).
  */
 export function useComparisonComments(
     projectId: string,
@@ -17,6 +24,8 @@ export function useComparisonComments(
     const [comments, setComments] = useState<Comment[]>([]);
 
     useEffect(() => {
+        // Drop prior identity immediately — do not flash the previous project's threads.
+        setComments([]);
         const controller = new AbortController();
         let cancelled = false;
         void (async () => {
@@ -47,6 +56,19 @@ export function useComparisonComments(
             controller.abort();
         };
     }, [projectId, base, compare, domain]);
+
+    useEffect(() => {
+        const hasPending = comments.some((entry) =>
+            isWorkPending(projectionFromComment(entry as Comment & LegacyForgeProjection)),
+        );
+        if (!hasPending) return;
+        const timer = window.setInterval(() => {
+            void listComparisonComments(projectId, base, compare, domain)
+                .then((listed) => setComments(listed))
+                .catch(() => undefined);
+        }, 4000);
+        return () => window.clearInterval(timer);
+    }, [comments, projectId, base, compare, domain]);
 
     return [comments, setComments];
 }

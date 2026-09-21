@@ -16,6 +16,8 @@ import {
     type MentionCandidate,
 } from "@/types/comments";
 import { cn } from "@/lib/utils";
+import { DestinationDisclosure } from "@/components/tracker-integration/destination-disclosure";
+import { commentAutoEligible, type CommentTrackerHostSettings } from "@/components/comment-card";
 
 export type CommentFormSubmitPayload = {
     content: string;
@@ -32,6 +34,7 @@ interface CommentFormProps {
     context: CommentContext;
     isSubmitting?: boolean;
     mentionCandidates?: MentionCandidate[];
+    trackerSettings?: CommentTrackerHostSettings | null;
 }
 
 const MENTION_TOKEN_RE = /@\[([^\]]+)\]\(user:([^)]+)\)/g;
@@ -67,6 +70,7 @@ export function CommentForm({
     context,
     isSubmitting = false,
     mentionCandidates = NO_MENTION_CANDIDATES,
+    trackerSettings = null,
 }: CommentFormProps) {
     const [content, setContent] = useState("");
     const [commentClass, setCommentClass] = useState<CommentClass>(DEFAULT_COMMENT_CLASS);
@@ -74,6 +78,11 @@ export function CommentForm({
     const [mentionQuery, setMentionQuery] = useState<string | null>(null);
     const [mentionIndex, setMentionIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const autoEligible = commentAutoEligible(
+        { severity, commentClass },
+        trackerSettings,
+    );
 
     useEffect(() => {
         textareaRef.current?.focus();
@@ -232,6 +241,19 @@ export function CommentForm({
                             disabled={isSubmitting}
                         />
                     </div>
+
+                    {trackerSettings && autoEligible && (
+                        <div data-testid="comment-form-auto-promote" className="space-y-1">
+                            <DestinationDisclosure
+                                variant="compact"
+                                destination={trackerSettings.destination}
+                                acknowledgement={trackerSettings.acknowledgement ?? null}
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                                This comment meets auto-promotion rules and will publish to the destination above when allowed.
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-4">
