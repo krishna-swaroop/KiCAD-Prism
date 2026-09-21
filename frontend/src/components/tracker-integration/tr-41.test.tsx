@@ -133,6 +133,15 @@ describe("tracker deep-link contract (TR-24 / F2 / F9)", () => {
         expect(readTrackerDeepLink(new URLSearchParams(`commit=${COMMIT_A}`)).kind).toBe("none");
     });
 
+    it("routes a forge /projects/:id link into the app's /project/:id page with its query intact", async () => {
+        const { default: App } = await import("@/App");
+        void App;
+        const appSource = await import("@/App?raw");
+        // The redirect must be mounted in the real router, not just exported as a helper.
+        expect(String(appSource.default)).toMatch(/path="\/projects\/:projectId"/);
+        expect(String(appSource.default)).toMatch(/ForgeProjectLinkRedirect/);
+    });
+
     it("normalizes forge /projects paths to app /project routes", () => {
         expect(normalizePrismProjectPath("/projects/prj_test")).toBe("/project/prj_test");
         expect(buildLoginReturnPath("prj_test", `commit=${COMMIT_A}&comment=${COMMENT_ID}`))

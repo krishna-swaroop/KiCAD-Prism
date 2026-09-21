@@ -50,7 +50,7 @@ beforeEach(() => {
 describe("connector helpers", () => {
     it("builds the public webhook URL for provider configuration", () => {
         expect(connectorWebhookPublicUrl("cn_gh1", "https://prism.example")).toBe(
-            "https://prism.example/api/trackers/webhooks/cn_gh1",
+            "https://prism.example/api/trackers/webhooks/github/cn_gh1",
         );
     });
 
@@ -132,19 +132,28 @@ describe("ConnectorSettings (F9.settings_states / C8)", () => {
         expect(serialized).not.toMatch(/leak|credential_envelope/);
     });
 
-    it("shows public webhook endpoint guidance with copy", async () => {
+    it("shows the server-computed webhook endpoint (PUBLIC_BASE_URL, not the browser origin) with copy", async () => {
         mockedFetch.mockResolvedValue(respond(trackerUiMocks.connector));
         render(<ConnectorSettings connectorId="cn_gh1" isAdmin={true} prismOrigin="https://prism.test" />);
         await waitFor(() => {
             expect(screen.getByText(/public webhook endpoint/i)).toBeTruthy();
         });
+        // The forge has to reach this URL, so the DTO's PUBLIC_BASE_URL-derived value wins over prismOrigin.
         expect(
-            screen.getByText("https://prism.test/api/trackers/webhooks/cn_gh1"),
+            screen.getByText("https://prism.example/api/trackers/webhooks/github/cn_gh1"),
         ).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: /copy url/i }));
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-            "https://prism.test/api/trackers/webhooks/cn_gh1",
+            "https://prism.example/api/trackers/webhooks/github/cn_gh1",
         );
+    });
+
+    it("falls back to the provider-qualified path on the given origin when the DTO has no webhookUrl", async () => {
+        mockedFetch.mockResolvedValue(respond({ ...trackerUiMocks.connector, webhookUrl: null }));
+        render(<ConnectorSettings connectorId="cn_gh1" isAdmin={true} prismOrigin="https://prism.test" />);
+        await waitFor(() => {
+            expect(screen.getByText("https://prism.test/api/trackers/webhooks/github/cn_gh1")).toBeTruthy();
+        });
     });
 
     it("runs test connection and lifecycle controls from the barrel client", async () => {

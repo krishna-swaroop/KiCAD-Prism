@@ -274,8 +274,11 @@ def _comment_dict_from_row(row: Mapping[str, Any]) -> dict:
         },
         "anchor": {
             "state": row.get("anchor_state") or "unpinned",
+            "source": row.get("anchor_source"),
             "commit": row.get("anchor_commit"),
-            "projectFile": row.get("anchor_source"),
+            # Same key the comments store exposes: the project-relative .kicad_pro
+            # that names the board. anchor_source is the anchor's origin ("client").
+            "projectFile": row.get("project_relative_path"),
             "baseCommit": row.get("base_commit"),
             "compareCommit": row.get("compare_commit"),
             "selectedSide": row.get("selected_side"),
@@ -288,8 +291,12 @@ def _comment_dict_from_row(row: Mapping[str, Any]) -> dict:
     }
 
 
-def _encrypt_context(connector_id: str) -> bytes:
-    return f"tracker:connector:{connector_id}".encode()
+def _encrypt_context(connector_id: str) -> dict[str, str]:
+    """AAD binding for the installation envelope; must equal the one the admin API wrote with."""
+
+    from app.services.trackers.connector_service import _context
+
+    return _context(connector_id)
 
 
 def _issue_adapter(connector: Mapping[str, Any], *, http: Any | None = None) -> GitHubIssueAdapter:
@@ -450,6 +457,7 @@ def _prepare_execute_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> d
             exc=exc,
             connector_id=str(ctx.connector["id"]),
             remote_container_id=str(ctx.destination.remoteContainerId),
+            pre_io=True,
         )
         return {"done": True}
     draft = _build_draft(ctx)

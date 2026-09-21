@@ -1752,8 +1752,11 @@ class AdversarialPostgresSuite(unittest.TestCase):
         self.conn.commit()
         execute_claimed_op(self.ops.get(OP_CREATE))
         row = self.ops.get(OP_CREATE)
-        self.assertEqual(row["state"], "sent")
+        # Pre-I/O pause: back to pending so the acknowledgement re-runs execute, not recovery (TR-46).
+        self.assertEqual(row["state"], "pending")
+        self.assertIsNone(row["sent_at"])
         self.assertEqual((row.get("last_error") or {}).get("class"), "visibility")
+        self.assertFalse(any(t.get("action") == "create_issue" for t in self.traces))
 
     def test_f8_viewer_reply_on_linked(self) -> None:
         self._record("F8.viewer_reply_on_linked")

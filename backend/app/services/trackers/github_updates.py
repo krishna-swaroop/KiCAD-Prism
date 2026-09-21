@@ -12,10 +12,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Optional
 
 from app.services.trackers.contracts import Destination, RemoteChange, UpdateCursor
-from app.services.trackers.github_issues import GitHubIssueAdapter
+from app.services.trackers.github_issues import DEFAULT_SINCE, GitHubIssueAdapter
 
 POLL_OVERLAP_SECONDS = 5 * 60
-DEFAULT_SINCE = "1970-01-01T00:00:00Z"
 
 
 def parse_iso8601(value: str) -> datetime:

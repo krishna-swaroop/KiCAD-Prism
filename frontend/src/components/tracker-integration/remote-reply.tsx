@@ -29,6 +29,8 @@ export interface RemoteReplyProps {
     providerLabel?: string;
     onShare?: () => void | Promise<void>;
     shareBusy?: boolean;
+    /** Card host: nominal sync states carry no badge; only problems are labelled. */
+    compact?: boolean;
     className?: string;
 }
 
@@ -88,40 +90,42 @@ export function RemoteReply({
     providerLabel = "GitHub",
     onShare,
     shareBusy = false,
+    compact = false,
     className,
 }: RemoteReplyProps) {
     const tombstone = tombstoneMessage(reply);
-    const syncLabel = replySyncLabel(reply.sync);
+    const nominalSync = reply.sync?.state === "confirmed" || reply.sync?.state === "linked";
+    const syncLabel = compact && nominalSync ? null : replySyncLabel(reply.sync);
     const attribution = remoteAttributionLabel(reply, providerLabel);
     const attributionUrl = remoteAttributionLink(reply.remoteAttribution);
     const shareAllowed = canShareReply(reply, permissions);
 
     return (
         <article
-            className={cn("space-y-2 rounded-md border border-border bg-muted/10 p-3", className)}
+            className={cn(compact ? "space-y-1" : "space-y-2 rounded-md border border-border bg-muted/10 p-3", className)}
             data-reply-id={reply.id}
             data-reply-origin={reply.origin}
             data-reply-sync={reply.sync?.state ?? "none"}
             aria-label={`Reply by ${attribution}`}
         >
-            <header className="flex flex-wrap items-center gap-2">
+            <header className={cn("flex flex-wrap items-center gap-2", compact && "gap-1.5")}>
                 {reply.origin === "remote" ? (
-                    <Cloud className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <Cloud className={cn("text-muted-foreground", compact ? "h-3 w-3" : "h-4 w-4")} aria-hidden="true" />
                 ) : (
-                    <UserRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <UserRound className={cn("text-muted-foreground", compact ? "h-3 w-3" : "h-4 w-4")} aria-hidden="true" />
                 )}
                 {attributionUrl ? (
                     <a
                         href={attributionUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+                        className={cn("font-medium text-primary underline-offset-2 hover:underline", compact ? "text-xs" : "text-sm")}
                         data-testid="reply-attribution-link"
                     >
                         {attribution}
                     </a>
                 ) : (
-                    <span className="text-sm font-medium" data-testid="reply-attribution">
+                    <span className={cn("font-medium", compact ? "text-xs" : "text-sm")} data-testid="reply-attribution">
                         {attribution}
                     </span>
                 )}
@@ -138,7 +142,7 @@ export function RemoteReply({
                     <span>{tombstone}</span>
                 </p>
             ) : (
-                <p className="text-sm whitespace-pre-wrap" data-testid="reply-content">{reply.content}</p>
+                <p className={cn("whitespace-pre-wrap", compact ? "text-xs" : "text-sm")} data-testid="reply-content">{reply.content}</p>
             )}
 
             {assignmentHints.length > 0 ? (

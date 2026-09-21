@@ -30,6 +30,7 @@ export const trackerUiMocks = {
         bot: { id: "199001", login: "prism[bot]" },
         credentialConfigured: true,
         webhookConfigured: true,
+        webhookUrl: "https://prism.example/api/trackers/webhooks/github/cn_gh1",
         oauthClientConfigured: true,
         paused: false,
         pausedReason: null,

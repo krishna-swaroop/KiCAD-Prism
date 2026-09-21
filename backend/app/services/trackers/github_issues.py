@@ -40,6 +40,8 @@ from app.services.trackers.errors import ProviderError
 from app.services.trackers.github_auth import API_VERSION, GitHubAppAuth
 from app.services.trackers.http import ForgeHttpResponse, TrackerHttp
 
+# Fresh poll checkpoints start here; never sent to GitHub as ``since`` (see list_updates).
+DEFAULT_SINCE = "1970-01-01T00:00:00Z"
 GITHUB_COM_INSTANCE = "github.com"
 GHES_INSTANCE = "ghes"
 ISSUE_ACCEPT = "application/vnd.github+json"
@@ -207,7 +209,10 @@ class GitHubIssueAdapter:
     ) -> tuple[list[RemoteChange], UpdateCursor]:
         owner, repo = _owner_repo(dest)
         params: dict[str, Any] = {"state": "all", "per_page": 100, "sort": "updated", "direction": "asc"}
-        if since_cursor.since:
+        # Live github.com answers an epoch ``since`` with an empty list, so a
+        # fresh checkpoint (DEFAULT_SINCE) never sees anything and never
+        # advances. Send ``since`` only once the cursor is a real timestamp.
+        if since_cursor.since and since_cursor.since > DEFAULT_SINCE:
             params["since"] = since_cursor.since
         url = since_cursor.page or self.auth.url(f"/repos/{owner}/{repo}/issues")
         response = self._request("GET", url, params=None if since_cursor.page else params)

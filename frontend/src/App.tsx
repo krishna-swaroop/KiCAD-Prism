@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { normalizePrismProjectPath } from '@/lib/tracker-deep-link';
 import type { User, AuthConfig } from './types/auth';
 import { Button } from '@/components/ui/button';
 import { Toaster } from 'sonner';
@@ -43,6 +44,11 @@ function FullScreenMessage({ message, isError = false }: { message: string; isEr
             <div className={isError ? "text-destructive" : "text-muted-foreground"}>{message}</div>
         </div>
     );
+}
+
+function ForgeProjectLinkRedirect() {
+    const { pathname, search, hash } = useLocation();
+    return <Navigate to={`${normalizePrismProjectPath(pathname)}${search}${hash}`} replace />;
 }
 
 function App() {
@@ -327,6 +333,8 @@ function App() {
                         </Suspense>
                     }
                 />
+                {/* Forge deep links use /projects/:id (frozen in deep_links.py); the app route is /project/:id. */}
+                <Route path="/projects/:projectId" element={<ForgeProjectLinkRedirect />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </div>

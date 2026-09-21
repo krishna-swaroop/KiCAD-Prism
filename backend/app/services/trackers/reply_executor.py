@@ -176,8 +176,6 @@ def recover_reply_op(conn: Any, op: Mapping[str, Any]) -> None:
         return
 
 
-def _encrypt_context(connector_id: str) -> bytes:
-    return f"tracker:connector:{connector_id}".encode()
 
 
 def _comment_adapter(connector: Mapping[str, Any], *, http: Any | None = None) -> GitHubCommentAdapter:
@@ -190,14 +188,6 @@ def _comment_adapter(connector: Mapping[str, Any], *, http: Any | None = None) -
         bot_user_id=str(connector.get("bot_forge_user_id") or ""),
         bot_login=str(connector.get("bot_login") or ""),
     )
-
-
-def _workspace_schema(conn: Any) -> str:
-    row = conn.execute("SHOW search_path").fetchone()
-    first = str(row["search_path"]).split(",")[0].strip().strip('"')
-    if first and first not in {"$user", "public"}:
-        return first
-    return "workspace"
 
 
 
@@ -418,6 +408,20 @@ def _execute_reply(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
         return
     try:
         _policy_check(conn, ctx)
+    except ProviderError as exc:
+        # Policy pauses are pre-I/O: hand the op back to pending, never to recovery.
+        apply_provider_error(
+            conn,
+            ops,
+            op=op,
+            fence=fence,
+            exc=exc,
+            connector_id=str(ctx.connector["id"]),
+            remote_container_id=str(ctx.destination.remoteContainerId),
+            pre_io=True,
+        )
+        return
+    try:
         conn.commit()
         adapter = _comment_adapter(ctx.connector)
         issue_ref = issue_number_for_api(ctx.thread)

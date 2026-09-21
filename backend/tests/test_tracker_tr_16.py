@@ -384,6 +384,17 @@ class GitHubIssueAdapterTests(unittest.TestCase):
         self.assertEqual(changes[0].externalId, "198400412")
         self.assertEqual(cursor.page, next_url)
 
+    def test_list_updates_omits_epoch_since_on_fresh_checkpoint(self) -> None:
+        # github.com returns an empty list for since=1970-01-01T00:00:00Z, so a
+        # fresh checkpoint would never see an issue and never advance (TR-46).
+        adapter = self._adapter()
+        self._enqueue("GET", f"{API}/repos/{REPO}/issues", 200, [_issue_payload(number=412, issue_id=198400412)])
+        changes, cursor = adapter.list_updates(DEST, UpdateCursor(since="1970-01-01T00:00:00Z"))
+        self.assertEqual([c.externalId for c in changes], ["198400412"])
+        call = next(c for c in self.calls if c["url"].endswith("/issues"))
+        self.assertNotIn("since", call.get("params") or {})
+        self.assertGreater(cursor.since, "1970-01-01T00:00:00Z")
+
     def test_conditional_get_sends_if_none_match_only(self) -> None:
         adapter = self._adapter()
         self._enqueue(

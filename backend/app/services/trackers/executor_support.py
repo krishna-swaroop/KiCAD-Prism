@@ -30,11 +30,33 @@ NON_CONSUMING_ERROR_CLASSES = frozenset({"auth_lost", "forbidden"} | DISPATCH_PA
 
 
 def workspace_schema(conn: Any) -> str:
+    """Schema on this connection's search_path that holds the workspace tracker tables.
+
+    The worker connects with ``comments, workspace, public``; taking the first
+    entry would resolve policy lookups against ``comments.project_trackers``
+    (absent) and report every destination as unconfigured. Disposable test
+    schemas mirror the workspace tables into the comments schema, so both
+    layouts are answered by asking the catalog rather than assuming a position.
+    """
+
     row = conn.execute("SHOW search_path").fetchone()
-    first = str(row["search_path"]).split(",")[0].strip().strip('"')
-    if first and first not in {"$user", "public"}:
-        return first
-    return "workspace"
+    candidates = [part.strip().strip('"') for part in str(row["search_path"]).split(",")]
+    candidates = [name for name in candidates if name and name not in {"$user", "public"}]
+    if not candidates:
+        return "workspace"
+    hit = conn.execute(
+        """
+        SELECT table_schema
+        FROM information_schema.tables
+        WHERE table_name = 'project_trackers' AND table_schema = ANY(%s)
+        """,
+        (candidates,),
+    ).fetchall()
+    found = {str(item["table_schema"]) for item in hit}
+    for name in candidates:
+        if name in found:
+            return name
+    return "workspace" if "workspace" in candidates else candidates[0]
 
 
 def resolve_actor_role(
@@ -208,11 +230,30 @@ def apply_provider_error(
     exc: ProviderError,
     connector_id: str | None = None,
     remote_container_id: str | None = None,
+    pre_io: bool = False,
 ) -> None:
-    """Schedule/fail after I/O. Real auth_lost pauses the connector (R3-M4)."""
+    """Schedule/fail after a provider error. Real auth_lost pauses the connector (R3-M4).
+
+    ``pre_io=True`` means the executor stopped before contacting the forge
+    (context load, policy re-check, draft rendering). Nothing is in flight, so
+    a ``sent`` op is handed back to ``pending`` instead of being left for the
+    recovery scan, which could only ever conclude "not found" (TR-46).
+    """
 
     op_id = str(op["id"])
-    if str(op.get("state") or "") == "sent" and exc.class_ not in NON_CONSUMING_ERROR_CLASSES:
+    state = str(op.get("state") or "")
+    if pre_io and state == "sent":
+        if exc.class_ == "auth_lost" and connector_id and remote_container_id:
+            pause_connector_auth_lost(conn, connector_id, remote_container_id)
+        delay = timedelta(minutes=15) if exc.class_ in NON_CONSUMING_ERROR_CLASSES else timedelta(minutes=1)
+        ops.retain_unsent(
+            op_id,
+            fence,
+            next_attempt_at=datetime.now(timezone.utc) + delay,
+            error=exc.to_dto(),
+        )
+        return
+    if state == "sent" and exc.class_ not in NON_CONSUMING_ERROR_CLASSES:
         ops.enter_recovery(op_id, fence)
         raise exc
     if exc.class_ == "auth_lost" and connector_id and remote_container_id:
