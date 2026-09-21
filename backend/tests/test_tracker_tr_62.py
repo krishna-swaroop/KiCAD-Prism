@@ -129,6 +129,11 @@ class CompositionUnitTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text(encoding="utf-8")
         self.assertIn("initialize_tracker_composition", source)
 
+    def test_job_runner_registers_composition_bootstrap(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "app" / "job_runner.py").read_text(encoding="utf-8")
+        self.assertIn("initialize_tracker_composition", source)
+        self.assertIn("load_builtin_job_handlers", source)
+
 
 @unittest.skipUnless(POSTGRES_URL, "TEST_POSTGRES_URL is required for tracker persistence tests")
 @unittest.skipUnless(psycopg is not None, "psycopg is required for tracker persistence tests")

@@ -13,7 +13,6 @@ import json
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from functools import wraps
 from typing import Any, Callable, Iterator, Mapping
 
 from app.core.config import settings
@@ -35,18 +34,12 @@ from app.services.trackers.github_recovery import (
     recover_create_issue,
     recovery_since,
 )
-from app.services.trackers.inbound import apply_destination_hints
 from app.services.trackers.op_store import EXECUTE_DISPATCH, RECOVERY_DISPATCH, OpStore
 from app.services.trackers.promotion import DispatchPause, PublicationDenied, evaluate_dispatch
-from app.services.trackers.scheduler import mount_hints_applier
 from app.services.trackers.secrets import decrypt_secret
 
 _mounted = False
 _connect_factory: Callable[[], Any] | None = None
-_original_hint_dispatch: Callable[[], bool] | None = None
-_original_executor_resolver: Callable[..., Any] | None = None
-_original_retain_hints: Callable[..., Any] | None = None
-_original_dispatch_job: Callable[..., Any] | None = None
 
 
 def github_issue_url(container_path: str, issue_number: int | str) -> str:
@@ -71,148 +64,32 @@ class _ExecutionContext:
 
 
 def mount_create_executor() -> None:
-    """Wire dispatch executor, hint apply path and scheduler hint dispatch."""
+    """Register create/set_state handlers on the composition dispatch table."""
 
-    global _mounted, _original_hint_dispatch, _original_executor_resolver
-    global _original_retain_hints, _original_dispatch_job
+    global _mounted
     if _mounted:
         return
+    from app.services.trackers.composition import mount_outbound_executor, register_outbound_op
 
-    import app.services.trackers.jobs as jobs
-    import app.services.trackers.scheduler as scheduler
-
-    _original_hint_dispatch = scheduler.hint_dispatch_enabled
-    _original_executor_resolver = jobs._executor
-    _original_retain_hints = jobs._retain_inbound_hints
-    _original_dispatch_job = jobs.run_tracker_dispatch_job
-
-    mount_hints_applier(True)
-    scheduler.hint_dispatch_enabled = lambda: True
-
-    def _executor(context):  # noqa: ANN001
-        override = context.payload.get("_executor")
-        if callable(override):
-            return override
-        return execute_claimed_op
-
-    def _apply_destination_hints(conn, connector_id: str, container_id: str):  # noqa: ANN001
-        from app.services.job_runtime import JobResult, RetryableJobError
-        from app.services.trackers.scheduler import OUTBOX_POLL_SECONDS
-
-        if not connector_id or not container_id:
-            pending = conn.execute(
-                """
-                SELECT connector_id, remote_container_id
-                FROM remote_hints
-                WHERE state = 'pending'
-                ORDER BY received_at ASC, id ASC
-                LIMIT 1
-                """
-            ).fetchone()
-            if pending:
-                connector_id = str(pending["connector_id"])
-                container_id = str(pending["remote_container_id"])
-        row = conn.execute(
-            """
-            SELECT 1 FROM remote_hints
-            WHERE state = 'pending'
-              AND connector_id = %s
-              AND remote_container_id = %s
-            LIMIT 1
-            """,
-            (connector_id, container_id),
-        ).fetchone()
-        if not row:
-            raise RetryableJobError(
-                "No due tracker operations",
-                code="tracker_idle",
-                retry_after_seconds=OUTBOX_POLL_SECONDS,
-            )
-        fetcher = _build_inbound_fetcher(conn, connector_id, container_id)
-        apply_destination_hints(
-            conn,
-            connector_id=connector_id,
-            container_id=container_id,
-            fetcher=fetcher,
-            bot_user_id=fetcher.bot_user_id or None,
-            bot_login=fetcher.bot_login or None,
-        )
-        return JobResult(message="Applied inbound hints")
-
-    @wraps(jobs.run_tracker_dispatch_job)
-    def run_tracker_dispatch_job(context):  # noqa: ANN001
-        from app.services.trackers.jobs import (
-            _comments_connect,
-            _connector_paused,
-            _prepare_claimed_op,
-            _run_executor_outside_txn,
-        )
-
-        context.check_cancelled()
-        payload = context.payload
-        connector_id = str(payload.get("connectorId") or "")
-        container_id = str(payload.get("remoteContainerId") or "")
-        executor = _executor(context)
-        with _comments_connect(context) as conn:
-            paused = _connector_paused(conn, connector_id)
-            ops = OpStore(conn)
-            claimed = ops.claim(context.worker_id, lease_seconds=60)
-            if claimed is None:
-                result = _apply_destination_hints(conn, connector_id, container_id)
-                conn.commit()
-                return result
-            prepared = _prepare_claimed_op(
-                ops, claimed, paused=paused, has_executor=executor is not None
-            )
-            conn.commit()
-        if not prepared["run_io"]:
-            return prepared["result"]
-        return _run_executor_outside_txn(context, prepared["claimed"], executor)
-
-    jobs._executor = _executor
-    jobs.run_tracker_dispatch_job = run_tracker_dispatch_job
+    register_outbound_op("create_issue", execute=execute_claimed_op)
+    register_outbound_op("set_state", execute=execute_claimed_op)
+    mount_outbound_executor()
     _mounted = True
 
 
 def unmount_create_executor() -> None:
-    """Test helper: restore pre-TR-26 dispatch wiring."""
+    """Test helper: tear down outbound composition mount (create path entrypoint)."""
 
-    global _mounted, _original_hint_dispatch, _original_executor_resolver
-    global _original_retain_hints, _original_dispatch_job
-    if not _mounted:
-        return
-    import app.services.trackers.jobs as jobs
-    import app.services.trackers.scheduler as scheduler
+    global _mounted
+    from app.services.trackers.composition import unmount_outbound_executor
 
-    if _original_hint_dispatch is not None:
-        scheduler.hint_dispatch_enabled = _original_hint_dispatch
-    if _original_executor_resolver is not None:
-        jobs._executor = _original_executor_resolver
-    if _original_dispatch_job is not None:
-        jobs.run_tracker_dispatch_job = _original_dispatch_job
+    unmount_outbound_executor()
     _mounted = False
 
 
 def set_connect_factory(factory: Callable[[], Any] | None) -> None:
     global _connect_factory
     _connect_factory = factory
-
-
-def _unwrap_wrapped_callable(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Return the innermost callable under nested @wraps executor layers."""
-
-    seen: set[int] = set()
-    current = fn
-    while getattr(current, "__wrapped__", None) is not None:
-        ident = id(current)
-        if ident in seen:
-            break
-        seen.add(ident)
-        inner = current.__wrapped__
-        if inner is current:
-            break
-        current = inner
-    return current
 
 
 @contextmanager

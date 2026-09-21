@@ -3,6 +3,9 @@
 Dispatches ``add_comment``, ``edit_comment`` and ``delete_comment`` ops via the
 provider comment adapter. Recovery scans issue comments by reply marker and
 bot identity. GitHub REST routes use ``external_number`` (R2-H1).
+
+Handlers register on the composition op-kind dispatch table (R3-H2); there is
+no @wraps monkey-patch of ``create_executor.execute_claimed_op``.
 """
 
 from __future__ import annotations
@@ -11,7 +14,6 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from functools import wraps
 from typing import Any, Callable, Iterator, Mapping
 
 from app.core.config import settings
@@ -28,7 +30,6 @@ from app.services.trackers.github_recovery import (
 )
 from app.services.trackers.markers import build_marker
 from app.services.trackers.op_store import EXECUTE_DISPATCH, RECOVERY_DISPATCH, OpStore
-from app.services.trackers.create_executor import _unwrap_wrapped_callable
 from app.services.trackers.promotion import DispatchPause, PublicationDenied, evaluate_dispatch
 from app.services.trackers.provenance import body_hash, stored_hash_matches
 from app.services.trackers.reply_mutations import REPLY_OPS, decode_reply_target
@@ -36,8 +37,6 @@ from app.services.trackers.store import TrackerStore, issue_number_for_api
 
 _mounted = False
 _connect_factory: Callable[[], Any] | None = None
-_original_execute: Callable[[Mapping[str, Any]], str | None] | None = None
-_original_recover: Callable[..., str | None] | None = None
 
 
 def github_comment_url(
@@ -108,46 +107,26 @@ def _default_connect() -> Iterator[Any]:
 
 
 def mount_reply_executor() -> None:
-    """Patch create/composition dispatch so reply ops execute and recover."""
+    """Register reply ops on the composition dispatch table."""
 
-    global _mounted, _original_execute, _original_recover
+    global _mounted
     if _mounted:
         return
+    from app.services.trackers.composition import mount_outbound_executor, register_outbound_op
 
-    import app.services.trackers.composition as composition
-    import app.services.trackers.create_executor as create_executor
-
-    _original_execute = _unwrap_wrapped_callable(create_executor.execute_claimed_op)
-    _original_recover = _unwrap_wrapped_callable(composition.TrackerRuntime._recover_op)
-
-    @wraps(_original_execute)
-    def execute_claimed_op(claimed: Mapping[str, Any]) -> str | None:
-        if str(claimed.get("op") or "") in REPLY_OPS:
-            return execute_reply_claimed_op(claimed)
-        return _original_execute(claimed)
-
-    def _recover_op(self, conn: Any, claimed: Mapping[str, Any]) -> str | None:  # noqa: ANN001
-        if str(claimed.get("op") or "") in REPLY_OPS:
-            recover_reply_op(conn, claimed)
-            return None
-        return _original_recover(self, conn, claimed)
-
-    create_executor.execute_claimed_op = execute_claimed_op
-    composition.TrackerRuntime._recover_op = _recover_op
+    for kind in REPLY_OPS:
+        register_outbound_op(kind, execute=execute_reply_claimed_op, recover=recover_reply_op)
+    mount_outbound_executor()
     _mounted = True
 
 
 def unmount_reply_executor() -> None:
-    global _mounted, _original_execute, _original_recover
+    global _mounted
     if not _mounted:
         return
-    import app.services.trackers.composition as composition
-    import app.services.trackers.create_executor as create_executor
+    from app.services.trackers.composition import unregister_outbound_ops
 
-    if _original_execute is not None:
-        create_executor.execute_claimed_op = _original_execute
-    if _original_recover is not None:
-        composition.TrackerRuntime._recover_op = _original_recover
+    unregister_outbound_ops(*REPLY_OPS)
     _mounted = False
 
 

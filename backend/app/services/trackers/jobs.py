@@ -388,22 +388,13 @@ def _executor(context: JobContext) -> DispatchExecutor | None:
     if callable(payload_executor):
         return payload_executor
 
-    def _dispatch(claimed: dict[str, Any]) -> str | None:
-        with _comments_connect(context) as conn:
-            return _runtime().dispatch_executor(conn, claimed)
+    from app.services.trackers.composition import execute_outbound_op, has_outbound_executor
 
-    from app.services.trackers.composition import has_outbound_executor
-
-    has_outbound = has_outbound_executor()
-    if not has_outbound:
-        def _recovery_only(claimed: dict[str, Any]) -> str | None:
-            if str(claimed.get("dispatch") or EXECUTE_DISPATCH) != RECOVERY_DISPATCH:
-                return None
-            with _comments_connect(context) as conn:
-                return _runtime().dispatch_executor(conn, claimed)
-
-        return _recovery_only
-    return _dispatch
+    # R3-H1: unmounted workers must yield None so has_executor=False reschedules
+    # without mark_sent (never return a recovery-only stub callable).
+    if not has_outbound_executor():
+        return None
+    return execute_outbound_op
 
 
 @contextmanager

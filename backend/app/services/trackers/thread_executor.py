@@ -3,6 +3,9 @@
 Dispatches ``update_issue`` and ``post_note`` ops. Root updates preserve remote
 context/marker blocks; deletion notes post as bot comments and never delete the
 remote issue. GitHub REST routes use ``external_number`` (R2-H1).
+
+Handlers register on the composition op-kind dispatch table (R3-H2); there is
+no @wraps monkey-patch of ``create_executor.execute_claimed_op``.
 """
 
 from __future__ import annotations
@@ -10,7 +13,6 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from functools import wraps
 from typing import Any, Callable, Iterator, Mapping
 
 from app.core.config import settings
@@ -19,7 +21,6 @@ from app.services.trackers.contracts import IssuePatch, RemoteComment, RemoteIss
 from app.services.trackers.create_executor import (
     _issue_adapter,
     _load_execution_context,
-    _unwrap_wrapped_callable,
 )
 from app.services.trackers.drafts import (
     DraftAttribution,
@@ -42,8 +43,6 @@ from app.services.trackers.thread_mutations import (
 
 _mounted = False
 _connect_factory: Callable[[], Any] | None = None
-_original_execute: Callable[[Mapping[str, Any]], str | None] | None = None
-_original_recover: Callable[..., str | None] | None = None
 
 
 def set_connect_factory(factory: Callable[[], Any] | None) -> None:
@@ -65,46 +64,26 @@ def _default_connect() -> Iterator[Any]:
 
 
 def mount_thread_executor() -> None:
-    """Patch outbound dispatch so root thread ops execute and recover."""
+    """Register root thread ops on the composition dispatch table."""
 
-    global _mounted, _original_execute, _original_recover
+    global _mounted
     if _mounted:
         return
+    from app.services.trackers.composition import mount_outbound_executor, register_outbound_op
 
-    import app.services.trackers.composition as composition
-    import app.services.trackers.create_executor as create_executor
-
-    _original_execute = _unwrap_wrapped_callable(create_executor.execute_claimed_op)
-    _original_recover = _unwrap_wrapped_callable(composition.TrackerRuntime._recover_op)
-
-    @wraps(_original_execute)
-    def execute_claimed_op(claimed: Mapping[str, Any]) -> str | None:
-        if str(claimed.get("op") or "") in THREAD_OPS:
-            return execute_thread_claimed_op(claimed)
-        return _original_execute(claimed)
-
-    def _recover_op(self, conn: Any, claimed: Mapping[str, Any]) -> str | None:  # noqa: ANN001
-        if str(claimed.get("op") or "") in THREAD_OPS:
-            recover_thread_op(conn, claimed)
-            return None
-        return _original_recover(self, conn, claimed)
-
-    create_executor.execute_claimed_op = execute_claimed_op
-    composition.TrackerRuntime._recover_op = _recover_op
+    for kind in THREAD_OPS:
+        register_outbound_op(kind, execute=execute_thread_claimed_op, recover=recover_thread_op)
+    mount_outbound_executor()
     _mounted = True
 
 
 def unmount_thread_executor() -> None:
-    global _mounted, _original_execute, _original_recover
+    global _mounted
     if not _mounted:
         return
-    import app.services.trackers.composition as composition
-    import app.services.trackers.create_executor as create_executor
+    from app.services.trackers.composition import unregister_outbound_ops
 
-    if _original_execute is not None:
-        create_executor.execute_claimed_op = _original_execute
-    if _original_recover is not None:
-        composition.TrackerRuntime._recover_op = _original_recover
+    unregister_outbound_ops(*THREAD_OPS)
     _mounted = False
 
 
