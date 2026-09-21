@@ -25,8 +25,8 @@ from app.services.trackers.contracts import (  # noqa: E402
     UncertainAbsence,
     UpdateCursor,
 )
+from app.services.trackers import create_executor as create_executor_mod  # noqa: E402
 from app.services.trackers.create_executor import (  # noqa: E402
-    execute_claimed_op,
     github_issue_url,
 )
 from app.services.trackers.drafts import (  # noqa: E402
@@ -89,6 +89,7 @@ from tracker_fault_harness import (  # noqa: E402
     BOT_ID,
     BOT_LOGIN,
     COMMENT_ID,
+    COMMIT,
     CONNECTOR,
     CONTAINER,
     DisposableSchema,
@@ -110,6 +111,17 @@ from tracker_fault_harness import (  # noqa: E402
     seed_comment_row,
     seed_destination,
 )
+
+
+def execute_claimed_op(claimed):  # noqa: ANN001
+    """Always dispatch through the live mounted create_executor entrypoint.
+
+    Binding ``from create_executor import execute_claimed_op`` at import time
+    freezes a pre-mount reference; full-suite order (comments_store mounts first)
+    then diverges from focused TR-45 discover.
+    """
+
+    return create_executor_mod.execute_claimed_op(claimed)
 
 try:
     import psycopg
@@ -1566,9 +1578,35 @@ class AdversarialPostgresSuite(unittest.TestCase):
         tombstones = [item for item in revisions if item["changeKind"] == "delete"]
         self.assertEqual(tombstones[0]["editorKind"], "remote_unknown")
 
+    def _prism_remote_body(self, prose: str, *, op_id: str = "op_create") -> str:
+        draft = build_issue_draft(
+            DraftRenderInput(
+                project_id=PROJECT_ID,
+                comment={
+                    "id": COMMENT_ID,
+                    "author": "Priya",
+                    "authorKind": "user",
+                    "content": prose,
+                    "severity": "major",
+                    "commentClass": "observation",
+                    "context": "PCB",
+                    "location": {"x": 1.0, "y": 2.0, "layer": "F.Cu", "page": ""},
+                    "anchor": {"commit": COMMIT},
+                },
+                connector_id=CONNECTOR,
+                remote_container_id=CONTAINER,
+                op_id=op_id,
+                public_base_url="https://prism.example.com",
+                attribution=DraftAttribution(display_name="Priya", verified=True),
+            )
+        )
+        return render_issue_body_from_draft(draft)
+
     def test_f8_root_prose_roundtrip(self) -> None:
         self._record("F8.root_prose_roundtrip")
         self._seed_linked_thread()
+        # Remote must carry parseable prism blocks; otherwise update_issue supersedes.
+        self.forge.seed_issue(body=self._prism_remote_body("Stub on MGMT.D0_P"))
         self.ops.insert(
             op_id="op_update",
             tracked_thread_id=THREAD_ID,
@@ -1580,12 +1618,12 @@ class AdversarialPostgresSuite(unittest.TestCase):
         claimed = self.ops.claim("worker-a")
         self.ops.mark_sent("op_update", int(claimed["fence"]))
         self.conn.commit()
-        # Execute via forge update_issue path.
+        # Execute via forge update_issue path (thread executor).
         execute_claimed_op(self.ops.get("op_update"))
         self.conn.commit()
-        self.assertIn(self.ops.get("op_update")["state"], {"confirmed", "sent", "failed", "quarantine", "recovering"})
+        self.assertEqual(self.ops.get("op_update")["state"], "confirmed")
         # Inbound prose edit becomes local revision via fetcher apply.
-        issue = self.forge.seed_issue(body="<!-- prism:block:prose -->remote prose<!-- /prism:block -->")
+        issue = self.forge.seed_issue(body=self._prism_remote_body("remote prose", op_id="op_inbound"))
         before = self.conn.execute("SELECT COUNT(*) AS n FROM sync_ops").fetchone()["n"]
         hint = self.inbox.enqueue(
             connector_id=CONNECTOR,
