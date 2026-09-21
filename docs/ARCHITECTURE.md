@@ -13,6 +13,13 @@ storage domains.
 | `catalog-worker` | catalog import, validation, preview, release, and retention work |
 | `postgres` | authoritative workspace, comments, catalog, operations, and session state |
 
+Tracker connectors, encrypted credentials, project destinations, durable sync
+operations, and inbound hint inboxes also live in PostgreSQL (`workspace` and
+`comments` schemas). Outbound promotion and inbound reconciliation run as bounded
+`tracker_*` jobs in `prism-worker`; admin and webhook endpoints run in `backend`.
+Both services must share `TRACKER_CREDENTIAL_ROOT_KEY*` and `PUBLIC_BASE_URL`.
+See [Tracker integration](TRACKER_INTEGRATION.md).
+
 The frontend is the normal external entry point. It proxies API, OAuth, provider
 metadata, and Remote Symbol Provider panel requests to the backend. A production
 TLS proxy should route to the frontend instead of exposing the backend directly.
@@ -36,8 +43,10 @@ See [Operations](OPERATIONS.md).
 
 The application separates concerns into PostgreSQL schemas:
 
-- `workspace`: projects, folders, roles, sessions, and service clients;
-- `comments`: project and comparison discussions;
+- `workspace`: projects, folders, roles, sessions, service clients, tracker
+  connectors, identities, and project destinations;
+- `comments`: project and comparison discussions, tracked threads, sync
+  operations, and inbound remote hints;
 - `catalog`: component metadata, revisions, assets, validation, and release data;
 - `operations`: jobs, leases, logs, artifacts, and runtime coordination.
 

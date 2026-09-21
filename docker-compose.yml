@@ -86,6 +86,10 @@ services:
       - CORS_ORIGINS_STR=${CORS_ORIGINS_STR:-http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8080,http://localhost:8080}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - COMMENTS_API_BASE_URL=${COMMENTS_API_BASE_URL:-}
+      - TRACKER_CREDENTIAL_ROOT_KEY=${TRACKER_CREDENTIAL_ROOT_KEY:-}
+      - TRACKER_CREDENTIAL_ROOT_KEY_ID=${TRACKER_CREDENTIAL_ROOT_KEY_ID:-v1}
+      - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY:-}
+      - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID:-}
       # Setting this to false serves every request as an unauthenticated guest.
       # The backend logs a prominent warning and refuses to start if it is true
       # while a login method or SESSION_SECRET is incomplete.
@@ -254,6 +258,11 @@ services:
       - PRISM_DESIGN_COMPARE_MAX_PCB_WORKERS=${PRISM_DESIGN_COMPARE_MAX_PCB_WORKERS:-2}
       - PRISM_DESIGN_COMPARE_CACHE=${PRISM_DESIGN_COMPARE_CACHE:-/app/projects/.kicad-prism/design-compare/revision-cache}
       - PRISM_SEMANTIC_VIEWER_CACHE=${PRISM_SEMANTIC_VIEWER_CACHE:-/app/projects/.kicad-prism/semantic-cache}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - TRACKER_CREDENTIAL_ROOT_KEY=${TRACKER_CREDENTIAL_ROOT_KEY:-}
+      - TRACKER_CREDENTIAL_ROOT_KEY_ID=${TRACKER_CREDENTIAL_ROOT_KEY_ID:-v1}
+      - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY:-}
+      - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID:-}
     command:
       - /app/venv/bin/python
       - -m
