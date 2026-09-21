@@ -30,10 +30,12 @@ from app.services.postgres_database import database
 from app.services.trackers.promotion import (
     PromotionActor,
     after_root_severity_change,
-    attach_tracker_projection,
-    attach_tracker_projections,
     manual_promote_root,
     maybe_auto_promote_root,
+)
+from app.services.trackers.projections import (
+    attach_tracker_projection,
+    attach_tracker_projections,
 )
 from app.services.trackers.reply_mutations import (
     after_reply_added,

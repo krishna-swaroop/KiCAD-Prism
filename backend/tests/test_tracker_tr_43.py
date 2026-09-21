@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -165,6 +166,7 @@ class TrackerDeploymentEnvTests(unittest.TestCase):
         compose = release / "compose.yml"
         env_file = _compose_env_file(release / ".env.example", include_pg_auth_var=True)
         try:
+            env = {**os.environ, "PRISM_ENV_FILE": str(env_file)}
             result = subprocess.run(
                 [
                     "docker",
@@ -177,6 +179,7 @@ class TrackerDeploymentEnvTests(unittest.TestCase):
                     "--quiet",
                 ],
                 cwd=release,
+                env=env,
                 capture_output=True,
                 text=True,
             )
