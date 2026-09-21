@@ -978,6 +978,7 @@ async def update_reply(
             content=content,
             editor=_editor(actor),
             expected_revision=request.expectedRevision,
+            promotion_actor=_promotion_actor(actor),
         )
         mention_indexes = _load_mention_indexes()
         return (
@@ -1073,6 +1074,7 @@ async def delete_reply(
             reply_id=reply_id,
             editor=_editor(actor),
             expected_revision=expectedRevision,
+            promotion_actor=_promotion_actor(actor),
         )
         mention_indexes = _load_mention_indexes()
         return (
@@ -1111,6 +1113,7 @@ async def delete_comment(
             comment_id=comment_id,
             editor=_editor(actor),
             expected_revision=expectedRevision,
+            promotion_actor=_promotion_actor(actor),
         )
 
     deleted = await _run_mutation(write)

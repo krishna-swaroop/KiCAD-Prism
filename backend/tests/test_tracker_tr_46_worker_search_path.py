@@ -415,3 +415,72 @@ class WebhookHintDispatchTests(unittest.TestCase):
             )
             self.assertEqual(result.outcome, "ignored_membership")
         self.assertEqual(finished, [("hint_installation", "ignored"), ("hint_repository", "ignored")])
+
+
+class ReplyAndRootMutationsCarryActorTests(unittest.TestCase):
+    """Second live finding of the same shape: reply edit, reply delete and
+    root delete never handed the actor to the store, so no edit_comment /
+    delete_comment / post_note op was enqueued and GitHub kept the old text."""
+
+    def _call(self, store, coro_factory):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from app.api import comments as comments_api
+        from app.core.security import AuthenticatedUser
+
+        user = AuthenticatedUser(email="a@x", name="Admin", role="admin", session_id="sid", user_id="u_a")
+        with patch.object(comments_api, "comments_store", store), \
+                patch.object(comments_api, "get_project_for_role_or_404", return_value=SimpleNamespace(id="prj", path="")), \
+                patch.object(comments_api, "_load_mention_indexes", return_value=comments_api._EMPTY_MENTION_INDEXES), \
+                patch.object(comments_api, "_with_permissions", side_effect=lambda comment, *a, **k: comment):
+            return asyncio.run(coro_factory(comments_api, user))
+
+    def _store(self, calls):
+        row = {"id": "c_1", "authorUserId": "u_a", "authorKind": "user", "status": "OPEN", "revision": 2, "replies": []}
+        reply = {"id": "r_1", "authorUserId": "u_a", "authorKind": "user", "content": "x", "revision": 1}
+
+        class Store:
+            def get_comment(self, *_a, **_k):
+                return row
+
+            def get_reply(self, *_a, **_k):
+                return reply
+
+            def edit_reply(self, *_a, **kwargs):
+                calls.append(("edit_reply", kwargs))
+                return row
+
+            def delete_reply(self, *_a, **kwargs):
+                calls.append(("delete_reply", kwargs))
+                return row
+
+            def delete_comment(self, *_a, **kwargs):
+                calls.append(("delete_comment", kwargs))
+                return True
+
+        return Store()
+
+    def _assert_actor(self, calls, name):
+        self.assertEqual([c[0] for c in calls], [name])
+        actor = calls[0][1].get("promotion_actor")
+        self.assertIsNotNone(actor, f"{name} must carry the actor so the outbound op is enqueued")
+        self.assertEqual((actor.user_id, actor.role), ("u_a", "admin"))
+
+    def test_reply_edit_passes_promotion_actor(self) -> None:
+        calls: list = []
+        self._call(self._store(calls), lambda api, user: api.update_reply(
+            "prj", "c_1", "r_1", api.UpdateReplyRequest(content="edited", expectedRevision=1), user,
+        ))
+        self._assert_actor(calls, "edit_reply")
+
+    def test_reply_delete_passes_promotion_actor(self) -> None:
+        calls: list = []
+        self._call(self._store(calls), lambda api, user: api.delete_reply("prj", "c_1", "r_1", 1, user))
+        self._assert_actor(calls, "delete_reply")
+
+    def test_root_delete_passes_promotion_actor(self) -> None:
+        calls: list = []
+        self._call(self._store(calls), lambda api, user: api.delete_comment("prj", "c_1", 2, user))
+        self._assert_actor(calls, "delete_comment")

@@ -56,7 +56,9 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }}>
-      <DialogContent className="sm:max-w-md">
+      {/* Confirmations top every surface, including the fixed canvas comment card (z-[110]);
+          they hold no popovers, so nothing needs to stack above them. */}
+      <DialogContent className="z-[130] sm:max-w-md" overlayClassName="z-[130]">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
