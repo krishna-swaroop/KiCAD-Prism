@@ -483,6 +483,9 @@ class RestoreStageTests(unittest.TestCase):
             if verb == "config":
                 return subprocess.CompletedProcess(command, 0, stdout=b"backend\nfrontend\npostgres\n", stderr=b"")
             if verb == "exec":
+                joined = " ".join(str(part) for part in command)
+                if "tracker_connectors" in joined and "paused_reason" in joined:
+                    return subprocess.CompletedProcess(command, 0, stdout=b"UPDATE 0\n", stderr=b"")
                 return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"")
             return subprocess.CompletedProcess(command, 1 if verb in failing else 0)
 
@@ -561,11 +564,16 @@ class RestoreStageTests(unittest.TestCase):
     def test_a_clean_run_reports_completion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root, archive = self._deployment(tmp)
-            code, _, pg_calls, output = self._restore(root, archive, failing=set())
+            code, compose_calls, pg_calls, output = self._restore(root, archive, failing=set())
 
             self.assertEqual(code, 0)
             self.assertEqual(len(pg_calls), 1)
             self.assertIn("Restore complete", output)
+            self.assertIn("paused_reason=restored", output)
+            self.assertTrue(
+                any("tracker_connectors" in " ".join(str(p) for p in call) for call in compose_calls),
+                "restore must pause tracker connectors",
+            )
             self.assertEqual((root / "data/ssh/restored.txt").read_text(encoding="utf-8"), "restored")
 
 

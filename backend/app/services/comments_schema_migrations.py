@@ -165,7 +165,11 @@ def _m002_backfill_create_revisions(conn) -> None:
 
 
 def _m005_tracked_threads_external_number(conn) -> None:
-    """Immutable GitHub issue id vs repo issue number (R2-H1)."""
+    """Immutable GitHub issue id vs repo issue number (R2-H1).
+
+    Backfill of ``external_number`` from ``external_id`` is only safe with no
+    pre-existing linked rows — see ``migrate_tracked_threads_external_number``.
+    """
 
     migrate_tracked_threads_external_number(conn)
 

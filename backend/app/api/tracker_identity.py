@@ -45,6 +45,33 @@ def _query_return_to(value: object) -> str:
     return value if isinstance(value, str) else "/"
 
 
+def _oauth_callback_error_code(exc: Exception) -> str | None:
+    """Map OAuth callback failures to a query ``tracker_oauth_error`` code.
+
+    Returns ``None`` for unexpected exceptions that should still surface as JSON.
+    """
+
+    if isinstance(exc, OAuthStateError):
+        code = str(exc)
+        if code in {
+            "session_expired",
+            "cross_user_callback",
+            "user_mismatch",
+            "unknown_or_reused_state",
+            "connector_mismatch",
+            "state_expired",
+        }:
+            return code
+        return "invalid_state"
+    if isinstance(exc, SecretStoreLocked):
+        return "secret_store_locked"
+    if isinstance(exc, ProviderError):
+        return str(exc.class_ or "provider_error")
+    if isinstance(exc, IdentityNotFound):
+        return "identity_not_found"
+    return None
+
+
 def _http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, IdentityNotFound):
         return HTTPException(status_code=404, detail="Identity not found")
@@ -113,7 +140,9 @@ async def oauth_callback(
     if user.auth_type != "session":
         raise HTTPException(status_code=403, detail="Session required to complete account linking")
     if not (code or "").strip() or not (state or "").strip():
-        raise HTTPException(status_code=400, detail="Missing OAuth code or state")
+        target = build_oauth_return_url("/", linked=False, error_code="missing_code_or_state")
+        return RedirectResponse(target, status_code=302)
+    return_to = service.peek_oauth_return_to(state.strip())
     try:
         identity = service.complete_oauth(
             code=code.strip(),
@@ -122,11 +151,12 @@ async def oauth_callback(
             actor_user_id=_actor(user),
         )
     except Exception as exc:
-        if isinstance(exc, OAuthStateError) and str(exc) == "session_expired":
-            target = build_oauth_return_url("/", linked=False, error_code="session_expired")
-            return RedirectResponse(target, status_code=302)
-        raise _http_error(exc) from exc
-    return_to = str(identity.pop("returnTo", "/"))
+        error_code = _oauth_callback_error_code(exc)
+        if error_code is None:
+            raise _http_error(exc) from exc
+        target = build_oauth_return_url(return_to, linked=False, error_code=error_code)
+        return RedirectResponse(target, status_code=302)
+    return_to = str(identity.pop("returnTo", return_to))
     target = build_oauth_return_url(return_to, linked=True)
     return RedirectResponse(target, status_code=302)
 

@@ -3,18 +3,34 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Mapping, Optional
 
 from app.services.trackers.schema import FORBIDDEN_COLUMNS, LINK_STATES
 
+logger = logging.getLogger(__name__)
+
 
 def issue_number_for_api(thread: Mapping[str, Any]) -> str:
-    """GitHub REST issue routes use the repo-scoped number, not the immutable id."""
+    """GitHub REST issue routes use the repo-scoped number, not the immutable id.
+
+    Prefer ``external_number``. Falling back to ``external_id`` is logged because
+    node ids are not issue numbers; callers that hit the fallback after a
+    greenfield-only migration-5 backfill may be routing incorrectly.
+    """
 
     number = thread.get("external_number")
     if number not in (None, ""):
         return str(number)
-    return str(thread.get("external_id") or "")
+    fallback = str(thread.get("external_id") or "")
+    if fallback and fallback not in {"pending"}:
+        logger.warning(
+            "tracked thread %s missing external_number; falling back to external_id=%s "
+            "(unsafe when external_id is a provider node id, not the repo issue number)",
+            thread.get("id"),
+            fallback,
+        )
+    return fallback
 
 
 def resolve_threads_for_issue_ref(

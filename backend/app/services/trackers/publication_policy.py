@@ -157,6 +157,8 @@ class PublicationPolicyService:
         promote_min_role: str | None = None,
         labels: Mapping[str, str] | None = None,
     ) -> dict:
+        # Resolve destination visibility before the write transaction so forge
+        # I/O is not held under a DB lock (R3-M10).
         with self.connection() as conn:
             current = self._row(conn, project_id)
             generation = int((current or {}).get("destination_generation") or 1)
@@ -165,40 +167,66 @@ class PublicationPolicyService:
                 str(current.get("container_path") or "") != str(destination.get("containerPath") or "")
                 or str(current.get("remote_container_id") or "") != str(destination.get("remoteContainerId") or "")
             )
-            if connector_changed or container_changed:
+            destination_changed = connector_changed or container_changed
+            if destination_changed:
                 generation = int((current or {}).get("destination_generation") or 0) + 1
-                if current is not None:
-                    from app.services.trackers.link_lifecycle import (
-                        pause_project_links_on_destination_removal,
-                    )
+            project_tracker_id = str((current or {}).get("id") or f"pt_{uuid4().hex[:12]}")
+            conn.rollback()
 
-                    pause_project_links_on_destination_removal(
-                        conn,
-                        project_id,
-                        reason="destination_removed",
-                    )
-            observed = self.connector_service.observe_container(
-                connector_id,
-                container_kind=str(destination.get("containerKind") or "repo"),
-                container_path=str(destination.get("containerPath") or ""),
-                remote_container_id=str(destination.get("remoteContainerId") or ""),
-                generation=generation,
-                visibility_hint=str(destination.get("visibility") or "") or None,
+        observed = self.connector_service.observe_container(
+            connector_id,
+            container_kind=str(destination.get("containerKind") or "repo"),
+            container_path=str(destination.get("containerPath") or ""),
+            remote_container_id=str(destination.get("remoteContainerId") or ""),
+            generation=generation,
+            visibility_hint=str(destination.get("visibility") or "") or None,
+        )
+        visibility = str(observed.get("visibility") or "unknown")
+        promote_min_role = normalize_promote_min_role(promote_min_role)
+
+        with self.connection() as conn:
+            current = self._row(conn, project_id)
+            live_changed = current is None or (
+                str(current["connector_id"]) != connector_id
+                or str(current.get("container_path") or "") != str(destination.get("containerPath") or "")
+                or str(current.get("remote_container_id") or "") != str(destination.get("remoteContainerId") or "")
             )
-            visibility = str(observed.get("visibility") or "unknown")
+            if live_changed and current is not None:
+                from app.services.trackers.link_lifecycle import (
+                    pause_project_links_on_destination_removal,
+                )
+
+                pause_project_links_on_destination_removal(
+                    conn,
+                    project_id,
+                    reason="destination_removed",
+                )
+            if current is not None:
+                project_tracker_id = str(current.get("id") or project_tracker_id)
+                if live_changed:
+                    generation = max(
+                        generation,
+                        int(current.get("destination_generation") or 0) + 1,
+                    )
             store = TrackerStore(conn)
             store.set_project_tracker(
-                project_tracker_id=str((current or {}).get("id") or f"pt_{uuid4().hex[:12]}"),
+                project_tracker_id=project_tracker_id,
                 project_id=project_id,
                 connector_id=connector_id,
                 container_kind=str(destination.get("containerKind") or "repo"),
                 container_path=str(observed.get("containerPath") or destination.get("containerPath") or ""),
-                remote_container_id=str(observed.get("remoteContainerId") or destination.get("remoteContainerId") or ""),
+                remote_container_id=str(
+                    observed.get("remoteContainerId") or destination.get("remoteContainerId") or ""
+                ),
                 generation=generation,
                 visibility=visibility,
             )
-            promote_min_role = normalize_promote_min_role(promote_min_role)
-            if auto_min_severity is not None or auto_task_class is not None or promote_min_role is not None or labels is not None:
+            if (
+                auto_min_severity is not None
+                or auto_task_class is not None
+                or promote_min_role is not None
+                or labels is not None
+            ):
                 conn.execute(
                     """
                     UPDATE project_trackers
@@ -223,7 +251,7 @@ class PublicationPolicyService:
                 connector_id=connector_id,
                 detail={
                     "destinationGeneration": generation,
-                    "destinationChanged": connector_changed or container_changed,
+                    "destinationChanged": destination_changed or live_changed,
                 },
             )
             conn.commit()

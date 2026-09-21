@@ -424,6 +424,28 @@ def dump_database(compose: list[str], root: Path, env: dict[str, str], target: P
         raise BackupError("pg_dump produced an empty file; refusing to call this a backup.")
 
 
+def pause_connectors_after_restore(compose: list[str], root: Path, env: dict[str, str]) -> bool:
+    """Mark every tracker connector paused with reason ``restored`` (R3-M9).
+
+    Outbound sync must not resume until an operator re-tests credentials on the
+    restored host. Returns True when the UPDATE succeeded.
+    """
+    user = env.get("POSTGRES_USER", "kicad_prism")
+    database = env.get("POSTGRES_DB", "kicad_prism")
+    query = (
+        "UPDATE workspace.tracker_connectors "
+        "SET paused = TRUE, paused_reason = 'restored' "
+        "WHERE TRUE"
+    )
+    result = run(
+        compose
+        + ["exec", "-T", "postgres", "psql", "-U", user, "-d", database, "-v", "ON_ERROR_STOP=1", "-c", query],
+        root,
+        capture=True,
+    )
+    return result.returncode == 0
+
+
 def extract_all(handle: tarfile.TarFile, target: Path) -> None:
     """Extract with the member sanitising filter where the runtime has one.
 
@@ -783,6 +805,14 @@ def restore(args: argparse.Namespace) -> int:
             return result.returncode
         tui.ok("database restored")
 
+        tui.note("Pausing tracker connectors")
+        if pause_connectors_after_restore(compose, root, env):
+            tui.ok("connectors paused (paused_reason=restored)")
+        else:
+            tui.warn("Could not pause tracker connectors automatically.")
+            tui.info("Run: UPDATE workspace.tracker_connectors SET paused = TRUE,")
+            tui.info("paused_reason = 'restored' before starting outbound sync.")
+
         # Stage 2: swap the files in. The database is already the archive's,
         # so a failure here is reported as a half-applied restore, and the
         # unpacked payloads that did not get swapped are left in place to
@@ -824,9 +854,11 @@ def restore(args: argparse.Namespace) -> int:
     tui.info("Verify: login, a project, the catalog, and one 3D view.")
     tui.write()
     tui.note("Tracker sync after restore")
-    tui.info("Confirm TRACKER_CREDENTIAL_ROOT_KEY* match the backup (current and")
-    tui.info("any grace previous ids). Keep connectors paused or leave outbound")
-    tui.info("idle until Test connection succeeds on backend and prism-worker.")
+    tui.info("All tracker connectors were set paused=TRUE with paused_reason=")
+    tui.info("'restored'. Confirm TRACKER_CREDENTIAL_ROOT_KEY* match the backup")
+    tui.info("(current and any grace previous ids). Leave connectors paused until")
+    tui.info("Test connection succeeds on backend and prism-worker, then clear")
+    tui.info("the pause deliberately.")
     tui.info("Pending ops execute once; sent/recovering ops resume through")
     tui.info("recovery scans — they must not blind-create remote issues.")
     tui.info("Webhook delivery ids and pending hints are restored with the dump;")
