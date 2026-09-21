@@ -211,8 +211,9 @@ export function ProjectTrackerSettingsPanel({
         [onSettingsChange],
     );
 
-    // Repositories are listed lazily, only when an admin picks "another
-    // repository"; a failed listing (GHES, offline) falls back to manual entry.
+    // Admins get the installation's repository list once per connector: it
+    // feeds the picker and tells us whether the project's own repository is
+    // even reachable. A failed listing (GHES, offline) falls back to manual entry.
     const loadRepositories = useCallback(async (connectorId: string) => {
         setRepositoriesState("loading");
         try {
@@ -228,10 +229,15 @@ export function ProjectTrackerSettingsPanel({
     }, []);
 
     useEffect(() => {
-        if (!isAdmin || !draft?.useOverride || !draft.connectorId) return;
+        if (!isAdmin || !draft?.connectorId) return;
         if (repositoriesState !== "idle") return;
         void loadRepositories(draft.connectorId);
-    }, [draft?.connectorId, draft?.useOverride, isAdmin, loadRepositories, repositoriesState]);
+    }, [draft?.connectorId, isAdmin, loadRepositories, repositoriesState]);
+
+    const projectRepoInstalled =
+        repositoriesState === "ready" && repositories && projectRepoPath
+            ? repositories.some((repository) => sameRepoPath(repository.fullName, projectRepoPath))
+            : null;
 
     const loadSettings = useCallback(async () => {
         setLoading(true);
@@ -437,6 +443,17 @@ export function ProjectTrackerSettingsPanel({
                                                     ? `Issues are created in ${projectRepoPath}, next to the design files.`
                                                     : "This project has no GitHub remote, so a separate repository is required."}
                                             </span>
+                                            {projectRepoInstalled === false ? (
+                                                <span
+                                                    className="mt-1 block text-xs text-warning"
+                                                    role="note"
+                                                    data-testid="project-repo-not-installed"
+                                                >
+                                                    The GitHub App is not installed on {projectRepoPath}. Install it there
+                                                    (GitHub → Settings → Applications) or pick another repository; otherwise
+                                                    publishing pauses as “visibility unknown”.
+                                                </span>
+                                            ) : null}
                                         </label>
                                     </div>
                                 </div>

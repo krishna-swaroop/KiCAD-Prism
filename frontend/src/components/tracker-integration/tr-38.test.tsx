@@ -163,6 +163,17 @@ describe("ProjectTrackerSettingsPanel (F8 / F9 / C8)", () => {
         expect(mockedFetch.mock.calls.some((call) => String(call[0]).endsWith("/connectors/cn_gh1/repositories"))).toBe(true);
     });
 
+    it("warns when the GitHub App is not installed on the project's own repository", async () => {
+        routeFetch({
+            settings: { ...importedDefaultSettings, projectRepoPath: "acme/openswitch" },
+            repositories: [repositories[0]],
+        });
+        render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
+        await waitFor(() => {
+            expect(screen.getByTestId("project-repo-not-installed")).toHaveTextContent(/not installed on acme\/openswitch/i);
+        });
+    });
+
     it("disables the own-repository option for projects without a GitHub remote", async () => {
         routeFetch({
             settings: { ...trackerUiMocks.projectSettings, projectRepoPath: null },
