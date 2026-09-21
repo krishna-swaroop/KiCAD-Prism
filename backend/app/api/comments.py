@@ -53,6 +53,7 @@ from app.services.trackers.mentions import (
     normalize_incoming_mentions,
     storage_user_ids,
 )
+from app.services.trackers.projections import attach_tracker_projections, can_retry_projection
 from app.services.trackers.promotion import PromotionActor
 from app.services.trackers.publication_policy import PublicationDenied
 
@@ -160,6 +161,7 @@ class CommentPermissions(BaseModel):
     canDelete: bool = False
     canResolve: bool = False
     canPublish: bool = False
+    canRetry: bool = False
 
 
 class CommentReply(BaseModel):
@@ -329,6 +331,15 @@ def _wire_comment_mentions(comment: dict, mention_indexes: MentionIndexes) -> di
     return comment
 
 
+def _refresh_tracker_projections(project_id: str, comments: list[dict]) -> None:
+    """Replace store projections with TR-35 wire fields (remoteUpdatedAt, lastError, …)."""
+
+    if not comments:
+        return
+    with comments_store._connect() as conn:
+        attach_tracker_projections(conn, project_id, comments)
+
+
 def _with_permissions(
     comment: dict,
     actor: ActorIdentity,
@@ -340,9 +351,16 @@ def _with_permissions(
     _wire_comment_mentions(comment, mention_indexes)
     linked = str((comment.get("tracker") or {}).get("linkState") or "") == "linked"
     promote_min_role = _promote_min_role(project_id) if project_id else "designer"
-    comment["permissions"] = comment_permissions.capabilities(
+    caps = comment_permissions.capabilities(
         actor, _authored(comment), linked=linked, promote_min_role=promote_min_role,
     )
+    caps["canRetry"] = can_retry_projection(comment.get("tracker")) and comment_permissions.allowed(
+        CommentAction.RETRY,
+        actor,
+        linked=linked,
+        promote_min_role=promote_min_role,
+    )
+    comment["permissions"] = caps
     for reply in comment.get("replies", []):
         reply["permissions"] = comment_permissions.capabilities(actor, _authored(reply))
     return comment
@@ -497,6 +515,7 @@ async def get_comments(project_id: str, user: AuthenticatedUser = Depends(requir
         listing = comments_store.get_comments_file(project.id, project.path)
         actor = _read_actor(user)
         comments = listing["comments"]
+        _refresh_tracker_projections(project.id, comments)
         mention_indexes = _load_mention_indexes()
         if actor is not None:
             comments = [
@@ -543,6 +562,7 @@ async def get_comparison_comments(
         )
         actor = _read_actor(user)
         comments = listing["comments"]
+        _refresh_tracker_projections(project.id, comments)
         mention_indexes = _load_mention_indexes()
         if actor is not None:
             comments = [
