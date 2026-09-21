@@ -296,6 +296,48 @@ class ConnectorService:
             conn.commit()
             return self._public(TrackerStore(conn).get_connector(connector_id), conn)
 
+    def delete(self, connector_id: str, *, actor_user_id: str) -> dict[str, Any]:
+        """Remove a connection outright.
+
+        Refused while any project still targets it or any thread is still
+        linked through it: those are the only durable references whose loss
+        would be surprising. Credentials, webhook secret, OAuth client and
+        member identities go with it; the audit trail keeps the connector id.
+        """
+
+        with self.connection() as conn:
+            self._require(conn, connector_id)
+            projects = conn.execute(
+                "SELECT COUNT(*) AS n FROM project_trackers WHERE connector_id = %s",
+                (connector_id,),
+            ).fetchone()
+            threads = _qual(self.comments_schema, "tracked_threads")
+            linked = conn.execute(
+                f"SELECT COUNT(*) AS n FROM {threads} WHERE connector_id = %s AND unlinked_at IS NULL",
+                (connector_id,),
+            ).fetchone()
+            project_count = int((projects or {}).get("n") or 0)
+            linked_count = int((linked or {}).get("n") or 0)
+            if project_count or linked_count:
+                raise ProviderError(
+                    "invalid_request",
+                    f"Connection is still in use by {project_count} project(s) and {linked_count} linked thread(s). "
+                    "Point those projects elsewhere or unlink the threads first.",
+                    retryable=False,
+                )
+            clear_sidecars(conn, connector_id)
+            conn.execute("DELETE FROM user_identities WHERE connector_id = %s", (connector_id,))
+            conn.execute("DELETE FROM destination_acks WHERE connector_id = %s", (connector_id,))
+            TrackerStore(conn).audit(
+                action="connector.delete",
+                actor_user_id=actor_user_id,
+                connector_id=connector_id,
+                detail={"deleted": True},
+            )
+            conn.execute("DELETE FROM tracker_connectors WHERE id = %s", (connector_id,))
+            conn.commit()
+            return {"deleted": connector_id}
+
     def observe_container(
         self,
         connector_id: str,

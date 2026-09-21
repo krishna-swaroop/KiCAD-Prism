@@ -251,10 +251,14 @@ def enqueue_set_state(
         return PromotionResult(action="skipped", reason="not_linked")
     try:
         evaluate_dispatch(conn, project_id, actor.role, workspace_schema=workspace_schema)
-    except PublicationDenied as exc:
+    except PublicationDenied:
         raise
-    except DispatchPause as exc:
-        return PromotionResult(action="denied", reason=exc.reason, code=exc.reason)
+    except DispatchPause:
+        # A paused connector or unacknowledged visibility must not lose the
+        # intent: the op is recorded and the executor's own policy check
+        # holds it (retain_unsent) until the pause lifts (TR-46). Only a role
+        # denial refuses the local change outright.
+        pass
 
     thread_id = str(thread["id"])
     observed_state, observed_version = observed_snapshot(thread)
@@ -341,6 +345,8 @@ def analyze_state_events(
     if bot_index is None:
         return "confirmed", None, None
 
+    # The human's *latest* transition before ours is the state to restore; an
+    # earlier one they already reversed themselves must not win.
     human_event = None
     for index, event in enumerate(relevant):
         if index >= bot_index:
@@ -355,7 +361,6 @@ def analyze_state_events(
             bot_login=bot_login,
         ):
             human_event = event
-            break
 
     if human_event is None:
         return "confirmed", None, None

@@ -374,6 +374,43 @@ class ConnectorAdminApiTests(unittest.TestCase):
         self.assertIsNone(health["lastWebhookAt"])
         self.assertFalse(health["degraded"])
 
+    def test_delete_refuses_while_in_use_then_removes_connector(self) -> None:  # TR-46 settings: remove connection
+        self._create()
+        self.conn.execute(
+            """
+            INSERT INTO comments(id, project_id, author, content)
+            VALUES ('c_del', 'prj_a', 'Priya', 'stub')
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO tracked_threads (
+                id, comment_id, project_tracker_id, destination_generation,
+                connector_id, remote_container_id, external_id, link_state
+            ) VALUES ('tt_del', 'c_del', 'pt_del', 1, 'cn_gh1', '111', '42', 'linked')
+            """
+        )
+        self.conn.commit()
+        with self.assertRaises(HTTPException) as caught:
+            run(connectors_api.delete_connector("cn_gh1", self.admin))
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertIn("linked thread", json.dumps(caught.exception.detail))
+        self.conn.execute("UPDATE tracked_threads SET unlinked_at = NOW() WHERE id = 'tt_del'")
+        self.conn.commit()
+
+        removed = run(connectors_api.delete_connector("cn_gh1", self.admin))
+        self.assertEqual(removed, {"deleted": "cn_gh1"})
+        self.assertEqual(run(connectors_api.list_connectors(self.admin)), [])
+        secrets = self.conn.execute("SELECT COUNT(*) AS n FROM tracker_webhook_secrets WHERE connector_id = 'cn_gh1'").fetchone()
+        self.assertEqual(secrets["n"], 0)
+        audit = self.conn.execute(
+            "SELECT action FROM tracker_audit WHERE connector_id = 'cn_gh1' ORDER BY id"
+        ).fetchall()
+        self.assertIn("connector.delete", [row["action"] for row in audit])
+        with self.assertRaises(HTTPException) as missing:
+            run(connectors_api.get_connector("cn_gh1", self.admin))
+        self.assertEqual(missing.exception.status_code, 404)
+
     def test_health_counts_sync_ops_and_marks_degraded(self) -> None:
         self._create()
         self.conn.execute(

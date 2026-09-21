@@ -225,9 +225,11 @@ class SetStateReconciliationTests(unittest.TestCase):
         outcome, _editor, human_state = analyze_state_events(events, bot_user_id="331962685", bot_login="bot[bot]")
         self.assertEqual((outcome, human_state), ("human_precedes", "closed"))
 
-        # A human event after the snapshot is the race the postflight exists for.
+        # A human event after the snapshot is the race the postflight exists for,
+        # and the human's latest transition is the one to restore.
         raced = [
             event("e1", "closed", "2026-09-21T10:03:58Z", bot=False),
+            event("e3", "reopened", "2026-09-21T10:30:00Z", bot=False),
             event("e4", "closed", "2026-09-21T10:30:05Z", bot=False),
             event("e2", "reopened", "2026-09-21T10:45:00Z", bot=True),
         ]
@@ -315,3 +317,50 @@ class MarkerEchoTests(unittest.TestCase):
         self.assertIsNone(_marker_echo_for_link(f"x\n\n{other}", link=link, thread=thread, thread_ops=[], author_id="331962685", bot_user_id="331962685"))
         wrong_container = build_marker(connector_id="cn_a", container_id="999", reply_id="r_294f13c9", op_id="op_z_1")
         self.assertIsNone(_marker_echo_for_link(f"x\n\n{wrong_container}", link=link, thread=thread, thread_ops=[], author_id="331962685", bot_user_id="331962685"))
+
+
+class RetryCeilingTests(unittest.TestCase):
+    """TR-46 live: a set_state op retried 127 times in two hours with no backoff."""
+
+    def _ops(self, attempts: int):
+        calls: list[tuple] = []
+
+        class Ops:
+            def get(self, op_id):
+                return {"id": op_id, "attempts": attempts}
+
+            def schedule(self, op_id, fence, *, next_attempt_at, error=None, consume_attempt=False):
+                calls.append(("schedule", next_attempt_at, error, consume_attempt))
+
+            def fail(self, op_id, fence, *, error):
+                calls.append(("fail", error))
+
+        return Ops(), calls
+
+    def test_backoff_grows_and_caps(self) -> None:
+        from app.services.trackers.jobs import MAX_RETRY_DELAY_SECONDS, retry_delay_seconds
+        from app.services.trackers.scheduler import OUTBOX_POLL_SECONDS
+
+        self.assertEqual(retry_delay_seconds(0), OUTBOX_POLL_SECONDS)
+        self.assertEqual(retry_delay_seconds(1), OUTBOX_POLL_SECONDS)
+        self.assertEqual(retry_delay_seconds(2), OUTBOX_POLL_SECONDS * 2)
+        self.assertEqual(retry_delay_seconds(5), OUTBOX_POLL_SECONDS * 16)
+        self.assertEqual(retry_delay_seconds(50), MAX_RETRY_DELAY_SECONDS)
+
+    def test_transient_error_reschedules_then_fails_at_ceiling(self) -> None:
+        from datetime import datetime, timezone
+
+        from app.services.trackers.errors import ProviderError
+        from app.services.trackers.jobs import MAX_RETRY_ATTEMPTS, _record_executor_outcome
+
+        ops, calls = self._ops(attempts=3)
+        _record_executor_outcome(ops, "op_1", 1, ProviderError("transient", "boom", retryable=True), dispatch="execute")
+        self.assertEqual(calls[0][0], "schedule")
+        self.assertTrue(calls[0][3])
+        self.assertGreater(calls[0][1], datetime.now(timezone.utc))
+
+        ops, calls = self._ops(attempts=MAX_RETRY_ATTEMPTS)
+        _record_executor_outcome(ops, "op_1", 1, RuntimeError("db down"), dispatch="execute")
+        self.assertEqual(calls[0][0], "fail")
+        self.assertFalse(calls[0][1]["retryable"])
+        self.assertIn("Gave up after", calls[0][1]["message"])
