@@ -413,6 +413,7 @@ def repromote_deleted_thread(
         destination_generation=generation,
         local_revision=int(comment.get("revision") or 1),
         actor_user_id=actor.user_id,
+        actor_role=actor.role,
         lineage_of=lineage_of,
     )
     conn.execute(

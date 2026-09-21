@@ -84,6 +84,8 @@ def _http_error(exc: Exception) -> HTTPException:
             status_code=409,
             detail={"detail": str(exc), "code": "visibility_ack_required", "pausedReason": exc.reason},
         )
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
     raise exc
 
 

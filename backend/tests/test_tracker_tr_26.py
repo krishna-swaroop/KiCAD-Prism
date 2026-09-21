@@ -545,7 +545,7 @@ class CreateExecutorPostgresTests(unittest.TestCase):
             execute_claimed_op(self.ops.get(OP_ID))
         row = self.ops.get(OP_ID)
         self.assertEqual(row["state"], "sent")
-        self.assertEqual((row.get("last_error") or {}).get("class"), "auth_lost")
+        self.assertEqual((row.get("last_error") or {}).get("class"), "visibility")
 
 
 class RecoveryScanUnitTests(unittest.TestCase):

@@ -140,6 +140,7 @@ def _enqueue_update_issue(
         destination_generation=int(thread["destination_generation"]),
         local_revision=int(comment.get("revision") or 1),
         actor_user_id=actor.user_id,
+        actor_role=actor.role,
         expected_body_hash=expected_body_hash,
     )
     return ThreadMutationResult(action="enqueued", op_id=op_id, thread_id=thread_id)
@@ -273,6 +274,7 @@ def after_root_deleted(
             destination_generation=int(thread["destination_generation"]),
             local_revision=None,
             actor_user_id=actor.user_id,
+            actor_role=actor.role,
             expected_body_hash=body_hash(DELETION_NOTE),
         )
         action = "enqueued"

@@ -153,6 +153,7 @@ def _enqueue_reply_op(
         destination_generation=int(thread["destination_generation"]),
         local_revision=revision,
         actor_user_id=actor.user_id,
+        actor_role=actor.role,
         expected_remote_state=encode_reply_target(reply_id),
         expected_body_hash=expected_body_hash,
     )

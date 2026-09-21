@@ -59,6 +59,7 @@ def apply_schema(conn: Any) -> None:
             local_revision INTEGER,
             destination_generation INTEGER NOT NULL,
             actor_user_id TEXT,
+            actor_role TEXT,
             expected_remote_state TEXT,
             expected_remote_version JSONB,
             expected_body_hash TEXT,
@@ -76,6 +77,10 @@ def apply_schema(conn: Any) -> None:
         CREATE INDEX IF NOT EXISTS sync_ops_thread
             ON sync_ops(tracked_thread_id, created_at, id);
         """,
+        prepare=False,
+    )
+    conn.execute(
+        "ALTER TABLE sync_ops ADD COLUMN IF NOT EXISTS actor_role TEXT",
         prepare=False,
     )
 
@@ -147,6 +152,7 @@ class OpStore:
         destination_generation: int,
         local_revision: int | None = None,
         actor_user_id: str | None = None,
+        actor_role: str | None = None,
         expected_remote_state: str | None = None,
         expected_remote_version: Mapping[str, Any] | None = None,
         expected_body_hash: str | None = None,
@@ -165,9 +171,9 @@ class OpStore:
             """
             INSERT INTO sync_ops (
                 id, tracked_thread_id, op, state, local_revision,
-                destination_generation, actor_user_id, expected_remote_state,
+                destination_generation, actor_user_id, actor_role, expected_remote_state,
                 expected_remote_version, expected_body_hash, lineage_of
-            ) VALUES (%s, %s, %s, 'pending', %s, %s, %s, %s, %s::jsonb, %s, %s)
+            ) VALUES (%s, %s, %s, 'pending', %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
             """,
             (
                 op_id,
@@ -176,6 +182,7 @@ class OpStore:
                 local_revision,
                 destination_generation,
                 actor_user_id,
+                actor_role,
                 expected_remote_state,
                 version,
                 expected_body_hash,

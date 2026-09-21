@@ -72,7 +72,8 @@ class TrackerContractFixturesTest(unittest.TestCase):
         self.assertEqual(
             tracker["ProviderError_classes"],
             ["rate_limited", "auth_lost", "forbidden", "not_found_uncertain", "gone_confirmed",
-             "moved", "transient", "invalid_request", "capability_missing"],
+             "moved", "transient", "invalid_request", "capability_missing",
+             "paused", "visibility", "visibility_unknown", "connector_missing"],
         )
         self.assertIn(tracker["ProviderError"]["class"], tracker["ProviderError_classes"])
         self.assertIn(tracker["SyncOp"]["state"], tracker["SyncOp_states"])

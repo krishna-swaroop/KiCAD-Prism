@@ -16,7 +16,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterator, Mapping
 
 from app.core.config import settings
-from app.core.roles import Role, normalize_role
 from app.services.trackers.contracts import Destination, IssueRead, RemoteIssue
 from app.services.trackers.drafts import (
     DraftAttribution,
@@ -25,6 +24,11 @@ from app.services.trackers.drafts import (
     render_issue_body_from_draft,
 )
 from app.services.trackers.errors import ProviderError
+from app.services.trackers.executor_support import (
+    NON_CONSUMING_ERROR_CLASSES,
+    apply_provider_error,
+    policy_check,
+)
 from app.services.trackers.github_comments import GitHubCommentAdapter
 from app.services.trackers.github_issues import GitHubIssueAdapter
 from app.services.trackers.github_recovery import (
@@ -35,7 +39,6 @@ from app.services.trackers.github_recovery import (
     recovery_since,
 )
 from app.services.trackers.op_store import EXECUTE_DISPATCH, RECOVERY_DISPATCH, OpStore
-from app.services.trackers.promotion import DispatchPause, PublicationDenied, evaluate_dispatch
 from app.services.trackers.secrets import decrypt_secret
 
 _mounted = False
@@ -106,10 +109,14 @@ def _default_connect() -> Iterator[Any]:
 
 
 def execute_claimed_op(claimed: Mapping[str, Any]) -> str | None:
-    """Dispatch one claimed outbound op. Confirms in-DB when complete."""
+    """Dispatch one claimed outbound op. Confirms in-DB when complete.
+
+    DB work stops before provider I/O (R3-M3); the fence protects the confirm write.
+    """
 
     dispatch = str(claimed.get("dispatch") or EXECUTE_DISPATCH)
     op_kind = str(claimed.get("op") or "")
+    prepared: dict[str, Any] | None = None
     with _default_connect() as conn:
         ops = OpStore(conn)
         op_id = str(claimed["id"])
@@ -118,19 +125,39 @@ def execute_claimed_op(claimed: Mapping[str, Any]) -> str | None:
         if str(fresh.get("state") or "") == "confirmed":
             conn.commit()
             return None
-        if dispatch == RECOVERY_DISPATCH:
-            if op_kind == "set_state":
-                from app.services.trackers.state_executor import execute_set_state_op
-
-                execute_set_state_op(fresh, conn)
-            else:
-                _recover_create(conn, fresh, ops)
-        elif op_kind == "set_state":
+        if op_kind == "set_state":
             from app.services.trackers.state_executor import execute_set_state_op
 
             execute_set_state_op(fresh, conn)
+            conn.commit()
+            return None
+        if dispatch == RECOVERY_DISPATCH:
+            prepared = _prepare_recover_create(conn, fresh, ops)
         else:
-            _execute_create(conn, fresh, ops)
+            prepared = _prepare_execute_create(conn, fresh, ops)
+        conn.commit()
+
+    if prepared is None or prepared.get("done"):
+        return None
+
+    try:
+        result = _run_create_io(prepared)
+    except ProviderError as exc:
+        with _default_connect() as conn:
+            apply_provider_error(
+                conn,
+                OpStore(conn),
+                op=prepared["op"],
+                fence=int(prepared["fence"]),
+                exc=exc,
+                connector_id=str(prepared["connector"]["id"]),
+                remote_container_id=str(prepared["destination"].remoteContainerId),
+            )
+            conn.commit()
+        return None
+
+    with _default_connect() as conn:
+        _finish_create(conn, prepared, result)
         conn.commit()
     return None
 
@@ -332,32 +359,13 @@ def _build_inbound_fetcher(conn: Any, connector_id: str, container_id: str) -> _
     return _ConnectorInboundFetcher(conn, connector_id, container_id)
 
 
-def _actor_role(_conn: Any, _actor_user_id: str | None) -> Role:
-    return normalize_role("designer") or "designer"  # type: ignore[return-value]
-
-
-def _workspace_schema(conn: Any) -> str:
-    row = conn.execute("SHOW search_path").fetchone()
-    first = str(row["search_path"]).split(",")[0].strip().strip('"')
-    if first and first not in {"$user", "public"}:
-        return first
-    return "workspace"
-
-
 def _policy_check(conn: Any, ctx: _ExecutionContext) -> None:
-    try:
-        evaluate_dispatch(
-            conn,
-            ctx.project_id,
-            _actor_role(conn, ctx.op.get("actor_user_id")),
-            workspace_schema=_workspace_schema(conn),
-        )
-    except PublicationDenied as exc:
-        raise ProviderError("forbidden", str(exc), retryable=False) from exc
-    except DispatchPause as exc:
-        raise ProviderError("auth_lost", str(exc), retryable=False) from exc
-    if int(ctx.op.get("destination_generation") or 0) != int(ctx.policy.get("destination_generation") or 0):
-        raise ProviderError("invalid_request", "destination generation mismatch", retryable=False)
+    policy_check(
+        conn,
+        project_id=ctx.project_id,
+        op=ctx.op,
+        destination_generation=int(ctx.policy.get("destination_generation") or 0),
+    )
 
 
 def _build_draft(ctx: _ExecutionContext) -> Any:
@@ -414,7 +422,9 @@ def _confirm_create_link(
     ops.confirm(op_id, fence, external_result_id=external_id)
 
 
-def _execute_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
+def _prepare_execute_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> dict[str, Any] | None:
+    """Load context and evaluate policy; caller must commit before provider I/O."""
+
     ctx = _load_execution_context(conn, op)
     op_id = str(op["id"])
     fence = int(op["fence"])
@@ -422,78 +432,116 @@ def _execute_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
     if external_id not in ("", "pending"):
         if str(op.get("state") or "") != "confirmed":
             ops.confirm(op_id, fence, external_result_id=external_id)
-        return
+        return {"done": True}
     try:
         _policy_check(conn, ctx)
-        adapter = _issue_adapter(ctx.connector)
-        draft = _build_draft(ctx)
-        rendered_body = render_issue_body_from_draft(draft)
-        outbound = draft.model_copy(update={"proseBlock": rendered_body, "marker": ""})
-        issue = adapter.create_issue(ctx.destination, outbound, op_id)
     except ProviderError as exc:
-        if str(op.get("state") or "") == "sent" and exc.class_ not in {"auth_lost", "forbidden"}:
-            ops.enter_recovery(op_id, fence)
-            raise
-        if exc.class_ in {"auth_lost", "forbidden"}:
-            ops.schedule(
-                op_id,
-                fence,
-                next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=15),
-                error=exc.to_dto(),
-                consume_attempt=False,
-            )
-            return
-        raise
-    _confirm_create_link(
-        conn,
-        ops,
-        thread=ctx.thread,
-        issue=issue,
-        op_id=op_id,
-        fence=fence,
-        container_path=str(ctx.policy.get("container_path") or ""),
-    )
+        apply_provider_error(
+            conn,
+            ops,
+            op=op,
+            fence=fence,
+            exc=exc,
+            connector_id=str(ctx.connector["id"]),
+            remote_container_id=str(ctx.destination.remoteContainerId),
+        )
+        return {"done": True}
+    draft = _build_draft(ctx)
+    rendered_body = render_issue_body_from_draft(draft)
+    outbound = draft.model_copy(update={"proseBlock": rendered_body, "marker": ""})
+    return {
+        "mode": "create",
+        "op": dict(op),
+        "fence": fence,
+        "thread": ctx.thread,
+        "connector": ctx.connector,
+        "destination": ctx.destination,
+        "outbound": outbound,
+        "container_path": str(ctx.policy.get("container_path") or ""),
+        "op_id": op_id,
+    }
 
 
-def _recover_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
+def _prepare_recover_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> dict[str, Any] | None:
     ctx = _load_execution_context(conn, op)
     op_id = str(op["id"])
     fence = int(op["fence"])
     external_id = str(ctx.thread.get("external_id") or "")
     if external_id not in ("", "pending") and str(op.get("state") or "") != "confirmed":
         ops.confirm(op_id, fence, external_result_id=external_id)
-        return
-    adapter = _issue_adapter(ctx.connector)
+        return {"done": True}
     sent_at = op.get("sent_at")
     if isinstance(sent_at, datetime) and sent_at.tzinfo is None:
         sent_at = sent_at.replace(tzinfo=timezone.utc)
+    return {
+        "mode": "recover",
+        "op": dict(op),
+        "fence": fence,
+        "thread": ctx.thread,
+        "connector": ctx.connector,
+        "destination": ctx.destination,
+        "container_path": str(ctx.policy.get("container_path") or ""),
+        "op_id": op_id,
+        "sent_at": sent_at if isinstance(sent_at, datetime) else None,
+        "attempts": int(op.get("attempts") or 1),
+        "state": str(op.get("state") or ""),
+    }
+
+
+def _run_create_io(prepared: Mapping[str, Any]) -> Any:
+    adapter = _issue_adapter(prepared["connector"])
+    if prepared["mode"] == "create":
+        return adapter.create_issue(prepared["destination"], prepared["outbound"], prepared["op_id"])
     outcome = recover_create_issue(
-        op,
-        dest=ctx.destination,
-        comment_id=str(ctx.thread["comment_id"]),
+        prepared["op"],
+        dest=prepared["destination"],
+        comment_id=str(prepared["thread"]["comment_id"]),
         fetch_page=make_issue_page_fetcher(
             adapter,
-            ctx.destination,
-            since=recovery_since(sent_at if isinstance(sent_at, datetime) else None),
+            prepared["destination"],
+            since=recovery_since(prepared.get("sent_at")),
         ),
-        bot_user_id=str(ctx.connector.get("bot_forge_user_id") or ""),
+        bot_user_id=str(prepared["connector"].get("bot_forge_user_id") or ""),
     )
+    issue = None
     if outcome.kind == RecoveryKind.FOUND and outcome.match is not None:
-        issue = adapter.get_issue(
-            ctx.destination,
+        fetched = adapter.get_issue(
+            prepared["destination"],
             str(outcome.match.number or outcome.match.external_id),
             etag=None,
         )
-        if isinstance(issue, RemoteIssue):
-            _confirm_create_link(
-                conn,
-                ops,
-                thread=ctx.thread,
-                issue=issue,
-                op_id=op_id,
-                fence=fence,
-                container_path=str(ctx.policy.get("container_path") or ""),
-            )
+        if isinstance(fetched, RemoteIssue):
+            issue = fetched
+    return {"outcome": outcome, "issue": issue}
+
+
+def _finish_create(conn: Any, prepared: Mapping[str, Any], result: Any) -> None:
+    ops = OpStore(conn)
+    op_id = str(prepared["op_id"])
+    fence = int(prepared["fence"])
+    if prepared["mode"] == "create":
+        _confirm_create_link(
+            conn,
+            ops,
+            thread=prepared["thread"],
+            issue=result,
+            op_id=op_id,
+            fence=fence,
+            container_path=str(prepared["container_path"]),
+        )
+        return
+    outcome = result["outcome"]
+    issue = result["issue"]
+    if outcome.kind == RecoveryKind.FOUND and issue is not None:
+        _confirm_create_link(
+            conn,
+            ops,
+            thread=prepared["thread"],
+            issue=issue,
+            op_id=op_id,
+            fence=fence,
+            container_path=str(prepared["container_path"]),
+        )
         return
     if outcome.kind == RecoveryKind.INCOMPLETE:
         ops.schedule(
@@ -503,9 +551,9 @@ def _recover_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
             consume_attempt=False,
         )
         return
-    if str(op.get("state") or "") == "sent":
+    if prepared.get("state") == "sent":
         ops.enter_recovery(op_id, fence)
-    attempt_index = max(0, int(op.get("attempts") or 1) - 1)
+    attempt_index = max(0, int(prepared.get("attempts") or 1) - 1)
     resume = next_quarantine_at(attempt_index)
     ops.enter_quarantine(op_id, fence, next_attempt_at=resume)
     detail = (
@@ -520,6 +568,52 @@ def _recover_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
         error={"class": "transient", "message": detail, "retryable": True},
         consume_attempt=False,
     )
+
+
+def _execute_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
+    """Test helper: prepare + I/O + finish while reusing the caller's connection for DB only."""
+
+    prepared = _prepare_execute_create(conn, op, ops)
+    if prepared is None or prepared.get("done"):
+        return
+    conn.commit()
+    try:
+        result = _run_create_io(prepared)
+    except ProviderError as exc:
+        apply_provider_error(
+            conn,
+            ops,
+            op=prepared["op"],
+            fence=int(prepared["fence"]),
+            exc=exc,
+            connector_id=str(prepared["connector"]["id"]),
+            remote_container_id=str(prepared["destination"].remoteContainerId),
+        )
+        return
+    _finish_create(conn, prepared, result)
+
+
+def _recover_create(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
+    """Test helper: recovery prepare + I/O + finish with caller's connection for DB only."""
+
+    prepared = _prepare_recover_create(conn, op, ops)
+    if prepared is None or prepared.get("done"):
+        return
+    conn.commit()
+    try:
+        result = _run_create_io(prepared)
+    except ProviderError as exc:
+        apply_provider_error(
+            conn,
+            ops,
+            op=prepared["op"],
+            fence=int(prepared["fence"]),
+            exc=exc,
+            connector_id=str(prepared["connector"]["id"]),
+            remote_container_id=str(prepared["destination"].remoteContainerId),
+        )
+        return
+    _finish_create(conn, prepared, result)
 
 
 __all__ = [

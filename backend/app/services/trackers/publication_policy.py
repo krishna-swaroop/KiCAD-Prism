@@ -28,7 +28,20 @@ DEFAULT_LABELS = {
 }
 DEFAULT_AUTO_MIN_SEVERITY = "minor"
 DEFAULT_PROMOTE_MIN_ROLE = "designer"
+ALLOWED_PROMOTE_MIN_ROLES = frozenset({"viewer", "designer"})
 VISIBILITIES = ("public", "private", "unknown")
+
+
+def normalize_promote_min_role(value: str | None) -> str | None:
+    """Validate PUT ``promoteMinRole`` to CONTRACTS allowlist ``{viewer, designer}``."""
+
+    if value is None:
+        return None
+    role = normalize_role(value)
+    if role not in ALLOWED_PROMOTE_MIN_ROLES:
+        allowed = ", ".join(sorted(ALLOWED_PROMOTE_MIN_ROLES))
+        raise ValueError(f"promoteMinRole must be one of: {allowed}")
+    return role
 
 
 class ProjectTrackerNotFound(KeyError):
@@ -184,6 +197,7 @@ class PublicationPolicyService:
                 generation=generation,
                 visibility=visibility,
             )
+            promote_min_role = normalize_promote_min_role(promote_min_role)
             if auto_min_severity is not None or auto_task_class is not None or promote_min_role is not None or labels is not None:
                 conn.execute(
                     """
@@ -374,8 +388,10 @@ class PublicationPolicyService:
 
 
 __all__ = [
+    "ALLOWED_PROMOTE_MIN_ROLES",
     "DispatchPause",
     "ProjectTrackerNotFound",
     "PublicationDenied",
+    "normalize_promote_min_role",
     "PublicationPolicyService",
 ]

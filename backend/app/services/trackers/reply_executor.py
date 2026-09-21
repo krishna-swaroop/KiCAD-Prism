@@ -17,9 +17,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterator, Mapping
 
 from app.core.config import settings
-from app.core.roles import Role, normalize_role
 from app.services.trackers.contracts import Destination, RemoteComment
 from app.services.trackers.errors import ProviderError
+from app.services.trackers.executor_support import (
+    NON_CONSUMING_ERROR_CLASSES,
+    apply_provider_error,
+    policy_check,
+)
 from app.services.trackers.github_comments import GitHubCommentAdapter
 from app.services.trackers.github_recovery import (
     RecoveryKind,
@@ -192,8 +196,6 @@ def _workspace_schema(conn: Any) -> str:
     return "workspace"
 
 
-def _actor_role(_conn: Any, _actor_user_id: str | None) -> Role:
-    return normalize_role("designer") or "designer"  # type: ignore[return-value]
 
 
 def _load_reply_context(conn: Any, op: Mapping[str, Any]) -> _ReplyContext:
@@ -298,20 +300,12 @@ def _load_reply_context(conn: Any, op: Mapping[str, Any]) -> _ReplyContext:
 
 
 def _policy_check(conn: Any, ctx: _ReplyContext) -> None:
-    try:
-        evaluate_dispatch(
-            conn,
-            ctx.project_id,
-            _actor_role(conn, ctx.op.get("actor_user_id")),
-            workspace_schema=_workspace_schema(conn),
-        )
-    except PublicationDenied as exc:
-        raise ProviderError("forbidden", str(exc), retryable=False) from exc
-    except DispatchPause as exc:
-        raise ProviderError("auth_lost", str(exc), retryable=False) from exc
-    if int(ctx.op.get("destination_generation") or 0) != int(ctx.policy.get("destination_generation") or 0):
-        raise ProviderError("invalid_request", "destination generation mismatch", retryable=False)
-
+    policy_check(
+        conn,
+        project_id=ctx.project_id,
+        op=ctx.op,
+        destination_generation=int(ctx.policy.get("destination_generation") or 0),
+    )
 
 def _stale_intent(conn: Any, ctx: _ReplyContext, ops: OpStore) -> bool:
     current = conn.execute(
@@ -405,6 +399,7 @@ def _execute_reply(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
         return
     try:
         _policy_check(conn, ctx)
+        conn.commit()
         adapter = _comment_adapter(ctx.connector)
         issue_ref = issue_number_for_api(ctx.thread)
         if kind == "add_comment":
@@ -456,19 +451,16 @@ def _execute_reply(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
             adapter.delete_comment(ctx.destination, ext_cid)
             ops.confirm(op_id, fence, external_result_id=ext_cid)
     except ProviderError as exc:
-        if str(op.get("state") or "") == "sent" and exc.class_ not in {"auth_lost", "forbidden"}:
-            ops.enter_recovery(op_id, fence)
-            raise
-        if exc.class_ in {"auth_lost", "forbidden"}:
-            ops.schedule(
-                op_id,
-                fence,
-                next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=15),
-                error=exc.to_dto(),
-                consume_attempt=False,
-            )
-            return
-        raise
+        apply_provider_error(
+            conn,
+            ops,
+            op=op,
+            fence=fence,
+            exc=exc,
+            connector_id=str(ctx.connector["id"]),
+            remote_container_id=str(ctx.destination.remoteContainerId),
+        )
+        return
 
 
 def _recover_add(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:

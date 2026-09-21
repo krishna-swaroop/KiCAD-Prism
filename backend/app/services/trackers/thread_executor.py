@@ -16,7 +16,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterator, Mapping
 
 from app.core.config import settings
-from app.core.roles import Role, normalize_role
 from app.services.trackers.contracts import IssuePatch, RemoteComment, RemoteIssue
 from app.services.trackers.create_executor import (
     _issue_adapter,
@@ -28,6 +27,11 @@ from app.services.trackers.drafts import (
     build_issue_draft,
 )
 from app.services.trackers.errors import ProviderError
+from app.services.trackers.executor_support import (
+    NON_CONSUMING_ERROR_CLASSES,
+    apply_provider_error,
+    policy_check,
+)
 from app.services.trackers.github_recovery import make_comment_page_fetcher, next_quarantine_at
 from app.services.trackers.markers import build_marker
 from app.services.trackers.op_store import EXECUTE_DISPATCH, RECOVERY_DISPATCH, OpStore
@@ -122,25 +126,15 @@ def _workspace_schema(conn: Any) -> str:
     return "workspace"
 
 
-def _actor_role(_conn: Any, _actor_user_id: str | None) -> Role:
-    return normalize_role("designer") or "designer"  # type: ignore[return-value]
 
 
 def _policy_check(conn: Any, ctx: Any) -> None:
-    try:
-        evaluate_dispatch(
-            conn,
-            ctx.project_id,
-            _actor_role(conn, ctx.op.get("actor_user_id")),
-            workspace_schema=_workspace_schema(conn),
-        )
-    except PublicationDenied as exc:
-        raise ProviderError("forbidden", str(exc), retryable=False) from exc
-    except DispatchPause as exc:
-        raise ProviderError("auth_lost", str(exc), retryable=False) from exc
-    if int(ctx.op.get("destination_generation") or 0) != int(ctx.policy.get("destination_generation") or 0):
-        raise ProviderError("invalid_request", "destination generation mismatch", retryable=False)
-
+    policy_check(
+        conn,
+        project_id=ctx.project_id,
+        op=ctx.op,
+        destination_generation=int(ctx.policy.get("destination_generation") or 0),
+    )
 
 def _build_draft(ctx: Any) -> Any:
     return build_issue_draft(
@@ -198,6 +192,8 @@ def _execute_update_issue(conn: Any, op: Mapping[str, Any], ops: OpStore) -> Non
         return
     try:
         _policy_check(conn, ctx)
+        conn.commit()
+        conn.commit()
         adapter = _issue_adapter(ctx.connector)
         issue_ref = issue_number_for_api(thread)
         fetched = adapter.get_issue(ctx.destination, issue_ref, etag=None)
@@ -238,19 +234,16 @@ def _execute_update_issue(conn: Any, op: Mapping[str, Any], ops: OpStore) -> Non
         )
         ops.confirm(op_id, fence, external_result_id=str(updated.externalId))
     except ProviderError as exc:
-        if str(op.get("state") or "") == "sent" and exc.class_ not in {"auth_lost", "forbidden"}:
-            ops.enter_recovery(op_id, fence)
-            raise
-        if exc.class_ in {"auth_lost", "forbidden"}:
-            ops.schedule(
-                op_id,
-                fence,
-                next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=15),
-                error=exc.to_dto(),
-                consume_attempt=False,
-            )
-            return
-        raise
+        apply_provider_error(
+            conn,
+            ops,
+            op=op,
+            fence=fence,
+            exc=exc,
+            connector_id=str(ctx.connector["id"]),
+            remote_container_id=str(ctx.destination.remoteContainerId),
+        )
+        return
 
 
 def _build_deletion_note_body(
@@ -280,6 +273,8 @@ def _execute_post_note(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
         return
     try:
         _policy_check(conn, ctx)
+        conn.commit()
+        conn.commit()
         from app.services.trackers.reply_executor import _comment_adapter
 
         adapter = _comment_adapter(ctx.connector)
@@ -299,19 +294,16 @@ def _execute_post_note(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
         )
         ops.confirm(op_id, fence, external_result_id=str(remote.externalCommentId))
     except ProviderError as exc:
-        if str(op.get("state") or "") == "sent" and exc.class_ not in {"auth_lost", "forbidden"}:
-            ops.enter_recovery(op_id, fence)
-            raise
-        if exc.class_ in {"auth_lost", "forbidden"}:
-            ops.schedule(
-                op_id,
-                fence,
-                next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=15),
-                error=exc.to_dto(),
-                consume_attempt=False,
-            )
-            return
-        raise
+        apply_provider_error(
+            conn,
+            ops,
+            op=op,
+            fence=fence,
+            exc=exc,
+            connector_id=str(ctx.connector["id"]),
+            remote_container_id=str(ctx.destination.remoteContainerId),
+        )
+        return
 
 
 def _execute_thread(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
