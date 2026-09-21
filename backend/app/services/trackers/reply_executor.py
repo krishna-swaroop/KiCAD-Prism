@@ -106,11 +106,6 @@ def _default_connect() -> Iterator[Any]:
         yield conn
 
 
-def _clear_mount_flag() -> None:
-    global _mounted
-    _mounted = False
-
-
 def mount_reply_executor() -> None:
     """Register reply ops on the composition dispatch table."""
 
