@@ -44,8 +44,11 @@ from app.services.trackers.reply_mutations import (
 )
 from app.services.trackers.publication_policy import PublicationDenied
 from app.services.trackers.state_mutations import enqueue_set_state
+from app.services.trackers.thread_executor import mount_thread_executor
+from app.services.trackers.thread_mutations import after_root_content_edited, after_root_deleted
 
 mount_reply_executor()
+mount_thread_executor()
 
 # 1.1 adds authorUserId/authorKind, reply ids, revision/updatedAt and the anchor
 # block. Every addition is optional for readers; 1.0 files still import.
@@ -993,16 +996,25 @@ class CommentsStoreService:
                     mentions=_normalize_mentions(mentions) if mentions is not None else None,
                 )
                 updated = self._get_comment_with_replies(conn, project_id, comment_id)
-                if updated is not None and promotion_actor is not None and severity is not None:
-                    after_root_severity_change(
-                        conn,
-                        project_id=project_id,
-                        comment=updated,
-                        previous_severity=previous_severity,
-                        actor=promotion_actor,
-                        workspace_schema=self.workspace_schema,
-                    )
-                    updated = self._get_comment_with_replies(conn, project_id, comment_id)
+                if updated is not None and promotion_actor is not None:
+                    if severity is not None:
+                        after_root_severity_change(
+                            conn,
+                            project_id=project_id,
+                            comment=updated,
+                            previous_severity=previous_severity,
+                            actor=promotion_actor,
+                            workspace_schema=self.workspace_schema,
+                        )
+                        updated = self._get_comment_with_replies(conn, project_id, comment_id)
+                    if content is not None and updated is not None:
+                        after_root_content_edited(
+                            conn,
+                            project_id=project_id,
+                            comment=updated,
+                            actor=promotion_actor,
+                            workspace_schema=self.workspace_schema,
+                        )
                 return updated
 
     def pin_comment_anchor(
@@ -1326,6 +1338,7 @@ class CommentsStoreService:
         comment_id: str,
         editor: Optional[Editor] = None,
         expected_revision: Optional[int] = None,
+        promotion_actor: Optional[PromotionActor] = None,
     ) -> bool:
         """Tombstone a root and its live replies.
 
@@ -1344,6 +1357,14 @@ class CommentsStoreService:
                     conn, project_id=project_id, comment_id=comment_id,
                     editor=editor or _SYSTEM_EDITOR, expected_revision=expected_revision,
                 )
+                if promotion_actor is not None:
+                    after_root_deleted(
+                        conn,
+                        project_id=project_id,
+                        comment_id=comment_id,
+                        actor=promotion_actor,
+                        workspace_schema=self.workspace_schema,
+                    )
                 return True
 
     def export_comments_json(self, project_id: str, project_path: str) -> str:
