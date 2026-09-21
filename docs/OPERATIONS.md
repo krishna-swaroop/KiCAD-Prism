@@ -112,6 +112,54 @@ that database. Keep `--single-transaction`: without it `pg_restore` continues
 past a failed object and leaves a database that is neither the old one nor the
 archive's, whereas with it the first error rolls the whole restore back.
 
+## Tracker credential custody, rotation, and restore
+
+Encrypted connector PEMs, webhook secrets, OAuth client secrets, and user token
+envelopes live in PostgreSQL. The wrapping root keys
+(`TRACKER_CREDENTIAL_ROOT_KEY` and optional
+`TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY`) live only in `.env` on `backend` and
+`prism-worker`. Never put plaintext root keys into the database, into
+`manifest.json`, or into an unencrypted off-host archive.
+
+`scripts/prism_backup.py` records whether those keys were configured and which
+key ids were active. It does not write key material into the manifest. The
+archive's `env` member still carries the deployment `.env`; encrypt that archive
+and restrict who can read it.
+
+### Root key rotation
+
+1. Generate a new 32-byte key and choose a new `TRACKER_CREDENTIAL_ROOT_KEY_ID`
+   (for example `v2`).
+2. Move the current key and id to `TRACKER_CREDENTIAL_PREVIOUS_*`.
+3. Set the new values on `TRACKER_CREDENTIAL_ROOT_KEY` and
+   `TRACKER_CREDENTIAL_ROOT_KEY_ID` on both `backend` and `prism-worker`.
+4. Restart both services, re-wrap or re-save connectors so envelopes use the new
+   id, then clear `TRACKER_CREDENTIAL_PREVIOUS_*` and restart again.
+
+Rotation and backup tests must cover both previous and current key ids. Do not
+reset production databases to force a key change.
+
+### After restoring a backup
+
+1. Restore the matching `.env` (or reinstate the same root key and id, plus any
+   grace previous key) before starting workers that decrypt credentials.
+2. Start PostgreSQL and restore the dump; ciphertext rows stay intact even when
+   the root key is wrong or missing.
+3. Keep connectors paused, or leave outbound idle, until **Test connection**
+   succeeds and connector health is ready on both services.
+4. Resume carefully: `pending` ops execute once; `sent` / `recovering` /
+   `quarantine` ops claim as recovery and must not blind-create remote issues.
+5. Confirm webhook `remote_deliveries` and pending `remote_hints` survived; a
+   replayed delivery id remains idempotent.
+6. Verify local comments and revisions are readable even when credentials are
+   locked — wrong or missing keys pause tracker APIs with `503`, they do not
+   discard envelopes.
+
+`prism_backup.py restore` warns when archive key-id custody does not match the
+live `.env`, then proceeds so ciphertext is preserved. Fix custody before
+resuming promotion. See [Tracker integration](TRACKER_INTEGRATION.md) for the
+full rotation and troubleshooting matrix.
+
 ## Upgrade a release bundle
 
 Release bundles use relative `data/` bind mounts and a stable Compose project
@@ -200,6 +248,7 @@ assume that a V2 alpha SQLite installation can be upgraded in place.
 - catalog search and release queue
 - Remote Symbol Provider discovery and placement
 - backup job completion
+- tracker connector health and Test connection after any restore or key rotation
 
 ## Logs and job diagnosis
 
@@ -279,16 +328,20 @@ leases and worker logs before restarting.
 Confirm `TRACKER_CREDENTIAL_ROOT_KEY` is set, valid, and identical on `backend`
 and `prism-worker`. Inspect connector health
 (`GET /api/admin/trackers/connectors/{id}/health`) for pause reason, backlog,
-and rate-limit resume time. A missing root key preserves local comments but
-returns `503` on connector and OAuth APIs.
+and rate-limit resume time. A missing or wrong root key preserves local comments
+and leaves encrypted credentials in place, but returns `503` on connector and
+OAuth APIs until the matching key (or rotation-grace previous key) is restored.
 
 Webhook delivery is optional; polling-only deployments should still show recent
 poll and sweep timestamps within the budgets documented in
 [Tracker integration](TRACKER_INTEGRATION.md). Restart both services after root
 key rotation and verify **Test connection** before resuming promotion.
 
-Include `TRACKER_CREDENTIAL_ROOT_KEY*` in backup custody planning: restoring a
-database without the matching root key leaves encrypted credentials unreadable.
+Include `TRACKER_CREDENTIAL_ROOT_KEY*` in backup custody planning. Restoring a
+database without the matching root key leaves encrypted credentials unreadable;
+do not delete those rows or re-seed production to "fix" the key. Follow
+[Tracker credential custody, rotation, and restore](#tracker-credential-custody-rotation-and-restore)
+so outbound work resumes through recovery rather than duplicate creates.
 
 ### Catalog metadata exists but placement fails
 

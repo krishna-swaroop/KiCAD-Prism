@@ -116,6 +116,91 @@ class ManifestTests(unittest.TestCase):
         self.assertNotIn("must-not-appear", serialised)
         self.assertNotIn("SESSION_SECRET", serialised)
 
+    def test_manifest_records_tracker_key_ids_but_not_key_material(self) -> None:
+        key_material = "a" * 64
+        previous = "b" * 64
+        manifest = prism_backup.build_manifest(
+            created_at="20260727T101500Z",
+            root=Path("/srv/prism"),
+            env={
+                "POSTGRES_USER": "kicad_prism",
+                "POSTGRES_DB": "kicad_prism",
+                "PRISM_BACKEND_IMAGE": "ghcr.io/x/backend@sha256:abc",
+                "TRACKER_CREDENTIAL_ROOT_KEY": key_material,
+                "TRACKER_CREDENTIAL_ROOT_KEY_ID": "v1",
+                "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY": previous,
+                "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID": "v0",
+            },
+            versions={"workspace_schema": "7", "catalog_schema": "2"},
+            entries={"postgres.dump": "0" * 64},
+            hot=False,
+        )
+        custody = manifest["tracker_credentials"]
+        self.assertEqual(
+            custody,
+            {
+                "root_key_configured": True,
+                "root_key_id": "v1",
+                "previous_root_key_configured": True,
+                "previous_root_key_id": "v0",
+            },
+        )
+        serialised = json.dumps(manifest)
+        self.assertNotIn(key_material, serialised)
+        self.assertNotIn(previous, serialised)
+        self.assertNotIn("TRACKER_CREDENTIAL_ROOT_KEY", serialised)
+
+    def test_restore_warns_when_tracker_root_key_missing(self) -> None:
+        manifest = self._manifest()
+        manifest["tracker_credentials"] = {
+            "root_key_configured": True,
+            "root_key_id": "v1",
+            "previous_root_key_configured": False,
+            "previous_root_key_id": None,
+        }
+        problems = prism_backup.compare_tracker_credential_custody(manifest, {})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("TRACKER_CREDENTIAL_ROOT_KEY", problems[0])
+        self.assertIn("ciphertext", problems[0])
+
+    def test_restore_warns_when_tracker_key_id_mismatches_without_grace(self) -> None:
+        manifest = self._manifest()
+        manifest["tracker_credentials"] = {
+            "root_key_configured": True,
+            "root_key_id": "v1",
+            "previous_root_key_configured": False,
+            "previous_root_key_id": None,
+        }
+        problems = prism_backup.compare_tracker_credential_custody(
+            manifest,
+            {
+                "TRACKER_CREDENTIAL_ROOT_KEY": "a" * 64,
+                "TRACKER_CREDENTIAL_ROOT_KEY_ID": "v2",
+            },
+        )
+        self.assertEqual(len(problems), 1)
+        self.assertIn("v1", problems[0])
+        self.assertIn("v2", problems[0])
+
+    def test_restore_accepts_archived_id_as_previous_during_rotation(self) -> None:
+        manifest = self._manifest()
+        manifest["tracker_credentials"] = {
+            "root_key_configured": True,
+            "root_key_id": "v1",
+            "previous_root_key_configured": False,
+            "previous_root_key_id": None,
+        }
+        problems = prism_backup.compare_tracker_credential_custody(
+            manifest,
+            {
+                "TRACKER_CREDENTIAL_ROOT_KEY": "a" * 64,
+                "TRACKER_CREDENTIAL_ROOT_KEY_ID": "v2",
+                "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY": "b" * 64,
+                "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID": "v1",
+            },
+        )
+        self.assertEqual(problems, [])
+
     def test_restore_into_an_older_build_is_refused(self) -> None:
         """The archive's schema is ahead of the code being restored into."""
         manifest = self._manifest(workspace_schema="9", catalog_schema="2")

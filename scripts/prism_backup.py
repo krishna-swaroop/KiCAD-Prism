@@ -66,6 +66,14 @@ REGENERABLE = (
 
 APPLICATION_SERVICES = ("frontend", "backend", "prism-worker", "catalog-worker")
 
+# Tracker root-key env names recorded as custody metadata only. Never copy the
+# key material into the manifest; the ``env`` archive member already carries
+# the deployment's .env under operator encryption and access control.
+TRACKER_ROOT_KEY = "TRACKER_CREDENTIAL_ROOT_KEY"
+TRACKER_ROOT_KEY_ID = "TRACKER_CREDENTIAL_ROOT_KEY_ID"
+TRACKER_PREVIOUS_ROOT_KEY = "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY"
+TRACKER_PREVIOUS_ROOT_KEY_ID = "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID"
+
 
 class BackupError(RuntimeError):
     pass
@@ -146,6 +154,71 @@ def env_file_for(root: Path, explicit: str | None = None) -> str:
     raise BackupError(f"No .env found in {root}; pass --env-file.")
 
 
+def tracker_credential_custody(env: dict[str, str]) -> dict:
+    """Presence and key ids for tracker envelopes — never the key bytes.
+
+    Encrypted connector and identity material lives in PostgreSQL. The root
+    keys that unwrap it live only in ``.env``. Recording whether those keys
+    were configured (and under which ids) lets restore warn about a mismatch
+    without putting plaintext keys into ``manifest.json``.
+    """
+    current_id = (env.get(TRACKER_ROOT_KEY_ID) or "").strip() or None
+    previous_id = (env.get(TRACKER_PREVIOUS_ROOT_KEY_ID) or "").strip() or None
+    return {
+        "root_key_configured": bool((env.get(TRACKER_ROOT_KEY) or "").strip()),
+        "root_key_id": current_id,
+        "previous_root_key_configured": bool(
+            (env.get(TRACKER_PREVIOUS_ROOT_KEY) or "").strip()
+        ),
+        "previous_root_key_id": previous_id,
+    }
+
+
+def compare_tracker_credential_custody(
+    manifest: dict, env: dict[str, str]
+) -> list[str]:
+    """Operator-facing restore warnings when tracker key custody does not match.
+
+    These never block ``pg_restore``: ciphertext must remain in place so a
+    wrong or missing key yields a paused local application rather than discarded
+    credentials. The caller surfaces them before workers start outbound work.
+    """
+    archived = manifest.get("tracker_credentials")
+    if not isinstance(archived, dict):
+        return []
+    current = tracker_credential_custody(env)
+    problems: list[str] = []
+    if archived.get("root_key_configured") and not current["root_key_configured"]:
+        problems.append(
+            "the archive was taken with TRACKER_CREDENTIAL_ROOT_KEY set, but this "
+            "deployment's .env does not configure it; restored envelopes stay "
+            "ciphertext and outbound tracker sync stays locked until the matching "
+            "root key is restored"
+        )
+    archived_id = archived.get("root_key_id")
+    current_id = current.get("root_key_id")
+    if (
+        archived.get("root_key_configured")
+        and current["root_key_configured"]
+        and archived_id
+        and current_id
+        and archived_id != current_id
+        and archived_id != current.get("previous_root_key_id")
+    ):
+        problems.append(
+            f"archive tracker root key id is {archived_id!r} but this deployment "
+            f"offers {current_id!r}"
+            + (
+                f" (and previous {current.get('previous_root_key_id')!r})"
+                if current.get("previous_root_key_id")
+                else ""
+            )
+            + "; restore envelopes under the archived id or keep that id as "
+            "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID during rotation grace"
+        )
+    return problems
+
+
 def build_manifest(
     *,
     created_at: str,
@@ -176,6 +249,7 @@ def build_manifest(
             for key, value in env.items()
             if key.endswith("_IMAGE") and value
         },
+        "tracker_credentials": tracker_credential_custody(env),
         "versions": versions,
         "checksums": entries,
     }
@@ -461,6 +535,23 @@ def create(args: argparse.Namespace) -> int:
             else:
                 tui.warn("Could not read the schema ledgers; the manifest will not pin them.")
 
+            custody = tracker_credential_custody(env)
+            if custody["root_key_configured"]:
+                tui.ok(
+                    "tracker key custody",
+                    f"root id {custody['root_key_id'] or '(unset id)'}"
+                    + (
+                        f", previous {custody['previous_root_key_id']}"
+                        if custody["previous_root_key_configured"]
+                        else ""
+                    ),
+                )
+            else:
+                tui.hint(
+                    "No TRACKER_CREDENTIAL_ROOT_KEY in .env; encrypted tracker "
+                    "credentials in the dump need that key restored separately."
+                )
+
             entries = {
                 path.name: sha256_file(path)
                 for path in sorted(staging.iterdir())
@@ -491,7 +582,8 @@ def create(args: argparse.Namespace) -> int:
     tui.write()
     tui.ok(f"Wrote {output}", f"{output.stat().st_size / 1e6:.1f} MB")
     tui.info("Store it off this host, encrypted: it contains repositories, tokens")
-    tui.info("and SSH private keys.")
+    tui.info("and SSH private keys. Tracker root keys ride in the env member only;")
+    tui.info("the manifest records key ids, never key material.")
     tui.write()
     tui.hint(f"Check it now:  python3 scripts/prism_backup.py verify {output.name}")
     return 0
@@ -597,6 +689,16 @@ def restore(args: argparse.Namespace) -> int:
         tui.info("The check that refuses an archive newer than this build did not")
         tui.info("run. On an empty database that is expected; otherwise stop and")
         tui.info("find out why before continuing.")
+        tui.write()
+
+    custody_problems = compare_tracker_credential_custody(manifest, env)
+    if custody_problems:
+        tui.write()
+        tui.warn("Tracker credential custody does not match this deployment.")
+        for problem in custody_problems:
+            tui.warn(problem)
+        tui.info("Restore still proceeds so ciphertext is preserved. Fix .env")
+        tui.info("key ids before resuming promotion; see docs/OPERATIONS.md.")
         tui.write()
 
     tui.warn("This replaces the database, project storage and SSH keys in place.")
@@ -720,6 +822,15 @@ def restore(args: argparse.Namespace) -> int:
     tui.write()
     tui.ok("Restore complete")
     tui.info("Verify: login, a project, the catalog, and one 3D view.")
+    tui.write()
+    tui.note("Tracker sync after restore")
+    tui.info("Confirm TRACKER_CREDENTIAL_ROOT_KEY* match the backup (current and")
+    tui.info("any grace previous ids). Keep connectors paused or leave outbound")
+    tui.info("idle until Test connection succeeds on backend and prism-worker.")
+    tui.info("Pending ops execute once; sent/recovering ops resume through")
+    tui.info("recovery scans — they must not blind-create remote issues.")
+    tui.info("Webhook delivery ids and pending hints are restored with the dump;")
+    tui.info("duplicate deliveries stay idempotent.")
     return 0
 
 
