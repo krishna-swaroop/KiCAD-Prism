@@ -378,6 +378,25 @@ def can_retry_projection(tracker: Mapping[str, Any] | None) -> bool:
     return isinstance(last_error, Mapping) and bool(last_error.get("retryable"))
 
 
+def _comment_for_projection(conn: Any, project_id: str, comment_id: str) -> dict:
+    row = conn.execute(
+        """
+        SELECT id, anchor_state, anchor_commit
+        FROM comments
+        WHERE project_id = %s AND id = %s AND deleted_at IS NULL
+        """,
+        (project_id, comment_id),
+    ).fetchone()
+    if row is None:
+        raise KeyError("comment_not_found")
+    row = dict(row)
+    anchor: dict[str, Any] = {
+        "state": row.get("anchor_state") or "unpinned",
+        "commit": row.get("anchor_commit"),
+    }
+    return {"id": comment_id, "replies": [], "anchor": anchor}
+
+
 def _live_thread(conn: Any, comment_id: str) -> Optional[dict]:
     row = conn.execute(
         """
@@ -456,7 +475,9 @@ def retry_thread_sync(
             (thread["id"], list(LIVE_OP_STATES)),
         ).fetchone()
         if live is not None:
-            return attach_tracker_projection(conn, project_id, {"id": comment_id})["tracker"]
+            return attach_tracker_projection(
+                conn, project_id, _comment_for_projection(conn, project_id, comment_id),
+            )["tracker"]
         raise PublicationDenied("retry_not_allowed", "No failed operation to retry")
 
     op_id = str(op["id"])
@@ -481,7 +502,9 @@ def retry_thread_sync(
     ).fetchone()
     if comment is None:
         raise KeyError("comment_not_found")
-    return attach_tracker_projection(conn, project_id, {"id": comment_id})["tracker"]
+    return attach_tracker_projection(
+        conn, project_id, _comment_for_projection(conn, project_id, comment_id),
+    )["tracker"]
 
 
 def load_thread_status(
@@ -497,7 +520,9 @@ def load_thread_status(
     if comment is None:
         raise KeyError("comment_not_found")
     thread = _live_thread(conn, comment_id)
-    projection = attach_tracker_projection(conn, project_id, {"id": comment_id})
+    projection = attach_tracker_projection(
+        conn, project_id, _comment_for_projection(conn, project_id, comment_id),
+    )
     tracker = projection.get("tracker") or {}
     history_count = 0
     if thread is not None:

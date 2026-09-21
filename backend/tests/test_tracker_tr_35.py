@@ -122,6 +122,10 @@ class TrackerTr35PostgresTests(unittest.TestCase):
         migrate_workspace_tracker_tables(self.conn)
         apply_op_schema(self.conn)
         apply_inbox_schema(self.conn)
+        self.conn.execute("CREATE SCHEMA IF NOT EXISTS workspace")
+        self.conn.execute("SET search_path TO workspace, public")
+        migrate_workspace_tracker_tables(self.conn)
+        self.conn.execute(f'SET search_path TO "{self.schema}", public')
         self.store = TrackerStore(self.conn)
         self.ops = OpStore(self.conn)
         self.store.upsert_connector(
@@ -148,10 +152,11 @@ class TrackerTr35PostgresTests(unittest.TestCase):
             visibility="private",
             acknowledged_by="u_admin",
         )
+        self._mirror_workspace_tables()
         self.conn.execute(
             """
-            INSERT INTO comments (id, project_id, author, author_user_id, author_kind, content, anchor_commit)
-            VALUES (%s, %s, 'Priya', 'u_designer', 'user', 'fixture', %s)
+            INSERT INTO comments (id, project_id, author, author_user_id, author_kind, content, anchor_commit, anchor_state)
+            VALUES (%s, %s, 'Priya', 'u_designer', 'user', 'fixture', %s, 'pinned')
             """,
             (COMMENT, PROJECT, PINNED_ANCHOR["commit"]),
         )
@@ -182,10 +187,78 @@ class TrackerTr35PostgresTests(unittest.TestCase):
         try:
             self.conn.rollback()
             self.conn.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
+            self.conn.execute("DROP SCHEMA IF EXISTS workspace CASCADE")
             self.conn.commit()
         finally:
             self.conn.close()
 
+    def _mirror_workspace_tables(self) -> None:
+        connector = self.conn.execute(
+            "SELECT * FROM tracker_connectors WHERE id = %s",
+            (CONNECTOR,),
+        ).fetchone()
+        if connector is not None:
+            self.conn.execute(
+                """
+                INSERT INTO workspace.tracker_connectors (
+                    id, provider, instance_kind, bot_forge_user_id, bot_login,
+                    credential_envelope, paused, paused_reason
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    provider = EXCLUDED.provider,
+                    instance_kind = EXCLUDED.instance_kind,
+                    bot_forge_user_id = EXCLUDED.bot_forge_user_id,
+                    bot_login = EXCLUDED.bot_login,
+                    credential_envelope = EXCLUDED.credential_envelope,
+                    paused = EXCLUDED.paused,
+                    paused_reason = EXCLUDED.paused_reason
+                """,
+                (
+                    connector["id"],
+                    connector["provider"],
+                    connector["instance_kind"],
+                    connector.get("bot_forge_user_id"),
+                    connector.get("bot_login"),
+                    connector.get("credential_envelope"),
+                    connector.get("paused", False),
+                    connector.get("paused_reason"),
+                ),
+            )
+        row = self.conn.execute(
+            """
+            SELECT id, project_id, connector_id, container_kind, container_path,
+                   remote_container_id, destination_generation, visibility
+            FROM project_trackers
+            WHERE id = %s
+            """,
+            ("pt_tr35",),
+        ).fetchone()
+        if row is not None:
+            self.conn.execute(
+                """
+                INSERT INTO workspace.project_trackers (
+                    id, project_id, connector_id, container_kind, container_path,
+                    remote_container_id, destination_generation, visibility
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id) DO UPDATE SET
+                    connector_id = EXCLUDED.connector_id,
+                    container_kind = EXCLUDED.container_kind,
+                    container_path = EXCLUDED.container_path,
+                    remote_container_id = EXCLUDED.remote_container_id,
+                    destination_generation = EXCLUDED.destination_generation,
+                    visibility = EXCLUDED.visibility
+                """,
+                (
+                    row["id"],
+                    row["project_id"],
+                    row["connector_id"],
+                    row["container_kind"],
+                    row["container_path"],
+                    row["remote_container_id"],
+                    row["destination_generation"],
+                    row["visibility"],
+                ),
+            )
     def _create_comments_foundation(self) -> None:
         self.conn.execute(
             """
@@ -377,7 +450,7 @@ class TrackerTr35PostgresTests(unittest.TestCase):
             """,
             (f"{CONNECTOR}:{CONTAINER}", now - timedelta(minutes=5)),
         )
-        health = aggregate_connector_health(self.conn, CONNECTOR)
+        health = aggregate_connector_health(self.conn, CONNECTOR, comments_schema=self.schema)
         self.assertFalse(health["degraded"])
         self.assertIsNone(health["lastWebhookAt"])
         self.assertIsNotNone(health["lastPollAt"])
@@ -398,7 +471,7 @@ class TrackerTr35PostgresTests(unittest.TestCase):
             external_url="https://github.com/acme/openswitch/issues/999",
             link_state="inaccessible",
         )
-        health = aggregate_project_health(self.conn, PROJECT)
+        health = aggregate_project_health(self.conn, PROJECT, comments_schema=self.schema)
         self.assertEqual(health["linkedThreads"], 1)
         self.assertEqual(health["inaccessibleThreads"], 0)
 
@@ -421,7 +494,7 @@ class TrackerTr35PostgresTests(unittest.TestCase):
         project = type("Project", (), {"id": PROJECT, "path": "/tmp", "role": "designer"})()
         with patch("app.api.tracker_sync.get_project_for_role_or_404", return_value=project), patch(
             "app.api.tracker_sync.comments_store._connect", side_effect=connect_cm,
-        ):
+        ), patch("app.api.tracker_sync._promote_min_role", return_value="designer"):
             result = run(sync_api.retry_comment_sync(PROJECT, COMMENT, session("designer")))
         self.assertEqual(result["pendingIntent"], "set_state:closed")
 
