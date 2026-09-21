@@ -240,7 +240,9 @@ def render_context_block_lines(
         if variant:
             lines.append(f"Variant: {escape_generated_text(variant)}")
 
-    lines.append(f"Prism: {escape_generated_text(prism_url)}")
+    # The URL is already percent-encoded by deep_links; HTML-escaping it would
+    # turn every "&" into "&amp;" inside a markdown body and break the link.
+    lines.append(f"Prism: {prism_url}")
     lines.append(f"Requested by: {requested_by}")
     for hint in assignment_hints:
         lines.append(escape_generated_text(hint))

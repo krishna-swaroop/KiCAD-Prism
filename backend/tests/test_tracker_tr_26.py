@@ -544,7 +544,11 @@ class CreateExecutorPostgresTests(unittest.TestCase):
         with patch("app.services.trackers.create_executor._issue_adapter", return_value=FakeAdapter()):
             execute_claimed_op(self.ops.get(OP_ID))
         row = self.ops.get(OP_ID)
-        self.assertEqual(row["state"], "sent")
+        # The pause fired before any I/O, so the op is handed back to pending
+        # (TR-46): leaving it ``sent`` would route every later claim to a
+        # recovery scan for an issue that was never created.
+        self.assertEqual(row["state"], "pending")
+        self.assertIsNone(row["sent_at"])
         self.assertEqual((row.get("last_error") or {}).get("class"), "visibility")
 
 

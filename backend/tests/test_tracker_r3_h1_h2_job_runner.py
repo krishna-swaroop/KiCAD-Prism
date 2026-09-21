@@ -209,6 +209,54 @@ class JobRunnerDispatchTablePostgresTests(unittest.TestCase):
             "app.services.trackers.create_executor",
         )
 
+    def test_policy_pause_before_io_returns_op_to_pending(self) -> None:
+        """TR-46: mark_sent precedes the executor; a pre-I/O pause must not strand the op in ``sent``.
+
+        Otherwise every later claim takes the recovery path and scans for a
+        write that never happened, and the op never executes again.
+        """
+
+        handler = get_job_handler(DISPATCH_KIND)
+        assert handler is not None
+        self._seed_pending_create()
+        self.conn.execute("UPDATE tracker_connectors SET paused = TRUE, paused_reason = 'admin' WHERE id = %s", (CONNECTOR,))
+        self.conn.commit()
+        # Pause is detected by the executor's policy re-check, not the job's
+        # pre-claim check, so make the job see an unpaused connector first.
+        with patch("app.services.trackers.jobs._connector_paused", return_value=False):
+            result = handler(
+                FakeContext(
+                    {
+                        "connectorId": CONNECTOR,
+                        "remoteContainerId": CONTAINER,
+                        "_connect": self.schema_helper.factory,
+                    }
+                )
+            )
+        self.assertEqual(result.message, "Dispatched")
+        op = self.ops.get(OP_CREATE)
+        self.assertEqual(op["state"], "pending", "pre-I/O pause must hand the op back, not leave it sent")
+        self.assertIsNone(op["sent_at"])
+        self.assertEqual(op["attempts"], 0, "the attempt mark_sent counted is returned")
+        self.assertEqual((op.get("last_error") or {}).get("class"), "paused")
+        self.assertFalse(any(t.get("action") == "create_issue" for t in self.traces), "nothing was sent")
+
+        # Once the pause lifts the same op executes normally on its next due claim.
+        self.conn.execute("UPDATE tracker_connectors SET paused = FALSE, paused_reason = NULL WHERE id = %s", (CONNECTOR,))
+        self.conn.execute("UPDATE sync_ops SET next_attempt_at = NOW() WHERE id = %s", (OP_CREATE,))
+        self.conn.commit()
+        result = handler(
+            FakeContext(
+                {
+                    "connectorId": CONNECTOR,
+                    "remoteContainerId": CONTAINER,
+                    "_connect": self.schema_helper.factory,
+                }
+            )
+        )
+        self.assertEqual(result.message, "Dispatched")
+        self.assertEqual(self.ops.get(OP_CREATE)["state"], "confirmed")
+
 
 if __name__ == "__main__":
     unittest.main()

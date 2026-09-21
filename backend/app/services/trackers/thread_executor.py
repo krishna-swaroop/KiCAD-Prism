@@ -118,14 +118,6 @@ def recover_thread_op(conn: Any, op: Mapping[str, Any]) -> None:
         _recover_update_issue(conn, op, ops)
 
 
-def _workspace_schema(conn: Any) -> str:
-    row = conn.execute("SHOW search_path").fetchone()
-    first = str(row["search_path"]).split(",")[0].strip().strip('"')
-    if first and first not in {"$user", "public"}:
-        return first
-    return "workspace"
-
-
 
 
 def _policy_check(conn: Any, ctx: Any) -> None:
@@ -192,6 +184,20 @@ def _execute_update_issue(conn: Any, op: Mapping[str, Any], ops: OpStore) -> Non
         return
     try:
         _policy_check(conn, ctx)
+    except ProviderError as exc:
+        # Policy pauses are pre-I/O: hand the op back to pending, never to recovery.
+        apply_provider_error(
+            conn,
+            ops,
+            op=op,
+            fence=fence,
+            exc=exc,
+            connector_id=str(ctx.connector["id"]),
+            remote_container_id=str(ctx.destination.remoteContainerId),
+            pre_io=True,
+        )
+        return
+    try:
         conn.commit()
         conn.commit()
         adapter = _issue_adapter(ctx.connector)
@@ -273,6 +279,20 @@ def _execute_post_note(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
         return
     try:
         _policy_check(conn, ctx)
+    except ProviderError as exc:
+        # Policy pauses are pre-I/O: hand the op back to pending, never to recovery.
+        apply_provider_error(
+            conn,
+            ops,
+            op=op,
+            fence=fence,
+            exc=exc,
+            connector_id=str(ctx.connector["id"]),
+            remote_container_id=str(ctx.destination.remoteContainerId),
+            pre_io=True,
+        )
+        return
+    try:
         conn.commit()
         conn.commit()
         from app.services.trackers.reply_executor import _comment_adapter

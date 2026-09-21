@@ -296,6 +296,59 @@ class OpStore:
         payload["dispatch"] = RECOVERY_DISPATCH
         return payload
 
+    def retain_unsent(
+        self,
+        op_id: str,
+        fence: int,
+        *,
+        next_attempt_at: datetime,
+        error: Mapping[str, Any] | None = None,
+    ) -> dict:
+        """Return a ``sent`` op to ``pending`` when the executor stopped before any I/O.
+
+        ``mark_sent`` precedes the executor (D2), so a policy pause raised while
+        loading context would otherwise strand the op in ``sent``: every later
+        claim takes the recovery path and scans for a write that never happened.
+        Callers must only use this from the pre-I/O phase; the attempt that
+        ``mark_sent`` counted is handed back.
+        """
+
+        payload_error = None
+        if error is not None:
+            payload_error = sanitize_error(
+                str(error.get("class") or error.get("class_") or "transient"),
+                str(error.get("message") or "retained before send"),
+                resume_at=error.get("resumeAt") or error.get("resume_at"),
+                status=error.get("status"),
+                retryable=error.get("retryable"),
+                new_ref=error.get("newRef") or error.get("new_ref"),
+            )
+        row = self.conn.execute(
+            """
+            UPDATE sync_ops
+            SET state = 'pending',
+                sent_at = NULL,
+                attempts = GREATEST(attempts - 1, 0),
+                next_attempt_at = %s,
+                claimed_by = NULL,
+                lease_expires_at = NULL,
+                last_error = COALESCE(%s::jsonb, last_error)
+            WHERE id = %s AND fence = %s AND state = 'sent'
+            RETURNING *
+            """,
+            (
+                next_attempt_at,
+                json.dumps(payload_error) if payload_error is not None else None,
+                op_id,
+                fence,
+            ),
+        ).fetchone()
+        if row is None:
+            raise StaleFence(f"op {op_id} fence {fence} cannot be retained unsent")
+        payload = _dump(row)
+        assert payload is not None
+        return payload
+
     def confirm(
         self,
         op_id: str,
