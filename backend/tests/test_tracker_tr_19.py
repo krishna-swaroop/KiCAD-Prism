@@ -170,6 +170,9 @@ class ConnectorAdminApiTests(unittest.TestCase):
             connect=self._factory,
             settings=self.settings,
             tester=self._tester,
+            repository_lister=lambda row, material: [
+                {"id": "1379354799", "fullName": "krishna-swaroop/prism-tracker-acceptance", "private": True, "archived": False, "htmlUrl": ""},
+            ] if material.get("privateKey") else [],
             comments_schema=self.schema,
             workspace_schema=self.schema,
         )
@@ -313,6 +316,15 @@ class ConnectorAdminApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as caught:
             run(connectors_api.resume_connector("cn_gh1", self.admin))
         self.assertEqual(caught.exception.status_code, 403)
+
+    def test_repositories_listing_needs_credentials_and_admin(self) -> None:  # TR-46 destination picker
+        self._create()
+        listed = run(connectors_api.list_connector_repositories("cn_gh1", self.admin))
+        self.assertEqual([item["fullName"] for item in listed], ["krishna-swaroop/prism-tracker-acceptance"])
+        run(connectors_api.revoke_connector("cn_gh1", self.admin))
+        with self.assertRaises(HTTPException) as caught:
+            run(connectors_api.list_connector_repositories("cn_gh1", self.admin))
+        self.assertIn(caught.exception.status_code, (409, 502, 503))
 
     def test_revoke_pauses_and_erases_envelope(self) -> None:
         self._create()

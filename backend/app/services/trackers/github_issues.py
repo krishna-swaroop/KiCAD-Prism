@@ -74,7 +74,15 @@ class GitHubIssueAdapter:
         return caps
 
     def get_container(self, dest: Destination) -> Container:
-        response = self._request("GET", self.auth.url(f"/repositories/{dest.remoteContainerId}"))
+        # A freshly imported project carries the placeholder ``pending:<owner/repo>``
+        # until an admin saves; resolve it by path so the project's own
+        # repository works as the destination without typing a numeric id (TR-46).
+        remote_id = str(dest.remoteContainerId or "").strip()
+        if remote_id.isdigit():
+            response = self._request("GET", self.auth.url(f"/repositories/{remote_id}"))
+        else:
+            owner, repo = _owner_repo(dest)
+            response = self._request("GET", self.auth.url(f"/repos/{owner}/{repo}"))
         payload = self._json_object(response)
         path = str(payload.get("full_name") or dest.containerPath)
         visibility = "unknown"

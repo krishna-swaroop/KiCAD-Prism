@@ -71,6 +71,7 @@ class ConnectorService:
         settings: Any | None = None,
         tester: Callable[..., dict] | None = None,
         container_observer: Callable[..., dict[str, Any]] | None = None,
+        repository_lister: Callable[..., list[dict[str, Any]]] | None = None,
         comments_schema: str = "comments",
         workspace_schema: str = "workspace",
     ) -> None:
@@ -78,6 +79,7 @@ class ConnectorService:
         self.settings = settings or default_settings
         self._tester = tester
         self._container_observer = container_observer
+        self._repository_lister = repository_lister
         self.comments_schema = comments_schema
         self.workspace_schema = workspace_schema
 
@@ -444,6 +446,32 @@ class ConnectorService:
                 "permissions": probe.get("permissions") or {},
             }
             return public
+
+    def list_repositories(self, connector_id: str) -> list[dict[str, Any]]:
+        """Repositories the connector's installation can publish to (admin picker)."""
+
+        with self.connection() as conn:
+            row = self._require(conn, connector_id)
+            envelope = conn.execute(
+                "SELECT credential_envelope FROM tracker_connectors WHERE id = %s",
+                (connector_id,),
+            ).fetchone()
+            blob = (envelope or {}).get("credential_envelope")
+            if not blob:
+                raise ProviderError("auth_lost", "Connector has no installation credentials.")
+            material = json.loads(decrypt_secret(blob, _context(connector_id), settings=self.settings).decode())
+        if self._repository_lister is not None:
+            return self._repository_lister(row, material)
+        from app.services.trackers.github_auth import GitHubAppAuth, GitHubAppCredentials
+
+        creds = GitHubAppCredentials(
+            app_id=str(material.get("appId") or material.get("app_id") or ""),
+            installation_id=str(material.get("installationId") or material.get("installation_id") or ""),
+            private_key_pem=str(material.get("privateKey") or material.get("private_key") or ""),
+            instance_kind=str(row.get("instance_kind") or "github.com"),
+            base_url=str(row.get("base_url") or ""),
+        )
+        return GitHubAppAuth(creds).list_repositories()
 
     def _run_test(self, row: Mapping[str, Any], material: Mapping[str, str]) -> dict[str, Any]:
         if self._tester is not None:
