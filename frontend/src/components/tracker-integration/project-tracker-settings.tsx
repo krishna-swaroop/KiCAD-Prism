@@ -27,16 +27,19 @@ import {
     destinationSourceLabel,
     formatDestinationLine,
     isImportedDefaultDestination,
+    sameRepoPath,
     visibilityAckState,
 } from "./destination-disclosure";
 import {
     TrackerApiError,
     acknowledgeDestination,
     getProjectTracker,
+    listConnectorRepositories,
     listConnectors,
     updateProjectTracker,
 } from "@/lib/trackers-client";
-import type { ProjectTrackerSettings, TrackerConnector, UpdateProjectTrackerRequest } from "@/types/trackers";
+import { cn } from "@/lib/utils";
+import type { ProjectTrackerSettings, TrackerConnector, TrackerRepository, UpdateProjectTrackerRequest } from "@/types/trackers";
 
 export type ProjectTrackerSettingsPhase = "loading" | "ready" | "offline";
 
@@ -52,6 +55,7 @@ const PROMOTE_ROLE_OPTIONS = ["designer", "viewer"] as const;
 
 type DraftState = {
     connectorId: string;
+    /** false = the project's own repository; true = another repository. */
     useOverride: boolean;
     containerPath: string;
     remoteContainerId: string;
@@ -61,11 +65,24 @@ type DraftState = {
     labels: ProjectTrackerSettings["labels"];
 };
 
-function draftFromSettings(settings: ProjectTrackerSettings): DraftState {
-    const imported = isImportedDefaultDestination(settings.destination);
+/**
+ * Is the saved destination the project's own repository? True for the
+ * server-seeded placeholder and for a resolved id whose path matches the
+ * imported remote.
+ */
+export function destinationIsProjectRepo(
+    destination: Pick<ProjectTrackerSettings["destination"], "containerPath" | "remoteContainerId">,
+    projectRepoPath: string | null,
+): boolean {
+    if (isImportedDefaultDestination(destination)) return true;
+    return sameRepoPath(destination.containerPath, projectRepoPath);
+}
+
+function draftFromSettings(settings: ProjectTrackerSettings, projectRepoPath: string | null): DraftState {
+    const ownRepo = destinationIsProjectRepo(settings.destination, projectRepoPath);
     return {
         connectorId: settings.connectorId,
-        useOverride: !imported,
+        useOverride: !ownRepo,
         containerPath: settings.destination.containerPath,
         remoteContainerId: settings.destination.remoteContainerId,
         autoMinSeverity: settings.autoMinSeverity,
@@ -75,20 +92,41 @@ function draftFromSettings(settings: ProjectTrackerSettings): DraftState {
     };
 }
 
+/** Destination payload for "this project's repository": reuse the resolved id when we already have it. */
+function projectRepoDestination(
+    saved: ProjectTrackerSettings,
+    projectRepoPath: string | null,
+): UpdateProjectTrackerRequest["destination"] {
+    const path = projectRepoPath ?? saved.destination.containerPath;
+    const alreadyResolved = sameRepoPath(saved.destination.containerPath, path);
+    return {
+        containerKind: saved.destination.containerKind,
+        containerPath: path,
+        // The server resolves the placeholder to the numeric id on save.
+        remoteContainerId: alreadyResolved ? saved.destination.remoteContainerId : `pending:${path}`,
+        generation: saved.destination.generation,
+        visibility: alreadyResolved ? saved.destination.visibility : null,
+    };
+}
+
 function destinationChanged(
     saved: ProjectTrackerSettings,
     draft: DraftState,
+    projectRepoPath: string | null,
 ): boolean {
     if (draft.connectorId !== saved.connectorId) return true;
-    if (draft.useOverride !== !isImportedDefaultDestination(saved.destination)) return true;
-    if (draft.containerPath.trim() !== saved.destination.containerPath) return true;
-    if (draft.remoteContainerId.trim() !== saved.destination.remoteContainerId) return true;
+    const target = draft.useOverride
+        ? { containerPath: draft.containerPath.trim(), remoteContainerId: draft.remoteContainerId.trim() }
+        : projectRepoDestination(saved, projectRepoPath);
+    if (target.containerPath !== saved.destination.containerPath) return true;
+    if (target.remoteContainerId !== saved.destination.remoteContainerId) return true;
     return false;
 }
 
 function buildUpdatePayload(
     saved: ProjectTrackerSettings,
     draft: DraftState,
+    projectRepoPath: string | null,
 ): UpdateProjectTrackerRequest {
     const destination = draft.useOverride
         ? {
@@ -98,13 +136,7 @@ function buildUpdatePayload(
               generation: saved.destination.generation,
               visibility: saved.destination.visibility,
           }
-        : {
-              containerKind: saved.destination.containerKind,
-              containerPath: saved.destination.containerPath,
-              remoteContainerId: saved.destination.remoteContainerId,
-              generation: saved.destination.generation,
-              visibility: saved.destination.visibility,
-          };
+        : projectRepoDestination(saved, projectRepoPath);
 
     return {
         connectorId: draft.connectorId,
@@ -153,8 +185,12 @@ export function ProjectTrackerSettingsPanel({
     onSettingsChange,
 }: ProjectTrackerSettingsPanelProps) {
     const [settings, setSettings] = useState<ProjectTrackerSettings | null>(null);
+    const projectRepoPath = settings?.projectRepoPath ?? null;
     const [connectors, setConnectors] = useState<TrackerConnector[]>([]);
     const [draft, setDraft] = useState<DraftState | null>(null);
+    const [repositories, setRepositories] = useState<TrackerRepository[] | null>(null);
+    const [repositoriesState, setRepositoriesState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
+    const [manualRepository, setManualRepository] = useState(false);
     const [loading, setLoading] = useState(true);
     const [offline, setOffline] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -169,11 +205,33 @@ export function ProjectTrackerSettingsPanel({
     const applySettings = useCallback(
         (next: ProjectTrackerSettings) => {
             setSettings(next);
-            setDraft(draftFromSettings(next));
+            setDraft(draftFromSettings(next, next.projectRepoPath ?? null));
             onSettingsChange?.(next);
         },
         [onSettingsChange],
     );
+
+    // Repositories are listed lazily, only when an admin picks "another
+    // repository"; a failed listing (GHES, offline) falls back to manual entry.
+    const loadRepositories = useCallback(async (connectorId: string) => {
+        setRepositoriesState("loading");
+        try {
+            const listed = await listConnectorRepositories(connectorId);
+            setRepositories(listed);
+            setRepositoriesState("ready");
+            if (listed.length === 0) setManualRepository(true);
+        } catch {
+            setRepositories(null);
+            setRepositoriesState("failed");
+            setManualRepository(true);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!isAdmin || !draft?.useOverride || !draft.connectorId) return;
+        if (repositoriesState !== "idle") return;
+        void loadRepositories(draft.connectorId);
+    }, [draft?.connectorId, draft?.useOverride, isAdmin, loadRepositories, repositoriesState]);
 
     const loadSettings = useCallback(async () => {
         setLoading(true);
@@ -227,8 +285,8 @@ export function ProjectTrackerSettingsPanel({
 
     const handleSave = () => {
         if (!isAdmin || !settings || !draft) return;
-        const payload = buildUpdatePayload(settings, draft);
-        if (destinationChanged(settings, draft)) {
+        const payload = buildUpdatePayload(settings, draft, projectRepoPath);
+        if (destinationChanged(settings, draft, projectRepoPath)) {
             pendingPayloadRef.current = payload;
             setConfirmDestinationOpen(true);
             return;
@@ -353,70 +411,163 @@ export function ProjectTrackerSettingsPanel({
                                 </Select>
                             </div>
 
-                            <div className="flex items-start gap-2">
-                                <Checkbox
-                                    id="tracker-use-override"
-                                    checked={draft.useOverride}
-                                    onCheckedChange={(checked) =>
-                                        setDraft((prev) =>
-                                            prev
-                                                ? {
-                                                      ...prev,
-                                                      useOverride: checked === true,
-                                                      remoteContainerId:
-                                                          checked === true && isImportedDefaultDestination(settings.destination)
-                                                              ? ""
-                                                              : prev.remoteContainerId,
-                                                  }
-                                                : prev,
-                                        )
-                                    }
-                                />
-                                <div className="space-y-1">
-                                    <Label htmlFor="tracker-use-override">Override imported destination</Label>
-                                    <p className="text-xs text-muted-foreground">
-                                        Leave unchecked to keep the server-resolved repository default (
-                                        {settings.destination.containerPath || "not configured"}).
-                                    </p>
+                            <div className="space-y-2" role="radiogroup" aria-labelledby="tracker-repository-label">
+                                <p id="tracker-repository-label" className="text-sm font-medium">Repository</p>
+                                <div
+                                    className={cn(
+                                        "rounded-md border p-2.5",
+                                        !draft.useOverride && "border-primary/50 bg-primary/5",
+                                        !projectRepoPath && "opacity-60",
+                                    )}
+                                >
+                                    <div className="flex items-start gap-2">
+                                        <input
+                                            id="tracker-repo-project"
+                                            type="radio"
+                                            name="tracker-repository-mode"
+                                            className="mt-1"
+                                            checked={!draft.useOverride}
+                                            disabled={!projectRepoPath}
+                                            onChange={() => setDraft((prev) => (prev ? { ...prev, useOverride: false } : prev))}
+                                        />
+                                        <label htmlFor="tracker-repo-project" className="min-w-0 cursor-pointer text-sm">
+                                            <span className="font-medium">This project&apos;s repository</span>
+                                            <span className="block text-xs text-muted-foreground" data-testid="project-repo-option">
+                                                {projectRepoPath
+                                                    ? `Issues are created in ${projectRepoPath}, next to the design files.`
+                                                    : "This project has no GitHub remote, so a separate repository is required."}
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div
+                                    className={cn(
+                                        "rounded-md border p-2.5",
+                                        draft.useOverride && "border-primary/50 bg-primary/5",
+                                    )}
+                                >
+                                    <div className="flex items-start gap-2">
+                                        <input
+                                            id="tracker-repo-other"
+                                            type="radio"
+                                            name="tracker-repository-mode"
+                                            className="mt-1"
+                                            checked={draft.useOverride}
+                                            onChange={() =>
+                                                setDraft((prev) => {
+                                                    if (!prev) return prev;
+                                                    const ownRepo = destinationIsProjectRepo(settings.destination, projectRepoPath);
+                                                    return {
+                                                        ...prev,
+                                                        useOverride: true,
+                                                        containerPath: ownRepo ? "" : prev.containerPath,
+                                                        remoteContainerId: ownRepo ? "" : prev.remoteContainerId,
+                                                    };
+                                                })
+                                            }
+                                        />
+                                        <label htmlFor="tracker-repo-other" className="min-w-0 cursor-pointer text-sm">
+                                            <span className="font-medium">Another repository</span>
+                                            <span className="block text-xs text-muted-foreground">
+                                                A dedicated issue-tracking repository the GitHub App is installed on.
+                                            </span>
+                                        </label>
+                                    </div>
+                                    {draft.useOverride ? (
+                                        <div className="mt-2 space-y-2 pl-6">
+                                            {!manualRepository && repositoriesState === "loading" ? (
+                                                <Skeleton className="h-9 w-full max-w-md" />
+                                            ) : null}
+                                            {!manualRepository && repositoriesState === "ready" && repositories ? (
+                                                <Select
+                                                    value={draft.remoteContainerId || undefined}
+                                                    onValueChange={(value) => {
+                                                        const picked = repositories.find((item) => item.id === value);
+                                                        setDraft((prev) =>
+                                                            prev && picked
+                                                                ? { ...prev, containerPath: picked.fullName, remoteContainerId: picked.id }
+                                                                : prev,
+                                                        );
+                                                    }}
+                                                >
+                                                    <SelectTrigger
+                                                        className="w-full max-w-md"
+                                                        aria-label="Repository"
+                                                        data-testid="repository-picker"
+                                                    >
+                                                        <SelectValue placeholder="Choose a repository" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {repositories.map((repository) => (
+                                                            <SelectItem key={repository.id} value={repository.id}>
+                                                                {repository.fullName}
+                                                                {repository.private ? " · private" : " · public"}
+                                                                {repository.archived ? " · archived" : ""}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : null}
+                                            {manualRepository ? (
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <div className="space-y-1.5">
+                                                        <Label htmlFor="tracker-container-path">Container path</Label>
+                                                        <Input
+                                                            id="tracker-container-path"
+                                                            value={draft.containerPath}
+                                                            onChange={(event) =>
+                                                                setDraft((prev) =>
+                                                                    prev ? { ...prev, containerPath: event.target.value } : prev,
+                                                                )
+                                                            }
+                                                            placeholder="acme/hardware-issues"
+                                                            autoComplete="off"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <Label htmlFor="tracker-remote-id">Remote container id</Label>
+                                                        <Input
+                                                            id="tracker-remote-id"
+                                                            value={draft.remoteContainerId}
+                                                            onChange={(event) =>
+                                                                setDraft((prev) =>
+                                                                    prev ? { ...prev, remoteContainerId: event.target.value } : prev,
+                                                                )
+                                                            }
+                                                            placeholder="987654321"
+                                                            autoComplete="off"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ) : null}
+                                            <p className="text-xs text-muted-foreground">
+                                                {repositoriesState === "failed" && !repositories
+                                                    ? "Could not list the installation's repositories; enter the repository by hand. "
+                                                    : null}
+                                                {repositoriesState === "ready" && repositories && repositories.length === 0
+                                                    ? "The GitHub App is not installed on any repository yet. "
+                                                    : null}
+                                                {repositoriesState === "ready" && repositories && repositories.length > 0 ? (
+                                                    <button
+                                                        type="button"
+                                                        className="underline"
+                                                        onClick={() => setManualRepository((value) => !value)}
+                                                    >
+                                                        {manualRepository ? "Choose from the list instead" : "Enter a repository id by hand"}
+                                                    </button>
+                                                ) : null}
+                                            </p>
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
-
-                            {draft.useOverride ? (
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="tracker-container-path">Container path</Label>
-                                        <Input
-                                            id="tracker-container-path"
-                                            value={draft.containerPath}
-                                            onChange={(event) =>
-                                                setDraft((prev) =>
-                                                    prev ? { ...prev, containerPath: event.target.value } : prev,
-                                                )
-                                            }
-                                            placeholder="acme/hardware-issues"
-                                            autoComplete="off"
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="tracker-remote-id">Remote container id</Label>
-                                        <Input
-                                            id="tracker-remote-id"
-                                            value={draft.remoteContainerId}
-                                            onChange={(event) =>
-                                                setDraft((prev) =>
-                                                    prev ? { ...prev, remoteContainerId: event.target.value } : prev,
-                                                )
-                                            }
-                                            placeholder="987654321"
-                                            autoComplete="off"
-                                        />
-                                    </div>
-                                </div>
-                            ) : (
+                            {!draft.useOverride ? (
                                 <p className="text-xs text-muted-foreground" data-testid="imported-default-note">
-                                    Using imported default: {formatDestinationLine(settings.destination)}
+                                    {isImportedDefaultDestination(settings.destination)
+                                        ? `Resolved on save: ${settings.destination.containerPath || projectRepoPath}`
+                                        : `Using ${formatDestinationLine(settings.destination)}`}
                                 </p>
-                            )}
+                            ) : null}
                         </fieldset>
                     ) : null}
 

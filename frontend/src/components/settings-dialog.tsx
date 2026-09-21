@@ -17,7 +17,9 @@ import {
     ConnectedAccounts,
     type LinkableConnector,
 } from "@/components/tracker-integration/connected-accounts";
-import { listConnectors } from "@/lib/trackers-client";
+import { listConnectors, pauseConnector, resumeConnector, testConnector } from "@/lib/trackers-client";
+import { Badge } from "@/components/ui/badge";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { TrackerConnector } from "@/types/trackers";
 
 interface SettingsDialogProps {
@@ -33,6 +35,20 @@ interface RoleAssignment {
     role: UserRole;
     source: string;
     has_password?: boolean;
+}
+
+/** Origin the forge calls back to, derived from the server-computed webhook URL. */
+export function publicOriginFromConnectors(connectors: Pick<TrackerConnector, "webhookUrl">[]): string | null {
+    for (const connector of connectors) {
+        const url = connector.webhookUrl;
+        if (!url) continue;
+        try {
+            return new URL(url).origin;
+        } catch {
+            continue;
+        }
+    }
+    return null;
 }
 
 function toLinkableConnectors(connectors: TrackerConnector[]): LinkableConnector[] {
@@ -53,7 +69,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
             <DialogContent className="max-w-4xl p-0 overflow-hidden flex h-[600px]">
                 <DialogTitle className="sr-only">Workspace Settings</DialogTitle>
                 <DialogDescription className="sr-only">
-                    Manage Git, SSH, access control, tracker connectors, and password settings for this workspace.
+                    Manage Git, SSH, access control, issue tracking, and password settings for this workspace.
                 </DialogDescription>
                 <div className="w-64 bg-muted/30 border-r p-4 flex flex-col gap-2">
                     <div className="mb-4 px-2">
@@ -86,7 +102,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                         data-testid="settings-tab-trackers"
                     >
                         <Link2 className="mr-2 h-4 w-4" />
-                        Trackers
+                        Issue tracking
                     </Button>
 
                     <Button
@@ -125,38 +141,31 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
 
 function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
     const [connectors, setConnectors] = useState<TrackerConnector[]>([]);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [creating, setCreating] = useState(false);
     const [listError, setListError] = useState<string | null>(null);
     const [loadingList, setLoadingList] = useState(false);
+    // Configuration lives behind an explicit "Configure" step: null = closed,
+    // "new" = creating, otherwise the connector being edited.
+    const [editing, setEditing] = useState<string | "new" | null>(null);
+    const [healthOpenId, setHealthOpenId] = useState<string | null>(null);
+    const [busyId, setBusyId] = useState<string | null>(null);
 
     const refreshConnectors = useCallback(async () => {
         if (!isAdmin) return;
         setLoadingList(true);
         setListError(null);
         try {
-            const listed = await listConnectors();
-            setConnectors(listed);
-            setSelectedId((current) => {
-                if (creating) return null;
-                if (current && listed.some((item) => item.id === current)) return current;
-                return listed[0]?.id ?? null;
-            });
+            setConnectors(await listConnectors());
         } catch (error) {
             setListError(error instanceof Error ? error.message : "Failed to load connectors");
             setConnectors([]);
-            setSelectedId(null);
         } finally {
             setLoadingList(false);
         }
-    }, [creating, isAdmin]);
+    }, [isAdmin]);
 
-    const handleConnectorChange = useCallback((connector: TrackerConnector) => {
+    const upsertConnector = useCallback((connector: TrackerConnector) => {
         // Upsert locally — do not re-fetch here. ConnectorSettings calls this on
-        // every successful load/save; a list refetch would recreate this callback
-        // dependency chain and loop.
-        setCreating(false);
-        setSelectedId(connector.id);
+        // every successful load/save; a list refetch would loop.
         setConnectors((prev) => {
             const index = prev.findIndex((item) => item.id === connector.id);
             if (index < 0) return [...prev, connector];
@@ -166,6 +175,39 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
         });
     }, []);
 
+    const handleConnectorChange = useCallback(
+        (connector: TrackerConnector) => {
+            upsertConnector(connector);
+            setEditing((current) => (current === "new" ? connector.id : current));
+        },
+        [upsertConnector],
+    );
+
+    const runQuickAction = async (connector: TrackerConnector, action: "test" | "pause" | "resume") => {
+        setBusyId(connector.id);
+        try {
+            if (action === "test") {
+                const result = await testConnector(connector.id);
+                upsertConnector(result);
+                if (result.test.writesEnabled) {
+                    toast.success(`${connector.displayName}: connection OK${result.bot.login ? ` as ${result.bot.login}` : ""}.`);
+                } else {
+                    toast.error(`${connector.displayName}: test failed${result.test.pausedReason ? ` (${result.test.pausedReason.replace(/_/g, " ")})` : ""}.`);
+                }
+            } else if (action === "pause") {
+                upsertConnector(await pauseConnector(connector.id));
+                toast.success(`${connector.displayName} paused.`);
+            } else {
+                upsertConnector(await resumeConnector(connector.id));
+                toast.success(`${connector.displayName} resumed.`);
+            }
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Connector request failed");
+        } finally {
+            setBusyId(null);
+        }
+    };
+
     useEffect(() => {
         void refreshConnectors();
     }, [refreshConnectors]);
@@ -174,9 +216,9 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
         return (
             <div className="space-y-3" data-testid="tracker-settings-host">
                 <div>
-                    <h3 className="text-lg font-medium">Tracker connectors</h3>
+                    <h3 className="text-lg font-medium">Issue tracking</h3>
                     <p className="text-sm text-muted-foreground">
-                        Only workspace administrators can create or edit forge connectors.
+                        Only workspace administrators can connect or edit the GitHub integration.
                     </p>
                 </div>
                 <ConnectorSettings connectorId={null} isAdmin={false} />
@@ -184,30 +226,30 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
         );
     }
 
-    const editorId = creating ? null : selectedId;
+    const editingConnector = editing && editing !== "new" ? connectors.find((item) => item.id === editing) ?? null : null;
 
     return (
         <div className="space-y-4" data-testid="tracker-settings-host">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h3 className="text-lg font-medium">Tracker connectors</h3>
+                    <h3 className="text-lg font-medium">Issue tracking</h3>
                     <p className="text-sm text-muted-foreground">
-                        Bot credentials, webhook endpoints, and connector health for issue publication.
+                        Connect GitHub so review comments can be published as issues and kept in sync.
+                        Each project then chooses its repository under its own publication settings.
                     </p>
                 </div>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant={creating ? "secondary" : "outline"}
-                    onClick={() => {
-                        setCreating(true);
-                        setSelectedId(null);
-                    }}
-                    data-testid="tracker-create-connector"
-                >
-                    <Plus className="mr-1 h-4 w-4" />
-                    New connector
-                </Button>
+                {connectors.length > 0 ? (
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditing("new")}
+                        data-testid="tracker-create-connector"
+                    >
+                        <Plus className="mr-1 h-4 w-4" />
+                        Add connection
+                    </Button>
+                ) : null}
             </div>
 
             {listError && (
@@ -220,43 +262,158 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
             )}
 
             {loadingList ? (
-                <p className="text-sm text-muted-foreground">Loading connectors…</p>
+                <p className="text-sm text-muted-foreground">Loading connections…</p>
             ) : connectors.length > 0 ? (
-                <div className="flex flex-wrap gap-2" data-testid="tracker-connector-list">
+                <ul className="space-y-3" data-testid="tracker-connector-list">
                     {connectors.map((connector) => (
-                        <Button
-                            key={connector.id}
-                            type="button"
-                            size="sm"
-                            variant={!creating && selectedId === connector.id ? "secondary" : "outline"}
-                            onClick={() => {
-                                setCreating(false);
-                                setSelectedId(connector.id);
-                            }}
-                        >
-                            {connector.displayName}
-                        </Button>
+                        <li key={connector.id}>
+                            <ConnectorCard
+                                connector={connector}
+                                busy={busyId === connector.id}
+                                healthOpen={healthOpenId === connector.id}
+                                onConfigure={() => setEditing(connector.id)}
+                                onToggleHealth={() =>
+                                    setHealthOpenId((current) => (current === connector.id ? null : connector.id))
+                                }
+                                onTest={() => void runQuickAction(connector, "test")}
+                                onPauseResume={() => void runQuickAction(connector, connector.paused ? "resume" : "pause")}
+                            />
+                        </li>
                     ))}
-                </div>
+                </ul>
             ) : (
-                !creating && (
-                    <p className="text-sm text-muted-foreground">
-                        No connectors yet. Create one to publish review comments to a forge.
+                <div className="rounded-lg border border-dashed p-6 text-center" data-testid="tracker-empty-state">
+                    <Link2 className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden="true" />
+                    <p className="mt-2 text-sm font-medium">GitHub is not connected yet</p>
+                    <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                        Create a GitHub App, install it on the repositories that should receive issues, then
+                        enter its credentials here. Nothing is published until a project opts in.
                     </p>
-                )
+                    <Button
+                        type="button"
+                        size="sm"
+                        className="mt-4"
+                        onClick={() => setEditing("new")}
+                        data-testid="tracker-create-connector"
+                    >
+                        <Plus className="mr-1 h-4 w-4" />
+                        Connect GitHub
+                    </Button>
+                </div>
             )}
 
-            <ConnectorSettings
-                connectorId={editorId}
-                isAdmin={isAdmin}
-                prismOrigin={typeof window !== "undefined" ? window.location.origin : undefined}
-                onConnectorChange={handleConnectorChange}
-            />
-
-            {selectedId && !creating && (
-                <ConnectorHealthPanel connectorId={selectedId} isAdmin={isAdmin} />
-            )}
+            <Sheet open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+                <SheetContent className="w-full overflow-y-auto sm:max-w-xl" data-testid="tracker-configure-sheet">
+                    <SheetHeader>
+                        <SheetTitle>
+                            {editing === "new" ? "Connect GitHub" : `Configure ${editingConnector?.displayName ?? "connection"}`}
+                        </SheetTitle>
+                        <SheetDescription>
+                            {editing === "new"
+                                ? "GitHub App credentials are stored encrypted on the server and never shown again."
+                                : "Rotate credentials, set the webhook secret, or enable member sign-in. Leave a field blank to keep its stored value."}
+                        </SheetDescription>
+                    </SheetHeader>
+                    {editing !== null ? (
+                        <ConnectorSettings
+                            key={editing}
+                            className="mt-4"
+                            connectorId={editing === "new" ? null : editing}
+                            isAdmin={isAdmin}
+                            prismOrigin={typeof window !== "undefined" ? window.location.origin : undefined}
+                            onConnectorChange={handleConnectorChange}
+                        />
+                    ) : null}
+                </SheetContent>
+            </Sheet>
         </div>
+    );
+}
+
+export function connectorStatus(connector: TrackerConnector): {
+    label: string;
+    variant: "success" | "warning" | "destructive" | "secondary";
+    detail: string;
+} {
+    if (!connector.credentialConfigured) {
+        return { label: "Needs credentials", variant: "destructive", detail: "Enter the GitHub App credentials to activate this connection." };
+    }
+    if (connector.paused) {
+        const reason = (connector.pausedReason || "paused").replace(/_/g, " ");
+        return { label: `Paused · ${reason}`, variant: "warning", detail: "Publishing and sync are on hold until this connection is resumed." };
+    }
+    if (connector.writesEnabled === false) {
+        return { label: "Not verified", variant: "secondary", detail: "Run a connection test to confirm the installation can create issues." };
+    }
+    return { label: "Ready", variant: "success", detail: "Issues can be published and synced." };
+}
+
+function ConnectorCard({
+    connector,
+    busy,
+    healthOpen,
+    onConfigure,
+    onToggleHealth,
+    onTest,
+    onPauseResume,
+}: {
+    connector: TrackerConnector;
+    busy: boolean;
+    healthOpen: boolean;
+    onConfigure: () => void;
+    onToggleHealth: () => void;
+    onTest: () => void;
+    onPauseResume: () => void;
+}) {
+    const status = connectorStatus(connector);
+    const instance = connector.instanceKind === "ghes" ? connector.baseUrl || "GitHub Enterprise" : "github.com";
+    return (
+        <article className="rounded-lg border bg-card p-4" data-testid="tracker-connector-card" data-connector-id={connector.id}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-semibold">{connector.displayName}</h4>
+                        <Badge variant={status.variant} data-testid="connector-status">{status.label}</Badge>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                        GitHub App on {instance}
+                        {connector.bot.login ? ` · publishes as ${connector.bot.login}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{status.detail}</p>
+                    <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                        <div className="flex items-center gap-1">
+                            <dt className="text-muted-foreground">Webhook</dt>
+                            <dd>{connector.webhookConfigured ? "configured" : "not set up (polling only)"}</dd>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <dt className="text-muted-foreground">Member sign-in</dt>
+                            <dd>{connector.oauthClientConfigured ? "enabled" : "off"}</dd>
+                        </div>
+                    </dl>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    <Button type="button" size="sm" variant="secondary" disabled={busy || !connector.credentialConfigured} onClick={onTest}>
+                        {busy ? "Working…" : "Test"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy || !connector.credentialConfigured} onClick={onPauseResume}>
+                        {connector.paused ? "Resume" : "Pause"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={onConfigure} data-testid="connector-configure">
+                        <KeyRound className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                        Configure
+                    </Button>
+                </div>
+            </div>
+            <button
+                type="button"
+                className="mt-3 text-xs text-muted-foreground underline-offset-2 hover:underline"
+                onClick={onToggleHealth}
+                aria-expanded={healthOpen}
+            >
+                {healthOpen ? "Hide health" : "Show health"}
+            </button>
+            {healthOpen ? <ConnectorHealthPanel connectorId={connector.id} isAdmin className="mt-2" /> : null}
+        </article>
     );
 }
 
@@ -268,6 +425,12 @@ function ConnectedAccountsSettings({
     isAdmin: boolean;
 }) {
     const [linkable, setLinkable] = useState<LinkableConnector[]>([]);
+    const [publicOrigin, setPublicOrigin] = useState<string | null>(null);
+    const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+    // The forge sends the OAuth callback to PUBLIC_BASE_URL. A session on any
+    // other origin (127.0.0.1 during local testing) has no cookie there, so the
+    // callback lands as "Authentication required" — say so before Connect.
+    const originMismatch = Boolean(publicOrigin && browserOrigin && publicOrigin !== browserOrigin);
 
     useEffect(() => {
         if (!isAdmin) {
@@ -277,7 +440,9 @@ function ConnectedAccountsSettings({
         let cancelled = false;
         void listConnectors()
             .then((connectors) => {
-                if (!cancelled) setLinkable(toLinkableConnectors(connectors));
+                if (cancelled) return;
+                setLinkable(toLinkableConnectors(connectors));
+                setPublicOrigin(publicOriginFromConnectors(connectors));
             })
             .catch(() => {
                 if (!cancelled) setLinkable([]);
@@ -295,6 +460,17 @@ function ConnectedAccountsSettings({
                     Link your forge identity for assignment hints. Connector credentials stay on the server.
                 </p>
             </div>
+            {originMismatch ? (
+                <p
+                    className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs"
+                    role="note"
+                    data-testid="oauth-origin-mismatch"
+                >
+                    GitHub will send you back to <span className="font-mono">{publicOrigin}</span>, but you are signed in at{" "}
+                    <span className="font-mono">{browserOrigin}</span>. Open Prism at the public address and sign in there
+                    before connecting an account, or the return trip fails with “Authentication required”.
+                </p>
+            ) : null}
             <ConnectedAccounts
                 linkableConnectors={linkable}
                 isSessionUser={Boolean(user)}

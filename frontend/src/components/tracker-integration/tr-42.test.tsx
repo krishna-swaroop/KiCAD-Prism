@@ -135,11 +135,29 @@ describe("SettingsDialog tracker hosts (C8)", () => {
         await waitFor(() => {
             expect(screen.getByTestId("tracker-settings-host")).toBeTruthy();
         });
+        // Connections are summarised as cards; configuration and health sit
+        // behind an explicit step instead of being exposed on the tab itself.
+        await waitFor(() => {
+            expect(screen.getByTestId("tracker-connector-card")).toBeTruthy();
+        });
+        expect(mockedListConnectors).toHaveBeenCalled();
+        expect(screen.getByTestId("connector-status")).toBeTruthy();
+        expect(mockedGetConnector).not.toHaveBeenCalled();
+        expect(mockedGetHealth).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole("button", { name: /show health/i }));
+        await waitFor(() => {
+            expect(mockedGetHealth).toHaveBeenCalledWith("cn_gh1");
+        });
+
+        fireEvent.click(screen.getByTestId("connector-configure"));
+        await waitFor(() => {
+            expect(screen.getByTestId("tracker-configure-sheet")).toBeTruthy();
+        });
         await waitFor(() => {
             expect(document.querySelector('[data-tracker-phase="ready"]')).toBeTruthy();
         });
-        expect(mockedListConnectors).toHaveBeenCalled();
-        expect(mockedGetHealth).toHaveBeenCalledWith("cn_gh1");
+        expect(mockedGetConnector).toHaveBeenCalledWith("cn_gh1");
     });
 
     it("shows forbidden connector editor for non-admins and still mounts accounts tab", async () => {

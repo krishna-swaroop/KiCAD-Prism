@@ -106,6 +106,15 @@ export interface TrackerConnector {
     auditCount?: number;
 }
 
+/** A repository the connector's installation can publish to (destination picker). */
+export interface TrackerRepository {
+    id: string;
+    fullName: string;
+    private: boolean;
+    archived: boolean;
+    htmlUrl: string;
+}
+
 export interface ConnectorTestResult {
     ok: boolean;
     writesEnabled: boolean;
@@ -142,6 +151,8 @@ export interface DestinationAcknowledgement {
 export interface ProjectTrackerSettings {
     projectId: string;
     connectorId: string;
+    /** `owner/name` of the project's own GitHub remote, or null; offered as the default destination. */
+    projectRepoPath?: string | null;
     destination: Omit<TrackerDestination, "connectorId"> & { connectorId?: string };
     acknowledgement?: DestinationAcknowledgement | null;
     autoMinSeverity: string;

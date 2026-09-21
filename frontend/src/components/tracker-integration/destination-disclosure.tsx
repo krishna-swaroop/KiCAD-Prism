@@ -26,6 +26,11 @@ export function isImportedDefaultDestination(
     return destination.remoteContainerId.startsWith("pending:");
 }
 
+export function sameRepoPath(left?: string | null, right?: string | null): boolean {
+    if (!left || !right) return false;
+    return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
 /** Exact destination line from server fields — no client-side repo inference. */
 export function formatDestinationLine(
     destination: Pick<TrackerDestination, "containerKind" | "containerPath" | "generation" | "remoteContainerId">,

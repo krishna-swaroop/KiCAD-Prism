@@ -292,6 +292,7 @@
     "ProjectTrackerSettings": {
       "projectId": "prj_47c2551996d0",
       "connectorId": "cn_gh1",
+      "projectRepoPath": "acme/openswitch",
       "destination": { "containerKind": "repo", "containerPath": "acme/openswitch", "remoteContainerId": "987654321", "generation": 2, "visibility": "private" },
       "acknowledgement": { "visibility": "private", "acknowledgedBy": "u_admin", "acknowledgedAt": "2026-09-18T09:00:00Z", "valid": true },
       "autoMinSeverity": "minor",

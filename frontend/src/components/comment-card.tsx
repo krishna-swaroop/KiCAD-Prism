@@ -177,7 +177,7 @@ export function CommentCard({
     return (
         <dialog
             open
-            className="fixed z-[110] m-0 flex flex-col overflow-hidden rounded-lg border bg-background p-0 text-foreground shadow-xl"
+            className="fixed z-[110] m-0 flex flex-col overflow-hidden rounded-lg border border-border/70 bg-background/85 p-0 text-foreground shadow-xl backdrop-blur-md"
             style={style}
             aria-label="Comment details"
             data-tracker-discussion-host="canvas-card"
