@@ -2,12 +2,16 @@
 
 Wires provider registry, inbound reducer, poll/sweep libraries and outbound
 dispatch into one initialization path shared by the API and prism-worker.
+
+Outbound ops are routed by an explicit op-kind dispatch table (R3-H1/H2).
+There is no create→reply→thread @wraps monkey-patch chain and no import-time
+mount from ``comments_store_service``.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Mapping, Optional
+from typing import Any, Callable, Mapping, MutableMapping, Optional
 
 from app.services.job_runtime import JobResult
 from app.services.trackers.github_recovery import (
@@ -18,26 +22,224 @@ from app.services.trackers.github_recovery import (
     recovery_since,
 )
 from app.services.trackers.inbound import apply_destination_hints
-from app.services.trackers.op_store import EXECUTE_DISPATCH
+from app.services.trackers.op_store import EXECUTE_DISPATCH, OpStore
 from app.services.trackers.poller import poll_destination_updates
 from app.services.trackers.provider_registry import (
     DestinationContext,
     ProviderRegistry,
     resolve_destination_context,
 )
-from app.services.trackers.create_executor import mount_create_executor, unmount_create_executor
 from app.services.trackers.scheduler import mount_hints_applier
 from app.services.trackers.sweeper import sweep_destination_links
 
 logger = logging.getLogger(__name__)
 
+DispatchExecutor = Callable[[Mapping[str, Any]], str | None]
+RecoverExecutor = Callable[[Any, Mapping[str, Any]], None]
+
 _runtime: "TrackerRuntime | None" = None
+_outbound_mounted = False
+_EXECUTE_BY_OP: MutableMapping[str, DispatchExecutor] = {}
+_RECOVER_BY_OP: MutableMapping[str, RecoverExecutor] = {}
+_original_hint_dispatch: Callable[[], bool] | None = None
+_original_dispatch_job: Callable[..., Any] | None = None
+_jobs_wired = False
 
 
 def has_outbound_executor() -> bool:
-    from app.services.trackers import create_executor
+    return bool(_outbound_mounted)
 
-    return bool(getattr(create_executor, "_mounted", False))
+
+def execute_outbound_op(claimed: Mapping[str, Any]) -> str | None:
+    """Dispatch one claimed outbound op by ``op`` kind via the composition table."""
+
+    op_kind = str(claimed.get("op") or "")
+    handler = _EXECUTE_BY_OP.get(op_kind)
+    if handler is None:
+        return None
+    return handler(claimed)
+
+
+def register_outbound_op(
+    op_kind: str,
+    *,
+    execute: DispatchExecutor,
+    recover: RecoverExecutor | None = None,
+) -> None:
+    """Register (or replace) one op-kind handler in the composition table."""
+
+    _EXECUTE_BY_OP[str(op_kind)] = execute
+    if recover is not None:
+        _RECOVER_BY_OP[str(op_kind)] = recover
+
+
+def unregister_outbound_ops(*op_kinds: str) -> None:
+    for kind in op_kinds:
+        _EXECUTE_BY_OP.pop(str(kind), None)
+        _RECOVER_BY_OP.pop(str(kind), None)
+
+
+def _register_default_outbound_handlers() -> None:
+    from app.services.trackers.create_executor import execute_claimed_op
+    from app.services.trackers.reply_executor import execute_reply_claimed_op, recover_reply_op
+    from app.services.trackers.reply_mutations import REPLY_OPS
+    from app.services.trackers.thread_executor import execute_thread_claimed_op, recover_thread_op
+    from app.services.trackers.thread_mutations import THREAD_OPS
+
+    register_outbound_op("create_issue", execute=execute_claimed_op)
+    register_outbound_op("set_state", execute=execute_claimed_op)
+    for kind in REPLY_OPS:
+        register_outbound_op(kind, execute=execute_reply_claimed_op, recover=recover_reply_op)
+    for kind in THREAD_OPS:
+        register_outbound_op(kind, execute=execute_thread_claimed_op, recover=recover_thread_op)
+
+
+def _wire_jobs_dispatch() -> None:
+    """Enable hint-aware dispatch job body once. Does not rebind ``jobs._executor``."""
+
+    global _jobs_wired, _original_hint_dispatch, _original_dispatch_job
+    if _jobs_wired:
+        return
+
+    import app.services.trackers.jobs as jobs
+    import app.services.trackers.scheduler as scheduler
+
+    _original_hint_dispatch = scheduler.hint_dispatch_enabled
+    _original_dispatch_job = jobs.run_tracker_dispatch_job
+
+    mount_hints_applier(True)
+    scheduler.hint_dispatch_enabled = lambda: True
+
+    def _apply_destination_hints(conn, connector_id: str, container_id: str):  # noqa: ANN001
+        from app.services.job_runtime import RetryableJobError
+        from app.services.trackers.create_executor import _build_inbound_fetcher
+        from app.services.trackers.scheduler import OUTBOX_POLL_SECONDS
+
+        if not connector_id or not container_id:
+            pending = conn.execute(
+                """
+                SELECT connector_id, remote_container_id
+                FROM remote_hints
+                WHERE state = 'pending'
+                ORDER BY received_at ASC, id ASC
+                LIMIT 1
+                """
+            ).fetchone()
+            if pending:
+                connector_id = str(pending["connector_id"])
+                container_id = str(pending["remote_container_id"])
+        row = conn.execute(
+            """
+            SELECT 1 FROM remote_hints
+            WHERE state = 'pending'
+              AND connector_id = %s
+              AND remote_container_id = %s
+            LIMIT 1
+            """,
+            (connector_id, container_id),
+        ).fetchone()
+        if not row:
+            raise RetryableJobError(
+                "No due tracker operations",
+                code="tracker_idle",
+                retry_after_seconds=OUTBOX_POLL_SECONDS,
+            )
+        fetcher = _build_inbound_fetcher(conn, connector_id, container_id)
+        apply_destination_hints(
+            conn,
+            connector_id=connector_id,
+            container_id=container_id,
+            fetcher=fetcher,
+            bot_user_id=fetcher.bot_user_id or None,
+            bot_login=fetcher.bot_login or None,
+        )
+        return JobResult(message="Applied inbound hints")
+
+    def run_tracker_dispatch_job(context):  # noqa: ANN001
+        from app.services.trackers.jobs import (
+            _comments_connect,
+            _connector_paused,
+            _executor,
+            _prepare_claimed_op,
+            _run_executor_outside_txn,
+        )
+
+        context.check_cancelled()
+        payload = context.payload
+        connector_id = str(payload.get("connectorId") or "")
+        container_id = str(payload.get("remoteContainerId") or "")
+        executor = _executor(context)
+        with _comments_connect(context) as conn:
+            paused = _connector_paused(conn, connector_id)
+            ops = OpStore(conn)
+            claimed = ops.claim(context.worker_id, lease_seconds=60)
+            if claimed is None:
+                result = _apply_destination_hints(conn, connector_id, container_id)
+                conn.commit()
+                return result
+            prepared = _prepare_claimed_op(
+                ops, claimed, paused=paused, has_executor=executor is not None
+            )
+            conn.commit()
+        if not prepared["run_io"]:
+            return prepared["result"]
+        return _run_executor_outside_txn(context, prepared["claimed"], executor)
+
+    jobs.run_tracker_dispatch_job = run_tracker_dispatch_job
+    _jobs_wired = True
+
+
+def _unwire_jobs_dispatch() -> None:
+    global _jobs_wired, _original_hint_dispatch, _original_dispatch_job
+    if not _jobs_wired:
+        return
+    import app.services.trackers.jobs as jobs
+    import app.services.trackers.scheduler as scheduler
+
+    if _original_hint_dispatch is not None:
+        scheduler.hint_dispatch_enabled = _original_hint_dispatch
+    if _original_dispatch_job is not None:
+        jobs.run_tracker_dispatch_job = _original_dispatch_job
+    _original_hint_dispatch = None
+    _original_dispatch_job = None
+    _jobs_wired = False
+
+
+def mount_outbound_executor() -> None:
+    """Mark outbound dispatch mounted so ``jobs._executor`` returns the table dispatcher."""
+
+    global _outbound_mounted
+    _wire_jobs_dispatch()
+    _outbound_mounted = True
+
+
+def unmount_outbound_executor() -> None:
+    """Test helper: clear the op table and restore pre-mount dispatch wiring."""
+
+    global _outbound_mounted
+    _EXECUTE_BY_OP.clear()
+    _RECOVER_BY_OP.clear()
+    _unwire_jobs_dispatch()
+    _outbound_mounted = False
+    # Keep per-module mount flags consistent after a full teardown.
+    try:
+        import app.services.trackers.create_executor as create_executor
+
+        create_executor._mounted = False
+    except Exception:
+        pass
+    try:
+        import app.services.trackers.reply_executor as reply_executor
+
+        reply_executor._mounted = False
+    except Exception:
+        pass
+    try:
+        import app.services.trackers.thread_executor as thread_executor
+
+        thread_executor._mounted = False
+    except Exception:
+        pass
 
 
 class TrackerRuntime:
@@ -171,12 +373,16 @@ class TrackerRuntime:
         if dispatch == EXECUTE_DISPATCH:
             if not has_outbound_executor():
                 return None
-            from app.services.trackers.create_executor import execute_claimed_op
-
-            return execute_claimed_op(claimed)
+            return execute_outbound_op(claimed)
         return self._recover_op(conn, claimed)
 
     def _recover_op(self, conn: Any, claimed: Mapping[str, Any]) -> str | None:
+        op_kind = str(claimed.get("op") or "")
+        recoverer = _RECOVER_BY_OP.get(op_kind)
+        if recoverer is not None:
+            recoverer(conn, claimed)
+            return None
+
         thread_id = str(claimed.get("tracked_thread_id") or "")
         if not thread_id:
             return None
@@ -198,7 +404,6 @@ class TrackerRuntime:
         dest = bundle.destination(ctx)
         comment_id = str(thread_row.get("comment_id") or "")
         reply_id = None
-        op_kind = str(claimed.get("op") or "")
         if op_kind == "add_comment":
             link = conn.execute(
                 """
@@ -241,26 +446,32 @@ def get_tracker_runtime() -> TrackerRuntime:
 
 
 def reset_tracker_runtime() -> None:
-    """Test helper: drop the singleton runtime."""
+    """Test helper: drop the singleton runtime and unmount outbound dispatch."""
 
     global _runtime
-    unmount_create_executor()
+    unmount_outbound_executor()
     _runtime = None
 
 
 def initialize_tracker_composition() -> None:
-    """Mount poll/sweep runtime and TR-26 outbound create executor at app startup."""
+    """Mount poll/sweep runtime and the outbound op-kind dispatch table at startup."""
 
     mount_hints_applier(True)
     get_tracker_runtime()
-    mount_create_executor()
-    logger.info("Tracker composition mounted (poll/sweep runtime + create executor).")
+    _register_default_outbound_handlers()
+    mount_outbound_executor()
+    logger.info("Tracker composition mounted (poll/sweep runtime + outbound dispatch table).")
 
 
 __all__ = [
     "TrackerRuntime",
+    "execute_outbound_op",
     "get_tracker_runtime",
     "has_outbound_executor",
     "initialize_tracker_composition",
+    "mount_outbound_executor",
+    "register_outbound_op",
     "reset_tracker_runtime",
+    "unmount_outbound_executor",
+    "unregister_outbound_ops",
 ]

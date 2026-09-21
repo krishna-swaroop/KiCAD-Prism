@@ -35,7 +35,6 @@ from app.services.trackers.promotion import (
     manual_promote_root,
     maybe_auto_promote_root,
 )
-from app.services.trackers.reply_executor import mount_reply_executor
 from app.services.trackers.reply_mutations import (
     after_reply_added,
     after_reply_deleted,
@@ -44,11 +43,7 @@ from app.services.trackers.reply_mutations import (
 )
 from app.services.trackers.publication_policy import PublicationDenied
 from app.services.trackers.state_mutations import enqueue_set_state
-from app.services.trackers.thread_executor import mount_thread_executor
 from app.services.trackers.thread_mutations import after_root_content_edited, after_root_deleted
-
-mount_reply_executor()
-mount_thread_executor()
 
 # 1.1 adds authorUserId/authorKind, reply ids, revision/updatedAt and the anchor
 # block. Every addition is optional for readers; 1.0 files still import.

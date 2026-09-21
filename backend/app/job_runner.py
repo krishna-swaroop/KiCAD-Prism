@@ -24,6 +24,9 @@ logger = logging.getLogger("prism-job-runner")
 
 def execute(job_id: str, fence: int, worker_id: str) -> int:
     load_builtin_job_handlers()
+    from app.services.trackers.composition import initialize_tracker_composition
+
+    initialize_tracker_composition()
     job = jobs.get(job_id)
     if (
         job is None

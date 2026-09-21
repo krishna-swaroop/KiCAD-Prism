@@ -25,7 +25,7 @@ from app.services.trackers.contracts import (  # noqa: E402
     UncertainAbsence,
     UpdateCursor,
 )
-from app.services.trackers import create_executor as create_executor_mod  # noqa: E402
+from app.services.trackers.composition import execute_outbound_op  # noqa: E402
 from app.services.trackers.create_executor import (  # noqa: E402
     github_issue_url,
 )
@@ -114,14 +114,13 @@ from tracker_fault_harness import (  # noqa: E402
 
 
 def execute_claimed_op(claimed):  # noqa: ANN001
-    """Always dispatch through the live mounted create_executor entrypoint.
+    """Dispatch through the composition op-kind table (create/reply/thread).
 
-    Binding ``from create_executor import execute_claimed_op`` at import time
-    freezes a pre-mount reference; full-suite order (comments_store mounts first)
-    then diverges from focused TR-45 discover.
+    Binding ``from create_executor import execute_claimed_op`` freezes a
+    create-only callable; reply/thread ops must go through ``execute_outbound_op``.
     """
 
-    return create_executor_mod.execute_claimed_op(claimed)
+    return execute_outbound_op(claimed)
 
 try:
     import psycopg

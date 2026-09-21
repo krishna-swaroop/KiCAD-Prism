@@ -885,10 +885,6 @@ def install_fake_provider(
 ) -> Iterator[StatefulFakeForge]:
     """Patch executor adapters + recovery page fetchers; mount create/reply/thread."""
 
-    unmount_thread_executor()
-    unmount_reply_executor()
-    unmount_create_executor()
-
     def _adapter(_connector, http=None):  # noqa: ANN001, ARG001
         return forge
 

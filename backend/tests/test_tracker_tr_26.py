@@ -148,7 +148,6 @@ class FixtureContractTests(unittest.TestCase):
 @unittest.skipIf(SHARED_APPLICATION_DATABASE, "TEST_POSTGRES_URL must not target PRISM_DATABASE_URL")
 class CreateExecutorPostgresTests(unittest.TestCase):
     def setUp(self) -> None:
-        unmount_create_executor()
         reset_scheduler_throttle()
         self._public_base = patch.object(
             __import__("app.core.config", fromlist=["settings"]).settings,
