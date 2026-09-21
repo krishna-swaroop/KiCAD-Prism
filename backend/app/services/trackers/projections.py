@@ -507,6 +507,111 @@ def retry_thread_sync(
     )["tracker"]
 
 
+def unlink_thread_sync(
+    conn: Any,
+    *,
+    project_id: str,
+    comment_id: str,
+    actor: ActorIdentity,
+    promote_min_role: str,
+    reason: str = "manual_unlink",
+    workspace_schema: str = WORKSPACE_SCHEMA,
+) -> dict:
+    """Local unlink via TR-34 lifecycle — supersede live ops and retain lineage."""
+
+    authorize(
+        CommentAction.PROMOTE,
+        actor,
+        linked=True,
+        promote_min_role=promote_min_role,  # type: ignore[arg-type]
+    )
+    comment = conn.execute(
+        "SELECT id FROM comments WHERE project_id = %s AND id = %s AND deleted_at IS NULL",
+        (project_id, comment_id),
+    ).fetchone()
+    if comment is None:
+        raise KeyError("comment_not_found")
+    thread = _live_thread(conn, comment_id)
+    if thread is None:
+        raise KeyError("thread_not_found")
+
+    from app.services.trackers.link_lifecycle import unlink_thread_lifecycle
+
+    unlink_thread_lifecycle(
+        conn,
+        str(thread["id"]),
+        reason=reason,
+        actor_user_id=actor.actor_id,
+        project_id=project_id,
+        connector_id=str(thread.get("connector_id") or "") or None,
+        workspace_schema=workspace_schema,
+    )
+    return attach_tracker_projection(
+        conn, project_id, _comment_for_projection(conn, project_id, comment_id),
+    )["tracker"]
+
+
+def repromote_thread_sync(
+    conn: Any,
+    *,
+    project_id: str,
+    comment_id: str,
+    actor: ActorIdentity,
+    promote_min_role: str,
+    workspace_schema: str = WORKSPACE_SCHEMA,
+) -> dict:
+    """Re-promote only from confirmed deleted state (TR-34 / F8)."""
+
+    authorize(
+        CommentAction.PROMOTE,
+        actor,
+        linked=True,
+        promote_min_role=promote_min_role,  # type: ignore[arg-type]
+    )
+    comment_row = conn.execute(
+        """
+        SELECT id, revision, anchor_state, anchor_commit, content
+        FROM comments
+        WHERE project_id = %s AND id = %s AND deleted_at IS NULL
+        """,
+        (project_id, comment_id),
+    ).fetchone()
+    if comment_row is None:
+        raise KeyError("comment_not_found")
+    comment = dict(comment_row)
+    comment["anchor"] = {
+        "state": comment.get("anchor_state") or "unpinned",
+        "commit": comment.get("anchor_commit"),
+    }
+
+    from app.services.trackers.link_lifecycle import repromote_deleted_thread
+    from app.services.trackers.promotion import PromotionActor
+
+    result = repromote_deleted_thread(
+        conn,
+        project_id=project_id,
+        comment=comment,
+        actor=PromotionActor(user_id=actor.actor_id, role=actor.role, kind=actor.actor_kind),
+        workspace_schema=workspace_schema,
+    )
+    if result.action == "denied":
+        code = result.code or "not_repromotable"
+        if code in {"publication_required", "unpinned_anchor"}:
+            raise PublicationDenied(code, result.reason or code)
+        if result.reason in {
+            "visibility",
+            "visibility_unknown",
+            "paused",
+            "connector_missing",
+            "destination_generation",
+        }:
+            raise DispatchPause(result.reason or code, result.reason or code)
+        raise PublicationDenied(code, result.reason or "Re-promotion is not allowed")
+    return attach_tracker_projection(
+        conn, project_id, _comment_for_projection(conn, project_id, comment_id),
+    )["tracker"]
+
+
 def load_thread_status(
     conn: Any,
     *,
@@ -545,6 +650,8 @@ __all__ = [
     "can_retry_projection",
     "list_thread_history",
     "load_thread_status",
+    "repromote_thread_sync",
     "retry_thread_sync",
+    "unlink_thread_sync",
     "wire_sync_op",
 ]

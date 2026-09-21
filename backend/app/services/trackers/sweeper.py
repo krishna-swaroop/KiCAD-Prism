@@ -21,6 +21,7 @@ from app.services.trackers.contracts import (
     ForbiddenRead,
     GoneConfirmed,
     IssueRead,
+    Moved,
     NotModified,
     PageCursor,
     RemoteComment,
@@ -29,6 +30,7 @@ from app.services.trackers.contracts import (
 )
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.github_updates import destination_for, format_iso8601, parse_iso8601
+from app.services.trackers.link_lifecycle import apply_moved_issue
 from app.services.trackers.provenance import resolve_editor
 from app.services.trackers.scheduler import sweep_interval_seconds
 from app.services.trackers.store import issue_number_for_api
@@ -56,6 +58,7 @@ class SweepOutcome:
     issues_marked_inaccessible: int = 0
     issues_marked_deleted: int = 0
     issues_recovered: int = 0
+    issues_moved: int = 0
     complete: bool = False
     retry_after_seconds: int | None = None
     error: dict[str, Any] | None = None
@@ -552,6 +555,27 @@ def sweep_destination_links(
                     outcome.issues_marked_deleted += 1
                 else:
                     outcome.issues_marked_inaccessible += 1
+                conn.execute(
+                    "UPDATE tracked_threads SET last_verified_at = NOW() WHERE id = %s",
+                    (thread_id,),
+                )
+                processed += 1
+                idx = next((index for index, row in enumerate(threads) if str(row["id"]) == thread_id), 0)
+                next_schedule_index = (idx + 1) % len(threads)
+                continue
+            elif isinstance(issue_read, Moved):
+                transfer = apply_moved_issue(conn, thread, issue_read)
+                outcome.issues_moved += 1
+                outcome.details.setdefault("movedThreads", []).append(
+                    {
+                        "threadId": thread_id,
+                        "action": transfer.action,
+                        "reason": transfer.reason,
+                        "linkState": transfer.link_state,
+                    }
+                )
+                if transfer.action == "deferred":
+                    outcome.details.setdefault("deferredMoves", []).append(thread_id)
                 conn.execute(
                     "UPDATE tracked_threads SET last_verified_at = NOW() WHERE id = %s",
                     (thread_id,),

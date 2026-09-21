@@ -12,6 +12,7 @@ import {
     canInitialPromote,
     canRepromoteThread,
     canRetrySync,
+    canUnlinkThread,
     describePromotionError,
     publicationDeniedReason,
 } from "./promotion-control";
@@ -149,7 +150,7 @@ describe("promotion control (C4 / F8 / F9)", () => {
         expect(screen.getByTestId("promote-button")).toBeDisabled();
     });
 
-    it("offers promote again only for confirmed deleted links", () => {
+    it("offers promote again only for confirmed deleted links", async () => {
         const deleted: CommentTrackerProjection = {
             linkState: "deleted",
             provider: "github",
@@ -159,6 +160,9 @@ describe("promotion control (C4 / F8 / F9)", () => {
         };
         expect(canRepromoteThread(deleted, designerPermissions)).toBe(true);
         expect(canRepromoteThread({ ...deleted, linkState: "inaccessible" }, designerPermissions)).toBe(false);
+        expect(canUnlinkThread(deleted, designerPermissions)).toBe(false);
+        mockedFetch.mockResolvedValueOnce(respond({ ...deleted, linkState: "linked", syncState: "pending" }));
+        const onTrackerChange = vi.fn();
         render(
             <PromotionControl
                 projectId="prj_a"
@@ -166,10 +170,41 @@ describe("promotion control (C4 / F8 / F9)", () => {
                 tracker={deleted}
                 permissions={designerPermissions}
                 settings={trackerUiMocks.projectSettings}
+                onTrackerChange={onTrackerChange}
             />,
         );
         expect(screen.getByTestId("destination-line")).toBeTruthy();
         expect(screen.getByTestId("promote-button")).toHaveTextContent(/promote again/i);
+        fireEvent.click(screen.getByTestId("promote-button"));
+        await waitFor(() => {
+            expect(screen.getByText(/promote again on forge/i)).toBeTruthy();
+        });
+        fireEvent.click(screen.getByRole("button", { name: /promote again/i }));
+        await waitFor(() => expect(onTrackerChange).toHaveBeenCalled());
+        expect(String(mockedFetch.mock.calls[0]?.[0] ?? "")).toMatch(/tracker\/repromote/);
+    });
+
+    it("offers unlink for live links and posts to the unlink route", async () => {
+        expect(canUnlinkThread(trackerUiMocks.linkedProjection, designerPermissions)).toBe(true);
+        mockedFetch.mockResolvedValueOnce(respond({ linkState: null, pendingIntent: null, remoteState: null }));
+        const onTrackerChange = vi.fn();
+        render(
+            <PromotionControl
+                projectId="prj_a"
+                commentId="c_1"
+                tracker={trackerUiMocks.linkedProjection}
+                permissions={designerPermissions}
+                settings={trackerUiMocks.projectSettings}
+                onTrackerChange={onTrackerChange}
+            />,
+        );
+        fireEvent.click(screen.getByTestId("unlink-thread-button"));
+        await waitFor(() => {
+            expect(screen.getByText(/unlink from tracker/i)).toBeTruthy();
+        });
+        fireEvent.click(screen.getByRole("button", { name: /^unlink$/i }));
+        await waitFor(() => expect(onTrackerChange).toHaveBeenCalled());
+        expect(String(mockedFetch.mock.calls[0]?.[0] ?? "")).toMatch(/tracker\/unlink/);
     });
 
     it("explains viewer publication denial while keeping promotion UI honest", () => {
