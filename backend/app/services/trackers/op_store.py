@@ -233,7 +233,8 @@ class OpStore:
                 SELECT 1 FROM sync_ops earlier
                 WHERE earlier.tracked_thread_id = o.tracked_thread_id
                   AND earlier.state = ANY(%s)
-                  AND (earlier.created_at, earlier.id) < (o.created_at, o.id)
+                  AND (earlier.created_at, earlier.local_revision, earlier.id)
+                      < (o.created_at, o.local_revision, o.id)
               )
               AND (
                 o.op = 'create_issue'
@@ -244,7 +245,7 @@ class OpStore:
                       AND waiting.state <> 'confirmed'
                 )
               )
-            ORDER BY o.created_at ASC, o.id ASC
+            ORDER BY o.created_at ASC, o.local_revision ASC, o.id ASC
             LIMIT 1
             FOR UPDATE OF o SKIP LOCKED
             """,

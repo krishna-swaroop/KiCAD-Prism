@@ -41,6 +41,7 @@ from app.services.trackers.reply_executor import (  # noqa: E402
     set_connect_factory,
     unmount_reply_executor,
 )
+from app.services.trackers.thread_executor import unmount_thread_executor  # noqa: E402
 from app.services.trackers.reply_mutations import (  # noqa: E402
     after_reply_added,
     after_reply_deleted,
@@ -125,6 +126,7 @@ class FixtureContractTests(unittest.TestCase):
 @unittest.skipIf(SHARED_APPLICATION_DATABASE, "TEST_POSTGRES_URL must not target PRISM_DATABASE_URL")
 class ReplyExecutorPostgresTests(unittest.TestCase):
     def setUp(self) -> None:
+        unmount_thread_executor()
         unmount_reply_executor()
         unmount_create_executor()
         self.schema = f"tr29_{uuid.uuid4().hex[:12]}"
