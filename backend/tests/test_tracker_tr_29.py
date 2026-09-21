@@ -347,8 +347,11 @@ class ReplyExecutorPostgresTests(unittest.TestCase):
         remote = _remote_comment(body=f"*{ 'Priya' }* (via Prism)\n\n{body}\n\n{build_marker(connector_id=CONNECTOR, container_id=CONTAINER, reply_id=REPLY_ID, op_id=OP_REPLY)}")
 
         class FakeAdapter:
+            sent_body = ""
+
             def add_comment(self, dest, issue_ref, body_text, op_id, *, issue_id=None):  # noqa: ANN001
                 self.issue_ref = issue_ref
+                FakeAdapter.sent_body = body_text
                 return remote
 
         with patch("app.services.trackers.reply_executor._comment_adapter", return_value=FakeAdapter()):
@@ -361,6 +364,16 @@ class ReplyExecutorPostgresTests(unittest.TestCase):
         ).fetchone()
         op = self.ops.get(OP_REPLY)
         self.assertEqual(op["state"], "confirmed")
+        # D3 echo key describes the body the forge will echo back, not the
+        # prose recorded at enqueue (TR-46: the bot's own comment was imported
+        # as a remote edit and overwrote the local reply).
+        self.assertEqual(op["expected_body_hash"], body_hash(FakeAdapter.sent_body))
+        self.assertEqual(FakeAdapter.sent_body, remote.body)
+        from app.services.trackers.provenance import find_body_echo
+
+        echo = find_body_echo([op], fetched_body=remote.body)
+        self.assertIsNotNone(echo)
+        self.assertEqual(echo.op_id, OP_REPLY)
         self.assertEqual(issue_number_for_api(dict(thread)), str(ISSUE_NUMBER))
         self.assertEqual(link["external_comment_id"], EXT_COMMENT)
         self.assertEqual(link["external_url"], github_comment_url(REPO, ISSUE_NUMBER, EXT_COMMENT))

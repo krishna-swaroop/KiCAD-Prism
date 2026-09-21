@@ -403,6 +403,45 @@ def _insert_remote_reply(
     return reply_id
 
 
+def _marker_echo_for_link(
+    body: str,
+    *,
+    link: Mapping[str, Any],
+    thread: Mapping[str, Any],
+    thread_ops: Sequence[Mapping[str, Any]],
+    author_id: str,
+    bot_user_id: str | None,
+) -> EchoMatch | None:
+    """Echo by provenance: a bot-authored body carrying an accepted marker
+    for the linked reply is Prism's own comment coming back."""
+
+    if not bot_user_id or author_id != str(bot_user_id):
+        return None
+    reply_id = str(link.get("reply_id") or "")
+    for marker in extract_markers(body):
+        if marker.reply_id != reply_id:
+            continue
+        validation = validate_marker(
+            marker,
+            connector_id=str(thread["connector_id"]),
+            container_id=str(thread["remote_container_id"]),
+            op_id=marker.op_id,
+            comment_id=marker.comment_id,
+            reply_id=marker.reply_id,
+            author_user_id=author_id,
+            bot_user_id=str(bot_user_id),
+        )
+        if not validation.accepted:
+            continue
+        for op in thread_ops:
+            if str(op.get("id")) == marker.op_id:
+                return EchoMatch(op_id=marker.op_id, op_kind=str(op.get("op") or "add_comment"), op_state=str(op.get("state") or ""))
+        # Marker names an op this thread no longer has (lineage, pruning):
+        # still Prism's own body, nothing left to confirm.
+        return EchoMatch(op_id="", op_kind="add_comment", op_state="confirmed")
+    return None
+
+
 def _editor_from_hint(
     *,
     actor_id: str | None,
@@ -461,6 +500,20 @@ def _apply_comment_to_thread(
             return "unchanged"
         current = str(link.get("content") or "")
         fetched = comment.body or ""
+        marker_echo = _marker_echo_for_link(
+            fetched,
+            link=link,
+            thread=thread,
+            thread_ops=thread_ops,
+            author_id=str(comment.author.id or ""),
+            bot_user_id=bot_user_id,
+        )
+        if marker_echo is not None:
+            # The bot's own rendering of this very reply: never an edit to
+            # import, whatever the hash says (TR-46).
+            if marker_echo.op_id:
+                _confirm_echo_op(ops, marker_echo)
+            return "ignored_echo"
         change_kind, echo = classify_comment_change(
             thread_ops,
             comment,

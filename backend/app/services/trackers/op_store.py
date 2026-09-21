@@ -296,6 +296,23 @@ class OpStore:
         payload["dispatch"] = RECOVERY_DISPATCH
         return payload
 
+    def record_expected_body_hash(self, op_id: str, fence: int, expected_body_hash: str) -> None:
+        """Pin the hash of the body actually sent to the forge (D3 echo key).
+
+        Enqueue only knows the prose; the executor renders attribution and the
+        provenance marker around it. Echo detection compares the fetched
+        forge body against this hash, so it must describe the rendered body.
+        """
+
+        self.conn.execute(
+            """
+            UPDATE sync_ops
+            SET expected_body_hash = %s
+            WHERE id = %s AND fence = %s
+            """,
+            (expected_body_hash, op_id, fence),
+        )
+
     def retain_unsent(
         self,
         op_id: str,

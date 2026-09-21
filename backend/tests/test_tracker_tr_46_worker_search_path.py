@@ -280,3 +280,38 @@ class SystemNoteProductionSchemaTests(unittest.TestCase):
         self.assertIsNotNone(row["updated_at"])
         listed = self.store.get_comment("prj_a", self.tempdir.name, root["id"])
         self.assertEqual([r["content"] for r in listed["replies"]], ["Closed on GitHub after reopen"])
+
+
+class MarkerEchoTests(unittest.TestCase):
+    """A bot-authored body whose marker names the linked reply is Prism's own
+    comment coming back, never a remote edit — regardless of hash."""
+
+    def _link_and_thread(self):
+        thread = {"id": "tt_1", "connector_id": "cn_a", "remote_container_id": "1379354799"}
+        link = {"reply_id": "r_294f13c9", "content": "Adding a reply as well"}
+        return link, thread
+
+    def test_bot_marker_for_linked_reply_is_echo(self) -> None:
+        from app.services.trackers.inbound import _marker_echo_for_link
+        from app.services.trackers.markers import build_marker
+
+        link, thread = self._link_and_thread()
+        marker = build_marker(connector_id="cn_a", container_id="1379354799", reply_id="r_294f13c9", op_id="op_z_1")
+        body = f"*swaroopdhulipalla99* (via Prism)\n\nAdding a reply as well\n\n{marker}"
+        ops = [{"id": "op_z_1", "op": "add_comment", "state": "confirmed"}]
+        echo = _marker_echo_for_link(body, link=link, thread=thread, thread_ops=ops, author_id="331962685", bot_user_id="331962685")
+        self.assertIsNotNone(echo)
+        self.assertEqual((echo.op_id, echo.op_kind), ("op_z_1", "add_comment"))
+
+    def test_human_author_or_other_reply_is_not_echo(self) -> None:
+        from app.services.trackers.inbound import _marker_echo_for_link
+        from app.services.trackers.markers import build_marker
+
+        link, thread = self._link_and_thread()
+        marker = build_marker(connector_id="cn_a", container_id="1379354799", reply_id="r_294f13c9", op_id="op_z_1")
+        body = f"edited by a human\n\n{marker}"
+        self.assertIsNone(_marker_echo_for_link(body, link=link, thread=thread, thread_ops=[], author_id="38141608", bot_user_id="331962685"))
+        other = build_marker(connector_id="cn_a", container_id="1379354799", reply_id="r_other", op_id="op_z_2")
+        self.assertIsNone(_marker_echo_for_link(f"x\n\n{other}", link=link, thread=thread, thread_ops=[], author_id="331962685", bot_user_id="331962685"))
+        wrong_container = build_marker(connector_id="cn_a", container_id="999", reply_id="r_294f13c9", op_id="op_z_1")
+        self.assertIsNone(_marker_echo_for_link(f"x\n\n{wrong_container}", link=link, thread=thread, thread_ops=[], author_id="331962685", bot_user_id="331962685"))
