@@ -283,6 +283,36 @@ class GitHubAppAuthTests(unittest.TestCase):
         self.assertEqual(results, [INSTALLATION_TOKEN_A, INSTALLATION_TOKEN_A])
         self.assertEqual(len(self.calls), 1)
 
+    def test_list_repositories_pages_installation_scope(self) -> None:  # TR-46 destination picker
+        root = GITHUB_COM_API
+        self._enqueue(
+            "POST",
+            f"{root}/app/installations/88001122/access_tokens",
+            201,
+            {"token": INSTALLATION_TOKEN_A, "expires_at": "2026-09-20T16:00:00Z", "permissions": {"issues": "write"}},
+        )
+        self._enqueue(
+            "GET",
+            f"{root}/installation/repositories?per_page=100&page=1",
+            200,
+            {
+                "total_count": 2,
+                "repositories": [
+                    {"id": 1379354799, "full_name": "krishna-swaroop/prism-tracker-acceptance", "private": True, "html_url": "https://github.com/krishna-swaroop/prism-tracker-acceptance"},
+                    {"id": 42, "full_name": "acme/Boards", "private": False, "archived": True, "html_url": "https://github.com/acme/Boards"},
+                ],
+            },
+        )
+        listed = self._auth().list_repositories()
+        self.assertEqual([item["fullName"] for item in listed], ["acme/Boards", "krishna-swaroop/prism-tracker-acceptance"])
+        self.assertEqual(listed[1]["id"], "1379354799")
+        self.assertTrue(listed[1]["private"])
+        self.assertTrue(listed[0]["archived"])
+        repo_call = [call for call in self.calls if "/installation/repositories" in call["url"]][0]
+        self.assertEqual(repo_call["headers"].get("Authorization"), f"Bearer {INSTALLATION_TOKEN_A}")
+        # Fewer than a page → no second request.
+        self.assertEqual(len([call for call in self.calls if "/installation/repositories" in call["url"]]), 1)
+
     def test_test_connection_requires_issue_write_and_resolves_bot(self) -> None:
         root = GITHUB_COM_API
         self._enqueue("GET", f"{root}/app", 200, {"id": 772215, "slug": "prism-tracker"})

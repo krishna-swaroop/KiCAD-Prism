@@ -219,11 +219,28 @@ class PublicationPolicyPostgresTests(unittest.TestCase):
             remote_container_id,
             visibility_hint or "unknown",
         )
+        resolved = self._resolved_ids.get(container_path) if remote_container_id.startswith("pending:") else None
         return {
             "visibility": visibility,
             "containerPath": container_path,
-            "remoteContainerId": remote_container_id,
+            "remoteContainerId": resolved or remote_container_id,
         }
+
+    _resolved_ids: dict[str, str] = {}
+
+    def test_imported_default_resolves_project_repo_to_numeric_id(self) -> None:  # TR-46 own-repo default
+        self._resolved_ids = {"acme/openswitch": "987654321"}
+        self._set_observed_visibility("pending:acme/openswitch", "private")
+        try:
+            seeded = self.service.get_or_default("prj_seed", repo_url="https://github.com/acme/openswitch.git")
+        finally:
+            self._resolved_ids = {}
+        self.assertEqual(seeded["destination"]["containerPath"], "acme/openswitch")
+        self.assertEqual(seeded["destination"]["remoteContainerId"], "987654321")
+        self.assertEqual(seeded["destination"]["visibility"], "private")
+        # A read never fails when the forge cannot be reached; the placeholder stays.
+        unresolved = self.service.get_or_default("prj_seed_2", repo_url="https://github.com/acme/other")
+        self.assertEqual(unresolved["destination"]["remoteContainerId"], "pending:acme/other")
 
     def _set_observed_visibility(self, remote_container_id: str, visibility: str) -> None:
         self._observed_visibility[remote_container_id] = visibility

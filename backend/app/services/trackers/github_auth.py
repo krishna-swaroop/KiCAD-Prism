@@ -224,6 +224,43 @@ class GitHubAppAuth:
             "authKinds": (AUTH_APP, AUTH_INSTALLATION),
         }
 
+    def list_repositories(self, *, max_pages: int = 5) -> list[dict[str, Any]]:
+        """Repositories this installation can reach, for the destination picker.
+
+        Bounded pagination: an installation covering hundreds of repositories
+        still answers, and the picker falls back to a manual id past the bound.
+        """
+
+        repositories: list[dict[str, Any]] = []
+        headers = self.installation_headers()
+        for page in range(1, max_pages + 1):
+            response = self.http.request(
+                "GET",
+                self.url(f"/installation/repositories?per_page=100&page={page}"),
+                headers=headers,
+            )
+            body = self.http.outcome(response)
+            payload = body.json() if body.content else {}
+            items = payload.get("repositories") if isinstance(payload, dict) else None
+            if not isinstance(items, list) or not items:
+                break
+            for item in items:
+                if not isinstance(item, dict) or not item.get("id"):
+                    continue
+                repositories.append(
+                    {
+                        "id": str(item.get("id")),
+                        "fullName": str(item.get("full_name") or ""),
+                        "private": bool(item.get("private")),
+                        "archived": bool(item.get("archived")),
+                        "htmlUrl": str(item.get("html_url") or ""),
+                    }
+                )
+            if len(items) < 100:
+                break
+        repositories.sort(key=lambda item: item["fullName"].casefold())
+        return repositories
+
     def _needs_refresh(self, token: InstallationToken) -> bool:
         now = self._clock()
         if now.tzinfo is None:

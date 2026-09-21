@@ -730,6 +730,32 @@ class AdversarialPostgresSuite(unittest.TestCase):
             remote_version={"updatedAt": "2026-09-20T15:42:11Z", "etag": "W/1"},
         )
         self.forge.seed_issue(state="open", updated_at="2026-09-20T16:05:00Z", etag="W/3")
+        self.forge.set_events(
+            str(ISSUE_NUMBER),
+            [
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e1",
+                    event="reopened",
+                    createdAt="2026-09-20T15:50:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e2",
+                    event="closed",
+                    createdAt="2026-09-20T15:55:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e3",
+                    event="reopened",
+                    createdAt="2026-09-20T16:05:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+            ],
+        )
         claimed = self._insert_set_state_op(
             expected_state="open",
             expected_version={"updatedAt": "2026-09-20T15:42:11Z", "etag": "W/1"},
@@ -816,6 +842,25 @@ class AdversarialPostgresSuite(unittest.TestCase):
             remote_version={"updatedAt": "2026-09-20T15:42:11Z", "etag": "W/1"},
         )
         self.forge.seed_issue(state="closed", updated_at="2026-09-20T16:05:00Z", etag="W/3")
+        self.forge.set_events(
+            str(ISSUE_NUMBER),
+            [
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e1",
+                    event="reopened",
+                    createdAt="2026-09-20T15:50:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e2",
+                    event="closed",
+                    createdAt="2026-09-20T16:05:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+            ],
+        )
         claimed = self._insert_set_state_op(
             expected_state="closed",
             expected_version={"updatedAt": "2026-09-20T15:42:11Z", "etag": "W/1"},

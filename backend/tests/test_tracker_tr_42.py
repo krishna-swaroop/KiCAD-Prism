@@ -50,14 +50,23 @@ class HostMountSourceTests(unittest.TestCase):
         self.assertIn('isAdmin={user?.role === "admin"}', source)
 
     def test_comment_hosts_mount_promotion_and_chips(self) -> None:
+        # The canvas card and side panel compose one thread surface
+        # (comment-thread.tsx) that carries the tracker chrome for both.
         card = (FRONTEND / "components" / "comment-card.tsx").read_text(encoding="utf-8")
         panel = (FRONTEND / "components" / "comment-panel.tsx").read_text(encoding="utf-8")
+        thread = (FRONTEND / "components" / "comment-thread.tsx").read_text(encoding="utf-8")
         form = (FRONTEND / "components" / "comment-form.tsx").read_text(encoding="utf-8")
         for source in (card, panel):
-            self.assertIn("TrackedThreadChip", source)
-            self.assertIn("PromotionControl", source)
-            self.assertIn("RemoteReply", source)
-            self.assertIn("SyncHistory", source)
+            self.assertIn('from "@/components/comment-thread"', source)
+            self.assertIn("TrackerStrip", source)
+            self.assertIn("ReplyList", source)
+            self.assertIn("SyncHistorySection", source)
+        self.assertIn("PromotionControl", thread)
+        self.assertIn("RemoteReply", thread)
+        self.assertIn("SyncHistory", thread)
+        self.assertIn("tracked-thread-chip", thread)
+        self.assertIn("thread-link-chip", thread)
+        self.assertIn("thread-sync-chip", thread)
         self.assertIn("DestinationDisclosure", form)
         self.assertIn("comment-form-auto-promote", form)
 

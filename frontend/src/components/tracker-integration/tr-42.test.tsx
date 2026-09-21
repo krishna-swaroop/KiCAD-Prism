@@ -37,6 +37,7 @@ vi.mock("@/lib/trackers-client", async () => {
         listIdentities: vi.fn(),
         promoteComment: vi.fn(),
         retryThreadSync: vi.fn(),
+        deleteConnector: vi.fn(),
     };
 });
 
@@ -54,6 +55,7 @@ const mockedGetConnector = vi.mocked(trackersClient.getConnector);
 const mockedGetHealth = vi.mocked(trackersClient.getConnectorHealth);
 const mockedGetProjectTracker = vi.mocked(trackersClient.getProjectTracker);
 const mockedListIdentities = vi.mocked(trackersClient.listIdentities);
+const mockedDeleteConnector = vi.mocked(trackersClient.deleteConnector);
 
 const designerPermissions: CommentPermissions = {
     canReply: true,
@@ -135,11 +137,59 @@ describe("SettingsDialog tracker hosts (C8)", () => {
         await waitFor(() => {
             expect(screen.getByTestId("tracker-settings-host")).toBeTruthy();
         });
+        // Connections are summarised as cards; configuration and health sit
+        // behind an explicit step instead of being exposed on the tab itself.
+        await waitFor(() => {
+            expect(screen.getByTestId("tracker-connector-card")).toBeTruthy();
+        });
+        expect(mockedListConnectors).toHaveBeenCalled();
+        expect(screen.getByTestId("connector-status")).toBeTruthy();
+        expect(mockedGetConnector).not.toHaveBeenCalled();
+        expect(mockedGetHealth).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole("button", { name: /show health/i }));
+        await waitFor(() => {
+            expect(mockedGetHealth).toHaveBeenCalledWith("cn_gh1");
+        });
+
+        fireEvent.click(screen.getByTestId("connector-configure"));
+        await waitFor(() => {
+            expect(screen.getByTestId("tracker-configure-sheet")).toBeTruthy();
+        });
         await waitFor(() => {
             expect(document.querySelector('[data-tracker-phase="ready"]')).toBeTruthy();
         });
-        expect(mockedListConnectors).toHaveBeenCalled();
-        expect(mockedGetHealth).toHaveBeenCalledWith("cn_gh1");
+        expect(mockedGetConnector).toHaveBeenCalledWith("cn_gh1");
+    });
+
+    it("removes a connection from the card menu after confirmation", async () => {
+        mockedDeleteConnector.mockResolvedValue({ deleted: "cn_gh1" });
+        render(
+            <SettingsDialog
+                open
+                onOpenChange={() => undefined}
+                user={{ email: "a@example.com", name: "Admin", role: "admin" }}
+            />,
+        );
+        fireEvent.click(screen.getByTestId("settings-tab-trackers"));
+        await waitFor(() => {
+            expect(screen.getByTestId("tracker-connector-card")).toBeTruthy();
+        });
+        const menu = screen.getByRole("button", { name: /more actions for/i });
+        fireEvent.keyDown(menu, { key: "Enter" });
+        const remove = await screen.findByTestId("connector-delete");
+        fireEvent.click(remove);
+        await waitFor(() => {
+            expect(screen.getByRole("button", { name: /remove connection/i })).toBeTruthy();
+        });
+        fireEvent.click(screen.getByRole("button", { name: /remove connection/i }));
+        await waitFor(() => {
+            expect(mockedDeleteConnector).toHaveBeenCalledWith("cn_gh1");
+        });
+        await waitFor(() => {
+            expect(screen.queryByTestId("tracker-connector-card")).toBeNull();
+        });
+        expect(screen.getByTestId("tracker-empty-state")).toBeTruthy();
     });
 
     it("shows forbidden connector editor for non-admins and still mounts accounts tab", async () => {

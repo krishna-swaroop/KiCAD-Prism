@@ -131,6 +131,26 @@ class PublicationPolicyService:
             container_path = _github_repo_path(repo_url or "") or ""
             remote_id = f"pending:{container_path or project_id}"
             store = TrackerStore(conn)
+            visibility = "unknown"
+            if container_path:
+                # One-time, best-effort: turn the imported remote into the
+                # numeric repository id the forge API needs. A failure here
+                # only leaves the placeholder for the admin to save later.
+                try:
+                    observed = self.connector_service.observe_container(
+                        connector_id,
+                        container_kind="repo",
+                        container_path=container_path,
+                        remote_container_id=remote_id,
+                        generation=1,
+                    )
+                except Exception:  # noqa: BLE001 - seeding must never fail a read
+                    observed = {}
+                resolved = str(observed.get("remoteContainerId") or "")
+                if resolved.isdigit():
+                    remote_id = resolved
+                    container_path = str(observed.get("containerPath") or container_path)
+                    visibility = str(observed.get("visibility") or "unknown")
             store.set_project_tracker(
                 project_tracker_id=f"pt_{uuid4().hex[:12]}",
                 project_id=project_id,
@@ -139,7 +159,7 @@ class PublicationPolicyService:
                 container_path=container_path,
                 remote_container_id=remote_id,
                 generation=1,
-                visibility="unknown",
+                visibility=visibility,
             )
             conn.commit()
             row = self._row(conn, project_id)

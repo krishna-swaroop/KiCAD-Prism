@@ -327,6 +327,21 @@ class GitHubIssueAdapterTests(unittest.TestCase):
         headers = {key.casefold(): value for key, value in patch["headers"].items()}
         self.assertNotIn("if-match", headers)
 
+    def test_get_container_resolves_pending_placeholder_by_path(self) -> None:  # TR-46 own-repo default
+        adapter = self._adapter()
+        self._enqueue(
+            "GET",
+            f"{API}/repos/{REPO}",
+            200,
+            {"id": 987654321, "full_name": REPO, "private": False},
+        )
+        pending = DEST.model_copy(update={"remoteContainerId": f"pending:{REPO}", "visibility": None})
+        container = adapter.get_container(pending)
+        self.assertEqual(container.remoteContainerId, "987654321")
+        self.assertEqual(container.path, REPO)
+        self.assertEqual(container.visibility, "public")
+        self.assertFalse(any("/repositories/pending" in call["url"] for call in self.calls))
+
     def test_get_container_and_label_ensure(self) -> None:
         adapter = self._adapter()
         self._enqueue(

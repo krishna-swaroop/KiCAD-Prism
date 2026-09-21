@@ -284,24 +284,57 @@ def _record_executor_outcome(
             )
             return
         if exc.retryable:
-            ops.schedule(
-                op_id,
-                fence,
-                next_attempt_at=datetime.now(timezone.utc) + timedelta(seconds=OUTBOX_POLL_SECONDS),
-                error=error,
-                consume_attempt=True,
-            )
+            _schedule_retry(ops, op_id, fence, error=error)
             return
         if dispatch == EXECUTE_DISPATCH and exc.class_ in {"invalid_request", "capability_missing"}:
             ops.fail(op_id, fence, error=error)
             return
         _enter_unknown_outcome_recovery(ops, op_id, fence, error=error)
         return
+    _schedule_retry(
+        ops,
+        op_id,
+        fence,
+        error={"class": "transient", "message": str(exc)[:300], "retryable": True},
+    )
+
+
+# Retryable failures back off exponentially and stop consuming attempts
+# silently: after MAX_RETRY_ATTEMPTS the op is failed so it shows up in
+# connector health instead of looping every poll interval (TR-46: one op ran
+# 127 times in two hours against a schema error).
+MAX_RETRY_ATTEMPTS = 12
+MAX_RETRY_DELAY_SECONDS = 3600
+
+
+def retry_delay_seconds(attempts: int) -> int:
+    """Delay before the next try after ``attempts`` failed ones (exponential, capped)."""
+
+    exponent = max(0, min(int(attempts) - 1, 10))
+    return min(OUTBOX_POLL_SECONDS * (2**exponent), MAX_RETRY_DELAY_SECONDS)
+
+
+def _schedule_retry(ops: OpStore, op_id: str, fence: int, *, error: dict[str, Any]) -> None:
+    try:
+        attempts = int(ops.get(op_id).get("attempts") or 0)
+    except KeyError:
+        attempts = 0
+    if attempts >= MAX_RETRY_ATTEMPTS:
+        ops.fail(
+            op_id,
+            fence,
+            error={
+                **error,
+                "message": f"Gave up after {attempts} attempts: {error.get('message') or 'sync failed'}"[:300],
+                "retryable": False,
+            },
+        )
+        return
     ops.schedule(
         op_id,
         fence,
-        next_attempt_at=datetime.now(timezone.utc) + timedelta(seconds=OUTBOX_POLL_SECONDS),
-        error={"class": "transient", "message": str(exc)[:300], "retryable": True},
+        next_attempt_at=datetime.now(timezone.utc) + timedelta(seconds=retry_delay_seconds(attempts)),
+        error=error,
         consume_attempt=True,
     )
 

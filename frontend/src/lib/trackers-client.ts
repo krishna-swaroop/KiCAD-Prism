@@ -17,6 +17,7 @@ import type {
     ProjectTrackerSettings,
     TrackerConnector,
     TrackerErrorPayload,
+    TrackerRepository,
     UpdateConnectorRequest,
     UpdateProjectTrackerRequest,
     UserIdentity,
@@ -82,6 +83,7 @@ export const TRACKER_ROUTES = {
     connectorResume: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/resume`,
     connectorRevoke: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/revoke`,
     connectorHealth: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/health`,
+    connectorRepositories: (id: string) => `/api/admin/trackers/connectors/${encodeURIComponent(id)}/repositories`,
     identities: "/api/trackers/identities",
     identityBegin: (connectorId: string) =>
         `/api/trackers/connectors/${encodeURIComponent(connectorId)}/oauth/begin`,
@@ -191,6 +193,14 @@ export function resumeConnector(connectorId: string): Promise<TrackerConnector> 
 
 export function revokeConnector(connectorId: string): Promise<TrackerConnector> {
     return request(TRACKER_ROUTES.connectorRevoke(connectorId), { method: "POST" }, "Failed to revoke connector");
+}
+
+export function deleteConnector(connectorId: string): Promise<{ deleted: string }> {
+    return request(TRACKER_ROUTES.connector(connectorId), { method: "DELETE" }, "Failed to delete connector");
+}
+
+export function listConnectorRepositories(connectorId: string): Promise<TrackerRepository[]> {
+    return request(TRACKER_ROUTES.connectorRepositories(connectorId), undefined, "Failed to list repositories");
 }
 
 export function getConnectorHealth(connectorId: string): Promise<ConnectorHealth> {

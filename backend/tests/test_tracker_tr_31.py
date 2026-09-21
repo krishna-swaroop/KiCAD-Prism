@@ -369,6 +369,30 @@ class StateReconciliationPostgresTests(unittest.TestCase):
             updated_at="2026-09-20T16:05:00Z",
             etag="W/3",
         )
+        # Fixture: remote reopened→closed→reopened since the snapshot.
+        self.adapter.events = [
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e1",
+                    event="reopened",
+                    createdAt="2026-09-20T15:50:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e2",
+                    event="closed",
+                    createdAt="2026-09-20T15:55:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e3",
+                    event="reopened",
+                    createdAt="2026-09-20T16:05:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+        ]
         claimed = self._insert_set_state_op(
             expected_state="open",
             expected_version={"updatedAt": "2026-09-20T15:42:11Z", "etag": "W/1"},
@@ -396,6 +420,23 @@ class StateReconciliationPostgresTests(unittest.TestCase):
             updated_at="2026-09-20T16:05:00Z",
             etag="W/3",
         )
+        # Fixture: remote reopened then closed again (v3) — a human transition.
+        self.adapter.events = [
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e1",
+                    event="reopened",
+                    createdAt="2026-09-20T15:50:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+                RemoteEvent(
+                    externalId=str(ISSUE_NUMBER),
+                    eventId="e2",
+                    event="closed",
+                    createdAt="2026-09-20T16:05:00Z",
+                    actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+                ),
+        ]
         claimed = self._insert_set_state_op(
             expected_state="closed",
             expected_version={"updatedAt": "2026-09-20T15:42:11Z", "etag": "W/1"},
@@ -406,6 +447,42 @@ class StateReconciliationPostgresTests(unittest.TestCase):
         self.assertEqual(self.ops.get(claimed["id"])["state"], "superseded")
         self.assertEqual(thread["remote_version"]["etag"], "W/3")
         self.assertEqual(self.adapter.set_state_calls, [])
+
+    def test_f6_own_comment_bumps_version_without_state_change(self) -> None:  # TR-46 live
+        # Prism's reply landed after the snapshot (updated_at moved) but the
+        # state is unchanged and no human touched it: the intent must proceed.
+        self._seed_linked_thread(
+            status="RESOLVED",
+            remote_state="open",
+            remote_version={"updatedAt": "2026-09-20T15:42:11Z", "etag": "W/1"},
+        )
+        self.adapter.issues[str(ISSUE_NUMBER)] = _issue(
+            state="open",
+            updated_at="2026-09-20T16:05:00Z",
+            etag="W/3",
+        )
+        self.adapter.events = [
+            RemoteEvent(
+                externalId=str(ISSUE_NUMBER),
+                eventId="e-old",
+                event="reopened",
+                createdAt="2026-09-20T15:00:00Z",
+                actor=ForgeUser(id=HUMAN_ID, login=HUMAN_LOGIN, isBot=False),
+            ),
+        ]
+        claimed = self._insert_set_state_op(
+            expected_state="open",
+            expected_version={"updatedAt": "2026-09-20T15:42:11Z", "etag": "W/1"},
+        )
+        execute_claimed_op(claimed)
+        self.conn.commit()
+        self.assertEqual(self.ops.get(claimed["id"])["state"], "confirmed")
+        self.assertEqual(self.adapter.set_state_calls, ["closed"])
+        notes = self.conn.execute(
+            "SELECT content FROM comment_replies WHERE comment_id = %s AND author_kind = 'system'",
+            (COMMENT_ID,),
+        ).fetchall()
+        self.assertEqual(notes, [])
 
     def test_f6_remote_edit_between_get_and_patch(self) -> None:
         self._seed_linked_thread(status="RESOLVED", remote_state="open")

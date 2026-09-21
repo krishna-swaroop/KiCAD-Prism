@@ -89,6 +89,15 @@ def _http_error(exc: Exception) -> HTTPException:
     raise exc
 
 
+def _with_project_repo(settings_payload: dict[str, Any], repo_url: str | None) -> dict[str, Any]:
+    """Attach the project's own GitHub path so the destination picker can offer it (TR-46)."""
+
+    from app.services.trackers.publication_policy import _github_repo_path
+
+    settings_payload["projectRepoPath"] = _github_repo_path(repo_url or "")
+    return settings_payload
+
+
 @router.get("/{project_id}/tracker")
 async def get_project_tracker(
     project_id: str,
@@ -96,11 +105,12 @@ async def get_project_tracker(
 ) -> dict[str, Any]:
     project = get_project_for_role_or_404(project_id, user.role)
     try:
-        return await _run_service(lambda: service.get_settings(project_id))
+        payload = await _run_service(lambda: service.get_settings(project_id))
     except ProjectTrackerNotFound:
-        return await _run_service(
+        payload = await _run_service(
             lambda: service.get_or_default(project_id, repo_url=project.repo_url)
         )
+    return _with_project_repo(payload, project.repo_url)
 
 
 @router.put("/{project_id}/tracker")
@@ -109,9 +119,9 @@ async def update_project_tracker(
     body: UpdateProjectTrackerRequest,
     admin: AuthenticatedUser = Depends(require_admin),
 ) -> dict[str, Any]:
-    get_project_for_role_or_404(project_id, admin.role)
+    project = get_project_for_role_or_404(project_id, admin.role)
     try:
-        return await _run_service(
+        payload = await _run_service(
             lambda: service.update_settings(
                 project_id,
                 actor_user_id=_actor(admin),
@@ -125,6 +135,7 @@ async def update_project_tracker(
         )
     except Exception as exc:
         raise _http_error(exc) from exc
+    return _with_project_repo(payload, project.repo_url)
 
 
 @router.post("/{project_id}/tracker/acknowledge")

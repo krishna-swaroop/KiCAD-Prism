@@ -523,4 +523,5 @@ matches `expect`. A skipped PostgreSQL or provider suite is an unmet gate.
 | --- | --- | --- |
 | 1.0 | 2026-09-20 | Initial frozen packet (TR-00). |
 | 1.1 | 2026-09-20 | Freeze `TrackerConnector` (`bot:{id,login}`), `ConnectorTestResult`, admin connector route table, comments ledger v4 owning sync/inbox tables (review H3). |
+| 1.3 | 2026-09-21 | Additive: `ProjectTrackerSettings.projectRepoPath` (`owner/name` of the project's own GitHub remote, `null` otherwise) so the destination picker can offer it as the default; `GET /api/admin/trackers/connectors/{id}/repositories` lists the installation's reachable repositories (`TrackerRepository`: `id`, `fullName`, `private`, `archived`, `htmlUrl`). A `pending:<owner/repo>` destination is resolved to its numeric id by path on save (TR-46). |
 | 1.2 | 2026-09-21 | Additive: `TrackerConnector.webhookUrl` (server-derived from `PUBLIC_BASE_URL`, `null` when unset) so admins copy the forge-facing `/api/trackers/webhooks/{provider}/{connectorId}` URL rather than a browser-origin guess (TR-46). |

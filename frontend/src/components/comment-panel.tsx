@@ -1,19 +1,9 @@
 import { useState } from "react";
-import {
-    CheckCircle,
-    ChevronDown,
-    ChevronRight,
-    Circle,
-    MessageSquare,
-    Pencil,
-    Reply as ReplyIcon,
-    Trash2,
-    X,
-} from "lucide-react";
-import { commentClassLabel, type Comment, type CommentReply } from "@/types/comments";
+import { Check, MessageSquare, Pencil, RotateCcw, Trash2, X } from "lucide-react";
+import type { Comment, CommentReply } from "@/types/comments";
 import type { CommentTrackerProjection, LegacyForgeProjection } from "@/types/trackers";
-import { CommentSeverityBadge } from "@/components/comment-severity-badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -23,15 +13,20 @@ import {
     actionAllowed,
     describeMutationError,
 } from "@/components/tracker-integration/comment-editor";
-import { PromotionControl } from "@/components/tracker-integration/promotion-control";
-import { RemoteReply, type DiscussionReply } from "@/components/tracker-integration/remote-reply";
-import { SyncHistory } from "@/components/tracker-integration/sync-history";
-import { TrackedThreadChip } from "@/components/tracker-integration/tracked-thread-chip";
 import { projectionFromComment } from "@/lib/trackers-client";
 import {
     commentAutoEligible,
     type CommentTrackerHostSettings,
 } from "@/components/comment-card";
+import {
+    CommentHeader,
+    CommentMentions,
+    IconAction,
+    ReplyComposer,
+    ReplyList,
+    SyncHistorySection,
+    TrackerStrip,
+} from "@/components/comment-thread";
 
 interface CommentPanelProps {
     comments: Comment[];
@@ -100,20 +95,19 @@ export function CommentPanel({
             </div>
             )}
 
-            <div className="flex gap-2 border-b bg-muted/30 p-2">
+            <div className="flex gap-1 border-b bg-muted/30 p-2" role="tablist" aria-label="Filter comments">
                 {(["ALL", "OPEN", "RESOLVED"] as const).map((value) => (
-                    <button
+                    <Button
                         key={value}
                         type="button"
+                        role="tab"
+                        size="xs"
+                        variant={filter === value ? "secondary" : "ghost"}
+                        aria-selected={filter === value}
                         onClick={() => setFilter(value)}
-                        className={`rounded-full px-3 py-1 text-xs transition-colors ${
-                            filter === value
-                                ? "bg-primary font-medium text-primary-foreground"
-                                : "bg-transparent text-muted-foreground hover:bg-muted"
-                        }`}
                     >
                         {value === "ALL" ? "All" : value === "OPEN" ? "Open" : "Resolved"}
-                    </button>
+                    </Button>
                 ))}
             </div>
 
@@ -199,7 +193,7 @@ function PanelCommentCard({
     const [editing, setEditing] = useState(false);
     const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [expanded, setExpanded] = useState(true);
+    const [historyOpen, setHistoryOpen] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [conflict, setConflict] = useState(false);
@@ -211,6 +205,7 @@ function PanelCommentCard({
     const liveReplies = comment.replies.filter((reply) => !reply.deletedAt);
     const tracker = projectionFromComment(comment as Comment & LegacyForgeProjection);
     const autoEligible = commentAutoEligible(comment, trackerSettings);
+    const showTrackerStrip = Boolean(projectId && trackerSettings);
 
     const run = async (work: () => Promise<void>, fallback: string) => {
         setIsSubmitting(true);
@@ -230,256 +225,147 @@ function PanelCommentCard({
         }
     };
 
+    const clearErrors = () => {
+        setError(null);
+        setConflict(false);
+    };
+    const reload = onReload ? () => void onReload() : undefined;
+
     return (
-        <div
-            className={`rounded-lg border bg-card text-card-foreground shadow-sm transition-all ${
-                isResolved ? "opacity-70" : ""
-            } ${highlighted ? "ring-2 ring-primary" : ""}`}
+        <Card
+            data-size="sm"
+            className={cn("gap-0 py-0", highlighted && "ring-primary")}
+            data-comment-id={comment.id}
+            data-comment-status={comment.status}
         >
-            <button
-                type="button"
-                className="block w-full cursor-pointer rounded-t-lg p-3 pb-0 text-left hover:bg-muted/50"
+            {/* Header and body are the click target that focuses the marker on the canvas. */}
+            <div
+                role="button"
+                tabIndex={0}
+                className="cursor-pointer px-3 pt-3 pb-2 text-left hover:bg-muted/40"
                 onClick={onClick}
+                onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onClick();
+                    }
+                }}
                 aria-label={`Open comment from ${comment.author}`}
             >
-                <div className="mb-2 flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">{comment.author}</span>
-                        {comment.elementRef && (
-                            <Badge variant="outline" className="h-5 px-1 text-[10px]">
-                                {comment.elementRef}
-                            </Badge>
-                        )}
+                <CommentHeader
+                    comment={comment}
+                    actions={
+                        <>
+                            {canResolve ? (
+                                <IconAction
+                                    label={isResolved ? "Reopen comment" : "Resolve comment"}
+                                    onClick={() => void onResolve(comment.id, !isResolved)}
+                                    className={cn(!isResolved && "hover:text-success")}
+                                >
+                                    {isResolved ? <RotateCcw className="h-3.5 w-3.5" /> : <Check className="h-4 w-4" />}
+                                </IconAction>
+                            ) : null}
+                            {canEdit && onEdit ? (
+                                <IconAction label="Edit comment" onClick={() => { clearErrors(); setEditing((open) => !open); }}>
+                                    <Pencil className="h-3.5 w-3.5" />
+                                </IconAction>
+                            ) : null}
+                            {canDelete ? (
+                                <IconAction label="Delete comment" onClick={() => setConfirmDelete(true)} className="hover:text-destructive">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </IconAction>
+                            ) : null}
+                        </>
+                    }
+                />
+                {editing && onEdit ? (
+                    <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+                        <CommentEditor
+                            id={`panel-edit-${comment.id}`}
+                            label="Edit comment"
+                            hideLabel
+                            compact
+                            initialValue={comment.content}
+                            busy={isSubmitting}
+                            error={error}
+                            conflict={conflict}
+                            onReload={reload}
+                            onCancel={() => { setEditing(false); clearErrors(); }}
+                            onSubmit={async (content) => {
+                                if (await run(() => onEdit(comment.id, content, comment.revision), "Failed to update comment")) {
+                                    setEditing(false);
+                                }
+                            }}
+                        />
                     </div>
-                    <span className="text-[10px] text-muted-foreground">
-                        {new Date(comment.timestamp).toLocaleDateString()}
-                    </span>
-                </div>
-
-                <div className="mb-2 flex flex-wrap gap-1">
-                    <Badge variant="secondary">{commentClassLabel(comment.commentClass ?? "general")}</Badge>
-                    <CommentSeverityBadge severity={comment.severity ?? "info"} />
-                </div>
-
-                <div className="mb-2">
-                    <TrackedThreadChip tracker={tracker} variant="stacked" />
-                </div>
-
-                {!editing && (
-                    <p className="mb-3 whitespace-pre-wrap text-sm">{comment.content}</p>
-                )}
-
-                {comment.mentions && comment.mentions.length > 0 && (
-                    <div className="mb-3 flex flex-wrap gap-1">
-                        {comment.mentions.map((mention) => (
-                            <Badge key={mention.userId} variant="outline" className="max-w-full truncate text-[10px]">
-                                @{mention.displayName}
-                            </Badge>
-                        ))}
-                    </div>
-                )}
-
-            </button>
-
-            {editing && onEdit && (
-                <div className="px-3 pb-2">
-                    <CommentEditor
-                        id={`panel-edit-${comment.id}`}
-                        label="Edit comment"
-                        initialValue={comment.content}
-                        busy={isSubmitting}
-                        error={error}
-                        conflict={conflict}
-                        onReload={onReload ? () => void onReload() : undefined}
-                        onCancel={() => { setEditing(false); setError(null); setConflict(false); }}
-                        onSubmit={async (content) => {
-                            if (await run(() => onEdit(comment.id, content, comment.revision), "Failed to update comment")) {
-                                setEditing(false);
-                            }
-                        }}
-                    />
-                </div>
-            )}
-
-            {projectId && trackerSettings && (
-                <div className="px-3 pb-2" onClick={(event) => event.stopPropagation()}>
-                    <PromotionControl
-                        projectId={projectId}
-                        commentId={comment.id}
-                        tracker={tracker}
-                        permissions={comment.permissions}
-                        settings={trackerSettings}
-                        autoEligible={autoEligible}
-                        onTrackerChange={(next) => onTrackerChange?.(comment.id, next)}
-                    />
-                </div>
-            )}
-
-            <div className="flex items-center justify-between px-3 pb-3 pt-2">
-                {canReply || canEdit || canDelete || canResolve ? (
-                    <>
-                        <div className="flex gap-1">
-                            {canReply && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2 text-xs"
-                                    onClick={() => setIsReplying(!isReplying)}
-                                >
-                                    <ReplyIcon className="mr-1 h-3 w-3" />
-                                    Reply
-                                </Button>
-                            )}
-                            {canEdit && onEdit && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2 text-xs"
-                                    onClick={() => setEditing(!editing)}
-                                >
-                                    <Pencil className="mr-1 h-3 w-3" />
-                                    Edit
-                                </Button>
-                            )}
-                            {canDelete && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                    onClick={() => setConfirmDelete(true)}
-                                >
-                                    <Trash2 className="mr-1 h-3 w-3" />
-                                    Delete
-                                </Button>
-                            )}
-                        </div>
-                        {canResolve && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className={`h-6 px-2 text-xs ${isResolved ? "text-success" : "text-muted-foreground"}`}
-                                onClick={() => onResolve(comment.id, !isResolved)}
-                            >
-                                {isResolved ? (
-                                    <>
-                                        <CheckCircle className="mr-1 h-3 w-3" />
-                                        Resolved
-                                    </>
-                                ) : (
-                                    <>
-                                        <Circle className="mr-1 h-3 w-3" />
-                                        Resolve
-                                    </>
-                                )}
-                            </Button>
-                        )}
-                    </>
                 ) : (
-                    <div className="text-xs text-muted-foreground">Read-only</div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{comment.content}</p>
                 )}
+                <CommentMentions comment={comment} className="mt-1.5" />
             </div>
 
-            {(liveReplies.length > 0 || (isReplying && canReply)) && (
-                <div className="space-y-3 border-t bg-muted/20 p-3">
-                    {liveReplies.length > 0 && (
-                        <div className="space-y-3">
-                            <button
-                                type="button"
-                                className="flex select-none items-center gap-1 text-xs text-muted-foreground"
-                                onClick={() => setExpanded(!expanded)}
-                                aria-expanded={expanded}
-                            >
-                                {expanded ? (
-                                    <ChevronDown className="h-3 w-3" />
-                                ) : (
-                                    <ChevronRight className="h-3 w-3" />
-                                )}
-                                {liveReplies.length} replies
-                            </button>
-                            {expanded &&
-                                liveReplies.map((reply) => {
-                                    const replyCanEdit = actionAllowed(reply.permissions, "canEdit", false);
-                                    const replyCanDelete = actionAllowed(reply.permissions, "canDelete", false);
-                                    const discussionReply = reply as DiscussionReply;
-                                    return (
-                                    <div key={reply.id} className="relative border-l-2 border-muted pl-2 text-sm">
-                                        {editingReplyId === reply.id && onEditReply ? (
-                                            <CommentEditor
-                                                id={`panel-edit-reply-${reply.id}`}
-                                                label="Edit reply"
-                                                initialValue={reply.content}
-                                                busy={isSubmitting}
-                                                error={error}
-                                                conflict={conflict}
-                                                onReload={onReload ? () => void onReload() : undefined}
-                                                onCancel={() => { setEditingReplyId(null); setError(null); setConflict(false); }}
-                                                onSubmit={async (content) => {
-                                                    if (await run(() => onEditReply(comment.id, reply, content), "Failed to update reply")) {
-                                                        setEditingReplyId(null);
-                                                    }
-                                                }}
-                                            />
-                                        ) : (
-                                            <>
-                                                <RemoteReply
-                                                    reply={discussionReply}
-                                                    permissions={comment.permissions}
-                                                    className="border-0 bg-transparent p-0"
-                                                />
-                                                {(replyCanEdit || replyCanDelete) && (
-                                                    <div className="mt-1 flex gap-2 text-[11px]">
-                                                        {replyCanEdit && onEditReply && (
-                                                            <button type="button" className="underline" onClick={() => setEditingReplyId(reply.id)}>
-                                                                Edit
-                                                            </button>
-                                                        )}
-                                                        {replyCanDelete && onDeleteReply && (
-                                                            <button
-                                                                type="button"
-                                                                className="underline text-destructive"
-                                                                onClick={() => void onDeleteReply(comment.id, reply)}
-                                                            >
-                                                                Delete
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
-                                    );
-                                })}
-                        </div>
-                    )}
+            {showTrackerStrip ? (
+                <TrackerStrip
+                    projectId={projectId!}
+                    comment={comment}
+                    tracker={tracker}
+                    settings={trackerSettings!}
+                    autoEligible={autoEligible}
+                    historyOpen={historyOpen}
+                    onToggleHistory={() => setHistoryOpen((open) => !open)}
+                    onTrackerChange={onTrackerChange}
+                    className="border-t bg-muted/40 px-3 py-1.5"
+                />
+            ) : null}
 
-                    {isReplying && canReply && (
-                        <div className="mt-2 pt-2">
-                            <CommentEditor
-                                id={`panel-reply-${comment.id}`}
-                                label="Reply"
-                                submitLabel="Reply"
-                                placeholder="Write a reply..."
-                                busy={isSubmitting}
-                                error={error}
-                                conflict={conflict}
-                                onReload={onReload ? () => void onReload() : undefined}
-                                onCancel={() => { setIsReplying(false); setError(null); setConflict(false); }}
-                                onSubmit={async (content) => {
-                                    if (await run(() => onReply(comment.id, content), "Failed to add reply")) {
-                                        setIsReplying(false);
-                                    }
-                                }}
-                            />
-                        </div>
-                    )}
-                </div>
-            )}
+            {historyOpen && projectId && tracker.linkState ? (
+                <SyncHistorySection projectId={projectId} commentId={comment.id} />
+            ) : null}
 
-            {projectId && tracker.linkState && (
-                <div className="border-t px-3 py-2">
-                    <SyncHistory projectId={projectId} commentId={comment.id} />
-                </div>
-            )}
+            <ReplyList
+                comment={comment}
+                replies={liveReplies}
+                permissions={comment.permissions}
+                editingReplyId={onEditReply ? editingReplyId : null}
+                busy={isSubmitting}
+                error={error}
+                conflict={conflict}
+                idPrefix="panel"
+                canEditReplies={Boolean(onEditReply)}
+                onStartEdit={(reply) => { clearErrors(); setEditingReplyId(reply.id); }}
+                onCancelEdit={() => { setEditingReplyId(null); clearErrors(); }}
+                onSubmitEdit={async (reply, content) => {
+                    if (!onEditReply) return;
+                    if (await run(() => onEditReply(comment.id, reply, content), "Failed to update reply")) {
+                        setEditingReplyId(null);
+                    }
+                }}
+                onDeleteReply={onDeleteReply ? (reply) => void onDeleteReply(comment.id, reply) : undefined}
+                onReload={reload}
+                collapsible
+                className="border-t"
+            />
+
+            {canReply ? (
+                <ReplyComposer
+                    id={`panel-reply-${comment.id}`}
+                    open={isReplying}
+                    onOpen={() => { clearErrors(); setIsReplying(true); }}
+                    onCancel={() => { setIsReplying(false); clearErrors(); }}
+                    onSubmit={async (content) => {
+                        if (await run(() => onReply(comment.id, content), "Failed to add reply")) {
+                            setIsReplying(false);
+                        }
+                    }}
+                    busy={isSubmitting}
+                    error={error}
+                    conflict={conflict}
+                    onReload={reload}
+                    className="border-t"
+                />
+            ) : !canEdit && !canDelete && !canResolve ? (
+                <div className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">Read-only</div>
+            ) : null}
 
             <ConfirmDialog
                 open={confirmDelete}
@@ -492,6 +378,6 @@ function PanelCommentCard({
                     void onDelete(comment.id);
                 }}
             />
-        </div>
+        </Card>
     );
 }

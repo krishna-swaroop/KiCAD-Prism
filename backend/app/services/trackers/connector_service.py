@@ -71,6 +71,7 @@ class ConnectorService:
         settings: Any | None = None,
         tester: Callable[..., dict] | None = None,
         container_observer: Callable[..., dict[str, Any]] | None = None,
+        repository_lister: Callable[..., list[dict[str, Any]]] | None = None,
         comments_schema: str = "comments",
         workspace_schema: str = "workspace",
     ) -> None:
@@ -78,6 +79,7 @@ class ConnectorService:
         self.settings = settings or default_settings
         self._tester = tester
         self._container_observer = container_observer
+        self._repository_lister = repository_lister
         self.comments_schema = comments_schema
         self.workspace_schema = workspace_schema
 
@@ -110,31 +112,22 @@ class ConnectorService:
             return self._public(row, conn)
 
     def health(self, connector_id: str) -> dict[str, Any]:
-        """Secret-free ConnectorHealth from live connector state and sync_ops counts."""
+        """Secret-free ConnectorHealth: op counts plus worker checkpoints (TR-34).
+
+        The admin route used to answer from op counts alone, so the settings
+        card showed "Never" for polls that had been running for hours (TR-46).
+        """
+
+        from app.services.trackers.health import aggregate_connector_health
 
         with self.connection() as conn:
-            row = self._require(conn, connector_id)
-            metrics = self._sync_op_metrics(conn, connector_id)
-            paused_reason = str(row.get("paused_reason") or "")
-            quarantined = int(metrics["quarantinedOps"])
-            failed = int(metrics["failedOps"])
-            degraded = quarantined > 0 or failed > 0 or paused_reason == "auth_lost"
-            return {
-                "connectorId": connector_id,
-                "paused": bool(row.get("paused")),
-                "lastWebhookAt": None,
-                "lastPollAt": None,
-                "lastSweepAt": None,
-                "pendingOps": metrics["pendingOps"],
-                "sentOps": metrics["sentOps"],
-                "quarantinedOps": quarantined,
-                "failedOps": failed,
-                "oldestPendingOpAge": metrics["oldestPendingOpAge"],
-                "oldestUnappliedHintAge": None,
-                "rateLimitResumeAt": None,
-                "degraded": degraded,
-                "lastError": None,
-            }
+            self._require(conn, connector_id)
+            return aggregate_connector_health(
+                conn,
+                connector_id,
+                comments_schema=self.comments_schema,
+                workspace_schema=self.workspace_schema,
+            )
 
     def _sync_op_metrics(self, conn: Any, connector_id: str) -> dict[str, Any]:
         ops = _qual(self.comments_schema, "sync_ops")
@@ -303,6 +296,48 @@ class ConnectorService:
             conn.commit()
             return self._public(TrackerStore(conn).get_connector(connector_id), conn)
 
+    def delete(self, connector_id: str, *, actor_user_id: str) -> dict[str, Any]:
+        """Remove a connection outright.
+
+        Refused while any project still targets it or any thread is still
+        linked through it: those are the only durable references whose loss
+        would be surprising. Credentials, webhook secret, OAuth client and
+        member identities go with it; the audit trail keeps the connector id.
+        """
+
+        with self.connection() as conn:
+            self._require(conn, connector_id)
+            projects = conn.execute(
+                "SELECT COUNT(*) AS n FROM project_trackers WHERE connector_id = %s",
+                (connector_id,),
+            ).fetchone()
+            threads = _qual(self.comments_schema, "tracked_threads")
+            linked = conn.execute(
+                f"SELECT COUNT(*) AS n FROM {threads} WHERE connector_id = %s AND unlinked_at IS NULL",
+                (connector_id,),
+            ).fetchone()
+            project_count = int((projects or {}).get("n") or 0)
+            linked_count = int((linked or {}).get("n") or 0)
+            if project_count or linked_count:
+                raise ProviderError(
+                    "invalid_request",
+                    f"Connection is still in use by {project_count} project(s) and {linked_count} linked thread(s). "
+                    "Point those projects elsewhere or unlink the threads first.",
+                    retryable=False,
+                )
+            clear_sidecars(conn, connector_id)
+            conn.execute("DELETE FROM user_identities WHERE connector_id = %s", (connector_id,))
+            conn.execute("DELETE FROM destination_acks WHERE connector_id = %s", (connector_id,))
+            TrackerStore(conn).audit(
+                action="connector.delete",
+                actor_user_id=actor_user_id,
+                connector_id=connector_id,
+                detail={"deleted": True},
+            )
+            conn.execute("DELETE FROM tracker_connectors WHERE id = %s", (connector_id,))
+            conn.commit()
+            return {"deleted": connector_id}
+
     def observe_container(
         self,
         connector_id: str,
@@ -444,6 +479,32 @@ class ConnectorService:
                 "permissions": probe.get("permissions") or {},
             }
             return public
+
+    def list_repositories(self, connector_id: str) -> list[dict[str, Any]]:
+        """Repositories the connector's installation can publish to (admin picker)."""
+
+        with self.connection() as conn:
+            row = self._require(conn, connector_id)
+            envelope = conn.execute(
+                "SELECT credential_envelope FROM tracker_connectors WHERE id = %s",
+                (connector_id,),
+            ).fetchone()
+            blob = (envelope or {}).get("credential_envelope")
+            if not blob:
+                raise ProviderError("auth_lost", "Connector has no installation credentials.")
+            material = json.loads(decrypt_secret(blob, _context(connector_id), settings=self.settings).decode())
+        if self._repository_lister is not None:
+            return self._repository_lister(row, material)
+        from app.services.trackers.github_auth import GitHubAppAuth, GitHubAppCredentials
+
+        creds = GitHubAppCredentials(
+            app_id=str(material.get("appId") or material.get("app_id") or ""),
+            installation_id=str(material.get("installationId") or material.get("installation_id") or ""),
+            private_key_pem=str(material.get("privateKey") or material.get("private_key") or ""),
+            instance_kind=str(row.get("instance_kind") or "github.com"),
+            base_url=str(row.get("base_url") or ""),
+        )
+        return GitHubAppAuth(creds).list_repositories()
 
     def _run_test(self, row: Mapping[str, Any], material: Mapping[str, str]) -> dict[str, Any]:
         if self._tester is not None:

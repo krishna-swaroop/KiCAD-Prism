@@ -6,11 +6,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, KeyRound, Link2, Pause, Play, RefreshCw, ShieldAlert } from "lucide-react";
+import type * as React from "react";
+import { Activity, ChevronDown, ChevronUp, Copy, KeyRound, Loader2, Pause, Play, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoldToConfirmButton } from "@/components/ui/hold-to-confirm-button";
 import { Input } from "@/components/ui/input";
@@ -150,6 +155,7 @@ export function ConnectorSettings({
     const [lifecycleBusy, setLifecycleBusy] = useState(false);
     const [testResult, setTestResult] = useState<ConnectorTestResult | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
+    const [oauthOpen, setOauthOpen] = useState(false);
 
     const phase = connectorPhase(isAdmin, connector, loading, offline);
     const webhookUrl = useMemo(() => {
@@ -158,6 +164,15 @@ export function ConnectorSettings({
         return connectorWebhookPublicUrl(connector.id, prismOrigin, connector.provider);
     }, [connector?.id, connector?.provider, connector?.webhookUrl, prismOrigin]);
 
+    const oauthCallbackUrl = useMemo(() => {
+        if (!webhookUrl) return null;
+        try {
+            return `${new URL(webhookUrl).origin}/api/trackers/oauth/callback`;
+        } catch {
+            return null;
+        }
+    }, [webhookUrl]);
+
     const applyConnector = useCallback(
         (next: TrackerConnector, resetTest = false) => {
             setConnector(next);
@@ -165,6 +180,7 @@ export function ConnectorSettings({
             setBaseUrl(next.baseUrl);
             setInstanceKind(next.instanceKind);
             setCredentials(EMPTY_CREDENTIALS);
+            if (next.oauthClientConfigured) setOauthOpen(true);
             if (resetTest) {
                 setTestResult(null);
             }
@@ -351,88 +367,115 @@ export function ConnectorSettings({
         );
     }
 
+    const stored = Boolean(connector?.credentialConfigured);
+    const readyToSave = connector
+        ? true
+        : Boolean(credentials.appId.trim() && credentials.installationId.trim() && credentials.privateKey.trim());
+
     return (
-        <Card className={className} data-tracker-phase={phase}>
-            <CardHeader>
+        <Card className={cn("gap-0 py-0", className)} data-tracker-phase={phase}>
+            <CardHeader className="border-b py-3">
                 <CardTitle className="flex flex-wrap items-center gap-2">
-                    <KeyRound className="h-4 w-4" aria-hidden="true" />
-                    {connector ? connector.displayName : "New tracker connector"}
+                    <KeyRound className="size-4" aria-hidden="true" />
+                    {connector ? connector.displayName : "New GitHub connection"}
                     {connector?.paused ? <Badge variant="warning">Paused</Badge> : null}
                     {phase === "revoked" ? <Badge variant="destructive">Revoked</Badge> : null}
                 </CardTitle>
                 <CardDescription>
-                    Configure encrypted GitHub App credentials. Secrets are write-only and never echoed after save.
+                    Credentials are encrypted on the server and never shown again. Leave a stored field blank to keep it.
                 </CardDescription>
             </CardHeader>
 
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5 py-4">
                 {formError ? (
-                    <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
-                        {formError}
-                    </p>
+                    <Alert variant="destructive">
+                        <ShieldAlert />
+                        <AlertDescription>{formError}</AlertDescription>
+                    </Alert>
                 ) : null}
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                        <Label htmlFor="tracker-display-name">Display name</Label>
-                        <Input
-                            id="tracker-display-name"
-                            value={displayName}
-                            onChange={(event) => setDisplayName(event.target.value)}
-                            placeholder="GitHub.com"
-                            autoComplete="off"
-                        />
+                <FormSection
+                    step={1}
+                    title="Connection"
+                    description="How this connection is shown in Prism and which GitHub it talks to."
+                >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="tracker-display-name">Display name</Label>
+                            <Input
+                                id="tracker-display-name"
+                                value={displayName}
+                                onChange={(event) => setDisplayName(event.target.value)}
+                                placeholder="GitHub"
+                                autoComplete="off"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="tracker-instance-kind">Instance</Label>
+                            <Select
+                                value={instanceKind === "github.com" ? "github.com" : "ghes"}
+                                onValueChange={(value) => setInstanceKind(value === "ghes" ? "ghes" : "github.com")}
+                                disabled={Boolean(connector?.id)}
+                            >
+                                <SelectTrigger id="tracker-instance-kind" className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="github.com">github.com</SelectItem>
+                                    <SelectItem value="ghes">GitHub Enterprise Server</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="tracker-instance-kind">Instance</Label>
-                        <Input
-                            id="tracker-instance-kind"
-                            value={instanceKind}
-                            onChange={(event) => setInstanceKind(event.target.value)}
-                            placeholder="github.com"
-                            autoComplete="off"
-                            disabled={Boolean(connector?.id)}
-                        />
-                    </div>
-                </div>
+                    {instanceKind !== "github.com" ? (
+                        <div className="space-y-1.5">
+                            <Label htmlFor="tracker-base-url">API base URL</Label>
+                            <Input
+                                id="tracker-base-url"
+                                value={baseUrl}
+                                onChange={(event) => setBaseUrl(event.target.value)}
+                                placeholder="https://ghe.example.com/api/v3"
+                                autoComplete="off"
+                            />
+                        </div>
+                    ) : null}
+                </FormSection>
 
-                {instanceKind !== "github.com" ? (
-                    <div className="space-y-1.5">
-                        <Label htmlFor="tracker-base-url">API base URL (GHES)</Label>
-                        <Input
-                            id="tracker-base-url"
-                            value={baseUrl}
-                            onChange={(event) => setBaseUrl(event.target.value)}
-                            placeholder="https://ghe.example.com/api/v3"
-                            autoComplete="off"
-                        />
-                    </div>
-                ) : null}
+                <Separator />
 
-                <fieldset className="space-y-3 rounded-md border border-border p-3">
-                    <legend className="px-1 text-sm font-medium">GitHub App installation</legend>
-                    <p className="text-xs text-muted-foreground">{credentialRotationHint(Boolean(connector?.credentialConfigured))}</p>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="tracker-app-id">App ID</Label>
-                        <Input
-                            id="tracker-app-id"
-                            value={credentials.appId}
-                            onChange={(event) => setCredentials((prev) => ({ ...prev, appId: event.target.value }))}
-                            placeholder={connector?.credentialConfigured ? "Leave blank to keep stored value" : "123456"}
-                            autoComplete="off"
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="tracker-installation-id">Installation ID</Label>
-                        <Input
-                            id="tracker-installation-id"
-                            value={credentials.installationId}
-                            onChange={(event) =>
-                                setCredentials((prev) => ({ ...prev, installationId: event.target.value }))
-                            }
-                            placeholder={connector?.credentialConfigured ? "Leave blank to keep stored value" : "987654"}
-                            autoComplete="off"
-                        />
+                <fieldset className="space-y-3">
+                    <legend className="sr-only">GitHub App installation</legend>
+                    <SectionHeading
+                        step={2}
+                        title="GitHub App installation"
+                        description={credentialRotationHint(stored)}
+                        trailing={stored ? <Badge variant="success">Stored</Badge> : <Badge variant="secondary">Required</Badge>}
+                    />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="tracker-app-id">App ID</Label>
+                            <Input
+                                id="tracker-app-id"
+                                value={credentials.appId}
+                                onChange={(event) => setCredentials((prev) => ({ ...prev, appId: event.target.value }))}
+                                placeholder={stored ? "Leave blank to keep stored value" : "123456"}
+                                autoComplete="off"
+                                inputMode="numeric"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="tracker-installation-id">Installation ID</Label>
+                            <Input
+                                id="tracker-installation-id"
+                                value={credentials.installationId}
+                                onChange={(event) =>
+                                    setCredentials((prev) => ({ ...prev, installationId: event.target.value }))
+                                }
+                                placeholder={stored ? "Leave blank to keep stored value" : "987654"}
+                                autoComplete="off"
+                                inputMode="numeric"
+                            />
+                        </div>
                     </div>
                     <div className="space-y-1.5">
                         <Label htmlFor="tracker-private-key">Private key (PEM)</Label>
@@ -442,21 +485,68 @@ export function ConnectorSettings({
                             onChange={(event) =>
                                 setCredentials((prev) => ({ ...prev, privateKey: event.target.value }))
                             }
-                            placeholder={connector?.credentialConfigured ? "Leave blank to keep stored PEM" : "Paste PEM private key"}
-                            className="min-h-24 font-mono text-xs"
+                            placeholder={stored ? "Leave blank to keep stored PEM" : "Paste the contents of the downloaded .pem file"}
+                            className="min-h-24 font-mono text-[11px]"
                             autoComplete="off"
                             spellCheck={false}
                         />
+                        <p className="text-[11px] text-muted-foreground">
+                            Generated under the App&apos;s settings on GitHub; the App needs Issues: read &amp; write and Metadata: read.
+                        </p>
                     </div>
+                    {connector?.id ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                disabled={testing || lifecycleBusy}
+                                onClick={() => void runTest()}
+                            >
+                                {testing ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Activity aria-hidden="true" />}
+                                {testing ? "Testing…" : "Test connection"}
+                            </Button>
+                            {testResult ? (
+                                <span className="text-xs" data-testid="connector-test-result" aria-live="polite">
+                                    Test {testResult.ok ? "succeeded" : "failed"}
+                                    {testResult.bot?.login ? ` — publishes as ${testResult.bot.login}` : ""}
+                                    {testResult.visibility ? ` · ${testResult.visibility}` : ""}
+                                </span>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </fieldset>
 
-                <fieldset className="space-y-3 rounded-md border border-border p-3">
-                    <legend className="px-1 text-sm font-medium">Webhook and user OAuth</legend>
-                    <p className="text-xs text-muted-foreground">
-                        {connector?.webhookConfigured || connector?.oauthClientConfigured
-                            ? "Leave fields blank to keep stored values; fill them to rotate webhook or OAuth app credentials."
-                            : "Paste the GitHub webhook secret and OAuth app credentials used for signed deliveries and personal account linking."}
-                    </p>
+                <Separator />
+
+                <FormSection
+                    step={3}
+                    title="Webhook"
+                    description="Lets GitHub push changes instantly; without it Prism polls every few minutes."
+                    trailing={connector?.webhookConfigured ? <Badge variant="success">Configured</Badge> : <Badge variant="secondary">Optional</Badge>}
+                >
+                    {connector?.id ? (
+                        <div className="space-y-1.5">
+                            <Label>Public webhook endpoint</Label>
+                            <div className="flex items-center gap-2">
+                                <code className="min-w-0 flex-1 truncate border border-input bg-muted/40 px-2 py-1.5 font-mono text-[11px]" title={webhookUrl ?? undefined}>
+                                    {webhookUrl}
+                                </code>
+                                <Button type="button" size="sm" variant="outline" onClick={() => void copyWebhook()}>
+                                    <Copy aria-hidden="true" />
+                                    Copy URL
+                                </Button>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                                In the App&apos;s settings, set this as the webhook URL, subscribe to <em>Issues</em> and{" "}
+                                <em>Issue comment</em>, and paste the same secret below.
+                            </p>
+                        </div>
+                    ) : (
+                        <p className="text-[11px] text-muted-foreground">
+                            The endpoint URL appears here after the connection is created.
+                        </p>
+                    )}
                     <div className="space-y-1.5">
                         <Label htmlFor="tracker-webhook-secret">Webhook secret</Label>
                         <Input
@@ -466,122 +556,145 @@ export function ConnectorSettings({
                             onChange={(event) =>
                                 setCredentials((prev) => ({ ...prev, webhookSecret: event.target.value }))
                             }
-                            placeholder={connector?.webhookConfigured ? "Leave blank to keep stored value" : "whsec_…"}
+                            placeholder={connector?.webhookConfigured ? "Leave blank to keep stored value" : "Any long random string"}
                             autoComplete="off"
                         />
                     </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="tracker-oauth-client-id">OAuth client ID</Label>
-                        <Input
-                            id="tracker-oauth-client-id"
-                            value={credentials.oauthClientId}
-                            onChange={(event) =>
-                                setCredentials((prev) => ({ ...prev, oauthClientId: event.target.value }))
-                            }
-                            placeholder={connector?.oauthClientConfigured ? "Leave blank to keep stored value" : "Ov23li…"}
-                            autoComplete="off"
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="tracker-oauth-client-secret">OAuth client secret</Label>
-                        <Input
-                            id="tracker-oauth-client-secret"
-                            type="password"
-                            value={credentials.oauthClientSecret}
-                            onChange={(event) =>
-                                setCredentials((prev) => ({ ...prev, oauthClientSecret: event.target.value }))
-                            }
-                            placeholder={connector?.oauthClientConfigured ? "Leave blank to keep stored value" : "OAuth app client secret"}
-                            autoComplete="off"
-                        />
-                    </div>
-                </fieldset>
+                </FormSection>
 
-                {connector?.id ? (
-                    <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                            <Link2 className="h-4 w-4" aria-hidden="true" />
-                            Public webhook endpoint
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            Configure your forge to POST signed events to this publicly reachable Prism URL. The route is
-                            unauthenticated; verification uses the webhook secret stored with the connector.
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <code className="flex-1 break-all rounded bg-background px-2 py-1 text-xs">{webhookUrl}</code>
-                            <Button type="button" size="sm" variant="outline" onClick={() => void copyWebhook()}>
-                                <Copy className="mr-1 h-3 w-3" aria-hidden="true" />
-                                Copy URL
+                <Separator />
+
+                <Collapsible open={oauthOpen} onOpenChange={setOauthOpen}>
+                    <div className="flex items-start justify-between gap-3">
+                        <SectionHeading
+                            step={4}
+                            title="Member sign-in"
+                            description="Optional. Lets teammates link their GitHub account so @mentions become assignees."
+                            trailing={connector?.oauthClientConfigured ? <Badge variant="success">Enabled</Badge> : <Badge variant="secondary">Optional</Badge>}
+                        />
+                        <CollapsibleTrigger asChild>
+                            <Button type="button" variant="ghost" size="icon-sm" aria-label={oauthOpen ? "Hide member sign-in fields" : "Show member sign-in fields"}>
+                                {oauthOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
                             </Button>
+                        </CollapsibleTrigger>
+                    </div>
+                    <CollapsibleContent className="mt-3 space-y-3">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="tracker-oauth-client-id">OAuth client ID</Label>
+                                <Input
+                                    id="tracker-oauth-client-id"
+                                    value={credentials.oauthClientId}
+                                    onChange={(event) =>
+                                        setCredentials((prev) => ({ ...prev, oauthClientId: event.target.value }))
+                                    }
+                                    placeholder={connector?.oauthClientConfigured ? "Leave blank to keep stored value" : "Ov23li…"}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="tracker-oauth-client-secret">OAuth client secret</Label>
+                                <Input
+                                    id="tracker-oauth-client-secret"
+                                    type="password"
+                                    value={credentials.oauthClientSecret}
+                                    onChange={(event) =>
+                                        setCredentials((prev) => ({ ...prev, oauthClientSecret: event.target.value }))
+                                    }
+                                    placeholder={connector?.oauthClientConfigured ? "Leave blank to keep stored value" : "Client secret"}
+                                    autoComplete="off"
+                                />
+                            </div>
                         </div>
-                    </div>
-                ) : null}
-
-                {testResult ? (
-                    <div
-                        className="rounded-md border border-border px-3 py-2 text-sm"
-                        data-testid="connector-test-result"
-                        aria-live="polite"
-                    >
-                        <p>
-                            Test {testResult.ok ? "succeeded" : "failed"}
-                            {testResult.bot?.login ? ` — bot ${testResult.bot.login}` : ""}
+                        <p className="text-[11px] text-muted-foreground">
+                            Use the App&apos;s own client ID and secret. The callback URL is{" "}
+                            <code className="font-mono">{oauthCallbackUrl ?? "…/api/trackers/oauth/callback"}</code>.
                         </p>
-                        {testResult.visibility ? (
-                            <p className="text-xs text-muted-foreground">Visibility: {testResult.visibility}</p>
-                        ) : null}
-                    </div>
-                ) : null}
+                    </CollapsibleContent>
+                </Collapsible>
             </CardContent>
 
-            <CardFooter className="flex flex-wrap gap-2 border-t">
+            <CardFooter className="flex flex-wrap items-center gap-2 border-t py-3">
                 <PermissionHint blocked={!isAdmin} action="manage tracker connectors" allowedRoles={["admin"]}>
-                    <Button type="button" disabled={saving || !isAdmin} onClick={() => void saveConnector()}>
-                        {saving ? "Saving…" : connector ? "Save changes" : "Create connector"}
+                    <Button type="button" size="sm" disabled={saving || !isAdmin || !readyToSave} onClick={() => void saveConnector()}>
+                        {saving ? "Saving…" : connector ? "Save changes" : "Create connection"}
                     </Button>
                 </PermissionHint>
-
                 {connector?.id ? (
-                    <>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={testing || lifecycleBusy}
-                            onClick={() => void runTest()}
-                        >
-                            {testing ? "Testing…" : "Test connection"}
-                        </Button>
+                    <span className="ml-auto inline-flex items-center gap-2">
                         {connector.paused ? (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                disabled={lifecycleBusy}
-                                onClick={() => void runLifecycle("resume")}
-                            >
-                                <Play className="mr-1 h-4 w-4" aria-hidden="true" />
+                            <Button type="button" size="sm" variant="outline" disabled={lifecycleBusy} onClick={() => void runLifecycle("resume")}>
+                                <Play aria-hidden="true" />
                                 Resume
                             </Button>
                         ) : (
-                            <Button
-                                type="button"
-                                variant="outline"
-                                disabled={lifecycleBusy}
-                                onClick={() => void runLifecycle("pause")}
-                            >
-                                <Pause className="mr-1 h-4 w-4" aria-hidden="true" />
+                            <Button type="button" size="sm" variant="outline" disabled={lifecycleBusy} onClick={() => void runLifecycle("pause")}>
+                                <Pause aria-hidden="true" />
                                 Pause
                             </Button>
                         )}
                         <HoldToConfirmButton
                             type="button"
+                            size="sm"
                             disabled={lifecycleBusy}
                             onConfirm={() => void runLifecycle("revoke")}
                         >
                             Revoke credentials
                         </HoldToConfirmButton>
-                    </>
+                    </span>
                 ) : null}
             </CardFooter>
         </Card>
+    );
+}
+
+function SectionHeading({
+    step,
+    title,
+    description,
+    trailing,
+}: {
+    step: number;
+    title: string;
+    description: string;
+    trailing?: React.ReactNode;
+}) {
+    return (
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+            <span
+                className="mt-0.5 flex size-5 shrink-0 items-center justify-center bg-muted text-[10px] font-medium text-muted-foreground"
+                aria-hidden="true"
+            >
+                {step}
+            </span>
+            <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-medium">{title}</h4>
+                    {trailing}
+                </div>
+                <p className="text-[11px] text-muted-foreground">{description}</p>
+            </div>
+        </div>
+    );
+}
+
+function FormSection({
+    step,
+    title,
+    description,
+    trailing,
+    children,
+}: {
+    step: number;
+    title: string;
+    description: string;
+    trailing?: React.ReactNode;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="space-y-3">
+            <SectionHeading step={step} title={title} description={description} trailing={trailing} />
+            {children}
+        </section>
     );
 }

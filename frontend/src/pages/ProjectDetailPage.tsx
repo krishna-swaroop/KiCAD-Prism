@@ -643,14 +643,15 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 {projectId && (
                     <Dialog open={trackerSettingsOpen} onOpenChange={setTrackerSettingsOpen}>
                         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-                            <DialogTitle>Tracker publication</DialogTitle>
+                            <DialogTitle>Issue publishing</DialogTitle>
                             <DialogDescription>
-                                Destination and publication policy for this project. Switching projects remounts these settings.
+                                Where this project&apos;s review comments become GitHub issues, and which ones do.
                             </DialogDescription>
                             <ProjectTrackerSettingsPanel
                                 key={projectId}
                                 projectId={projectId}
                                 isAdmin={user?.role === "admin"}
+                                chromeless
                             />
                         </DialogContent>
                     </Dialog>

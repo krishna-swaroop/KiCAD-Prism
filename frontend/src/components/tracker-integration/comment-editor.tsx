@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { CommentMutationError } from "@/lib/comments-client";
 import { cn } from "@/lib/utils";
 import type {
@@ -71,6 +72,10 @@ interface CommentEditorProps {
     onSubmit: (content: string) => void | Promise<void>;
     onCancel?: () => void;
     onReload?: () => void;
+    /** Keep the label for assistive tech only (the host already shows context). */
+    hideLabel?: boolean;
+    /** Textarea height in rows-ish; the floating card uses a shorter box. */
+    compact?: boolean;
     className?: string;
 }
 
@@ -86,6 +91,8 @@ export function CommentEditor({
     onSubmit,
     onCancel,
     onReload,
+    hideLabel = false,
+    compact = false,
     className,
 }: CommentEditorProps) {
     const [content, setContent] = useState(initialValue);
@@ -102,17 +109,17 @@ export function CommentEditor({
 
     return (
         <div className={cn("space-y-2", className)}>
-            <label htmlFor={id} className="block text-xs font-medium">
+            <label htmlFor={id} className={cn("block text-xs font-medium", hideLabel && "sr-only")}>
                 {label}
             </label>
-            <textarea
+            <Textarea
                 ref={textareaRef}
                 id={id}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 placeholder={placeholder}
                 disabled={busy}
-                className="h-16 w-full resize-none rounded-md border bg-background p-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className={cn("resize-none", compact ? "min-h-14" : "min-h-16")}
                 onKeyDown={(event) => {
                     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                         event.preventDefault();

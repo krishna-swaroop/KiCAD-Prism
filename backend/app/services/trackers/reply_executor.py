@@ -421,19 +421,25 @@ def _execute_reply(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
             pre_io=True,
         )
         return
+    body: str | None = None
+    if kind in ("add_comment", "edit_comment"):
+        body = build_reply_body(
+            content=str(ctx.reply.get("content") or ""),
+            connector_id=ctx.destination.connectorId,
+            container_id=ctx.destination.remoteContainerId,
+            reply_id=ctx.reply_id,
+            op_id=op_id,
+            attribution=_reply_attribution(ctx.reply),
+        )
+        # The forge will echo this rendered body back through poll/webhook;
+        # the hash recorded at enqueue only covered the prose (TR-46).
+        ops.record_expected_body_hash(op_id, fence, body_hash(body))
     try:
         conn.commit()
         adapter = _comment_adapter(ctx.connector)
         issue_ref = issue_number_for_api(ctx.thread)
         if kind == "add_comment":
-            body = build_reply_body(
-                content=str(ctx.reply.get("content") or ""),
-                connector_id=ctx.destination.connectorId,
-                container_id=ctx.destination.remoteContainerId,
-                reply_id=ctx.reply_id,
-                op_id=op_id,
-                attribution=_reply_attribution(ctx.reply),
-            )
+            assert body is not None
             remote = adapter.add_comment(
                 ctx.destination,
                 issue_ref,
@@ -459,14 +465,7 @@ def _execute_reply(conn: Any, op: Mapping[str, Any], ops: OpStore) -> None:
             return
         ext_cid = str(link["external_comment_id"])
         if kind == "edit_comment":
-            body = build_reply_body(
-                content=str(ctx.reply.get("content") or ""),
-                connector_id=ctx.destination.connectorId,
-                container_id=ctx.destination.remoteContainerId,
-                reply_id=ctx.reply_id,
-                op_id=op_id,
-                attribution=_reply_attribution(ctx.reply),
-            )
+            assert body is not None
             remote = adapter.edit_comment(ctx.destination, ext_cid, body)
             ops.confirm(op_id, fence, external_result_id=str(remote.externalCommentId))
             return

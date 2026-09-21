@@ -501,6 +501,23 @@ class PrismWorker:
         )
         self._catalog_maintenance_date = today
 
+    def mount_tracker_composition(self) -> None:
+        """The scheduling loop needs the same mounts as the API and job runner.
+
+        Without them ``schedule_due_tracker_jobs`` treats the hint applier as
+        unmounted and webhook hints wait for the next poll or an unrelated
+        outbound op instead of getting a dispatch job of their own.
+        """
+
+        if self.worker_pool != "prism":
+            return
+        from app.services.trackers.composition import initialize_tracker_composition
+
+        try:
+            initialize_tracker_composition()
+        except Exception:
+            logger.exception("Tracker composition failed to mount in the worker")
+
     def schedule_tracker_jobs(self) -> None:
         """Resume due tracker ops even when an API wakeup enqueue was lost."""
 
@@ -521,6 +538,7 @@ class PrismWorker:
                 time.sleep(min(1.0, self.poll_seconds))
         if self.stopping:
             return
+        self.mount_tracker_composition()
         logger.info(
             "Worker %s started pool=%s concurrency=%s",
             self.worker_id,

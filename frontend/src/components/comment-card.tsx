@@ -1,34 +1,27 @@
 import { useState, type CSSProperties } from "react";
-import {
-    CheckCircle,
-    Circle,
-    MessageSquareReply,
-    Pencil,
-    Trash2,
-    X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Check, Pencil, RotateCcw, Trash2, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Badge } from "@/components/ui/badge";
-import { CommentSeverityBadge } from "@/components/comment-severity-badge";
 import { cn } from "@/lib/utils";
-import { commentClassLabel, type Comment, type CommentReply } from "@/types/comments";
+import type { Comment, CommentReply } from "@/types/comments";
 import type { CommentTrackerProjection, LegacyForgeProjection, ProjectTrackerSettings } from "@/types/trackers";
 import {
     CommentEditor,
     actionAllowed,
     describeMutationError,
 } from "@/components/tracker-integration/comment-editor";
-import { PromotionControl } from "@/components/tracker-integration/promotion-control";
-import { RemoteReply, type DiscussionReply } from "@/components/tracker-integration/remote-reply";
-import { SyncHistory } from "@/components/tracker-integration/sync-history";
-import { TrackedThreadChip } from "@/components/tracker-integration/tracked-thread-chip";
 import { projectionFromComment } from "@/lib/trackers-client";
+import {
+    CommentHeader,
+    CommentMentions,
+    IconAction,
+    ReplyComposer,
+    ReplyList,
+    SyncHistorySection,
+    TrackerStrip,
+    type CommentTrackerHostSettings,
+} from "@/components/comment-thread";
 
-export type CommentTrackerHostSettings = Pick<
-    ProjectTrackerSettings,
-    "destination" | "acknowledgement" | "promoteMinRole" | "autoMinSeverity" | "autoTaskClass"
->;
+export { authorInitials, relativeTime, type CommentTrackerHostSettings } from "@/components/comment-thread";
 
 interface CommentCardProps {
     comment: Comment;
@@ -66,8 +59,50 @@ export function commentAutoEligible(
     return Boolean(settings.autoTaskClass && comment.commentClass === "task");
 }
 
+const CARD_WIDTH = 336;
+const CARD_MAX_HEIGHT = 640;
+/** Smallest card we will accept before flipping/clamping so the footer stays reachable. */
+const CARD_MIN_HEIGHT = 260;
+const VIEWPORT_MARGIN = 8;
+const PIN_OFFSET = 12;
+
 /**
- * Compact floating card shown when a canvas comment marker is clicked.
+ * Place the card beside the clicked marker and cap its height to the space
+ * below its own top edge, so the inner scroll region is always on-screen.
+ */
+export function cardPlacement(
+    screenPosition: { x: number; y: number } | null,
+    viewport: { width: number; height: number },
+): { left: number; top: number; maxHeight: number } {
+    const usableHeight = Math.max(viewport.height - VIEWPORT_MARGIN * 2, CARD_MIN_HEIGHT);
+    if (!screenPosition) {
+        const top = Math.max(VIEWPORT_MARGIN, Math.round(viewport.height * 0.15));
+        return {
+            left: Math.max(VIEWPORT_MARGIN, Math.round((viewport.width - CARD_WIDTH) / 2)),
+            top,
+            maxHeight: Math.min(CARD_MAX_HEIGHT, viewport.height - top - VIEWPORT_MARGIN, usableHeight),
+        };
+    }
+    const rightEdge = screenPosition.x + PIN_OFFSET + CARD_WIDTH + VIEWPORT_MARGIN;
+    const flipLeft = rightEdge > viewport.width && screenPosition.x - PIN_OFFSET - CARD_WIDTH >= VIEWPORT_MARGIN;
+    const left = flipLeft
+        ? screenPosition.x - PIN_OFFSET - CARD_WIDTH
+        : Math.min(
+              Math.max(screenPosition.x + PIN_OFFSET, VIEWPORT_MARGIN),
+              Math.max(VIEWPORT_MARGIN, viewport.width - CARD_WIDTH - VIEWPORT_MARGIN),
+          );
+    const lowestTop = Math.max(VIEWPORT_MARGIN, viewport.height - CARD_MIN_HEIGHT - VIEWPORT_MARGIN);
+    const top = Math.min(Math.max(screenPosition.y - VIEWPORT_MARGIN, VIEWPORT_MARGIN), lowestTop);
+    return {
+        left,
+        top,
+        maxHeight: Math.min(CARD_MAX_HEIGHT, viewport.height - top - VIEWPORT_MARGIN, usableHeight),
+    };
+}
+
+/**
+ * Floating card shown when a canvas comment marker is clicked: identity
+ * header, one meta line, scrolling discussion, pinned reply composer.
  */
 // react-doctor-disable-next-line no-giant-component - card owns edit/reply/promote/sync chrome for one pinned marker
 export function CommentCard({
@@ -100,20 +135,20 @@ export function CommentCard({
     const canDelete = actionAllowed(comment.permissions, "canDelete", canModify);
     const canResolve = actionAllowed(comment.permissions, "canResolve", canModify);
     const liveReplies = comment.replies.filter((reply) => !reply.deletedAt);
-    const showActions = canReply || canEdit || canDelete || canResolve;
     const tracker = projectionFromComment(comment as Comment & LegacyForgeProjection);
     const autoEligible = commentAutoEligible(comment, trackerSettings);
+    const showTrackerStrip = Boolean(projectId && trackerSettings);
 
-    const style: CSSProperties = screenPosition
-        ? {
-              left: Math.min(Math.max(screenPosition.x + 12, 8), window.innerWidth - 320),
-              top: Math.min(Math.max(screenPosition.y - 8, 8), window.innerHeight - 200),
-          }
-        : {
-              left: "50%",
-              top: "20%",
-              transform: "translateX(-50%)",
-          };
+    const placement = cardPlacement(
+        screenPosition,
+        typeof window === "undefined" ? { width: 1280, height: 800 } : { width: window.innerWidth, height: window.innerHeight },
+    );
+    const style: CSSProperties = {
+        left: placement.left,
+        top: placement.top,
+        maxHeight: placement.maxHeight,
+        width: CARD_WIDTH,
+    };
 
     const run = async (work: () => Promise<void>, fallback: string) => {
         setBusy(true);
@@ -133,242 +168,144 @@ export function CommentCard({
         }
     };
 
+    const clearErrors = () => {
+        setError(null);
+        setConflict(false);
+    };
+    const reload = onReload ? () => void onReload() : undefined;
+
     return (
         <dialog
             open
-            className={cn(
-                // The card is a floating popover: cap it to the viewport and
-                // scroll inside so long threads never push actions off-screen.
-                "fixed z-[110] m-0 flex max-h-[min(80vh,640px)] w-80 flex-col overflow-hidden rounded-md border bg-background p-0 text-foreground shadow-lg",
-                isResolved && "opacity-80",
-            )}
+            className="fixed z-[110] m-0 flex flex-col overflow-hidden rounded-none bg-popover/85 p-0 text-popover-foreground shadow-lg ring-1 ring-foreground/10 backdrop-blur-md"
             style={style}
             aria-label="Comment details"
             data-tracker-discussion-host="canvas-card"
+            data-comment-status={comment.status}
         >
-            <div className="flex shrink-0 items-start justify-between gap-2 border-b px-3 py-2">
-                <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{comment.author}</div>
-                    <div className="text-[10px] text-muted-foreground">
-                        {new Date(comment.timestamp).toLocaleString()}
-                        {comment.elementRef ? ` · ${comment.elementRef}` : ""}
-                    </div>
+            <CommentHeader
+                comment={comment}
+                className="shrink-0 px-3 pt-3 pb-2"
+                actions={
+                    <>
+                        {canResolve ? (
+                            <IconAction
+                                label={isResolved ? "Reopen comment" : "Resolve comment"}
+                                onClick={() => void onResolve(comment.id, !isResolved)}
+                                className={cn(!isResolved && "hover:text-success")}
+                            >
+                                {isResolved ? <RotateCcw className="h-3.5 w-3.5" /> : <Check className="h-4 w-4" />}
+                            </IconAction>
+                        ) : null}
+                        {canEdit && onEdit ? (
+                            <IconAction label="Edit comment" onClick={() => { clearErrors(); setEditing((open) => !open); }}>
+                                <Pencil className="h-3.5 w-3.5" />
+                            </IconAction>
+                        ) : null}
+                        {canDelete ? (
+                            <IconAction label="Delete comment" onClick={() => setConfirmDelete(true)} className="hover:text-destructive">
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </IconAction>
+                        ) : null}
+                        <IconAction label="Close comment card" onClick={onClose}>
+                            <X className="h-4 w-4" />
+                        </IconAction>
+                    </>
+                }
+            />
+
+            {showTrackerStrip ? (
+                <TrackerStrip
+                    projectId={projectId!}
+                    comment={comment}
+                    tracker={tracker}
+                    settings={trackerSettings!}
+                    autoEligible={autoEligible}
+                    historyOpen={historyOpen}
+                    onToggleHistory={() => setHistoryOpen((open) => !open)}
+                    onTrackerChange={onTrackerChange}
+                    className="shrink-0 border-y border-border/60 bg-muted/40 px-3 py-1.5"
+                />
+            ) : null}
+
+            {/* Discussion: the only part that scrolls. */}
+            <div
+                className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", !showTrackerStrip && "border-t")}
+                data-testid="comment-card-scroll"
+            >
+                <div className="px-3 py-2.5">
+                    {editing && onEdit ? (
+                        <CommentEditor
+                            id={`comment-card-edit-${comment.id}`}
+                            label="Edit comment"
+                            hideLabel
+                            compact
+                            initialValue={comment.content}
+                            submitLabel="Save"
+                            busy={busy}
+                            error={error}
+                            conflict={conflict}
+                            onReload={reload}
+                            onCancel={() => { setEditing(false); clearErrors(); }}
+                            onSubmit={async (content) => {
+                                if (await run(() => onEdit(comment.id, content, comment.revision), "Failed to update comment")) {
+                                    setEditing(false);
+                                }
+                            }}
+                        />
+                    ) : (
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{comment.content}</p>
+                    )}
+                    <CommentMentions comment={comment} className="mt-1.5" />
                 </div>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0"
-                    onClick={onClose}
-                    aria-label="Close comment card"
-                >
-                    <X className="h-3.5 w-3.5" />
-                </Button>
+
+                {historyOpen && projectId && tracker.linkState ? (
+                    <SyncHistorySection projectId={projectId} commentId={comment.id} />
+                ) : null}
+
+                <ReplyList
+                    comment={comment}
+                    replies={liveReplies}
+                    permissions={comment.permissions}
+                    editingReplyId={onEditReply ? editingReplyId : null}
+                    busy={busy}
+                    error={error}
+                    conflict={conflict}
+                    idPrefix="comment-card"
+                    canEditReplies={Boolean(onEditReply)}
+                    onStartEdit={(reply) => { clearErrors(); setEditingReplyId(reply.id); }}
+                    onCancelEdit={() => { setEditingReplyId(null); clearErrors(); }}
+                    onSubmitEdit={async (reply, content) => {
+                        if (!onEditReply) return;
+                        if (await run(() => onEditReply(comment.id, reply, content), "Failed to update reply")) {
+                            setEditingReplyId(null);
+                        }
+                    }}
+                    onDeleteReply={onDeleteReply ? (reply) => void onDeleteReply(comment.id, reply) : undefined}
+                    onReload={reload}
+                    className="border-t"
+                />
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto" data-testid="comment-card-scroll">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-2">
-                <Badge variant="secondary" className="h-5 text-[10px]">
-                    {commentClassLabel(comment.commentClass ?? "general")}
-                </Badge>
-                <CommentSeverityBadge severity={comment.severity ?? "info"} />
-                <TrackedThreadChip tracker={tracker} variant="compact" />
-            </div>
-
-            {editing && onEdit ? (
-                <div className="px-3 py-2">
-                    <CommentEditor
-                        id={`comment-card-edit-${comment.id}`}
-                        label="Edit comment"
-                        initialValue={comment.content}
-                        submitLabel="Save"
-                        busy={busy}
-                        error={error}
-                        conflict={conflict}
-                        onReload={onReload ? () => void onReload() : undefined}
-                        onCancel={() => { setEditing(false); setError(null); setConflict(false); }}
-                        onSubmit={async (content) => {
-                            if (await run(() => onEdit(comment.id, content, comment.revision), "Failed to update comment")) {
-                                setEditing(false);
-                            }
-                        }}
-                    />
-                </div>
-            ) : (
-                <p className="whitespace-pre-wrap px-3 py-2 text-sm">{comment.content}</p>
-            )}
-
-            {comment.mentions && comment.mentions.length > 0 && (
-                <div className="flex flex-wrap gap-1 px-3 pb-2">
-                    {comment.mentions.map((mention) => (
-                        <Badge key={mention.userId} variant="outline" className="max-w-full truncate text-[10px]">
-                            @{mention.displayName}
-                        </Badge>
-                    ))}
-                </div>
-            )}
-
-            {projectId && trackerSettings && (
-                <div className="px-3 pb-2">
-                    <PromotionControl
-                        variant="compact"
-                        projectId={projectId}
-                        commentId={comment.id}
-                        tracker={tracker}
-                        permissions={comment.permissions}
-                        settings={trackerSettings}
-                        autoEligible={autoEligible}
-                        onTrackerChange={(next) => onTrackerChange?.(comment.id, next)}
-                    />
-                </div>
-            )}
-
-            {liveReplies.length > 0 && (
-                <div className="space-y-2 border-t bg-muted/30 px-3 py-2">
-                    {liveReplies.map((reply) => {
-                        const replyCanEdit = actionAllowed(reply.permissions, "canEdit", false);
-                        const replyCanDelete = actionAllowed(reply.permissions, "canDelete", false);
-                        const discussionReply = reply as DiscussionReply;
-                        return (
-                            <div key={reply.id} className="text-xs">
-                                {editingReplyId === reply.id && onEditReply ? (
-                                    <CommentEditor
-                                        id={`comment-card-edit-reply-${reply.id}`}
-                                        label="Edit reply"
-                                        initialValue={reply.content}
-                                        submitLabel="Save"
-                                        busy={busy}
-                                        error={error}
-                                        conflict={conflict}
-                                        onReload={onReload ? () => void onReload() : undefined}
-                                        onCancel={() => { setEditingReplyId(null); setError(null); setConflict(false); }}
-                                        onSubmit={async (content) => {
-                                            if (await run(() => onEditReply(comment.id, reply, content), "Failed to update reply")) {
-                                                setEditingReplyId(null);
-                                            }
-                                        }}
-                                    />
-                                ) : (
-                                    <>
-                                        <RemoteReply
-                                            reply={discussionReply}
-                                            permissions={comment.permissions}
-                                            compact
-                                        />
-                                        {(replyCanEdit || replyCanDelete) && (
-                                            <span className="mt-1 inline-flex gap-1">
-                                                {replyCanEdit && onEditReply && (
-                                                    <button
-                                                        type="button"
-                                                        className="underline"
-                                                        onClick={() => setEditingReplyId(reply.id)}
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                )}
-                                                {replyCanDelete && onDeleteReply && (
-                                                    <button
-                                                        type="button"
-                                                        className="underline text-destructive"
-                                                        onClick={() => void onDeleteReply(comment.id, reply)}
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                )}
-                                            </span>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {replyOpen && canReply && (
-                <div className="border-t px-3 py-2">
-                    <CommentEditor
-                        id={`comment-card-reply-${comment.id}`}
-                        label="Reply"
-                        submitLabel="Reply"
-                        placeholder="Write a reply…"
-                        busy={busy}
-                        error={error}
-                        conflict={conflict}
-                        onReload={onReload ? () => void onReload() : undefined}
-                        onCancel={() => { setReplyOpen(false); setError(null); setConflict(false); }}
-                        onSubmit={async (content) => {
-                            if (await run(() => onReply(comment.id, content), "Failed to add reply")) {
-                                setReplyOpen(false);
-                            }
-                        }}
-                    />
-                </div>
-            )}
-
-            {projectId && tracker.linkState && (
-                <details
-                    className="border-t px-3 py-1.5 text-xs"
-                    data-testid="sync-history-disclosure"
-                    onToggle={(event) => setHistoryOpen((event.currentTarget as HTMLDetailsElement).open)}
-                >
-                    <summary className="cursor-pointer select-none text-muted-foreground">Sync history</summary>
-                    {historyOpen ? <SyncHistory projectId={projectId} commentId={comment.id} className="mt-2" /> : null}
-                </details>
-            )}
-            </div>
-
-            {showActions && (
-                <div className="flex shrink-0 items-center justify-end gap-1 border-t px-2 py-1.5">
-                    {canReply && (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            aria-label="Reply"
-                            onClick={() => setReplyOpen((open) => !open)}
-                        >
-                            <MessageSquareReply className="h-4 w-4" />
-                        </Button>
-                    )}
-                    {canEdit && onEdit && (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            aria-label="Edit comment"
-                            onClick={() => setEditing((open) => !open)}
-                        >
-                            <Pencil className="h-4 w-4" />
-                        </Button>
-                    )}
-                    {canResolve && (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className={cn("h-8 w-8", isResolved && "text-success")}
-                            aria-label={isResolved ? "Reopen comment" : "Resolve comment"}
-                            onClick={() => onResolve(comment.id, !isResolved)}
-                        >
-                            {isResolved ? (
-                                <CheckCircle className="h-4 w-4" />
-                            ) : (
-                                <Circle className="h-4 w-4" />
-                            )}
-                        </Button>
-                    )}
-                    {canDelete && (
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            aria-label="Delete comment"
-                            onClick={() => setConfirmDelete(true)}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    )}
-                </div>
-            )}
+            {/* Composer: pinned so a long thread never hides it. */}
+            {canReply ? (
+                <ReplyComposer
+                    id={`comment-card-reply-${comment.id}`}
+                    open={replyOpen}
+                    onOpen={() => { clearErrors(); setReplyOpen(true); }}
+                    onCancel={() => { setReplyOpen(false); clearErrors(); }}
+                    onSubmit={async (content) => {
+                        if (await run(() => onReply(comment.id, content), "Failed to add reply")) {
+                            setReplyOpen(false);
+                        }
+                    }}
+                    busy={busy}
+                    error={error}
+                    conflict={conflict}
+                    onReload={reload}
+                    className="shrink-0 border-t"
+                />
+            ) : null}
 
             <ConfirmDialog
                 open={confirmDelete}

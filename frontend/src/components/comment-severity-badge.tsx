@@ -1,4 +1,4 @@
-import { Badge, badgeVariants } from "@/components/ui/badge";
+import { badgeVariants } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
     COMMENT_SEVERITIES,
@@ -21,22 +21,6 @@ export function commentSeverityBadgeVariant(severity: CommentSeverity): BadgeVar
         default:
             return "info";
     }
-}
-
-interface CommentSeverityBadgeProps {
-    severity: CommentSeverity;
-    className?: string;
-}
-
-export function CommentSeverityBadge({ severity, className }: CommentSeverityBadgeProps) {
-    return (
-        <Badge
-            variant={commentSeverityBadgeVariant(severity)}
-            className={cn("h-5 text-[10px]", className)}
-        >
-            {commentSeverityLabel(severity)}
-        </Badge>
-    );
 }
 
 interface CommentSeverityPickerProps {

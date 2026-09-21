@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -29,8 +31,11 @@ async def _read_body_with_limit(request: Request, max_bytes: int) -> bytes:
 @router.post("/github/{connector_id}")
 async def github_webhook(connector_id: str, request: Request) -> JSONResponse:
     raw = await _read_body_with_limit(request, MAX_BODY_BYTES)
+    headers = dict(request.headers)
     try:
-        result = service.ingest(connector_id, dict(request.headers), raw)
+        # Secret decryption and the hint insert are blocking DB work; keep them
+        # off the event loop like every other tracker route.
+        result = await asyncio.to_thread(service.ingest, connector_id, headers, raw)
     except WebhookRejected as exc:
         reason = str(exc)
         if reason in {"invalid_signature", "webhook_not_configured"}:

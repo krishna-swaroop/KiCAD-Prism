@@ -188,6 +188,25 @@ async def revoke_connector(
     return await _run_service(lambda: service.revoke(connector_id, actor_user_id=_actor(admin)))
 
 
+@router.delete("/{connector_id}")
+async def delete_connector(
+    connector_id: str,
+    admin: AuthenticatedUser = Depends(require_admin),
+) -> dict[str, Any]:
+    return await _run_service(lambda: service.delete(connector_id, actor_user_id=_actor(admin)))
+
+
+@router.get("/{connector_id}/repositories")
+async def list_connector_repositories(
+    connector_id: str,
+    admin: AuthenticatedUser = Depends(require_admin),
+) -> list[dict[str, Any]]:
+    """Repositories the installation can reach; feeds the destination picker."""
+
+    del admin
+    return await _run_service(lambda: service.list_repositories(connector_id))
+
+
 @router.post("/{connector_id}/test")
 async def test_connector(
     connector_id: str,

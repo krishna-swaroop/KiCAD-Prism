@@ -44,6 +44,35 @@ const importedDefaultSettings = {
     },
 };
 
+const repositories = [
+    { id: "111222333", fullName: "acme/hardware-issues", private: true, archived: false, htmlUrl: "" },
+    { id: "987654321", fullName: "acme/openswitch", private: true, archived: false, htmlUrl: "" },
+];
+
+/** Route fetch mocks by URL so lazy loads (repository list) never eat a queued response. */
+function routeFetch(routes: {
+    settings: unknown;
+    connectors?: unknown;
+    repositories?: unknown;
+    put?: unknown;
+    ack?: unknown;
+}) {
+    mockedFetch.mockImplementation(async (url, init) => {
+        const path = String(url);
+        const method = init?.method ?? "GET";
+        if (path.endsWith("/tracker/acknowledge")) return respond(routes.ack ?? routes.settings);
+        if (path.endsWith("/tracker") && method === "PUT") return respond(routes.put ?? routes.settings);
+        if (path.endsWith("/tracker")) return respond(routes.settings);
+        if (path.endsWith("/repositories")) {
+            return routes.repositories === undefined
+                ? respond({ detail: "offline" }, 503)
+                : respond(routes.repositories);
+        }
+        if (path.endsWith("/connectors")) return respond(routes.connectors ?? [trackerUiMocks.connector]);
+        return respond({ detail: `unexpected ${method} ${path}` }, 500);
+    });
+}
+
 afterEach(() => {
     cleanup();
     document.documentElement.classList.remove("dark");
@@ -116,28 +145,72 @@ describe("ProjectTrackerSettingsPanel (F8 / F9 / C8)", () => {
         expect(autoPromoteSummary(trackerUiMocks.projectSettings)).toMatch(/severity ≥ minor/i);
     });
 
-    it("blocks non-admin override controls while showing imported default note for admins", async () => {
-        mockedFetch
-            .mockResolvedValueOnce(respond(importedDefaultSettings))
-            .mockResolvedValueOnce(respond([trackerUiMocks.connector]));
+    it("offers the project's own repository as the default and lists the installation's repositories", async () => {
+        routeFetch({ settings: { ...importedDefaultSettings, projectRepoPath: "acme/openswitch" }, repositories });
         render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
         await waitFor(() => {
-            expect(screen.getByTestId("imported-default-note")).toHaveTextContent(/imported default/i);
+            expect(screen.getByTestId("imported-default-note")).toHaveTextContent(/resolved on save: acme\/openswitch/i);
         });
-        expect(screen.getByLabelText(/override imported destination/i)).not.toBeChecked();
+        expect(screen.getByRole("radio", { name: /this project's repository/i })).toBeChecked();
+        expect(screen.getByTestId("project-repo-option")).toHaveTextContent("acme/openswitch");
         expect(screen.queryByLabelText(/container path/i)).toBeNull();
+        expect(screen.queryByTestId("repository-picker")).toBeNull();
+
+        fireEvent.click(screen.getByRole("radio", { name: /another repository/i }));
+        await waitFor(() => {
+            expect(screen.getByTestId("repository-picker")).toBeTruthy();
+        });
+        expect(mockedFetch.mock.calls.some((call) => String(call[0]).endsWith("/connectors/cn_gh1/repositories"))).toBe(true);
+    });
+
+    it("warns when the GitHub App is not installed on the project's own repository", async () => {
+        routeFetch({
+            settings: { ...importedDefaultSettings, projectRepoPath: "acme/openswitch" },
+            repositories: [repositories[0]],
+        });
+        render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
+        await waitFor(() => {
+            expect(screen.getByTestId("project-repo-not-installed")).toHaveTextContent(/not installed on acme\/openswitch/i);
+        });
+    });
+
+    it("disables the own-repository option for projects without a GitHub remote", async () => {
+        routeFetch({
+            settings: { ...trackerUiMocks.projectSettings, projectRepoPath: null },
+            repositories,
+        });
+        render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
+        await waitFor(() => {
+            expect(screen.getByRole("radio", { name: /another repository/i })).toBeChecked();
+        });
+        expect(screen.getByRole("radio", { name: /this project's repository/i })).toBeDisabled();
+        expect(screen.getByTestId("project-repo-option")).toHaveTextContent(/no github remote/i);
+    });
+
+    it("falls back to manual entry when the repository list is unavailable", async () => {
+        routeFetch({ settings: { ...importedDefaultSettings, projectRepoPath: "acme/openswitch" } });
+        render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
+        await waitFor(() => {
+            expect(screen.getByRole("radio", { name: /another repository/i })).toBeTruthy();
+        });
+        fireEvent.click(screen.getByRole("radio", { name: /another repository/i }));
+        await waitFor(() => {
+            expect(screen.getByLabelText(/container path/i)).toBeTruthy();
+        });
+        expect(screen.getByText(/could not list the installation's repositories/i)).toBeTruthy();
     });
 
     it("requires confirmation before changing destination and leaves policy unchanged when cancelled", async () => {
-        mockedFetch
-            .mockResolvedValueOnce(respond(importedDefaultSettings))
-            .mockResolvedValueOnce(respond([trackerUiMocks.connector]));
+        routeFetch({ settings: { ...importedDefaultSettings, projectRepoPath: "acme/openswitch" } });
         render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
         await waitFor(() => {
-            expect(screen.getByLabelText(/override imported destination/i)).toBeTruthy();
+            expect(screen.getByRole("radio", { name: /another repository/i })).toBeTruthy();
         });
 
-        fireEvent.click(screen.getByLabelText(/override imported destination/i));
+        fireEvent.click(screen.getByRole("radio", { name: /another repository/i }));
+        await waitFor(() => {
+            expect(screen.getByLabelText(/container path/i)).toBeTruthy();
+        });
         fireEvent.change(screen.getByLabelText(/container path/i), {
             target: { value: "acme/hardware-issues" },
         });
@@ -160,26 +233,31 @@ describe("ProjectTrackerSettingsPanel (F8 / F9 / C8)", () => {
     });
 
     it("saves destination override after confirmation and shows stale acknowledgement alerts", async () => {
-        mockedFetch
-            .mockResolvedValueOnce(respond(importedDefaultSettings))
-            .mockResolvedValueOnce(respond([trackerUiMocks.connector]))
-            .mockResolvedValueOnce(
-                respond({
-                    ...trackerUiMocks.publicAckRequired,
-                    destination: {
-                        ...trackerUiMocks.publicAckRequired.destination,
-                        containerPath: "acme/hardware-issues",
-                        remoteContainerId: "111222333",
-                        generation: 2,
-                    },
-                }),
-            );
+        routeFetch({
+            settings: { ...importedDefaultSettings, projectRepoPath: "acme/openswitch" },
+            repositories,
+            put: {
+                ...trackerUiMocks.publicAckRequired,
+                projectRepoPath: "acme/openswitch",
+                destination: {
+                    ...trackerUiMocks.publicAckRequired.destination,
+                    containerPath: "acme/hardware-issues",
+                    remoteContainerId: "111222333",
+                    generation: 2,
+                },
+            },
+        });
         render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
         await waitFor(() => {
-            expect(screen.getByLabelText(/override imported destination/i)).toBeTruthy();
+            expect(screen.getByRole("radio", { name: /another repository/i })).toBeTruthy();
         });
 
-        fireEvent.click(screen.getByLabelText(/override imported destination/i));
+        fireEvent.click(screen.getByRole("radio", { name: /another repository/i }));
+        await waitFor(() => {
+            expect(screen.getByTestId("repository-picker")).toBeTruthy();
+        });
+        // Radix Select is not driven in jsdom; hand entry exercises the same draft.
+        fireEvent.click(screen.getByRole("button", { name: /enter a repository id by hand/i }));
         fireEvent.change(screen.getByLabelText(/container path/i), {
             target: { value: "acme/hardware-issues" },
         });
@@ -210,21 +288,50 @@ describe("ProjectTrackerSettingsPanel (F8 / F9 / C8)", () => {
         });
     });
 
-    it("acknowledges public visibility after explicit confirmation", async () => {
-        mockedFetch
-            .mockResolvedValueOnce(respond(trackerUiMocks.publicAckRequired))
-            .mockResolvedValueOnce(respond([trackerUiMocks.connector]))
-            .mockResolvedValueOnce(
-                respond({
-                    ...trackerUiMocks.publicAckRequired,
-                    acknowledgement: {
-                        visibility: "public",
-                        acknowledgedBy: "u_admin",
-                        acknowledgedAt: "2026-09-20T16:00:00Z",
-                        valid: true,
-                    },
-                }),
+    it("switching back to the project's repository sends the placeholder for the server to resolve", async () => {
+        routeFetch({
+            settings: {
+                ...trackerUiMocks.projectSettings,
+                projectRepoPath: "acme/openswitch",
+                destination: { ...trackerUiMocks.projectSettings.destination, containerPath: "acme/hardware-issues", remoteContainerId: "111222333" },
+            },
+            repositories,
+        });
+        render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
+        await waitFor(() => {
+            expect(screen.getByRole("radio", { name: /another repository/i })).toBeChecked();
+        });
+        fireEvent.click(screen.getByRole("radio", { name: /this project's repository/i }));
+        fireEvent.click(screen.getByRole("button", { name: /save publication settings/i }));
+        await waitFor(() => {
+            expect(screen.getByText(/change tracker destination/i)).toBeTruthy();
+        });
+        fireEvent.click(screen.getByRole("button", { name: /change destination/i }));
+        await waitFor(() => {
+            const putCall = mockedFetch.mock.calls.find(
+                (call) => String(call[0]).endsWith("/tracker") && call[1]?.method === "PUT",
             );
+            expect(putCall).toBeTruthy();
+            expect(JSON.parse(String(putCall?.[1]?.body))).toMatchObject({
+                destination: { containerPath: "acme/openswitch", remoteContainerId: "pending:acme/openswitch" },
+            });
+        });
+    });
+
+    it("acknowledges public visibility after explicit confirmation", async () => {
+        routeFetch({
+            settings: trackerUiMocks.publicAckRequired,
+            repositories,
+            ack: {
+                ...trackerUiMocks.publicAckRequired,
+                acknowledgement: {
+                    visibility: "public",
+                    acknowledgedBy: "u_admin",
+                    acknowledgedAt: "2026-09-20T16:00:00Z",
+                    valid: true,
+                },
+            },
+        });
         render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={true} />);
         await waitFor(() => {
             expect(screen.getByRole("button", { name: /acknowledge public visibility/i })).toBeTruthy();

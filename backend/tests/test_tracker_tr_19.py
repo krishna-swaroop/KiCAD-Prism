@@ -170,6 +170,9 @@ class ConnectorAdminApiTests(unittest.TestCase):
             connect=self._factory,
             settings=self.settings,
             tester=self._tester,
+            repository_lister=lambda row, material: [
+                {"id": "1379354799", "fullName": "krishna-swaroop/prism-tracker-acceptance", "private": True, "archived": False, "htmlUrl": ""},
+            ] if material.get("privateKey") else [],
             comments_schema=self.schema,
             workspace_schema=self.schema,
         )
@@ -314,6 +317,15 @@ class ConnectorAdminApiTests(unittest.TestCase):
             run(connectors_api.resume_connector("cn_gh1", self.admin))
         self.assertEqual(caught.exception.status_code, 403)
 
+    def test_repositories_listing_needs_credentials_and_admin(self) -> None:  # TR-46 destination picker
+        self._create()
+        listed = run(connectors_api.list_connector_repositories("cn_gh1", self.admin))
+        self.assertEqual([item["fullName"] for item in listed], ["krishna-swaroop/prism-tracker-acceptance"])
+        run(connectors_api.revoke_connector("cn_gh1", self.admin))
+        with self.assertRaises(HTTPException) as caught:
+            run(connectors_api.list_connector_repositories("cn_gh1", self.admin))
+        self.assertIn(caught.exception.status_code, (409, 502, 503))
+
     def test_revoke_pauses_and_erases_envelope(self) -> None:
         self._create()
         revoked = run(connectors_api.revoke_connector("cn_gh1", self.admin))
@@ -341,6 +353,63 @@ class ConnectorAdminApiTests(unittest.TestCase):
         dumped = json.dumps(health)
         self.assertNotIn(INSTALLATION_MATERIAL, dumped)
         self.assertNotIn("privateKey", dumped)
+
+    def test_health_route_reports_worker_checkpoints(self) -> None:  # TR-46 settings card showed "Never"
+        self._create()
+        from app.services.trackers.inbox_store import apply_schema as apply_inbox_schema
+
+        apply_inbox_schema(self.conn)
+        self.conn.execute(
+            """
+            INSERT INTO sync_checkpoints (kind, scope_key, cursor, last_success_at, next_run_at)
+            VALUES ('poll', 'cn_gh1:987654321', '{"since": "2026-09-21T14:01:36Z"}'::jsonb,
+                    '2026-09-21T14:02:05Z', '2026-09-21T14:17:05Z'),
+                   ('sweep', 'cn_gh1:987654321', '{}'::jsonb, '2026-09-21T14:03:05Z', '2026-09-21T15:03:05Z')
+            """
+        )
+        self.conn.commit()
+        health = run(connectors_api.connector_health("cn_gh1", self.admin))
+        self.assertEqual(health["lastPollAt"], "2026-09-21T14:02:05Z")
+        self.assertEqual(health["lastSweepAt"], "2026-09-21T14:03:05Z")
+        self.assertIsNone(health["lastWebhookAt"])
+        self.assertFalse(health["degraded"])
+
+    def test_delete_refuses_while_in_use_then_removes_connector(self) -> None:  # TR-46 settings: remove connection
+        self._create()
+        self.conn.execute(
+            """
+            INSERT INTO comments(id, project_id, author, content)
+            VALUES ('c_del', 'prj_a', 'Priya', 'stub')
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO tracked_threads (
+                id, comment_id, project_tracker_id, destination_generation,
+                connector_id, remote_container_id, external_id, link_state
+            ) VALUES ('tt_del', 'c_del', 'pt_del', 1, 'cn_gh1', '111', '42', 'linked')
+            """
+        )
+        self.conn.commit()
+        with self.assertRaises(HTTPException) as caught:
+            run(connectors_api.delete_connector("cn_gh1", self.admin))
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertIn("linked thread", json.dumps(caught.exception.detail))
+        self.conn.execute("UPDATE tracked_threads SET unlinked_at = NOW() WHERE id = 'tt_del'")
+        self.conn.commit()
+
+        removed = run(connectors_api.delete_connector("cn_gh1", self.admin))
+        self.assertEqual(removed, {"deleted": "cn_gh1"})
+        self.assertEqual(run(connectors_api.list_connectors(self.admin)), [])
+        secrets = self.conn.execute("SELECT COUNT(*) AS n FROM tracker_webhook_secrets WHERE connector_id = 'cn_gh1'").fetchone()
+        self.assertEqual(secrets["n"], 0)
+        audit = self.conn.execute(
+            "SELECT action FROM tracker_audit WHERE connector_id = 'cn_gh1' ORDER BY id"
+        ).fetchall()
+        self.assertIn("connector.delete", [row["action"] for row in audit])
+        with self.assertRaises(HTTPException) as missing:
+            run(connectors_api.get_connector("cn_gh1", self.admin))
+        self.assertEqual(missing.exception.status_code, 404)
 
     def test_health_counts_sync_ops_and_marks_degraded(self) -> None:
         self._create()

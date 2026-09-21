@@ -55,9 +55,9 @@ def hints_applier_mounted() -> bool:
 
 
 def hint_dispatch_enabled() -> bool:
-    """TR-26 enables dispatch for hint-only destinations; until then retain pending hints."""
+    """Hint-only destinations get dispatch jobs (TR-26). Kept as a hook for tests."""
 
-    return False
+    return True
 
 
 def reset_scheduler_throttle() -> None:

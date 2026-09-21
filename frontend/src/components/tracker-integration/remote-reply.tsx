@@ -31,6 +31,8 @@ export interface RemoteReplyProps {
     shareBusy?: boolean;
     /** Card host: nominal sync states carry no badge; only problems are labelled. */
     compact?: boolean;
+    /** Host renders its own attribution row; emit only body, tombstone, badge and share. */
+    bare?: boolean;
     className?: string;
 }
 
@@ -91,6 +93,7 @@ export function RemoteReply({
     onShare,
     shareBusy = false,
     compact = false,
+    bare = false,
     className,
 }: RemoteReplyProps) {
     const tombstone = tombstoneMessage(reply);
@@ -108,6 +111,7 @@ export function RemoteReply({
             data-reply-sync={reply.sync?.state ?? "none"}
             aria-label={`Reply by ${attribution}`}
         >
+            {bare ? null : (
             <header className={cn("flex flex-wrap items-center gap-2", compact && "gap-1.5")}>
                 {reply.origin === "remote" ? (
                     <Cloud className={cn("text-muted-foreground", compact ? "h-3 w-3" : "h-4 w-4")} aria-hidden="true" />
@@ -135,6 +139,7 @@ export function RemoteReply({
                     </Badge>
                 ) : null}
             </header>
+            )}
 
             {tombstone ? (
                 <p className="flex items-start gap-2 text-sm text-muted-foreground" role="note" data-testid="reply-tombstone">
@@ -144,6 +149,16 @@ export function RemoteReply({
             ) : (
                 <p className={cn("whitespace-pre-wrap", compact ? "text-xs" : "text-sm")} data-testid="reply-content">{reply.content}</p>
             )}
+
+            {bare && syncLabel ? (
+                <Badge
+                    variant={replySyncBadgeVariant(reply.sync?.state ?? "")}
+                    className="h-4 px-1.5 text-[10px]"
+                    data-testid="reply-sync-badge"
+                >
+                    {syncLabel}
+                </Badge>
+            ) : null}
 
             {assignmentHints.length > 0 ? (
                 <ul className="space-y-1 text-xs text-muted-foreground" data-testid="assignment-hints">

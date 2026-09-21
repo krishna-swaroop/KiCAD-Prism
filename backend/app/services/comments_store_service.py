@@ -43,7 +43,7 @@ from app.services.trackers.reply_mutations import (
     after_reply_edited,
     share_reply,
 )
-from app.services.trackers.publication_policy import PublicationDenied
+from app.services.trackers.publication_policy import DispatchPause, PublicationDenied
 from app.services.trackers.state_mutations import enqueue_set_state
 from app.services.trackers.thread_mutations import after_root_content_edited, after_root_deleted
 
@@ -907,12 +907,19 @@ class CommentsStoreService:
 
                     thread = _live_thread(conn, comment_id)
                     if thread is not None and str(thread.get("external_id") or "") not in ("", "pending"):
-                        evaluate_dispatch(
-                            conn,
-                            project_id,
-                            promotion_actor.role,
-                            workspace_schema=self.workspace_schema,
-                        )
+                        # A role below promote_min_role may not move a linked
+                        # thread at all; a paused connector only means the
+                        # ``set_state`` op is not enqueued (enqueue_set_state
+                        # reports ``denied``), not that the local status is stuck.
+                        try:
+                            evaluate_dispatch(
+                                conn,
+                                project_id,
+                                promotion_actor.role,
+                                workspace_schema=self.workspace_schema,
+                            )
+                        except DispatchPause:
+                            pass
                 comments_revisions.set_root_status(
                     conn, project_id=project_id, comment_id=comment_id, status=status,
                     editor=editor or _SYSTEM_EDITOR, expected_revision=expected_revision,
