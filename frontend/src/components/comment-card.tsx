@@ -13,17 +13,30 @@ import { Badge } from "@/components/ui/badge";
 import { CommentSeverityBadge } from "@/components/comment-severity-badge";
 import { cn } from "@/lib/utils";
 import { commentClassLabel, type Comment, type CommentReply } from "@/types/comments";
+import type { CommentTrackerProjection, LegacyForgeProjection, ProjectTrackerSettings } from "@/types/trackers";
 import {
     CommentEditor,
     actionAllowed,
     describeMutationError,
 } from "@/components/tracker-integration/comment-editor";
+import { PromotionControl } from "@/components/tracker-integration/promotion-control";
+import { RemoteReply, type DiscussionReply } from "@/components/tracker-integration/remote-reply";
+import { SyncHistory } from "@/components/tracker-integration/sync-history";
+import { TrackedThreadChip } from "@/components/tracker-integration/tracked-thread-chip";
+import { projectionFromComment } from "@/lib/trackers-client";
+
+export type CommentTrackerHostSettings = Pick<
+    ProjectTrackerSettings,
+    "destination" | "acknowledgement" | "promoteMinRole" | "autoMinSeverity" | "autoTaskClass"
+>;
 
 interface CommentCardProps {
     comment: Comment;
     screenPosition: { x: number; y: number } | null;
     /** Fallback when a legacy listing has no `permissions` block. */
     canModify?: boolean;
+    projectId?: string;
+    trackerSettings?: CommentTrackerHostSettings | null;
     onClose: () => void;
     onResolve: (commentId: string, resolved: boolean) => void | Promise<void>;
     onReply: (commentId: string, content: string) => Promise<void>;
@@ -32,15 +45,37 @@ interface CommentCardProps {
     onEditReply?: (commentId: string, reply: CommentReply, content: string) => Promise<void>;
     onDeleteReply?: (commentId: string, reply: CommentReply) => Promise<void>;
     onReload?: () => void | Promise<void>;
+    onTrackerChange?: (commentId: string, tracker: CommentTrackerProjection) => void;
+}
+
+const SEVERITY_RANK: Record<string, number> = {
+    info: 0,
+    minor: 1,
+    major: 2,
+    critical: 3,
+};
+
+export function commentAutoEligible(
+    comment: Pick<Comment, "severity" | "commentClass">,
+    settings?: Pick<ProjectTrackerSettings, "autoMinSeverity" | "autoTaskClass"> | null,
+): boolean {
+    if (!settings) return false;
+    const severity = comment.severity ?? "info";
+    const min = settings.autoMinSeverity || "minor";
+    if ((SEVERITY_RANK[severity] ?? 0) >= (SEVERITY_RANK[min] ?? 1)) return true;
+    return Boolean(settings.autoTaskClass && comment.commentClass === "task");
 }
 
 /**
  * Compact floating card shown when a canvas comment marker is clicked.
  */
+// react-doctor-disable-next-line no-giant-component - card owns edit/reply/promote/sync chrome for one pinned marker
 export function CommentCard({
     comment,
     screenPosition,
     canModify = false,
+    projectId,
+    trackerSettings = null,
     onClose,
     onResolve,
     onReply,
@@ -49,6 +84,7 @@ export function CommentCard({
     onEditReply,
     onDeleteReply,
     onReload,
+    onTrackerChange,
 }: CommentCardProps) {
     const [replyOpen, setReplyOpen] = useState(false);
     const [editing, setEditing] = useState(false);
@@ -64,6 +100,8 @@ export function CommentCard({
     const canResolve = actionAllowed(comment.permissions, "canResolve", canModify);
     const liveReplies = comment.replies.filter((reply) => !reply.deletedAt);
     const showActions = canReply || canEdit || canDelete || canResolve;
+    const tracker = projectionFromComment(comment as Comment & LegacyForgeProjection);
+    const autoEligible = commentAutoEligible(comment, trackerSettings);
 
     const style: CSSProperties = screenPosition
         ? {
@@ -103,6 +141,7 @@ export function CommentCard({
             )}
             style={style}
             aria-label="Comment details"
+            data-tracker-discussion-host="canvas-card"
         >
             <div className="flex items-start justify-between gap-2 border-b px-3 py-2">
                 <div className="min-w-0">
@@ -128,6 +167,10 @@ export function CommentCard({
                     {commentClassLabel(comment.commentClass ?? "general")}
                 </Badge>
                 <CommentSeverityBadge severity={comment.severity ?? "info"} />
+            </div>
+
+            <div className="px-3 pt-2">
+                <TrackedThreadChip tracker={tracker} variant="inline" />
             </div>
 
             {editing && onEdit ? (
@@ -163,11 +206,26 @@ export function CommentCard({
                 </div>
             )}
 
+            {projectId && trackerSettings && (
+                <div className="border-t px-3 py-2">
+                    <PromotionControl
+                        projectId={projectId}
+                        commentId={comment.id}
+                        tracker={tracker}
+                        permissions={comment.permissions}
+                        settings={trackerSettings}
+                        autoEligible={autoEligible}
+                        onTrackerChange={(next) => onTrackerChange?.(comment.id, next)}
+                    />
+                </div>
+            )}
+
             {liveReplies.length > 0 && (
                 <div className="space-y-2 border-t bg-muted/30 px-3 py-2">
                     {liveReplies.slice(-3).map((reply) => {
                         const replyCanEdit = actionAllowed(reply.permissions, "canEdit", false);
                         const replyCanDelete = actionAllowed(reply.permissions, "canDelete", false);
+                        const discussionReply = reply as DiscussionReply;
                         return (
                             <div key={reply.id} className="text-xs">
                                 {editingReplyId === reply.id && onEditReply ? (
@@ -189,10 +247,13 @@ export function CommentCard({
                                     />
                                 ) : (
                                     <>
-                                        <span className="font-medium">{reply.author}</span>
-                                        <span className="text-muted-foreground"> · {reply.content}</span>
+                                        <RemoteReply
+                                            reply={discussionReply}
+                                            permissions={comment.permissions}
+                                            className="border-0 bg-transparent p-0"
+                                        />
                                         {(replyCanEdit || replyCanDelete) && (
-                                            <span className="ml-1 inline-flex gap-1">
+                                            <span className="mt-1 inline-flex gap-1">
                                                 {replyCanEdit && onEditReply && (
                                                     <button
                                                         type="button"
@@ -239,6 +300,12 @@ export function CommentCard({
                             }
                         }}
                     />
+                </div>
+            )}
+
+            {projectId && tracker.linkState && (
+                <div className="border-t px-3 py-2">
+                    <SyncHistory projectId={projectId} commentId={comment.id} />
                 </div>
             )}
 

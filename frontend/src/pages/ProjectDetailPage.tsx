@@ -3,12 +3,19 @@ import { Suspense, lazy, useEffect, useMemo, useState, type ComponentType } from
 import { Button } from "@/components/ui/button";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck } from "lucide-react";
+import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, Link2 } from "lucide-react";
 import { ApiHttpError, fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
 import { cn } from "@/lib/utils";
 import { User } from "@/types/auth";
+import { ProjectTrackerSettingsPanel } from "@/components/tracker-integration/project-tracker-settings";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {
     comparisonIsOpen,
     readComparisonUrlState,
@@ -136,6 +143,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const [syncing, setSyncing] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [pathConfigOpen, setPathConfigOpen] = useState(false);
+    const [trackerSettingsOpen, setTrackerSettingsOpen] = useState(false);
     const [branches, setBranches] = useState<ProjectBranch[]>([]);
     const [branchesLoading, setBranchesLoading] = useState(false);
     const [branchError, setBranchError] = useState<string | null>(null);
@@ -610,6 +618,18 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     </Button>
                 )}
 
+                {projectId && (
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setTrackerSettingsOpen(true)}
+                        title="Tracker publication settings"
+                        data-testid="project-tracker-settings-open"
+                    >
+                        <Link2 className="h-4 w-4" />
+                    </Button>
+                )}
+
                 {projectId && pathConfigOpen && (
                     <Suspense fallback={null}>
                         <PathConfigDialog
@@ -618,6 +638,22 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                             onOpenChange={setPathConfigOpen}
                         />
                     </Suspense>
+                )}
+
+                {projectId && (
+                    <Dialog open={trackerSettingsOpen} onOpenChange={setTrackerSettingsOpen}>
+                        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+                            <DialogTitle>Tracker publication</DialogTitle>
+                            <DialogDescription>
+                                Destination and publication policy for this project. Switching projects remounts these settings.
+                            </DialogDescription>
+                            <ProjectTrackerSettingsPanel
+                                key={projectId}
+                                projectId={projectId}
+                                isAdmin={user?.role === "admin"}
+                            />
+                        </DialogContent>
+                    </Dialog>
                 )}
             </header>
 
@@ -723,6 +759,15 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                         </Suspense>
                                     ) : (
                                         <p className="text-muted-foreground">No README.md found for this project.</p>
+                                    )}
+                                    {projectId && (
+                                        <div data-testid="project-tracker-settings-overview">
+                                            <ProjectTrackerSettingsPanel
+                                                key={`overview:${projectId}`}
+                                                projectId={projectId}
+                                                isAdmin={user?.role === "admin"}
+                                            />
+                                        </div>
                                     )}
                                 </div>
                             </ErrorBoundary>

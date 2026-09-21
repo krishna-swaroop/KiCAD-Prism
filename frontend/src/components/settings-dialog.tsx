@@ -6,11 +6,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, KeyRound } from "lucide-react";
+import { GitBranch, Copy, FileCode, Shield, Plus, Trash2, KeyRound, Link2, UserRound } from "lucide-react";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
 import { changeOwnPassword, fetchAuthConfig } from "@/lib/auth";
 import { ROLE_OPTIONS, roleLabel } from "@/lib/roles";
+import { ConnectorHealthPanel } from "@/components/tracker-integration/connector-health";
+import { ConnectorSettings } from "@/components/tracker-integration/connector-settings";
+import {
+    ConnectedAccounts,
+    type LinkableConnector,
+} from "@/components/tracker-integration/connected-accounts";
+import { listConnectors } from "@/lib/trackers-client";
+import type { TrackerConnector } from "@/types/trackers";
 
 interface SettingsDialogProps {
     open: boolean;
@@ -18,13 +26,22 @@ interface SettingsDialogProps {
     user: User | null;
 }
 
-type SettingsTab = "git" | "access" | "general";
+type SettingsTab = "git" | "access" | "trackers" | "accounts" | "general";
 
 interface RoleAssignment {
     email: string;
     role: UserRole;
     source: string;
     has_password?: boolean;
+}
+
+function toLinkableConnectors(connectors: TrackerConnector[]): LinkableConnector[] {
+    return connectors.map((connector) => ({
+        id: connector.id,
+        provider: connector.provider,
+        displayName: connector.displayName,
+        instanceKind: connector.instanceKind,
+    }));
 }
 
 export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps) {
@@ -36,7 +53,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
             <DialogContent className="max-w-4xl p-0 overflow-hidden flex h-[600px]">
                 <DialogTitle className="sr-only">Workspace Settings</DialogTitle>
                 <DialogDescription className="sr-only">
-                    Manage Git, SSH, access control, and password settings for this workspace.
+                    Manage Git, SSH, access control, tracker connectors, and password settings for this workspace.
                 </DialogDescription>
                 <div className="w-64 bg-muted/30 border-r p-4 flex flex-col gap-2">
                     <div className="mb-4 px-2">
@@ -63,6 +80,26 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                     </Button>
 
                     <Button
+                        variant={activeTab === "trackers" ? "secondary" : "ghost"}
+                        className="justify-start"
+                        onClick={() => setActiveTab("trackers")}
+                        data-testid="settings-tab-trackers"
+                    >
+                        <Link2 className="mr-2 h-4 w-4" />
+                        Trackers
+                    </Button>
+
+                    <Button
+                        variant={activeTab === "accounts" ? "secondary" : "ghost"}
+                        className="justify-start"
+                        onClick={() => setActiveTab("accounts")}
+                        data-testid="settings-tab-accounts"
+                    >
+                        <UserRound className="mr-2 h-4 w-4" />
+                        Connected accounts
+                    </Button>
+
+                    <Button
                         variant={activeTab === "general" ? "secondary" : "ghost"}
                         className="justify-start"
                         onClick={() => setActiveTab("general")}
@@ -75,10 +112,201 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                 <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === "git" && <GitSettings user={user} />}
                     {activeTab === "access" && <AccessControlSettings isAdmin={isAdmin} />}
+                    {activeTab === "trackers" && <TrackerConnectorSettings key="trackers-tab" isAdmin={isAdmin} />}
+                    {activeTab === "accounts" && (
+                        <ConnectedAccountsSettings key="accounts-tab" user={user} isAdmin={isAdmin} />
+                    )}
                     {activeTab === "general" && <PasswordSettings />}
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
+    const [connectors, setConnectors] = useState<TrackerConnector[]>([]);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [creating, setCreating] = useState(false);
+    const [listError, setListError] = useState<string | null>(null);
+    const [loadingList, setLoadingList] = useState(false);
+
+    const refreshConnectors = useCallback(async () => {
+        if (!isAdmin) return;
+        setLoadingList(true);
+        setListError(null);
+        try {
+            const listed = await listConnectors();
+            setConnectors(listed);
+            setSelectedId((current) => {
+                if (creating) return null;
+                if (current && listed.some((item) => item.id === current)) return current;
+                return listed[0]?.id ?? null;
+            });
+        } catch (error) {
+            setListError(error instanceof Error ? error.message : "Failed to load connectors");
+            setConnectors([]);
+            setSelectedId(null);
+        } finally {
+            setLoadingList(false);
+        }
+    }, [creating, isAdmin]);
+
+    const handleConnectorChange = useCallback((connector: TrackerConnector) => {
+        // Upsert locally — do not re-fetch here. ConnectorSettings calls this on
+        // every successful load/save; a list refetch would recreate this callback
+        // dependency chain and loop.
+        setCreating(false);
+        setSelectedId(connector.id);
+        setConnectors((prev) => {
+            const index = prev.findIndex((item) => item.id === connector.id);
+            if (index < 0) return [...prev, connector];
+            const next = [...prev];
+            next[index] = connector;
+            return next;
+        });
+    }, []);
+
+    useEffect(() => {
+        void refreshConnectors();
+    }, [refreshConnectors]);
+
+    if (!isAdmin) {
+        return (
+            <div className="space-y-3" data-testid="tracker-settings-host">
+                <div>
+                    <h3 className="text-lg font-medium">Tracker connectors</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Only workspace administrators can create or edit forge connectors.
+                    </p>
+                </div>
+                <ConnectorSettings connectorId={null} isAdmin={false} />
+            </div>
+        );
+    }
+
+    const editorId = creating ? null : selectedId;
+
+    return (
+        <div className="space-y-4" data-testid="tracker-settings-host">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h3 className="text-lg font-medium">Tracker connectors</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Bot credentials, webhook endpoints, and connector health for issue publication.
+                    </p>
+                </div>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant={creating ? "secondary" : "outline"}
+                    onClick={() => {
+                        setCreating(true);
+                        setSelectedId(null);
+                    }}
+                    data-testid="tracker-create-connector"
+                >
+                    <Plus className="mr-1 h-4 w-4" />
+                    New connector
+                </Button>
+            </div>
+
+            {listError && (
+                <p className="text-sm text-destructive" role="alert">
+                    {listError}{" "}
+                    <button type="button" className="underline" onClick={() => void refreshConnectors()}>
+                        Retry
+                    </button>
+                </p>
+            )}
+
+            {loadingList ? (
+                <p className="text-sm text-muted-foreground">Loading connectors…</p>
+            ) : connectors.length > 0 ? (
+                <div className="flex flex-wrap gap-2" data-testid="tracker-connector-list">
+                    {connectors.map((connector) => (
+                        <Button
+                            key={connector.id}
+                            type="button"
+                            size="sm"
+                            variant={!creating && selectedId === connector.id ? "secondary" : "outline"}
+                            onClick={() => {
+                                setCreating(false);
+                                setSelectedId(connector.id);
+                            }}
+                        >
+                            {connector.displayName}
+                        </Button>
+                    ))}
+                </div>
+            ) : (
+                !creating && (
+                    <p className="text-sm text-muted-foreground">
+                        No connectors yet. Create one to publish review comments to a forge.
+                    </p>
+                )
+            )}
+
+            <ConnectorSettings
+                connectorId={editorId}
+                isAdmin={isAdmin}
+                prismOrigin={typeof window !== "undefined" ? window.location.origin : undefined}
+                onConnectorChange={handleConnectorChange}
+            />
+
+            {selectedId && !creating && (
+                <ConnectorHealthPanel connectorId={selectedId} isAdmin={isAdmin} />
+            )}
+        </div>
+    );
+}
+
+function ConnectedAccountsSettings({
+    user,
+    isAdmin,
+}: {
+    user: User | null;
+    isAdmin: boolean;
+}) {
+    const [linkable, setLinkable] = useState<LinkableConnector[]>([]);
+
+    useEffect(() => {
+        if (!isAdmin) {
+            // Non-admins have no connector discovery API; ConnectedAccounts shows empty until an admin lists them.
+            return;
+        }
+        let cancelled = false;
+        void listConnectors()
+            .then((connectors) => {
+                if (!cancelled) setLinkable(toLinkableConnectors(connectors));
+            })
+            .catch(() => {
+                if (!cancelled) setLinkable([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isAdmin]);
+
+    return (
+        <div className="space-y-3" data-testid="connected-accounts-host">
+            <div>
+                <h3 className="text-lg font-medium">Connected accounts</h3>
+                <p className="text-sm text-muted-foreground">
+                    Link your forge identity for assignment hints. Connector credentials stay on the server.
+                </p>
+            </div>
+            <ConnectedAccounts
+                linkableConnectors={linkable}
+                isSessionUser={Boolean(user)}
+                returnPath="/?settings=accounts"
+                oauthCallbackSearch={typeof window !== "undefined" ? window.location.search : ""}
+            />
+            {!isAdmin && (
+                <p className="text-xs text-muted-foreground" data-testid="linkable-connectors-residual">
+                    Ask a workspace administrator to configure tracker connectors before personal linking is available.
+                </p>
+            )}
+        </div>
     );
 }
 

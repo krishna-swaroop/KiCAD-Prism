@@ -11,6 +11,7 @@ import {
     X,
 } from "lucide-react";
 import { commentClassLabel, type Comment, type CommentReply } from "@/types/comments";
+import type { CommentTrackerProjection, LegacyForgeProjection } from "@/types/trackers";
 import { CommentSeverityBadge } from "@/components/comment-severity-badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -22,6 +23,15 @@ import {
     actionAllowed,
     describeMutationError,
 } from "@/components/tracker-integration/comment-editor";
+import { PromotionControl } from "@/components/tracker-integration/promotion-control";
+import { RemoteReply, type DiscussionReply } from "@/components/tracker-integration/remote-reply";
+import { SyncHistory } from "@/components/tracker-integration/sync-history";
+import { TrackedThreadChip } from "@/components/tracker-integration/tracked-thread-chip";
+import { projectionFromComment } from "@/lib/trackers-client";
+import {
+    commentAutoEligible,
+    type CommentTrackerHostSettings,
+} from "@/components/comment-card";
 
 interface CommentPanelProps {
     comments: Comment[];
@@ -33,10 +43,13 @@ interface CommentPanelProps {
     canModify?: boolean;
     highlightedId?: string | null;
     embedded?: boolean;
+    projectId?: string;
+    trackerSettings?: CommentTrackerHostSettings | null;
     onEdit?: (commentId: string, content: string, expectedRevision: number) => Promise<void>;
     onEditReply?: (commentId: string, reply: CommentReply, content: string) => Promise<void>;
     onDeleteReply?: (commentId: string, reply: CommentReply) => Promise<void>;
     onReload?: () => void | Promise<void>;
+    onTrackerChange?: (commentId: string, tracker: CommentTrackerProjection) => void;
 }
 
 export function CommentPanel({
@@ -49,10 +62,13 @@ export function CommentPanel({
     canModify = false,
     highlightedId = null,
     embedded = false,
+    projectId,
+    trackerSettings = null,
     onEdit,
     onEditReply,
     onDeleteReply,
     onReload,
+    onTrackerChange,
 }: CommentPanelProps) {
     const [filter, setFilter] = useState<"ALL" | "OPEN" | "RESOLVED">("ALL");
 
@@ -67,6 +83,7 @@ export function CommentPanel({
                 "flex h-full flex-col bg-background",
                 embedded ? "w-full" : "z-50 w-80 border-l shadow-xl",
             )}
+            data-tracker-discussion-host="canvas-panel"
         >
             {!embedded && (
             <div className="flex items-center justify-between border-b p-4">
@@ -126,10 +143,13 @@ export function CommentPanel({
                                                 onDelete={onDelete}
                                                 onClick={() => onCommentClick(comment)}
                                                 canModify={canModify}
+                                                projectId={projectId}
+                                                trackerSettings={trackerSettings}
                                                 onEdit={onEdit}
                                                 onEditReply={onEditReply}
                                                 onDeleteReply={onDeleteReply}
                                                 onReload={onReload}
+                                                onTrackerChange={onTrackerChange}
                                             />
                                         ))}
                                     </div>
@@ -143,6 +163,7 @@ export function CommentPanel({
     );
 }
 
+// react-doctor-disable-next-line no-giant-component - panel thread card mirrors canvas promote/reply/sync chrome
 function PanelCommentCard({
     comment,
     highlighted,
@@ -151,10 +172,13 @@ function PanelCommentCard({
     onDelete,
     onClick,
     canModify,
+    projectId,
+    trackerSettings,
     onEdit,
     onEditReply,
     onDeleteReply,
     onReload,
+    onTrackerChange,
 }: {
     comment: Comment;
     highlighted: boolean;
@@ -163,10 +187,13 @@ function PanelCommentCard({
     onDelete: (id: string) => Promise<void>;
     onClick: () => void;
     canModify: boolean;
+    projectId?: string;
+    trackerSettings?: CommentTrackerHostSettings | null;
     onEdit?: (commentId: string, content: string, expectedRevision: number) => Promise<void>;
     onEditReply?: (commentId: string, reply: CommentReply, content: string) => Promise<void>;
     onDeleteReply?: (commentId: string, reply: CommentReply) => Promise<void>;
     onReload?: () => void | Promise<void>;
+    onTrackerChange?: (commentId: string, tracker: CommentTrackerProjection) => void;
 }) {
     const [isReplying, setIsReplying] = useState(false);
     const [editing, setEditing] = useState(false);
@@ -182,6 +209,8 @@ function PanelCommentCard({
     const canDelete = actionAllowed(comment.permissions, "canDelete", canModify);
     const canResolve = actionAllowed(comment.permissions, "canResolve", canModify);
     const liveReplies = comment.replies.filter((reply) => !reply.deletedAt);
+    const tracker = projectionFromComment(comment as Comment & LegacyForgeProjection);
+    const autoEligible = commentAutoEligible(comment, trackerSettings);
 
     const run = async (work: () => Promise<void>, fallback: string) => {
         setIsSubmitting(true);
@@ -232,6 +261,10 @@ function PanelCommentCard({
                     <CommentSeverityBadge severity={comment.severity ?? "info"} />
                 </div>
 
+                <div className="mb-2">
+                    <TrackedThreadChip tracker={tracker} variant="stacked" />
+                </div>
+
                 {!editing && (
                     <p className="mb-3 whitespace-pre-wrap text-sm">{comment.content}</p>
                 )}
@@ -264,6 +297,20 @@ function PanelCommentCard({
                                 setEditing(false);
                             }
                         }}
+                    />
+                </div>
+            )}
+
+            {projectId && trackerSettings && (
+                <div className="px-3 pb-2" onClick={(event) => event.stopPropagation()}>
+                    <PromotionControl
+                        projectId={projectId}
+                        commentId={comment.id}
+                        tracker={tracker}
+                        permissions={comment.permissions}
+                        settings={trackerSettings}
+                        autoEligible={autoEligible}
+                        onTrackerChange={(next) => onTrackerChange?.(comment.id, next)}
                     />
                 </div>
             )}
@@ -353,6 +400,7 @@ function PanelCommentCard({
                                 liveReplies.map((reply) => {
                                     const replyCanEdit = actionAllowed(reply.permissions, "canEdit", false);
                                     const replyCanDelete = actionAllowed(reply.permissions, "canDelete", false);
+                                    const discussionReply = reply as DiscussionReply;
                                     return (
                                     <div key={reply.id} className="relative border-l-2 border-muted pl-2 text-sm">
                                         {editingReplyId === reply.id && onEditReply ? (
@@ -373,13 +421,11 @@ function PanelCommentCard({
                                             />
                                         ) : (
                                             <>
-                                                <div className="mb-1 flex items-center justify-between">
-                                                    <span className="text-xs font-medium">{reply.author}</span>
-                                                    <span className="text-[10px] text-muted-foreground">
-                                                        {new Date(reply.timestamp).toLocaleDateString()}
-                                                    </span>
-                                                </div>
-                                                <p className="text-muted-foreground">{reply.content}</p>
+                                                <RemoteReply
+                                                    reply={discussionReply}
+                                                    permissions={comment.permissions}
+                                                    className="border-0 bg-transparent p-0"
+                                                />
                                                 {(replyCanEdit || replyCanDelete) && (
                                                     <div className="mt-1 flex gap-2 text-[11px]">
                                                         {replyCanEdit && onEditReply && (
@@ -426,6 +472,12 @@ function PanelCommentCard({
                             />
                         </div>
                     )}
+                </div>
+            )}
+
+            {projectId && tracker.linkState && (
+                <div className="border-t px-3 py-2">
+                    <SyncHistory projectId={projectId} commentId={comment.id} />
                 </div>
             )}
 
