@@ -13,7 +13,6 @@ from app.core.security import AuthenticatedUser, require_comment_writer, require
 from app.services import comment_permissions
 from app.services.comment_permissions import ActorIdentity, CommentAction, CommentPermissionError
 from app.services.comments_store_service import comments_store
-from app.services.postgres_database import database
 from app.services.trackers.health import aggregate_project_health
 from app.services.trackers.projections import list_thread_history, load_thread_status, retry_thread_sync
 from app.services.trackers.promotion import load_policy_row
@@ -33,7 +32,7 @@ def _actor(user: AuthenticatedUser) -> ActorIdentity:
 
 
 def _promote_min_role(project_id: str) -> str:
-    with database.connection() as conn:
+    with comments_store._connect() as conn:
         conn.execute("SET search_path TO workspace, public")
         row = load_policy_row(conn, project_id)
     if row and row.get("promote_min_role"):
@@ -62,7 +61,7 @@ def _publication_response(exc: PublicationDenied) -> JSONResponse:
 def _dispatch_response(exc: DispatchPause) -> JSONResponse:
     return JSONResponse(
         status_code=409,
-        content={"detail": str(exc), "code": exc.code, "pausedReason": exc.reason},
+        content={"detail": str(exc), "code": exc.reason, "pausedReason": exc.reason},
     )
 
 

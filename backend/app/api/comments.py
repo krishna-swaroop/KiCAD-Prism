@@ -43,7 +43,6 @@ from app.services.comments_store_service import (
     DEFAULT_COMMENT_SEVERITY,
     comments_store,
 )
-from app.services.postgres_database import database
 from app.core.roles import Role
 from app.services.trackers.mentions import (
     MentionCandidate,
@@ -263,12 +262,11 @@ def _promotion_actor(actor: ActorIdentity) -> PromotionActor:
 
 
 def _promote_min_role(project_id: str) -> Role:
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        row = conn.execute(
-            "SELECT promote_min_role FROM project_trackers WHERE project_id = %s",
-            (project_id,),
-        ).fetchone()
+    """Read project promote_min_role via the injectable comments store connection."""
+    from app.services.trackers.promotion import load_policy_row
+
+    with comments_store._connect() as conn:
+        row = load_policy_row(conn, project_id)
     if row and row.get("promote_min_role"):
         return str(row["promote_min_role"])  # type: ignore[return-value]
     return "designer"
@@ -346,19 +344,22 @@ def _with_permissions(
     *,
     project_id: str | None = None,
     mention_indexes: MentionIndexes,
+    promote_min_role: Role | None = None,
 ) -> dict:
     """Attach the caller's capabilities so the UI never re-derives policy."""
     _wire_comment_mentions(comment, mention_indexes)
     linked = str((comment.get("tracker") or {}).get("linkState") or "") == "linked"
-    promote_min_role = _promote_min_role(project_id) if project_id else "designer"
+    role = promote_min_role if promote_min_role is not None else (
+        _promote_min_role(project_id) if project_id else "designer"
+    )
     caps = comment_permissions.capabilities(
-        actor, _authored(comment), linked=linked, promote_min_role=promote_min_role,
+        actor, _authored(comment), linked=linked, promote_min_role=role,
     )
     caps["canRetry"] = can_retry_projection(comment.get("tracker")) and comment_permissions.allowed(
         CommentAction.RETRY,
         actor,
         linked=linked,
-        promote_min_role=promote_min_role,
+        promote_min_role=role,
     )
     comment["permissions"] = caps
     for reply in comment.get("replies", []):
@@ -518,8 +519,12 @@ async def get_comments(project_id: str, user: AuthenticatedUser = Depends(requir
         _refresh_tracker_projections(project.id, comments)
         mention_indexes = _load_mention_indexes()
         if actor is not None:
+            promote_min_role = _promote_min_role(project.id)
             comments = [
-                _with_permissions(c, actor, project_id=project.id, mention_indexes=mention_indexes)
+                _with_permissions(
+                    c, actor, project_id=project.id, mention_indexes=mention_indexes,
+                    promote_min_role=promote_min_role,
+                )
                 for c in comments
             ]
         else:
@@ -565,8 +570,12 @@ async def get_comparison_comments(
         _refresh_tracker_projections(project.id, comments)
         mention_indexes = _load_mention_indexes()
         if actor is not None:
+            promote_min_role = _promote_min_role(project.id)
             comments = [
-                _with_permissions(c, actor, project_id=project.id, mention_indexes=mention_indexes)
+                _with_permissions(
+                    c, actor, project_id=project.id, mention_indexes=mention_indexes,
+                    promote_min_role=promote_min_role,
+                )
                 for c in comments
             ]
         else:
@@ -852,17 +861,21 @@ async def promote_comment(
         current = comments_store.get_comment(project.id, project.path, comment_id)
         if current is None:
             return None
+        promote_min_role = _promote_min_role(project.id)
         comment_permissions.authorize(
             CommentAction.PROMOTE,
             actor,
-            promote_min_role=_promote_min_role(project.id),
+            promote_min_role=promote_min_role,
         )
         updated = comments_store.promote_comment(
             project.id, project.path, comment_id, _promotion_actor(actor),
         )
         mention_indexes = _load_mention_indexes()
         return (
-            _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
+            _with_permissions(
+                updated, actor, project_id=project.id, mention_indexes=mention_indexes,
+                promote_min_role=promote_min_role,
+            )
             if updated
             else None
         )
@@ -905,12 +918,16 @@ async def add_reply(
             return None
         comment, reply = result
         linked = str((comment.get("tracker") or {}).get("linkState") or "") == "linked"
+        promote_min_role = _promote_min_role(project.id)
         reply["permissions"] = comment_permissions.capabilities(
-            actor, _authored(reply), linked=linked, promote_min_role=_promote_min_role(project.id),
+            actor, _authored(reply), linked=linked, promote_min_role=promote_min_role,
         )
         mention_indexes = _load_mention_indexes()
         return {
-            "comment": _with_permissions(comment, actor, project_id=project.id, mention_indexes=mention_indexes),
+            "comment": _with_permissions(
+                comment, actor, project_id=project.id, mention_indexes=mention_indexes,
+                promote_min_role=promote_min_role,
+            ),
             "reply": reply,
         }
 
@@ -989,10 +1006,11 @@ async def share_reply_to_tracker(
         current = comments_store.get_reply(project.id, comment_id, reply_id)
         if current is None:
             return None
+        promote_min_role = _promote_min_role(project.id)
         comment_permissions.authorize(
             CommentAction.SHARE,
             actor,
-            promote_min_role=_promote_min_role(project.id),
+            promote_min_role=promote_min_role,
         )
         try:
             updated = comments_store.share_reply(
@@ -1002,7 +1020,10 @@ async def share_reply_to_tracker(
             raise comment_permissions.CommentPermissionError(exc.code, str(exc)) from exc
         mention_indexes = _load_mention_indexes()
         return (
-            _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
+            _with_permissions(
+                updated, actor, project_id=project.id, mention_indexes=mention_indexes,
+                promote_min_role=promote_min_role,
+            )
             if updated
             else None
         )

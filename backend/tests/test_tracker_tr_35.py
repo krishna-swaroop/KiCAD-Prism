@@ -15,6 +15,7 @@ from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -33,7 +34,7 @@ from app.services.trackers.projections import (  # noqa: E402
     retry_thread_sync,
     wire_sync_op,
 )
-from app.services.trackers.publication_policy import PublicationDenied  # noqa: E402
+from app.services.trackers.publication_policy import DispatchPause, PublicationDenied  # noqa: E402
 from app.services.trackers.store import TrackerStore  # noqa: E402
 
 try:
@@ -497,6 +498,39 @@ class TrackerTr35PostgresTests(unittest.TestCase):
         ), patch("app.api.tracker_sync._promote_min_role", return_value="designer"):
             result = run(sync_api.retry_comment_sync(PROJECT, COMMENT, session("designer")))
         self.assertEqual(result["pendingIntent"], "set_state:closed")
+
+    def test_api_retry_while_paused_returns_409(self) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO sync_ops (
+                id, tracked_thread_id, op, state, destination_generation,
+                expected_remote_state
+            ) VALUES ('op_paused_retry', %s, 'set_state', 'failed', 2, 'closed')
+            """,
+            (THREAD,),
+        )
+        self.conn.execute(
+            "UPDATE workspace.tracker_connectors SET paused = TRUE, paused_reason = 'ops' WHERE id = %s",
+            (CONNECTOR,),
+        )
+        self.conn.commit()
+
+        @contextmanager
+        def connect_cm():
+            yield self.conn
+
+        project = type("Project", (), {"id": PROJECT, "path": "/tmp", "role": "designer"})()
+        with patch("app.api.tracker_sync.get_project_for_role_or_404", return_value=project), patch(
+            "app.api.tracker_sync.comments_store._connect", side_effect=connect_cm,
+        ), patch("app.api.tracker_sync._promote_min_role", return_value="designer"):
+            result = run(sync_api.retry_comment_sync(PROJECT, COMMENT, session("designer")))
+        self.assertIsInstance(result, JSONResponse)
+        self.assertEqual(result.status_code, 409)
+        payload = json.loads(result.body)
+        self.assertEqual(payload["code"], "paused")
+        self.assertEqual(payload["pausedReason"], "paused")
+        self.assertEqual(getattr(DispatchPause("paused", "x"), "reason"), "paused")
+        self.assertFalse(hasattr(DispatchPause("paused", "x"), "code"))
 
     def test_api_history_requires_project_access(self) -> None:
         def deny(*_args, **_kwargs):
