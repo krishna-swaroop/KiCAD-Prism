@@ -44,7 +44,7 @@ _last_scheduler_scan_at: float | None = None
 
 
 def mount_hints_applier(mounted: bool = True) -> None:
-    """TR-18 mounts the inbound hint applier; until then skip hint-only dispatch."""
+    """Composition mounts the inbound hint applier; unmounted (tests) skips hint-only dispatch."""
 
     global _hints_applier_mounted
     _hints_applier_mounted = mounted
@@ -52,12 +52,6 @@ def mount_hints_applier(mounted: bool = True) -> None:
 
 def hints_applier_mounted() -> bool:
     return _hints_applier_mounted
-
-
-def hint_dispatch_enabled() -> bool:
-    """Hint-only destinations get dispatch jobs (TR-26). Kept as a hook for tests."""
-
-    return True
 
 
 def reset_scheduler_throttle() -> None:
@@ -177,7 +171,7 @@ def schedule_due_tracker_jobs(
         destinations = _due_dispatch_destinations(conn, comments_schema, workspace_schema)
         hints = (
             _due_hint_destinations(conn, comments_schema, workspace_schema)
-            if hint_dispatch_enabled() and hints_applier_mounted()
+            if hints_applier_mounted()
             else []
         )
         polls = _due_checkpoint_destinations(conn, comments_schema, workspace_schema, "poll")

@@ -24,7 +24,6 @@ from app.services.trackers.github_issues import GitHubIssueAdapter  # noqa: E402
 from app.services.trackers.github_recovery import (  # noqa: E402
     RecoveryKind,
     make_issue_page_fetcher,
-    mount_recovery,
     next_quarantine_at,
     quarantine_delay_minutes,
     recover_create_issue,
@@ -397,10 +396,12 @@ class GitHubAdapterRecoveryTests(unittest.TestCase):
 
 
 class HintsApplierMountTests(unittest.TestCase):
-    def test_import_mounts_hints_applier(self) -> None:
+    def test_composition_mounts_hints_applier(self) -> None:
+        from app.services.trackers.composition import initialize_tracker_composition
+
         mount_hints_applier(False)
         self.assertFalse(hints_applier_mounted())
-        mount_recovery()
+        initialize_tracker_composition()
         self.assertTrue(hints_applier_mounted())
 
 
@@ -426,7 +427,7 @@ class FakeJobs:
 class RecoveryPostgresTests(unittest.TestCase):
     def setUp(self) -> None:
         reset_scheduler_throttle()
-        mount_recovery()
+        mount_hints_applier(True)
         self.schema = f"tr18_{uuid.uuid4().hex[:12]}"
         self.conn = psycopg.connect(_dsn(), row_factory=dict_row)
         self.addCleanup(self._cleanup)

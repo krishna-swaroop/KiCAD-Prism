@@ -16,7 +16,6 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 from app.services.trackers.contracts import Destination, RemoteComment
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.markers import MarkerValidation, ParsedMarker, build_marker, extract_markers, validate_marker
-from app.services.trackers.scheduler import mount_hints_applier
 
 IssuePage = tuple[Sequence[Mapping[str, Any]], Optional[str]]
 IssuePageFetcher = Callable[[Optional[str]], IssuePage]
@@ -386,12 +385,3 @@ def _owner_repo(dest: Destination) -> tuple[str, str]:
         raise ProviderError("invalid_request", "GitHub destination path must be owner/repo.")
     return owner, repo
 
-
-def mount_recovery() -> None:
-    """Enable hint-only scheduler dispatch now that recovery/applier code exists."""
-
-    mount_hints_applier(True)
-
-
-# Import side-effect: TR-18 mounts the inbound hint applier for scheduler dispatch.
-mount_recovery()

@@ -108,7 +108,6 @@ class CompositionUnitTests(unittest.TestCase):
     def test_initialize_mounts_runtime_and_handlers(self) -> None:
         initialize_tracker_composition()
         self.assertTrue(hints_applier_mounted())
-        self.assertTrue(tracker_scheduler.hint_dispatch_enabled())
         self.assertTrue(has_outbound_executor())
         self.assertIsNotNone(get_tracker_runtime())
         kinds = registered_job_kinds()

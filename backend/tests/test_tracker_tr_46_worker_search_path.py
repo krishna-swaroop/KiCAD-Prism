@@ -381,7 +381,6 @@ class WebhookHintDispatchTests(unittest.TestCase):
         worker.worker_pool = "prism"
         worker.mount_tracker_composition()
         self.assertTrue(scheduler.hints_applier_mounted())
-        self.assertTrue(scheduler.hint_dispatch_enabled())
 
     def test_membership_hints_are_ignored_without_a_fetch(self) -> None:
         from app.services.trackers.inbound import CallableFetcher, fetch_then_apply_hint
