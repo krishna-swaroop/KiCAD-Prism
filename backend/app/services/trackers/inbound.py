@@ -309,7 +309,51 @@ def _apply_issue_observation(
     if echo is not None:
         _confirm_echo_op(ops, echo)
         return "ignored_echo"
+    _follow_observed_state(conn, thread=thread, issue=issue, actor_login=event_actor_login)
     return "applied"
+
+
+def _follow_observed_state(
+    conn: Any,
+    *,
+    thread: Mapping[str, Any],
+    issue: RemoteIssue,
+    actor_login: str | None,
+) -> None:
+    """A forge close/reopen resolves/reopens the Prism root (TR-31, C6).
+
+    Skipped while a local ``set_state`` intent is live: the state executor's
+    preflight owns that reconciliation and records the supersession note.
+    Recording ``remote_state`` alone left the root OPEN after a GitHub close
+    (found in TR-46).
+    """
+
+    from app.services.trackers.state_mutations import (
+        _pending_set_state_op,
+        apply_observed_remote_state,
+        remote_state_to_local_status,
+    )
+
+    if _pending_set_state_op(conn, str(thread["id"])) is not None:
+        return
+    project_id = str(thread.get("project_id") or "")
+    comment_id = str(thread["comment_id"])
+    row = conn.execute(
+        "SELECT status FROM comments WHERE project_id = %s AND id = %s AND deleted_at IS NULL",
+        (project_id, comment_id),
+    ).fetchone()
+    if row is None:
+        return
+    if str(row.get("status") or "OPEN").upper() == remote_state_to_local_status(issue.state):
+        return
+    apply_observed_remote_state(
+        conn,
+        thread=thread,
+        issue=issue,
+        project_id=project_id,
+        comment_id=comment_id,
+        editor=resolve_editor(actor_login=actor_login) if actor_login else None,
+    )
 
 
 def _insert_remote_reply(

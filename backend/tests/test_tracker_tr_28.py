@@ -568,6 +568,56 @@ class InboundPostgresTests(unittest.TestCase):
         self.assertEqual(self.inbox.get_hint(first["id"])["state"], "applied")
         self.assertEqual(self.inbox.get_hint(second["id"])["state"], "applied")
 
+    def test_forge_close_and_reopen_follow_into_root_status(self) -> None:
+        """TR-46: a GitHub close must resolve the Prism root, and a reopen must reopen it.
+
+        Recording ``remote_state`` alone left the root OPEN after a forge close.
+        """
+
+        self._seed_project(project_id="prj_a", comment_id=COMMENT_ID, thread_id="tt_a")
+
+        def closed(*_args):
+            return _remote_issue(body="state sync", state="closed")
+
+        self.inbox.enqueue(
+            connector_id=CONNECTOR,
+            delivery_id=f"del_{uuid.uuid4().hex[:8]}",
+            hints=[{"objectKind": "issue", "remoteContainerId": CONTAINER, "externalId": ISSUE, "event": "closed",
+                    "actor": {"id": HUMAN_ID, "login": HUMAN_LOGIN}}],
+        )
+        self.conn.commit()
+        apply_destination_hints(
+            self.conn, connector_id=CONNECTOR, container_id=CONTAINER,
+            fetcher=CallableFetcher(issue=closed), bot_user_id=BOT_ID, bot_login=BOT_LOGIN,
+        )
+        self.conn.commit()
+        row = self.conn.execute("SELECT status FROM comments WHERE id = %s", (COMMENT_ID,)).fetchone()
+        self.assertEqual(row["status"], "RESOLVED")
+        self.assertEqual(
+            self.conn.execute("SELECT remote_state FROM tracked_threads WHERE id = 'tt_a'").fetchone()["remote_state"],
+            "closed",
+        )
+        # Inbound never enqueues an outbound op for the state it just observed.
+        ops = self.conn.execute("SELECT COUNT(*) AS n FROM sync_ops WHERE op = 'set_state'").fetchone()["n"]
+        self.assertEqual(ops, 0)
+
+        def reopened(*_args):
+            return _remote_issue(body="state sync", state="open")
+
+        self.inbox.enqueue(
+            connector_id=CONNECTOR,
+            delivery_id=f"del_{uuid.uuid4().hex[:8]}",
+            hints=[{"objectKind": "issue", "remoteContainerId": CONTAINER, "externalId": ISSUE, "event": "reopened"}],
+        )
+        self.conn.commit()
+        apply_destination_hints(
+            self.conn, connector_id=CONNECTOR, container_id=CONTAINER,
+            fetcher=CallableFetcher(issue=reopened), bot_user_id=BOT_ID, bot_login=BOT_LOGIN,
+        )
+        self.conn.commit()
+        row = self.conn.execute("SELECT status FROM comments WHERE id = %s", (COMMENT_ID,)).fetchone()
+        self.assertEqual(row["status"], "OPEN")
+
     def test_f8_inbound_never_enqueues(self) -> None:
         self._seed_project(project_id="prj_a", comment_id=COMMENT_ID, thread_id="tt_a")
         before = self.conn.execute("SELECT COUNT(*) AS n FROM sync_ops").fetchone()["n"]
