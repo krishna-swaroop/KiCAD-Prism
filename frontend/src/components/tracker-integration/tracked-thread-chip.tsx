@@ -77,13 +77,23 @@ export function trackedThreadChipLabel(
     return base;
 }
 
+const PENDING_INTENT_LABELS: Record<string, string> = {
+    add_comment: "Sending reply…",
+    edit_comment: "Updating reply…",
+    delete_comment: "Removing reply…",
+    update_issue: "Updating issue…",
+    post_note: "Posting note…",
+    create_issue: "Publishing…",
+};
+
+/** What the queued outbound work is about to do, in progress tense. */
 export function pendingIntentLabel(pendingIntent?: string | null): string | null {
     if (!pendingIntent) return null;
     if (pendingIntent.startsWith("set_state:")) {
         const target = pendingIntent.slice("set_state:".length);
-        return `Pending close as ${target}`;
+        return target === "open" ? "Reopening issue…" : target === "closed" ? "Closing issue…" : `Setting ${target}…`;
     }
-    return `Pending ${pendingIntent.replace(/_/g, " ")}`;
+    return PENDING_INTENT_LABELS[pendingIntent] ?? `${pendingIntent.replace(/_/g, " ")}…`;
 }
 
 export function remoteStateLabel(
@@ -93,7 +103,7 @@ export function remoteStateLabel(
     if (!remoteState) return null;
     const pending = pendingIntentLabel(pendingIntent);
     if (pending) {
-        return `Remote ${remoteState} (local intent: ${pending.replace(/^Pending /, "")})`;
+        return `Remote ${remoteState} (${pending.replace(/…$/, "")})`;
     }
     return `Remote ${remoteState}`;
 }
@@ -121,9 +131,9 @@ export function compactStatusLabel(tracker: CommentTrackerProjection | null | un
     if (!tracker?.linkState) return null;
     if (tracker.linkState !== "linked") return LINK_LABELS[tracker.linkState] ?? tracker.linkState;
     const pending = pendingIntentLabel(tracker.pendingIntent);
-    if (pending) return pending.replace(/^Pending /, "pending ");
+    if (pending) return pending;
     const sync = tracker.syncState ?? "";
-    if (sync === "pending" || sync === "sent") return "syncing";
+    if (sync === "pending" || sync === "sent") return "Syncing…";
     if (sync === "quarantine" || sync === "failed") return "sync failed";
     if (tracker.remoteState && tracker.remoteState !== "open") return tracker.remoteState;
     return null;

@@ -97,7 +97,7 @@ describe("tracked thread chip (C6 / C7 / F9.stale_cache)", () => {
         render(<TrackedThreadChip tracker={trackerUiMocks.pendingIntentProjection} variant="stacked" />);
         expect(screen.getByTestId("thread-link-chip")).toHaveTextContent(/linked/i);
         expect(screen.getByTestId("thread-sync-chip")).toHaveTextContent("sent");
-        expect(screen.getByTestId("thread-pending-chip")).toHaveTextContent(/pending close as closed/i);
+        expect(screen.getByTestId("thread-pending-chip")).toHaveTextContent(/closing issue/i);
         expect(screen.getByTestId("thread-remote-state")).toHaveTextContent(/remote open/i);
         expect(isWorkPending(trackerUiMocks.pendingIntentProjection)).toBe(true);
     });
@@ -111,7 +111,8 @@ describe("tracked thread chip (C6 / C7 / F9.stale_cache)", () => {
             /transferred/i,
         );
         expect(notPromotableLabel("below_auto_threshold")).toMatch(/ask a designer/i);
-        expect(pendingIntentLabel("set_state:closed")).toBe("Pending close as closed");
+        expect(pendingIntentLabel("set_state:closed")).toBe("Closing issue…");
+        expect(pendingIntentLabel("add_comment")).toBe("Sending reply…");
     });
 
     it("renders forge body authority and paused notices", () => {
