@@ -274,6 +274,22 @@ behavior, and the host clock.
 Confirm both workers are healthy and use the same `PRISM_DATABASE_URL`. Inspect
 leases and worker logs before restarting.
 
+### Tracker sync stalled or credentials locked
+
+Confirm `TRACKER_CREDENTIAL_ROOT_KEY` is set, valid, and identical on `backend`
+and `prism-worker`. Inspect connector health
+(`GET /api/admin/trackers/connectors/{id}/health`) for pause reason, backlog,
+and rate-limit resume time. A missing root key preserves local comments but
+returns `503` on connector and OAuth APIs.
+
+Webhook delivery is optional; polling-only deployments should still show recent
+poll and sweep timestamps within the budgets documented in
+[Tracker integration](TRACKER_INTEGRATION.md). Restart both services after root
+key rotation and verify **Test connection** before resuming promotion.
+
+Include `TRACKER_CREDENTIAL_ROOT_KEY*` in backup custody planning: restoring a
+database without the matching root key leaves encrypted credentials unreadable.
+
 ### Catalog metadata exists but placement fails
 
 Verify released asset files in persistent storage and confirm provider metadata

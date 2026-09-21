@@ -866,6 +866,18 @@ class Settings(BaseSettings):
             return "disabled"
         return "ready"
 
+    @staticmethod
+    def tracker_deployment_env_keys() -> tuple[str, ...]:
+        """Variables that backend and prism-worker must share for tracker I/O."""
+
+        return (
+            "PUBLIC_BASE_URL",
+            "TRACKER_CREDENTIAL_ROOT_KEY",
+            "TRACKER_CREDENTIAL_ROOT_KEY_ID",
+            "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY",
+            "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID",
+        )
+
     def auth_configuration_errors(self) -> List[str]:
         """Return every reason this deployment must not serve authenticated traffic."""
         if not self.AUTH_ENABLED:

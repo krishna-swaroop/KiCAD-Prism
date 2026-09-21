@@ -141,6 +141,27 @@ Prism can also validate externally issued JWTs when issuer, audience, role
 claim, and scope claim settings are configured. Audience validation is
 mandatory.
 
+## Tracker user OAuth
+
+GitHub user account linking for tracker writes uses a separate OAuth flow from
+human SSO and from the KiCad provider. Administrators configure a GitHub App on
+each connector; users link accounts from **Connected accounts** after signing in.
+
+Register this callback on the GitHub App (derive from `PUBLIC_BASE_URL`):
+
+| Flow | Redirect URI |
+| --- | --- |
+| Tracker user linking | `https://prism.example.com/api/trackers/oauth/callback` |
+
+Prism binds OAuth state to the signed-in session and connector. Cross-user
+callbacks, replayed state, and arbitrary redirects are rejected. Unlinking removes
+usable user credentials without revoking the bot installation that backs promoted
+threads.
+
+Connector and user tokens are envelope-encrypted with `TRACKER_CREDENTIAL_ROOT_KEY`.
+That root key must be set before linking accounts and must match on `backend` and
+`prism-worker`. See [Tracker integration](TRACKER_INTEGRATION.md).
+
 ## Access review checklist
 
 At least quarterly:
@@ -151,4 +172,6 @@ At least quarterly:
 4. review OIDC redirect URIs, password-auth settings, and allowed origins;
 5. confirm guest mode is disabled;
 6. verify the public backend port is not directly reachable;
-7. test a viewer account and each catalog role.
+7. test a viewer account and each catalog role;
+8. confirm tracker root key rotation grace keys are cleared after migration;
+9. review GitHub App webhook and OAuth callback URLs against `PUBLIC_BASE_URL`.
