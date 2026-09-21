@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ComparisonDiscussionRail } from "./comparison-discussion-rail";
 import { fetchApi } from "@/lib/api";
+import * as trackersClient from "@/lib/trackers-client";
 import type { Comment } from "@/types/comments";
 
 vi.mock("@/lib/api", async () => {
@@ -10,7 +11,15 @@ vi.mock("@/lib/api", async () => {
     return { ...actual, fetchApi: vi.fn() };
 });
 
+// TR-42 mounts load project tracker settings on open; keep that off the shared
+// fetchApi mock so reply assertions still see a fresh Response body.
+vi.mock("@/lib/trackers-client", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/trackers-client")>("@/lib/trackers-client");
+    return { ...actual, getProjectTracker: vi.fn() };
+});
+
 const mockedFetch = vi.mocked(fetchApi);
+const mockedGetProjectTracker = vi.mocked(trackersClient.getProjectTracker);
 
 /**
  * A rejected request used to leave the reply button disabled until remount:
@@ -66,6 +75,8 @@ function openReplyComposer() {
 
 beforeEach(() => {
     mockedFetch.mockReset();
+    mockedGetProjectTracker.mockReset();
+    mockedGetProjectTracker.mockRejectedValue(new Error("tracker settings unused"));
 });
 
 afterEach(() => {

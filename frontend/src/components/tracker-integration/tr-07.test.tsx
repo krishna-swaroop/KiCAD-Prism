@@ -10,6 +10,7 @@ import {
 } from "@/components/tracker-integration/comment-editor";
 import { CommentMutationError, createComment, createComparisonComment, updateComment } from "@/lib/comments-client";
 import { fetchApi } from "@/lib/api";
+import * as trackersClient from "@/lib/trackers-client";
 import type { Comment, CommentPermissions } from "@/types/comments";
 
 vi.mock("@/lib/api", async () => {
@@ -17,7 +18,15 @@ vi.mock("@/lib/api", async () => {
     return { ...actual, fetchApi: vi.fn() };
 });
 
+// TR-42 comparison rail loads tracker settings via fetchApi; isolate that so
+// create-thread assertions inspect the POST body, not the settings GET.
+vi.mock("@/lib/trackers-client", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/trackers-client")>("@/lib/trackers-client");
+    return { ...actual, getProjectTracker: vi.fn() };
+});
+
 const mockedFetch = vi.mocked(fetchApi);
+const mockedGetProjectTracker = vi.mocked(trackersClient.getProjectTracker);
 
 const ownPermissions: CommentPermissions = {
     canReply: true,
@@ -209,6 +218,8 @@ describe("canvas and comparison creates send the displayed revision/side, not au
     beforeEach(() => {
         mockedFetch.mockReset();
         mockedFetch.mockImplementation(async () => respond(comment()));
+        mockedGetProjectTracker.mockReset();
+        mockedGetProjectTracker.mockRejectedValue(new Error("tracker settings unused"));
     });
 
     it("forwards the displayed commit on canvas create and never sends author", async () => {
@@ -241,7 +252,7 @@ describe("canvas and comparison creates send the displayed revision/side, not au
     });
 
     it("comparison rail posts selectedSide=compare and no author", async () => {
-        mockedFetch.mockResolvedValue(respond(comment({ scope: "comparison" })));
+        mockedFetch.mockImplementation(async () => respond(comment({ scope: "comparison" })));
         render(
             <ComparisonDiscussionRail
                 projectId="p1"
@@ -259,8 +270,18 @@ describe("canvas and comparison creates send the displayed revision/side, not au
             target: { value: "looks off on the new side" },
         });
         fireEvent.click(screen.getByRole("button", { name: "Add thread" }));
-        await waitFor(() => expect(mockedFetch).toHaveBeenCalled());
-        const body = JSON.parse(String(mockedFetch.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+        await waitFor(() => {
+            expect(
+                mockedFetch.mock.calls.some(
+                    ([url, init]) =>
+                        String(url).includes("/comparison-comments") && init?.method === "POST",
+                ),
+            ).toBe(true);
+        });
+        const post = mockedFetch.mock.calls.find(
+            ([url, init]) => String(url).includes("/comparison-comments") && init?.method === "POST",
+        );
+        const body = JSON.parse(String(post?.[1]?.body)) as Record<string, unknown>;
         expect(body).not.toHaveProperty("author");
         expect(body.selectedSide).toBe("compare");
         expect(body.baseCommit).toBe("a".repeat(40));
