@@ -173,7 +173,7 @@
       "status": 403,
       "retryable": true
     },
-    "ProviderError_classes": ["rate_limited", "auth_lost", "forbidden", "not_found_uncertain", "gone_confirmed", "moved", "transient", "invalid_request", "capability_missing"],
+    "ProviderError_classes": ["rate_limited", "auth_lost", "forbidden", "not_found_uncertain", "gone_confirmed", "moved", "transient", "invalid_request", "capability_missing", "paused", "visibility", "visibility_unknown", "connector_missing"],
     "RemoteVersion": { "updatedAt": "2026-09-20T15:42:11Z", "etag": "W/\"1c3e…\"" },
     "RemoteIssue": {
       "externalId": "412",

@@ -25,6 +25,11 @@ PROVIDER_ERROR_CLASSES = (
     "transient",
     "invalid_request",
     "capability_missing",
+    # Local D7 policy pauses (not forge HTTP). Distinct from auth_lost (R3-M4).
+    "paused",
+    "visibility",
+    "visibility_unknown",
+    "connector_missing",
 )
 
 # Read outcomes that are not "here is the object". 304 is not an error class.
@@ -56,6 +61,10 @@ _RETRYABLE = {
     "transient": True,
     "invalid_request": False,
     "capability_missing": False,
+    "paused": False,
+    "visibility": False,
+    "visibility_unknown": False,
+    "connector_missing": False,
 }
 
 

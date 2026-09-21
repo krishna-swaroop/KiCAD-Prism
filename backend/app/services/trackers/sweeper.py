@@ -29,6 +29,7 @@ from app.services.trackers.contracts import (
     UncertainAbsence,
 )
 from app.services.trackers.errors import ProviderError
+from app.services.trackers.executor_support import pause_connector_auth_lost
 from app.services.trackers.github_updates import destination_for, format_iso8601, parse_iso8601
 from app.services.trackers.link_lifecycle import apply_moved_issue
 from app.services.trackers.provenance import resolve_editor
@@ -311,27 +312,7 @@ def _touch_issue_verified(conn: Any, thread_id: str) -> None:
 
 
 def _pause_connector_auth(conn: Any, connector_id: str, container_id: str) -> None:
-    conn.execute(
-        """
-        UPDATE tracker_connectors
-        SET paused = TRUE,
-            paused_reason = 'auth_lost',
-            updated_at = NOW()
-        WHERE id = %s
-        """,
-        (connector_id,),
-    )
-    conn.execute(
-        """
-        UPDATE tracked_threads
-        SET link_state = 'inaccessible',
-            paused_reason = 'auth_lost'
-        WHERE connector_id = %s
-          AND remote_container_id = %s
-          AND unlinked_at IS NULL
-        """,
-        (connector_id, container_id),
-    )
+    pause_connector_auth_lost(conn, connector_id, container_id)
 
 
 def _handle_issue_absence(

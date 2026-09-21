@@ -274,6 +274,7 @@ def enqueue_create_issue(
         destination_generation=generation,
         local_revision=int(comment.get("revision") or 1),
         actor_user_id=actor.user_id,
+        actor_role=actor.role,
     )
     conn.execute(
         "UPDATE tracked_threads SET pending_op_id = %s WHERE id = %s",
@@ -357,6 +358,7 @@ def enqueue_issue_metadata_update(
         destination_generation=int(thread["destination_generation"]),
         local_revision=int(comment.get("revision") or 1),
         actor_user_id=actor.user_id,
+        actor_role=actor.role,
     )
     return PromotionResult(action="enqueued", op_id=op_id, thread_id=thread_id)
 
@@ -428,6 +430,7 @@ def after_reply_added(
         destination_generation=int(thread["destination_generation"]),
         local_revision=int(reply.get("revision") or 1),
         actor_user_id=actor.user_id,
+        actor_role=actor.role,
     )
     return PromotionResult(action="enqueued", op_id=op_id, thread_id=thread_id)
 
@@ -454,6 +457,7 @@ def share_reply(
         destination_generation=int(thread["destination_generation"]),
         local_revision=int(reply.get("revision") or 1),
         actor_user_id=actor.user_id,
+        actor_role=actor.role,
     )
     return PromotionResult(action="enqueued", op_id=op_id, thread_id=thread_id)
 

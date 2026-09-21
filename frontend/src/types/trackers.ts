@@ -27,6 +27,10 @@ export const PROVIDER_ERROR_CLASSES = [
     "transient",
     "invalid_request",
     "capability_missing",
+    "paused",
+    "visibility",
+    "visibility_unknown",
+    "connector_missing",
 ] as const;
 export type ProviderErrorClass = (typeof PROVIDER_ERROR_CLASSES)[number];
 

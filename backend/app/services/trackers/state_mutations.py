@@ -270,6 +270,7 @@ def enqueue_set_state(
         destination_generation=int(thread["destination_generation"]),
         local_revision=local_revision,
         actor_user_id=actor.user_id,
+        actor_role=actor.role,
         expected_remote_state=observed_state,
         expected_remote_version=observed_version,
     )
