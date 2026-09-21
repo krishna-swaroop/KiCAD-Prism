@@ -16,7 +16,11 @@ from typing import Any, Callable, Iterator, Mapping
 from app.core.config import settings
 from app.core.roles import Role, normalize_role
 from app.services.trackers.contracts import IssuePatch, RemoteComment, RemoteIssue
-from app.services.trackers.create_executor import _issue_adapter, _load_execution_context
+from app.services.trackers.create_executor import (
+    _issue_adapter,
+    _load_execution_context,
+    _unwrap_wrapped_callable,
+)
 from app.services.trackers.drafts import (
     DraftAttribution,
     DraftRenderInput,
@@ -70,8 +74,8 @@ def mount_thread_executor() -> None:
     import app.services.trackers.composition as composition
     import app.services.trackers.create_executor as create_executor
 
-    _original_execute = create_executor.execute_claimed_op
-    _original_recover = composition.TrackerRuntime._recover_op
+    _original_execute = _unwrap_wrapped_callable(create_executor.execute_claimed_op)
+    _original_recover = _unwrap_wrapped_callable(composition.TrackerRuntime._recover_op)
 
     @wraps(_original_execute)
     def execute_claimed_op(claimed: Mapping[str, Any]) -> str | None:

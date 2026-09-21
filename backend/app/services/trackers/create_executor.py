@@ -198,6 +198,23 @@ def set_connect_factory(factory: Callable[[], Any] | None) -> None:
     _connect_factory = factory
 
 
+def _unwrap_wrapped_callable(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Return the innermost callable under nested @wraps executor layers."""
+
+    seen: set[int] = set()
+    current = fn
+    while getattr(current, "__wrapped__", None) is not None:
+        ident = id(current)
+        if ident in seen:
+            break
+        seen.add(ident)
+        inner = current.__wrapped__
+        if inner is current:
+            break
+        current = inner
+    return current
+
+
 @contextmanager
 def _default_connect() -> Iterator[Any]:
     if _connect_factory is not None:

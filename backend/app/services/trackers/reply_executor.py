@@ -28,6 +28,7 @@ from app.services.trackers.github_recovery import (
 )
 from app.services.trackers.markers import build_marker
 from app.services.trackers.op_store import EXECUTE_DISPATCH, RECOVERY_DISPATCH, OpStore
+from app.services.trackers.create_executor import _unwrap_wrapped_callable
 from app.services.trackers.promotion import DispatchPause, PublicationDenied, evaluate_dispatch
 from app.services.trackers.provenance import body_hash, stored_hash_matches
 from app.services.trackers.reply_mutations import REPLY_OPS, decode_reply_target
@@ -116,8 +117,8 @@ def mount_reply_executor() -> None:
     import app.services.trackers.composition as composition
     import app.services.trackers.create_executor as create_executor
 
-    _original_execute = create_executor.execute_claimed_op
-    _original_recover = composition.TrackerRuntime._recover_op
+    _original_execute = _unwrap_wrapped_callable(create_executor.execute_claimed_op)
+    _original_recover = _unwrap_wrapped_callable(composition.TrackerRuntime._recover_op)
 
     @wraps(_original_execute)
     def execute_claimed_op(claimed: Mapping[str, Any]) -> str | None:
