@@ -193,6 +193,8 @@ export interface CommentTrackerProjection {
     linkState: LinkState | null;
     provider?: string;
     externalId?: string;
+    /** Repo-scoped issue number for display; `externalId` is the immutable forge id. */
+    externalNumber?: string | null;
     externalUrl?: string | null;
     destination?: {
         connectorId: string;

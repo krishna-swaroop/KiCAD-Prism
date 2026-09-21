@@ -91,6 +91,7 @@ export function CommentCard({
     const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [historyOpen, setHistoryOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [conflict, setConflict] = useState(false);
     const isResolved = comment.status === "RESOLVED";
@@ -136,14 +137,16 @@ export function CommentCard({
         <dialog
             open
             className={cn(
-                "fixed z-[110] m-0 w-72 rounded-md border bg-background p-0 text-foreground shadow-lg",
+                // The card is a floating popover: cap it to the viewport and
+                // scroll inside so long threads never push actions off-screen.
+                "fixed z-[110] m-0 flex max-h-[min(80vh,640px)] w-80 flex-col overflow-hidden rounded-md border bg-background p-0 text-foreground shadow-lg",
                 isResolved && "opacity-80",
             )}
             style={style}
             aria-label="Comment details"
             data-tracker-discussion-host="canvas-card"
         >
-            <div className="flex items-start justify-between gap-2 border-b px-3 py-2">
+            <div className="flex shrink-0 items-start justify-between gap-2 border-b px-3 py-2">
                 <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{comment.author}</div>
                     <div className="text-[10px] text-muted-foreground">
@@ -162,15 +165,13 @@ export function CommentCard({
                 </Button>
             </div>
 
-            <div className="flex flex-wrap gap-1 px-3 pt-2">
+            <div className="min-h-0 flex-1 overflow-y-auto" data-testid="comment-card-scroll">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pt-2">
                 <Badge variant="secondary" className="h-5 text-[10px]">
                     {commentClassLabel(comment.commentClass ?? "general")}
                 </Badge>
                 <CommentSeverityBadge severity={comment.severity ?? "info"} />
-            </div>
-
-            <div className="px-3 pt-2">
-                <TrackedThreadChip tracker={tracker} variant="inline" />
+                <TrackedThreadChip tracker={tracker} variant="compact" />
             </div>
 
             {editing && onEdit ? (
@@ -207,8 +208,9 @@ export function CommentCard({
             )}
 
             {projectId && trackerSettings && (
-                <div className="border-t px-3 py-2">
+                <div className="px-3 pb-2">
                     <PromotionControl
+                        variant="compact"
                         projectId={projectId}
                         commentId={comment.id}
                         tracker={tracker}
@@ -222,7 +224,7 @@ export function CommentCard({
 
             {liveReplies.length > 0 && (
                 <div className="space-y-2 border-t bg-muted/30 px-3 py-2">
-                    {liveReplies.slice(-3).map((reply) => {
+                    {liveReplies.map((reply) => {
                         const replyCanEdit = actionAllowed(reply.permissions, "canEdit", false);
                         const replyCanDelete = actionAllowed(reply.permissions, "canDelete", false);
                         const discussionReply = reply as DiscussionReply;
@@ -250,7 +252,7 @@ export function CommentCard({
                                         <RemoteReply
                                             reply={discussionReply}
                                             permissions={comment.permissions}
-                                            className="border-0 bg-transparent p-0"
+                                            compact
                                         />
                                         {(replyCanEdit || replyCanDelete) && (
                                             <span className="mt-1 inline-flex gap-1">
@@ -304,13 +306,19 @@ export function CommentCard({
             )}
 
             {projectId && tracker.linkState && (
-                <div className="border-t px-3 py-2">
-                    <SyncHistory projectId={projectId} commentId={comment.id} />
-                </div>
+                <details
+                    className="border-t px-3 py-1.5 text-xs"
+                    data-testid="sync-history-disclosure"
+                    onToggle={(event) => setHistoryOpen((event.currentTarget as HTMLDetailsElement).open)}
+                >
+                    <summary className="cursor-pointer select-none text-muted-foreground">Sync history</summary>
+                    {historyOpen ? <SyncHistory projectId={projectId} commentId={comment.id} className="mt-2" /> : null}
+                </details>
             )}
+            </div>
 
             {showActions && (
-                <div className="flex items-center justify-end gap-1 border-t px-2 py-1.5">
+                <div className="flex shrink-0 items-center justify-end gap-1 border-t px-2 py-1.5">
                     {canReply && (
                         <Button
                             variant="ghost"

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { CommentTrackerProjection, LinkState } from "@/types/trackers";
 
-export type ThreadChipVariant = "inline" | "stacked";
+export type ThreadChipVariant = "inline" | "stacked" | "compact";
 
 export interface TrackedThreadChipProps {
     tracker: CommentTrackerProjection | null | undefined;
@@ -71,8 +71,8 @@ export function trackedThreadChipLabel(
     if (!tracker.linkState) return "Not linked";
 
     const base = LINK_LABELS[tracker.linkState] ?? tracker.linkState;
-    if (tracker.linkState === "linked" && tracker.externalId) {
-        return `Linked to ${providerLabel} #${tracker.externalId}`;
+    if (tracker.linkState === "linked" && (tracker.externalNumber || tracker.externalId)) {
+        return `Linked to ${providerLabel} #${tracker.externalNumber ?? tracker.externalId}`;
     }
     return base;
 }
@@ -116,12 +116,104 @@ export function pausedReasonNotice(pausedReason?: string | null): string | null 
     return `Sync paused: ${pausedReason.replace(/_/g, " ")}`;
 }
 
+/** Short status suffix for the compact chip; empty when everything is nominal. */
+export function compactStatusLabel(tracker: CommentTrackerProjection | null | undefined): string | null {
+    if (!tracker?.linkState) return null;
+    if (tracker.linkState !== "linked") return LINK_LABELS[tracker.linkState] ?? tracker.linkState;
+    const pending = pendingIntentLabel(tracker.pendingIntent);
+    if (pending) return pending.replace(/^Pending /, "pending ");
+    const sync = tracker.syncState ?? "";
+    if (sync === "pending" || sync === "sent") return "syncing";
+    if (sync === "quarantine" || sync === "failed") return "sync failed";
+    if (tracker.remoteState && tracker.remoteState !== "open") return tracker.remoteState;
+    return null;
+}
+
+function CompactThreadChip({
+    tracker,
+    providerLabel,
+    className,
+}: {
+    tracker: CommentTrackerProjection | null | undefined;
+    providerLabel: string;
+    className?: string;
+}) {
+    const notPromotable = notPromotableLabel(tracker?.notPromotableReason);
+    const status = compactStatusLabel(tracker);
+    const paused = pausedReasonNotice(tracker?.pausedReason);
+    const authority = bodyAuthorityNotice(tracker?.bodyAuthority);
+    const number = tracker?.externalNumber ?? tracker?.externalId;
+
+    return (
+        <div
+            className={cn("flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs", className)}
+            data-tracker-chip
+            data-link-state={tracker?.linkState ?? "none"}
+            data-sync-state={tracker?.syncState ?? "none"}
+            data-pending-intent={tracker?.pendingIntent ?? ""}
+        >
+            {tracker?.linkState && number ? (
+                <a
+                    href={tracker.externalUrl ?? undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex max-w-full items-center gap-1 rounded-sm border border-success/40 bg-success/10 px-1.5 py-0.5 font-medium text-foreground hover:underline"
+                    data-testid="thread-link-chip"
+                    aria-label={`Linked to ${providerLabel} #${number}`}
+                >
+                    <Link2 className="h-3 w-3" aria-hidden="true" />
+                    {providerLabel} #{number}
+                    <ExternalLink className="h-3 w-3 opacity-60" aria-hidden="true" />
+                </a>
+            ) : (
+                <span
+                    className="text-muted-foreground"
+                    data-testid="thread-link-chip"
+                    title={notPromotable ?? undefined}
+                >
+                    {tracker?.linkState
+                        ? LINK_LABELS[tracker.linkState]
+                        : tracker?.notPromotableReason === "unpinned_anchor"
+                          ? "Unpinned · not promotable"
+                          : notPromotable ?? "Not linked"}
+                </span>
+            )}
+            {status ? (
+                <span
+                    className={cn(
+                        "text-muted-foreground",
+                        (status === "sync failed" || status === "Inaccessible") && "text-destructive",
+                    )}
+                    data-testid="thread-sync-chip"
+                >
+                    {status}
+                </span>
+            ) : null}
+            {paused ? (
+                <p className="flex basis-full items-start gap-1 text-destructive" role="alert" data-testid="paused-reason">
+                    <Unlink className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                    {paused}
+                </p>
+            ) : null}
+            {authority ? (
+                <p className="flex basis-full items-start gap-1 text-warning" role="note" data-testid="body-authority-note">
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                    {authority}
+                </p>
+            ) : null}
+        </div>
+    );
+}
+
 export function TrackedThreadChip({
     tracker,
     providerLabel = "GitHub",
     variant = "inline",
     className,
 }: TrackedThreadChipProps) {
+    if (variant === "compact") {
+        return <CompactThreadChip tracker={tracker} providerLabel={providerLabel} className={className} />;
+    }
     const label = trackedThreadChipLabel(tracker, providerLabel);
     const pending = pendingIntentLabel(tracker?.pendingIntent);
     const remote = remoteStateLabel(tracker?.remoteState, tracker?.pendingIntent);

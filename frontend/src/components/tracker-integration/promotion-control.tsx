@@ -71,6 +71,12 @@ export interface PromotionControlProps {
     settings: Pick<ProjectTrackerSettings, "destination" | "acknowledgement" | "promoteMinRole">;
     /** When true the thread would auto-promote under current policy (disclosure only). */
     autoEligible?: boolean;
+    /**
+     * `compact` renders only the actions that apply right now (a floating card
+     * has no room for disabled buttons) and folds the destination into one line
+     * plus the confirm dialog.
+     */
+    variant?: "full" | "compact";
     className?: string;
     onTrackerChange?: (tracker: CommentTrackerProjection) => void;
 }
@@ -114,9 +120,11 @@ export function PromotionControl({
     permissions,
     settings,
     autoEligible = false,
+    variant = "full",
     className,
     onTrackerChange,
 }: PromotionControlProps) {
+    const compact = variant === "compact";
     const [busy, setBusy] = useState<"promote" | "retry" | "unlink" | null>(null);
     const [confirmPromote, setConfirmPromote] = useState(false);
     const [confirmUnlink, setConfirmUnlink] = useState(false);
@@ -182,10 +190,18 @@ export function PromotionControl({
     }, [commentId, onTrackerChange, projectId]);
 
     const showDestination = canPromote || canRepromote || autoEligible;
+    const allowedRoles: Array<"viewer" | "designer" | "admin"> =
+        settings.promoteMinRole === "viewer" ? ["viewer", "designer", "admin"] : ["designer", "admin"];
+    // In the compact card a viewer still sees a (disabled) Promote with the
+    // role hint on an unlinked thread; linked threads only show what applies.
+    const showPromote = !compact || canPromote || canRepromote || (!tracker?.linkState && !tracker?.notPromotableReason);
+    const showRetry = !compact || canRetry;
+    const showUnlink = !compact || canUnlink;
+    const destinationPath = settings.destination?.containerPath ?? "";
 
     return (
         <div className={className} data-tracker-promotion>
-            {showDestination ? (
+            {showDestination && !compact ? (
                 <DestinationDisclosure
                     variant="compact"
                     destination={settings.destination}
@@ -194,7 +210,15 @@ export function PromotionControl({
                 />
             ) : null}
 
-            {autoEligible && !tracker?.linkState ? (
+            {showDestination && compact && !tracker?.linkState ? (
+                <p className="mb-1.5 truncate text-xs text-muted-foreground" data-testid="destination-line">
+                    {autoEligible ? "Auto-promotes to " : "Promotes to "}
+                    <span className="font-medium text-foreground">{destinationPath}</span>
+                    {settings.destination?.visibility === "public" ? " (public)" : ""}
+                </p>
+            ) : null}
+
+            {autoEligible && !tracker?.linkState && !compact ? (
                 <p className="mb-2 text-xs text-muted-foreground" data-testid="auto-promote-disclosure">
                     This comment meets auto-promotion rules and will publish to the destination above when allowed.
                 </p>
@@ -202,77 +226,78 @@ export function PromotionControl({
 
             {deniedReason && !permissions?.canPublish ? (
                 <p className="mb-2 text-xs text-muted-foreground" role="note" data-testid="publication-denied-note">
-                    {deniedReason} Local comment actions remain available.
+                    {deniedReason}{compact ? "" : " Local comment actions remain available."}
                 </p>
             ) : null}
 
-            <div className="flex flex-wrap items-center gap-2">
-                <PermissionHint
-                    blocked={!canPromote && !canRepromote && Boolean(promoteLabel)}
-                    action="publish comments to the tracker"
-                    allowedRoles={settings.promoteMinRole === "viewer" ? ["viewer", "designer", "admin"] : ["designer", "admin"]}
-                >
-                    <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        disabled={(!canPromote && !canRepromote) || busy !== null || Boolean(tracker?.notPromotableReason)}
-                        onClick={() => setConfirmPromote(true)}
-                        data-testid="promote-button"
-                        aria-label={promoteLabel}
+            <div className="flex flex-wrap items-center gap-1.5">
+                {showPromote ? (
+                    <PermissionHint
+                        blocked={!canPromote && !canRepromote && Boolean(promoteLabel)}
+                        action="publish comments to the tracker"
+                        allowedRoles={allowedRoles}
                     >
-                        {busy === "promote" ? (
-                            <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : (
-                            <Upload className="mr-1 h-4 w-4" aria-hidden="true" />
-                        )}
-                        {promoteLabel}
-                    </Button>
-                </PermissionHint>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className={compact ? "h-7 px-2 text-xs" : undefined}
+                            disabled={(!canPromote && !canRepromote) || busy !== null || Boolean(tracker?.notPromotableReason)}
+                            onClick={() => setConfirmPromote(true)}
+                            data-testid="promote-button"
+                            aria-label={promoteLabel}
+                        >
+                            {busy === "promote" ? (
+                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            ) : (
+                                <Upload className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                            )}
+                            {promoteLabel}
+                        </Button>
+                    </PermissionHint>
+                ) : null}
 
-                <PermissionHint
-                    blocked={!canRetry}
-                    action="retry tracker sync"
-                    allowedRoles={settings.promoteMinRole === "viewer" ? ["viewer", "designer", "admin"] : ["designer", "admin"]}
-                >
-                    <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={!canRetry || busy !== null}
-                        onClick={() => void runRetry()}
-                        data-testid="retry-sync-button"
-                        aria-label="Retry sync"
-                    >
-                        {busy === "retry" ? (
-                            <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : (
-                            <RefreshCw className="mr-1 h-4 w-4" aria-hidden="true" />
-                        )}
-                        Retry sync
-                    </Button>
-                </PermissionHint>
+                {showRetry ? (
+                    <PermissionHint blocked={!canRetry} action="retry tracker sync" allowedRoles={allowedRoles}>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className={compact ? "h-7 px-2 text-xs" : undefined}
+                            disabled={!canRetry || busy !== null}
+                            onClick={() => void runRetry()}
+                            data-testid="retry-sync-button"
+                            aria-label="Retry sync"
+                        >
+                            {busy === "retry" ? (
+                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            ) : (
+                                <RefreshCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                            )}
+                            Retry sync
+                        </Button>
+                    </PermissionHint>
+                ) : null}
 
-                <PermissionHint
-                    blocked={!canUnlink}
-                    action="unlink this thread from the tracker"
-                    allowedRoles={settings.promoteMinRole === "viewer" ? ["viewer", "designer", "admin"] : ["designer", "admin"]}
-                >
-                    <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={!canUnlink || busy !== null}
-                        onClick={() => setConfirmUnlink(true)}
-                        data-testid="unlink-thread-button"
-                        aria-label="Unlink from tracker"
-                    >
-                        {busy === "unlink" ? (
-                            <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : null}
-                        Unlink
-                    </Button>
-                </PermissionHint>
+                {showUnlink ? (
+                    <PermissionHint blocked={!canUnlink} action="unlink this thread from the tracker" allowedRoles={allowedRoles}>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant={compact ? "ghost" : "outline"}
+                            className={compact ? "h-7 px-2 text-xs text-muted-foreground" : undefined}
+                            disabled={!canUnlink || busy !== null}
+                            onClick={() => setConfirmUnlink(true)}
+                            data-testid="unlink-thread-button"
+                            aria-label="Unlink from tracker"
+                        >
+                            {busy === "unlink" ? (
+                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            ) : null}
+                            Unlink
+                        </Button>
+                    </PermissionHint>
+                ) : null}
             </div>
 
             {error ? (
@@ -287,8 +312,10 @@ export function PromotionControl({
                 title={canRepromote ? "Promote again on forge" : "Promote to tracker"}
                 description={
                     canRepromote
-                        ? "Creates a new issue with lineage to the previous link. The deleted issue is not reopened."
-                        : "Publishes this thread to the destination shown above. Review visibility and policy alerts before continuing."
+                        ? `Creates a new issue in ${destinationPath} with lineage to the previous link. The deleted issue is not reopened.`
+                        : `Publishes this thread as an issue in ${destinationPath}${
+                              settings.destination?.visibility === "public" ? " (a public repository)" : ""
+                          }. Review visibility and policy alerts before continuing.`
                 }
                 confirmLabel={promoteLabel}
                 onConfirm={() => void runPromote()}
