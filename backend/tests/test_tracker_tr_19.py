@@ -354,6 +354,26 @@ class ConnectorAdminApiTests(unittest.TestCase):
         self.assertNotIn(INSTALLATION_MATERIAL, dumped)
         self.assertNotIn("privateKey", dumped)
 
+    def test_health_route_reports_worker_checkpoints(self) -> None:  # TR-46 settings card showed "Never"
+        self._create()
+        from app.services.trackers.inbox_store import apply_schema as apply_inbox_schema
+
+        apply_inbox_schema(self.conn)
+        self.conn.execute(
+            """
+            INSERT INTO sync_checkpoints (kind, scope_key, cursor, last_success_at, next_run_at)
+            VALUES ('poll', 'cn_gh1:987654321', '{"since": "2026-09-21T14:01:36Z"}'::jsonb,
+                    '2026-09-21T14:02:05Z', '2026-09-21T14:17:05Z'),
+                   ('sweep', 'cn_gh1:987654321', '{}'::jsonb, '2026-09-21T14:03:05Z', '2026-09-21T15:03:05Z')
+            """
+        )
+        self.conn.commit()
+        health = run(connectors_api.connector_health("cn_gh1", self.admin))
+        self.assertEqual(health["lastPollAt"], "2026-09-21T14:02:05Z")
+        self.assertEqual(health["lastSweepAt"], "2026-09-21T14:03:05Z")
+        self.assertIsNone(health["lastWebhookAt"])
+        self.assertFalse(health["degraded"])
+
     def test_health_counts_sync_ops_and_marks_degraded(self) -> None:
         self._create()
         self.conn.execute(

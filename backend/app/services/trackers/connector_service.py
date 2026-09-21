@@ -112,31 +112,22 @@ class ConnectorService:
             return self._public(row, conn)
 
     def health(self, connector_id: str) -> dict[str, Any]:
-        """Secret-free ConnectorHealth from live connector state and sync_ops counts."""
+        """Secret-free ConnectorHealth: op counts plus worker checkpoints (TR-34).
+
+        The admin route used to answer from op counts alone, so the settings
+        card showed "Never" for polls that had been running for hours (TR-46).
+        """
+
+        from app.services.trackers.health import aggregate_connector_health
 
         with self.connection() as conn:
-            row = self._require(conn, connector_id)
-            metrics = self._sync_op_metrics(conn, connector_id)
-            paused_reason = str(row.get("paused_reason") or "")
-            quarantined = int(metrics["quarantinedOps"])
-            failed = int(metrics["failedOps"])
-            degraded = quarantined > 0 or failed > 0 or paused_reason == "auth_lost"
-            return {
-                "connectorId": connector_id,
-                "paused": bool(row.get("paused")),
-                "lastWebhookAt": None,
-                "lastPollAt": None,
-                "lastSweepAt": None,
-                "pendingOps": metrics["pendingOps"],
-                "sentOps": metrics["sentOps"],
-                "quarantinedOps": quarantined,
-                "failedOps": failed,
-                "oldestPendingOpAge": metrics["oldestPendingOpAge"],
-                "oldestUnappliedHintAge": None,
-                "rateLimitResumeAt": None,
-                "degraded": degraded,
-                "lastError": None,
-            }
+            self._require(conn, connector_id)
+            return aggregate_connector_health(
+                conn,
+                connector_id,
+                comments_schema=self.comments_schema,
+                workspace_schema=self.workspace_schema,
+            )
 
     def _sync_op_metrics(self, conn: Any, connector_id: str) -> dict[str, Any]:
         ops = _qual(self.comments_schema, "sync_ops")
