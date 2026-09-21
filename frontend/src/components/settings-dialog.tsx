@@ -29,6 +29,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TrackerConnector } from "@/types/trackers";
 
@@ -328,8 +329,8 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
             )}
 
             <Sheet open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
-                <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl" data-testid="tracker-configure-sheet">
-                    <SheetHeader className="border-b px-6 py-4 text-left">
+                <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl" data-testid="tracker-configure-sheet">
+                    <SheetHeader className="shrink-0 border-b px-6 py-4 text-left">
                         <SheetTitle>
                             {editing === "new" ? "Connect GitHub" : `Configure ${editingConnector?.displayName ?? "connection"}`}
                         </SheetTitle>
@@ -339,16 +340,18 @@ function TrackerConnectorSettings({ isAdmin }: { isAdmin: boolean }) {
                                 : "Rotate credentials, set the webhook secret, or enable member sign-in."}
                         </SheetDescription>
                     </SheetHeader>
-                    {editing !== null ? (
-                        <ConnectorSettings
-                            key={editing}
-                            className="border-0 ring-0"
-                            connectorId={editing === "new" ? null : editing}
-                            isAdmin={isAdmin}
-                            prismOrigin={typeof window !== "undefined" ? window.location.origin : undefined}
-                            onConnectorChange={handleConnectorChange}
-                        />
-                    ) : null}
+                    <ScrollArea className="min-h-0 flex-1" data-testid="tracker-configure-scroll">
+                        {editing !== null ? (
+                            <ConnectorSettings
+                                key={editing}
+                                className="border-0 ring-0"
+                                connectorId={editing === "new" ? null : editing}
+                                isAdmin={isAdmin}
+                                prismOrigin={typeof window !== "undefined" ? window.location.origin : undefined}
+                                onConnectorChange={handleConnectorChange}
+                            />
+                        ) : null}
+                    </ScrollArea>
                 </SheetContent>
             </Sheet>
 

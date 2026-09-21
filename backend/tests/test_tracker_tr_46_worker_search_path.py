@@ -364,3 +364,55 @@ class RetryCeilingTests(unittest.TestCase):
         self.assertEqual(calls[0][0], "fail")
         self.assertFalse(calls[0][1]["retryable"])
         self.assertIn("Gave up after", calls[0][1]["message"])
+
+
+class WebhookHintDispatchTests(unittest.TestCase):
+    """Webhook hints must get a dispatch job of their own from the worker's
+    scheduling loop, not wait for an unrelated outbound op or the next poll."""
+
+    def test_worker_mounts_the_tracker_composition(self) -> None:
+        from app import prism_worker
+        from app.services.trackers import scheduler
+        from app.services.trackers.composition import reset_tracker_runtime
+
+        reset_tracker_runtime()
+        scheduler.mount_hints_applier(False)
+        worker = prism_worker.PrismWorker.__new__(prism_worker.PrismWorker)
+        worker.worker_pool = "prism"
+        worker.mount_tracker_composition()
+        self.assertTrue(scheduler.hints_applier_mounted())
+        self.assertTrue(scheduler.hint_dispatch_enabled())
+
+    def test_membership_hints_are_ignored_without_a_fetch(self) -> None:
+        from app.services.trackers.inbound import CallableFetcher, fetch_then_apply_hint
+
+        finished: list[tuple[str, str]] = []
+
+        class Inbox:
+            def finish_hint(self, hint_id, fence, *, state):  # noqa: ANN001
+                finished.append((hint_id, state))
+                return {}
+
+        def boom(*_args):  # noqa: ANN002
+            raise AssertionError("membership hints must not fetch remote state")
+
+        for kind in ("installation", "repository"):
+            hint = {
+                "id": f"hint_{kind}",
+                "connector_id": "cn_a",
+                "remote_container_id": "163436274",
+                "external_id": "163436274",
+                "object_kind": kind,
+                "event": "new_permissions_accepted",
+                "fence": 1,
+            }
+            result = fetch_then_apply_hint(
+                None,
+                hint,
+                fetcher=CallableFetcher(issue=boom, comment=boom),
+                inbox=Inbox(),  # type: ignore[arg-type]
+                ops=object(),  # type: ignore[arg-type]
+                store=object(),  # type: ignore[arg-type]
+            )
+            self.assertEqual(result.outcome, "ignored_membership")
+        self.assertEqual(finished, [("hint_installation", "ignored"), ("hint_repository", "ignored")])

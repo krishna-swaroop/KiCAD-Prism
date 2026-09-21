@@ -369,7 +369,7 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
         with self.assertRaises(JobCancelled):
             run_tracker_dispatch_job(context)
 
-    def test_hint_only_destinations_skip_dispatch_until_tr_26(self) -> None:
+    def test_hint_only_destinations_dispatch_once_applier_mounted(self) -> None:
         self.store.upsert_connector(
             connector_id="cn_gh1", provider="github", instance_kind="github.com"
         )
@@ -396,7 +396,10 @@ class TrackerSchedulerPostgresTests(unittest.TestCase):
             workspace_schema=self.schema,
             force=True,
         )
-        self.assertEqual(scheduled, [])
+        self.assertEqual(
+            [(row["kind"], row["payload"]["connectorId"], row["payload"]["remoteContainerId"]) for row in scheduled],
+            [(DISPATCH_KIND, "cn_gh1", "111")],
+        )
 
     def test_h2_sent_is_durable_before_executor_io(self) -> None:
         self._seed()

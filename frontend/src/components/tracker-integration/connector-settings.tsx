@@ -485,7 +485,7 @@ export function ConnectorSettings({
                             onChange={(event) =>
                                 setCredentials((prev) => ({ ...prev, privateKey: event.target.value }))
                             }
-                            placeholder={stored ? "Leave blank to keep stored PEM" : "-----BEGIN RSA PRIVATE KEY-----"}
+                            placeholder={stored ? "Leave blank to keep stored PEM" : "Paste the contents of the downloaded .pem file"}
                             className="min-h-24 font-mono text-[11px]"
                             autoComplete="off"
                             spellCheck={false}

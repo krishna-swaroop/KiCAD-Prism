@@ -49,6 +49,9 @@ class InboundFetcher(Protocol):
         ...
 
 
+MEMBERSHIP_HINT_KINDS = frozenset({"installation", "repository"})
+
+
 @dataclass
 class ApplyResult:
     hint_id: str
@@ -603,6 +606,15 @@ def fetch_then_apply_hint(
     external_comment_id = str(
         hint.get("external_comment_id") or hint.get("externalCommentId") or external_id
     )
+
+    if object_kind in MEMBERSHIP_HINT_KINDS:
+        # Installation and repository-membership notices carry no thread
+        # data; the sweeper re-observes destinations on its own cadence.
+        detail = {"reason": "membership_event", "event": str(hint.get("event") or "")}
+        if finish:
+            _finish_hint(inbox, hint, state="ignored", detail=detail)
+        return ApplyResult(hint_id, "ignored_membership", detail)
+
     ops_before = _sync_op_count(conn)
 
     if object_kind == "comment":

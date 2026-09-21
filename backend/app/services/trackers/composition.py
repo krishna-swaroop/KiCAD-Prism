@@ -41,7 +41,6 @@ _runtime: "TrackerRuntime | None" = None
 _outbound_mounted = False
 _EXECUTE_BY_OP: MutableMapping[str, DispatchExecutor] = {}
 _RECOVER_BY_OP: MutableMapping[str, RecoverExecutor] = {}
-_original_hint_dispatch: Callable[[], bool] | None = None
 _original_dispatch_job: Callable[..., Any] | None = None
 _jobs_wired = False
 
@@ -97,18 +96,15 @@ def _register_default_outbound_handlers() -> None:
 def _wire_jobs_dispatch() -> None:
     """Enable hint-aware dispatch job body once. Does not rebind ``jobs._executor``."""
 
-    global _jobs_wired, _original_hint_dispatch, _original_dispatch_job
+    global _jobs_wired, _original_dispatch_job
     if _jobs_wired:
         return
 
     import app.services.trackers.jobs as jobs
-    import app.services.trackers.scheduler as scheduler
 
-    _original_hint_dispatch = scheduler.hint_dispatch_enabled
     _original_dispatch_job = jobs.run_tracker_dispatch_job
 
     mount_hints_applier(True)
-    scheduler.hint_dispatch_enabled = lambda: True
 
     def _apply_destination_hints(conn, connector_id: str, container_id: str):  # noqa: ANN001
         from app.services.job_runtime import RetryableJobError
@@ -190,17 +186,13 @@ def _wire_jobs_dispatch() -> None:
 
 
 def _unwire_jobs_dispatch() -> None:
-    global _jobs_wired, _original_hint_dispatch, _original_dispatch_job
+    global _jobs_wired, _original_dispatch_job
     if not _jobs_wired:
         return
     import app.services.trackers.jobs as jobs
-    import app.services.trackers.scheduler as scheduler
 
-    if _original_hint_dispatch is not None:
-        scheduler.hint_dispatch_enabled = _original_hint_dispatch
     if _original_dispatch_job is not None:
         jobs.run_tracker_dispatch_job = _original_dispatch_job
-    _original_hint_dispatch = None
     _original_dispatch_job = None
     _jobs_wired = False
 
