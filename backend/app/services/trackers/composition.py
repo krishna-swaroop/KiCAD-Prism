@@ -354,12 +354,21 @@ class TrackerRuntime:
             get_comment=bundle.comment.get_comment,
             destination_generation=ctx.destination_generation,
         )
+        applied = 0
+        if outcome.reply_hints_enqueued > 0:
+            applied = self.apply_pending_hints(
+                conn,
+                connector_id=connector_id,
+                remote_container_id=remote_container_id,
+            )
         return JobResult(
             message="Sweep complete" if outcome.complete else "Sweep interrupted",
             details={
                 "threadsChecked": outcome.threads_checked,
                 "repliesChecked": outcome.replies_checked,
                 "repliesTombstoned": outcome.replies_tombstoned,
+                "replyHintsEnqueued": outcome.reply_hints_enqueued,
+                "hintsApplied": applied,
                 "issuesMarkedDeleted": outcome.issues_marked_deleted,
                 "issuesMarkedInaccessible": outcome.issues_marked_inaccessible,
                 "issuesRecovered": outcome.issues_recovered,

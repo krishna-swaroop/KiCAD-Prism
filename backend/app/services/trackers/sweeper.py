@@ -24,13 +24,21 @@ from app.services.trackers.contracts import (
     Moved,
     NotModified,
     PageCursor,
+    RemoteChange,
     RemoteComment,
     RemoteIssue,
     UncertainAbsence,
 )
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.executor_support import pause_connector_auth_lost
-from app.services.trackers.github_updates import destination_for, format_iso8601, parse_iso8601
+from app.services.trackers.github_updates import (
+    change_delivery_id,
+    change_to_hint,
+    destination_for,
+    format_iso8601,
+    parse_iso8601,
+)
+from app.services.trackers.inbox_store import InboxStore
 from app.services.trackers.link_lifecycle import apply_moved_issue
 from app.services.trackers.provenance import resolve_editor
 from app.services.trackers.scheduler import sweep_interval_seconds
@@ -56,6 +64,7 @@ class SweepOutcome:
     threads_checked: int = 0
     replies_checked: int = 0
     replies_tombstoned: int = 0
+    reply_hints_enqueued: int = 0
     issues_marked_inaccessible: int = 0
     issues_marked_deleted: int = 0
     issues_recovered: int = 0
@@ -355,6 +364,17 @@ def _tombstone_missing_reply(conn: Any, link: Mapping[str, Any]) -> None:
     )
 
 
+def _comment_version_key(comment: RemoteComment) -> str:
+    """Stable per-version key for poll-style comment hints (edits produce a new key)."""
+
+    version = getattr(comment, "version", None)
+    for attr in ("updatedAt", "etag", "revision"):
+        value = getattr(version, attr, None) if version is not None else None
+        if value:
+            return str(value)
+    return str(getattr(comment, "createdAt", None) or "")
+
+
 def _verify_replies(
     conn: Any,
     *,
@@ -365,10 +385,11 @@ def _verify_replies(
     get_comment: GetCommentFn,
     start_page: str | None,
     allow_partial: bool,
-) -> tuple[int, int, str | None, bool]:
-    """Return replies_checked, tombstoned, resume_page, listing_complete."""
+) -> tuple[int, int, str | None, bool, int]:
+    """Return replies_checked, tombstoned, resume_page, listing_complete, hints_enqueued."""
 
     remote_ids: set[str] = set()
+    remote_comments: list[RemoteComment] = []
     complete = True
     next_page = start_page
     while True:
@@ -379,6 +400,7 @@ def _verify_replies(
         )
         for comment in page:
             remote_ids.add(str(comment.externalCommentId))
+            remote_comments.append(comment)
         if next_cursor is None or next_cursor.exhausted:
             break
         if not next_cursor.value:
@@ -388,8 +410,36 @@ def _verify_replies(
 
     if not complete:
         if allow_partial:
-            return 0, 0, _encode_page_cursor(str(thread["id"]), next_page), False
-        return 0, 0, None, False
+            return 0, 0, _encode_page_cursor(str(thread["id"]), next_page), False, 0
+        return 0, 0, None, False, 0
+
+    # Polling-only deployments (webhooks blocked, or the App not subscribed to
+    # issue_comment) have no other way to learn about forge replies and edits.
+    # Hand every listed comment to the inbound reducer as a poll-style hint;
+    # the delivery id is keyed by comment id + version, so repeat sweeps and
+    # already-mirrored Prism replies dedupe, and echo detection runs there.
+    hints_enqueued = 0
+    if remote_comments:
+        inbox = InboxStore(conn)
+        for comment in remote_comments:
+            change = RemoteChange(
+                objectKind="comment",
+                remoteContainerId=dest.remoteContainerId,
+                externalId=str(thread.get("external_id") or ""),
+                observedUpdatedAt=_comment_version_key(comment),
+                externalCommentId=str(comment.externalCommentId),
+            )
+            result = inbox.enqueue(
+                connector_id=dest.connectorId,
+                delivery_id=change_delivery_id(
+                    connector_id=dest.connectorId,
+                    container_id=dest.remoteContainerId,
+                    change=change,
+                ),
+                hints=[change_to_hint(change, connector_id=dest.connectorId)],
+            )
+            if result.get("created"):
+                hints_enqueued += 1
 
     checked = 0
     tombstoned = 0
@@ -408,7 +458,7 @@ def _verify_replies(
         if isinstance(fetched, (GoneConfirmed, UncertainAbsence)):
             _tombstone_missing_reply(conn, link)
             tombstoned += 1
-    return checked, tombstoned, None, True
+    return checked, tombstoned, None, True, hints_enqueued
 
 
 def sweep_destination_links(
@@ -573,7 +623,7 @@ def sweep_destination_links(
                 continue
 
             start_page = resume_comment_page if resume_thread_id == thread_id else None
-            checked, tombstoned, resume_page, listing_complete = _verify_replies(
+            checked, tombstoned, resume_page, listing_complete, hints_enqueued = _verify_replies(
                 conn,
                 thread=thread,
                 dest=dest,
@@ -585,6 +635,7 @@ def sweep_destination_links(
             )
             outcome.replies_checked += checked
             outcome.replies_tombstoned += tombstoned
+            outcome.reply_hints_enqueued += hints_enqueued
 
             if resume_page:
                 thread_resume, comment_page = _decode_page_cursor(resume_page)

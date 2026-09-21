@@ -295,6 +295,43 @@ class SweepPostgresTests(unittest.TestCase):
         self.assertEqual(outcome.replies_tombstoned, 0)
         self.assertIsNotNone(self._thread()["last_verified_at"])
 
+    def test_sweep_hands_forge_comments_to_the_inbox_for_polling_only_import(self) -> None:
+        """TR-46: with webhooks absent, a reply made on the forge must still reach Prism.
+
+        The sweep already lists every remote comment; each one becomes a poll-style
+        comment hint (deduped by comment id + version) for the inbound reducer.
+        """
+
+        self._seed_thread()
+        self.conn.commit()
+        comment = _remote_comment(body="reply typed on GitHub").model_copy(
+            update={"externalCommentId": "ext_new_1"}
+        )
+        self._queue_comment_pages([([comment], PageCursor(value="", exhausted=True))])
+        outcome = self._sweep()
+        self.conn.commit()
+        self.assertTrue(outcome.complete)
+        self.assertEqual(outcome.reply_hints_enqueued, 1)
+        hint = self.conn.execute(
+            "SELECT * FROM remote_hints WHERE external_comment_id = 'ext_new_1'"
+        ).fetchone()
+        self.assertIsNotNone(hint)
+        self.assertEqual(hint["object_kind"], "comment")
+        self.assertEqual(hint["external_id"], self._thread()["external_id"])
+        self.assertEqual(hint["state"], "pending")
+
+        # Same comment, same version: the next sweep is a no-op for the inbox.
+        self._queue_comment_pages([([comment], PageCursor(value="", exhausted=True))])
+        self.conn.execute("UPDATE sync_checkpoints SET next_run_at = NOW() WHERE kind = 'sweep'")
+        self.conn.commit()
+        outcome = self._sweep()
+        self.conn.commit()
+        self.assertEqual(outcome.reply_hints_enqueued, 0)
+        count = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM remote_hints WHERE external_comment_id = 'ext_new_1'"
+        ).fetchone()["n"]
+        self.assertEqual(count, 1)
+
     def test_f8_remote_reply_delete_tombstones_after_complete_listing(self) -> None:
         self._seed_thread()
         self._seed_reply()
