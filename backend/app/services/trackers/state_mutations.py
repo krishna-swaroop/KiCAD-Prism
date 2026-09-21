@@ -64,11 +64,20 @@ def versions_match(
     expected: Mapping[str, Any] | None,
     observed: RemoteVersion | Mapping[str, Any] | None,
 ) -> bool:
+    """Same remote version?  ``updatedAt`` is authoritative when both sides
+    carry it: GitHub ETags vary with the requesting identity and the response
+    representation, so two reads of an unchanged issue can disagree on ETag
+    alone (TR-46). ETag equality is only the fallback when a side lacks a
+    timestamp."""
+
     if not expected:
         return False
     left = version_payload(expected)
     right = version_payload(observed)
-    return left.get("updatedAt") == right.get("updatedAt") and left.get("etag") == right.get("etag")
+    left_at, right_at = left.get("updatedAt"), right.get("updatedAt")
+    if left_at and right_at:
+        return left_at == right_at
+    return bool(left.get("etag")) and left.get("etag") == right.get("etag")
 
 
 def observed_snapshot(thread: Mapping[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
@@ -132,8 +141,9 @@ def append_system_note(conn: Any, *, project_id: str, comment_id: str, content: 
     conn.execute(
         """
         INSERT INTO comment_replies (
-            id, comment_id, project_id, author, author_kind, origin, content, revision
-        ) VALUES (%s, %s, %s, %s, 'system', 'prism', %s, 1)
+            id, comment_id, project_id, author, author_kind, origin, content, revision,
+            timestamp, updated_at
+        ) VALUES (%s, %s, %s, %s, 'system', 'prism', %s, 1, NOW(), NOW())
         """,
         (reply_id, comment_id, project_id, "System", content),
     )
@@ -290,12 +300,27 @@ def analyze_state_events(
     *,
     bot_user_id: str | None,
     bot_login: str | None,
+    observed_updated_at: str | None = None,
 ) -> tuple[str, Optional[Editor], Optional[str]]:
-    """Order state events by list position (D1); timestamps are ignored."""
+    """Order state events by list position (D1); timestamps are not used to order.
+
+    ``observed_updated_at`` is the remote version the preflight just matched.
+    Human state events at or before it are already reflected locally (that is
+    what the local intent is answering), so only events after it can be the
+    race the postflight exists to catch. Without it, a Prism reopen of an issue
+    a human closed earlier would be "superseded" by that older close (TR-46).
+    """
 
     from app.services.trackers.provenance import actor_is_bot
 
     relevant = [event for event in events if str(getattr(event, "event", "") or "") in _STATE_EVENTS]
+    if observed_updated_at:
+        relevant = [
+            event
+            for event in relevant
+            if not str(getattr(event, "createdAt", "") or "")
+            or str(getattr(event, "createdAt", "")) > str(observed_updated_at)
+        ]
     if not relevant:
         return "confirmed", None, None
 

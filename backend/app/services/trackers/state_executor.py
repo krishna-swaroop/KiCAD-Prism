@@ -14,6 +14,7 @@ from app.services.trackers.state_mutations import (
     analyze_state_events,
     apply_observed_remote_state,
     append_system_note,
+    observed_snapshot,
     preflight_mismatch,
     remote_state_to_local_status,
     supersession_message,
@@ -81,6 +82,7 @@ def execute_set_state_op(op: Mapping[str, Any], conn: Any) -> None:
     if not isinstance(patched, RemoteIssue):
         raise ProviderError("transient", "Issue state patch did not return a readable issue")
 
+    _observed_state, observed_version = observed_snapshot(thread)
     postflight = _run_postflight(
         adapter,
         ctx.destination,
@@ -89,6 +91,7 @@ def execute_set_state_op(op: Mapping[str, Any], conn: Any) -> None:
         has_state_events=bool(caps.hasStateEvents),
         bot_user_id=str(ctx.connector.get("bot_forge_user_id") or ""),
         bot_login=str(ctx.connector.get("bot_login") or ""),
+        observed_updated_at=str((observed_version or {}).get("updatedAt") or "") or None,
     )
 
     if postflight.status == "human_precedes" and postflight.restore_state:
@@ -198,6 +201,7 @@ def _run_postflight(
     has_state_events: bool,
     bot_user_id: str,
     bot_login: str,
+    observed_updated_at: str | None = None,
 ) -> PostflightOutcome:
     if not has_state_events:
         return PostflightOutcome(status="unsupported", postflight="unsupported")
@@ -207,6 +211,7 @@ def _run_postflight(
         events,
         bot_user_id=bot_user_id or None,
         bot_login=bot_login or None,
+        observed_updated_at=observed_updated_at,
     )
     if outcome != "human_precedes" or human_state is None:
         return PostflightOutcome(status="confirmed", postflight="events")
