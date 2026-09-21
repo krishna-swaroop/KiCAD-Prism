@@ -213,7 +213,8 @@ def unlink_preserving_deletion_note(
     ops = OpStore(conn)
     superseded: list[str] = []
     for row in ops.list_thread(thread_id):
-        if str(row.get("state") or "") not in LIVE_STATES:
+        # R4-M1 / D2: only cancel pending work; leave sent/recovering to recovery.
+        if str(row.get("state") or "") != "pending":
             continue
         if str(row.get("op") or "") == "post_note":
             continue

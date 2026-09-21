@@ -20,6 +20,7 @@ from app.services.trackers.inbox_store import apply_schema as apply_inbox_schema
 from app.services.trackers.migrations import (
     cascade_comments_tracker_fks,
     migrate_comments_tracked_links,
+    migrate_tracked_threads_container_path,
     migrate_tracked_threads_external_number,
 )
 from app.services.trackers.op_store import apply_schema as apply_op_schema
@@ -100,6 +101,12 @@ def _m006_reply_sync_state(conn) -> None:
     )
 
 
+def _m007_tracked_threads_container_path(conn) -> None:
+    """Snapshot forge path on the thread for recovery after destination change (R4-M1)."""
+
+    migrate_tracked_threads_container_path(conn)
+
+
 def _m004_sync_ops_inbox_and_delete_cascade(conn) -> None:
     """Create durable sync/inbox tables and cascade tracker FKs on comment delete.
 
@@ -170,6 +177,7 @@ MIGRATIONS: List[Tuple[int, str, Callable[[object], None]]] = [
     (4, "sync_ops_inbox_and_delete_cascade", _m004_sync_ops_inbox_and_delete_cascade),
     (5, "tracked_threads_external_number", _m005_tracked_threads_external_number),
     (6, "reply_sync_state", _m006_reply_sync_state),
+    (7, "tracked_threads_container_path", _m007_tracked_threads_container_path),
 ]
 
 

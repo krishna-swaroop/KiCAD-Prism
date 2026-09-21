@@ -190,21 +190,24 @@ def _load_execution_context(conn: Any, op: Mapping[str, Any]) -> _ExecutionConte
     ).fetchone()
     if meta is None:
         raise ProviderError("invalid_request", "project tracker is missing")
+    # R4-M1: prefer the path snapshotted on the thread so recovery after a
+    # project destination change still targets the forge repo that owns the issue.
+    container_path = str(thread_row.get("container_path") or meta.get("container_path") or "")
     comment = _comment_dict_from_row(comment_row)
     destination = Destination(
         connectorId=str(thread_row["connector_id"]),
         containerKind=str(meta.get("container_kind") or "repo"),  # type: ignore[arg-type]
-        containerPath=str(meta.get("container_path") or ""),
+        containerPath=container_path,
         remoteContainerId=str(thread_row["remote_container_id"]),
-        generation=int(meta.get("destination_generation") or 1),
+        generation=int(thread_row.get("destination_generation") or meta.get("destination_generation") or 1),
         visibility=str(meta.get("visibility") or "unknown"),  # type: ignore[arg-type]
     )
     policy = {
         "connector_id": str(thread_row["connector_id"]),
         "remote_container_id": str(thread_row["remote_container_id"]),
-        "container_path": str(meta.get("container_path") or ""),
+        "container_path": container_path,
         "container_kind": str(meta.get("container_kind") or "repo"),
-        "destination_generation": int(meta.get("destination_generation") or 1),
+        "destination_generation": int(thread_row.get("destination_generation") or meta.get("destination_generation") or 1),
         "visibility": str(meta.get("visibility") or "unknown"),
         "promote_min_role": str(meta.get("promote_min_role") or "designer"),
         "connector_paused": bool(meta.get("connector_paused")),
@@ -217,6 +220,7 @@ def _load_execution_context(conn: Any, op: Mapping[str, Any]) -> _ExecutionConte
         "destination_generation": int(thread_row.get("destination_generation") or 1),
         "connector_id": str(thread_row["connector_id"]),
         "remote_container_id": str(thread_row["remote_container_id"]),
+        "container_path": container_path,
         "external_id": str(thread_row.get("external_id") or ""),
         "external_number": thread_row.get("external_number"),
         "external_url": thread_row.get("external_url"),
@@ -407,7 +411,8 @@ def _confirm_create_link(
             remote_state = %s,
             remote_version = %s::jsonb,
             pending_op_id = NULL,
-            last_verified_at = NOW()
+            last_verified_at = NOW(),
+            container_path = COALESCE(NULLIF(container_path, ''), %s)
         WHERE id = %s
         """,
         (
@@ -416,6 +421,7 @@ def _confirm_create_link(
             url,
             issue.state,
             json.dumps(dict(issue.version.model_dump())),
+            container_path or None,
             str(thread["id"]),
         ),
     )

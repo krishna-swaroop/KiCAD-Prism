@@ -180,6 +180,7 @@ def migrate_comments_tracked_links(conn: Any) -> None:
             destination_generation INTEGER NOT NULL,
             connector_id TEXT NOT NULL,
             remote_container_id TEXT NOT NULL,
+            container_path TEXT,
             external_id TEXT NOT NULL,
             external_number TEXT,
             external_url TEXT,
@@ -234,6 +235,39 @@ def migrate_tracked_threads_external_number(conn: Any) -> None:
         WHERE external_number IS NULL
           AND external_id IS NOT NULL
           AND external_id NOT IN ('', 'pending');
+        """,
+        prepare=False,
+    )
+
+
+def migrate_tracked_threads_container_path(conn: Any) -> None:
+    """Snapshot destination path on the thread so recovery survives project destination changes (R4-M1)."""
+
+    conn.execute(
+        "ALTER TABLE tracked_threads ADD COLUMN IF NOT EXISTS container_path TEXT",
+        prepare=False,
+    )
+    # Best-effort backfill when project_trackers is visible on the search_path
+    # (worker / disposable test schemas). Comments-only initialize leaves NULL;
+    # executors fall back to project_trackers until the next link write snapshots.
+    visible = conn.execute(
+        """
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_name = 'project_trackers'
+          AND table_schema = ANY (current_schemas(false))
+        LIMIT 1
+        """
+    ).fetchone()
+    if visible is None:
+        return
+    conn.execute(
+        """
+        UPDATE tracked_threads t
+        SET container_path = pt.container_path
+        FROM project_trackers pt
+        WHERE pt.id = t.project_tracker_id
+          AND (t.container_path IS NULL OR t.container_path = '')
         """,
         prepare=False,
     )
