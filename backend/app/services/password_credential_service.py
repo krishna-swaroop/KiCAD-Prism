@@ -35,6 +35,9 @@ def initialize_credential_store() -> None:
             return
         access_service.initialize_role_store()
         with database.connection() as connection:
+            # Uvicorn workers start together; serialize the DDL like the
+            # other schema owners do or two of them deadlock on the table.
+            connection.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("prism-schema",))
             connection.execute("CREATE SCHEMA IF NOT EXISTS workspace")
             connection.execute("SET search_path TO workspace, public")
             connection.execute(
