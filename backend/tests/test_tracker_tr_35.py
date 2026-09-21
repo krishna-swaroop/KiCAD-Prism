@@ -98,6 +98,8 @@ class RoutingContractTests(unittest.TestCase):
         self.assertIn("/api/projects/{project_id}/comments/{comment_id}/tracker", paths)
         self.assertIn("/api/projects/{project_id}/comments/{comment_id}/tracker/history", paths)
         self.assertIn("/api/projects/{project_id}/comments/{comment_id}/tracker/retry", paths)
+        self.assertIn("/api/projects/{project_id}/comments/{comment_id}/tracker/unlink", paths)
+        self.assertIn("/api/projects/{project_id}/comments/{comment_id}/tracker/repromote", paths)
 
     def test_f7_quiet_repo_fixture_owned_by_tr35(self) -> None:
         owned = [case["id"] for case in F7["cases"] if case.get("owner") == "TR-35"]

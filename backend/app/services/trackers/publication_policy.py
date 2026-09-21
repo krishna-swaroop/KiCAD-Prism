@@ -154,6 +154,16 @@ class PublicationPolicyService:
             )
             if connector_changed or container_changed:
                 generation = int((current or {}).get("destination_generation") or 0) + 1
+                if current is not None:
+                    from app.services.trackers.link_lifecycle import (
+                        pause_project_links_on_destination_removal,
+                    )
+
+                    pause_project_links_on_destination_removal(
+                        conn,
+                        project_id,
+                        reason="destination_removed",
+                    )
             observed = self.connector_service.observe_container(
                 connector_id,
                 container_kind=str(destination.get("containerKind") or "repo"),

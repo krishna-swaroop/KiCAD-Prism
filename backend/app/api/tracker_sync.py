@@ -14,7 +14,13 @@ from app.services import comment_permissions
 from app.services.comment_permissions import ActorIdentity, CommentAction, CommentPermissionError
 from app.services.comments_store_service import comments_store
 from app.services.trackers.health import aggregate_project_health
-from app.services.trackers.projections import list_thread_history, load_thread_status, retry_thread_sync
+from app.services.trackers.projections import (
+    list_thread_history,
+    load_thread_status,
+    repromote_thread_sync,
+    retry_thread_sync,
+    unlink_thread_sync,
+)
 from app.services.trackers.promotion import load_policy_row
 from app.services.trackers.publication_policy import DispatchPause, PublicationDenied
 
@@ -174,6 +180,86 @@ async def retry_comment_sync(
             except KeyError as exc:
                 raise HTTPException(status_code=404, detail="Comment not found") from exc
             return tracker
+
+    result = await _run(write)
+    if isinstance(result, JSONResponse):
+        return result
+    return result
+
+
+@router.post(
+    "/{project_id}/comments/{comment_id}/tracker/unlink",
+    dependencies=[Depends(require_comment_writer)],
+)
+async def unlink_comment_tracker(
+    project_id: str,
+    comment_id: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+) -> dict[str, Any]:
+    """Unlink a tracked thread while retaining lineage (TR-34)."""
+
+    def write() -> dict[str, Any]:
+        project = get_project_for_role_or_404(project_id, user.role)
+        actor = _actor(user)
+        promote_min_role = _promote_min_role(project.id)
+        with comments_store._connect() as conn:
+            with conn.transaction():
+                try:
+                    tracker = unlink_thread_sync(
+                        conn,
+                        project_id=project.id,
+                        comment_id=comment_id,
+                        actor=actor,
+                        promote_min_role=promote_min_role,
+                    )
+                except CommentPermissionError as exc:
+                    return _permission_response(exc)  # type: ignore[return-value]
+                except PublicationDenied as exc:
+                    return _publication_response(exc)  # type: ignore[return-value]
+                except KeyError as exc:
+                    raise HTTPException(status_code=404, detail="Comment not found") from exc
+                return tracker
+
+    result = await _run(write)
+    if isinstance(result, JSONResponse):
+        return result
+    return result
+
+
+@router.post(
+    "/{project_id}/comments/{comment_id}/tracker/repromote",
+    dependencies=[Depends(require_comment_writer)],
+)
+async def repromote_comment_tracker(
+    project_id: str,
+    comment_id: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+) -> dict[str, Any]:
+    """Promote again after confirmed remote deletion (TR-34 / F8)."""
+
+    def write() -> dict[str, Any]:
+        project = get_project_for_role_or_404(project_id, user.role)
+        actor = _actor(user)
+        promote_min_role = _promote_min_role(project.id)
+        with comments_store._connect() as conn:
+            with conn.transaction():
+                try:
+                    tracker = repromote_thread_sync(
+                        conn,
+                        project_id=project.id,
+                        comment_id=comment_id,
+                        actor=actor,
+                        promote_min_role=promote_min_role,
+                    )
+                except CommentPermissionError as exc:
+                    return _permission_response(exc)  # type: ignore[return-value]
+                except PublicationDenied as exc:
+                    return _publication_response(exc)  # type: ignore[return-value]
+                except DispatchPause as exc:
+                    return _dispatch_response(exc)  # type: ignore[return-value]
+                except KeyError as exc:
+                    raise HTTPException(status_code=404, detail="Comment not found") from exc
+                return tracker
 
     result = await _run(write)
     if isinstance(result, JSONResponse):

@@ -43,6 +43,8 @@ export {
     stripTrackerSecrets,
     testConnector,
     unlinkIdentity,
+    unlinkThread,
+    repromoteComment,
     updateConnector,
     updateProjectTracker,
 } from "@/lib/trackers-client";

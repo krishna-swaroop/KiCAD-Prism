@@ -16,7 +16,13 @@ import type { CommentPermissions } from "@/types/comments";
 import type { CommentTrackerProjection, ProjectTrackerSettings } from "@/types/trackers";
 
 import { DestinationDisclosure } from "./destination-disclosure";
-import { promoteComment, retryThreadSync, TrackerApiError } from "@/lib/trackers-client";
+import {
+    promoteComment,
+    repromoteComment,
+    retryThreadSync,
+    TrackerApiError,
+    unlinkThread,
+} from "@/lib/trackers-client";
 
 export function canRepromoteThread(
     tracker: CommentTrackerProjection | null | undefined,
@@ -24,6 +30,16 @@ export function canRepromoteThread(
 ): boolean {
     if (!permissions?.canPublish) return false;
     return tracker?.linkState === "deleted";
+}
+
+export function canUnlinkThread(
+    tracker: CommentTrackerProjection | null | undefined,
+    permissions?: CommentPermissions | null,
+): boolean {
+    if (!permissions?.canPublish) return false;
+    if (!tracker?.linkState) return false;
+    if (tracker.linkState === "deleted") return false;
+    return true;
 }
 
 export function promotionActionLabel(tracker: CommentTrackerProjection | null | undefined): string {
@@ -101,12 +117,14 @@ export function PromotionControl({
     className,
     onTrackerChange,
 }: PromotionControlProps) {
-    const [busy, setBusy] = useState<"promote" | "retry" | null>(null);
+    const [busy, setBusy] = useState<"promote" | "retry" | "unlink" | null>(null);
     const [confirmPromote, setConfirmPromote] = useState(false);
+    const [confirmUnlink, setConfirmUnlink] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const canPromote = canInitialPromote(tracker, permissions);
     const canRepromote = canRepromoteThread(tracker, permissions);
+    const canUnlink = canUnlinkThread(tracker, permissions);
     const canRetry = canRetrySync(tracker) && Boolean(permissions?.canPublish);
     const deniedReason = publicationDeniedReason(tracker, permissions, settings.promoteMinRole);
     const promoteLabel = promotionActionLabel(tracker);
@@ -115,7 +133,9 @@ export function PromotionControl({
         setBusy("promote");
         setError(null);
         try {
-            const projection = await promoteComment(projectId, commentId);
+            const projection = canRepromote
+                ? await repromoteComment(projectId, commentId)
+                : await promoteComment(projectId, commentId);
             onTrackerChange?.(projection);
             toast.success(canRepromote ? "Re-promotion queued" : "Promotion queued");
         } catch (reason) {
@@ -141,6 +161,23 @@ export function PromotionControl({
             toast.error(message);
         } finally {
             setBusy(null);
+        }
+    }, [commentId, onTrackerChange, projectId]);
+
+    const runUnlink = useCallback(async () => {
+        setBusy("unlink");
+        setError(null);
+        try {
+            const projection = await unlinkThread(projectId, commentId);
+            onTrackerChange?.(projection);
+            toast.success("Thread unlinked from tracker");
+        } catch (reason) {
+            const message = describePromotionError(reason, "Failed to unlink tracker thread");
+            setError(message);
+            toast.error(message);
+        } finally {
+            setBusy(null);
+            setConfirmUnlink(false);
         }
     }, [commentId, onTrackerChange, projectId]);
 
@@ -215,6 +252,27 @@ export function PromotionControl({
                         Retry sync
                     </Button>
                 </PermissionHint>
+
+                <PermissionHint
+                    blocked={!canUnlink}
+                    action="unlink this thread from the tracker"
+                    allowedRoles={settings.promoteMinRole === "viewer" ? ["viewer", "designer", "admin"] : ["designer", "admin"]}
+                >
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!canUnlink || busy !== null}
+                        onClick={() => setConfirmUnlink(true)}
+                        data-testid="unlink-thread-button"
+                        aria-label="Unlink from tracker"
+                    >
+                        {busy === "unlink" ? (
+                            <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : null}
+                        Unlink
+                    </Button>
+                </PermissionHint>
             </div>
 
             {error ? (
@@ -234,6 +292,15 @@ export function PromotionControl({
                 }
                 confirmLabel={promoteLabel}
                 onConfirm={() => void runPromote()}
+            />
+
+            <ConfirmDialog
+                open={confirmUnlink}
+                onOpenChange={setConfirmUnlink}
+                title="Unlink from tracker?"
+                description="Stops syncing this thread to the forge. History and lineage are kept; the remote issue is not deleted."
+                confirmLabel="Unlink"
+                onConfirm={() => void runUnlink()}
             />
         </div>
     );

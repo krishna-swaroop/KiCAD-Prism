@@ -95,6 +95,10 @@ export const TRACKER_ROUTES = {
         `/api/projects/${encodeURIComponent(projectId)}/comments/${encodeURIComponent(commentId)}/promote`,
     commentRetry: (projectId: string, commentId: string) =>
         `/api/projects/${encodeURIComponent(projectId)}/comments/${encodeURIComponent(commentId)}/tracker/retry`,
+    commentUnlink: (projectId: string, commentId: string) =>
+        `/api/projects/${encodeURIComponent(projectId)}/comments/${encodeURIComponent(commentId)}/tracker/unlink`,
+    commentRepromote: (projectId: string, commentId: string) =>
+        `/api/projects/${encodeURIComponent(projectId)}/comments/${encodeURIComponent(commentId)}/tracker/repromote`,
 } as const;
 
 function stripSecrets<T>(value: T): T {
@@ -248,6 +252,22 @@ export function retryThreadSync(projectId: string, commentId: string): Promise<C
         TRACKER_ROUTES.commentRetry(projectId, commentId),
         { method: "POST" },
         "Failed to retry tracker sync",
+    );
+}
+
+export function unlinkThread(projectId: string, commentId: string): Promise<CommentTrackerProjection> {
+    return request(
+        TRACKER_ROUTES.commentUnlink(projectId, commentId),
+        { method: "POST" },
+        "Failed to unlink tracker thread",
+    );
+}
+
+export function repromoteComment(projectId: string, commentId: string): Promise<CommentTrackerProjection> {
+    return request(
+        TRACKER_ROUTES.commentRepromote(projectId, commentId),
+        { method: "POST" },
+        "Failed to promote again",
     );
 }
 
