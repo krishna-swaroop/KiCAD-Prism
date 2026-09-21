@@ -20,6 +20,7 @@ from app.api.remote_provider import router as remote_provider_router
 from app.api.provider_oauth import router as provider_oauth_router
 from app.api.tracker_connectors import register_validation_redaction, router as tracker_connectors_router
 from app.api.project_trackers import router as project_trackers_router
+from app.api.tracker_sync import router as tracker_sync_router
 from app.api.tracker_webhooks import router as tracker_webhooks_router
 from app.api.tracker_identity import admin_router as tracker_identity_admin_router
 from app.api.tracker_identity import router as tracker_identity_router
@@ -277,4 +278,5 @@ register_validation_redaction(app)
 app.include_router(tracker_identity_router)
 app.include_router(tracker_identity_admin_router)
 app.include_router(project_trackers_router)
+app.include_router(tracker_sync_router)
 app.include_router(tracker_webhooks_router)
