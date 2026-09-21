@@ -78,6 +78,7 @@ def _settings(**overrides) -> Settings:
         "TRACKER_CREDENTIAL_ROOT_KEY_ID": "v1",
         "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY": SecretStr(""),
         "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID": "",
+        "PUBLIC_BASE_URL": "https://prism.example.com",
     }
     base.update(overrides)
     return Settings(_env_file=None, **base)
@@ -248,6 +249,15 @@ class ConnectorAdminApiTests(unittest.TestCase):
         self.assertTrue(created["credentialConfigured"])
         self.assertTrue(created["webhookConfigured"])
         self.assertTrue(created["oauthClientConfigured"])
+        # The forge-facing URL comes from PUBLIC_BASE_URL and carries the provider
+        # segment TR-27 registered; the admin's browser origin is not a substitute.
+        self.assertEqual(
+            created["webhookUrl"],
+            "https://prism.example.com/api/trackers/webhooks/github/cn_sidecar",
+        )
+        self.assertIsNone(
+            ConnectorService(settings=_settings(PUBLIC_BASE_URL="")).webhook_url("cn_sidecar")
+        )
         dumped = json.dumps(created)
         self.assertNotIn(WEBHOOK_SECRET, dumped)
         self.assertNotIn(OAUTH_CLIENT_SECRET, dumped)

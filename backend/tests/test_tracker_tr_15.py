@@ -327,6 +327,11 @@ class GitHubAppAuthTests(unittest.TestCase):
         self.assertIn(f"{root}/repositories/111", urls)
         repo_auth = next(call["headers"]["Authorization"] for call in self.calls if call["url"].endswith("/repositories/111"))
         self.assertEqual(repo_auth, f"Bearer {INSTALLATION_TOKEN_A}")
+        bot_auth = next(
+            call["headers"]["Authorization"] for call in self.calls if call["url"].endswith("/users/prism-tracker[bot]")
+        )
+        # /users/* rejects App JWTs with 401; the bot lookup must use the installation token.
+        self.assertEqual(bot_auth, f"Bearer {INSTALLATION_TOKEN_A}")
         app_auth = next(call["headers"]["Authorization"] for call in self.calls if call["url"].endswith("/app"))
         self.assertNotEqual(app_auth, repo_auth)
         self.assertNotIn(USER_TOKEN, repo_auth)

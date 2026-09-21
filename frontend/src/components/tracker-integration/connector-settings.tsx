@@ -61,10 +61,15 @@ const EMPTY_CREDENTIALS: ConnectorCredentialFields = {
     oauthClientSecret: "",
 };
 
-/** Frozen public webhook path for provider configuration guidance (TR-27 registers the route). */
-export function connectorWebhookPublicUrl(connectorId: string, origin = ""): string {
+/**
+ * Public webhook path for provider configuration guidance (TR-27 registers
+ * `/api/trackers/webhooks/{provider}/{connectorId}`). Prefer the server-computed
+ * `connector.webhookUrl`, which is derived from PUBLIC_BASE_URL — the origin the
+ * forge has to reach — rather than the admin's browser origin.
+ */
+export function connectorWebhookPublicUrl(connectorId: string, origin = "", provider = "github"): string {
     const base = (origin || "https://prism.example").replace(/\/$/, "");
-    return `${base}/api/trackers/webhooks/${encodeURIComponent(connectorId)}`;
+    return `${base}/api/trackers/webhooks/${encodeURIComponent(provider)}/${encodeURIComponent(connectorId)}`;
 }
 
 export function credentialRotationHint(configured: boolean): string {
@@ -147,10 +152,11 @@ export function ConnectorSettings({
     const [formError, setFormError] = useState<string | null>(null);
 
     const phase = connectorPhase(isAdmin, connector, loading, offline);
-    const webhookUrl = useMemo(
-        () => (connector?.id ? connectorWebhookPublicUrl(connector.id, prismOrigin) : null),
-        [connector?.id, prismOrigin],
-    );
+    const webhookUrl = useMemo(() => {
+        if (!connector?.id) return null;
+        if (connector.webhookUrl) return connector.webhookUrl;
+        return connectorWebhookPublicUrl(connector.id, prismOrigin, connector.provider);
+    }, [connector?.id, connector?.provider, connector?.webhookUrl, prismOrigin]);
 
     const applyConnector = useCallback(
         (next: TrackerConnector, resetTest = false) => {

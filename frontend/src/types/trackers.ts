@@ -97,6 +97,8 @@ export interface TrackerConnector {
     bot: TrackerBotIdentity;
     credentialConfigured: boolean;
     webhookConfigured?: boolean;
+    /** Forge-facing inbound webhook URL derived server-side from PUBLIC_BASE_URL; null when unset. */
+    webhookUrl?: string | null;
     oauthClientConfigured?: boolean;
     paused: boolean;
     pausedReason?: string | null;

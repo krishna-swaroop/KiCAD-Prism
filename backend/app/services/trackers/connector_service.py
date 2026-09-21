@@ -567,6 +567,18 @@ class ConnectorService:
             conn.commit()
             return self._public(TrackerStore(conn).get_connector(connector_id), conn)
 
+    def webhook_url(self, connector_id: str, *, provider: str = "github") -> str | None:
+        """Inbound webhook URL the forge must be given, derived from ``PUBLIC_BASE_URL``.
+
+        ``None`` when no public origin is configured: the browser origin is not
+        a substitute, because the forge — not the admin's browser — has to reach it.
+        """
+
+        base = str(getattr(self.settings, "PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+        if not base:
+            return None
+        return f"{base}/api/trackers/webhooks/{provider}/{connector_id}"
+
     def _public(self, row: Mapping[str, Any], conn: Any) -> dict[str, Any]:
         dumped = json.dumps(dict(row), default=str)
         lowered = dumped.casefold()
@@ -596,6 +608,7 @@ class ConnectorService:
             },
             "credentialConfigured": bool(row.get("credentialConfigured")),
             "webhookConfigured": webhook_configured(conn, str(row["id"])),
+            "webhookUrl": self.webhook_url(str(row["id"]), provider=str(row["provider"])),
             "oauthClientConfigured": oauth_client_configured(conn, str(row["id"])),
             "writesEnabled": writes_enabled,
             "auditCount": int((audit_count or {}).get("n") or 0),

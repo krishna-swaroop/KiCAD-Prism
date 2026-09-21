@@ -188,15 +188,18 @@ class GitHubAppAuth:
                 "GitHub App installation is suspended.",
                 status=401,
             )
+        token = self.installation_token()
         bot = {"id": "", "login": "", "isBot": True}
         if slug:
-            user = self._get_json("GET", f"/users/{slug}[bot]", headers=self.app_headers())
+            # The App JWT is only accepted on /app* routes; GitHub answers 401
+            # "Bad credentials" to /users/* with it. Resolve the bot identity
+            # with the installation token instead.
+            user = self._get_json("GET", f"/users/{slug}[bot]", headers=self.installation_headers())
             bot = {
                 "id": str(user.get("id") or ""),
                 "login": str(user.get("login") or f"{slug}[bot]"),
                 "isBot": True,
             }
-        token = self.installation_token()
         permissions_ok = token.permissions.get("issues") in REQUIRED_ISSUE_PERMISSIONS
         visibility = None
         paused_reason = None

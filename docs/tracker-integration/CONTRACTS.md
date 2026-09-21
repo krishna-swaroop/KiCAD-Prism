@@ -523,3 +523,4 @@ matches `expect`. A skipped PostgreSQL or provider suite is an unmet gate.
 | --- | --- | --- |
 | 1.0 | 2026-09-20 | Initial frozen packet (TR-00). |
 | 1.1 | 2026-09-20 | Freeze `TrackerConnector` (`bot:{id,login}`), `ConnectorTestResult`, admin connector route table, comments ledger v4 owning sync/inbox tables (review H3). |
+| 1.2 | 2026-09-21 | Additive: `TrackerConnector.webhookUrl` (server-derived from `PUBLIC_BASE_URL`, `null` when unset) so admins copy the forge-facing `/api/trackers/webhooks/{provider}/{connectorId}` URL rather than a browser-origin guess (TR-46). |
