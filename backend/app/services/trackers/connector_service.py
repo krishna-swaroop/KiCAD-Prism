@@ -328,6 +328,17 @@ class ConnectorService:
             clear_sidecars(conn, connector_id)
             conn.execute("DELETE FROM user_identities WHERE connector_id = %s", (connector_id,))
             conn.execute("DELETE FROM destination_acks WHERE connector_id = %s", (connector_id,))
+            # Inbound state keyed by the connector: without this the scheduler
+            # keeps enqueuing dispatch for hints nothing can ever apply.
+            for table in ("remote_hints", "remote_deliveries"):
+                conn.execute(
+                    f"DELETE FROM {_qual(self.comments_schema, table)} WHERE connector_id = %s",
+                    (connector_id,),
+                )
+            conn.execute(
+                f"DELETE FROM {_qual(self.comments_schema, 'sync_checkpoints')} WHERE scope_key LIKE %s",
+                (f"{connector_id}:%",),
+            )
             TrackerStore(conn).audit(
                 action="connector.delete",
                 actor_user_id=actor_user_id,

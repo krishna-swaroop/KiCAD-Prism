@@ -268,7 +268,7 @@ def _due_hint_destinations(conn: Any, comments_schema: str, workspace_schema: st
         f"""
         SELECT DISTINCT h.connector_id, h.remote_container_id
         FROM {_qual(comments_schema, 'remote_hints')} h
-        LEFT JOIN {_qual(workspace_schema, 'tracker_connectors')} c ON c.id = h.connector_id
+        JOIN {_qual(workspace_schema, 'tracker_connectors')} c ON c.id = h.connector_id
         WHERE h.state = 'pending'
           AND (h.claimed_by IS NULL OR h.lease_expires_at IS NULL OR h.lease_expires_at < NOW())
           AND COALESCE(c.paused, FALSE) = FALSE

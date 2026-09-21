@@ -396,6 +396,16 @@ class ConnectorAdminApiTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 400)
         self.assertIn("linked thread", json.dumps(caught.exception.detail))
         self.conn.execute("UPDATE tracked_threads SET unlinked_at = NOW() WHERE id = 'tt_del'")
+        self.conn.execute("INSERT INTO remote_deliveries (connector_id, delivery_id) VALUES ('cn_gh1', 'del_x')")
+        self.conn.execute(
+            """
+            INSERT INTO remote_hints (id, connector_id, delivery_id, object_kind, remote_container_id, external_id, event, state)
+            VALUES ('hint_del', 'cn_gh1', 'del_x', 'issue', '111', '42', 'edited', 'pending')
+            """
+        )
+        self.conn.execute(
+            "INSERT INTO sync_checkpoints (kind, scope_key, next_run_at) VALUES ('poll', 'cn_gh1:111', NOW())"
+        )
         self.conn.commit()
 
         removed = run(connectors_api.delete_connector("cn_gh1", self.admin))
@@ -403,6 +413,14 @@ class ConnectorAdminApiTests(unittest.TestCase):
         self.assertEqual(run(connectors_api.list_connectors(self.admin)), [])
         secrets = self.conn.execute("SELECT COUNT(*) AS n FROM tracker_webhook_secrets WHERE connector_id = 'cn_gh1'").fetchone()
         self.assertEqual(secrets["n"], 0)
+        # Inbound state goes with it, so the scheduler never chases orphan hints.
+        for table, where in (
+            ("remote_hints", "connector_id = 'cn_gh1'"),
+            ("remote_deliveries", "connector_id = 'cn_gh1'"),
+            ("sync_checkpoints", "scope_key LIKE 'cn_gh1:%'"),
+        ):
+            left = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table} WHERE {where}").fetchone()
+            self.assertEqual(left["n"], 0, table)
         audit = self.conn.execute(
             "SELECT action FROM tracker_audit WHERE connector_id = 'cn_gh1' ORDER BY id"
         ).fetchall()
