@@ -11,6 +11,7 @@ import {
 } from "@/components/tracker-integration/comment-editor";
 import { projectionFromComment } from "@/lib/trackers-client";
 import {
+    CommentBody,
     CommentHeader,
     CommentMentions,
     IconAction,
@@ -177,7 +178,7 @@ export function CommentCard({
     return (
         <dialog
             open
-            className="fixed z-[110] m-0 flex flex-col overflow-hidden rounded-none bg-popover/85 p-0 text-popover-foreground shadow-lg ring-1 ring-foreground/10 backdrop-blur-md"
+            className="fixed z-[110] m-0 flex flex-col overflow-hidden rounded-none bg-popover/60 p-0 text-popover-foreground shadow-2xl shadow-black/40 ring-1 ring-foreground/15 backdrop-blur-2xl backdrop-saturate-150"
             style={style}
             aria-label="Comment details"
             data-tracker-discussion-host="canvas-card"
@@ -185,7 +186,7 @@ export function CommentCard({
         >
             <CommentHeader
                 comment={comment}
-                className="shrink-0 px-3 pt-3 pb-2"
+                className="shrink-0 px-3 pt-3"
                 actions={
                     <>
                         {canResolve ? (
@@ -214,26 +215,9 @@ export function CommentCard({
                 }
             />
 
-            {showTrackerStrip ? (
-                <TrackerStrip
-                    projectId={projectId!}
-                    comment={comment}
-                    tracker={tracker}
-                    settings={trackerSettings!}
-                    autoEligible={autoEligible}
-                    historyOpen={historyOpen}
-                    onToggleHistory={() => setHistoryOpen((open) => !open)}
-                    onTrackerChange={onTrackerChange}
-                    className="shrink-0 border-y border-border/60 bg-muted/40 px-3 py-1.5"
-                />
-            ) : null}
-
             {/* Discussion: the only part that scrolls. */}
-            <div
-                className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", !showTrackerStrip && "border-t")}
-                data-testid="comment-card-scroll"
-            >
-                <div className="px-3 py-2.5">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-testid="comment-card-scroll">
+                <div className="px-3 pb-2.5 pt-2">
                     {editing && onEdit ? (
                         <CommentEditor
                             id={`comment-card-edit-${comment.id}`}
@@ -254,9 +238,22 @@ export function CommentCard({
                             }}
                         />
                     ) : (
-                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{comment.content}</p>
+                        <CommentBody content={comment.content} />
                     )}
-                    <CommentMentions comment={comment} className="mt-1.5" />
+                    <CommentMentions comment={comment} className="mt-1" />
+                    {showTrackerStrip ? (
+                        <TrackerStrip
+                            projectId={projectId!}
+                            comment={comment}
+                            tracker={tracker}
+                            settings={trackerSettings!}
+                            autoEligible={autoEligible}
+                            historyOpen={historyOpen}
+                            onToggleHistory={() => setHistoryOpen((open) => !open)}
+                            onTrackerChange={onTrackerChange}
+                            className="mt-2"
+                        />
+                    ) : null}
                 </div>
 
                 {historyOpen && projectId && tracker.linkState ? (
@@ -283,7 +280,7 @@ export function CommentCard({
                     }}
                     onDeleteReply={onDeleteReply ? (reply) => void onDeleteReply(comment.id, reply) : undefined}
                     onReload={reload}
-                    className="border-t"
+                    className="border-t border-border/50"
                 />
             </div>
 
@@ -303,7 +300,7 @@ export function CommentCard({
                     error={error}
                     conflict={conflict}
                     onReload={reload}
-                    className="shrink-0 border-t"
+                    className="shrink-0 border-t border-border/50"
                 />
             ) : null}
 

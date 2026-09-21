@@ -120,11 +120,13 @@ describe("CommentCard layout", () => {
         expect(screen.getByTestId("comment-card-scroll").className).toContain("overflow-y-auto");
     });
 
-    it("shows identity, one meta line and no badge wall", () => {
+    it("shows identity, one quiet meta line and the body in body type", () => {
         renderCard();
         expect(screen.getByText("Priya Natarajan")).toBeTruthy();
-        expect(screen.getByTestId("comment-meta-line").textContent).toMatch(/R12.*Major.*Task/);
-        expect(document.querySelectorAll('[data-testid="comment-meta-line"] span').length).toBeLessThan(8);
+        expect(screen.getByTestId("comment-meta-line").textContent).toMatch(/ago.*Major.*Task.*R12/);
+        // Metadata is plain text, not a wall of badges.
+        expect(document.querySelectorAll('[data-testid="comment-meta-line"] [data-slot="badge"]').length).toBe(0);
+        expect(screen.getByTestId("comment-body").className).toContain("text-sm");
         expect(screen.getByTestId("comment-mentions").textContent).toBe("@Alex Chen");
         expect(screen.queryByTestId("comment-status-pill")).toBeNull();
     });
@@ -152,7 +154,7 @@ describe("CommentCard layout", () => {
                 }),
             ],
         });
-        expect(screen.getByTestId("comment-replies").textContent).toMatch(/2 replies/);
+        expect(screen.getByTestId("comment-replies").querySelectorAll("li").length).toBe(2);
         expect(screen.getByTestId("reply-attribution").textContent).toBe("Alex Chen");
         expect(screen.getByTestId("reply-attribution-link").textContent).toBe("krishna-swaroop on GitHub");
         const scroll = screen.getByTestId("comment-card-scroll");

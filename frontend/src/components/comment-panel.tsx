@@ -19,6 +19,7 @@ import {
     type CommentTrackerHostSettings,
 } from "@/components/comment-card";
 import {
+    CommentBody,
     CommentHeader,
     CommentMentions,
     IconAction,
@@ -299,9 +300,9 @@ function PanelCommentCard({
                         />
                     </div>
                 ) : (
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{comment.content}</p>
+                    <CommentBody content={comment.content} className="mt-2" />
                 )}
-                <CommentMentions comment={comment} className="mt-1.5" />
+                <CommentMentions comment={comment} className="mt-1" />
             </div>
 
             {showTrackerStrip ? (
@@ -314,7 +315,7 @@ function PanelCommentCard({
                     historyOpen={historyOpen}
                     onToggleHistory={() => setHistoryOpen((open) => !open)}
                     onTrackerChange={onTrackerChange}
-                    className="border-t bg-muted/40 px-3 py-1.5"
+                    className="px-3 pb-2"
                 />
             ) : null}
 
@@ -343,7 +344,7 @@ function PanelCommentCard({
                 onDeleteReply={onDeleteReply ? (reply) => void onDeleteReply(comment.id, reply) : undefined}
                 onReload={reload}
                 collapsible
-                className="border-t"
+                className="border-t border-border/50"
             />
 
             {canReply ? (
@@ -361,7 +362,7 @@ function PanelCommentCard({
                     error={error}
                     conflict={conflict}
                     onReload={reload}
-                    className="border-t"
+                    className="border-t border-border/50"
                 />
             ) : !canEdit && !canDelete && !canResolve ? (
                 <div className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">Read-only</div>
