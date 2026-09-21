@@ -774,9 +774,15 @@ async def update_comment(
             )
             expected = updated["revision"] if updated else None
         if status is not None and updated is not None:
-            updated = comments_store.update_comment_status(
-                project.id, project.path, comment_id, status, editor=_editor(actor), expected_revision=expected,
-            )
+            # The actor is what enqueues the ``set_state`` op for a linked thread
+            # (TR-28); without it a Prism resolve/reopen never reaches the forge.
+            try:
+                updated = comments_store.update_comment_status(
+                    project.id, project.path, comment_id, status, editor=_editor(actor), expected_revision=expected,
+                    promotion_actor=_promotion_actor(actor),
+                )
+            except PublicationDenied as exc:
+                raise comment_permissions.CommentPermissionError(exc.code, str(exc)) from exc
         return (
             _with_permissions(updated, actor, project_id=project.id, mention_indexes=mention_indexes)
             if updated
