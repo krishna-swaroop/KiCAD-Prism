@@ -103,7 +103,7 @@ describe("relativeTime / authorInitials", () => {
 
     it("derives initials from names, handles and emails", () => {
         expect(authorInitials("Priya Natarajan")).toBe("PN");
-        expect(authorInitials("swaroopdhulipalla99")).toBe("SW");
+        expect(authorInitials("Alexandria")).toBe("AL");
         expect(authorInitials("krishna-swaroop")).toBe("KS");
         expect(authorInitials("")).toBe("?");
     });
