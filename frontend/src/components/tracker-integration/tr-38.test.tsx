@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { trackerUiMocks } from "@/lib/trackers-client-fixtures";
@@ -19,6 +19,7 @@ import {
     visibilityAckState,
 } from "./index";
 import { describeProjectTrackerError } from "./project-tracker-settings";
+import { ProjectTrackerDestinationSection, type TrackerSettingsDraft } from "./project-tracker-destination";
 
 vi.mock("sonner", () => ({
     toast: { error: vi.fn(), success: vi.fn() },
@@ -122,6 +123,37 @@ describe("destination disclosure helpers (C4 / F8)", () => {
 });
 
 describe("ProjectTrackerSettingsPanel (F8 / F9 / C8)", () => {
+    it("ignores a repository response from a previously selected connection", async () => {
+        let resolveOld!: (response: Response) => void;
+        const oldList = new Promise<Response>((resolve) => { resolveOld = resolve; });
+        mockedFetch.mockImplementation((url) => String(url).includes("/connectors/cn_old/")
+            ? oldList
+            : Promise.resolve(respond([repositories[0]])));
+        const draft: TrackerSettingsDraft = {
+            connectorId: "cn_old",
+            useOverride: false,
+            containerPath: "acme/openswitch",
+            remoteContainerId: "pending:acme/openswitch",
+            autoMinSeverity: "minor",
+            autoTaskClass: false,
+            promoteMinRole: "designer",
+            labels: trackerUiMocks.projectSettings.labels,
+        };
+        const common = {
+            settings: trackerUiMocks.projectSettings,
+            setDraft: vi.fn(),
+            projectRepoPath: "acme/openswitch",
+            connectors: [],
+            isAdmin: true,
+        };
+        const { rerender } = render(<ProjectTrackerDestinationSection key="old" {...common} draft={draft} />);
+        await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith(expect.stringContaining("/connectors/cn_old/repositories"), undefined));
+        rerender(<ProjectTrackerDestinationSection key="new" {...common} draft={{ ...draft, connectorId: "cn_new" }} />);
+        await waitFor(() => expect(screen.getByTestId("project-repo-not-installed")).toBeTruthy());
+        await act(async () => { resolveOld(respond([repositories[1]])); });
+        expect(screen.getByTestId("project-repo-not-installed")).toBeTruthy();
+    });
+
     it("renders read-only destination for non-admin users", async () => {
         mockedFetch.mockResolvedValue(respond(trackerUiMocks.projectSettings));
         render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={false} />);

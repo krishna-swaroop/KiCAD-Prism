@@ -1,8 +1,8 @@
 /**
  * Admin connector editor — credential form, lifecycle controls, and webhook guidance.
  *
- * Host integration (TR-42) mounts this; until then it is consumed only by tests.
- * All provider I/O goes through the typed tracker client barrel.
+ * Mounted in the tracker administration surface. Provider I/O goes through
+ * the typed tracker client barrel.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -150,6 +150,7 @@ export function ConnectorSettings({
     const [credentials, setCredentials] = useState<ConnectorCredentialFields>(EMPTY_CREDENTIALS);
     const [loading, setLoading] = useState(Boolean(connectorId));
     const [offline, setOffline] = useState(false);
+    const [retryVersion, setRetryVersion] = useState(0);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
     const [lifecycleBusy, setLifecycleBusy] = useState(false);
@@ -216,7 +217,7 @@ export function ConnectorSettings({
         return () => {
             cancelled = true;
         };
-    }, [applyConnector, connectorId, isAdmin]);
+    }, [applyConnector, connectorId, isAdmin, retryVersion]);
 
     const saveConnector = async () => {
         if (!isAdmin) return;
@@ -345,19 +346,7 @@ export function ConnectorSettings({
                         type="button"
                         variant="outline"
                         className="mt-3"
-                        onClick={() => {
-                            if (connectorId) {
-                                setLoading(true);
-                                setOffline(false);
-                                void getConnector(connectorId)
-                                    .then(applyConnector)
-                                    .catch((error) => {
-                                        setOffline(true);
-                                        setFormError(describeConnectorSettingsError(error));
-                                    })
-                                    .finally(() => setLoading(false));
-                            }
-                        }}
+                        onClick={() => setRetryVersion((version) => version + 1)}
                     >
                         <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
                         Retry
