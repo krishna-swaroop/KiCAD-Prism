@@ -18,11 +18,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PermissionHint } from "@/components/ui/permission-hint";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import {
-    destinationPolicyAlerts,
-    sameRepoPath,
-    visibilityAckState,
-} from "./destination-disclosure";
+import { destinationPolicyAlerts, visibilityAckState } from "./destination-disclosure";
 import {
     TrackerApiError,
     acknowledgeDestination,
@@ -32,12 +28,13 @@ import {
 } from "@/lib/trackers-client";
 import { cn } from "@/lib/utils";
 import type { ProjectTrackerSettings, TrackerConnector, UpdateProjectTrackerRequest } from "@/types/trackers";
-import { ProjectTrackerDestinationSection, destinationIsProjectRepo, type TrackerSettingsDraft } from "./project-tracker-destination";
+import { ProjectTrackerDestinationSection } from "./project-tracker-destination";
+import { buildUpdatePayload, destinationChanged, draftFromSettings, type TrackerSettingsDraft } from "./project-tracker-settings-model";
 import { ProjectTrackerPolicySection } from "./project-tracker-policy";
 
 export { autoPromoteSummary, promoteRoleExplanation } from "./project-tracker-policy";
 
-export { destinationIsProjectRepo } from "./project-tracker-destination";
+export { destinationIsProjectRepo } from "./project-tracker-settings-model";
 
 export type ProjectTrackerSettingsPhase = "loading" | "ready" | "offline";
 
@@ -48,76 +45,6 @@ export interface ProjectTrackerSettingsPanelProps {
     chromeless?: boolean;
     className?: string;
     onSettingsChange?: (settings: ProjectTrackerSettings) => void;
-}
-
-function draftFromSettings(settings: ProjectTrackerSettings, projectRepoPath: string | null): TrackerSettingsDraft {
-    const ownRepo = destinationIsProjectRepo(settings.destination, projectRepoPath);
-    return {
-        connectorId: settings.connectorId,
-        useOverride: !ownRepo,
-        containerPath: settings.destination.containerPath,
-        remoteContainerId: settings.destination.remoteContainerId,
-        autoMinSeverity: settings.autoMinSeverity,
-        autoTaskClass: settings.autoTaskClass,
-        promoteMinRole: settings.promoteMinRole,
-        labels: { ...settings.labels },
-    };
-}
-
-/** Destination payload for "this project's repository": reuse the resolved id when we already have it. */
-function projectRepoDestination(
-    saved: ProjectTrackerSettings,
-    projectRepoPath: string | null,
-): UpdateProjectTrackerRequest["destination"] {
-    const path = projectRepoPath ?? saved.destination.containerPath;
-    const alreadyResolved = sameRepoPath(saved.destination.containerPath, path);
-    return {
-        containerKind: saved.destination.containerKind,
-        containerPath: path,
-        // The server resolves the placeholder to the numeric id on save.
-        remoteContainerId: alreadyResolved ? saved.destination.remoteContainerId : `pending:${path}`,
-        generation: saved.destination.generation,
-        visibility: alreadyResolved ? saved.destination.visibility : null,
-    };
-}
-
-function destinationChanged(
-    saved: ProjectTrackerSettings,
-    draft: TrackerSettingsDraft,
-    projectRepoPath: string | null,
-): boolean {
-    if (draft.connectorId !== saved.connectorId) return true;
-    const target = draft.useOverride
-        ? { containerPath: draft.containerPath.trim(), remoteContainerId: draft.remoteContainerId.trim() }
-        : projectRepoDestination(saved, projectRepoPath);
-    if (target.containerPath !== saved.destination.containerPath) return true;
-    if (target.remoteContainerId !== saved.destination.remoteContainerId) return true;
-    return false;
-}
-
-function buildUpdatePayload(
-    saved: ProjectTrackerSettings,
-    draft: TrackerSettingsDraft,
-    projectRepoPath: string | null,
-): UpdateProjectTrackerRequest {
-    const destination = draft.useOverride
-        ? {
-              containerKind: saved.destination.containerKind,
-              containerPath: draft.containerPath.trim(),
-              remoteContainerId: draft.remoteContainerId.trim(),
-              generation: saved.destination.generation,
-              visibility: saved.destination.visibility,
-          }
-        : projectRepoDestination(saved, projectRepoPath);
-
-    return {
-        connectorId: draft.connectorId,
-        destination,
-        autoMinSeverity: draft.autoMinSeverity,
-        autoTaskClass: draft.autoTaskClass,
-        promoteMinRole: draft.promoteMinRole,
-        labels: draft.labels,
-    };
 }
 
 export function describeProjectTrackerError(error: unknown, fallback = "Project tracker request failed"): string {
@@ -161,7 +88,7 @@ export function ProjectTrackerSettingsPanel({
     const applySettings = useCallback(
         (next: ProjectTrackerSettings) => {
             setSettings(next);
-            setDraft(draftFromSettings(next, next.projectRepoPath ?? null));
+            setDraft(draftFromSettings(next));
             onSettingsChange?.(next);
         },
         [onSettingsChange],
@@ -219,8 +146,8 @@ export function ProjectTrackerSettingsPanel({
 
     const handleSave = () => {
         if (!isAdmin || !settings || !draft) return;
-        const payload = buildUpdatePayload(settings, draft, projectRepoPath);
-        if (destinationChanged(settings, draft, projectRepoPath)) {
+        const payload = buildUpdatePayload(settings, draft);
+        if (destinationChanged(settings, draft)) {
             pendingPayloadRef.current = payload;
             setConfirmDestinationOpen(true);
             return;

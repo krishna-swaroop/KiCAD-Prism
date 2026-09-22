@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { roleLabel } from "@/lib/roles";
 import type { ProjectTrackerSettings } from "@/types/trackers";
 
-import type { TrackerSettingsDraft } from "./project-tracker-destination";
+import type { TrackerSettingsDraft } from "./project-tracker-settings-model";
 
 const SEVERITY_OPTIONS = ["info", "minor", "major", "critical"] as const;
 const PROMOTE_ROLE_OPTIONS = ["designer", "viewer"] as const;

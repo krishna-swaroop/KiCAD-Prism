@@ -19,24 +19,7 @@ import {
     isImportedDefaultDestination,
     sameRepoPath,
 } from "./destination-disclosure";
-
-export type TrackerSettingsDraft = {
-    connectorId: string;
-    useOverride: boolean;
-    containerPath: string;
-    remoteContainerId: string;
-    autoMinSeverity: string;
-    autoTaskClass: boolean;
-    promoteMinRole: string;
-    labels: ProjectTrackerSettings["labels"];
-};
-
-export function destinationIsProjectRepo(
-    destination: Pick<ProjectTrackerSettings["destination"], "containerPath" | "remoteContainerId">,
-    projectRepoPath: string | null,
-): boolean {
-    return isImportedDefaultDestination(destination) || sameRepoPath(destination.containerPath, projectRepoPath);
-}
+import { destinationIsProjectRepo, type TrackerSettingsDraft } from "./project-tracker-settings-model";
 
 type RepositoryState =
     | { status: "loading"; repositories: null }

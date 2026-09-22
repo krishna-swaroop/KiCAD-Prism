@@ -19,7 +19,8 @@ import {
     visibilityAckState,
 } from "./index";
 import { describeProjectTrackerError } from "./project-tracker-settings";
-import { ProjectTrackerDestinationSection, type TrackerSettingsDraft } from "./project-tracker-destination";
+import { ProjectTrackerDestinationSection } from "./project-tracker-destination";
+import { buildUpdatePayload, draftFromSettings, type TrackerSettingsDraft } from "./project-tracker-settings-model";
 
 vi.mock("sonner", () => ({
     toast: { error: vi.fn(), success: vi.fn() },
@@ -123,6 +124,17 @@ describe("destination disclosure helpers (C4 / F8)", () => {
 });
 
 describe("ProjectTrackerSettingsPanel (F8 / F9 / C8)", () => {
+    it("resolves the project repository again when the connection changes", () => {
+        const settings = { ...importedDefaultSettings, projectRepoPath: "acme/openswitch", destination: {
+            ...importedDefaultSettings.destination,
+            remoteContainerId: "987654321",
+            visibility: "private" as const,
+        } };
+        const payload = buildUpdatePayload(settings, { ...draftFromSettings(settings), connectorId: "cn_new" });
+        expect(payload.destination.remoteContainerId).toBe("pending:acme/openswitch");
+        expect(payload.destination.visibility).toBeNull();
+    });
+
     it("ignores a repository response from a previously selected connection", async () => {
         let resolveOld!: (response: Response) => void;
         const oldList = new Promise<Response>((resolve) => { resolveOld = resolve; });
