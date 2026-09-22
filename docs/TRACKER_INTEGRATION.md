@@ -143,8 +143,9 @@ A quiet repository with successful polls is healthy—not evidence of broken
 webhooks. Connector health shows last webhook, last poll, last sweep, backlog
 counts, and sanitized errors.
 
-Tracker jobs use the `tracker_sync` resource slot (capacity 2) so they cannot
-starve imports or design comparison.
+Tracker jobs use the `tracker_sync` resource slot. Its capacity is at most two
+and leaves one worker slot for other jobs when worker concurrency is above one.
+For a single-slot worker, jobs still share that slot by priority.
 
 ## Health, pause, and recovery
 

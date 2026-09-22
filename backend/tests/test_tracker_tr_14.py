@@ -138,7 +138,8 @@ class RegistrationTests(unittest.TestCase):
         self.assertIn(SWEEP_KIND, kinds)
         capacities = prism_worker.PrismWorker.resource_capacities()
         self.assertEqual(capacities[TRACKER_RESOURCE], TRACKER_RESOURCE_CAPACITY)
-        self.assertLess(TRACKER_RESOURCE_CAPACITY, capacities["prism_worker"])
+        if capacities["prism_worker"] > 1:
+            self.assertLess(TRACKER_RESOURCE_CAPACITY, capacities["prism_worker"])
         worker = prism_worker.PrismWorker("prism")
         catalog = prism_worker.PrismWorker("catalog")
         with mock.patch("app.services.trackers.scheduler.schedule_due_tracker_jobs") as sched:

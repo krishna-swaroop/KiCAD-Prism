@@ -384,4 +384,3 @@ def _owner_repo(dest: Destination) -> tuple[str, str]:
     if not owner or not repo:
         raise ProviderError("invalid_request", "GitHub destination path must be owner/repo.")
     return owner, repo
-

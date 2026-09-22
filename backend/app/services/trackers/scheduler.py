@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterator, Optional
 
+from app.core.config import settings
 from app.services.job_service import jobs as default_jobs
 from app.services.trackers.op_store import LIVE_STATES
 
@@ -23,7 +24,7 @@ POLL_KIND = "tracker_poll"
 SWEEP_KIND = "tracker_sweep"
 TRACKER_RESOURCE = "tracker_sync"
 TRACKER_PRIORITY = 200
-TRACKER_RESOURCE_CAPACITY = 2
+TRACKER_RESOURCE_CAPACITY = min(2, max(1, settings.PRISM_WORKER_CONCURRENCY - 1))
 OUTBOX_POLL_SECONDS = 30
 SCHEDULER_SCAN_SECONDS = 30
 POLL_WEBHOOK_WINDOW_SECONDS = 30 * 60
