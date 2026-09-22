@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 from uuid import uuid4
 
-from app.services.comments_revisions import Editor, edit_reply, record_revision, tombstone_reply
+from app.services.comments_revisions import Editor, edit_reply, record_revision
 from app.services.trackers.contracts import (
     CommentRead,
     GoneConfirmed,
@@ -134,21 +134,20 @@ def _finish_hint(
 ) -> None:
     fence = int(hint.get("fence") or 0)
     if fence:
-        try:
-            inbox.finish_hint(str(hint["id"]), fence, state=state)
-            return
-        except StaleHintFence:
-            pass
+        inbox.finish_hint(str(hint["id"]), fence, state=state)
+        return
     conn = inbox.conn
-    conn.execute(
+    updated = conn.execute(
         """
         UPDATE remote_hints
         SET state = %s, applied_at = NOW(), claimed_by = NULL, lease_expires_at = NULL,
             error = COALESCE(%s::jsonb, error)
-        WHERE id = %s AND state = 'pending'
+        WHERE id = %s AND state = 'pending' AND fence = 0 AND claimed_by IS NULL
         """,
         (state, json.dumps(dict(detail or {})) if detail else None, str(hint["id"])),
     )
+    if updated.rowcount != 1:
+        raise StaleHintFence(f"hint {hint['id']} was claimed or already finished")
 
 
 def _confirm_echo_op(ops: OpStore, echo: EchoMatch) -> None:
@@ -474,30 +473,14 @@ def _apply_comment_to_thread(
     bot_login: str | None,
     audit: AuditFn | None = None,
 ) -> str:
-    event = str(hint.get("event") or "updated")
     actor_id = hint.get("actor_id") or (hint.get("actor") or {}).get("id")
     actor_login = hint.get("actor_login") or (hint.get("actor") or {}).get("login")
     link = _reply_link(conn, thread_id=str(thread["id"]), external_comment_id=str(comment.externalCommentId))
     thread_ops = _thread_ops(conn, str(thread["id"]))
 
-    if event == "deleted":
-        if link is None or link.get("deleted_at"):
-            return "unchanged"
-        editor = _editor_from_hint(
-            actor_id=str(actor_id) if actor_id else None,
-            actor_login=str(actor_login) if actor_login else None,
-            bot_user_id=bot_user_id,
-            bot_login=bot_login,
-        )
-        tombstone_reply(
-            conn,
-            project_id=str(thread["project_id"]),
-            reply_id=str(link["reply_id"]),
-            editor=editor,
-            expected_revision=None,
-        )
-        return "applied"
-
+    # A hint's event is not authoritative. In particular, a delayed or forged
+    # "deleted" event must not tombstone a comment that the provider still
+    # returns. The complete-listing + confirmed-absence sweep owns deletion.
     if link is not None:
         if link.get("deleted_at"):
             return "unchanged"

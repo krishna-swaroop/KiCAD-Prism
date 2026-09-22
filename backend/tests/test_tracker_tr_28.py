@@ -26,7 +26,7 @@ from app.services.trackers.inbound import (  # noqa: E402
     assert_inbound_suppresses_outbound,
     fetch_then_apply_hint,
 )
-from app.services.trackers.inbox_store import InboxStore, apply_schema as apply_inbox_schema  # noqa: E402
+from app.services.trackers.inbox_store import InboxStore, StaleHintFence, apply_schema as apply_inbox_schema  # noqa: E402
 from app.services.trackers.markers import build_marker  # noqa: E402
 from app.services.trackers.migrations import migrate_workspace_tracker_tables  # noqa: E402
 from app.services.trackers.op_store import OpStore, apply_schema as apply_op_schema  # noqa: E402
@@ -381,6 +381,48 @@ class InboundPostgresTests(unittest.TestCase):
         self.assertEqual(len(revisions), 1)
         self.assertEqual(revisions[0]["editorKind"], "remote_actor")
         self.assertIn(HUMAN_LOGIN, revisions[0]["editorDisplay"])
+
+    def test_deleted_hint_cannot_tombstone_a_fetched_live_reply(self) -> None:
+        self._seed_project(project_id="prj_a", comment_id=COMMENT_ID, thread_id="tt_a")
+        self._seed_prism_reply(thread_id="tt_a", body="Still present on GitHub")
+        hint = self._enqueue_hint(event="deleted")
+        result = fetch_then_apply_hint(
+            self.conn,
+            hint,
+            fetcher=CallableFetcher(comment=lambda *_args: _remote_comment(body="Still present on GitHub")),
+            inbox=self.inbox,
+            ops=self.ops,
+            store=self.store,
+            bot_user_id=BOT_ID,
+            bot_login=BOT_LOGIN,
+        )
+        self.assertEqual(result.outcome, "unchanged")
+        reply = self.conn.execute(
+            "SELECT deleted_at FROM comment_replies WHERE id = %s", (REPLY_ID,)
+        ).fetchone()
+        self.assertIsNone(reply["deleted_at"])
+        self.assertFalse(any(
+            row["changeKind"] == "delete"
+            for row in history(self.conn, project_id="prj_a", target_kind="reply", target_id=REPLY_ID)
+        ))
+
+    def test_stale_hint_claim_cannot_finish_another_workers_hint(self) -> None:
+        hint = self._enqueue_hint(objectKind="repository")
+        first = self.inbox.claim_hint("old-worker", lease_seconds=1)
+        self.assertIsNotNone(first)
+        self.conn.execute(
+            "UPDATE remote_hints SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE id = %s",
+            (hint["id"],),
+        )
+        second = self.inbox.claim_hint("new-worker", lease_seconds=60)
+        self.assertIsNotNone(second)
+        with self.assertRaises(StaleHintFence):
+            fetch_then_apply_hint(self.conn, first, fetcher=CallableFetcher(), inbox=self.inbox)
+        with self.assertRaises(StaleHintFence):
+            fetch_then_apply_hint(self.conn, hint, fetcher=CallableFetcher(), inbox=self.inbox)
+        current = self.inbox.get_hint(hint["id"])
+        self.assertEqual(current["state"], "pending")
+        self.assertEqual(current["claimed_by"], "new-worker")
 
     def test_f4_echo_exact_hash(self) -> None:
         self._seed_project(project_id="prj_a", comment_id=COMMENT_ID, thread_id="tt_a")
