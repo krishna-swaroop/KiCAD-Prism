@@ -492,6 +492,29 @@ class SemanticIndexServiceTests(unittest.TestCase):
             semantic_visualizer_service.BUILD_FINGERPRINT,
         )
 
+    def test_build_fingerprint_hashes_the_selected_rust_helper(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            helper = root / "prism-kicad-native"
+            helper.write_bytes(b"helper-a")
+            environment = {
+                "PRISM_PCB_GEOMETRY_BACKEND": "rust",
+                "PRISM_KICAD_NATIVE_PATH": str(helper),
+            }
+            with patch.dict(
+                semantic_visualizer_service.os.environ,
+                environment,
+                clear=False,
+            ), patch(
+                "app.services.semantic_viewer_runtime.find_viewer_repo_root",
+                return_value=root,
+            ):
+                first = semantic_visualizer_service._compute_build_fingerprint()
+                helper.write_bytes(b"helper-b")
+                second = semantic_visualizer_service._compute_build_fingerprint()
+
+        self.assertNotEqual(first, second)
+
     def test_webgpu_fast_status_returns_metadata_only_missing_record(self) -> None:
         project = SimpleNamespace(
             id="prj_test",

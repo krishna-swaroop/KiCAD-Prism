@@ -81,3 +81,15 @@ code with whichever Cruncher happens to be installed.
 Python source discovery is explicit. `KICAD_MONKEY_PYTHONPATH` may be used for
 specialized host experiments, but Prism no longer searches adjacent checkouts
 or legacy `references/` directories automatically.
+
+## Native PCB geometry helper
+
+The optional Rust PCB backend is a separate, source-built runtime identity.
+`kicad-prism-viewer/native/prism-kicad-native/rust-toolchain.toml` pins Rust,
+`Cargo.toml` pins the exact `kicad_monkey` Git revision, and `Cargo.lock` pins
+the complete Rust graph. Docker builds it with `cargo build --release --locked`
+and copies only the helper binary into the final worker image.
+
+Do not replace the Git revision with a branch, depend on an unpromoted packaged
+Linux provider, or copy an unverified local binary into Docker. See
+`docs/PCB_RUST_GEOMETRY.md` for the contract and rollback policy.

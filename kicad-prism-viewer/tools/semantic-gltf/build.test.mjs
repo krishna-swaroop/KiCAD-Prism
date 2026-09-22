@@ -5,6 +5,53 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
 
+test("writes a native packed board body GLB", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "native-board-gltf-"));
+  const inputPath = path.join(root, "board-mesh-pack.json");
+  const meshPath = path.join(root, "board-body.bin");
+  const outputDir = path.join(root, "geometry");
+  const positions = new Float32Array([
+    0, 0.0008, 0,
+    0.01, 0.0008, 0,
+    0, 0.0008, 0.01,
+  ]);
+  const normals = new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]);
+  const indices = new Uint32Array([0, 1, 2]);
+  const header = Buffer.alloc(24);
+  header.write("PRSMBD01", 0, "ascii");
+  header.writeUInt32LE(1, 8);
+  header.writeUInt32LE(3, 12);
+  header.writeUInt32LE(3, 16);
+  await fs.writeFile(
+    meshPath,
+    Buffer.concat([
+      header,
+      Buffer.from(positions.buffer),
+      Buffer.from(normals.buffer),
+      Buffer.from(indices.buffer),
+    ]),
+  );
+  await fs.writeFile(
+    inputPath,
+    JSON.stringify({
+      schema: "prism.board_mesh_pack.v1",
+      sourceDigest: "fixture",
+      kicadMonkeyRevision: "fixture",
+      thicknessMm: 1.6,
+      meshPath: "board-body.bin",
+      silkscreenMeshPath: "board-body.bin",
+    }),
+  );
+  await run(process.execPath, [
+    path.resolve("tools/semantic-gltf/build.mjs"),
+    inputPath,
+    outputDir,
+  ]);
+  const bytes = await fs.readFile(path.join(outputDir, "base_board.glb"));
+  assert.equal(bytes.subarray(0, 4).toString("ascii"), "glTF");
+  assert.equal(bytes.includes(Buffer.from("_silkscreen")), true);
+});
+
 test("writes tiled GLB with net and object feature IDs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "semantic-gltf-"));
   const inputPath = path.join(root, "input.json");

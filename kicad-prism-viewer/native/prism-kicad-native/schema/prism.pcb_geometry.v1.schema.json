@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kicad-prism.dev/schemas/prism.pcb_geometry.v1.schema.json",
+  "title": "Prism PCB Geometry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "kicad_monkey_revision", "kicad_monkey_engine_version", "source",
+    "coordinate_system", "curve_tolerance_mm", "board", "bounds_nm", "layers",
+    "nets", "features", "drills", "diagnostics", "stats", "metrics"
+  ],
+  "properties": {
+    "schema": { "const": "prism.pcb_geometry.v1" },
+    "kicad_monkey_revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "kicad_monkey_engine_version": { "type": "string" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "digest_sha256", "bytes"],
+      "properties": {
+        "path": { "type": "string" },
+        "digest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "coordinate_system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "nm_per_mm", "x_axis", "y_axis", "rings_closed", "ring_roles_explicit"],
+      "properties": {
+        "unit": { "const": "nm" },
+        "nm_per_mm": { "const": 1000000 },
+        "x_axis": { "const": "board-right" },
+        "y_axis": { "const": "board-down" },
+        "rings_closed": { "const": false },
+        "ring_roles_explicit": { "const": true }
+      }
+    },
+    "curve_tolerance_mm": { "type": "number", "exclusiveMinimum": 0 },
+    "board": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["thickness_mm", "aux_axis_origin_nm", "stackup_layers", "copper_finish", "edge_connector", "edge_plating"],
+      "properties": {
+        "thickness_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "aux_axis_origin_nm": { "$ref": "#/$defs/point" },
+        "stackup_layers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type_name", "thickness_mm", "material", "epsilon_r", "loss_tangent", "color"],
+            "properties": {
+              "name": { "type": "string" },
+              "type_name": { "type": "string" },
+              "thickness_mm": { "type": "number", "minimum": 0 },
+              "material": { "type": "string" },
+              "epsilon_r": { "type": ["number", "null"] },
+              "loss_tangent": { "type": ["number", "null"] },
+              "color": { "type": "string" }
+            }
+          }
+        },
+        "copper_finish": { "type": "string" },
+        "edge_connector": { "type": "string" },
+        "edge_plating": { "type": "boolean" }
+      }
+    },
+    "bounds_nm": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "array", "prefixItems": [{"type":"integer"},{"type":"integer"},{"type":"integer"},{"type":"integer"}], "minItems": 4, "maxItems": 4 }
+      ]
+    },
+    "layers": { "type": "array", "items": { "$ref": "#/$defs/layer" } },
+    "nets": { "type": "array", "items": { "$ref": "#/$defs/net" } },
+    "features": { "type": "array", "items": { "$ref": "#/$defs/feature" } },
+    "drills": { "type": "array", "items": { "$ref": "#/$defs/drill" } },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "stats": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "metrics": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "point": { "type": "array", "prefixItems": [{"type":"integer"},{"type":"integer"}], "minItems": 2, "maxItems": 2 },
+    "ring": { "type": "array", "minItems": 3, "items": { "$ref": "#/$defs/point" } },
+    "layer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["index", "key", "name", "source_ordinal", "layer_type", "user_name"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 }, "key": { "type": "string" },
+        "name": { "type": "string" }, "source_ordinal": { "type": "integer" },
+        "layer_type": { "type": "string" }, "user_name": { "type": ["string", "null"] }
+      }
+    },
+    "net": {
+      "type": "object", "additionalProperties": false,
+      "required": ["index", "key", "name", "source_ordinal"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 }, "key": { "type": "string" },
+        "name": { "type": "string" }, "source_ordinal": { "type": ["integer", "null"] }
+      }
+    },
+    "feature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_order", "semantic_id", "kind", "source_uid", "net_index", "layer_indexes", "outer_nm", "holes_nm", "footprint_uid", "component_ref", "pad_number", "island"],
+      "properties": {
+        "source_order": { "type": "integer", "minimum": 0 }, "semantic_id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["track", "track_arc", "via", "pad", "zone_fill"] },
+        "source_uid": { "type": "string", "minLength": 1 }, "net_index": { "type": ["integer", "null"], "minimum": 0 },
+        "layer_indexes": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } },
+        "outer_nm": { "$ref": "#/$defs/ring" }, "holes_nm": { "type": "array", "items": { "$ref": "#/$defs/ring" } },
+        "footprint_uid": { "type": ["string", "null"] }, "component_ref": { "type": ["string", "null"] },
+        "pad_number": { "type": ["string", "null"] }, "island": { "type": "boolean" }
+      }
+    },
+    "drill": {
+      "type": "object", "additionalProperties": false,
+      "required": ["semantic_id", "source_uid", "kind", "center_nm", "width_nm", "height_nm", "oval", "plated", "layer_indexes", "footprint_uid", "component_ref", "pad_number"],
+      "properties": {
+        "semantic_id": { "type": "string", "minLength": 1 }, "source_uid": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["via", "plated_pad", "npth_pad"] }, "center_nm": { "$ref": "#/$defs/point" },
+        "width_nm": { "type": "integer", "exclusiveMinimum": 0 }, "height_nm": { "type": "integer", "exclusiveMinimum": 0 },
+        "oval": { "type": "boolean" }, "plated": { "type": "boolean" },
+        "layer_indexes": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } },
+        "footprint_uid": { "type": ["string", "null"] }, "component_ref": { "type": ["string", "null"] },
+        "pad_number": { "type": ["string", "null"] }
+      }
+    },
+    "diagnostic": {
+      "type": "object", "additionalProperties": false,
+      "required": ["severity", "code", "message", "source_uid"],
+      "properties": {
+        "severity": { "enum": ["warning", "error"] }, "code": { "type": "string" },
+        "message": { "type": "string" }, "source_uid": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

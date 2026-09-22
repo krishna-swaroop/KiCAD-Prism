@@ -2,6 +2,7 @@
 ARG KICAD_MONKEY_VARIANT=kicad-monkey-upstream
 ARG NODE_VERSION=22.23.2
 ARG PYTHON_VERSION=3.12.13
+ARG RUST_VERSION=1.95.0
 ARG UV_VERSION=0.12.5
 
 # KiCad CLI runtime. Release/source defaults are reproducible and AMD64-only.
@@ -17,6 +18,46 @@ COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ .
 RUN npm run build:panel
+
+FROM --platform=${KICAD_BASE_PLATFORM} rust:${RUST_VERSION}-bookworm AS prism-kicad-native-builder
+ARG TARGETARCH
+ARG GEOMETER_SDK_TAG=v2026-09-19
+ARG GEOMETER_SDK_VERSION=2026.9.19
+ARG GEOMETER_SDK_LINUX_AMD64_SHA256=ff2ef8615c5868de346b5e695bdea207fa5e379bb63e3f95148896ccdd0d8faa
+ARG GEOMETER_SDK_LINUX_ARM64_SHA256=c0f92e5f11c254940d2e1bcce44af777db21bf6c46bd17a724aa3df5413684d1
+WORKDIR /build/prism-kicad-native
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+RUN case "${TARGETARCH}" in \
+      amd64) sdk_arch=x64; sdk_sha="${GEOMETER_SDK_LINUX_AMD64_SHA256}" ;; \
+      arm64) sdk_arch=arm64; sdk_sha="${GEOMETER_SDK_LINUX_ARM64_SHA256}" ;; \
+      *) echo "Unsupported Geometer SDK architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && sdk_archive="geometer-sdk-${GEOMETER_SDK_VERSION}-linux-${sdk_arch}.zip" \
+    && curl --fail --location --retry 3 \
+      "https://github.com/wavenumber-eng/geometer/releases/download/${GEOMETER_SDK_TAG}/${sdk_archive}" \
+      --output "/tmp/${sdk_archive}" \
+    && echo "${sdk_sha}  /tmp/${sdk_archive}" | sha256sum --check - \
+    && unzip -q "/tmp/${sdk_archive}" -d /opt/geometer-sdk \
+    && rm "/tmp/${sdk_archive}"
+ENV GEOMETER_SDK_DIR=/opt/geometer-sdk
+COPY kicad-prism-viewer/native/prism-kicad-native/Cargo.toml \
+    kicad-prism-viewer/native/prism-kicad-native/Cargo.lock \
+    kicad-prism-viewer/native/prism-kicad-native/rust-toolchain.toml \
+    kicad-prism-viewer/native/prism-kicad-native/build.rs ./
+COPY kicad-prism-viewer/native/prism-kicad-native/src ./src
+RUN rustup component add rustfmt clippy
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/prism-kicad-native/target \
+    cargo fmt --check \
+    && cargo test --release --locked \
+    && cargo clippy --release --locked -- -D warnings \
+    && cargo build --release --locked \
+    && cp target/release/prism-kicad-native /tmp/prism-kicad-native
 
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-bin
 
@@ -78,6 +119,7 @@ ENV PATH="/app/venv/bin:$PATH"
 ENV PRISM_SEMANTIC_VIEWER_REPO=/opt/kicad-prism-viewer
 ENV PYTHONPATH=/opt/kicad-prism-viewer
 ENV PRISM_CLIPPER2_LIBRARY=/usr/local/lib/libprism_clipper2.so
+ENV PRISM_KICAD_NATIVE_PATH=/usr/local/bin/prism-kicad-native
 
 # API, workers, Release Studio, and the semantic viewer share one fully resolved
 # runtime. Installing two independently resolved files into this venv was the
@@ -106,6 +148,9 @@ RUN cd /opt/kicad-prism-viewer && npm run build
 
 COPY backend/ .
 COPY scripts/ scripts/
+COPY --from=prism-kicad-native-builder \
+    /tmp/prism-kicad-native \
+    /usr/local/bin/prism-kicad-native
 COPY --from=remote-provider-panel /panel/dist/remote_provider/ /app/app/static/remote_provider/
 
 # Stable on-disk identity for toolchain_digest / live CI. Written late so the
@@ -131,8 +176,11 @@ FROM prism-runtime AS kicad-monkey-local
 # Modern upstream owns Monkey and Cruncher in one monorepo. A local development
 # image replaces both together from that checkout; mixing a local Monkey with
 # whichever Cruncher happened to be newest on PyPI is forbidden.
+ARG LOCAL_WN_GEOMETER_VERSION=2026.9.11
 RUN --mount=from=kicad_toolchain,source=/,target=/tmp/kicad-toolchain,ro \
     test -f /tmp/kicad-toolchain/packages/kicad_cruncher/pyproject.toml \
+    && uv pip install --no-cache-dir --reinstall \
+        "wn-geometer==${LOCAL_WN_GEOMETER_VERSION}" \
     && uv pip install --no-cache-dir --no-deps --reinstall \
         /tmp/kicad-toolchain \
         /tmp/kicad-toolchain/packages/kicad_cruncher \

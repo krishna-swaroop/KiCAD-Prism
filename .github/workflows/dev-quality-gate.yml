@@ -465,6 +465,26 @@ jobs:
           --file backend/Dockerfile
           .
 
+      - name: Smoke-test native semantic compiler
+        run: |
+          set -euo pipefail
+          smoke_root="$RUNNER_TEMP/prism-native-smoke"
+          mkdir -p "$smoke_root"
+          docker run --rm \
+            --platform linux/amd64 \
+            --volume "${GITHUB_WORKSPACE}/fixtures/release-studio/usb-pd:/fixture:ro" \
+            --volume "$smoke_root:/output" \
+            --entrypoint /usr/local/bin/prism-kicad-native \
+            release-studio-live-kicad:ci \
+            compile-semantic \
+            --pcb /fixture/USB-PD-Trigger-Board.kicad_pcb \
+            --output /output/semantic \
+            --tile-size auto \
+            --mesh-tolerance-mm 0.005 \
+            --meshopt-level medium
+          python3 -c 'import json, pathlib, sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p["schema"] == "prism.semantic_mesh_pack.v1"; assert p["tiles"]' \
+            "$smoke_root/semantic/mesh-pack.json"
+
       - name: Run Release Studio live KiCad tests
         run: |
           set -euo pipefail

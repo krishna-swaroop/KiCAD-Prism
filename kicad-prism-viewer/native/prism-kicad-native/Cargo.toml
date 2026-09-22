@@ -1,0 +1,24 @@
+[package]
+name = "prism-kicad-native"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+anyhow = "1.0.102"
+earcutr = "0.5.0"
+kicad-monkey-core = { git = "https://github.com/wavenumber-eng/kicad_monkey", rev = "bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d" }
+rayon = "1.11.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+
+[build-dependencies]
+serde_json = "1.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

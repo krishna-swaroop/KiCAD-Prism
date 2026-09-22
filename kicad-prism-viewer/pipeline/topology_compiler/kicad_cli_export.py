@@ -13,9 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .copper_geometry import native_helper_path, pcb_geometry_backend
+
 
 DEFAULT_KICAD_CLI = Path("/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli")
 BOARD_CONTEXT_CACHE_VERSION = "board-context-no-pads-a6"
+NATIVE_BOARD_CONTEXT_CACHE_VERSION = "native-board-body-a0"
 
 
 @dataclass
@@ -138,14 +141,23 @@ def export_project_geometry_assets(
     ]
 
     def export_board() -> ExportResult:
-        result = _run_cached_export(
-            "board_context",
-            cli,
-            board_export_args,
-            cache_dir=cache_dir,
-            cache_key=f"{pcb_hash}-{cli_version}-{BOARD_CONTEXT_CACHE_VERSION}",
-            progress=progress,
-        )
+        if pcb_geometry_backend() == "rust":
+            result = _run_native_board_export(
+                pcb_file,
+                geometry_dir,
+                cache_dir=cache_dir,
+                cache_key=f"{pcb_hash}-{NATIVE_BOARD_CONTEXT_CACHE_VERSION}",
+                progress=progress,
+            )
+        else:
+            result = _run_cached_export(
+                "board_context",
+                cli,
+                board_export_args,
+                cache_dir=cache_dir,
+                cache_key=f"{pcb_hash}-{cli_version}-{BOARD_CONTEXT_CACHE_VERSION}",
+                progress=progress,
+            )
         if progress:
             progress(
                 "MILESTONE board-ready "
@@ -249,9 +261,33 @@ def finalize_project_geometry(
             "inspect.components_glb",
             {"elapsed_ms": (time.perf_counter() - started) * 1000.0, "components": len(components)},
         )
+    native_board = any(item.label == "native_board_context" for item in exports)
+    visibility_groups = [
+        {
+            "id": "board",
+            "label": "Board",
+            "asset": "geometry/base_board.glb",
+            "mesh_name_contains": ["_PCB"],
+        },
+        {
+            "id": "silkscreen",
+            "label": "Silkscreen",
+            "asset": "geometry/base_board.glb",
+            "mesh_name_contains": ["_silkscreen"],
+        },
+        {
+            "id": "components",
+            "label": "Components",
+            "asset": "geometry/components.glb",
+            "mesh_name_contains": [],
+        },
+    ]
     manifest = {
         "schema": "prism.semantic_geometry_a0",
-        "generator": "kicad-cli",
+        "generator": (
+            "prism-native-board+kicad-cli-components"
+            if native_board else "kicad-cli"
+        ),
         "packing_mode": "semantic-pcb-ir",
         "connected_net_count": len(connected_nets),
         "kicad_cli": str(cli),
@@ -271,11 +307,7 @@ def finalize_project_geometry(
         },
         "exports": [item.to_dict(output_dir) for item in exports],
         "components": components,
-        "visibility_groups": [
-            {"id": "board", "label": "Board", "asset": "geometry/base_board.glb", "mesh_name_contains": ["_PCB"]},
-            {"id": "silkscreen", "label": "Silkscreen", "asset": "geometry/base_board.glb", "mesh_name_contains": ["_silkscreen"]},
-            {"id": "components", "label": "Components", "asset": "geometry/components.glb", "mesh_name_contains": []},
-        ],
+        "visibility_groups": visibility_groups,
     }
     manifest_path = output_dir / "semantic_geometry.json"
     started = time.perf_counter()
@@ -290,6 +322,7 @@ def finalize_project_geometry(
 
 def _export_profile(result: ExportResult) -> dict[str, Any]:
     return {
+        "backend": "native" if result.label == "native_board_context" else "kicad-cli",
         "elapsed_ms": float(result.elapsed_ms),
         "cache_hit": result.stdout == "cache hit",
         "bytes": result.path.stat().st_size if result.path.exists() else 0,
@@ -310,6 +343,108 @@ def _board_context_export_args(geometry_dir: Path, pcb_file: Path) -> list[str]:
         "--include-soldermask",
         str(pcb_file),
     ]
+
+
+def _run_native_board_export(
+    pcb_file: Path,
+    geometry_dir: Path,
+    *,
+    cache_dir: Path,
+    cache_key: str,
+    progress: Callable[[str], None] | None = None,
+) -> ExportResult:
+    helper = native_helper_path()
+    if not helper.is_file() or not os.access(helper, os.X_OK):
+        raise RuntimeError(f"native board helper is unavailable or not executable: {helper}")
+    output_path = geometry_dir / "base_board.glb"
+    helper_version = _native_helper_version(helper)
+    cache_path = cache_dir / f"{_slug(f'{cache_key}-{helper_version}')}.glb"
+    command = [
+        str(helper),
+        "compile-board-body",
+        "--pcb",
+        str(pcb_file),
+        "--output",
+        str(geometry_dir / ".native-board-pack"),
+        "--mesh-tolerance-mm",
+        "0.005",
+    ]
+    if cache_path.is_file() and cache_path.stat().st_size:
+        shutil.copy2(cache_path, output_path)
+        if progress:
+            progress(
+                f"native board export: cache hit ({output_path.stat().st_size / 1_000_000:.1f} MB)"
+            )
+        return ExportResult(
+            "native_board_context", command, output_path, 0, "cache hit", ""
+        )
+    if progress:
+        progress("native board export: start")
+    pack_dir = geometry_dir / ".native-board-pack"
+    shutil.rmtree(pack_dir, ignore_errors=True)
+    started = time.perf_counter()
+    timeout = float(os.environ.get("PRISM_KICAD_NATIVE_TIMEOUT_SECONDS", "300"))
+    output_path.unlink(missing_ok=True)
+    try:
+        compiled = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+        if compiled.returncode != 0:
+            detail = (
+                compiled.stderr.strip()
+                or compiled.stdout.strip()
+                or "no diagnostic output"
+            )
+            raise RuntimeError(
+                f"native board compiler failed with exit code {compiled.returncode}: {detail}"
+            )
+        metadata_path = pack_dir / "board-mesh-pack.json"
+        if not metadata_path.is_file():
+            raise RuntimeError("native board compiler did not write board-mesh-pack.json")
+        tool = Path(__file__).resolve().parents[2] / "tools" / "semantic-gltf" / "build.mjs"
+        packed = subprocess.run(
+            ["node", str(tool), str(metadata_path), str(geometry_dir)],
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+        )
+        if (
+            packed.returncode != 0
+            or not output_path.is_file()
+            or not output_path.stat().st_size
+        ):
+            detail = packed.stderr.strip() or packed.stdout.strip() or "no diagnostic output"
+            raise RuntimeError(f"native board GLB packer failed: {detail}")
+    finally:
+        shutil.rmtree(pack_dir, ignore_errors=True)
+    shutil.copy2(output_path, cache_path)
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    if progress:
+        progress(
+            f"native board export: done {elapsed_ms / 1000:.2f}s "
+            f"({output_path.stat().st_size / 1_000_000:.1f} MB)"
+        )
+    return ExportResult(
+        "native_board_context",
+        command,
+        output_path,
+        elapsed_ms,
+        compiled.stdout,
+        "\n".join(value for value in (compiled.stderr, packed.stderr) if value),
+    )
+
+
+def _native_helper_version(helper: Path) -> str:
+    completed = subprocess.run(
+        [str(helper), "--version"], text=True, capture_output=True, timeout=15
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"could not query native board helper version: {completed.stderr}")
+    digest = hashlib.sha256(helper.read_bytes()).hexdigest()[:16]
+    return _slug(f"{completed.stdout.strip()}-{digest}")[:120]
 
 
 def _cli_version(cli: Path) -> str:

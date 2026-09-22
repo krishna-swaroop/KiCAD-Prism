@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -41,18 +42,28 @@ from pipeline.topology_compiler.pcb_extract import compile_pcb_artifacts, extrac
 from pipeline.topology_compiler.pcb_geometry import extract_pad_holes
 from pipeline.topology_compiler.kicad_cli_export import (
     BOARD_CONTEXT_CACHE_VERSION,
+    ExportResult,
+    GeometryExportArtifacts,
     _board_context_export_args,
     _component_nodes,
+    _run_native_board_export,
+    finalize_project_geometry,
 )
 from pipeline.topology_compiler.copper_geometry import (
+    KICAD_MONKEY_RUST_REVISION,
+    PRISM_PCB_GEOMETRY_SCHEMA,
+    _geometry_document_from_dict,
     copper_emit_enabled,
     extract_pcb_metadata_from_copper,
     is_copper_geometry_document,
+    pcb_geometry_backend,
 )
 from pipeline.topology_compiler.semantic_gltf import (
     SemanticGltfBuilder,
     _native_backend_for_semantic_mode,
+    _reconcile_packed_net_metadata,
     _semantic_clipper_backend,
+    patch_semantic_gltf_components,
 )
 from pipeline.topology_compiler.__main__ import (
     _resolve_semantic_tile_size,
@@ -61,6 +72,82 @@ from pipeline.topology_compiler.__main__ import (
 
 
 class TopologyCompilerTests(unittest.TestCase):
+    def test_packed_net_metadata_uses_topology_canonical_name_without_rebinding_ids(self) -> None:
+        payload = {
+            "nets": [
+                {"id": 0, "uid": "", "name": "", "aliases": []},
+                {
+                    "id": 791,
+                    "uid": "board-uid",
+                    "name": "unconnected-(U1-Pad1)",
+                    "netClass": "",
+                    "aliases": [],
+                },
+            ]
+        }
+        _reconcile_packed_net_metadata(
+            {
+                "nets": [
+                    {
+                        "uid": "topology-uid",
+                        "name": "Net-(U1-Pad1)",
+                        "aliases": ["unconnected-(U1-Pad1)"],
+                        "net_class": "Default",
+                    }
+                ]
+            },
+            payload,
+        )
+        self.assertEqual(payload["nets"][1]["id"], 791)
+        self.assertEqual(payload["nets"][1]["uid"], "topology-uid")
+        self.assertEqual(payload["nets"][1]["name"], "Net-(U1-Pad1)")
+        self.assertEqual(payload["nets"][1]["netClass"], "Default")
+        self.assertEqual(payload["nets"][1]["aliases"], ["unconnected-(U1-Pad1)"])
+
+    def test_semantic_builder_derives_board_frame_without_opening_glb(self) -> None:
+        builder = SemanticGltfBuilder(
+            {
+                "board": {"thickness_mm": 2.0},
+                "layers": [
+                    {"name": "F.Cu", "role": "copper", "z_mm": 0.95, "thickness_mm": 0.04},
+                    {"name": "B.Cu", "role": "copper", "z_mm": -0.95, "thickness_mm": 0.04},
+                ],
+                "nets": [],
+            },
+            Path("/path/that/must/not/be-opened/base_board.glb"),
+        )
+        self.assertEqual(builder.board_y_min_mm, 0.0)
+        self.assertAlmostEqual(builder.board_y_max_mm or 0.0, 1.86)
+        self.assertAlmostEqual(builder._runtime_z_mm(-1.0), 0.0)
+        self.assertAlmostEqual(builder._runtime_z_mm(1.0), 1.86)
+
+    def test_component_bindings_patch_manifest_without_rebuilding_tiles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "scene.manifest.json"
+            original = {
+                "schema": "prism.semantic_gltf_a0",
+                "geometryRevision": "copper-revision",
+                "objectFeatures": [{"id": 0}],
+                "components": [],
+                "tiles": [{"id": "tile-1", "path": "tile-1.glb", "bytes": 4}],
+            }
+            manifest_path.write_text(json.dumps(original), encoding="utf-8")
+            components = patch_semantic_gltf_components(
+                manifest_path,
+                {
+                    "components": [
+                        {"uid": "component-u1", "designator": "U1", "value": "MCU", "footprint": "QFN"}
+                    ]
+                },
+                [{"designator": "U1", "node_index": 7, "mesh_names": ["U1_body"]}],
+            )
+            patched = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(patched["geometryRevision"], "copper-revision")
+            self.assertEqual(patched["tiles"], original["tiles"])
+            self.assertEqual(components[0]["featureId"], 1)
+            self.assertEqual(components[0]["nodeIndex"], 7)
+            self.assertEqual(components[0]["meshNames"], ["U1_body"])
+
     def test_auto_tile_size_uses_one_power_of_two_tile_for_small_boards(self) -> None:
         self.assertEqual(
             _resolve_semantic_tile_size("auto", {"bbox_mm": [22.0, 15.0, 154.0, 105.0]}),
@@ -661,6 +748,75 @@ class TopologyCompilerTests(unittest.TestCase):
         self.assertEqual(compilation.metadata["components"][0]["designator"], "U1")
         metadata_spy.assert_called_once()
 
+    def test_rust_geometry_contract_validates_revision_digest_and_dense_indexes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pcb = Path(tmp) / "unit.kicad_pcb"
+            pcb.write_text("(kicad_pcb)", encoding="utf-8")
+            digest = hashlib.sha256(pcb.read_bytes()).hexdigest()
+            payload = {
+                "schema": PRISM_PCB_GEOMETRY_SCHEMA,
+                "kicad_monkey_revision": KICAD_MONKEY_RUST_REVISION,
+                "source": {"digest_sha256": digest},
+                "bounds_nm": [0, 0, 1_000_000, 1_000_000],
+                "layers": [
+                    {
+                        "index": 0,
+                        "key": "F.Cu",
+                        "name": "F.Cu",
+                        "source_ordinal": 0,
+                        "layer_type": "signal",
+                        "user_name": None,
+                    }
+                ],
+                "nets": [
+                    {"index": 0, "key": "VBUS", "name": "VBUS", "source_ordinal": 1}
+                ],
+                "features": [
+                    {
+                        "source_order": 0,
+                        "semantic_id": "track:track-1",
+                        "kind": "track",
+                        "source_uid": "track-1",
+                        "net_index": 0,
+                        "layer_indexes": [0],
+                        "outer_nm": [[0, 0], [1_000_000, 0], [0, 1_000_000]],
+                        "holes_nm": [],
+                        "footprint_uid": None,
+                        "component_ref": None,
+                        "pad_number": None,
+                        "island": False,
+                    }
+                ],
+                "drills": [],
+                "diagnostics": [],
+                "stats": {"features": 1},
+                "metrics": {"total_ms": 1.0},
+            }
+            document = _geometry_document_from_dict(payload, pcb)
+            self.assertEqual(document.schema, PRISM_PCB_GEOMETRY_SCHEMA)
+            self.assertEqual(document.features[0].source_uid, "track-1")
+            self.assertTrue(is_copper_geometry_document(document))
+
+            payload["kicad_monkey_revision"] = "wrong"
+            with self.assertRaisesRegex(RuntimeError, "revision mismatch"):
+                _geometry_document_from_dict(payload, pcb)
+
+            payload["kicad_monkey_revision"] = KICAD_MONKEY_RUST_REVISION
+            payload["stats"]["unsupported_features"] = 1
+            with self.assertRaisesRegex(RuntimeError, "unsupported feature"):
+                _geometry_document_from_dict(payload, pcb)
+
+    def test_explicit_rust_backend_never_falls_back_when_helper_is_missing(self) -> None:
+        with patch.dict(os.environ, {"PRISM_PCB_GEOMETRY_BACKEND": "rust"}, clear=True):
+            self.assertEqual(pcb_geometry_backend(), "rust")
+            context = PrismCompilationContext(Path("unit.kicad_pro"))
+            with patch(
+                "pipeline.topology_compiler.context.rust_geometry_available",
+                return_value=False,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "requires an executable"):
+                    _ = context.board_compilation
+
     def test_artifact_manifest_is_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -701,6 +857,80 @@ class TopologyCompilerTests(unittest.TestCase):
         self.assertIn("--no-components", args)
         self.assertNotIn("--include-pads", args)
         self.assertIn("no-pads", BOARD_CONTEXT_CACHE_VERSION)
+
+    def test_native_board_manifest_retains_native_silkscreen_group(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "scene"
+            geometry = output / "geometry"
+            geometry.mkdir(parents=True)
+            board = geometry / "base_board.glb"
+            board.write_bytes(b"native-board")
+            artifacts = GeometryExportArtifacts(
+                project_file=root / "unit.kicad_pro",
+                pcb_file=root / "unit.kicad_pcb",
+                output_dir=output,
+                cli=Path("kicad-cli"),
+                cli_version="10.0",
+                pcb_hash="fixture",
+                exports=[
+                    ExportResult(
+                        "native_board_context", [], board, 4, "", ""
+                    )
+                ],
+                elapsed_ms=4.0,
+            )
+
+            manifest = finalize_project_geometry({}, artifacts)
+
+            self.assertEqual(
+                manifest["generator"], "prism-native-board+kicad-cli-components"
+            )
+            self.assertEqual(
+                [group["id"] for group in manifest["visibility_groups"]],
+                ["board", "silkscreen", "components"],
+            )
+
+    def test_native_board_export_cleans_pack_after_compiler_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            helper = root / "prism-kicad-native"
+            helper.write_bytes(b"fixture-helper")
+            helper.chmod(0o755)
+            geometry = root / "scene" / "geometry"
+            cache = root / "cache"
+            geometry.mkdir(parents=True)
+            cache.mkdir()
+            pcb = root / "unit.kicad_pcb"
+            pcb.write_text("(kicad_pcb)", encoding="utf-8")
+            calls = 0
+
+            def run(*args, **kwargs):  # type: ignore[no-untyped-def]
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    return SimpleNamespace(returncode=0, stdout="prism-kicad-native 0.1", stderr="")
+                pack = geometry / ".native-board-pack"
+                pack.mkdir()
+                (pack / "partial.bin").write_bytes(b"partial")
+                return SimpleNamespace(returncode=2, stdout="", stderr="failed")
+
+            with patch(
+                "pipeline.topology_compiler.kicad_cli_export.native_helper_path",
+                return_value=helper,
+            ), patch(
+                "pipeline.topology_compiler.kicad_cli_export.subprocess.run",
+                side_effect=run,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "native board compiler failed"):
+                    _run_native_board_export(
+                        pcb,
+                        geometry,
+                        cache_dir=cache,
+                        cache_key="fixture",
+                    )
+
+            self.assertFalse((geometry / ".native-board-pack").exists())
 
     def test_via_caps_and_barrel_share_one_source_feature(self) -> None:
         builder = SemanticGltfBuilder(self.semantic_topology())

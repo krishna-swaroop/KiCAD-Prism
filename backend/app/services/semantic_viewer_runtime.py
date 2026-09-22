@@ -5,6 +5,18 @@ import sys
 from pathlib import Path
 
 
+def update_native_geometry_fingerprint(hasher) -> None:
+    """Add the selected PCB backend and native helper identity to a hash."""
+    geometry_backend = os.environ.get("PRISM_PCB_GEOMETRY_BACKEND", "legacy")
+    helper_path = Path(
+        os.environ.get("PRISM_KICAD_NATIVE_PATH", "/usr/local/bin/prism-kicad-native")
+    )
+    hasher.update(geometry_backend.encode("utf-8"))
+    hasher.update(str(helper_path).encode("utf-8"))
+    if geometry_backend == "rust" and helper_path.is_file():
+        hasher.update(helper_path.read_bytes())
+
+
 def candidate_roots() -> list[Path]:
     roots: list[Path] = []
     

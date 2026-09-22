@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kicad-prism.dev/schemas/prism.pcb_analytic_geometry.v2.schema.json",
+  "title": "Prism PCB analytic geometry v2",
+  "type": "object",
+  "required": [
+    "schema",
+    "contract_revision",
+    "producer",
+    "kicad_monkey_revision",
+    "source",
+    "coordinate_system",
+    "terminal_tolerance_mm",
+    "board",
+    "layers",
+    "nets",
+    "operations",
+    "drills",
+    "diagnostics",
+    "stats",
+    "metrics"
+  ],
+  "properties": {
+    "schema": { "const": "prism.pcb_analytic_geometry.v2" },
+    "contract_revision": { "const": "2" },
+    "producer": { "enum": ["temporary_prism", "upstream_monkey"] },
+    "kicad_monkey_revision": { "type": "string", "minLength": 40 },
+    "kicad_monkey_engine_version": { "type": "string" },
+    "source": {
+      "type": "object",
+      "required": ["path", "digest_sha256", "bytes"],
+      "properties": {
+        "path": { "type": "string" },
+        "digest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "coordinate_system": { "type": "object" },
+    "terminal_tolerance_mm": { "type": "number", "exclusiveMinimum": 0 },
+    "board": { "type": "object" },
+    "bounds_nm": { "$ref": "#/$defs/bounds" },
+    "layers": { "type": "array", "items": { "type": "object" } },
+    "nets": { "type": "array", "items": { "type": "object" } },
+    "operations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "drills": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/drill" }
+    },
+    "diagnostics": { "type": "array", "items": { "type": "object" } },
+    "stats": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "metrics": { "type": "object" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nm_point": {
+      "type": "array",
+      "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "nm_ring": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/nm_point" }
+    },
+    "bounds": {
+      "type": ["array", "null"],
+      "prefixItems": [
+        { "type": "integer" },
+        { "type": "integer" },
+        { "type": "integer" },
+        { "type": "integer" }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "affine": {
+      "type": "object",
+      "required": ["m11", "m12", "m21", "m22", "tx_nm", "ty_nm"],
+      "properties": {
+        "m11": { "type": "number" },
+        "m12": { "type": "number" },
+        "m21": { "type": "number" },
+        "m22": { "type": "number" },
+        "tx_nm": { "type": "integer" },
+        "ty_nm": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "primitive": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "center_nm", "radius_nm"],
+          "properties": {
+            "type": { "const": "disk" },
+            "center_nm": { "$ref": "#/$defs/nm_point" },
+            "radius_nm": { "type": "integer", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "center_nm", "outer_radius_nm", "inner_radius_nm"],
+          "properties": {
+            "type": { "const": "annulus" },
+            "center_nm": { "$ref": "#/$defs/nm_point" },
+            "outer_radius_nm": { "type": "integer", "exclusiveMinimum": 0 },
+            "inner_radius_nm": { "type": "integer", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "start_nm", "end_nm", "radius_nm"],
+          "properties": {
+            "type": { "const": "capsule" },
+            "start_nm": { "$ref": "#/$defs/nm_point" },
+            "end_nm": { "$ref": "#/$defs/nm_point" },
+            "radius_nm": { "type": "integer", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "start_nm", "mid_nm", "end_nm", "radius_nm"],
+          "properties": {
+            "type": { "const": "circular_sweep" },
+            "start_nm": { "$ref": "#/$defs/nm_point" },
+            "mid_nm": { "$ref": "#/$defs/nm_point" },
+            "end_nm": { "$ref": "#/$defs/nm_point" },
+            "radius_nm": { "type": "integer", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "points_nm", "radius_nm", "closed"],
+          "properties": {
+            "type": { "const": "swept_path" },
+            "points_nm": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/nm_point" } },
+            "radius_nm": { "type": "integer", "exclusiveMinimum": 0 },
+            "closed": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "center_nm", "width_nm", "height_nm", "radius_nm"],
+          "properties": {
+            "type": { "const": "rounded_rect" },
+            "center_nm": { "$ref": "#/$defs/nm_point" },
+            "width_nm": { "type": "integer", "exclusiveMinimum": 0 },
+            "height_nm": { "type": "integer", "exclusiveMinimum": 0 },
+            "radius_nm": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "center_nm", "width_nm", "height_nm", "ratio", "corners"],
+          "properties": {
+            "type": { "const": "chamfered_rect" },
+            "center_nm": { "$ref": "#/$defs/nm_point" },
+            "width_nm": { "type": "integer", "exclusiveMinimum": 0 },
+            "height_nm": { "type": "integer", "exclusiveMinimum": 0 },
+            "ratio": { "type": "number", "minimum": 0 },
+            "corners": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "center_nm", "width_nm", "height_nm", "delta_x_nm", "delta_y_nm"],
+          "properties": {
+            "type": { "const": "trapezoid" },
+            "center_nm": { "$ref": "#/$defs/nm_point" },
+            "width_nm": { "type": "integer", "exclusiveMinimum": 0 },
+            "height_nm": { "type": "integer", "exclusiveMinimum": 0 },
+            "delta_x_nm": { "type": "integer" },
+            "delta_y_nm": { "type": "integer" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "outer_nm", "holes_nm"],
+          "properties": {
+            "type": { "const": "planar_region" },
+            "outer_nm": { "$ref": "#/$defs/nm_ring" },
+            "holes_nm": { "type": "array", "items": { "$ref": "#/$defs/nm_ring" } }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "operation": {
+      "type": "object",
+      "required": [
+        "source_order", "semantic_id", "kind", "source_uid", "layer_indexes",
+        "transform", "bounds_nm", "polarity", "primitive", "island"
+      ],
+      "properties": {
+        "source_order": { "type": "integer", "minimum": 0 },
+        "semantic_id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "source_uid": { "type": "string", "minLength": 1 },
+        "net_index": { "type": ["integer", "null"], "minimum": 0 },
+        "layer_indexes": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } },
+        "transform": { "$ref": "#/$defs/affine" },
+        "bounds_nm": { "$ref": "#/$defs/bounds" },
+        "polarity": { "enum": ["add", "subtract"] },
+        "primitive": { "$ref": "#/$defs/primitive" },
+        "footprint_uid": { "type": ["string", "null"] },
+        "component_ref": { "type": ["string", "null"] },
+        "pad_number": { "type": ["string", "null"] },
+        "island": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "drill": {
+      "type": "object",
+      "required": [
+        "semantic_id", "source_uid", "kind", "center_nm", "width_nm", "height_nm",
+        "oval", "plated", "layer_indexes"
+      ],
+      "properties": {
+        "semantic_id": { "type": "string", "minLength": 1 },
+        "source_uid": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "center_nm": { "$ref": "#/$defs/nm_point" },
+        "width_nm": { "type": "integer", "exclusiveMinimum": 0 },
+        "height_nm": { "type": "integer", "exclusiveMinimum": 0 },
+        "oval": { "type": "boolean" },
+        "plated": { "type": "boolean" },
+        "layer_indexes": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } },
+        "footprint_uid": { "type": ["string", "null"] },
+        "component_ref": { "type": ["string", "null"] },
+        "pad_number": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}
