@@ -317,6 +317,58 @@ class ConnectorAdminApiTests(unittest.TestCase):
             run(connectors_api.resume_connector("cn_gh1", self.admin))
         self.assertEqual(caught.exception.status_code, 403)
 
+    def test_rotation_requires_new_probe_and_success_allows_resume(self) -> None:
+        self._create()
+        run(connectors_api.test_connector("cn_gh1", self.admin))
+        rotated = self.service.update(
+            "cn_gh1", actor_user_id="u_admin", credentials={"privateKey": "replacement-key"}
+        )
+        self.assertTrue(rotated["paused"])
+        self.assertFalse(rotated["writesEnabled"])
+        self.assertIsNone(rotated["bot"]["id"])
+        envelope = self.conn.execute(
+            "SELECT credential_envelope FROM tracker_connectors WHERE id = 'cn_gh1'"
+        ).fetchone()["credential_envelope"]
+        material = json.loads(decrypt_secret(
+            envelope, {"record": "cn_gh1", "field": "github_app"}, settings=self.settings
+        ).decode())
+        self.assertEqual(material, {
+            "appId": "772215",
+            "installationId": "88001122",
+            "privateKey": "replacement-key",
+        })
+        with self.assertRaises(ProviderError):
+            self.service.resume("cn_gh1", actor_user_id="u_admin")
+        tested = self.service.test_connection("cn_gh1", actor_user_id="u_admin")
+        self.assertTrue(tested["test"]["writesEnabled"])
+        self.assertFalse(tested["writesEnabled"])
+        self.assertTrue(tested["paused"])
+        resumed = self.service.resume("cn_gh1", actor_user_id="u_admin")
+        self.assertTrue(resumed["writesEnabled"])
+
+    def test_probe_result_cannot_publish_after_concurrent_rotation(self) -> None:
+        self._create()
+
+        def rotate_during_probe(_row, _material):
+            self.service.update(
+                "cn_gh1", actor_user_id="u_admin", credentials={"privateKey": "replacement-key"}
+            )
+            return dict(self._probe)
+
+        self.service._tester = rotate_during_probe
+        with self.assertRaisesRegex(ProviderError, "changed during the test"):
+            self.service.test_connection("cn_gh1", actor_user_id="u_admin")
+        connector = self.service.get("cn_gh1")
+        self.assertTrue(connector["paused"])
+        self.assertFalse(connector["writesEnabled"])
+
+    def test_probe_requires_explicit_write_permission(self) -> None:
+        self._create()
+        self._probe = {**self._probe, "writesEnabled": False, "pausedReason": "permissions"}
+        tested = self.service.test_connection("cn_gh1", actor_user_id="u_admin")
+        self.assertFalse(tested["test"]["writesEnabled"])
+        self.assertTrue(tested["paused"])
+
     def test_repositories_listing_needs_credentials_and_admin(self) -> None:  # TR-46 destination picker
         self._create()
         listed = run(connectors_api.list_connector_repositories("cn_gh1", self.admin))

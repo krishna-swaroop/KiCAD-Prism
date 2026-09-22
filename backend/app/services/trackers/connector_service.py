@@ -21,6 +21,7 @@ from app.services.trackers.credential_sidecars import (
     store_webhook_secret,
     webhook_configured,
 )
+from app.services.trackers.connector_provider import github_auth_for_connector
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.secrets import (
     SecretStoreLocked,
@@ -214,16 +215,21 @@ class ConnectorService:
     ) -> dict[str, Any]:
         with self.connection() as conn:
             store = TrackerStore(conn)
-            try:
-                current = store.get_connector(connector_id)
-            except KeyError as exc:
-                raise ConnectorNotFound(connector_id) from exc
+            envelope_row = conn.execute(
+                "SELECT credential_envelope FROM tracker_connectors WHERE id = %s FOR UPDATE",
+                (connector_id,),
+            ).fetchone()
+            if envelope_row is None:
+                raise ConnectorNotFound(connector_id)
+            current = store.get_connector(connector_id)
             kind = instance_kind if instance_kind is not None else str(current["instance_kind"])
             url = base_url if base_url is not None else str(current.get("base_url") or "")
             self._validate_identity(str(current["provider"]), kind, url)
             envelope = None
             if credentials:
-                envelope = self._merge_app_envelope(connector_id, credentials, current)
+                envelope = self._merge_app_envelope(
+                    connector_id, credentials, envelope_row["credential_envelope"]
+                )
             if credentials:
                 self._apply_credential_sidecars(conn, connector_id, credentials)
             store.upsert_connector(
@@ -234,6 +240,23 @@ class ConnectorService:
                 base_url=url,
                 credential_envelope=envelope,
             )
+            installation_changed = (
+                envelope is not None
+                or kind != str(current["instance_kind"])
+                or url != str(current.get("base_url") or "")
+            )
+            if installation_changed:
+                # The old probe says nothing about new credentials or an API
+                # endpoint. Require a new test before allowing writes.
+                conn.execute(
+                    """
+                    UPDATE tracker_connectors
+                    SET paused = TRUE, paused_reason = 'test_failed',
+                        bot_forge_user_id = NULL, bot_login = NULL
+                    WHERE id = %s
+                    """,
+                    (connector_id,),
+                )
             store.audit(
                 action="connector.update",
                 actor_user_id=actor_user_id,
@@ -371,33 +394,17 @@ class ConnectorService:
                 visibility_hint=visibility_hint,
             )
         with self.connection() as conn:
-            row = self._require(conn, connector_id)
-            envelope = conn.execute(
-                "SELECT credential_envelope FROM tracker_connectors WHERE id = %s",
-                (connector_id,),
-            ).fetchone()
-            blob = (envelope or {}).get("credential_envelope")
-            if not blob:
-                return {
-                    "visibility": "unknown",
-                    "containerPath": container_path,
-                    "remoteContainerId": remote_container_id,
-                }
-            material = json.loads(
-                decrypt_secret(blob, _context(connector_id), settings=self.settings).decode()
-            )
+            row, _, material = self._installation_material(conn, connector_id)
+        if material is None:
+            return {
+                "visibility": "unknown",
+                "containerPath": container_path,
+                "remoteContainerId": remote_container_id,
+            }
         from app.services.trackers.contracts import Destination
-        from app.services.trackers.github_auth import GitHubAppAuth, GitHubAppCredentials
         from app.services.trackers.github_issues import GitHubIssueAdapter
 
-        creds = GitHubAppCredentials(
-            app_id=str(material.get("appId") or material.get("app_id") or ""),
-            installation_id=str(material.get("installationId") or material.get("installation_id") or ""),
-            private_key_pem=str(material.get("privateKey") or material.get("private_key") or ""),
-            instance_kind=str(row.get("instance_kind") or "github.com"),
-            base_url=str(row.get("base_url") or ""),
-        )
-        auth = GitHubAppAuth(creds)
+        auth = github_auth_for_connector(row, material)
         adapter = GitHubIssueAdapter(
             auth,
             http=auth.http,
@@ -427,20 +434,31 @@ class ConnectorService:
         }
 
     def test_connection(self, connector_id: str, *, actor_user_id: str) -> dict[str, Any]:
+        # Never hold a database connection open during a provider request.
         with self.connection() as conn:
-            row = self._require(conn, connector_id)
-            envelope = conn.execute(
-                "SELECT credential_envelope FROM tracker_connectors WHERE id = %s",
-                (connector_id,),
-            ).fetchone()
-            blob = (envelope or {}).get("credential_envelope")
-            if not blob:
+            row, blob, material = self._installation_material(conn, connector_id)
+            if material is None:
                 raise ProviderError("auth_lost", "Connector has no installation credentials.")
-            material = json.loads(decrypt_secret(blob, _context(connector_id), settings=self.settings).decode())
             if self._uses_env_bootstrap(material):
                 raise ProviderError("invalid_request", "Admin-managed connectors cannot use process environment tokens.")
-            probe = self._run_test(row, material)
-            writes = bool(probe.get("writesEnabled") or probe.get("ok"))
+        probe = self._run_test(row, material)
+        with self.connection() as conn:
+            current = conn.execute(
+                """
+                SELECT credential_envelope, instance_kind, base_url
+                FROM tracker_connectors WHERE id = %s FOR UPDATE
+                """,
+                (connector_id,),
+            ).fetchone()
+            if current is None:
+                raise ConnectorNotFound(connector_id)
+            if (
+                current["credential_envelope"] != blob
+                or current["instance_kind"] != row["instance_kind"]
+                or current["base_url"] != row["base_url"]
+            ):
+                raise ProviderError("invalid_request", "Connector changed during the test. Retry with current credentials.")
+            writes = bool(probe.get("writesEnabled"))
             bot = probe.get("bot") or {}
             paused_reason = probe.get("pausedReason")
             if not writes:
@@ -467,7 +485,10 @@ class ConnectorService:
                     UPDATE tracker_connectors
                     SET bot_forge_user_id = %s,
                         bot_login = %s,
-                        paused_reason = CASE WHEN paused THEN paused_reason ELSE NULL END,
+                        paused_reason = CASE
+                            WHEN paused_reason IN ('revoked', 'test_failed', 'auth_lost', 'permissions') THEN NULL
+                            WHEN paused THEN paused_reason ELSE NULL
+                        END,
                         updated_at = NOW()
                     WHERE id = %s
                     """,
@@ -481,7 +502,6 @@ class ConnectorService:
             )
             conn.commit()
             public = self._public(TrackerStore(conn).get_connector(connector_id), conn)
-            public["writesEnabled"] = writes
             public["test"] = {
                 "ok": writes,
                 "writesEnabled": writes,
@@ -495,41 +515,31 @@ class ConnectorService:
         """Repositories the connector's installation can publish to (admin picker)."""
 
         with self.connection() as conn:
-            row = self._require(conn, connector_id)
-            envelope = conn.execute(
-                "SELECT credential_envelope FROM tracker_connectors WHERE id = %s",
-                (connector_id,),
-            ).fetchone()
-            blob = (envelope or {}).get("credential_envelope")
-            if not blob:
+            row, _, material = self._installation_material(conn, connector_id)
+            if material is None:
                 raise ProviderError("auth_lost", "Connector has no installation credentials.")
-            material = json.loads(decrypt_secret(blob, _context(connector_id), settings=self.settings).decode())
         if self._repository_lister is not None:
             return self._repository_lister(row, material)
-        from app.services.trackers.github_auth import GitHubAppAuth, GitHubAppCredentials
-
-        creds = GitHubAppCredentials(
-            app_id=str(material.get("appId") or material.get("app_id") or ""),
-            installation_id=str(material.get("installationId") or material.get("installation_id") or ""),
-            private_key_pem=str(material.get("privateKey") or material.get("private_key") or ""),
-            instance_kind=str(row.get("instance_kind") or "github.com"),
-            base_url=str(row.get("base_url") or ""),
-        )
-        return GitHubAppAuth(creds).list_repositories()
+        return github_auth_for_connector(row, material).list_repositories()
 
     def _run_test(self, row: Mapping[str, Any], material: Mapping[str, str]) -> dict[str, Any]:
         if self._tester is not None:
             return self._tester(row, material)
-        from app.services.trackers.github_auth import GitHubAppAuth, GitHubAppCredentials
+        return github_auth_for_connector(row, material).test_connection()
 
-        creds = GitHubAppCredentials(
-            app_id=str(material.get("appId") or material.get("app_id") or ""),
-            installation_id=str(material.get("installationId") or material.get("installation_id") or ""),
-            private_key_pem=str(material.get("privateKey") or material.get("private_key") or ""),
-            instance_kind=str(row.get("instance_kind") or "github.com"),
-            base_url=str(row.get("base_url") or ""),
-        )
-        return GitHubAppAuth(creds).test_connection()
+    def _installation_material(
+        self, conn: Any, connector_id: str
+    ) -> tuple[dict[str, Any], str | None, dict[str, Any] | None]:
+        row = self._require(conn, connector_id)
+        envelope = conn.execute(
+            "SELECT credential_envelope FROM tracker_connectors WHERE id = %s",
+            (connector_id,),
+        ).fetchone()
+        blob = (envelope or {}).get("credential_envelope")
+        if not blob:
+            return row, None, None
+        material = json.loads(decrypt_secret(blob, _context(connector_id), settings=self.settings).decode())
+        return row, blob, material
 
     def _app_payload(self, credentials: Mapping[str, str]) -> dict[str, str]:
         return {
@@ -557,12 +567,11 @@ class ConnectorService:
         self,
         connector_id: str,
         credentials: Mapping[str, str],
-        current: Mapping[str, Any],
+        existing_blob: str | None,
     ) -> str | None:
         if not self._has_app_fields(credentials):
             return None
         payload = self._app_payload(credentials)
-        existing_blob = current.get("credential_envelope")
         if existing_blob:
             merged = json.loads(
                 decrypt_secret(existing_blob, _context(connector_id), settings=self.settings).decode()

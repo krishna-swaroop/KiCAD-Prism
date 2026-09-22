@@ -101,6 +101,7 @@ class TrackerStore:
                 credential_envelope, bot_forge_user_id, bot_login
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
+                instance_kind = EXCLUDED.instance_kind,
                 display_name = EXCLUDED.display_name,
                 base_url = EXCLUDED.base_url,
                 credential_envelope = COALESCE(EXCLUDED.credential_envelope, tracker_connectors.credential_envelope),
