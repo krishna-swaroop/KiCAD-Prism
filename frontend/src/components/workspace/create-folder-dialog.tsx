@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent } from "react";
 
 import { isDialogSubmitShortcut } from "@/lib/dialog-shortcuts";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,9 @@ interface CreateFolderDialogProps {
 }
 
 export function CreateFolderDialog({ open, isSubmitting, onOpenChange, onSubmit }: CreateFolderDialogProps) {
+  // Mounted only while open (see workspace.tsx), so each open is a fresh
+  // component and the initial value is already the reset.
   const [name, setName] = useState("");
-
-  useEffect(() => {
-    if (!open) {
-      setName("");
-    }
-  }, [open]);
 
   const submit = () => {
     const trimmed = name.trim();

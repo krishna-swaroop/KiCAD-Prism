@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 
 import { isTypingTarget, matchesShortcut, parseShortcut } from "@/lib/shortcuts";
+import { useCommittedRef } from "@/hooks/use-committed-ref";
 
 export interface HotkeyBinding {
   /** "mod+k", "shift+/", "alt+backspace", "1" — see lib/shortcuts. */
@@ -35,8 +36,7 @@ function anyDialogOpen(): boolean {
  */
 export function useHotkeys(bindings: HotkeyBinding[], options: UseHotkeysOptions = {}): void {
   const { enabled = true, capture = false, ignoreWhenDialogOpen = true } = options;
-  const bindingsRef = useRef(bindings);
-  bindingsRef.current = bindings;
+  const bindingsRef = useCommittedRef(bindings);
 
   // Parsing is cheap but the combos are static, so key the memo on the combo
   // list rather than the handler identities.
@@ -67,5 +67,5 @@ export function useHotkeys(bindings: HotkeyBinding[], options: UseHotkeysOptions
 
     window.addEventListener("keydown", onKeyDown, capture);
     return () => window.removeEventListener("keydown", onKeyDown, capture);
-  }, [enabled, capture, ignoreWhenDialogOpen, parsed]);
+  }, [bindingsRef, enabled, capture, ignoreWhenDialogOpen, parsed]);
 }

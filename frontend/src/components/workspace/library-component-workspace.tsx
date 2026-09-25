@@ -2,22 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ArrowLeft,
-  ArrowRight,
   Boxes,
-  CheckCircle2,
   ChevronRight,
   CircleAlert,
   CircleDashed,
   Clock3,
-  Columns2,
   Download,
   Edit3,
   ExternalLink,
   FileBox,
   FileCheck2,
-  FileDiff,
   GitCompareArrows,
-  History,
   Library,
   Link2,
   Layers3,
@@ -27,18 +22,17 @@ import {
   RotateCcw,
   SearchCheck,
   ShieldCheck,
-  ShieldX,
   UserRoundCheck,
   Upload,
   XCircle,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { inventoryWarnings } from "@/lib/inventory-presentation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HoldToConfirmButton } from "@/components/ui/hold-to-confirm-button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -57,10 +51,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/lib/api";
-import { allowedWorkflowTransitions, canWriteCatalog, workflowStage } from "@/lib/roles";
+import { canWriteCatalog, workflowStage } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types/auth";
 import type {
@@ -69,70 +62,62 @@ import type {
   CatalogAuditEvent,
   CatalogAuditVerification,
   CatalogComponent,
-  CatalogComponentValidationEvidence,
   CatalogComponentUsage,
   CatalogReviewDecision,
   CatalogReleaseRecord,
+  CatalogRepresentation,
   CatalogRevisionDiff,
-  CatalogRevisionDiffAsset,
   CatalogRevisionSummary,
   CatalogValidationStatus,
-  ImportCompletedResponse,
-  SelectionRequiredResponse,
   WorkflowStage,
 } from "@/types/catalog";
 import type { Project } from "@/types/project";
-import { LibraryPreviewInspector, LibraryPreviewViewport } from "./library-preview-inspector";
+import {
+  DefinitionRows,
+  EmptyState,
+  formatBytes,
+  humanize,
+  LoadingState,
+  MetricCard,
+  PanelCard,
+  shortHash,
+  StatusBadge,
+} from "./library-component-chrome";
+import {
+  combinedEvidenceState,
+  EMPTY_EVIDENCE,
+  type EvidenceBundle,
+  type EvidenceLoadState,
+  type EvidenceValues,
+  IDLE_EVIDENCE,
+  useEvidenceLoadState,
+  useEvidenceResource,
+} from "./library-component-evidence";
+import {
+  AuditPanel,
+  EvidenceBoundary,
+  ReleaseReviewPanel,
+  RevisionsPanel,
+  WhereUsedPanel,
+} from "./library-component-evidence-panels";
+import { LibraryPreviewPair } from "./library-preview-inspector";
+import {
+  ASSET_LABELS,
+  AssetAttachDialog,
+  assetAttachSessionFrom,
+  type AssetAttachSession,
+  type AssetType,
+} from "./library-component-asset-dialog";
+import {
+  MetadataEditDialog,
+  metadataEditSessionFrom,
+  type MetadataEditSession,
+} from "./library-component-metadata-dialog";
+import { useReleasedAssetDownload } from "./library-component-asset-download";
+import { resolveLibraryPreviewPairAssetIds } from "./library-preview-pair";
+import { useLibraryComponentValidation } from "./library-component-validation";
 
 type ComponentTab = "overview" | "assets" | "revisions" | "review" | "usage" | "audit";
-type AssetType = CatalogAsset["asset_type"];
-type AssetAttachMode = "upload" | "link";
-
-type MetadataForm = {
-  value: string;
-  description: string;
-  datasheetUrl: string;
-  manufacturer: string;
-  mpn: string;
-  category: string;
-  packageName: string;
-  vendor: string;
-  vendorPartNumber: string;
-  massG: string;
-  rqjcCW: string;
-  rqjcTopCW: string;
-  tempMaxC: string;
-  tempMinC: string;
-  powerDissipationW: string;
-  rate: string;
-  sapCode: string;
-  extraFieldsJson: string;
-  changeSummary: string;
-};
-
-type AssetImportSelection = {
-  file: File;
-  targetLibrary: string;
-  options: string[];
-  selected: string;
-};
-
-type ValidationJob = {
-  status: "queued" | "running" | "completed" | "failed";
-  component?: CatalogComponent | null;
-  errors?: Array<{ error: string }>;
-  error?: string;
-  message?: string;
-};
-
-type RemoteProviderManifest = {
-  assets: Array<{
-    asset_type: AssetType;
-    name: string;
-    sha256: string;
-    download_url: string;
-  }>;
-};
 
 const COMPONENT_TABS: Array<{ id: ComponentTab; label: string; icon: typeof Boxes }> = [
   { id: "overview", label: "Overview", icon: Boxes },
@@ -142,20 +127,6 @@ const COMPONENT_TABS: Array<{ id: ComponentTab; label: string; icon: typeof Boxe
   { id: "usage", label: "Where Used", icon: Link2 },
   { id: "audit", label: "Audit", icon: ShieldCheck },
 ];
-
-const ASSET_LABELS: Record<AssetType, string> = {
-  symbol: "Symbol",
-  footprint: "Footprint",
-  "3dmodel": "3D model",
-  spice: "SPICE model",
-};
-
-const ASSET_ACCEPT: Record<AssetType, string> = {
-  symbol: ".kicad_sym",
-  footprint: ".kicad_mod,.zip",
-  "3dmodel": ".step,.stp,.wrl",
-  spice: ".sp,.cir,.spice,.lib",
-};
 
 const WORKFLOW_LABELS: Record<WorkflowStage, string> = {
   open: "Open",
@@ -180,149 +151,34 @@ const VALIDATION_LABELS: Record<CatalogValidationStatus, string> = {
   not_run: "KLC not run",
 };
 
-const FIELD_LABELS: Record<string, string> = {
-  name: "Name",
-  value: "Value",
-  description: "Description",
-  datasheet_url: "Datasheet",
-  manufacturer: "Manufacturer",
-  mpn: "Manufacturer part number",
-  category: "Category",
-  package_name: "Package",
-  vendor: "Vendor",
-  vendor_part_number: "Vendor part number",
-  mass_g: "Mass (g)",
-  rqjc_c_w: "RθJC (°C/W)",
-  rqjc_top_c_w: "RθJC top (°C/W)",
-  temp_max_c: "Maximum temperature (°C)",
-  temp_min_c: "Minimum temperature (°C)",
-  power_dissipation_w: "Power dissipation (W)",
-  rate: "Rate",
-  sap_code: "SAP code",
-};
-
-const shortHash = (value: string, length = 10) => (value ? value.slice(0, length) : "—");
-
-const formatDate = (value: string) => {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
-};
-
-const humanize = (value: string) =>
-  value
-    .replace(/^field:/, "")
-    .replace(/[._-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-const formatBytes = (value?: number) => {
-  if (!value) return "—";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
-const metadataFormFromComponent = (component: CatalogComponent): MetadataForm => ({
-  value: component.value,
-  description: component.description,
-  datasheetUrl: component.datasheet_url,
-  manufacturer: component.manufacturer,
-  mpn: component.mpn,
-  category: component.category,
-  packageName: component.package_name,
-  vendor: component.vendor,
-  vendorPartNumber: component.vendor_part_number,
-  massG: component.mass_g,
-  rqjcCW: component.rqjc_c_w,
-  rqjcTopCW: component.rqjc_top_c_w,
-  tempMaxC: component.temp_max_c,
-  tempMinC: component.temp_min_c,
-  powerDissipationW: component.power_dissipation_w,
-  rate: component.rate,
-  sapCode: component.sap_code,
-  extraFieldsJson: JSON.stringify(component.extra_fields, null, 2),
-  changeSummary: "Update component metadata",
-});
-
-function StatusBadge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "success" | "warning" | "danger" }) {
-  const variant = tone === "success" ? "success" : tone === "warning" ? "warning" : tone === "danger" ? "destructive" : "outline";
-  return <Badge variant={variant}>{children}</Badge>;
-}
-
-function MetricCard({ label, value, detail }: { label: string; value: React.ReactNode; detail: string }) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-lg">{value}</CardTitle>
-      </CardHeader>
-      <CardContent className="text-muted-foreground">{detail}</CardContent>
-    </Card>
-  );
-}
-
-function DefinitionRows({ rows }: { rows: Array<{ label: string; value: React.ReactNode }> }) {
-  return (
-    <dl className="divide-y divide-border">
-      {rows.map((row) => (
-        <div key={row.label} className="grid gap-1 py-2 sm:grid-cols-3 sm:gap-3">
-          <dt className="text-xs text-muted-foreground">{row.label}</dt>
-          <dd className="min-w-0 break-words text-xs font-medium sm:col-span-2">{row.value || "—"}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function PanelCard({
-  title,
-  description,
-  action,
-  children,
-  className,
-}: {
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <Card className={cn("gap-0 py-0", className)}>
-      <CardHeader className="border-b p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>{title}</CardTitle>
-            {description ? <CardDescription className="mt-1">{description}</CardDescription> : null}
-          </div>
-          {action}
-        </div>
-      </CardHeader>
-      <CardContent className="p-4">{children}</CardContent>
-    </Card>
-  );
-}
-
-function PreviewImage({ previewId, label }: { previewId: string; label: string }) {
-  return (
-    <LibraryPreviewViewport viewportKey={previewId} className="h-64">
-      <img
-        src={`/api/catalog/previews/${encodeURIComponent(previewId)}`}
-        alt={label}
-        draggable={false}
-        className="pointer-events-none h-full w-full select-none object-contain p-3"
-      />
-    </LibraryPreviewViewport>
-  );
+/**
+ * Is this response actually a component?
+ *
+ * The revision endpoint is asked for `?revision=`, which survives in the URL
+ * independently of the component being viewed. Every in-app path that opens a
+ * component clears it, and the API scopes the lookup and 404s a revision
+ * belonging to somewhere else -- so the only way here is a link arriving with a
+ * mismatched pair, and today that still 404s. The guard is for the case where
+ * it does not: a 200 carrying anything else was being installed as the active
+ * component, and the header dereferences `validation.status` on it without a
+ * guard, so the whole workspace went white rather than showing the error banner
+ * that already exists for this.
+ *
+ * It checks the fields the header commits to, not the whole shape, because
+ * those are what the crash was about.
+ */
+function isCatalogComponent(value: unknown): value is CatalogComponent {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<CatalogComponent>;
+  return typeof candidate.id === "string"
+    && typeof candidate.revision_id === "string"
+    && typeof candidate.validation === "object"
+    && candidate.validation !== null;
 }
 
 function OverviewPanel({ component, canMutate, onEdit }: { component: CatalogComponent; canMutate: boolean; onEdit: () => void }) {
   const requiredAttached = component.assets.filter((asset) => asset.required).length;
-  const readyPreviews = component.previews.filter((preview) => preview.status === "ready").length;
+
   const engineeringRows = [
     { label: "Mass", value: component.mass_g ? `${component.mass_g} g` : "" },
     { label: "RθJC", value: component.rqjc_c_w ? `${component.rqjc_c_w} °C/W` : "" },
@@ -331,10 +187,20 @@ function OverviewPanel({ component, canMutate, onEdit }: { component: CatalogCom
     { label: "Power dissipation", value: component.power_dissipation_w ? `${component.power_dissipation_w} W` : "" },
     { label: "Rate", value: component.rate },
   ];
-  const hasReadyPreviews = component.previews.some((preview) => preview.status === "ready");
+  // Gate on the pair that actually resolves, not on the raw asset list: the
+  // panes draw one representation's symbol and footprint, so a component whose
+  // assets are not linked into a representation would render an empty card.
+  const previewPair = resolveLibraryPreviewPairAssetIds(component);
+  const renderableAssets = [previewPair.symbolAssetId, previewPair.footprintAssetId].filter(Boolean).length;
+  const hasRenderableAssets = renderableAssets > 0;
 
   return (
     <div className="space-y-4">
+      {component.identity_kind === "provisional_ipn" ? (
+        <div className="border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+          <strong>Provisional component.</strong> Add the real manufacturer part number before approval, release, inventory synchronization, or placement.
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Release state" value={WORKFLOW_LABELS[workflowStage(component)]} detail={`Revision v${component.revision}`} />
         <MetricCard label="Required assets" value={`${requiredAttached}/${requiredAttached + component.missing_assets.length}`} detail={component.missing_assets.length ? `Missing ${component.missing_assets.join(", ")}` : "All required assets attached"} />
@@ -366,19 +232,21 @@ function OverviewPanel({ component, canMutate, onEdit }: { component: CatalogCom
             { label: "Vendor", value: component.vendor },
             { label: "Vendor P/N", value: component.vendor_part_number },
             { label: "SAP code", value: component.sap_code },
-            { label: "Stock", value: component.stock_quantity ? `${component.stock_quantity} ${component.stock_uom}` : "PLM sync not configured" },
+            { label: "Stock", value: component.stock_known ? (inventoryWarnings(component.local_inventory).join(" · ") || `${component.stock_quantity} ${component.stock_uom}`.trim()) : "Not synchronized" },
           ]} />
         </PanelCard>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <PanelCard title="Visual inspection" description={`${readyPreviews} generated preview${readyPreviews === 1 ? "" : "s"} for this revision.`}>
-          {hasReadyPreviews ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(["symbol", "footprint"] as const).map((kind) => <div key={kind} className="min-w-0"><p className="mb-2 text-xs font-medium capitalize">{kind}</p><LibraryPreviewInspector previews={component.previews} kind={kind} label={component.name} /></div>)}
-            </div>
+        <PanelCard title="Visual inspection" description={`${renderableAssets} renderable asset${renderableAssets === 1 ? "" : "s"} on this revision's representation.`}>
+          {hasRenderableAssets ? (
+            <LibraryPreviewPair
+              label={component.name}
+              symbolAssetId={previewPair.symbolAssetId}
+              footprintAssetId={previewPair.footprintAssetId}
+            />
           ) : (
-            <EmptyState icon={SearchCheck} title="No ready previews" detail="Generate previews before visual review." />
+            <EmptyState icon={SearchCheck} title="No renderable assets" detail="Attach a symbol or footprint before visual review." />
           )}
         </PanelCard>
 
@@ -403,38 +271,176 @@ function OverviewPanel({ component, canMutate, onEdit }: { component: CatalogCom
   );
 }
 
+function RepresentationRow({
+  component,
+  representation,
+  canMutate,
+  onChanged,
+}: {
+  component: CatalogComponent;
+  representation: CatalogRepresentation;
+  canMutate: boolean;
+  onChanged: () => void;
+}) {
+  const symbols = component.assets.filter((asset) => asset.asset_type === "symbol");
+  const footprints = component.assets.filter((asset) => asset.asset_type === "footprint");
+  // An edit buffer, not a mirror: it is meant to diverge from the prop as soon
+  // as the field is typed in, so it cannot be computed inline. The row is keyed
+  // on representation.id, so a different representation gets a different form.
+  // react-doctor-disable-next-line react-doctor/no-derived-useState
+  const [label, setLabel] = useState(representation.label);
+  const [symbolId, setSymbolId] = useState(representation.symbol?.id || "");
+  const [footprintId, setFootprintId] = useState(representation.footprint?.id || "");
+  const [order, setOrder] = useState(String(representation.display_order));
+  const [saving, setSaving] = useState(false);
+
+  const update = async (makeDefault = representation.is_default) => {
+    setSaving(true);
+    try {
+      await fetchJson(`/api/catalog/components/${encodeURIComponent(component.id)}/representations/${encodeURIComponent(representation.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          label,
+          symbol_asset_id: symbolId,
+          footprint_asset_id: footprintId,
+          display_order: Number(order) || 0,
+          is_default: makeDefault,
+          expected_revision_id: component.revision_id,
+        }),
+      });
+      toast.success(makeDefault && !representation.is_default ? "Default representation updated." : "Representation saved.");
+      onChanged();
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    setSaving(true);
+    try {
+      await fetchJson(`/api/catalog/components/${encodeURIComponent(component.id)}/representations/${encodeURIComponent(representation.id)}?expected_revision_id=${encodeURIComponent(component.revision_id)}`, { method: "DELETE" });
+      toast.success("Representation removed in a new revision.");
+      onChanged();
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="grid gap-2 border p-3 lg:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_5rem_auto]">
+      <Input aria-label="Representation label" value={label} onChange={(event) => setLabel(event.target.value)} disabled={!canMutate || saving} />
+      <Select value={symbolId || "none"} onValueChange={(value) => setSymbolId(value === "none" ? "" : value)} disabled={!canMutate || saving}>
+        <SelectTrigger aria-label="Symbol asset"><SelectValue placeholder="No symbol" /></SelectTrigger>
+        <SelectContent><SelectItem value="none">No symbol</SelectItem>{symbols.map((asset) => <SelectItem key={asset.id} value={asset.id}>{asset.target_name}</SelectItem>)}</SelectContent>
+      </Select>
+      <Select value={footprintId || "none"} onValueChange={(value) => setFootprintId(value === "none" ? "" : value)} disabled={!canMutate || saving}>
+        <SelectTrigger aria-label="Footprint asset"><SelectValue placeholder="No footprint" /></SelectTrigger>
+        <SelectContent><SelectItem value="none">No footprint</SelectItem>{footprints.map((asset) => <SelectItem key={asset.id} value={asset.id}>{asset.target_name}</SelectItem>)}</SelectContent>
+      </Select>
+      <Input aria-label="Display order" type="number" value={order} onChange={(event) => setOrder(event.target.value)} disabled={!canMutate || saving} />
+      <div className="flex items-center justify-end gap-1">
+        {representation.is_default ? <Badge>Default</Badge> : <Button size="sm" variant="outline" disabled={!canMutate || saving || !symbolId || !footprintId} onClick={() => void update(true)}>Make default</Button>}
+        <Button size="sm" disabled={!canMutate || saving} onClick={() => void update()}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}Save</Button>
+        <Button size="icon-sm" variant="ghost" className="text-destructive" aria-label={`Delete ${representation.label}`} disabled={!canMutate || saving} onClick={() => void remove()}><XCircle className="h-3.5 w-3.5" /></Button>
+      </div>
+      {(representation.symbol?.preview_id || representation.footprint?.preview_id) ? (
+        <div className="grid gap-2 border-t pt-2 lg:col-span-5 sm:grid-cols-2">
+          {(["symbol", "footprint"] as const).map((kind) => {
+            const asset = representation[kind];
+            return asset?.preview_id ? (
+              <div key={kind} className="flex min-h-28 items-center justify-center bg-preview-surface p-2">
+                <img src={`/api/catalog/previews/${encodeURIComponent(asset.preview_id)}`} alt={`${representation.label} ${kind} preview`} className="max-h-36 max-w-full object-contain" />
+              </div>
+            ) : <div key={kind} className="flex min-h-28 items-center justify-center border border-dashed text-xs text-muted-foreground">No {kind} preview</div>;
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RepresentationsPanel({ component, canMutate, onChanged }: { component: CatalogComponent; canMutate: boolean; onChanged: () => void }) {
+  const [creating, setCreating] = useState(false);
+  const symbols = component.assets.filter((asset) => asset.asset_type === "symbol");
+  const footprints = component.assets.filter((asset) => asset.asset_type === "footprint");
+  const add = async () => {
+    setCreating(true);
+    try {
+      const currentDefault = component.representations.find((item) => item.is_default);
+      const candidates = symbols.flatMap((symbol) => footprints.map((footprint) => ({ symbol, footprint })));
+      const unused = candidates.find(({ symbol, footprint }) => !component.representations.some((item) => item.symbol?.id === symbol.id && item.footprint?.id === footprint.id));
+      await fetchJson(`/api/catalog/components/${encodeURIComponent(component.id)}/representations`, {
+        method: "POST",
+        body: JSON.stringify({
+          label: `Representation ${component.representations.length + 1}`,
+          symbol_asset_id: unused?.symbol.id || (component.representations.length ? "" : currentDefault?.symbol?.id || symbols[0]?.id || ""),
+          footprint_asset_id: unused?.footprint.id || (component.representations.length ? "" : currentDefault?.footprint?.id || footprints[0]?.id || ""),
+          display_order: component.representations.length,
+          expected_revision_id: component.revision_id,
+        }),
+      });
+      toast.success("Representation added in a new revision.");
+      onChanged();
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setCreating(false);
+    }
+  };
+  return (
+    <PanelCard
+      title="Symbol-footprint representations"
+      description="Pair any attached symbol with any attached footprint. Placement and previews follow the selected pair."
+      action={canMutate ? <Button size="sm" variant="outline" disabled={creating} onClick={() => void add()}>{creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Layers3 className="h-3.5 w-3.5" />} Add representation</Button> : null}
+    >
+      {component.identity_kind === "provisional_ipn" ? <div className="mb-3 border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">This provisional component cannot be completed or released until it has a real manufacturer and MPN.</div> : null}
+      <div className="space-y-2">
+        {component.representations.map((representation) => <RepresentationRow key={representation.id} component={component} representation={representation} canMutate={canMutate} onChanged={onChanged} />)}
+        {!component.representations.length ? <EmptyState icon={Layers3} title="No representations" detail="Attach symbol and footprint assets, then pair them here." /> : null}
+      </div>
+    </PanelCard>
+  );
+}
+
 function AssetsPanel({
   component,
   canMutate,
   busyAction,
   onAttach,
-  onDetach,
+  onDetachAsset,
   onDownload,
   onRegeneratePreviews,
   onValidate,
+  onRepresentationsChanged,
 }: {
   component: CatalogComponent;
   canMutate: boolean;
   busyAction: string;
   onAttach: (assetType: AssetType) => void;
-  onDetach: (assetType: AssetType) => void;
+  onDetachAsset: (asset: CatalogAsset) => void;
   onDownload: (asset: CatalogAsset) => void;
   onRegeneratePreviews: () => void;
   onValidate: () => void;
+  onRepresentationsChanged: () => void;
 }) {
   const groups = (["symbol", "footprint", "3dmodel", "spice"] as const).map((type) => ({
     type,
     assets: component.assets.filter((asset) => asset.asset_type === type),
   }));
-  const hasReadyPreviews = component.previews.some((preview) => preview.status === "ready");
   const downloadsAvailable = component.revision_id === component.released_revision_id;
+  const previewPair = resolveLibraryPreviewPairAssetIds(component);
+  const hasRenderableAssets = Boolean(previewPair.symbolAssetId || previewPair.footprintAssetId);
 
   return (
     <div className="space-y-4">
+      <RepresentationsPanel component={component} canMutate={canMutate} onChanged={onRepresentationsChanged} />
       <div className="flex flex-wrap items-center justify-between gap-3 border bg-card p-3">
         <div>
           <p className="text-sm font-medium">Revision assets and evidence</p>
-          <p className="mt-1 text-xs text-muted-foreground">Asset attachments and detachments create immutable component revisions. Downloads remain available while browsing released history.</p>
         </div>
         {canMutate ? (
           <div className="flex flex-wrap gap-2">
@@ -456,7 +462,7 @@ function AssetsPanel({
             action={(
               <div className="flex items-center gap-2">
                 <StatusBadge tone={assets.length ? "success" : type === "symbol" || type === "footprint" ? "danger" : "warning"}>{assets.length ? "Attached" : "Missing"}</StatusBadge>
-                {canMutate ? <Button size="sm" variant="outline" disabled={Boolean(busyAction)} onClick={() => onAttach(type)}><Upload className="h-3.5 w-3.5" />{assets.length && (type === "symbol" || type === "footprint") ? "Replace" : "Add"}</Button> : null}
+                {canMutate ? <Button size="sm" variant="outline" disabled={Boolean(busyAction)} onClick={() => onAttach(type)}><Upload className="h-3.5 w-3.5" />Add</Button> : null}
               </div>
             )}
           >
@@ -472,12 +478,13 @@ function AssetsPanel({
                       <div className="flex shrink-0 items-center gap-1">
                         {asset.required ? <Badge>Required</Badge> : <Badge variant="secondary">Optional</Badge>}
                         <Button size="icon-sm" variant="ghost" aria-label={`Download ${asset.name}`} title={downloadsAvailable ? "Download released asset" : "Downloads are available from the released revision"} disabled={!downloadsAvailable} onClick={() => onDownload(asset)}><Download className="h-3.5 w-3.5" /></Button>
+                        {canMutate ? <Button size="icon-sm" variant="ghost" className="text-destructive" aria-label={`Detach ${asset.name}`} onClick={() => onDetachAsset(asset)}><XCircle className="h-3.5 w-3.5" /></Button> : null}
                       </div>
                     </div>
-                    <div className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-                      <span>{asset.content_type || "Unknown content type"}</span>
+                    <div className="grid min-w-0 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                      <span className="min-w-0 truncate">{asset.content_type || "Unknown content type"}</span>
                       <span>{formatBytes(asset.size_bytes)}</span>
-                      <span className="truncate font-mono sm:col-span-2" title={asset.sha256}>{asset.sha256 ? `SHA-256 ${asset.sha256}` : `Asset ${asset.id}`}</span>
+                      <span className="min-w-0 truncate font-mono sm:col-span-2" title={asset.sha256}>{asset.sha256 ? `SHA-256 ${asset.sha256}` : `Asset ${asset.id}`}</span>
                     </div>
                   </div>
                 ))}
@@ -485,706 +492,21 @@ function AssetsPanel({
             ) : (
               <EmptyState icon={CircleDashed} title={`No ${humanize(type)} asset`} detail={type === "symbol" || type === "footprint" ? "This required asset blocks place readiness." : "This optional asset has not been provided."} />
             )}
-            {canMutate && assets.length ? (
-              <div className="mt-3 border-t pt-3">
-                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={Boolean(busyAction)} onClick={() => onDetach(type)}>Detach {type === "symbol" || type === "footprint" ? "asset" : `all ${ASSET_LABELS[type].toLowerCase()} files`}</Button>
-              </div>
-            ) : null}
           </PanelCard>
         ))}
       </div>
 
-      {hasReadyPreviews ? (
-        <PanelCard title="Rendered previews" description="Visual evidence is revision-bound and available without opening KiCad.">
-          <div className="grid gap-3 md:grid-cols-2">
-            {(["symbol", "footprint"] as const).map((kind) => <div key={kind} className="min-w-0"><p className="mb-2 text-xs font-medium capitalize">{kind}</p><LibraryPreviewInspector previews={component.previews} kind={kind} label={component.name} /></div>)}
-          </div>
+      {hasRenderableAssets ? (
+        <PanelCard title="Rendered previews" description="Drawn from this revision\u2019s own symbol and footprint, without opening KiCad.">
+          <LibraryPreviewPair
+            label={component.name}
+            symbolAssetId={previewPair.symbolAssetId}
+            footprintAssetId={previewPair.footprintAssetId}
+          />
         </PanelCard>
       ) : null}
     </div>
   );
-}
-
-type VisualDiffMode = "side-by-side" | "overlay";
-type DiffPreviewEvidence = CatalogRevisionDiffAsset["previews"][number];
-
-const previewUrl = (previewId: string) => `/api/catalog/previews/${encodeURIComponent(previewId)}`;
-
-function OverlayDifference({
-  before,
-  after,
-  beforeVersion,
-  afterVersion,
-}: {
-  before: DiffPreviewEvidence;
-  after: DiffPreviewEvidence;
-  beforeVersion: number;
-  afterVersion: number;
-}) {
-  const [position, setPosition] = useState(50);
-  const draggingRef = useRef(false);
-  const updatePosition = useCallback((clientX: number, bounds: DOMRect) => {
-    setPosition(Math.max(0, Math.min(100, ((clientX - bounds.left) / bounds.width) * 100)));
-  }, []);
-
-  return (
-    <LibraryPreviewViewport viewportKey={`${before.previewId}:${after.previewId}`} className="h-96">
-      <div className="relative h-full w-full touch-none" aria-label="Drag the divider to compare preview revisions">
-        <img src={previewUrl(before.previewId)} alt={`Before revision ${beforeVersion}`} draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain p-3" />
-        <div className="pointer-events-none absolute inset-0 bg-preview-surface" style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}>
-          <img src={previewUrl(after.previewId)} alt={`After revision ${afterVersion}`} draggable={false} className="h-full w-full select-none object-contain p-3" />
-        </div>
-        <div
-          role="slider"
-          tabIndex={0}
-          aria-label="Move visual diff comparison divider"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(position)}
-          className="prism-preview-interaction absolute inset-y-0 z-10 w-8 -translate-x-1/2 cursor-ew-resize touch-none"
-          style={{ left: `${position}%` }}
-          onPointerDown={(event) => {
-            event.stopPropagation();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            draggingRef.current = true;
-            updatePosition(event.clientX, event.currentTarget.parentElement!.getBoundingClientRect());
-          }}
-          onPointerMove={(event) => {
-            if (!draggingRef.current) return;
-            event.stopPropagation();
-            updatePosition(event.clientX, event.currentTarget.parentElement!.getBoundingClientRect());
-          }}
-          onPointerUp={(event) => {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-            draggingRef.current = false;
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
-              event.preventDefault();
-              setPosition((value) => Math.max(0, value - 5));
-            }
-            if (event.key === "ArrowRight" || event.key === "ArrowUp") {
-              event.preventDefault();
-              setPosition((value) => Math.min(100, value + 5));
-            }
-          }}
-        >
-          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-primary shadow-sm" />
-          <span className="absolute left-1/2 top-1/2 flex h-8 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center border border-primary bg-background text-primary shadow-sm" aria-hidden="true">⋮</span>
-        </div>
-        <span className="pointer-events-none absolute left-2 top-2 z-10 border bg-background/90 px-2 py-1 text-xs font-medium">Before · v{beforeVersion}</span>
-        <span className="pointer-events-none absolute right-2 top-2 z-10 border bg-background/90 px-2 py-1 text-xs font-medium">After · v{afterVersion}</span>
-      </div>
-    </LibraryPreviewViewport>
-  );
-}
-
-function diffPreviewEvidence(asset: CatalogRevisionDiffAsset | null): DiffPreviewEvidence[] {
-  if (!asset) return [];
-  if (asset.previews?.length) return asset.previews;
-  if (!asset.previewId) return [];
-  return [{
-    previewId: asset.previewId,
-    previewStatus: asset.previewStatus,
-    previewSha256: "",
-    previewGeneratorFingerprint: "",
-    unit: 1,
-    unitLabel: "Unit A",
-  }];
-}
-
-function DiffEvidencePreview({ preview, label }: { preview?: DiffPreviewEvidence; label: string }) {
-  if (!preview || preview.previewStatus !== "ready") return <div className="flex min-h-32 items-center justify-center border border-dashed bg-preview-surface text-xs text-muted-foreground">Not present</div>;
-  return <PreviewImage previewId={preview.previewId} label={label} />;
-}
-
-function AssetRevisionVisualDiff({
-  before,
-  after,
-  beforeVersion,
-  afterVersion,
-  mode,
-  label,
-}: {
-  before: CatalogRevisionDiffAsset | null;
-  after: CatalogRevisionDiffAsset | null;
-  beforeVersion: number;
-  afterVersion: number;
-  mode: VisualDiffMode;
-  label: string;
-}) {
-  const beforePreviews = diffPreviewEvidence(before);
-  const afterPreviews = diffPreviewEvidence(after);
-  const units = Array.from(new Set([...beforePreviews, ...afterPreviews].map((preview) => preview.unit))).sort((a, b) => a - b);
-  const [activeUnit, setActiveUnit] = useState(units[0] || 1);
-  const beforePreview = beforePreviews.find((preview) => preview.unit === activeUnit);
-  const afterPreview = afterPreviews.find((preview) => preview.unit === activeUnit);
-  const unitLabel = beforePreview?.unitLabel || afterPreview?.unitLabel || `Unit ${activeUnit}`;
-
-  useEffect(() => {
-    if (!units.includes(activeUnit)) setActiveUnit(units[0] || 1);
-  }, [activeUnit, units]);
-
-  return (
-    <div className="space-y-2">
-      {units.length > 1 ? (
-        <div className="flex max-w-full gap-1 overflow-x-auto pb-1" role="tablist" aria-label={`${label} units to compare`}>
-          {units.map((unit) => {
-            const preview = beforePreviews.find((item) => item.unit === unit) || afterPreviews.find((item) => item.unit === unit);
-            return <Button key={unit} size="sm" variant={activeUnit === unit ? "secondary" : "ghost"} className="h-7 shrink-0" role="tab" aria-selected={activeUnit === unit} onClick={() => setActiveUnit(unit)}>{preview?.unitLabel || `Unit ${unit}`}</Button>;
-          })}
-        </div>
-      ) : null}
-      {mode === "overlay" && beforePreview?.previewStatus === "ready" && afterPreview?.previewStatus === "ready" ? (
-        <OverlayDifference before={beforePreview} after={afterPreview} beforeVersion={beforeVersion} afterVersion={afterVersion} />
-      ) : (
-        <div className="grid gap-3 md:grid-cols-2">
-          <div><p className="mb-1 text-xs text-muted-foreground">Before · v{beforeVersion}{units.length > 1 ? ` · ${unitLabel}` : ""}</p><DiffEvidencePreview preview={beforePreview} label={`${label} before ${unitLabel}`} /></div>
-          <div><p className="mb-1 text-xs text-muted-foreground">After · v{afterVersion}{units.length > 1 ? ` · ${unitLabel}` : ""}</p><DiffEvidencePreview preview={afterPreview} label={`${label} after ${unitLabel}`} /></div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RevisionDiffView({ diff }: { diff: CatalogRevisionDiff }) {
-  const [showUnchanged, setShowUnchanged] = useState(false);
-  const [visualMode, setVisualMode] = useState<VisualDiffMode>("overlay");
-  const metadata = showUnchanged ? diff.metadataChanges : diff.metadataChanges.filter((change) => change.status !== "unchanged");
-  const diffableAssets = diff.assetChanges.filter((change) => {
-    const type = change.after?.assetType || change.before?.assetType;
-    return type === "symbol" || type === "footprint";
-  });
-  const assets = showUnchanged ? diffableAssets : diffableAssets.filter((change) => change.status !== "unchanged");
-  const changedAssetCount = diffableAssets.filter((change) => change.status !== "unchanged").length;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 border bg-card p-3">
-        <div className="flex items-center gap-3 text-sm">
-          <Badge variant="outline">v{diff.before.version}</Badge>
-          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          <Badge>v{diff.after.version}</Badge>
-          <span className="text-muted-foreground">{diff.summary.metadataChanges} metadata · {changedAssetCount} visual CAD changes</span>
-        </div>
-        <Button size="sm" variant="outline" onClick={() => setShowUnchanged((value) => !value)}>
-          {showUnchanged ? "Hide unchanged" : "Show unchanged"}
-        </Button>
-      </div>
-
-      <PanelCard title="Metadata diff" description="Fields are compared from immutable revision snapshots.">
-        {metadata.length ? (
-          <div className="overflow-x-auto">
-            <div className="min-w-2xl">
-              <div className="grid grid-cols-3 gap-3 border-b pb-2 text-xs font-medium text-muted-foreground">
-                <span>Field</span><span>Before · v{diff.before.version}</span><span>After · v{diff.after.version}</span>
-              </div>
-              {metadata.map((change) => (
-                <div key={change.field} className="grid grid-cols-3 gap-3 border-b py-2 text-xs last:border-b-0">
-                  <div className="flex min-w-0 items-start gap-2"><Badge variant={change.status === "unchanged" ? "outline" : "secondary"}>{change.status}</Badge><span>{FIELD_LABELS[change.field] || humanize(change.field)}</span></div>
-                  <span className="break-words text-muted-foreground">{change.before || "—"}</span>
-                  <span className="break-words font-medium">{change.after || "—"}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : <EmptyState icon={CheckCircle2} title="No metadata changes" detail="These revisions contain identical metadata." />}
-      </PanelCard>
-
-      <PanelCard
-        title="Symbol and footprint diff"
-        description="Pan, zoom, and swipe between revision-bound previews. 3D and SPICE assets remain versioned in the Assets tab."
-        action={(
-          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Visual diff display mode">
-            <Button size="sm" variant={visualMode === "side-by-side" ? "secondary" : "ghost"} aria-pressed={visualMode === "side-by-side"} onClick={() => setVisualMode("side-by-side")}><Columns2 className="h-3.5 w-3.5" /> Side by side</Button>
-            <Button size="sm" variant={visualMode === "overlay" ? "secondary" : "ghost"} aria-pressed={visualMode === "overlay"} onClick={() => setVisualMode("overlay")}><Layers3 className="h-3.5 w-3.5" /> Overlay</Button>
-          </div>
-        )}
-      >
-        {assets.length ? (
-          <div className="space-y-4">
-            {assets.map((change) => (
-              <div key={change.key} className="border p-3">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium">{change.after?.targetName || change.before?.targetName || change.key}</p>
-                    <p className="text-xs text-muted-foreground">{change.after?.assetType || change.before?.assetType}</p>
-                  </div>
-                  <Badge variant={change.status === "removed" ? "destructive" : change.status === "unchanged" ? "outline" : "secondary"}>{change.status}</Badge>
-                </div>
-                <AssetRevisionVisualDiff before={change.before} after={change.after} beforeVersion={diff.before.version} afterVersion={diff.after.version} mode={visualMode} label={change.key} />
-              </div>
-            ))}
-          </div>
-        ) : <EmptyState icon={CheckCircle2} title="No asset changes" detail="All attached files have the same content hashes." />}
-      </PanelCard>
-    </div>
-  );
-}
-
-function RevisionsPanel({
-  revisions,
-  currentRevisionId,
-  activeRevisionId,
-  diff,
-  diffLoading,
-  onView,
-  onCompare,
-  onCurrent,
-}: {
-  revisions: CatalogRevisionSummary[];
-  currentRevisionId: string;
-  activeRevisionId: string;
-  diff: CatalogRevisionDiff | null;
-  diffLoading: boolean;
-  onView: (revisionId: string) => void;
-  onCompare: (before: string, after: string) => void;
-  onCurrent: () => void;
-}) {
-  return (
-    <div className="grid min-h-0 gap-4 xl:grid-cols-4">
-      <PanelCard
-        className="xl:col-span-1"
-        title="Revision history"
-        description={`${revisions.length} immutable revision${revisions.length === 1 ? "" : "s"}.`}
-        action={activeRevisionId !== currentRevisionId ? <Button size="sm" variant="outline" onClick={onCurrent}>Current</Button> : undefined}
-      >
-        <div className="space-y-2">
-          {revisions.map((revision) => {
-            const isActive = revision.id === activeRevisionId;
-            const isCurrent = revision.id === currentRevisionId;
-            return (
-              <div key={revision.id} className={cn("border p-3", isActive && "border-primary bg-primary/5")}>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium">v{revision.version}</p>
-                    <p className="text-xs text-muted-foreground">{formatDate(revision.created_at)}</p>
-                  </div>
-                  <div className="flex gap-1">
-                    {isCurrent ? <Badge>Current</Badge> : null}
-                    <Badge variant="outline">{WORKFLOW_LABELS[revision.release_status]}</Badge>
-                  </div>
-                </div>
-                <p className="mt-2 text-xs">{revision.change_summary || humanize(revision.change_kind)}</p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">{revision.created_by || "Unknown actor"}</p>
-                <div className="mt-3 flex gap-2">
-                  <Button size="sm" variant={isActive ? "secondary" : "outline"} onClick={() => onView(revision.id)}>View</Button>
-                  {revision.id !== currentRevisionId ? <Button size="sm" variant="ghost" onClick={() => onCompare(revision.id, currentRevisionId)}>Compare current</Button> : revision.parent_revision_id ? <Button size="sm" variant="ghost" onClick={() => onCompare(revision.parent_revision_id, revision.id)}>Compare parent</Button> : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </PanelCard>
-
-      <div className="xl:col-span-3">
-        {diffLoading ? <LoadingState label="Calculating revision diff…" /> : diff ? <RevisionDiffView diff={diff} /> : (
-          <EmptyState icon={FileDiff} title="Choose a comparison" detail="Compare a historical revision with the current revision, or compare the current revision with its parent." />
-        )}
-      </div>
-    </div>
-  );
-}
-
-type ReadinessCheck = { label: string; detail: string; passed: boolean };
-
-function ReleaseRecordsPanel({
-  releases,
-  reviews,
-  title = "Published releases",
-}: {
-  releases: CatalogReleaseRecord[];
-  reviews: CatalogReviewDecision[];
-  title?: string;
-}) {
-  return (
-    <PanelCard title={title} description="Immutable publication records bind the released files to approval and policy evidence.">
-      {releases.length ? (
-        <div className="space-y-3">
-          {releases.map((release) => {
-            const approval = reviews.find((review) => review.id === release.approval_decision_id);
-            const publication = reviews.find((review) =>
-              review.revision_id === release.revision_id &&
-              review.decision === "released" &&
-              (!review.manifest_hash || review.manifest_hash === release.manifest_hash) &&
-              (!release.released_by || review.reviewer === release.released_by)
-            );
-            const validationStatus = typeof release.validation.status === "string" ? release.validation.status : "Not recorded";
-            const errorCount = typeof release.validation.error_count === "number" ? release.validation.error_count : null;
-            const warningCount = typeof release.validation.warning_count === "number" ? release.validation.warning_count : null;
-            const gate = typeof release.policy.klc_release_gate === "string" ? release.policy.klc_release_gate : "Not recorded";
-            const twoPerson = typeof release.policy.two_person_approval === "boolean"
-              ? release.policy.two_person_approval ? "Required" : "Not required"
-              : "Not recorded";
-            const override = approval?.decision === "emergency_override";
-            return (
-              <article key={release.id} className="border bg-card p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge>{release.release_label || "Release"}</Badge>
-                      <p className="text-sm font-medium">Published {formatDate(release.created_at)}</p>
-                      {override ? <Badge variant="destructive">Emergency override</Badge> : null}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Publisher: {release.released_by || "Legacy migration"}</p>
-                  </div>
-                  <Badge variant="outline">Validation: {humanize(validationStatus)}</Badge>
-                </div>
-                <div className="mt-4 grid gap-x-6 gap-y-3 lg:grid-cols-2">
-                  <DefinitionRows rows={[
-                    { label: "Revision ID", value: <span className="font-mono text-xs">{release.revision_id}</span> },
-                    { label: "Manifest SHA-256", value: <span className="break-all font-mono text-xs">{release.manifest_hash}</span> },
-                    { label: "Approver", value: approval ? `${approval.reviewer || "Unknown reviewer"}${approval.reviewer_role ? ` · ${humanize(approval.reviewer_role)}` : ""}` : "Approval record unavailable" },
-                    { label: "Approval decision", value: approval ? humanize(approval.decision) : release.approval_decision_id ? <span className="font-mono text-xs">{release.approval_decision_id}</span> : "Legacy release without linked approval" },
-                  ]} />
-                  <DefinitionRows rows={[
-                    { label: "Validation result", value: `${humanize(validationStatus)}${errorCount === null ? "" : ` · ${errorCount} errors`}${warningCount === null ? "" : ` · ${warningCount} warnings`}` },
-                    { label: "KLC release gate", value: humanize(gate) },
-                    { label: "Two-person approval", value: twoPerson },
-                    { label: "Release record ID", value: <span className="font-mono text-xs">{release.id}</span> },
-                  ]} />
-                </div>
-                {override ? (
-                  <div className="mt-4 border border-destructive bg-destructive/10 p-3">
-                    <p className="text-xs font-medium text-destructive">Override evidence</p>
-                    <p className="mt-1 whitespace-pre-wrap text-xs">{approval?.note || "Emergency override recorded without a narrative."}</p>
-                  </div>
-                ) : null}
-                {publication?.note && publication.note !== approval?.note ? (
-                  <div className="mt-4 border bg-muted/20 p-3">
-                    <p className="text-xs font-medium">Publication evidence</p>
-                    <p className="mt-1 whitespace-pre-wrap text-xs">{publication.note}</p>
-                  </div>
-                ) : null}
-                <details className="mt-4 border-t pt-3">
-                  <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">Inspect exact validation and policy snapshots</summary>
-                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                    <div><p className="mb-1 text-xs font-medium">Validation snapshot</p><pre className="max-h-64 overflow-auto border bg-muted/30 p-3 text-xs">{JSON.stringify(release.validation, null, 2)}</pre></div>
-                    <div><p className="mb-1 text-xs font-medium">Policy snapshot</p><pre className="max-h-64 overflow-auto border bg-muted/30 p-3 text-xs">{JSON.stringify(release.policy, null, 2)}</pre></div>
-                  </div>
-                </details>
-              </article>
-            );
-          })}
-        </div>
-      ) : <EmptyState icon={PackageCheck} title="No publication records" detail="A release record will be created when an approved revision is published." />}
-    </PanelCard>
-  );
-}
-
-function validationBadgeVariant(status: CatalogValidationStatus) {
-  if (status === "passed") return "success" as const;
-  if (status === "warning") return "warning" as const;
-  if (status === "failed") return "destructive" as const;
-  return "outline" as const;
-}
-
-function KlcValidationEvidence({ component, historical }: { component: CatalogComponent; historical: boolean }) {
-  const [evidence, setEvidence] = useState<CatalogComponentValidationEvidence | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (historical) {
-      setEvidence(null);
-      setError("");
-      return;
-    }
-    const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    void fetchJson<CatalogComponentValidationEvidence>(
-      `/api/catalog/components/${encodeURIComponent(component.id)}/validation`,
-      { signal: controller.signal },
-    ).then((response) => {
-      if (!controller.signal.aborted) setEvidence(response);
-    }).catch((reason: unknown) => {
-      if (reason instanceof DOMException && reason.name === "AbortError") return;
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason));
-    }).finally(() => {
-      if (!controller.signal.aborted) setLoading(false);
-    });
-    return () => controller.abort();
-  }, [component.id, historical]);
-
-  const status = evidence?.summary.status || component.validation.status;
-  const errorCount = evidence?.summary.error_count ?? component.validation.error_count;
-  const warningCount = evidence?.summary.warning_count ?? component.validation.warning_count;
-
-  const passed = status !== "failed" && errorCount === 0;
-  return (
-    <details className="group py-3 first:pt-0 last:pb-0">
-      <summary className="flex cursor-pointer list-none items-start gap-3 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {passed ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />}
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">KLC validation</p>
-          <p className="text-xs text-muted-foreground">{VALIDATION_LABELS[status]} · {errorCount} errors · {warningCount} warnings</p>
-        </div>
-        <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-      </summary>
-
-      <div className="mt-3 space-y-3 border-t pt-3">
-        {historical ? (
-          <p className="border bg-muted/30 p-3 text-xs text-muted-foreground">Detailed KLC reports are currently available for the active revision. This historical revision retains its validation summary above.</p>
-        ) : loading ? (
-          <p className="inline-flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading validation evidence…</p>
-        ) : error ? (
-          <p className="border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">Could not load KLC results: {error}</p>
-        ) : evidence?.runs.length ? evidence.runs.map((run) => (
-          <article key={run.id} className="border bg-muted/20 p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs font-medium">{humanize(run.asset_type)} · {run.checker_type}</p>
-                  <Badge variant={validationBadgeVariant(run.status)}>{VALIDATION_LABELS[run.status]}</Badge>
-                  {run.inherited ? <Badge variant="outline">Inherited evidence</Badge> : null}
-                </div>
-                <p className="mt-1 truncate text-xs text-muted-foreground">{run.tool_version || "KiCad Library Convention"} · {formatDate(run.finished_at || run.created_at)}</p>
-                {run.inherited_from_revision_id ? <p className="mt-1 truncate text-xs text-muted-foreground">CAD assets are unchanged; evidence is reused from revision {run.inherited_from_revision_id.slice(0, 8)}.</p> : null}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs"><a href={run.reports.json} download>JSON</a></Button>
-                <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs"><a href={run.reports.junit} download>JUnit</a></Button>
-                <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs"><a href={run.reports.stdout} download>Stdout</a></Button>
-                <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs"><a href={run.reports.stderr} download>Stderr</a></Button>
-              </div>
-            </div>
-            {run.findings?.length ? (
-              <div className="mt-3 max-h-64 overflow-y-auto border">
-                <div className="divide-y divide-border">
-                  {run.findings.map((finding) => (
-                    <div key={finding.id} className="flex items-start gap-2 p-2 text-xs">
-                      <Badge variant={finding.severity === "error" ? "destructive" : finding.severity === "warning" ? "warning" : "outline"}>{finding.severity}</Badge>
-                      <div className="min-w-0 flex-1">
-                        <p className="break-words">{finding.message}</p>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
-                          {finding.rule_code ? <span className="font-mono">{finding.rule_code}</span> : null}
-                          {finding.rule_url ? <a className="text-primary hover:underline" href={finding.rule_url} target="_blank" rel="noreferrer">Rule reference</a> : null}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : <p className="mt-3 text-xs text-muted-foreground">No normalized findings were recorded for this run. Download the reports for checker output.</p>}
-          </article>
-        )) : (
-          <p className="border border-dashed p-3 text-xs text-muted-foreground">No KLC run has been recorded for this revision yet. Run validation from the Assets tab.</p>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function ReleaseReviewPanel({
-  component,
-  currentComponent,
-  historical,
-  reviews,
-  releases,
-  diff,
-  diffLoading,
-  user,
-  onTransition,
-}: {
-  component: CatalogComponent;
-  currentComponent: CatalogComponent;
-  historical: boolean;
-  reviews: CatalogReviewDecision[];
-  releases: CatalogReleaseRecord[];
-  diff: CatalogRevisionDiff | null;
-  diffLoading: boolean;
-  user: User | null;
-  onTransition: (next: WorkflowStage) => void;
-}) {
-  const checks: ReadinessCheck[] = [
-    { label: "Required CAD assets", detail: component.missing_assets.length ? `Missing ${component.missing_assets.join(", ")}` : "Symbol and footprint are attached", passed: component.missing_assets.length === 0 },
-    { label: "KLC validation", detail: `${VALIDATION_LABELS[component.validation.status]} · ${component.validation.error_count} errors`, passed: component.validation.status !== "failed" && component.validation.error_count === 0 },
-    { label: "Visual evidence", detail: `${component.previews.filter((preview) => preview.status === "ready").length} previews ready`, passed: component.previews.some((preview) => preview.kind === "symbol" && preview.status === "ready") && component.previews.some((preview) => preview.kind === "footprint" && preview.status === "ready") },
-    { label: "Sourcing identity", detail: component.manufacturer && component.mpn ? `${component.manufacturer} · ${component.mpn}` : "Manufacturer or MPN is missing", passed: Boolean(component.manufacturer && component.mpn) },
-    { label: "Revision manifest", detail: component.manifest_hash ? `SHA-256 ${shortHash(component.manifest_hash)}` : "Manifest has not been finalized", passed: Boolean(component.manifest_hash) },
-  ];
-  const activeReviews = reviews.filter((review) => review.revision_id === component.revision_id);
-  const transitions = historical ? [] : allowedWorkflowTransitions(user?.role, currentComponent);
-
-  return (
-    <div className="space-y-4">
-      {historical ? (
-        <div className="flex items-start gap-3 border bg-muted/30 p-3 text-sm">
-          <History className="mt-0.5 h-4 w-4 text-muted-foreground" />
-          <div><p className="font-medium">Historical revision is read-only</p><p className="text-xs text-muted-foreground">Return to the current revision to perform a workflow transition.</p></div>
-        </div>
-      ) : null}
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <PanelCard title="Release readiness" description="Evidence is evaluated against the exact revision under review.">
-          <div className="divide-y divide-border">
-            {checks.map((check) => (
-              check.label === "KLC validation" ? <KlcValidationEvidence key={check.label} component={component} historical={historical} /> : (
-                <div key={check.label} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                  {check.passed ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" /> : <XCircle className="mt-0.5 h-4 w-4 text-destructive" />}
-                  <div><p className="text-sm font-medium">{check.label}</p><p className="text-xs text-muted-foreground">{check.detail}</p></div>
-                </div>
-              )
-            ))}
-          </div>
-        </PanelCard>
-
-        <PanelCard title="Decision" description="Every approval, rejection, override, and release is recorded separately from the audit log.">
-          <div className="space-y-4">
-            <DefinitionRows rows={[
-              { label: "Current stage", value: WORKFLOW_LABELS[workflowStage(component)] },
-              { label: "Revision owner", value: component.created_by },
-              { label: "Reviewer", value: user?.email || "Signed-in user unavailable" },
-              { label: "Evidence failures", value: String(checks.filter((check) => !check.passed).length) },
-            ]} />
-            <Separator />
-            {transitions.length ? (
-              <div className="flex flex-wrap gap-2">
-                {transitions.map((next) => (
-                  <Button key={next} variant={next === "archived" ? "destructive" : next === "done" || next === "released" ? "default" : "outline"} onClick={() => onTransition(next)}>
-                    {next === "in_progress" && workflowStage(component) === "qa_review" ? "Request changes" : `Move to ${WORKFLOW_LABELS[next]}`}
-                  </Button>
-                ))}
-              </div>
-            ) : <p className="text-xs text-muted-foreground">No transitions are available for your role from this stage.</p>}
-          </div>
-        </PanelCard>
-      </div>
-
-      <PanelCard title="Changes under review" description={component.parent_revision_id ? `Diff from parent to v${component.revision}.` : "The initial revision has no parent comparison."}>
-        {diffLoading ? <LoadingState label="Loading review evidence…" /> : diff ? <RevisionDiffView diff={diff} /> : <EmptyState icon={FileDiff} title="No parent revision" detail="This is the first immutable revision for the component." />}
-      </PanelCard>
-
-      <PanelCard title="Structured review record" description="Review decisions remain queryable without parsing generic activity logs.">
-        {activeReviews.length ? (
-          <div className="divide-y divide-border">
-            {activeReviews.map((review) => (
-              <div key={review.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                <UserRoundCheck className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{humanize(review.decision)}</p><Badge variant="outline">v{component.revision}</Badge></div>
-                  <p className="mt-1 text-xs text-muted-foreground">{review.reviewer} · {formatDate(review.created_at)}</p>
-                  {review.note ? <p className="mt-2 whitespace-pre-wrap text-xs">{review.note}</p> : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : <EmptyState icon={UserRoundCheck} title="No decisions yet" detail="The first review action for this revision will appear here." />}
-      </PanelCard>
-
-      <ReleaseRecordsPanel releases={releases} reviews={reviews} />
-    </div>
-  );
-}
-
-function WhereUsedPanel({ usage, projects }: { usage: CatalogComponentUsage[]; projects: Project[] }) {
-  const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.display_name || project.name])), [projects]);
-  const referenceCount = new Set(usage.flatMap((entry) => entry.references.map((reference) => `${entry.project_id}:${entry.source_revision}:${reference}`))).size;
-
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <MetricCard label="Projects" value={new Set(usage.map((entry) => entry.project_id)).size} detail="Unique imported projects" />
-        <MetricCard label="Pinned revisions" value={usage.length} detail="Commit-specific usage records" />
-        <MetricCard label="References" value={referenceCount} detail="Resolved schematic instances" />
-      </div>
-      <PanelCard title="Project usage" description="Every record is pinned to the source commit used during import.">
-        {usage.length ? (
-          <div className="divide-y divide-border">
-            {usage.map((entry) => (
-              <div key={entry.id} className="grid gap-3 py-3 first:pt-0 last:pb-0 lg:grid-cols-4 lg:items-center">
-                <div className="lg:col-span-2">
-                  <p className="text-sm font-medium">{projectNames.get(entry.project_id) || entry.project_id}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Last observed {formatDate(entry.last_seen_at)} · {humanize(entry.source)}</p>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {entry.references.length ? entry.references.map((reference) => <Badge key={reference} variant="secondary">{reference}</Badge>) : <span className="text-xs text-muted-foreground">No references recorded</span>}
-                </div>
-                <div className="flex items-center justify-between gap-2 lg:justify-end">
-                  <span className="font-mono text-xs text-muted-foreground" title={entry.source_revision}>{shortHash(entry.source_revision)}</span>
-                  <Button asChild size="sm" variant="outline">
-                    <a href={`/project/${encodeURIComponent(entry.project_id)}?commit=${encodeURIComponent(entry.source_revision)}`}>Open project <ExternalLink className="h-3 w-3" /></a>
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : <EmptyState icon={Link2} title="No known usage" detail="Project imports will add commit-pinned references here. Absence is not proof that the part is unused outside Prism." />}
-      </PanelCard>
-    </div>
-  );
-}
-
-function AuditPanel({
-  events,
-  verification,
-  releases,
-  reviews,
-}: {
-  events: CatalogAuditEvent[];
-  verification: CatalogAuditVerification | null;
-  releases: CatalogReleaseRecord[];
-  reviews: CatalogReviewDecision[];
-}) {
-  return (
-    <div className="space-y-4">
-      <div className={cn("flex items-start gap-3 border p-4", verification?.valid === false ? "border-destructive bg-destructive/10" : "bg-primary/5")}>
-        {verification?.valid === false ? <ShieldX className="mt-0.5 h-5 w-5 text-destructive" /> : <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-medium">{verification?.valid === false ? "Audit chain verification failed" : "Audit chain verified"}</p>
-            <Badge variant={verification?.valid === false ? "destructive" : "outline"}>{verification?.verified_count ?? 0}/{verification?.event_count ?? events.length} events</Badge>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">{verification?.valid === false ? `First invalid event: ${verification.first_invalid_event_id}` : `Head SHA-256 ${verification?.head_hash || "No events"}`}</p>
-        </div>
-      </div>
-
-      <ReleaseRecordsPanel releases={releases} reviews={reviews} title="Immutable release ledger" />
-
-      <PanelCard title="Tamper-evident activity" description="Each event includes the previous event hash, actor, exact revision, and structured details.">
-        {events.length ? (
-          <ol className="space-y-0">
-            {events.map((event, index) => {
-              const details = Object.entries(event.details || {}).filter(([, value]) => value !== "" && value !== null && value !== undefined);
-              return (
-                <li key={event.id} className="relative flex gap-3 pb-5 last:pb-0">
-                  {index < events.length - 1 ? <span className="absolute left-2 top-5 h-full w-px bg-border" aria-hidden="true" /> : null}
-                  <span className="relative z-10 mt-1 flex h-4 w-4 shrink-0 items-center justify-center border bg-background"><span className="h-1.5 w-1.5 bg-primary" /></span>
-                  <div className="min-w-0 flex-1 border p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div><p className="text-sm font-medium">{humanize(event.event_type)}</p><p className="text-xs text-muted-foreground">{event.actor || "System"} · {formatDate(event.created_at)}</p></div>
-                      <Badge variant="outline">{event.sequence ? `#${event.sequence}` : shortHash(event.id, 8)}</Badge>
-                    </div>
-                    {details.length ? (
-                      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {details.map(([key, value]) => <div key={key}><dt className="text-xs text-muted-foreground">{humanize(key)}</dt><dd className="break-words text-xs">{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}
-                      </dl>
-                    ) : null}
-                    <p className="mt-3 truncate font-mono text-xs text-muted-foreground" title={event.event_hash}>SHA-256 {event.event_hash}</p>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        ) : <EmptyState icon={History} title="No audit events" detail="Finalized revisions and workflow changes will appear here." />}
-      </PanelCard>
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, title, detail }: { icon: typeof Boxes; title: string; detail: string }) {
-  return (
-    <div className="flex min-h-40 flex-col items-center justify-center gap-2 border border-dashed p-6 text-center">
-      <Icon className="h-6 w-6 text-muted-foreground" />
-      <p className="text-sm font-medium">{title}</p>
-      <p className="max-w-xl text-xs text-muted-foreground">{detail}</p>
-    </div>
-  );
-}
-
-function LoadingState({ label }: { label: string }) {
-  return <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{label}</div>;
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -1200,234 +522,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-type EvidenceLoadState = {
-  status: "idle" | "loading" | "loaded" | "error";
-  error: string;
-  generation?: string;
-};
-
-const IDLE_EVIDENCE: EvidenceLoadState = { status: "idle", error: "" };
-
-function useEvidenceLoadState() {
-  const [state, setState] = useState<EvidenceLoadState>(IDLE_EVIDENCE);
-  const stateRef = useRef<EvidenceLoadState>(IDLE_EVIDENCE);
-  const update = useCallback((next: EvidenceLoadState) => {
-    stateRef.current = next;
-    setState(next);
-  }, []);
-  return { state, stateRef, update };
-}
-
-function combinedEvidenceState(states: EvidenceLoadState[]): EvidenceLoadState {
-  const failed = states.find((state) => state.status === "error");
-  if (failed) return failed;
-  if (states.some((state) => state.status !== "loaded")) return { status: "loading", error: "" };
-  return { status: "loaded", error: "" };
-}
-
-function EvidenceBoundary({
-  state,
-  loadingLabel,
-  onRetry,
-  children,
-}: {
-  state: EvidenceLoadState;
-  loadingLabel: string;
-  onRetry: () => void;
-  children: React.ReactNode;
-}) {
-  if (state.status === "error") {
-    return (
-      <div className="flex min-h-64 items-center justify-center border border-destructive bg-destructive/10 p-6 text-center">
-        <div className="max-w-xl">
-          <CircleAlert className="mx-auto h-6 w-6 text-destructive" />
-          <p className="mt-2 text-sm font-medium">This evidence could not be loaded</p>
-          <p className="mt-1 text-xs text-muted-foreground">{state.error}</p>
-          <Button className="mt-4" size="sm" variant="outline" onClick={onRetry}><RefreshCw className="h-3.5 w-3.5" /> Retry this tab</Button>
-        </div>
-      </div>
-    );
-  }
-  if (state.status !== "loaded") return <LoadingState label={loadingLabel} />;
-  return children;
-}
-
-function MetadataEditDialog({
-  open,
-  form,
-  submitting,
-  onOpenChange,
-  onChange,
-  onSubmit,
-}: {
-  open: boolean;
-  form: MetadataForm | null;
-  submitting: boolean;
-  onOpenChange: (open: boolean) => void;
-  onChange: (form: MetadataForm) => void;
-  onSubmit: () => void;
-}) {
-  if (!form) return null;
-  const setField = (field: keyof MetadataForm, value: string) => onChange({ ...form, [field]: value });
-  const requiredComplete = Boolean(form.value.trim() && form.manufacturer.trim() && form.mpn.trim() && form.description.trim() && form.datasheetUrl.trim() && form.changeSummary.trim());
-  const fields: Array<{ field: keyof MetadataForm; label: string; type?: string; placeholder?: string }> = [
-    { field: "value", label: "Value", placeholder: "10 kΩ, TPS55289…" },
-    { field: "manufacturer", label: "Manufacturer" },
-    { field: "mpn", label: "Manufacturer part number" },
-    { field: "datasheetUrl", label: "Datasheet URL", type: "url" },
-    { field: "category", label: "Category" },
-    { field: "packageName", label: "Package" },
-    { field: "vendor", label: "Vendor" },
-    { field: "vendorPartNumber", label: "Vendor part number" },
-    { field: "massG", label: "Mass (g)" },
-    { field: "rqjcCW", label: "RθJC (°C/W)" },
-    { field: "rqjcTopCW", label: "RθJC top (°C/W)" },
-    { field: "tempMaxC", label: "Maximum temperature (°C)" },
-    { field: "tempMinC", label: "Minimum temperature (°C)" },
-    { field: "powerDissipationW", label: "Power dissipation (W)" },
-    { field: "rate", label: "Rate" },
-    { field: "sapCode", label: "SAP code" },
-  ];
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Edit component metadata</DialogTitle>
-          <DialogDescription>Saving creates a new immutable revision. The current revision ID is checked to prevent overwriting concurrent work.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {fields.map(({ field, label, type, placeholder }) => (
-            <div key={field} className="space-y-2">
-              <Label htmlFor={`component-edit-${field}`}>{label}{["value", "manufacturer", "mpn", "datasheetUrl"].includes(field) ? " *" : ""}</Label>
-              <Input id={`component-edit-${field}`} type={type} required={["value", "manufacturer", "mpn", "datasheetUrl"].includes(field)} value={form[field]} placeholder={placeholder} onChange={(event) => setField(field, event.target.value)} />
-            </div>
-          ))}
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="component-edit-description">Description *</Label>
-            <Textarea id="component-edit-description" required value={form.description} rows={3} onChange={(event) => setField("description", event.target.value)} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="component-edit-extra-fields">Extended symbol fields (JSON object)</Label>
-            <Textarea id="component-edit-extra-fields" className="font-mono text-xs" value={form.extraFieldsJson} rows={6} spellCheck={false} onChange={(event) => setField("extraFieldsJson", event.target.value)} />
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="component-edit-summary">Change summary *</Label>
-            <Input id="component-edit-summary" required value={form.changeSummary} placeholder="Describe why this revision is needed" onChange={(event) => setField("changeSummary", event.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={submitting || !requiredComplete} onClick={onSubmit}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Edit3 className="h-4 w-4" />} Save new revision</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AssetAttachDialog({
-  assetType,
-  mode,
-  file,
-  targetLibrary,
-  targetName,
-  links,
-  selectedLink,
-  selection,
-  submitting,
-  linksLoading,
-  onOpenChange,
-  onModeChange,
-  onFileChange,
-  onTargetLibraryChange,
-  onTargetNameChange,
-  onSelectedLinkChange,
-  onSelectionChange,
-  onUpload,
-  onLink,
-}: {
-  assetType: AssetType | null;
-  mode: AssetAttachMode;
-  file: File | null;
-  targetLibrary: string;
-  targetName: string;
-  links: string[];
-  selectedLink: string;
-  selection: AssetImportSelection | null;
-  submitting: boolean;
-  linksLoading: boolean;
-  onOpenChange: (open: boolean) => void;
-  onModeChange: (mode: AssetAttachMode) => void;
-  onFileChange: (file: File | null) => void;
-  onTargetLibraryChange: (value: string) => void;
-  onTargetNameChange: (value: string) => void;
-  onSelectedLinkChange: (value: string) => void;
-  onSelectionChange: (value: string) => void;
-  onUpload: () => void;
-  onLink: () => void;
-}) {
-  const label = assetType ? ASSET_LABELS[assetType] : "asset";
-  return (
-    <Dialog open={assetType !== null} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Add or replace {label.toLowerCase()}</DialogTitle>
-          <DialogDescription>Upload a file or link one already present in Prism storage. Attaching it creates a new immutable component revision.</DialogDescription>
-        </DialogHeader>
-        {selection ? (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Select the {assetType === "symbol" ? "symbol" : "footprint"} to import</Label>
-              <div className="max-h-64 space-y-1 overflow-y-auto border p-2">
-                {selection.options.map((option) => (
-                  <button key={option} type="button" className={cn("w-full border px-3 py-2 text-left text-sm hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", selection.selected === option && "border-primary bg-primary/5")} onClick={() => onSelectionChange(option)}>{option}</button>
-                ))}
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button disabled={submitting || !selection.selected} onClick={onUpload}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Import selected</Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-1 border bg-muted/20 p-1" role="group" aria-label="Asset source">
-              <Button size="sm" variant={mode === "upload" ? "secondary" : "ghost"} aria-pressed={mode === "upload"} onClick={() => onModeChange("upload")}><Upload className="h-3.5 w-3.5" /> Upload file</Button>
-              <Button size="sm" variant={mode === "link" ? "secondary" : "ghost"} aria-pressed={mode === "link"} onClick={() => onModeChange("link")}><Link2 className="h-3.5 w-3.5" /> Link existing</Button>
-            </div>
-            <div className="space-y-4">
-              {mode === "upload" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="component-asset-file">{label} file</Label>
-                  <Input id="component-asset-file" type="file" accept={assetType ? ASSET_ACCEPT[assetType] : undefined} onChange={(event) => onFileChange(event.target.files?.[0] || null)} />
-                  {file ? <p className="text-xs text-muted-foreground">{file.name} · {formatBytes(file.size)}</p> : null}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="component-existing-asset">Existing file</Label>
-                  <Select value={selectedLink} onValueChange={onSelectedLinkChange} disabled={linksLoading || links.length === 0}>
-                    <SelectTrigger id="component-existing-asset"><SelectValue placeholder={linksLoading ? "Loading storage…" : links.length ? "Select a stored file" : "No compatible stored files"} /></SelectTrigger>
-                    <SelectContent>{links.map((path) => <SelectItem key={path} value={path}>{path}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><Label htmlFor="component-asset-library">Target library</Label><Input id="component-asset-library" value={targetLibrary} onChange={(event) => onTargetLibraryChange(event.target.value)} placeholder="Prism library" /></div>
-                {mode === "link" ? <div className="space-y-2"><Label htmlFor="component-asset-name">Target item name</Label><Input id="component-asset-name" value={targetName} onChange={(event) => onTargetNameChange(event.target.value)} placeholder="Auto-detect" /></div> : null}
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button disabled={submitting || (mode === "upload" ? !file : !selectedLink)} onClick={mode === "upload" ? onUpload : onLink}>
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === "upload" ? <Upload className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}{mode === "upload" ? "Attach file" : "Link asset"}
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
+// react-doctor-disable-next-line no-giant-component - tabs, evidence, and release queue share one component resource
 export function LibraryComponentWorkspace({
   componentId,
   user,
@@ -1438,6 +533,7 @@ export function LibraryComponentWorkspace({
   user: User | null;
   projects: Project[];
   onBack: () => void;
+// react-doctor-disable-next-line prefer-useReducer - the states belong to separate concerns: tabs, evidence, queue
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("componentTab") as ComponentTab | null;
@@ -1448,12 +544,12 @@ export function LibraryComponentWorkspace({
   const returnLabel = returnView === "releases" ? "Release Queue" : returnView === "imports" ? "Import Center" : "Catalog";
   const [currentComponent, setCurrentComponent] = useState<CatalogComponent | null>(null);
   const [activeComponent, setActiveComponent] = useState<CatalogComponent | null>(null);
-  const [revisions, setRevisions] = useState<CatalogRevisionSummary[]>([]);
-  const [events, setEvents] = useState<CatalogAuditEvent[]>([]);
-  const [verification, setVerification] = useState<CatalogAuditVerification | null>(null);
-  const [usage, setUsage] = useState<CatalogComponentUsage[]>([]);
-  const [reviews, setReviews] = useState<CatalogReviewDecision[]>([]);
-  const [releases, setReleases] = useState<CatalogReleaseRecord[]>([]);
+  // Every tab's evidence belongs to one component generation, so it is stored
+  // as one value carrying that generation. Reading it back through the guard
+  // below is what used to be an effect blanking six pieces of state.
+  const [evidenceStore, setEvidenceStore] = useState<EvidenceBundle>(
+    () => ({ generation: "", ...EMPTY_EVIDENCE }),
+  );
   const [diff, setDiff] = useState<CatalogRevisionDiff | null>(null);
   const [componentLoading, setComponentLoading] = useState(true);
   const [componentError, setComponentError] = useState("");
@@ -1462,30 +558,38 @@ export function LibraryComponentWorkspace({
   const [historicalError, setHistoricalError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [evidenceRetryKey, setEvidenceRetryKey] = useState(0);
-  const { state: revisionsLoadState, stateRef: revisionsLoadRef, update: setRevisionsLoad } = useEvidenceLoadState();
-  const { state: reviewsLoadState, stateRef: reviewsLoadRef, update: setReviewsLoad } = useEvidenceLoadState();
-  const { state: releasesLoadState, stateRef: releasesLoadRef, update: setReleasesLoad } = useEvidenceLoadState();
-  const { state: usageLoadState, stateRef: usageLoadRef, update: setUsageLoad } = useEvidenceLoadState();
-  const { state: auditLoadState, stateRef: auditLoadRef, update: setAuditLoad } = useEvidenceLoadState();
+  // Kept whole so each can be handed to useEvidenceResource; the destructured
+  // aliases below are what the render and retry paths read.
+  const revisionsLoad = useEvidenceLoadState();
+  const reviewsLoad = useEvidenceLoadState();
+  const releasesLoad = useEvidenceLoadState();
+  const usageLoad = useEvidenceLoadState();
+  const auditLoad = useEvidenceLoadState();
+  const { state: revisionsLoadState, stateRef: revisionsLoadRef, update: setRevisionsLoad } = revisionsLoad;
+  const { state: reviewsLoadState, stateRef: reviewsLoadRef, update: setReviewsLoad } = reviewsLoad;
+  const { state: releasesLoadState, stateRef: releasesLoadRef, update: setReleasesLoad } = releasesLoad;
+  const { state: usageLoadState, stateRef: usageLoadRef, update: setUsageLoad } = usageLoad;
+  const { state: auditLoadState, stateRef: auditLoadRef, update: setAuditLoad } = auditLoad;
   const { state: diffLoadState, stateRef: diffLoadRef, update: setDiffLoad } = useEvidenceLoadState();
-  const diffCacheRef = useRef(new Map<string, CatalogRevisionDiff>());
+  // Diffs are cached per revision pair. The cache carries the generation it was
+  // filled for so it can be dropped when the component changes, which the reset
+  // effect used to do; keys already include componentId, so this is about not
+  // holding another component's payloads, not about correctness.
+  const diffCacheRef = useRef({ generation: "", entries: new Map<string, CatalogRevisionDiff>() });
   const [transitionTarget, setTransitionTarget] = useState<WorkflowStage | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [transitioning, setTransitioning] = useState(false);
-  const [metadataOpen, setMetadataOpen] = useState(false);
-  const [metadataForm, setMetadataForm] = useState<MetadataForm | null>(null);
-  const [attachAssetType, setAttachAssetType] = useState<AssetType | null>(null);
-  const [attachMode, setAttachMode] = useState<AssetAttachMode>("upload");
-  const [attachFile, setAttachFile] = useState<File | null>(null);
-  const [attachTargetLibrary, setAttachTargetLibrary] = useState("");
-  const [attachTargetName, setAttachTargetName] = useState("");
-  const [availableLinks, setAvailableLinks] = useState<string[]>([]);
-  const [selectedLink, setSelectedLink] = useState("");
-  const [linksLoading, setLinksLoading] = useState(false);
-  const [importSelection, setImportSelection] = useState<AssetImportSelection | null>(null);
-  const [detachAssetType, setDetachAssetType] = useState<AssetType | null>(null);
+  const [metadataSession, setMetadataSession] = useState<MetadataEditSession | null>(null);
+  const [attachSession, setAttachSession] = useState<AssetAttachSession | null>(null);
+  const [detachAsset, setDetachAsset] = useState<CatalogAsset | null>(null);
   const [busyAction, setBusyAction] = useState("");
+  const { runValidation, validationBusy } = useLibraryComponentValidation({
+    componentId,
+    onRefresh: () => setRefreshKey((value) => value + 1),
+  });
+  const activeBusyAction = busyAction || (validationBusy ? "validation" : "");
+  const downloadReleasedAsset = useReleasedAssetDownload(componentId);
 
   const updateParams = useCallback((values: Record<string, string | null>) => {
     setSearchParams((current) => {
@@ -1500,6 +604,17 @@ export function LibraryComponentWorkspace({
   }, [setSearchParams]);
 
   const evidenceGeneration = `${componentId}:${refreshKey}`;
+  const { revisions, events, verification, usage, reviews, releases } =
+    evidenceStore.generation === evidenceGeneration ? evidenceStore : EMPTY_EVIDENCE;
+  const publishEvidence = useCallback(
+    <K extends keyof EvidenceValues>(key: K, value: EvidenceValues[K]) =>
+      setEvidenceStore((current) => ({
+        ...(current.generation === evidenceGeneration ? current : EMPTY_EVIDENCE),
+        generation: evidenceGeneration,
+        [key]: value,
+      })),
+    [evidenceGeneration],
+  );
   const needsRevisions = activeTab === "revisions" || activeTab === "review";
   const needsReviews = activeTab === "review" || activeTab === "audit";
   const needsReleases = activeTab === "review" || activeTab === "audit";
@@ -1507,32 +622,6 @@ export function LibraryComponentWorkspace({
   const needsAudit = activeTab === "audit";
   const currentRevisionKey = currentComponent?.revision_id || "";
   const componentReady = Boolean(currentRevisionKey && componentGeneration === evidenceGeneration);
-
-  useEffect(() => {
-    setRevisions([]);
-    setEvents([]);
-    setVerification(null);
-    setUsage([]);
-    setReviews([]);
-    setReleases([]);
-    setDiff(null);
-    diffCacheRef.current.clear();
-    setRevisionsLoad(IDLE_EVIDENCE);
-    setReviewsLoad(IDLE_EVIDENCE);
-    setReleasesLoad(IDLE_EVIDENCE);
-    setUsageLoad(IDLE_EVIDENCE);
-    setAuditLoad(IDLE_EVIDENCE);
-    setDiffLoad(IDLE_EVIDENCE);
-  }, [
-    componentId,
-    refreshKey,
-    setRevisionsLoad,
-    setReviewsLoad,
-    setReleasesLoad,
-    setUsageLoad,
-    setAuditLoad,
-    setDiffLoad,
-  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1567,7 +656,14 @@ export function LibraryComponentWorkspace({
     const controller = new AbortController();
     setHistoricalLoading(true);
     void fetchJson<CatalogComponent>(`/api/catalog/components/${encodeURIComponent(componentId)}/revisions/${encodeURIComponent(requestedRevisionId)}`, { signal: controller.signal })
-      .then((component) => { if (!controller.signal.aborted) setActiveComponent(component); })
+      .then((component) => {
+        if (controller.signal.aborted) return;
+        if (!isCatalogComponent(component)) {
+          setHistoricalError("That revision could not be loaded for this component.");
+          return;
+        }
+        setActiveComponent(component);
+      })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setHistoricalError(reason instanceof Error ? reason.message : String(reason));
       })
@@ -1575,119 +671,61 @@ export function LibraryComponentWorkspace({
     return () => controller.abort();
   }, [componentId, currentComponent, requestedRevisionId]);
 
-  useEffect(() => {
-    if (!componentReady || !needsRevisions || revisionsLoadRef.current.status !== "idle") return;
-    const controller = new AbortController();
-    let settled = false;
-    setRevisionsLoad({ status: "loading", error: "", generation: evidenceGeneration });
-    void fetchJson<{ items: CatalogRevisionSummary[] }>(`/api/catalog/components/${encodeURIComponent(componentId)}/revisions`, { signal: controller.signal })
-      .then((response) => {
-        settled = true;
-        if (controller.signal.aborted) return;
-        setRevisions(response.items);
-        setRevisionsLoad({ status: "loaded", error: "", generation: evidenceGeneration });
-      })
-      .catch((reason: unknown) => {
-        settled = true;
-        if (!controller.signal.aborted) setRevisionsLoad({ status: "error", error: reason instanceof Error ? reason.message : String(reason), generation: evidenceGeneration });
-      });
-    return () => {
-      controller.abort();
-      if (!settled) setRevisionsLoad(IDLE_EVIDENCE);
-    };
-  }, [componentId, componentReady, evidenceGeneration, evidenceRetryKey, needsRevisions, revisionsLoadRef, setRevisionsLoad]);
+  const componentPath = `/api/catalog/components/${encodeURIComponent(componentId)}`;
 
-  useEffect(() => {
-    if (!componentReady || !needsReviews || reviewsLoadRef.current.status !== "idle") return;
-    const controller = new AbortController();
-    let settled = false;
-    setReviewsLoad({ status: "loading", error: "", generation: evidenceGeneration });
-    void fetchJson<{ items: CatalogReviewDecision[] }>(`/api/catalog/components/${encodeURIComponent(componentId)}/reviews`, { signal: controller.signal })
-      .then((response) => {
-        settled = true;
-        if (controller.signal.aborted) return;
-        setReviews(response.items);
-        setReviewsLoad({ status: "loaded", error: "", generation: evidenceGeneration });
-      })
-      .catch((reason: unknown) => {
-        settled = true;
-        if (!controller.signal.aborted) setReviewsLoad({ status: "error", error: reason instanceof Error ? reason.message : String(reason), generation: evidenceGeneration });
-      });
-    return () => {
-      controller.abort();
-      if (!settled) setReviewsLoad(IDLE_EVIDENCE);
-    };
-  }, [componentId, componentReady, evidenceGeneration, evidenceRetryKey, needsReviews, reviewsLoadRef, setReviewsLoad]);
+  useEvidenceResource({
+    enabled: componentReady && needsRevisions,
+    generation: evidenceGeneration,
+    retryKey: evidenceRetryKey,
+    loadState: revisionsLoad,
+    load: (signal) => fetchJson<{ items: CatalogRevisionSummary[] }>(`${componentPath}/revisions`, { signal }),
+    onLoaded: (response) => publishEvidence("revisions", response.items),
+  });
 
-  useEffect(() => {
-    if (!componentReady || !needsReleases || releasesLoadRef.current.status !== "idle") return;
-    const controller = new AbortController();
-    let settled = false;
-    setReleasesLoad({ status: "loading", error: "", generation: evidenceGeneration });
-    void fetchJson<{ items: CatalogReleaseRecord[] }>(`/api/catalog/components/${encodeURIComponent(componentId)}/releases`, { signal: controller.signal })
-      .then((response) => {
-        settled = true;
-        if (controller.signal.aborted) return;
-        setReleases(response.items);
-        setReleasesLoad({ status: "loaded", error: "", generation: evidenceGeneration });
-      })
-      .catch((reason: unknown) => {
-        settled = true;
-        if (!controller.signal.aborted) setReleasesLoad({ status: "error", error: reason instanceof Error ? reason.message : String(reason), generation: evidenceGeneration });
-      });
-    return () => {
-      controller.abort();
-      if (!settled) setReleasesLoad(IDLE_EVIDENCE);
-    };
-  }, [componentId, componentReady, evidenceGeneration, evidenceRetryKey, needsReleases, releasesLoadRef, setReleasesLoad]);
+  useEvidenceResource({
+    enabled: componentReady && needsReviews,
+    generation: evidenceGeneration,
+    retryKey: evidenceRetryKey,
+    loadState: reviewsLoad,
+    load: (signal) => fetchJson<{ items: CatalogReviewDecision[] }>(`${componentPath}/reviews`, { signal }),
+    onLoaded: (response) => publishEvidence("reviews", response.items),
+  });
 
-  useEffect(() => {
-    if (!componentReady || !needsUsage || usageLoadRef.current.status !== "idle") return;
-    const controller = new AbortController();
-    let settled = false;
-    setUsageLoad({ status: "loading", error: "", generation: evidenceGeneration });
-    void fetchJson<{ items: CatalogComponentUsage[] }>(`/api/catalog/components/${encodeURIComponent(componentId)}/usage`, { signal: controller.signal })
-      .then((response) => {
-        settled = true;
-        if (controller.signal.aborted) return;
-        setUsage(response.items);
-        setUsageLoad({ status: "loaded", error: "", generation: evidenceGeneration });
-      })
-      .catch((reason: unknown) => {
-        settled = true;
-        if (!controller.signal.aborted) setUsageLoad({ status: "error", error: reason instanceof Error ? reason.message : String(reason), generation: evidenceGeneration });
-      });
-    return () => {
-      controller.abort();
-      if (!settled) setUsageLoad(IDLE_EVIDENCE);
-    };
-  }, [componentId, componentReady, evidenceGeneration, evidenceRetryKey, needsUsage, setUsageLoad, usageLoadRef]);
+  useEvidenceResource({
+    enabled: componentReady && needsReleases,
+    generation: evidenceGeneration,
+    retryKey: evidenceRetryKey,
+    loadState: releasesLoad,
+    load: (signal) => fetchJson<{ items: CatalogReleaseRecord[] }>(`${componentPath}/releases`, { signal }),
+    onLoaded: (response) => publishEvidence("releases", response.items),
+  });
 
-  useEffect(() => {
-    if (!componentReady || !needsAudit || auditLoadRef.current.status !== "idle") return;
-    const controller = new AbortController();
-    let settled = false;
-    setAuditLoad({ status: "loading", error: "", generation: evidenceGeneration });
-    void Promise.all([
-      fetchJson<{ items: CatalogAuditEvent[] }>(`/api/catalog/components/${encodeURIComponent(componentId)}/audit`, { signal: controller.signal }),
-      fetchJson<CatalogAuditVerification>(`/api/catalog/components/${encodeURIComponent(componentId)}/audit/verify`, { signal: controller.signal }),
-    ])
-      .then(([eventList, auditVerification]) => {
-        settled = true;
-        if (controller.signal.aborted) return;
-        setEvents(eventList.items);
-        setVerification(auditVerification);
-        setAuditLoad({ status: "loaded", error: "", generation: evidenceGeneration });
-      })
-      .catch((reason: unknown) => {
-        settled = true;
-        if (!controller.signal.aborted) setAuditLoad({ status: "error", error: reason instanceof Error ? reason.message : String(reason), generation: evidenceGeneration });
-      });
-    return () => {
-      controller.abort();
-      if (!settled) setAuditLoad(IDLE_EVIDENCE);
-    };
-  }, [auditLoadRef, componentId, componentReady, evidenceGeneration, evidenceRetryKey, needsAudit, setAuditLoad]);
+  useEvidenceResource({
+    enabled: componentReady && needsUsage,
+    generation: evidenceGeneration,
+    retryKey: evidenceRetryKey,
+    loadState: usageLoad,
+    load: (signal) => fetchJson<{ items: CatalogComponentUsage[] }>(`${componentPath}/usage`, { signal }),
+    onLoaded: (response) => publishEvidence("usage", response.items),
+  });
+
+  useEvidenceResource({
+    enabled: componentReady && needsAudit,
+    generation: evidenceGeneration,
+    retryKey: evidenceRetryKey,
+    loadState: auditLoad,
+    // The chain and its verification are one piece of evidence: a verified
+    // chain shown against a half-loaded event list would be misleading.
+    load: (signal) =>
+      Promise.all([
+        fetchJson<{ items: CatalogAuditEvent[] }>(`${componentPath}/audit`, { signal }),
+        fetchJson<CatalogAuditVerification>(`${componentPath}/audit/verify`, { signal }),
+      ]),
+    onLoaded: ([eventList, auditVerification]) => {
+      publishEvidence("events", eventList.items);
+      publishEvidence("verification", auditVerification);
+    },
+  });
 
   const diffPair = useMemo(() => {
     if (!activeComponent) return null;
@@ -1704,8 +742,11 @@ export function LibraryComponentWorkspace({
       setDiffLoad({ status: "loaded", error: "", generation: evidenceGeneration });
       return;
     }
+    if (diffCacheRef.current.generation !== evidenceGeneration) {
+      diffCacheRef.current = { generation: evidenceGeneration, entries: new Map() };
+    }
     const cacheKey = `${componentId}:${diffPair.before}:${diffPair.after}`;
-    const cached = diffCacheRef.current.get(cacheKey);
+    const cached = diffCacheRef.current.entries.get(cacheKey);
     if (cached) {
       setDiff(cached);
       setDiffLoad({ status: "loaded", error: "", generation: cacheKey });
@@ -1721,7 +762,7 @@ export function LibraryComponentWorkspace({
       .then((value) => {
         settled = true;
         if (controller.signal.aborted) return;
-        diffCacheRef.current.set(cacheKey, value);
+        diffCacheRef.current.entries.set(cacheKey, value);
         setDiff(value);
         setDiffLoad({ status: "loaded", error: "", generation: cacheKey });
       })
@@ -1784,158 +825,31 @@ export function LibraryComponentWorkspace({
     }
   };
 
+  const refreshAfterMutation = () => {
+    updateParams({ revision: null, compare: null });
+    setRefreshKey((value) => value + 1);
+  };
+
   const openMetadataEditor = () => {
     if (!currentComponent || !canMutate) return;
-    setMetadataForm(metadataFormFromComponent(currentComponent));
-    setMetadataOpen(true);
+    setMetadataSession(metadataEditSessionFrom(currentComponent));
   };
 
-  const handleMetadataSave = async () => {
-    if (!metadataForm || !currentComponent || !canMutate) return;
-    let extraFields: Record<string, string>;
-    try {
-      const parsed: unknown = JSON.parse(metadataForm.extraFieldsJson || "{}");
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Extended fields must be a JSON object.");
-      extraFields = Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]));
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : "Extended fields contain invalid JSON.");
-      return;
-    }
-    setBusyAction("metadata");
-    try {
-      await fetchJson<CatalogComponent>(`/api/catalog/components/${encodeURIComponent(componentId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          value: metadataForm.value.trim(),
-          description: metadataForm.description.trim(),
-          datasheet_url: metadataForm.datasheetUrl.trim(),
-          manufacturer: metadataForm.manufacturer.trim(),
-          mpn: metadataForm.mpn.trim(),
-          category: metadataForm.category.trim(),
-          package_name: metadataForm.packageName.trim(),
-          vendor: metadataForm.vendor.trim(),
-          vendor_part_number: metadataForm.vendorPartNumber.trim(),
-          mass_g: metadataForm.massG.trim(),
-          rqjc_c_w: metadataForm.rqjcCW.trim(),
-          rqjc_top_c_w: metadataForm.rqjcTopCW.trim(),
-          temp_max_c: metadataForm.tempMaxC.trim(),
-          temp_min_c: metadataForm.tempMinC.trim(),
-          power_dissipation_w: metadataForm.powerDissipationW.trim(),
-          rate: metadataForm.rate.trim(),
-          sap_code: metadataForm.sapCode.trim(),
-          extra_fields: extraFields,
-          change_summary: metadataForm.changeSummary.trim(),
-          expected_revision_id: currentComponent.revision_id,
-        }),
-      });
-      toast.success("Metadata saved as a new revision.");
-      setMetadataOpen(false);
-      setMetadataForm(null);
-      updateParams({ revision: null, compare: null });
-      setRefreshKey((value) => value + 1);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusyAction("");
-    }
-  };
-
-  const resetAttachDialog = () => {
-    setAttachAssetType(null);
-    setAttachMode("upload");
-    setAttachFile(null);
-    setAttachTargetLibrary("");
-    setAttachTargetName("");
-    setAvailableLinks([]);
-    setSelectedLink("");
-    setImportSelection(null);
-  };
-
-  const openAttachDialog = async (assetType: AssetType) => {
+  const openAttachDialog = (assetType: AssetType) => {
     if (!currentComponent || !canMutate) return;
-    setAttachAssetType(assetType);
-    setAttachMode("upload");
-    setAttachFile(null);
-    setAttachTargetLibrary(currentComponent.library_name || currentComponent.name);
-    setAttachTargetName("");
-    setSelectedLink("");
-    setImportSelection(null);
-    setLinksLoading(true);
-    try {
-      const response = await fetchJson<{ files: string[] }>(`/api/catalog/assets/browse?asset_type=${encodeURIComponent(assetType)}`);
-      setAvailableLinks(response.files);
-    } catch (reason) {
-      setAvailableLinks([]);
-      toast.error(reason instanceof Error ? reason.message : "Stored assets could not be listed.");
-    } finally {
-      setLinksLoading(false);
-    }
+    // A new session starts in upload mode. Stored files are only listed when
+    // the user actually opens the "Link existing" picker.
+    setAttachSession(assetAttachSessionFrom(currentComponent, assetType));
   };
 
-  const handleAssetUpload = async () => {
-    if (!attachAssetType || !currentComponent || !canMutate) return;
-    const sourceFile = importSelection?.file || attachFile;
-    if (!sourceFile) return;
-    setBusyAction("asset");
+  const handleAssetDetachById = async () => {
+    if (!detachAsset || !canMutate || !currentComponent) return;
+    setBusyAction("detach-id");
     try {
-      const form = new FormData();
-      form.append("file", sourceFile);
-      form.append("target_library", importSelection?.targetLibrary || attachTargetLibrary || currentComponent.name);
-      if (importSelection?.selected) {
-        form.append(attachAssetType === "symbol" ? "selected_symbol" : "selected_footprint", importSelection.selected);
-      }
-      const endpoint = attachAssetType === "symbol"
-        ? `/api/catalog/components/${encodeURIComponent(componentId)}/symbol-import`
-        : attachAssetType === "footprint"
-          ? `/api/catalog/components/${encodeURIComponent(componentId)}/footprint-import`
-          : `/api/catalog/components/${encodeURIComponent(componentId)}/assets/${encodeURIComponent(attachAssetType)}`;
-      const response = await fetchJson<SelectionRequiredResponse | ImportCompletedResponse | { component: CatalogComponent }>(endpoint, { method: "POST", body: form });
-      if ("mode" in response && response.mode === "selection_required") {
-        const options = response.discovered_symbols || response.discovered_footprints || [];
-        setImportSelection({ file: sourceFile, targetLibrary: attachTargetLibrary || currentComponent.name, options, selected: options[0] || "" });
-        return;
-      }
-      toast.success(`${ASSET_LABELS[attachAssetType]} attached as a new revision.`);
-      resetAttachDialog();
-      updateParams({ revision: null, compare: null });
-      setRefreshKey((value) => value + 1);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusyAction("");
-    }
-  };
-
-  const handleAssetLink = async () => {
-    if (!attachAssetType || !selectedLink || !currentComponent || !canMutate) return;
-    setBusyAction("asset");
-    try {
-      await fetchJson(`/api/catalog/components/${encodeURIComponent(componentId)}/assets/${encodeURIComponent(attachAssetType)}/link`, {
-        method: "POST",
-        body: JSON.stringify({
-          file_path: selectedLink,
-          target_library: attachTargetLibrary.trim() || currentComponent.name,
-          target_name: attachTargetName.trim(),
-        }),
-      });
-      toast.success(`${ASSET_LABELS[attachAssetType]} linked as a new revision.`);
-      resetAttachDialog();
-      updateParams({ revision: null, compare: null });
-      setRefreshKey((value) => value + 1);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusyAction("");
-    }
-  };
-
-  const handleAssetDetach = async () => {
-    if (!detachAssetType || !canMutate) return;
-    setBusyAction("detach");
-    try {
-      await fetchJson(`/api/catalog/components/${encodeURIComponent(componentId)}/assets/${encodeURIComponent(detachAssetType)}`, { method: "DELETE" });
-      toast.success(`${ASSET_LABELS[detachAssetType]} detached in a new revision.`);
-      setDetachAssetType(null);
+      const params = new URLSearchParams({ expected_revision_id: currentComponent.revision_id });
+      await fetchJson(`/api/catalog/components/${encodeURIComponent(componentId)}/assets/id/${encodeURIComponent(detachAsset.id)}?${params.toString()}`, { method: "DELETE" });
+      toast.success(`${ASSET_LABELS[detachAsset.asset_type]} detached in a new revision.`);
+      setDetachAsset(null);
       updateParams({ revision: null, compare: null });
       setRefreshKey((value) => value + 1);
     } catch (reason) {
@@ -1962,51 +876,9 @@ export function LibraryComponentWorkspace({
     }
   };
 
-  const handleValidateComponent = async () => {
+  const handleValidateComponent = () => {
     if (!canMutate || !currentComponent?.validation.enabled) return;
-    setBusyAction("validation");
-    try {
-      const queued = await fetchJson<{ job_id: string }>(`/api/catalog/components/${encodeURIComponent(componentId)}/validate`, { method: "POST" });
-      toast.message("KLC validation started.");
-      let job: ValidationJob | null = null;
-      for (let attempt = 0; attempt < 180; attempt += 1) {
-        await sleep(1000);
-        job = await fetchJson<ValidationJob>(`/api/catalog/validation/jobs/${encodeURIComponent(queued.job_id)}`);
-        if (job.status === "completed" || job.status === "failed") break;
-      }
-      if (!job || job.status === "queued" || job.status === "running") throw new Error("Validation is still running. Refresh later to see its status.");
-      if (job.status === "failed") throw new Error(job.error || job.message || "KLC validation failed.");
-      if (!job.component) throw new Error(job.errors?.[0]?.error || "Validation did not return an updated component.");
-      if (job.component.validation.status === "failed") toast.error("KLC validation found blocking errors.");
-      else if (job.component.validation.status === "warning") toast.warning("KLC validation completed with warnings.");
-      else toast.success("KLC validation passed.");
-      setRefreshKey((value) => value + 1);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusyAction("");
-    }
-  };
-
-  const handleDownloadAsset = async (asset: CatalogAsset) => {
-    if (!currentComponent || !activeComponent || activeComponent.revision_id !== currentComponent.released_revision_id) {
-      toast.info("Direct downloads are available for the released revision. Release this revision or open the released revision first.");
-      return;
-    }
-    try {
-      const manifest = await fetchJson<RemoteProviderManifest>(`/api/remote-provider/parts/${encodeURIComponent(componentId)}`);
-      const downloadable = manifest.assets.find((entry) => entry.asset_type === asset.asset_type && entry.sha256 === asset.sha256)
-        || manifest.assets.find((entry) => entry.asset_type === asset.asset_type && entry.name === asset.name);
-      if (!downloadable?.download_url) throw new Error("This asset is not present in the released download manifest.");
-      const anchor = document.createElement("a");
-      anchor.href = downloadable.download_url;
-      anchor.download = asset.name;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    }
+    void runValidation();
   };
 
   const relevantDiffState = diffPair ? diffLoadState : { status: "loaded", error: "" } satisfies EvidenceLoadState;
@@ -2065,8 +937,9 @@ export function LibraryComponentWorkspace({
         {!historical && !canMutate ? (
           <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
             <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-            You have read-only access to this component. Editing metadata, attaching assets, and workflow
-            decisions need the Component Designer or Admin role.
+            You have read-only access to this component. Editing metadata and attaching
+            assets need the Designer or Admin role.
+            {user?.role === "qa" ? " QA Review actions remain available on the workflow panel." : ""}
           </div>
         ) : null}
         {historical ? (
@@ -2107,12 +980,18 @@ export function LibraryComponentWorkspace({
             <AssetsPanel
               component={activeComponent}
               canMutate={canMutate}
-              busyAction={busyAction}
-              onAttach={(assetType) => void openAttachDialog(assetType)}
-              onDetach={setDetachAssetType}
-              onDownload={(asset) => void handleDownloadAsset(asset)}
+              busyAction={activeBusyAction}
+              onAttach={openAttachDialog}
+              onDetachAsset={setDetachAsset}
+              onDownload={(asset) => {
+                void downloadReleasedAsset(asset, currentComponent, activeComponent);
+              }}
               onRegeneratePreviews={() => void handleRegeneratePreviews()}
               onValidate={() => void handleValidateComponent()}
+              onRepresentationsChanged={() => {
+                updateParams({ revision: null, compare: null });
+                setRefreshKey((value) => value + 1);
+              }}
             />
           ) : null}
           {activeTab === "revisions" ? (
@@ -2188,47 +1067,39 @@ export function LibraryComponentWorkspace({
         </DialogContent>
       </Dialog>
 
-      <MetadataEditDialog
-        open={metadataOpen}
-        form={metadataForm}
-        submitting={busyAction === "metadata"}
-        onOpenChange={(open) => { setMetadataOpen(open); if (!open) setMetadataForm(null); }}
-        onChange={setMetadataForm}
-        onSubmit={() => void handleMetadataSave()}
-      />
+      {metadataSession ? (
+        <MetadataEditDialog
+          key={metadataSession.openedAt}
+          session={metadataSession}
+          onClose={() => setMetadataSession(null)}
+          onSuccess={() => {
+            setMetadataSession(null);
+            refreshAfterMutation();
+          }}
+        />
+      ) : null}
 
-      <AssetAttachDialog
-        assetType={attachAssetType}
-        mode={attachMode}
-        file={attachFile}
-        targetLibrary={attachTargetLibrary}
-        targetName={attachTargetName}
-        links={availableLinks}
-        selectedLink={selectedLink}
-        selection={importSelection}
-        submitting={busyAction === "asset"}
-        linksLoading={linksLoading}
-        onOpenChange={(open) => { if (!open) resetAttachDialog(); }}
-        onModeChange={setAttachMode}
-        onFileChange={setAttachFile}
-        onTargetLibraryChange={setAttachTargetLibrary}
-        onTargetNameChange={setAttachTargetName}
-        onSelectedLinkChange={setSelectedLink}
-        onSelectionChange={(selected) => setImportSelection((current) => current ? { ...current, selected } : current)}
-        onUpload={() => void handleAssetUpload()}
-        onLink={() => void handleAssetLink()}
-      />
+      {attachSession ? (
+        <AssetAttachDialog
+          key={attachSession.openedAt}
+          session={attachSession}
+          onClose={() => setAttachSession(null)}
+          onSuccess={() => {
+            setAttachSession(null);
+            refreshAfterMutation();
+          }}
+        />
+      ) : null}
 
-      <Dialog open={detachAssetType !== null} onOpenChange={(open) => { if (!open && busyAction !== "detach") setDetachAssetType(null); }}>
+      <Dialog open={detachAsset !== null} onOpenChange={(open) => { if (!open && busyAction !== "detach-id") setDetachAsset(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Detach {detachAssetType ? ASSET_LABELS[detachAssetType].toLowerCase() : "asset"}</DialogTitle>
-            <DialogDescription>This creates a new revision without the selected asset type. Canonical files and prior revisions remain intact.</DialogDescription>
+            <DialogTitle>Detach {detachAsset?.name || "asset"}</DialogTitle>
+            <DialogDescription>This creates a new revision without this file. A symbol or footprint that a representation still references must be reassigned first. Prior revisions and canonical files remain intact.</DialogDescription>
           </DialogHeader>
-          {detachAssetType === "3dmodel" || detachAssetType === "spice" ? <p className="text-sm text-muted-foreground">All attached {detachAssetType === "3dmodel" ? "3D model" : "SPICE model"} files will be detached from the new revision.</p> : null}
           <DialogFooter>
-            <Button variant="outline" disabled={busyAction === "detach"} onClick={() => setDetachAssetType(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={busyAction === "detach"} onClick={() => void handleAssetDetach()}>{busyAction === "detach" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />} Detach asset</Button>
+            <Button variant="outline" disabled={busyAction === "detach-id"} onClick={() => setDetachAsset(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={busyAction === "detach-id"} onClick={() => void handleAssetDetachById()}>{busyAction === "detach-id" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />} Detach asset</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

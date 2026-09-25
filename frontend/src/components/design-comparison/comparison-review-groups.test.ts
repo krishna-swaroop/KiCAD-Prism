@@ -372,6 +372,47 @@ describe("review-focused comparison grouping", () => {
         expect(groups.find((group) => group.category === "zones")?.changes).toHaveLength(1);
     });
 
+    it("names zones with reviewable evidence instead of internal UUID fragments", () => {
+        const base = schematicChange({
+            domain: "pcb",
+            category: "zones",
+            object_kind: "zone",
+            reference: null,
+            net: undefined,
+            semantic_id: "28136169-0d3a-4fc0-aaf4",
+            label: "28136169-0d3",
+            layers: ["In3.Cu"],
+        });
+
+        const groups = groupChanges([base]);
+
+        expect(groups[0]?.label).toBe("Unconnected zone · In3.Cu");
+    });
+
+    it("disambiguates otherwise identical zones by physical location", () => {
+        const zone = (id: string, x: number) => schematicChange({
+            id,
+            kind: "added",
+            domain: "pcb",
+            category: "zones",
+            object_kind: "zone",
+            reference: null,
+            net: undefined,
+            semantic_id: id,
+            label: id,
+            layers: ["F.Cu"],
+            geometry: { kind: "zone", x, y: 42 },
+            fields: { Thermal: { old: null, new: { gap: 0.5 } } },
+        });
+
+        const groups = groupChanges([zone("uuid-a", 10), zone("uuid-b", 20)]);
+
+        expect(groups.map((group) => group.label)).toEqual([
+            "Unconnected zone · F.Cu · at 10, 42",
+            "Unconnected zone · F.Cu · at 20, 42",
+        ]);
+    });
+
     it("suppresses footprint-owned primitives when the whole component is added", () => {
         const base = schematicChange({
             domain: "pcb",

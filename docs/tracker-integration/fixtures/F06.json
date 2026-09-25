@@ -1,0 +1,18 @@
+{
+  "set": "F6",
+  "title": "State conflicts",
+  "decisions": ["D1"],
+  "owner": "TR-31",
+  "cases": [
+    {"id": "F6.close_vs_remote_reopen_preflight", "owner": "TR-31", "given": "expectation open@v1; remote reopened→closed→reopened since (v3)", "when": "set_state closed executes", "expect": "preflight mismatch → superseded; local OPEN; one system note", "proves": "D1"},
+    {"id": "F6.clean_close", "owner": "TR-31", "given": "expectation matches remote", "when": "set_state closed", "expect": "PATCH sent; postflight events show only bot; confirmed; remote_version updated", "proves": "D1"},
+    {"id": "F6.remote_edit_between_get_and_patch", "owner": "TR-31", "given": "preflight ok; human reopens between GET and PATCH (fixture sequence: GET open → PATCH closed → events [reopened by human, closed by bot])", "when": "postflight", "expect": "human event precedes bot event → Prism PATCHes open again, local OPEN, one note naming the human", "proves": "D1"},
+    {"id": "F6.same_state_remote_transition", "owner": "TR-31", "given": "expectation closed@v1; remote reopened then closed again (v3)", "when": "set_state closed", "expect": "version mismatch → superseded even though the state matches; remote_version refreshed; no PATCH", "proves": "D1"},
+    {"id": "F6.equal_coarse_timestamps", "owner": "TR-31", "given": "human and bot events share the same second", "when": "postflight", "expect": "ordering taken from the events list order/ids, never timestamps", "proves": "D1"},
+    {"id": "F6.clock_skew", "owner": "TR-31", "given": "Prism clock 10 min ahead of forge", "when": "any conflict case", "expect": "outcome identical; no local time compared to remote time", "proves": "D1"},
+    {"id": "F6.two_rapid_local_intents", "owner": "TR-31", "given": "resolve then reopen within 1 s locally", "when": "outbox drains", "expect": "ops execute in order; second op re-reads expectation from first's result; final remote open; no note", "proves": "C5"},
+    {"id": "F6.unknown_expectation", "owner": "TR-31", "given": "link never fetched (remote_version null)", "when": "set_state", "expect": "treated as mismatch: fetch, apply remote, superseded, then user may re-issue", "proves": "D1"},
+    {"id": "F6.no_events_capability", "owner": "TR-31", "given": "capabilities.hasStateEvents=false", "when": "set_state", "expect": "preflight-only path; op result records postflight='unsupported'; release notes limitation", "proves": "D1"},
+    {"id": "F6.viewer_resolve_refused", "owner": "TR-25", "given": "linked thread; viewer without publication", "when": "PATCH status", "expect": "403 publication_required; no local change", "proves": "D4"}
+  ]
+}

@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { CHANGE_KIND_LABEL, ChangeStatusDot } from "./change-status";
 import type { ComparisonSelection } from "./comparison-selection-bridge";
+import { referenceFor } from "./comparison-change-facts";
 import { connectionEntries } from "./comparison-property-model";
 import type { ChangeGroup } from "./comparison-review-groups";
 import {
@@ -67,9 +68,11 @@ type DifferencesPaneProps = {
     onShowSecondaryChange: (value: boolean) => void;
     selectedChangeId: string | null;
     selectedGroupId: string | null;
+    selectedReference?: string;
     selectedDocumentPath?: string;
     onSelectChange: (change: ChangeItem, documentPath?: string) => void;
-    onSelectGroup: (group: ChangeGroup) => void;
+    onSelectGroup: (group: ChangeGroup, documentPath?: string) => void;
+    onSelectInstance: (group: ChangeGroup, reference: string) => void;
     onPreviewChange: (selection: ComparisonSelection) => void;
     onPrevious: () => void;
     onNext: () => void;
@@ -144,6 +147,24 @@ function SheetPicker({
     );
 }
 
+/**
+ * The change a designator chip stands for.
+ *
+ * `group.references` is built with `referenceFor`, which reads through to the
+ * compared item, the base item and the visual targets when the change itself
+ * carries no reference -- a routing change on a net names its parts that way.
+ * Matching on the bare `change.reference` missed exactly those, and missed
+ * silently: every chip fell back to the group's first change, so clicking R57
+ * selected whichever part happened to sort first and the viewer highlighted
+ * something the reviewer had not asked for. Building the list and matching it
+ * now go through the same accessor.
+ */
+function changeForReference(group: ChangeGroup, reference: string): ChangeItem {
+    return group.changes.find(
+        (candidate) => referenceFor(candidate) === reference,
+    ) ?? group.changes[0]!;
+}
+
 /** One review item: a single line, with its evidence one disclosure away. */
 function QueueRow({
     group,
@@ -151,9 +172,11 @@ function QueueRow({
     onToggleExpanded,
     selected,
     selectedChangeId,
+    selectedReference,
     selectedDocumentPath,
     onSelectChange,
     onSelectGroup,
+    onSelectInstance,
     onPreviewChange,
     onPrevious,
     onNext,
@@ -163,9 +186,11 @@ function QueueRow({
     onToggleExpanded: () => void;
     selected: boolean;
     selectedChangeId: string | null;
+    selectedReference?: string;
     selectedDocumentPath?: string;
     onSelectChange: (change: ChangeItem, documentPath?: string) => void;
-    onSelectGroup: (group: ChangeGroup) => void;
+    onSelectGroup: (group: ChangeGroup, documentPath?: string) => void;
+    onSelectInstance: (group: ChangeGroup, reference: string) => void;
     onPreviewChange: (selection: ComparisonSelection) => void;
     onPrevious: () => void;
     onNext: () => void;
@@ -185,6 +210,7 @@ function QueueRow({
         label: string;
         change: ChangeItem;
         status?: ChangeKind;
+        reference?: string;
     }> = connections.length
         ? connections.map((entry) => ({
             id: entry.id,
@@ -195,9 +221,8 @@ function QueueRow({
         : group.references.map((reference) => ({
             id: `${group.id}:${reference}`,
             label: reference,
-            change: group.changes.find(
-                (candidate) => candidate.reference === reference,
-            ) ?? group.changes[0]!,
+            change: changeForReference(group, reference),
+            reference,
         }));
     const expandable = members.length > 1;
     // A fallback per-designator group already says the reference in its label;
@@ -255,9 +280,7 @@ function QueueRow({
                 {showChips && (
                     <span className="flex shrink-0 items-center gap-1">
                         {group.references.slice(0, 4).map((reference) => {
-                            const change = group.changes.find(
-                                (candidate) => candidate.reference === reference,
-                            ) ?? group.changes[0]!;
+                            const change = changeForReference(group, reference);
                             return (
                                 <button
                                     key={reference}
@@ -265,12 +288,12 @@ function QueueRow({
                                     data-change-id={change.id}
                                     className={cn(
                                         "rounded bg-muted px-1 font-mono text-[9px] transition-colors hover:bg-primary hover:text-primary-foreground",
-                                        selectedChangeId === change.id
+                                        selectedReference === reference
                                             && "bg-primary text-primary-foreground",
                                     )}
                                     onClick={(event) => {
                                         event.stopPropagation();
-                                        onSelectChange(change);
+                                        onSelectInstance(group, reference);
                                     }}
                                 >
                                     {reference}
@@ -304,7 +327,7 @@ function QueueRow({
                         documents={documents}
                         selectedDocumentPath={selectedDocumentPath}
                         onSelect={(entry) =>
-                            onSelectChange(entry.change, entry.documentPath)}
+                            onSelectGroup(group, entry.documentPath)}
                     />
                 )}
             </div>
@@ -318,10 +341,18 @@ function QueueRow({
                             data-change-id={member.change.id}
                             className={cn(
                                 "flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[10px] transition-colors hover:bg-accent",
-                                selectedChangeId === member.change.id
+                                (member.reference
+                                    ? selectedReference === member.reference
+                                    : selectedChangeId === member.change.id)
                                     && "bg-primary/10 text-primary",
                             )}
-                            onClick={() => onSelectChange(member.change)}
+                            onClick={() => {
+                                if (member.reference) {
+                                    onSelectInstance(group, member.reference);
+                                } else {
+                                    onSelectChange(member.change);
+                                }
+                            }}
                         >
                             {member.status && (
                                 <ChangeStatusDot kind={member.status} />
@@ -356,17 +387,27 @@ export function DifferencesPane({
     onShowSecondaryChange,
     selectedChangeId,
     selectedGroupId,
+    selectedReference,
     selectedDocumentPath,
     onSelectChange,
     onSelectGroup,
+    onSelectInstance,
     onPreviewChange,
     onPrevious,
     onNext,
 }: DifferencesPaneProps) {
     const paneRef = useRef<HTMLDivElement | null>(null);
     const [searchOpen, setSearchOpen] = useState(Boolean(search));
-    const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
-        () => new Set(),
+    // The group holding the selection is open unless the reviewer closed it;
+    // any other group is closed unless they opened it. Storing the choices they
+    // actually made, rather than the resulting open set, means the default can
+    // follow the selection during render instead of an effect forcing it open
+    // afterwards. One behaviour change falls out: a group that was open only
+    // because it held the selection now closes when the selection moves on,
+    // which leaves the queue showing the group being reviewed rather than every
+    // group visited on the way to it.
+    const [groupOpenChoices, setGroupOpenChoices] = useState<Map<string, boolean>>(
+        () => new Map(),
     );
     // Layout and documentation is the scope a release review does not normally
     // sign off, so it starts closed even when the reviewer has opted to see it.
@@ -378,15 +419,8 @@ export function DifferencesPane({
         group.id === selectedGroupId
         || group.changes.some((change) => change.id === selectedChangeId)
     );
-    useEffect(() => {
-        if (!selectedGroup) return;
-        setExpandedGroupIds((current) => {
-            if (current.has(selectedGroup.id)) return current;
-            const next = new Set(current);
-            next.add(selectedGroup.id);
-            return next;
-        });
-    }, [selectedGroup]);
+    const isGroupExpanded = (groupId: string) =>
+        groupOpenChoices.get(groupId) ?? groupId === selectedGroup?.id;
     useEffect(() => {
         if (!selectedChangeId && !selectedGroupId) return;
         const frame = requestAnimationFrame(() => {
@@ -411,9 +445,11 @@ export function DifferencesPane({
             if (existing) existing.push(group);
             else buckets.set(section, [group]);
         }
-        return QUEUE_SECTION_ORDER
-            .filter((section) => buckets.has(section))
-            .map((section) => ({ section, groups: buckets.get(section)! }));
+        return QUEUE_SECTION_ORDER.flatMap((section) => (
+            buckets.has(section)
+                ? [{ section, groups: buckets.get(section)! }]
+                : []
+        ));
     }, [groups]);
 
     const filtered = groups.length !== totalGroups;
@@ -566,18 +602,19 @@ export function DifferencesPane({
                                     <QueueRow
                                         key={group.id}
                                         group={group}
-                                        expanded={expandedGroupIds.has(group.id)}
-                                        onToggleExpanded={() => setExpandedGroupIds((current) => {
-                                            const next = new Set(current);
-                                            if (next.has(group.id)) next.delete(group.id);
-                                            else next.add(group.id);
+                                        expanded={isGroupExpanded(group.id)}
+                                        onToggleExpanded={() => setGroupOpenChoices((current) => {
+                                            const next = new Map(current);
+                                            next.set(group.id, !isGroupExpanded(group.id));
                                             return next;
                                         })}
                                         selected={selectedGroup?.id === group.id}
                                         selectedChangeId={selectedChangeId}
+                                        selectedReference={selectedReference}
                                         selectedDocumentPath={selectedDocumentPath}
                                         onSelectChange={onSelectChange}
                                         onSelectGroup={onSelectGroup}
+                                        onSelectInstance={onSelectInstance}
                                         onPreviewChange={onPreviewChange}
                                         onPrevious={onPrevious}
                                         onNext={onNext}

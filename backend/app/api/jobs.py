@@ -14,6 +14,7 @@ from app.core.security import AuthenticatedUser, require_viewer
 from app.services.job_runtime import job_state_root
 from app.services.job_service import jobs
 from app.services.postgres_database import database
+from app.services.comment_live_broker import broker as comment_live_broker
 
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
@@ -68,6 +69,13 @@ def _slim_status(job: dict) -> dict:
             "error_message",
         )
     }
+    payload = job.get("payload") or {}
+    if isinstance(payload, dict) and payload.get("pipeline") is not None:
+        status["pipeline"] = payload["pipeline"]
+    elif isinstance(job.get("result_metadata"), dict):
+        pipeline = job["result_metadata"].get("pipeline")
+        if pipeline is not None:
+            status["pipeline"] = pipeline
     status["result_url"] = (
         f"/api/jobs/{job['job_id']}/artifact"
         if job.get("status") == "completed" and job.get("result_digest")
@@ -105,6 +113,7 @@ async def benchmark_metrics(
     limiter = anyio.to_thread.current_default_thread_limiter()
     limiter_stats = limiter.statistics()
     snapshot["apiDatabasePool"] = database.metrics_snapshot()
+    snapshot["apiCommentLive"] = comment_live_broker.metrics_snapshot()
     snapshot["apiThreadPool"] = {
         "borrowedTokens": int(limiter.borrowed_tokens),
         "totalTokens": int(limiter.total_tokens),

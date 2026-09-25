@@ -18,9 +18,17 @@ export async function loadGltf(url, options = {}) {
   const document = await io.readBinary(bytes);
   const primitives = [];
   const componentFeatures = options.componentFeatures || new Map();
+  const componentNodeCounts = new Map();
 
   function visit(node, inheritedDesignator = "") {
-    const designator = componentFeatures.has(node.getName()) ? node.getName() : inheritedDesignator;
+    const isComponentRoot = componentFeatures.has(node.getName());
+    if (isComponentRoot) {
+      componentNodeCounts.set(
+        node.getName(),
+        (componentNodeCounts.get(node.getName()) || 0) + 1,
+      );
+    }
+    const designator = isComponentRoot ? node.getName() : inheritedDesignator;
     const mesh = node.getMesh();
     if (mesh) {
       const matrix = node.getWorldMatrix();
@@ -88,7 +96,7 @@ export async function loadGltf(url, options = {}) {
   for (const scene of document.getRoot().listScenes()) {
     for (const child of scene.listChildren()) visit(child);
   }
-  return { byteLength: bytes.byteLength, primitives };
+  return { byteLength: bytes.byteLength, primitives, componentNodeCounts };
 }
 
 function transformPoint(output, offset, point, matrix) {

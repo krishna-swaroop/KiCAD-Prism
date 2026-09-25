@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchApi } from "@/lib/api";
-import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
+import { cancelPrismJob, throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
 
 vi.mock("@/lib/api", () => ({
     fetchApi: vi.fn(),
@@ -65,5 +65,11 @@ describe("unified job polling", () => {
             percent: 20,
             error_message: "Remote rejected the fetch",
         }, "Sync failed")).toThrow("Remote rejected the fetch");
+    });
+
+    it("requests cancellation through the unified job endpoint", async () => {
+        vi.mocked(fetchApi).mockResolvedValueOnce(response({ status: "cancel_requested" }));
+        await cancelPrismJob("job-1");
+        expect(fetchApi).toHaveBeenCalledWith("/api/jobs/job-1/cancel", { method: "POST" });
     });
 });

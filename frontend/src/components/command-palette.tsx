@@ -91,10 +91,21 @@ function componentDetail(component: CatalogComponent): string {
  * the catalog, and whatever the mounted screen has published to the command
  * registry.
  */
+// Rows carry their group heading with them so grouping survives ranked search
+// results, where a group's entries are no longer contiguous by construction.
+function withGroupHeadings(results: PaletteCommand[]) {
+  let lastGroup = "";
+  return results.map((command) => {
+    const heading = command.group === lastGroup ? null : command.group;
+    lastGroup = command.group;
+    return { command, heading };
+  });
+}
+
 export function CommandPalette({ open, onOpenChange, user, onShowShortcuts, onLogout }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [rawActiveIndex, setActiveIndex] = useState(0);
   const [projects, setProjects] = useState<Project[]>([]);
   const [components, setComponents] = useState<CatalogComponent[]>([]);
   const [searchingComponents, setSearchingComponents] = useState(false);
@@ -114,14 +125,6 @@ export function CommandPalette({ open, onOpenChange, user, onShowShortcuts, onLo
       .catch(() => {
         projectsLoadedRef.current = false;
       });
-  }, [open]);
-
-  useEffect(() => {
-    if (open) {
-      setQuery("");
-      setActiveIndex(0);
-      setComponents([]);
-    }
   }, [open]);
 
   /**
@@ -171,7 +174,18 @@ export function CommandPalette({ open, onOpenChange, user, onShowShortcuts, onLo
     };
   }, [canSearchCatalog, open, query]);
 
-  const close = useCallback(() => onOpenChange(false), [onOpenChange]);
+  // Closing is what ends a palette session, so it is where the session's
+  // state is dropped. The project list deliberately survives: it is a cache,
+  // not part of the session.
+  const handleOpenChange = useCallback((next: boolean) => {
+    if (!next) {
+      setQuery("");
+      setActiveIndex(0);
+      setComponents([]);
+    }
+    onOpenChange(next);
+  }, [onOpenChange]);
+  const close = useCallback(() => handleOpenChange(false), [handleOpenChange]);
 
   const commands = useMemo<PaletteCommand[]>(() => {
     const run = (action: () => void) => () => {
@@ -284,24 +298,15 @@ export function CommandPalette({ open, onOpenChange, user, onShowShortcuts, onLo
     return [...fuse.search(trimmed).map((match) => match.item), ...componentCommands];
   }, [commands, componentCommands, fuse, query]);
 
-  useEffect(() => {
-    setActiveIndex((current) => (current < results.length ? current : 0));
-  }, [results.length]);
+  // A result list that has shrunk past the highlight takes it back to the top
+  // during render, not after a commit that showed the wrong row.
+  const activeIndex = rawActiveIndex < results.length ? rawActiveIndex : 0;
 
   useEffect(() => {
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, results]);
 
-  // Rows carry their group heading with them so grouping survives ranked search
-  // results, where a group's entries are no longer contiguous by construction.
-  const rows = useMemo(() => {
-    let lastGroup = "";
-    return results.map((command) => {
-      const heading = command.group === lastGroup ? null : command.group;
-      lastGroup = command.group;
-      return { command, heading };
-    });
-  }, [results]);
+  const rows = useMemo(() => withGroupHeadings(results), [results]);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowDown" || (event.key === "n" && event.ctrlKey)) {
@@ -321,7 +326,7 @@ export function CommandPalette({ open, onOpenChange, user, onShowShortcuts, onLo
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className="top-[15%] max-w-xl translate-y-0 gap-0 p-0 [&>button]:hidden"
         onKeyDown={handleKeyDown}
@@ -334,7 +339,6 @@ export function CommandPalette({ open, onOpenChange, user, onShowShortcuts, onLo
         <div className="flex items-center gap-2 border-b px-3">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
-            autoFocus
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);

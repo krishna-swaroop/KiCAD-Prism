@@ -120,6 +120,59 @@ describe("comparison property panel", () => {
         expect(screen.getByText("R33, R34")).toBeTruthy();
     });
 
+    it("does not present the first designator's BOM fields as the whole group", () => {
+        const differing: BomDiff = {
+            ...bom,
+            changes: [
+                bom.changes[0]!,
+                {
+                    ...bom.changes[0]!,
+                    ref: "R34",
+                    old: { ...bom.changes[0]!.old, Vendor: "Vendor A" },
+                    new: { ...bom.changes[0]!.new, Vendor: "Vendor B" },
+                    diffs: {
+                        ...bom.changes[0]!.diffs,
+                        Vendor: { old: "Vendor A", new: "Vendor B" },
+                    },
+                },
+            ],
+        };
+
+        render(<ComparisonPropertyPanel group={group()} bom={differing} />);
+
+        expect(screen.getByText("R33")).toBeTruthy();
+        expect(screen.getByText("R34")).toBeTruthy();
+        expect(screen.getByText("Vendor A")).toBeTruthy();
+        expect(screen.getByText("Vendor B")).toBeTruthy();
+    });
+
+    it("groups identical BOM rows regardless of object key order", () => {
+        const first = bom.changes[0]!;
+        const reverseKeys = <T extends Record<string, unknown>>(value: T): T =>
+            Object.fromEntries(Object.entries(value).reverse()) as T;
+        const reordered: BomDiff = {
+            ...bom,
+            changes: [
+                first,
+                {
+                    ...first,
+                    ref: "R34",
+                    old: reverseKeys(first.old ?? {}),
+                    new: reverseKeys(first.new ?? {}),
+                    diffs: reverseKeys(first.diffs ?? {}),
+                },
+            ],
+        };
+
+        render(<ComparisonPropertyPanel group={group()} bom={reordered} />);
+
+        const properties = screen.getByRole("button", { name: "Properties" })
+            .closest("section")!;
+        expect(within(properties).getByText("R33, R34")).toBeTruthy();
+        expect(within(properties).queryByText("R33")).toBeNull();
+        expect(within(properties).queryByText("R34")).toBeNull();
+    });
+
     it("heads a non-BOM delta with the verb that explains it", () => {
         const relayered = group({
             label: "GND",

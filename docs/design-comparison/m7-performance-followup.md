@@ -12,6 +12,11 @@ All reported timings are medians of five cold, cache-isolated runs inside the
 
 ## Dependency result
 
+> Historical benchmark record: the dependency identities below describe the
+> M7 measurement environment. They are not the current installation policy.
+> Prism now owns one resolved graph in `requirements/runtime.lock`; see
+> [Dependency identity](../DEPENDENCIES.md).
+
 The default `docker-compose.yml` image still installs the published upstream
 pin from `kicad-prism-viewer/requirements-runtime.txt`:
 

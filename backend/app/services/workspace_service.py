@@ -20,6 +20,31 @@ from app.services.workspace_schema_migrations import apply_workspace_migrations
 
 logger = logging.getLogger(__name__)
 
+_RELEASE_IMMUTABLE_TRIGGERS = (
+    ("ws_release_approvals", "trg_ws_release_approvals_immutable"),
+    (
+        "ws_release_approval_invalidations",
+        "trg_ws_release_approval_invalidations_immutable",
+    ),
+    ("ws_release_audit_events", "trg_ws_release_audit_events_immutable"),
+    ("ws_release_waivers", "trg_ws_release_waivers_no_delete"),
+    ("ws_release_records", "trg_ws_release_records_guard"),
+)
+
+
+class ProjectHasSignedReleasesError(Exception):
+    """Raised when a non-admin delete is blocked by signed release records."""
+
+    def __init__(self, project_id: str, record_count: int) -> None:
+        self.project_id = project_id
+        self.record_count = record_count
+        super().__init__(
+            "This project has signed release records and cannot be deleted. "
+            "An admin can permanently delete the project and its associated "
+            "release history."
+        )
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -107,6 +132,7 @@ class WorkspaceService:
                 display_name    TEXT,
                 description     TEXT NOT NULL DEFAULT '',
                 relative_path   TEXT NOT NULL DEFAULT '.',
+                project_file_rel TEXT NOT NULL DEFAULT '',
                 folder_id       TEXT REFERENCES ws_folders(id) ON DELETE SET NULL,
                 schematic_rel   TEXT,
                 pcb_rel         TEXT,
@@ -117,7 +143,12 @@ class WorkspaceService:
                 registered_at   TIMESTAMPTZ NOT NULL,
                 last_modified   TIMESTAMPTZ NOT NULL,
                 prism_json_hash TEXT,
-                UNIQUE(repo_id, relative_path)
+                -- A directory can hold more than one KiCad project, so it does
+                -- not identify one on its own. Keying uniqueness on the
+                -- directory alone made a repository with two projects in its
+                -- root importable only as one of them.
+                CONSTRAINT ws_projects_repo_path_file_key
+                    UNIQUE (repo_id, relative_path, project_file_rel)
             );
             CREATE INDEX IF NOT EXISTS idx_ws_projects_folder ON ws_projects(folder_id);
             CREATE INDEX IF NOT EXISTS idx_ws_projects_repo   ON ws_projects(repo_id);
@@ -258,6 +289,7 @@ class WorkspaceService:
         display_name: Optional[str] = None,
         description: str = "",
         folder_id: Optional[str] = None,
+        project_file_rel: str = "",
         schematic_rel: Optional[str] = None,
         pcb_rel: Optional[str] = None,
         thumbnail_rel: Optional[str] = None,
@@ -276,12 +308,14 @@ class WorkspaceService:
             conn.execute(
                 """INSERT INTO ws_projects
                    (id,repo_id,name,display_name,description,relative_path,folder_id,
+                    project_file_rel,
                     schematic_rel,pcb_rel,thumbnail_rel,thumbnail_source,thumbnail_digest,
                     thumbnail_media_type,thumbnail_size_bytes,jobset_rel,
                     has_3d_model,has_ibom,registered_at,last_modified,prism_json_hash)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (
                     project_id, repo_id, name, display_name, description, relative_path, folder_id,
+                    project_file_rel,
                     schematic_rel, pcb_rel, thumbnail_rel, thumbnail_source, thumbnail_digest,
                     thumbnail_media_type, thumbnail_size_bytes, jobset_rel,
                     has_3d_model, has_ibom, now, now, prism_json_hash,
@@ -342,7 +376,7 @@ class WorkspaceService:
     ) -> Optional[Dict[str, Any]]:
         """Resolve and authorize a project in one PostgreSQL query."""
 
-        viewer_fallback = user_role in {"viewer", "component_designer", "component_qa"}
+        viewer_fallback = user_role in {"viewer", "qa"}
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -381,6 +415,7 @@ class WorkspaceService:
             return False
         allowed = {
             "name", "display_name", "description", "folder_id",
+            "project_file_rel",
             "schematic_rel", "pcb_rel", "thumbnail_rel", "jobset_rel",
             "thumbnail_source", "thumbnail_digest", "thumbnail_media_type",
             "thumbnail_size_bytes",
@@ -457,11 +492,122 @@ class WorkspaceService:
             conn.commit()
         return len(normalized_ids)
 
-    def delete_project(self, project_id: str) -> bool:
+    def delete_project(self, project_id: str, *, force: bool = False) -> bool:
+        """Remove a project and its workspace/release-studio listings.
+
+        Release Studio history uses ``ON DELETE RESTRICT`` plus immutability
+        triggers so accidental cascades cannot erase an audit chain. Project
+        deletion is the explicit teardown path: unsigned candidates, builds,
+        waivers, and audit events are always removed. Signed release records
+        require ``force=True`` (admin).
+        """
         with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM ws_projects WHERE id=%s FOR UPDATE",
+                (project_id,),
+            ).fetchone()
+            if not row:
+                return False
+
+            if not force:
+                signed = conn.execute(
+                    "SELECT COUNT(*) AS n FROM ws_release_records WHERE project_id=%s",
+                    (project_id,),
+                ).fetchone()
+                record_count = int(signed["n"]) if signed else 0
+                if record_count:
+                    raise ProjectHasSignedReleasesError(project_id, record_count)
+
+            self._purge_project_associated_rows(conn, project_id)
             cur = conn.execute("DELETE FROM ws_projects WHERE id=%s", (project_id,))
+            conn.execute("DELETE FROM ws_jobs WHERE project_id=%s", (project_id,))
             conn.commit()
         return cur.rowcount > 0
+
+    def _purge_project_associated_rows(self, conn: Any, project_id: str) -> None:
+        """Drop RESTRICT/immutable rows that would otherwise block DELETE."""
+        for table, trigger in _RELEASE_IMMUTABLE_TRIGGERS:
+            conn.execute(f"ALTER TABLE {table} DISABLE TRIGGER {trigger}")
+        try:
+            conn.execute(
+                """
+                UPDATE ws_release_findings
+                   SET waiver_id = NULL
+                 WHERE waiver_id IN (
+                     SELECT id FROM ws_release_waivers WHERE project_id = %s
+                 )
+                """,
+                (project_id,),
+            )
+            conn.execute(
+                """
+                DELETE FROM ws_artifact_release_pins
+                 WHERE pin_ref IN (
+                           SELECT b.id
+                             FROM ws_release_builds b
+                             JOIN ws_release_candidates c ON c.id = b.candidate_id
+                            WHERE c.project_id = %s
+                       )
+                    OR pin_ref IN (
+                           SELECT id FROM ws_release_records WHERE project_id = %s
+                       )
+                    OR artifact_id IN (
+                           SELECT dossier_artifact_id
+                             FROM ws_release_builds b
+                             JOIN ws_release_candidates c ON c.id = b.candidate_id
+                            WHERE c.project_id = %s
+                              AND dossier_artifact_id IS NOT NULL
+                           UNION
+                           SELECT evidence_artifact_id
+                             FROM ws_release_builds b
+                             JOIN ws_release_candidates c ON c.id = b.candidate_id
+                            WHERE c.project_id = %s
+                              AND evidence_artifact_id IS NOT NULL
+                           UNION
+                           SELECT attestation_artifact_id
+                             FROM ws_release_records
+                            WHERE project_id = %s
+                              AND attestation_artifact_id IS NOT NULL
+                       )
+                """,
+                (project_id, project_id, project_id, project_id, project_id),
+            )
+            conn.execute(
+                """
+                DELETE FROM ws_release_web_shares
+                 WHERE record_id IN (
+                     SELECT id FROM ws_release_records WHERE project_id = %s
+                 )
+                """,
+                (project_id,),
+            )
+            conn.execute(
+                "UPDATE ws_release_records SET superseded_by = NULL WHERE project_id = %s",
+                (project_id,),
+            )
+            conn.execute(
+                "DELETE FROM ws_release_records WHERE project_id = %s",
+                (project_id,),
+            )
+            conn.execute(
+                "DELETE FROM ws_release_approvals WHERE project_id = %s",
+                (project_id,),
+            )
+            conn.execute(
+                "DELETE FROM ws_release_waivers WHERE project_id = %s",
+                (project_id,),
+            )
+            conn.execute(
+                "DELETE FROM ws_release_audit_events WHERE project_id = %s",
+                (project_id,),
+            )
+            conn.execute(
+                "DELETE FROM ws_webgpu_ready WHERE project_id = %s",
+                (project_id,),
+            )
+        finally:
+            for table, trigger in _RELEASE_IMMUTABLE_TRIGGERS:
+                conn.execute(f"ALTER TABLE {table} ENABLE TRIGGER {trigger}")
 
     # ------------------------------------------------------------------
     # Job CRUD
@@ -567,6 +713,68 @@ class WorkspaceService:
                 continue
             results.append(d)
         return results
+
+    # ------------------------------------------------------------------
+    # Project metadata (descriptive facts about the KiCad files)
+    # ------------------------------------------------------------------
+
+    def get_project_metadata(self, project_id: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM ws_project_metadata WHERE project_id=%s",
+                (project_id,),
+            ).fetchone()
+        if not row:
+            return None
+        record = self._row_to_dict(row)
+        for key in ("schematic", "pcb", "repository"):
+            value = record.get(key)
+            record[key] = json.loads(value) if isinstance(value, str) else value
+        return record
+
+    def upsert_project_metadata(
+        self,
+        project_id: str,
+        *,
+        schematic: Optional[Dict[str, Any]],
+        pcb: Optional[Dict[str, Any]],
+        source_fingerprint: str,
+        board_stats_source: str = "",
+        repository: Optional[Dict[str, Any]] = None,
+        repo_fingerprint: str = "",
+    ) -> None:
+        """Record what the KiCad files say about themselves.
+
+        Written by the metadata job after an import or a sync, and read by
+        ``/properties``. Deriving this per request meant scanning the board
+        every time somebody clicked a project card.
+        """
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO ws_project_metadata
+                       (project_id, schematic, pcb, source_fingerprint,
+                        board_stats_source, repository, repo_fingerprint,
+                        computed_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())
+                   ON CONFLICT(project_id) DO UPDATE SET
+                     schematic=excluded.schematic,
+                     pcb=excluded.pcb,
+                     source_fingerprint=excluded.source_fingerprint,
+                     board_stats_source=excluded.board_stats_source,
+                     repository=excluded.repository,
+                     repo_fingerprint=excluded.repo_fingerprint,
+                     computed_at=excluded.computed_at""",
+                (
+                    project_id,
+                    json.dumps(schematic) if schematic is not None else None,
+                    json.dumps(pcb) if pcb is not None else None,
+                    source_fingerprint,
+                    board_stats_source,
+                    json.dumps(repository) if repository is not None else None,
+                    repo_fingerprint,
+                ),
+            )
+            conn.commit()
 
     # ------------------------------------------------------------------
     # Portfolio CRUD
@@ -814,7 +1022,7 @@ class WorkspaceService:
     def get_bootstrap_data(self, user_role: Optional[Role] = None) -> Dict[str, Any]:
         role = user_role or "admin"
         bypass_visibility = user_role is None
-        viewer_fallback = role in {"viewer", "component_designer", "component_qa"}
+        viewer_fallback = role in {"viewer", "qa"}
         with self._connect() as conn:
             row = conn.execute(
                 """

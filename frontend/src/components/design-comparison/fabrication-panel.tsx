@@ -256,6 +256,7 @@ function LayerImage({ url, alt }: { url: string | null; alt: string }) {
     );
 }
 
+// react-doctor-disable-next-line no-giant-component - tabular render of stacked data with tight column coupling
 export function FabricationPanel({
     fabrication,
     sidecarUrls,
@@ -269,7 +270,10 @@ export function FabricationPanel({
 }) {
     const [activeLayer, setActiveLayer] = useState<string | null>(null);
     const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-    const [selectedRegion, setSelectedRegion] = useState<number | null>(null);
+    // A region index only means anything on the layer it was picked on, so it
+    // carries that layer. Returning to a layer now restores what was selected
+    // there, where before every layer change cleared it outright.
+    const [regionChoice, setRegionChoice] = useState<{ layer: string; index: number } | null>(null);
     const [showUnchanged, setShowUnchanged] = useState(false);
     const [oldNewSide, setOldNewSide] = useState<OldNewSide>("compare");
 
@@ -292,10 +296,18 @@ export function FabricationPanel({
     const { frame, reset, zoomBy, view, handlers } = useBoardViewport(board);
     const regions = useMemo(() => current?.regions ?? [], [current?.regions]);
 
+    const layerName = current?.name;
+    const selectedRegion = regionChoice && regionChoice.layer === layerName
+        ? regionChoice.index
+        : null;
+    const setSelectedRegion = useCallback((index: number | null) => setRegionChoice(
+        index === null || !layerName ? null : { layer: layerName, index },
+    ), [layerName]);
+
     const select = useCallback((region: FabricationRegion) => {
         setSelectedRegion(region.index);
         frame(regionRect(region));
-    }, [frame]);
+    }, [frame, setSelectedRegion]);
 
     const step = (direction: -1 | 1) => {
         if (!regions.length) return;
@@ -306,9 +318,9 @@ export function FabricationPanel({
         select(regions[next]!);
     };
 
-    const layerName = current?.name;
+    // The viewport reset stays an effect: recentring the view on a new layer is
+    // an imperative call to the viewport, not a piece of state to derive.
     useEffect(() => {
-        setSelectedRegion(null);
         reset();
     }, [layerName, reset]);
 

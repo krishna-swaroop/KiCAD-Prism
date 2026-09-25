@@ -182,8 +182,14 @@ https://prism.example.com/oauth/oidc/callback
 ```
 
 The issuer must use HTTPS and provide standard OIDC discovery metadata.
-`AUTH_ENABLED=true` fails closed if the issuer, client credentials, session
-secret, or database configuration is incomplete.
+`AUTH_ENABLED=true` fails closed if no login method is complete (OIDC or
+`PASSWORD_AUTH_ENABLED=true`), or if the session secret or database
+configuration is incomplete.
+
+Password-only deployments can leave the `OIDC_*` values empty and set
+`PASSWORD_AUTH_ENABLED=true`. Seed the first admin with
+`BOOTSTRAP_ADMIN_USERS_STR` and `BOOTSTRAP_ADMIN_PASSWORD`, then clear the seed
+password after first sign-in. See [Authentication and access](AUTHENTICATION_AND_ACCESS.md).
 
 Use `BOOTSTRAP_ADMIN_USERS_STR` only to establish the first administrators.
 After first login, verify explicit roles and keep at least two administrator
@@ -515,7 +521,7 @@ development path, but it is not preferred when a release bundle exists.
 
 Before declaring the service ready:
 
-- OIDC fails closed when credentials are removed;
+- authentication fails closed when OIDC credentials are removed and password auth is not enabled;
 - browsers and KiCad workstations trust HTTPS;
 - only the intended frontend or proxy ports are reachable;
 - Prism image references remain digest-pinned;

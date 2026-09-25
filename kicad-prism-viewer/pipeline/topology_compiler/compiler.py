@@ -367,17 +367,42 @@ def compile_topology(
                 )
             )
 
+    terminal_pad_links = list((pcb_metadata or {}).get("terminal_pad_links", []) or [])
+    validation_warnings: list[str] = []
+    reconciled = _reconcile_board_nets(nets, net_by_name, terminals, terminal_pad_links, pcb_metadata)
+    if reconciled:
+        # With a correct netlist this never fires: the board and the netlist
+        # agree on every name. Record it so a netlister regression is visible
+        # in the artifact instead of silently absorbed.
+        validation_warnings.append(
+            "board net names absent from the schematic netlist: "
+            f"{reconciled['aliased']} aliased onto netlist nets through shared pads, "
+            f"{reconciled['board_only']} board-only (e.g. {reconciled['example']})"
+        )
+
     terminal_by_key = {
         (terminal.designator, terminal.pin, terminal.net_name): terminal
         for terminal in terminals
     }
-    for link in (pcb_metadata or {}).get("terminal_pad_links", []):
-        key = (
-            str(link.get("designator") or ""),
-            str(link.get("pin") or ""),
-            str(link.get("net_name") or ""),
-        )
-        terminal = terminal_by_key.get(key)
+    terminal_by_pin: dict[tuple[str, str], list[Terminal]] = {}
+    for terminal in terminals:
+        terminal_by_pin.setdefault((terminal.designator, terminal.pin), []).append(terminal)
+    for link in terminal_pad_links:
+        designator = str(link.get("designator") or "")
+        pin = str(link.get("pin") or "")
+        link_net = str(link.get("net_name") or "")
+        terminal = terminal_by_key.get((designator, pin, link_net))
+        if terminal is None:
+            # The board may call this net by another name (see
+            # ``_reconcile_board_nets``); the pad still belongs to the pin.
+            terminal = next(
+                (
+                    candidate
+                    for candidate in terminal_by_pin.get((designator, pin), [])
+                    if link_net in net_by_name.get(candidate.net_name, Net("", "")).aliases
+                ),
+                None,
+            )
         if terminal:
             terminal.pcb_pad_id = str(link.get("object_uid") or "")
 
@@ -460,7 +485,7 @@ def compile_topology(
         indexes=indexes,
         validation={
             "errors": [],
-            "warnings": [],
+            "warnings": validation_warnings,
             "stats": {
                 "components": len(components),
                 "nets": len(nets),
@@ -471,6 +496,88 @@ def compile_topology(
         },
     )
     return topology.to_dict()
+
+
+def _board_net_names(pcb_metadata: dict[str, Any] | None) -> list[str]:
+    """Every net name the board's pads carry, in first-seen order."""
+
+    names: dict[str, None] = {}
+    for collection in ("terminal_pad_links", "pads", "physical_objects"):
+        for record in (pcb_metadata or {}).get(collection, []) or []:
+            name = str(record.get("net_name") or "")
+            if name:
+                names.setdefault(name, None)
+    return list(names)
+
+
+def _reconcile_board_nets(
+    nets: list[Net],
+    net_by_name: dict[str, Net],
+    terminals: list[Terminal],
+    terminal_pad_links: list[dict[str, Any]],
+    pcb_metadata: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Make every board net name resolve to a topology net.
+
+    The schematic netlist and the board can disagree on a net's name: a bus
+    member that crosses sheet pins is ``/MGMT.D0_P`` on the board while the
+    netlist knows it as ``/Managment Port/MGMT.D0_P`` (and, when the netlist
+    stops at the sheet boundary, as ``/SOM/MGMT.D0_P`` too). Copper is
+    attributed by the board name, so without reconciliation it lands on net
+    0 and can never be selected or emphasised.
+
+    A board name whose pads sit on the pins of schematic nets is recorded as
+    an alias of those nets. The earliest-listed of them is the primary and
+    also aliases the others' names, so every name of the net maps to one
+    record and a lookup that walks the list in order meets the record that
+    owns the copper before the ones it absorbed. A board name with no
+    schematic pins becomes a board-only net.
+    """
+
+    board_net_by_pin = {
+        (str(link.get("designator") or ""), str(link.get("pin") or "")): str(
+            link.get("net_name") or ""
+        )
+        for link in terminal_pad_links
+    }
+    net_index = {net.uid: index for index, net in enumerate(nets)}
+    claims_by_board_name: dict[str, set[str]] = {}
+    for terminal in terminals:
+        board_name = board_net_by_pin.get((terminal.designator, terminal.pin), "")
+        if not board_name or board_name == terminal.net_name:
+            continue
+        if terminal.net_uid in net_index:
+            claims_by_board_name.setdefault(board_name, set()).add(terminal.net_uid)
+
+    aliased = board_only = 0
+    example = ""
+    for name in _board_net_names(pcb_metadata):
+        if name in net_by_name:
+            continue
+        example = example or name
+        claims = sorted(claims_by_board_name.get(name, ()), key=net_index.__getitem__)
+        if not claims:
+            net = Net(uid=_net_uid(name), name=name)
+            nets.append(net)
+            net_by_name[name] = net
+            board_only += 1
+            continue
+        aliased += 1
+        primary = nets[net_index[claims[0]]]
+        _add_alias(primary, name)
+        for uid in claims[1:]:
+            secondary = nets[net_index[uid]]
+            _add_alias(secondary, name)
+            _add_alias(primary, secondary.name)
+        net_by_name[name] = primary
+    if not aliased and not board_only:
+        return None
+    return {"aliased": aliased, "board_only": board_only, "example": example}
+
+
+def _add_alias(net: Net, alias: str) -> None:
+    if alias and alias != net.name and alias not in net.aliases:
+        net.aliases.append(alias)
 
 
 def _build_indexes(
@@ -521,6 +628,11 @@ def _build_indexes(
         "object_to_source_svg": object_to_source_svg,
         "sheet_path_to_pages": {page.sheet_path: [page.uid] for page in schematic_pages},
         "designator_to_component": {component.designator: component.uid for component in components},
-        "net_name_to_net": {net.name: net.uid for net in nets},
+        "net_name_to_net": {
+            # Aliases first, earliest net last, so a net's own name always
+            # wins the key and a shared alias resolves to the primary.
+            **{alias: net.uid for net in reversed(nets) for alias in net.aliases},
+            **{net.name: net.uid for net in nets},
+        },
         "terminal_to_net": {terminal.uid: terminal.net_uid for terminal in terminals},
     }

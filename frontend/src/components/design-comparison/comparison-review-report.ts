@@ -54,8 +54,6 @@ const COLUMNS = [
     read: (group: ChangeGroup) => string | number;
 }>;
 
-export const REVIEW_REPORT_COLUMNS = COLUMNS.map((column) => column.header);
-
 export function reviewReportRows(
     groups: ChangeGroup[],
 ): Array<Record<string, string | number>> {

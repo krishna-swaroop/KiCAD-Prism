@@ -1,0 +1,5 @@
+(sym_lib_table
+  (lib (name "support_hardware")(type "KiCad")(uri "${KIPRJMOD}/libraries/support_hardware.kicad_sym")(options "")(descr ""))
+  (lib (name "fpgas_and_processors")(type "KiCad")(uri "${KIPRJMOD}/libraries/fpgas_and_processors.kicad_sym")(options "")(descr ""))
+  (lib (name "usb")(type "KiCad")(uri "${KIPRJMOD}/libraries/usb.kicad_sym")(options "")(descr ""))
+)

@@ -1,0 +1,36 @@
+# One Python runtime for the API, workers, Release Studio, and semantic viewer.
+#
+# Compile this file with scripts/sync_dependencies.py --update-lock. Every
+# supported host, CI job, and Docker image installs requirements/runtime.lock;
+# do not add runtime packages to backend/requirements.txt or
+# kicad-prism-viewer/requirements-runtime.txt.
+
+fastapi>=0.141
+starlette>=1.0
+bcrypt>=4.2,<5
+uvicorn
+# uvicorn serves WebSocket upgrades (live comments) only with a protocol library.
+websockets
+gitpython
+pydantic
+pydantic-settings
+python-dotenv
+requests
+PyJWT[crypto]
+python-multipart
+psycopg[binary]>=3.2,<4
+psycopg-pool>=3.2,<4
+
+# Published KiCad tooling is a coordinated pair. The optional local Docker
+# override replaces both packages from one modern kicad_monkey monorepo
+# checkout; it never upgrades one package independently.
+kicad-monkey==2026.9.7
+kicad-cruncher==2026.9.7
+
+# Document and semantic-viewer runtime.
+Pillow>=11,<13
+fonttools>=4.59,<5
+cairosvg>=2.7,<3
+pikepdf>=9,<11
+pypdf>=5,<7
+PyYAML>=6.0.1,<7

@@ -25,7 +25,7 @@ export function WorkspaceAppsPlaceholder({ canOpenLibraryManager, onOpenLibraryM
         <PermissionHint
           blocked={!canOpenLibraryManager}
           action="open the Library Manager"
-          allowedRoles={["designer", "component_designer", "component_qa", "admin"]}
+          allowedRoles={["designer", "qa", "admin"]}
           className="w-full"
         >
         <button

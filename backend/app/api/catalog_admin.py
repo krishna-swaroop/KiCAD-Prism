@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import hashlib
 import io
@@ -11,9 +12,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.api.catalog_errors import raise_catalog_value_error
 from app.core.config import settings
 from app.core.security import AuthenticatedUser, require_catalog_reader, require_catalog_writer
 from app.services.component_catalog_service import catalog_service
+from app.services.catalog import workflow_policy
 from app.services.catalog_job_service import catalog_jobs
 from app.services.local_artifact_store import artifact_store
 from app.services.library_folder_import_service import configured_import_roots, resolve_server_import_path
@@ -23,40 +26,12 @@ from app.services.workspace_service import workspace
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 
-WORKFLOW_TRANSITIONS: dict[str, set[str]] = {
-    "open": {"in_progress", "archived"},
-    "in_progress": {"qa_review", "open", "archived"},
-    "qa_review": {"done", "in_progress", "archived"},
-    "done": {"released", "qa_review", "archived"},
-    "released": {"archived", "open"},
-    "archived": {"open"},
-}
-
-LEGACY_WORKFLOW_STAGE_MAP = {
-    "draft": "open",
-    "in_review": "qa_review",
-    "qa_approved": "done",
-    "deprecated": "archived",
-}
-
-
 def _normalize_workflow_stage(value: str) -> str:
-    normalized = value.strip().lower()
-    return LEGACY_WORKFLOW_STAGE_MAP.get(normalized, normalized)
+    return workflow_policy.normalize_workflow_stage(value)
 
 
 def _can_transition_workflow(user: AuthenticatedUser, current_stage: str, next_stage: str) -> bool:
-    if current_stage == next_stage:
-        return user.role in {"admin", "component_designer"} or (user.role == "component_qa" and current_stage == "qa_review")
-    if next_stage not in WORKFLOW_TRANSITIONS.get(current_stage, set()):
-        return False
-    if user.role == "admin":
-        return True
-    if user.role == "component_designer":
-        return not (current_stage == "qa_review" and next_stage == "done")
-    if user.role == "component_qa":
-        return current_stage == "qa_review" and next_stage in {"done", "in_progress", "archived"}
-    return False
+    return workflow_policy.can_transition(user.role, current_stage, next_stage)
 
 
 def _enqueue_catalog_job(
@@ -117,6 +92,28 @@ class UpdateComponentMetadataRequest(BaseModel):
     expected_revision_id: str = Field(min_length=1)
     change_summary: str = "Update component metadata"
     extra_fields: dict[str, str] | None = None
+
+
+class CreateRepresentationRequest(BaseModel):
+    label: str = "Representation"
+    symbol_asset_id: str = ""
+    footprint_asset_id: str = ""
+    display_order: int = 0
+    is_default: bool = False
+    source_internal_part_number: str = ""
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    expected_revision_id: str = Field(min_length=1)
+    change_summary: str = "Add component representation"
+
+
+class UpdateRepresentationRequest(BaseModel):
+    label: str | None = None
+    symbol_asset_id: str | None = None
+    footprint_asset_id: str | None = None
+    display_order: int | None = None
+    is_default: bool | None = None
+    expected_revision_id: str = Field(min_length=1)
+    change_summary: str = "Update component representation"
 
 
 class MetadataFieldRequest(BaseModel):
@@ -380,7 +377,8 @@ async def upload_folder_snapshot_file(
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
     _folder_snapshot_for_user(snapshot_id, user)
-    try:
+
+    def store() -> dict[str, Any]:
         artifact = artifact_store.put_stream(
             file.file,
             media_type=file.content_type or "application/octet-stream",
@@ -389,6 +387,9 @@ async def upload_folder_snapshot_file(
         )
         artifact_store.add_snapshot_file(snapshot_id, relative_path, artifact)
         return {"relative_path": relative_path, "sha256": artifact.sha256, "size_bytes": artifact.size_bytes}
+
+    try:
+        return await asyncio.to_thread(store)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:
@@ -811,9 +812,18 @@ def create_catalog_component(
 
 
 @router.get("/components/{component_id}")
-def get_catalog_component(component_id: str, user: AuthenticatedUser = Depends(require_catalog_reader)):
+def get_catalog_component(
+    component_id: str,
+    representation: str = Query(default=""),
+    user: AuthenticatedUser = Depends(require_catalog_reader),
+):
     _ = user
-    component = catalog_service.get_component(component_id)
+    try:
+        component = catalog_service.get_component(
+            component_id, representation_id=representation
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not component:
         raise HTTPException(status_code=404, detail="Component not found")
     return component
@@ -915,6 +925,31 @@ def get_catalog_preview(preview_id: str, user: AuthenticatedUser = Depends(requi
     return FileResponse(path, media_type=content_type, headers={"Cache-Control": "private, max-age=300"})
 
 
+@router.get("/assets/{asset_id}/content")
+def get_catalog_asset_content(asset_id: str, user: AuthenticatedUser = Depends(require_catalog_reader)):
+    """Serve an asset's stored bytes so the browser can render it.
+
+    Deliberately not the placement payload from the remote-provider download:
+    that one rewrites a symbol's footprint reference and a footprint's
+    3D-model paths for KiCad. A renderer wants the library file itself.
+    """
+    _ = user
+    asset = catalog_service.catalog_asset_source(asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    path, content_type, filename = asset
+    return FileResponse(
+        path,
+        media_type=content_type,
+        # Assets are immutable once written -- a change produces a new asset
+        # row -- but they are catalog content, so keep the cache private.
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "Content-Disposition": f'inline; filename="{filename}"',
+        },
+    )
+
+
 @router.patch("/components/{component_id}")
 def update_catalog_component(
     component_id: str,
@@ -938,11 +973,79 @@ def update_catalog_component(
             expected_revision_id=expected_revision_id,
         )
     except ValueError as exc:
-        status_code = 409 if "revision conflict" in str(exc).lower() else 400
-        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
     if not component:
         raise HTTPException(status_code=404, detail="Component not found")
     return component
+
+
+@router.post("/components/{component_id}/representations", status_code=201)
+def create_component_representation(
+    component_id: str,
+    payload: CreateRepresentationRequest,
+    user: AuthenticatedUser = Depends(require_catalog_writer),
+):
+    try:
+        return catalog_service.create_representation(
+            component_id,
+            label=payload.label,
+            symbol_asset_id=payload.symbol_asset_id,
+            footprint_asset_id=payload.footprint_asset_id,
+            display_order=payload.display_order,
+            make_default=payload.is_default,
+            source_internal_part_number=payload.source_internal_part_number,
+            provenance=payload.provenance,
+            expected_revision_id=payload.expected_revision_id,
+            actor=user.email,
+            change_summary=payload.change_summary,
+        )
+    except ValueError as exc:
+        raise_catalog_value_error(exc)
+
+
+@router.patch("/components/{component_id}/representations/{representation_id}")
+def update_component_representation(
+    component_id: str,
+    representation_id: str,
+    payload: UpdateRepresentationRequest,
+    user: AuthenticatedUser = Depends(require_catalog_writer),
+):
+    updates = {
+        key: value
+        for key, value in payload.model_dump(
+            exclude={"expected_revision_id", "change_summary"}
+        ).items()
+        if value is not None
+    }
+    try:
+        return catalog_service.update_representation(
+            component_id,
+            representation_id,
+            updates=updates,
+            expected_revision_id=payload.expected_revision_id,
+            actor=user.email,
+            change_summary=payload.change_summary,
+        )
+    except ValueError as exc:
+        raise_catalog_value_error(exc)
+
+
+@router.delete("/components/{component_id}/representations/{representation_id}")
+def delete_component_representation(
+    component_id: str,
+    representation_id: str,
+    expected_revision_id: str = Query(...),
+    user: AuthenticatedUser = Depends(require_catalog_writer),
+):
+    try:
+        return catalog_service.delete_representation(
+            component_id,
+            representation_id,
+            expected_revision_id=expected_revision_id,
+            actor=user.email,
+        )
+    except ValueError as exc:
+        raise_catalog_value_error(exc)
 
 
 @router.post("/components/{component_id}/symbol-import")
@@ -951,23 +1054,27 @@ async def import_symbol_library(
     file: UploadFile = File(...),
     target_library: str = Form(default=""),
     selected_symbol: str = Form(default=""),
+    counterpart_asset_id: str = Form(default=""), expected_revision_id: str = Form(default=""),
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
     payload = await file.read()
     if not payload:
         raise HTTPException(status_code=400, detail="Uploaded symbol library was empty")
 
+    # Runs kicad-cli; a slow upgrade must not stall the event loop.
     try:
-        return catalog_service.import_symbol_library(
+        return await asyncio.to_thread(
+            catalog_service.import_symbol_library,
             component_id,
             upload_name=file.filename or "uploaded.kicad_sym",
             payload=payload,
             target_library=target_library or component_id,
             selected_symbol=selected_symbol,
-            actor=user.email,
+            counterpart_asset_id=counterpart_asset_id,
+            actor=user.email, expected_revision_id=expected_revision_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.post("/components/{component_id}/footprint-import")
@@ -976,6 +1083,7 @@ async def import_footprint(
     file: UploadFile = File(...),
     target_library: str = Form(default=""),
     selected_footprint: str = Form(default=""),
+    counterpart_asset_id: str = Form(default=""), expected_revision_id: str = Form(default=""),
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
     payload = await file.read()
@@ -983,16 +1091,18 @@ async def import_footprint(
         raise HTTPException(status_code=400, detail="Uploaded footprint payload was empty")
 
     try:
-        return catalog_service.import_footprint(
+        return await asyncio.to_thread(
+            catalog_service.import_footprint,
             component_id,
             upload_name=file.filename or "uploaded.kicad_mod",
             payload=payload,
             target_library=target_library or "Prism_Footprints",
             selected_footprint=selected_footprint,
-            actor=user.email,
+            counterpart_asset_id=counterpart_asset_id,
+            actor=user.email, expected_revision_id=expected_revision_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.post("/components/{component_id}/assets/{asset_type}")
@@ -1000,7 +1110,7 @@ async def import_auxiliary_asset(
     component_id: str,
     asset_type: str,
     file: UploadFile = File(...),
-    target_library: str = Form(default=""),
+    target_library: str = Form(default=""), expected_revision_id: str = Form(default=""),
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
     payload = await file.read()
@@ -1008,16 +1118,17 @@ async def import_auxiliary_asset(
         raise HTTPException(status_code=400, detail="Uploaded asset payload was empty")
 
     try:
-        return catalog_service.attach_auxiliary_asset(
+        return await asyncio.to_thread(
+            catalog_service.attach_auxiliary_asset,
             component_id,
             asset_type=asset_type,
             upload_name=file.filename or f"{asset_type}.bin",
             payload=payload,
             target_library=target_library or "Prism_Assets",
-            actor=user.email,
+            actor=user.email, expected_revision_id=expected_revision_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
 
 
 @router.delete("/components/{component_id}/assets/{asset_type}")
@@ -1030,6 +1141,24 @@ def detach_component_asset(
         return catalog_service.detach_asset(component_id, asset_type, actor=user.email)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/components/{component_id}/assets/id/{asset_id}")
+def detach_component_asset_by_id(
+    component_id: str,
+    asset_id: str,
+    expected_revision_id: str = Query(...),
+    user: AuthenticatedUser = Depends(require_catalog_writer),
+):
+    try:
+        return catalog_service.detach_asset_by_id(
+            component_id,
+            asset_id,
+            expected_revision_id=expected_revision_id,
+            actor=user.email,
+        )
+    except ValueError as exc:
+        raise_catalog_value_error(exc)
 
 
 @router.delete("/components/{component_id}")
@@ -1070,7 +1199,7 @@ def transition_release_status(
             expected_manifest_hash=payload.expected_manifest_hash,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)
     if not component:
         raise HTTPException(status_code=404, detail="Component not found")
     return component
@@ -1378,8 +1507,18 @@ def export_kicad_dbl_bundle(user: AuthenticatedUser = Depends(require_catalog_wr
 
 # ─── Phase 2: CSV Import Routes ──────────────────────────────────────────────
 
-@router.post("/stock/sync-csv")
-async def import_stock_csv(
+@router.get("/inventory/export.csv")
+def export_inventory_csv(user: AuthenticatedUser = Depends(require_catalog_reader)):
+    _ = user
+    return Response(
+        content="\ufeff" + catalog_service.export_inventory_csv(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="component-inventory.csv"'},
+    )
+
+
+@router.post("/inventory/sync-csv")
+async def import_inventory_csv(
     file: UploadFile = File(...),
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
@@ -1387,7 +1526,7 @@ async def import_stock_csv(
     content = await file.read()
     try:
         csv_str = content.decode("utf-8")
-        return catalog_service.import_stock_csv(csv_str)
+        return catalog_service.import_inventory_csv(csv_str)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1397,12 +1536,14 @@ async def import_stock_csv(
 @router.get("/assets/browse")
 def browse_library_assets(
     asset_type: str = Query(...),
+    q: str = Query("", max_length=200),
+    limit: int = Query(50, ge=1, le=500),
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
     _ = user
     try:
-        files = catalog_service.browse_library_assets(asset_type)
-        return {"files": files}
+        result = catalog_service.browse_library_assets(asset_type, q=q, limit=limit)
+        return {"files": result["files"], "total": result["total"]}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1411,7 +1552,8 @@ class LinkAssetRequest(BaseModel):
     file_path: str
     target_library: str = ""
     target_name: str = ""
-
+    counterpart_asset_id: str = ""
+    expected_revision_id: str = ""
 
 @router.post("/components/{component_id}/assets/{asset_type}/link")
 def link_library_asset(
@@ -1428,7 +1570,8 @@ def link_library_asset(
             file_path_rel=payload.file_path,
             target_library=payload.target_library,
             target_name=payload.target_name,
-            actor=user.email,
+            counterpart_asset_id=payload.counterpart_asset_id,
+            actor=user.email, expected_revision_id=payload.expected_revision_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise_catalog_value_error(exc)

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "fixture": "cynthion",
+  "description": "Cynthion 1.4.0 multi-sheet USB test instrument design.",
+  "entrypoints": {
+    "project": "cynthion.kicad_pro",
+    "board": "cynthion.kicad_pcb",
+    "schematic": "cynthion.kicad_sch",
+    "jobset": "cynthion.kicad_jobset",
+    "child_schematics": [
+      "power_supplies.kicad_sch",
+      "debugger.kicad_sch",
+      "control_port.kicad_sch",
+      "aux_port.kicad_sch",
+      "target_port.kicad_sch",
+      "ram.kicad_sch",
+      "clock_misc.kicad_sch",
+      "bank6_7.kicad_sch",
+      "power_distribution.kicad_sch",
+      "bank2_3.kicad_sch",
+      "expansion.kicad_sch",
+      "indicators_buttons.kicad_sch",
+      "bank0_1.kicad_sch",
+      "bank8_configuration.kicad_sch",
+      "type_c.kicad_sch",
+      "usb_phy.kicad_sch"
+    ]
+  },
+  "provenance": {
+    "repository": "https://github.com/greatscottgadgets/cynthion-hardware",
+    "commit": "13aa71c2fb0be3837cd2ec580ee5d2c25fc1c678",
+    "tag": "r1.4.0",
+    "license": "CERN-OHL-P-2.0",
+    "license_file": "LICENSE",
+    "import_policy": "Committed KiCad sources and local custom libraries/models only; no repository history or generated outputs."
+  },
+  "recording": "../cli-recordings/cynthion.json"
+}

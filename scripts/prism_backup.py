@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 import shutil
@@ -42,13 +43,15 @@ MANIFEST_NAME = "manifest.json"
 MANIFEST_SCHEMA = "prism.backup.a1"
 DUMP_NAME = "postgres.dump"
 
-# Everything here is authoritative: losing it means losing work. Paths are
-# relative to the deployment directory.
-COMPONENT_STORE = "data/projects/.kicad-prism/components"
-PAYLOADS: tuple[tuple[str, str], ...] = (
-    ("projects", "data/projects"),
-    ("ssh", "data/ssh"),
+# Everything here is authoritative: losing it means losing work. Each payload
+# is the host directory the backend service bind-mounts at the given container
+# path; where that directory lives is read from the selected Compose
+# configuration, not assumed.
+PAYLOAD_MOUNTS: tuple[tuple[str, str], ...] = (
+    ("projects", "/app/projects"),
+    ("ssh", "/root/.ssh"),
 )
+PAYLOAD_SERVICE = "backend"
 
 # Regenerable, and excluded from the projects payload. Each rebuilds from the
 # database plus the component store.
@@ -151,6 +154,7 @@ def build_manifest(
     versions: dict[str, str],
     entries: dict[str, str],
     hot: bool,
+    payloads: list[tuple[str, str]] = (),
 ) -> dict:
     """Describe the archive well enough to refuse a bad restore later."""
     return {
@@ -158,6 +162,10 @@ def build_manifest(
         "created_at": created_at,
         "source": str(root),
         "hot": hot,
+        "payloads": {
+            name: {"source": relative, "target": dict(PAYLOAD_MOUNTS)[name]}
+            for name, relative in payloads
+        },
         "postgres": {
             "user": env.get("POSTGRES_USER", "kicad_prism"),
             "database": env.get("POSTGRES_DB", "kicad_prism"),
@@ -225,6 +233,66 @@ def run(command: list[str], root: Path, *, capture: bool = False) -> subprocess.
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
     )
+
+
+def resolve_payloads(compose: list[str], root: Path) -> list[tuple[str, str]]:
+    """The host directories behind each authoritative mount, relative to ``root``.
+
+    Read from ``docker compose config`` so overlays that move project storage
+    or SSH keys are honoured. Anything that cannot be archived as a directory
+    inside the deployment (a named volume, a mount outside ``root``, a missing
+    mount) is refused rather than silently replaced by the default path.
+    """
+    result = run(compose + ["config", "--format", "json"], root, capture=True)
+    if result.returncode != 0:
+        raise BackupError(
+            "Could not read the Compose configuration: "
+            + result.stderr.decode("utf-8", "replace").strip()
+        )
+    try:
+        services = json.loads(result.stdout.decode("utf-8", "replace")).get("services") or {}
+    except json.JSONDecodeError as error:
+        raise BackupError(f"Compose configuration is not valid JSON: {error}") from error
+    service = services.get(PAYLOAD_SERVICE)
+    if not isinstance(service, dict):
+        raise BackupError(f"The Compose configuration defines no `{PAYLOAD_SERVICE}` service.")
+    mounts = {
+        str(volume.get("target") or ""): volume
+        for volume in service.get("volumes") or []
+        if isinstance(volume, dict)
+    }
+    resolved_root = root.resolve()
+    payloads: list[tuple[str, str]] = []
+    for name, target in PAYLOAD_MOUNTS:
+        volume = mounts.get(target)
+        if volume is None:
+            raise BackupError(f"`{PAYLOAD_SERVICE}` mounts nothing at {target}; cannot locate the {name} storage.")
+        if volume.get("type") != "bind":
+            raise BackupError(
+                f"{target} is a {volume.get('type') or 'non-bind'} mount; only bind mounts inside "
+                "the deployment directory are supported."
+            )
+        source = Path(str(volume.get("source") or ""))
+        if not source.is_absolute():
+            source = resolved_root / source
+        try:
+            relative = source.resolve().relative_to(resolved_root)
+        except ValueError:
+            raise BackupError(f"{target} is mounted from {source}, outside {root}; refusing to archive it.")
+        if relative == Path("."):
+            raise BackupError(f"{target} is mounted from the deployment directory itself; refusing to archive it.")
+        payloads.append((name, relative.as_posix()))
+    # Restore stages each payload beside its destination and swaps them in
+    # one at a time, so two payloads whose directories nest would have the
+    # first swap delete the second one's staging. Refuse that layout up front.
+    for (name, relative), (other_name, other_relative) in itertools.combinations(payloads, 2):
+        path, other = Path(relative), Path(other_relative)
+        if path == other or path in other.parents or other in path.parents:
+            raise BackupError(
+                f"The {name} storage ({relative}) and the {other_name} storage ({other_relative}) overlap; "
+                "each must be a separate directory."
+            )
+    return payloads
 
 
 def present_application_services(compose: list[str], root: Path) -> list[str]:
@@ -305,6 +373,27 @@ def archive_directory(source: Path, target: Path, *, prune_regenerable: bool) ->
         archive.add(source, arcname=".", filter=keep)
 
 
+def swap_directory(incoming: Path, destination: Path) -> None:
+    """Put ``incoming`` at ``destination``, keeping the live copy until the swap succeeds.
+
+    The live directory is moved aside rather than removed first, so a rename
+    that fails leaves it exactly where it was and the incoming copy intact.
+    """
+    previous = destination.parent / f".{destination.name}.previous"
+    if previous.exists():
+        shutil.rmtree(previous)
+    if destination.is_dir():
+        destination.replace(previous)
+    try:
+        incoming.replace(destination)
+    except OSError:
+        if previous.exists():
+            previous.replace(destination)
+        raise
+    if previous.exists():
+        shutil.rmtree(previous, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -324,6 +413,13 @@ def create(args: argparse.Namespace) -> int:
     tui.info(f"Deployment  {root}")
     tui.info(f"Compose     {' '.join(files)}")
     tui.info(f"Environment {env_file}")
+    tui.write()
+
+    payloads = resolve_payloads(compose, root)
+    for name, relative in payloads:
+        if not (root / relative).is_dir():
+            raise BackupError(f"{relative} ({name} storage) does not exist; refusing to write an incomplete backup.")
+        tui.info(f"{name:<11} {relative}")
     tui.write()
 
     services = present_application_services(compose, root)
@@ -347,11 +443,8 @@ def create(args: argparse.Namespace) -> int:
             dump_database(compose, root, env, staging / DUMP_NAME)
             tui.ok(f"{DUMP_NAME}", f"{(staging / DUMP_NAME).stat().st_size / 1e6:.1f} MB")
 
-            for name, relative in PAYLOADS:
+            for name, relative in payloads:
                 source = root / relative
-                if not source.is_dir():
-                    tui.warn(f"{relative} is missing; nothing archived for it.")
-                    continue
                 target = staging / f"{name}.tar.gz"
                 archive_directory(source, target, prune_regenerable=(name == "projects"))
                 tui.ok(f"{name}.tar.gz", f"{target.stat().st_size / 1e6:.1f} MB from {relative}")
@@ -380,6 +473,7 @@ def create(args: argparse.Namespace) -> int:
                 versions=versions,
                 entries=entries,
                 hot=bool(args.hot),
+                payloads=payloads,
             )
             (staging / MANIFEST_NAME).write_text(
                 json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -474,10 +568,16 @@ def restore(args: argparse.Namespace) -> int:
     compose = compose_command(root, files, env_file)
     env = read_env(root / env_file)
     manifest = load_manifest(archive)
+    # Where the live services keep their data, from the same Compose
+    # configuration they run with. Resolved before anything is confirmed so
+    # an unsupported layout stops the restore while nothing has changed.
+    payloads = resolve_payloads(compose, root)
 
     tui.banner("Restore backup", archive.name)
     tui.info(f"Into        {root}")
     tui.info(f"Taken       {manifest.get('created_at', 'unknown')}")
+    for name, relative in payloads:
+        tui.info(f"{name:<11} {relative}")
     tui.write()
 
     # Start PostgreSQL before reading the ledgers. Asking a stopped server and
@@ -525,19 +625,23 @@ def restore(args: argparse.Namespace) -> int:
             return 1
         tui.ok("archive is intact")
 
+        # Nothing destructive happens while the application can still write.
+        # A stop that fails leaves writers alive, so the restore ends here with
+        # the deployment exactly as it was.
         tui.write()
         tui.note("Stopping the application")
         services = present_application_services(compose, root)
-        if services:
-            run(compose + ["stop", *services], root)
+        if services and run(compose + ["stop", *services], root).returncode != 0:
+            tui.fail("Could not stop the application services. Nothing was changed.")
+            return 1
 
         # Unpack beside each destination first, so a failure here leaves the
         # live directory untouched, and swap only once the database is in.
         incoming: list[tuple[Path, Path, str]] = []
-        for name, relative in PAYLOADS:
+        for name, relative in payloads:
             payload = staging / f"{name}.tar.gz"
             if not payload.is_file():
-                continue
+                raise BackupError(f"The archive has no {name} payload; refusing a partial restore.")
             destination = root / relative
             unpacked = destination.parent / f".{destination.name}.incoming"
             if unpacked.exists():
@@ -547,6 +651,11 @@ def restore(args: argparse.Namespace) -> int:
                 extract_all(handle, unpacked)
             incoming.append((destination, unpacked, relative))
 
+        # Stage 1: the database, as one transaction. Without
+        # --single-transaction pg_restore keeps going past a failed object and
+        # leaves a database that is neither the old one nor the archive's;
+        # with it, the first error rolls everything back and the live
+        # database is exactly what it was.
         user = env.get("POSTGRES_USER", "kicad_prism")
         database = env.get("POSTGRES_DB", "kicad_prism")
         tui.note("Restoring PostgreSQL")
@@ -555,7 +664,8 @@ def restore(args: argparse.Namespace) -> int:
                 compose
                 + [
                     "exec", "-T", "postgres",
-                    "pg_restore", "-U", user, "-d", database, "--clean", "--if-exists",
+                    "pg_restore", "-U", user, "-d", database,
+                    "--clean", "--if-exists", "--single-transaction",
                 ],
                 cwd=root,
                 stdin=handle,
@@ -566,21 +676,47 @@ def restore(args: argparse.Namespace) -> int:
                 shutil.rmtree(unpacked, ignore_errors=True)
             tui.fail("pg_restore reported errors.", "Inspect the output above before starting.")
             tui.write()
-            tui.info("Project storage and SSH keys were left as they were, so this")
-            tui.info("deployment is no worse off than before the restore began.")
+            tui.info("The restore ran as one transaction and was rolled back, so the")
+            tui.info("database, project storage and SSH keys are as they were before.")
             return result.returncode
         tui.ok("database restored")
 
-        for destination, unpacked, relative in incoming:
-            if destination.is_dir():
-                shutil.rmtree(destination)
-            unpacked.replace(destination)
-            tui.ok(relative)
+        # Stage 2: swap the files in. The database is already the archive's,
+        # so a failure here is reported as a half-applied restore, and the
+        # unpacked payloads that did not get swapped are left in place to
+        # finish by hand rather than deleted.
+        swapped: list[str] = []
+        try:
+            for destination, unpacked, relative in incoming:
+                swap_directory(unpacked, destination)
+                swapped.append(relative)
+                tui.ok(relative)
+        except OSError as error:
+            tui.fail("Could not replace project storage.", str(error))
+            tui.write()
+            tui.info("The database holds the archive's content. Replaced so far:")
+            for relative in swapped:
+                tui.ok(relative)
+            for destination, unpacked, relative in incoming:
+                if relative not in swapped:
+                    tui.warn(f"{relative} not replaced; the archive's copy is at {unpacked}")
+            tui.info("Move each remaining .incoming directory over its destination,")
+            tui.info("then start the application.")
+            return 1
 
     tui.write()
     tui.note("Starting the application")
     tui.info("Schema migrations run at startup; watch the backend log.")
-    run(compose + ["up", "-d", "--wait"], root)
+    if run(compose + ["up", "-d", "--wait"], root).returncode != 0:
+        # The data is restored; only the startup afterwards failed. Say so
+        # rather than reporting success, and do not undo the restore: the
+        # archive's content is now the deployment's content.
+        tui.write()
+        tui.fail("Restored, but the application did not start healthy.")
+        tui.info("The database, project storage and SSH keys now hold the archive's")
+        tui.info("content. Inspect the service logs, then start the application again:")
+        tui.hint(f"{' '.join(compose)} up -d --wait")
+        return 1
     tui.write()
     tui.ok("Restore complete")
     tui.info("Verify: login, a project, the catalog, and one 3D view.")

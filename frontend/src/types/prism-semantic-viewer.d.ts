@@ -16,6 +16,16 @@ export interface PrismRendererSelection {
 
 export interface PrismSemanticViewerElement extends HTMLElement {
     setSelection: (selection: PrismRendererSelection | null) => void;
+    /**
+     * Replace the highlighted nets: every listed net renders emphasised
+     * alongside the inspected selection. Safe before ready and after reloads.
+     */
+    setHighlightedNets?: (nets: readonly PrismRendererSelection[]) => void;
+    /**
+     * Replaces the hidden component set (VAR-18). Safe before ready and after
+     * reloads; ambiguous or unknown references stay visible.
+     */
+    setHiddenComponents: (references: string[]) => void;
     resize: () => void;
 }
 

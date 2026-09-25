@@ -22,11 +22,11 @@ def _iter_sexpr_blocks(text: str, kind: str):
             yield text[match.start():end]
 
 
-def _extract_stackup(snap: Path) -> Dict[str, Any]:
+def _extract_stackup(snap: Path, anchor: Optional[str] = None) -> Dict[str, Any]:
     # Shares the fabrication pass's board lookup: two selection rules over the
     # same snapshot let a multi-board repository report a stackup from one board
     # and Gerbers from another, with nothing saying which was chosen.
-    pcb = _find_pcb(snap)
+    pcb = _find_pcb(snap, anchor)
     if not pcb:
         return {"present": False, "layers": [], "settings": {}}
     text = pcb.read_text(encoding="utf-8", errors="replace")

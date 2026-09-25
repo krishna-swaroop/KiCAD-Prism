@@ -1,0 +1,142 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "case_fold",
+  "project": "casefold.kicad_pro",
+  "notes": [
+    "Packet 2.1/2.4: catalog identity is exact on the schematic side (Lite and lite are two entries, both from schematic records; the project registry lists only Lite), while board names fold case-insensitively (header `lite` and footprint records `LITE`/`lite` all resolve for both catalog names).",
+    "Native: kicadxml lists both names in <variants>; pos --variant Lite --exclude-dnp and pos --variant lite --exclude-dnp both omit R1 and R2 (footprint lookup is case-insensitive, N16/N17).",
+    "The cross-source mismatches are the expected consequence and are reported, not resolved."
+  ],
+  "identity": {
+    "occurrences": {
+      "/24228da7-a8aa-5834-8a10-410868a0cbe9/d66c2670-2683-5191-8990-241af92e2ac8": {
+        "reference": "R1"
+      },
+      "/24228da7-a8aa-5834-8a10-410868a0cbe9/fe94f0c8-d13f-551b-b291-9841938acf71": {
+        "reference": "R2"
+      }
+    },
+    "footprints": {
+      "138d6a8e-0bd6-522a-bad6-1999b8c03a4f": {
+        "reference": "R1",
+        "package": "R_0603_1608Metric"
+      },
+      "adb2b1ad-35fa-5da0-bd73-f45de42b8164": {
+        "reference": "R2",
+        "package": "R_0603_1608Metric"
+      }
+    }
+  },
+  "catalog": [
+    {
+      "name": "Lite",
+      "description": null,
+      "sources": [
+        "project",
+        "pcb",
+        "schematic",
+        "footprint"
+      ]
+    },
+    {
+      "name": "lite",
+      "description": null,
+      "sources": [
+        "schematic"
+      ]
+    }
+  ],
+  "default": {
+    "occurrences": {},
+    "components": {},
+    "footprints": {},
+    "physical": {
+      "R1": "visible",
+      "R2": "visible"
+    }
+  },
+  "variants": [
+    {
+      "name": "Lite",
+      "occurrences": {
+        "/24228da7-a8aa-5834-8a10-410868a0cbe9/d66c2670-2683-5191-8990-241af92e2ac8": {
+          "dnp": true
+        }
+      },
+      "components": {
+        "R1": {
+          "dnp": true
+        }
+      },
+      "footprints": {
+        "138d6a8e-0bd6-522a-bad6-1999b8c03a4f": {
+          "dnp": true
+        },
+        "adb2b1ad-35fa-5da0-bd73-f45de42b8164": {
+          "dnp": true
+        }
+      },
+      "physical": {
+        "R1": "hidden",
+        "R2": "hidden"
+      }
+    },
+    {
+      "name": "lite",
+      "occurrences": {
+        "/24228da7-a8aa-5834-8a10-410868a0cbe9/fe94f0c8-d13f-551b-b291-9841938acf71": {
+          "dnp": true
+        }
+      },
+      "components": {
+        "R2": {
+          "dnp": true
+        }
+      },
+      "footprints": {
+        "138d6a8e-0bd6-522a-bad6-1999b8c03a4f": {
+          "dnp": true
+        },
+        "adb2b1ad-35fa-5da0-bd73-f45de42b8164": {
+          "dnp": true
+        }
+      },
+      "physical": {
+        "R1": "hidden",
+        "R2": "hidden"
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "catalog-name-case-mismatch",
+      "source": "pcb",
+      "detail": {
+        "found": "lite",
+        "folded_into": "Lite"
+      }
+    },
+    {
+      "code": "catalog-name-case-mismatch",
+      "source": "pcb",
+      "detail": {
+        "found": "LITE",
+        "folded_into": "Lite"
+      }
+    },
+    {
+      "code": "source-state-mismatch",
+      "variant": "Lite",
+      "reference": "R2"
+    },
+    {
+      "code": "source-state-mismatch",
+      "variant": "lite",
+      "reference": "R1"
+    }
+  ]
+}

@@ -1,13 +1,3 @@
-fastapi
-uvicorn
-gitpython
-pydantic
-pydantic-settings
-python-dotenv
-requests
-PyJWT[crypto]
-kiutils
-python-multipart
-psycopg[binary]>=3.2,<4
-psycopg-pool>=3.2,<4
-Pillow>=11,<13
+# Compatibility entry point for backend tooling and editor integrations.
+# The resolved runtime is owned once at the repository root.
+-r ../requirements/runtime.lock

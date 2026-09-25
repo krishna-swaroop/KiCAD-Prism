@@ -22,6 +22,7 @@ import {
     semanticCategory,
     stringFieldPair,
 } from "./comparison-change-facts";
+import { formatValue, propertyDeltas } from "./comparison-property-model";
 import type { BomChangeRow, BomDiff, ChangeItem } from "./types";
 
 export interface ChangeGroup {
@@ -477,6 +478,23 @@ function identityFor(
                 `component:${reference}`,
             );
         }
+        if (category === "zones") {
+            const layer = change.layers?.join(", ")
+                || change.compare_item?.layers?.join(", ")
+                || change.compare_item?.layer
+                || change.base_item?.layers?.join(", ")
+                || change.base_item?.layer
+                || change.geometry?.layer
+                || change.oldGeometry?.layer
+                || null;
+            const zoneName = change.net?.trim() || "Unconnected";
+            return {
+                bucket: `zone:${exactIdentity}`,
+                idIdentity: exactIdentity,
+                category,
+                label: `${zoneName} zone${layer ? ` · ${layer}` : ""}`,
+            };
+        }
         if (PCB_COPPER_KINDS.has(kind)) {
             const canonical = canonicalNetName(change, netAliases);
             const current = (change.net ?? "").trim();
@@ -601,7 +619,11 @@ export function groupChanges(
             label: identity.label,
             classification: change.classification ?? "primary",
             unresolvedCount: comments.filter(
-                (comment) => comment.status === "OPEN" && comment.semanticItemId === id,
+                (comment) => comment.status === "OPEN"
+                    && (
+                        comment.semanticItemId === id
+                        || comment.semanticItemId?.startsWith(`${id}::`)
+                    ),
             ).length,
             changes: [change],
             references: [],
@@ -628,14 +650,89 @@ export function groupChanges(
     // — they are correctly separate rows, but identical labels would make them
     // look like a duplicate. Qualify only the labels that actually collide, so
     // the common row stays short.
+    const collisionKey = (group: ChangeGroup) => `${group.kind}:${group.label}`;
     const labelCounts = new Map<string, number>();
     for (const group of groups) {
-        labelCounts.set(group.label, (labelCounts.get(group.label) ?? 0) + 1);
+        const key = collisionKey(group);
+        labelCounts.set(key, (labelCounts.get(key) ?? 0) + 1);
     }
     for (const group of groups) {
         if (!group.partMpn) continue;
-        if ((labelCounts.get(group.label) ?? 0) < 2) continue;
+        if ((labelCounts.get(collisionKey(group)) ?? 0) < 2) continue;
         group.label = `${group.label} (${group.partMpn})`;
+    }
+
+    // Exact native objects can legitimately share a net and layer (several
+    // zones on B.Cu, for example). A repeated bare label forces reviewers to
+    // click every row to discover which object it means, so qualify collisions
+    // with the first concrete property transition. This is evidence, not an
+    // internal UUID, and therefore remains useful in screenshots and exports.
+    const qualifiedCounts = new Map<string, number>();
+    for (const group of groups) {
+        const key = collisionKey(group);
+        qualifiedCounts.set(
+            key,
+            (qualifiedCounts.get(key) ?? 0) + 1,
+        );
+    }
+    for (const group of groups) {
+        if ((qualifiedCounts.get(collisionKey(group)) ?? 0) < 2) continue;
+        const deltas = propertyDeltas(group.changes);
+        const delta = group.kind === "changed"
+            ? deltas.find((candidate) => (
+                ["position", "priority", "layer", "net"].includes(
+                    candidate.label.toLocaleLowerCase(),
+                )
+            )) ?? deltas.find((candidate) => (
+                [candidate.oldValue, candidate.newValue].every((value) => (
+                    value === null
+                    || value === undefined
+                    || ["string", "number", "boolean"].includes(typeof value)
+                ))
+                && ![candidate.oldValue, candidate.newValue].some((value) => (
+                    String(value ?? "").includes("${")
+                ))
+            ))
+            : null;
+        if (delta) {
+            group.label = `${group.label} · ${delta.verb} ${formatValue(delta.oldValue)}→${formatValue(delta.newValue)}`;
+            continue;
+        }
+        const change = group.changes[0];
+        const bounds = change?.geometry?.bounds ?? change?.oldGeometry?.bounds;
+        const at = change?.position_compare
+            ?? change?.position_base
+            ?? (change?.geometry?.x !== undefined && change.geometry.y !== undefined
+                ? [change.geometry.x, change.geometry.y] as [number, number]
+                : null)
+            ?? (change?.oldGeometry?.x !== undefined && change.oldGeometry.y !== undefined
+                ? [change.oldGeometry.x, change.oldGeometry.y] as [number, number]
+                : null)
+            ?? change?.details?.visualTargets?.find((target) => target.at)?.at
+            ?? (bounds
+                ? [bounds[0] + bounds[2] / 2, bounds[1] + bounds[3] / 2] as [number, number]
+                : null);
+        if (at) {
+            const coordinate = (value: number) => Number(value.toFixed(2)).toString();
+            group.label = `${group.label} · at ${coordinate(at[0])}, ${coordinate(at[1])}`;
+        }
+    }
+
+    // Identical objects can still share both properties and coordinates. They
+    // remain separate native review items, so give the last-resort ordinal a
+    // stable meaning within this result rather than exposing a UUID fragment.
+    const remaining = new Map<string, ChangeGroup[]>();
+    for (const group of groups) {
+        const key = collisionKey(group);
+        const bucket = remaining.get(key);
+        if (bucket) bucket.push(group);
+        else remaining.set(key, [group]);
+    }
+    for (const bucket of remaining.values()) {
+        if (bucket.length < 2) continue;
+        bucket.forEach((group, index) => {
+            group.label = `${group.label} · item ${index + 1}`;
+        });
     }
 
     return groups.sort((left, right) => {

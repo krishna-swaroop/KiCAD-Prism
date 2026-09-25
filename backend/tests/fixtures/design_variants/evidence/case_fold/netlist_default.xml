@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<export version="E">
+  <design>
+    <source>casefold.kicad_sch</source>
+    <date>normalized</date>
+    <tool>Eeschema 10.0.6</tool>
+    <sheet number="1" name="/" tstamps="/">
+      <title_block>
+        <title/>
+        <company/>
+        <rev/>
+        <date/>
+        <source>casefold.kicad_sch</source>
+        <comment number="1" value=""/>
+        <comment number="2" value=""/>
+        <comment number="3" value=""/>
+        <comment number="4" value=""/>
+        <comment number="5" value=""/>
+        <comment number="6" value=""/>
+        <comment number="7" value=""/>
+        <comment number="8" value=""/>
+        <comment number="9" value=""/>
+      </title_block>
+    </sheet>
+  </design>
+  <components>
+    <comp ref="R1">
+      <value>10k</value>
+      <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
+      <fields>
+        <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="Sheetname" value="casefold"/>
+      <property name="Sheetfile" value="casefold.kicad_sch"/>
+      <variants>
+        <variant name="Lite">
+          <property name="dnp" value="1"/>
+        </variant>
+      </variants>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>d66c2670-2683-5191-8990-241af92e2ac8</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="R2">
+      <value>22k</value>
+      <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
+      <fields>
+        <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="Sheetname" value="casefold"/>
+      <property name="Sheetfile" value="casefold.kicad_sch"/>
+      <variants>
+        <variant name="lite">
+          <property name="dnp" value="1"/>
+        </variant>
+      </variants>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>fe94f0c8-d13f-551b-b291-9841938acf71</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+  </components>
+  <libparts>
+    <libpart lib="Device" part="R">
+      <description>Resistor</description>
+      <fields>
+        <field name="Reference">R</field>
+        <field name="Value">R</field>
+        <field name="Footprint"/>
+        <field name="Datasheet"/>
+        <field name="Description">Resistor</field>
+      </fields>
+      <pins>
+        <pin num="1" name="~" type="passive"/>
+        <pin num="2" name="~" type="passive"/>
+      </pins>
+    </libpart>
+  </libparts>
+  <libraries>
+    <library logical="Device">
+      <uri>${KICAD10_SYMBOL_DIR}/Device.kicad_sym</uri>
+    </library>
+  </libraries>
+  <nets>
+    <net code="1" name="unconnected-(R1-~-Pad1)" class="Default">
+      <node ref="R1" pin="1" pinfunction="~_1" pintype="passive"/>
+    </net>
+    <net code="2" name="unconnected-(R1-~-Pad2)" class="Default">
+      <node ref="R1" pin="2" pinfunction="~_2" pintype="passive"/>
+    </net>
+    <net code="3" name="unconnected-(R2-~-Pad1)" class="Default">
+      <node ref="R2" pin="1" pinfunction="~_1" pintype="passive"/>
+    </net>
+    <net code="4" name="unconnected-(R2-~-Pad2)" class="Default">
+      <node ref="R2" pin="2" pinfunction="~_2" pintype="passive"/>
+    </net>
+  </nets>
+</export>

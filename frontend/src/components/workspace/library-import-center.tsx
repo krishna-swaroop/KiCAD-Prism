@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type InputHTMLAttributes } from "react";
-import { AlertTriangle, Check, ChevronRight, FolderOpen, FolderSearch, HardDrive, LoaderCircle, PanelLeftClose, PanelLeftOpen, RefreshCw, Rows3, Table2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, CircuitBoard, FolderOpen, FolderSearch, HardDrive, LoaderCircle, PanelLeftClose, PanelLeftOpen, RefreshCw, Table2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { LibraryImportRemediationDialog, type ProposalRemediation } from "./library-import-remediation-dialog";
 import { LibraryImportRemediationGrid } from "./library-import-remediation-grid";
 import { LibraryFolderDiscoveryDialog } from "./library-folder-discovery-dialog";
+import { isAbortError, useImportSessionProposals, useNonOverlappingPoll } from "./library-import-session-proposals";
 
 interface LibraryImportCenterProps {
   projects: Project[];
@@ -90,10 +91,17 @@ async function uploadSnapshotFiles(
   }
 }
 
+// The non-standard directory attributes React does not type. Constant, so
+// it is declared once rather than rebuilt on every render.
+const DIRECTORY_INPUT_PROPS: InputHTMLAttributes<HTMLInputElement> & {
+  webkitdirectory: string;
+  directory: string;
+} = { webkitdirectory: "", directory: "" };
+
+// react-doctor-disable-next-line no-giant-component - multi-step import flow with one session state machine
 export function LibraryImportCenter({ projects, user, initialSessionId }: LibraryImportCenterProps) {
   const [sessions, setSessions] = useState<ProjectComponentImportSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessionId || "");
-  const [proposals, setProposals] = useState<ProjectComponentImportProposal[]>([]);
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -117,46 +125,45 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
   const [sessionsCollapsed, setSessionsCollapsed] = useState(false);
   const canWrite = canWriteCatalog(user?.role);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const directoryInputProps: InputHTMLAttributes<HTMLInputElement> & {
-    webkitdirectory: string;
-    directory: string;
-  } = { webkitdirectory: "", directory: "" };
-
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId),
     [selectedSessionId, sessions]
   );
+  const { proposals, loadProposals } = useImportSessionProposals(selectedSessionId);
+  const hasActiveScan = sessions.some((session) => session.status === "queued" || session.status === "scanning");
 
-  const loadSessions = useCallback(async () => {
-    const response = await fetchJson<{ items: ProjectComponentImportSession[] }>("/api/catalog/import-sessions");
+  const loadSessions = useCallback(async (signal?: AbortSignal) => {
+    const response = await fetchJson<{ items: ProjectComponentImportSession[] }>(
+      "/api/catalog/import-sessions",
+      { signal },
+    );
+    if (signal?.aborted) return;
     setSessions(response.items);
     setSelectedSessionId((current) => current || initialSessionId || response.items[0]?.id || "");
   }, [initialSessionId]);
 
-  const loadProposals = useCallback(async (sessionId: string) => {
-    if (!sessionId) {
-      setProposals([]);
-      return;
-    }
-    const response = await fetchJson<{ items: ProjectComponentImportProposal[] }>(
-      `/api/catalog/import-sessions/${sessionId}/proposals`
-    );
-    setProposals(response.items);
-  }, []);
+  const refreshActiveImport = useCallback(async (signal: AbortSignal) => {
+    await loadSessions(signal);
+    await loadProposals(selectedSessionId, signal);
+  }, [loadProposals, loadSessions, selectedSessionId]);
 
+  // Fetch carries the AbortController signal; setters run only when this
+  // initial session-list request is still the mounted one.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     const load = async () => {
       try {
-        await loadSessions();
+        await loadSessions(controller.signal);
       } catch (error) {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "Failed to load import sessions");
+        if (controller.signal.aborted || isAbortError(error)) return;
+        toast.error(error instanceof Error ? error.message : "Failed to load import sessions");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     void load();
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [loadSessions]);
 
   useEffect(() => {
@@ -169,19 +176,7 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
     }).catch(() => setServerRoots([]));
   }, [canWrite]);
 
-  useEffect(() => {
-    void loadProposals(selectedSessionId).catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to load import proposals");
-    });
-  }, [loadProposals, selectedSessionId]);
-
-  useEffect(() => {
-    if (!sessions.some((session) => session.status === "queued" || session.status === "scanning")) return;
-    const timer = window.setInterval(() => {
-      void loadSessions().then(() => loadProposals(selectedSessionId));
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [loadProposals, loadSessions, selectedSessionId, sessions]);
+  useNonOverlappingPoll(hasActiveScan, refreshActiveImport);
 
   const createSession = async (scope: "project" | "all-projects") => {
     if (scope === "project" && !projectId) return;
@@ -262,7 +257,8 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
           }),
         }
       );
-      const approved = refreshedDiscovery.components.filter((component) => componentIds.includes(component.id));
+      const componentIdSet = new Set(componentIds);
+      const approved = refreshedDiscovery.components.filter((component) => componentIdSet.has(component.id));
       const requiredPaths = new Set<string>();
       for (const component of approved) {
         requiredPaths.add(component.symbol.relative_path);
@@ -271,10 +267,11 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
           if (model.status === "resolved" && model.candidates[0]) requiredPaths.add(model.candidates[0].relative_path);
         }
       }
-      const filesToUpload = [...requiredPaths]
-        .filter((path) => !pendingFolder.uploadedPaths.has(path.toLocaleLowerCase()))
-        .map((path) => pendingFolder.filesByPath.get(path.toLocaleLowerCase()) || pendingFolder.manualFiles.get(path))
-        .filter((file): file is File => Boolean(file));
+      const filesToUpload = [...requiredPaths].flatMap((path) => {
+        if (pendingFolder.uploadedPaths.has(path.toLocaleLowerCase())) return [];
+        const file = pendingFolder.filesByPath.get(path.toLocaleLowerCase()) || pendingFolder.manualFiles.get(path);
+        return file ? [file] : [];
+      });
       const missing = [...requiredPaths].filter((path) =>
         !pendingFolder.uploadedPaths.has(path.toLocaleLowerCase())
         && !pendingFolder.filesByPath.has(path.toLocaleLowerCase())
@@ -404,59 +401,81 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="border-b p-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">Import Center</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Capture KiCad library folders or extract components from Prism projects. Every result remains staged for review.</p>
-          </div>
-          {/* One hint for the whole cluster: six identical tooltips on six
-              adjacent buttons is noise, and the reason is the same for all. */}
-          <PermissionHint
-            blocked={!canWrite}
-            action="import components into the catalog"
-            allowedRoles={["component_designer", "admin"]}
-            className="max-w-4xl"
-          >
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <input
-              ref={folderInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              {...directoryInputProps}
-              onChange={(event) => void uploadFolder(event.currentTarget.files)}
-            />
-            <Button variant="outline" onClick={() => folderInputRef.current?.click()} disabled={!canWrite || creating}>
-              <FolderOpen className="mr-2 h-4 w-4" />Choose library folder
-            </Button>
-            {serverRoots.length > 0 && (
-              <>
-                <Select value={serverRoot} onValueChange={setServerRoot} disabled={!canWrite || creating}>
-                  <SelectTrigger className="w-44"><SelectValue placeholder="Server root" /></SelectTrigger>
-                  <SelectContent>{serverRoots.map((root) => <SelectItem key={root.name} value={root.name}>{root.name}</SelectItem>)}</SelectContent>
-                </Select>
-                <Input className="w-48" value={serverSubpath} onChange={(event) => setServerSubpath(event.target.value)} placeholder="Optional subfolder" disabled={creating} />
-                <Button variant="outline" onClick={() => void importServerFolder()} disabled={!canWrite || creating}>
-                  <HardDrive className="mr-2 h-4 w-4" />Import server folder
-                </Button>
-              </>
+      <header className="import-sources-container border-b p-3">
+        <input
+          ref={folderInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          {...DIRECTORY_INPUT_PROPS}
+          onChange={(event) => void uploadFolder(event.currentTarget.files)}
+        />
+        {/* One hint for the whole cluster: the permission and allowed roles are
+            identical for every import source. */}
+        <PermissionHint
+          blocked={!canWrite}
+          action="import components into the catalog"
+          allowedRoles={["designer", "admin"]}
+          className="flex w-full max-w-none"
+        >
+          <div
+            className={cn(
+              "import-source-groups grid w-full grid-cols-1 gap-2",
+              serverRoots.length === 0 && "import-source-groups--split"
             )}
-            <Select value={projectId} onValueChange={setProjectId} disabled={!canWrite || creating}>
-              <SelectTrigger className="w-64"><SelectValue placeholder="Select a project" /></SelectTrigger>
-              <SelectContent>
-                {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.display_name || project.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" onClick={() => void createSession("project")} disabled={!canWrite || !projectId || creating}>Import project</Button>
-            <Button onClick={() => void createSession("all-projects")} disabled={!canWrite || creating}>Import all projects</Button>
+            data-testid="import-source-groups"
+          >
+            <section aria-labelledby="library-import-source" className="import-source-card flex min-w-0 flex-wrap items-center gap-3 border bg-card p-2">
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="flex size-8 shrink-0 items-center justify-center border bg-muted/40 text-muted-foreground">
+                  <FolderOpen className="h-4 w-4" />
+                </div>
+                <h3 id="library-import-source" className="whitespace-nowrap text-sm font-semibold">KiCad libraries</h3>
+              </div>
+              <div className="import-source-controls ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                <Button variant="outline" onClick={() => folderInputRef.current?.click()} disabled={!canWrite || creating}>
+                  <FolderOpen className="mr-2 h-4 w-4" />Choose local folder
+                </Button>
+                {serverRoots.length > 0 && (
+                  <>
+                    <div className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
+                    <Select value={serverRoot} onValueChange={setServerRoot} disabled={!canWrite || creating}>
+                      <SelectTrigger className="min-w-32 flex-1"><SelectValue placeholder="Server root" /></SelectTrigger>
+                      <SelectContent>{serverRoots.map((root) => <SelectItem key={root.name} value={root.name}>{root.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Input className="min-w-40 flex-1" value={serverSubpath} onChange={(event) => setServerSubpath(event.target.value)} placeholder="Optional subfolder" disabled={creating} />
+                    <Button variant="outline" onClick={() => void importServerFolder()} disabled={!canWrite || creating}>
+                      <HardDrive className="mr-2 h-4 w-4" />Import server folder
+                    </Button>
+                  </>
+                )}
+              </div>
+            </section>
+
+            <section aria-labelledby="project-import-source" className="import-source-card flex min-w-0 flex-wrap items-center gap-3 border bg-card p-2">
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="flex size-8 shrink-0 items-center justify-center border bg-muted/40 text-muted-foreground">
+                  <CircuitBoard className="h-4 w-4" />
+                </div>
+                <h3 id="project-import-source" className="whitespace-nowrap text-sm font-semibold">Project components</h3>
+              </div>
+              <div className="import-source-controls ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                <Select value={projectId} onValueChange={setProjectId} disabled={!canWrite || creating}>
+                  <SelectTrigger className="min-w-40 flex-1"><SelectValue placeholder="Select a project" /></SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.display_name || project.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" onClick={() => void createSession("project")} disabled={!canWrite || !projectId || creating}>Import From Project</Button>
+                <Button onClick={() => void createSession("all-projects")} disabled={!canWrite || creating}>Import From All Projects</Button>
+              </div>
+            </section>
           </div>
-          </PermissionHint>
-        </div>
+        </PermissionHint>
         {folderProgress && (
-          <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="mt-2 flex items-center justify-end gap-3 text-xs text-muted-foreground" role="status">
             <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            {folderProgress.label} {folderProgress.completed}/{folderProgress.total}
+            <span>{folderProgress.label} {folderProgress.completed}/{folderProgress.total}</span>
             <div className="h-1.5 w-40 overflow-hidden rounded-full bg-muted">
               <div className="h-full bg-primary transition-[width]" style={{ width: `${(folderProgress.completed / folderProgress.total) * 100}%` }} />
             </div>
@@ -523,7 +542,14 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
           )}
         </aside>
 
-        <section className="min-h-0 overflow-y-auto p-4">
+        <section
+          className={cn(
+            "min-h-0 p-4",
+            selectedSession && proposals.length > 0 && reviewMode === "grid"
+              ? "overflow-hidden"
+              : "overflow-y-auto"
+          )}
+        >
           {!selectedSession ? (
             <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground"><FolderSearch className="mb-3 h-8 w-8" /><p>Select or create an import session.</p></div>
           ) : selectedSession.status === "failed" ? (
@@ -531,19 +557,12 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
           ) : proposals.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{selectedSession.status === "staged" ? "No components were discovered." : selectedSession.scope === "folder" ? "Resolving symbols, footprints, and referenced 3D models…" : "Scanning captured project revisions…"}</div>
           ) : reviewMode === "grid" ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">
-                  Resolve missing metadata and footprints across every row, then import in bulk.
-                </p>
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setReviewMode("cards")}>
-                  <Rows3 className="mr-1.5 h-3.5 w-3.5" />Detail view
-                </Button>
-              </div>
+            <div className="h-full min-h-0">
               <LibraryImportRemediationGrid
                 sessionId={selectedSession.id}
                 proposals={proposals}
                 canWrite={canWrite}
+                onShowDetailView={() => setReviewMode("cards")}
                 onRefresh={async () => {
                   await Promise.all([loadSessions(), loadProposals(selectedSession.id)]);
                 }}
@@ -598,6 +617,7 @@ export function LibraryImportCenter({ projects, user, initialSessionId }: Librar
         </section>
       </div>
       <LibraryImportRemediationDialog
+        key={remediationProposal?.id ?? "none"}
         proposal={remediationProposal}
         open={remediationProposal !== null}
         submitting={proposalActionId === remediationProposal?.id}

@@ -7,10 +7,10 @@ evidence, and exports.
 
 ## Roles
 
-- `component_designer`: create, import, edit, and submit components.
-- `component_qa`: review, return, approve, and release according to the workflow.
+- `designer`: create, import, edit, and submit components, and click Released after QA has approved.
+- `qa`: review, return, and approve components in QA review.
 - `admin`: all catalog actions and exceptional administration.
-- `designer`: catalog read access but not catalog authoring.
+- `viewer`: no catalog access.
 
 Users currently have one role. See
 [Authentication and access](AUTHENTICATION_AND_ACCESS.md).
@@ -78,6 +78,18 @@ evidence, previews, and placement.
 Use a new revision for any released-part change, including metadata that affects
 selection or manufacturing.
 
+## Live previews and representation selection
+
+The component workspace can render symbol and footprint source assets directly.
+Choose a representation to inspect its symbol/footprint pair, then select a
+symbol pin or footprint pad to cross-probe the matching item. Pan and zoom
+inside the preview. Stored SVG thumbnails and revision evidence remain separate
+views; a live preview is not approval evidence by itself.
+
+Downloads from a released revision follow the selected representation, including
+non-default pairs. A stale edit reports a revision conflict rather than silently
+overwriting newer work; reload the component before retrying.
+
 ## KLC validation
 
 Enable:
@@ -106,8 +118,8 @@ QA users should work from Release Queue, verify the exact revision and attached
 evidence, record a review note where appropriate, and release only after the
 item reaches `done`.
 
-Two-person approval prevents a revision author from approving or releasing the
-same revision.
+Two-person approval prevents a revision author from taking the item from QA
+review to Approved. After QA has approved, the same designer may click Released.
 
 ## Placeability
 
@@ -118,6 +130,12 @@ A component is exposed to the Remote Symbol Provider only when it is:
 - backed by the released revision;
 - complete enough for placement.
 
+Placeability is evaluated from the revision's default symbol-footprint
+representation. A released revision has exactly one complete default. Other
+complete representations can be previewed and selected by clients that
+advertise representation support. Provisional source-IPN components remain
+draft-only until a real manufacturer and MPN establish their catalog identity.
+
 Unreleased drafts, archived components, and incomplete components are not part
 of the released provider projection.
 
@@ -127,6 +145,10 @@ Prism can generate a KiCad database-library bundle from released place-ready
 components. The export contains a generated SQLite database and KiCad DBL files.
 That SQLite file is a delivery artifact; Prism itself continues to use
 PostgreSQL.
+
+DBL has no representation-selection protocol, so the export intentionally
+contains only each released component's default representation. Use the Remote
+Symbol Provider when users need to choose a non-default representation.
 
 Generate through the catalog administration API or supported Library Manager
 action, then distribute the complete export directory. Do not copy only the

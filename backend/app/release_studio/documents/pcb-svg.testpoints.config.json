@@ -1,0 +1,171 @@
+{
+  "schema": "kicad_cruncher.pcb_svg.config.a0",
+  "_prism": [
+    "Prism's testpoint view configuration: the board with only its testpoints.",
+    "Checked in and hashed into resource_bundle_digest -> toolchain_digest,",
+    "like the assembly configuration beside it.",
+    "This is a second file and Cruncher invocation because its input is a",
+    "derived staging board containing only TP footprints. Released Cruncher",
+    "2026.8.x reads designators from property Reference, while legacy KiCad",
+    "boards may store them only in fp_text reference. Prism uses Monkey's",
+    "public object model to retain the TP footprints and promote those legacy",
+    "references before rendering, so both outlines and TP* labels are correct.",
+    "The derived board is written only into build staging and the source board",
+    "is never edited: putting generated input beside the board would make the",
+    "closure digest depend on the build. Components stays empty because the",
+    "staging board itself is the complete testpoint selection."
+  ],
+  "global": {
+    "canvas": {
+      "bounds": "board_outline",
+      "margin_mm": 1.0
+    },
+    "include_metadata": false,
+    "show_empty_layers": false,
+    "clip_to_outline": true,
+    "clip_holes_from_copper": true,
+    "mirror_bottom_view": true,
+    "svg_scale": 10.0,
+    "svg_size_unit": "mm",
+    "clean_output": false,
+    "styles": {
+      "board_outline": {
+        "enabled": true,
+        "color": "#000000",
+        "line_width_mm": 0.15
+      },
+      "board_cutouts": {
+        "enabled": true,
+        "color": "#000000",
+        "hatch": false,
+        "outline_style": "solid",
+        "outline_width_mm": 0.15
+      },
+      "drills": {
+        "enabled": true,
+        "plated_color": "#FFFFFF",
+        "non_plated_color": "#FFFFFF",
+        "opacity": 1.0
+      },
+      "slots": {
+        "enabled": true,
+        "plated_color": "#FFFFFF",
+        "non_plated_color": "#FFFFFF",
+        "opacity": 1.0
+      },
+      "assembly_hlr": {
+        "enabled": true,
+        "color": "#000000",
+        "line_width_mm": 0.12,
+        "opacity": 1.0,
+        "include_visible": true,
+        "include_outline": true,
+        "union_polygons": true
+      },
+      "assembly_designators": {
+        "enabled": true,
+        "color": "#000000",
+        "box_fill_ratio": 0.8,
+        "min_font_size_mm": 0.5,
+        "max_font_size_mm": 2.5,
+        "rotation_aspect_threshold": 1.5,
+        "rotation_direction": "ccw",
+        "opacity": 1.0
+      },
+      "pin1_marker": {
+        "enabled": true,
+        "color": "#000000",
+        "dot_diameter_mm": 0.55,
+        "pad_diameter_ratio": 0.6,
+        "min_dot_diameter_mm": 0.25,
+        "max_dot_diameter_mm": 1.0
+      }
+    }
+  },
+  "assembly": {
+    "default_projection": "outline",
+    "dnp_projection": "outline",
+    "designator_color": "#000000",
+    "dnp_designator_color": "#B00020"
+  },
+  "dnp": {
+    "color": "#B00020",
+    "hatch": true,
+    "hatch_spacing_mm": 1.5,
+    "hatch_angle_deg": 45.0,
+    "hatch_line_width_mm": 0.08
+  },
+  "pin1": {
+    "exclude_designators": [
+      "R",
+      "C"
+    ],
+    "exclude_single_pin": true
+  },
+  "components": {},
+  "layer_outputs": {
+    "enabled": false
+  },
+  "views": [
+    {
+      "name": "testpoint_top_view",
+      "enabled": true,
+      "group_id": "prism-testpoint-top",
+      "output_svg": "views/{board}__testpoint_top_view.svg",
+      "layers": [
+        "BOARD_OUTLINE",
+        "BOARD_CUTOUTS",
+        "DRILLS",
+        "SLOTS",
+        "ASSEMBLY_DESIGNATORS_TOP",
+        "ASSEMBLY_HLR_TOP"
+      ],
+      "assembly_hlr_mode": "outline",
+      "styles": {
+        "assembly_designators": {
+          "font_weight": "700",
+          "min_font_size_mm": 1.0,
+          "max_font_size_mm": 3.5,
+          "selector_overrides": {
+            "*": {
+              "enabled": false
+            },
+            "TP*": {
+              "enabled": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "testpoint_bottom_view",
+      "enabled": true,
+      "group_id": "prism-testpoint-bottom",
+      "output_svg": "views/{board}__testpoint_bottom_view.svg",
+      "layers": [
+        "BOARD_OUTLINE",
+        "BOARD_CUTOUTS",
+        "DRILLS",
+        "SLOTS",
+        "ASSEMBLY_DESIGNATORS_BOTTOM",
+        "ASSEMBLY_HLR_BOTTOM"
+      ],
+      "assembly_hlr_mode": "outline",
+      "styles": {
+        "assembly_designators": {
+          "font_weight": "700",
+          "min_font_size_mm": 1.0,
+          "max_font_size_mm": 3.5,
+          "selector_overrides": {
+            "*": {
+              "enabled": false
+            },
+            "TP*": {
+              "enabled": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -109,3 +109,34 @@ describe("WorkspaceProjectPropertiesSheet thumbnail controls", () => {
     expect(onRegenerateThumbnail).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("WorkspaceProjectPropertiesSheet repository link", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("opens the derived web URL for a scp-style remote", async () => {
+    renderSheet(makeProject({ repo_url: "git@github.com:org/repo.git" }));
+    const link = await screen.findByRole("link", { name: "https://github.com/org/repo" });
+    expect(link).toHaveAttribute("href", "https://github.com/org/repo");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("keeps an https remote as the link target", async () => {
+    renderSheet(makeProject({ repo_url: "https://github.com/org/repo.git" }));
+    const link = await screen.findByRole("link", { name: "https://github.com/org/repo" });
+    expect(link).toHaveAttribute("href", "https://github.com/org/repo");
+  });
+
+  it("shows a remote it cannot resolve as plain text, not a dead link", async () => {
+    renderSheet(makeProject({ repo_url: "github.com/org/repo" }));
+    expect(await screen.findByText("github.com/org/repo")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("falls back to the parent repository name when there is no remote", async () => {
+    renderSheet(makeProject({ parent_repo: "org/repo" }));
+    expect(await screen.findByText("org/repo")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+});

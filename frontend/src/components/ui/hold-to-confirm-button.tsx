@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useCommittedRef } from "@/hooks/use-committed-ref";
 
 const DEFAULT_HOLD_MS = 900;
 
@@ -14,6 +15,8 @@ export interface HoldToConfirmButtonProps
   /** Label while the user is holding. Defaults to "Keep holding…". */
   holdingLabel?: string;
   holdDurationMs?: number;
+  /** Fill that grows while the pointer is held. */
+  progressClassName?: string;
 }
 
 /**
@@ -35,6 +38,7 @@ const HoldToConfirmButton = React.forwardRef<HTMLButtonElement, HoldToConfirmBut
       children,
       holdingLabel = "Keep holding…",
       holdDurationMs = DEFAULT_HOLD_MS,
+      progressClassName = "bg-destructive/35",
       className,
       variant = "destructive",
       disabled,
@@ -53,8 +57,7 @@ const HoldToConfirmButton = React.forwardRef<HTMLButtonElement, HoldToConfirmBut
     const [holding, setHolding] = React.useState(false);
     const frameRef = React.useRef<number | null>(null);
     const startedAtRef = React.useRef(0);
-    const confirmRef = React.useRef(onConfirm);
-    confirmRef.current = onConfirm;
+    const confirmRef = useCommittedRef(onConfirm);
 
     const stop = React.useCallback(() => {
       if (frameRef.current !== null) {
@@ -86,7 +89,7 @@ const HoldToConfirmButton = React.forwardRef<HTMLButtonElement, HoldToConfirmBut
         frameRef.current = requestAnimationFrame(tick);
       };
       frameRef.current = requestAnimationFrame(tick);
-    }, [disabled, holdDurationMs]);
+    }, [confirmRef, disabled, holdDurationMs]);
 
     // Space and Enter are the keyboard equivalents of a press. Browsers repeat
     // keydown while a key is held, so the repeats are dropped and the release
@@ -152,10 +155,15 @@ const HoldToConfirmButton = React.forwardRef<HTMLButtonElement, HoldToConfirmBut
             transform-driven, so it reads as a progress bar at any button size. */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 left-0 -z-10 bg-destructive/35"
+          className={cn("pointer-events-none absolute inset-y-0 left-0 -z-10", progressClassName)}
           style={{ width: `${percent}%` }}
         />
-        <span className="relative">{holding ? holdingLabel : children}</span>
+        {/* inline-flex, because children are usually an icon plus a label and a
+            plain span is not a flex container: the two stacked and overflowed
+            the button's fixed height. */}
+        <span className="relative inline-flex items-center whitespace-nowrap">
+          {holding ? holdingLabel : children}
+        </span>
         <span className="sr-only"> (press and hold to confirm)</span>
       </Button>
     );

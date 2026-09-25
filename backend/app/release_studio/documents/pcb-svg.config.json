@@ -1,0 +1,162 @@
+{
+  "schema": "kicad_cruncher.pcb_svg.config.a0",
+  "_prism": [
+    "Prism's assembly view configuration. It is checked in, digest-checked, and",
+    "hashed into resource_bundle_digest -> toolchain_digest, so a change to what",
+    "the assembly sheets draw moves the build key. Cruncher must never write a",
+    "template beside the board at build time: the closure would then depend on a",
+    "file the build created.",
+    "Differences from Cruncher's own default, and why:",
+    " - include_metadata is off. The default embeds a full component index in",
+    "   every view; on a 982-component board that is megabytes of Prism-internal",
+    "   data inside a released drawing.",
+    " - copper layers are not drawn. An assembly drawing states where parts go;",
+    "   traces under them are noise a fitter reads past, and the copper is",
+    "   released as Gerbers regardless.",
+    " - everything is black on white and fully opaque. These sheets are printed",
+    "   and filed, and the sheet renderer carries no alpha channel, so a",
+    "   translucent overlay here would be silently flattened.",
+    " - DNP parts keep a distinct colour, because that distinction carries",
+    "   meaning a monochrome sheet would lose.",
+    " - assembly.default_projection is `outline`, the model-derived silhouette.",
+    "   Cruncher already degrades per component -- model bounds, then hole",
+    "   bounds, then pad bounds -- and records which it used in",
+    "   data-bounds-kind, so asking for the outline costs nothing on a part",
+    "   with no 3D model and gains the real shape on every part that has one."
+  ],
+  "global": {
+    "canvas": {
+      "bounds": "board_outline",
+      "margin_mm": 1.0
+    },
+    "include_metadata": false,
+    "show_empty_layers": false,
+    "clip_to_outline": true,
+    "clip_holes_from_copper": true,
+    "mirror_bottom_view": true,
+    "svg_scale": 10.0,
+    "svg_size_unit": "mm",
+    "clean_output": false,
+    "styles": {
+      "board_outline": {
+        "enabled": true,
+        "color": "#000000",
+        "line_width_mm": 0.15
+      },
+      "board_cutouts": {
+        "enabled": true,
+        "color": "#000000",
+        "hatch": false,
+        "outline_style": "solid",
+        "outline_width_mm": 0.15
+      },
+      "drills": {
+        "enabled": true,
+        "plated_color": "#FFFFFF",
+        "non_plated_color": "#FFFFFF",
+        "opacity": 1.0
+      },
+      "slots": {
+        "enabled": true,
+        "plated_color": "#FFFFFF",
+        "non_plated_color": "#FFFFFF",
+        "opacity": 1.0
+      },
+      "assembly_hlr": {
+        "enabled": true,
+        "color": "#000000",
+        "line_width_mm": 0.12,
+        "opacity": 1.0,
+        "include_visible": true,
+        "include_outline": true,
+        "union_polygons": true
+      },
+      "assembly_designators": {
+        "enabled": true,
+        "color": "#000000",
+        "box_fill_ratio": 0.8,
+        "min_font_size_mm": 0.5,
+        "max_font_size_mm": 2.5,
+        "rotation_aspect_threshold": 1.5,
+        "rotation_direction": "ccw",
+        "opacity": 1.0
+      },
+      "pin1_marker": {
+        "enabled": true,
+        "color": "#000000",
+        "dot_diameter_mm": 0.55,
+        "pad_diameter_ratio": 0.6,
+        "min_dot_diameter_mm": 0.25,
+        "max_dot_diameter_mm": 1.0
+      }
+    }
+  },
+  "assembly": {
+    "default_projection": "outline",
+    "dnp_projection": "outline",
+    "designator_color": "#000000",
+    "dnp_designator_color": "#B00020"
+  },
+  "dnp": {
+    "color": "#B00020",
+    "hatch": true,
+    "hatch_spacing_mm": 1.5,
+    "hatch_angle_deg": 45.0,
+    "hatch_line_width_mm": 0.08
+  },
+  "pin1": {
+    "exclude_designators": [
+      "R",
+      "C"
+    ],
+    "exclude_single_pin": true
+  },
+  "components": {},
+  "layer_outputs": {
+    "enabled": false
+  },
+  "views": [
+    {
+      "name": "assembly_top_view",
+      "enabled": true,
+      "group_id": "prism-assembly-top",
+      "output_svg": "views/{board}__assembly_top_view.svg",
+      "layers": [
+        "BOARD_OUTLINE",
+        "BOARD_CUTOUTS",
+        "DRILLS",
+        "SLOTS",
+        "PIN1_TOP",
+        "ASSEMBLY_HLR_TOP",
+        "ASSEMBLY_DESIGNATORS_TOP"
+      ],
+      "assembly_hlr_mode": "outline",
+      "styles": {
+        "assembly_designators": {
+          "font_weight": "700"
+        }
+      }
+    },
+    {
+      "name": "assembly_bottom_view",
+      "enabled": true,
+      "group_id": "prism-assembly-bottom",
+      "output_svg": "views/{board}__assembly_bottom_view.svg",
+      "layers": [
+        "BOARD_OUTLINE",
+        "BOARD_CUTOUTS",
+        "DRILLS",
+        "SLOTS",
+        "PIN1_BOTTOM",
+        "ASSEMBLY_HLR_BOTTOM",
+        "ASSEMBLY_DESIGNATORS_BOTTOM"
+      ],
+      "assembly_hlr_mode": "outline",
+      "styles": {
+        "assembly_designators": {
+          "font_weight": "700"
+        }
+      }
+    }
+  ]
+}

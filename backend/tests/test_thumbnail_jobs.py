@@ -137,7 +137,7 @@ class ThumbnailJobHandler(unittest.TestCase):
                 progress=lambda **values: None,
             )
 
-            def failed_render(_project_path, logs):
+            def failed_render(_project_path, logs, anchor=None):
                 logs.append("kicad-cli render failed (code 1): render error")
                 return False
 
@@ -169,7 +169,7 @@ class ThumbnailJobHandler(unittest.TestCase):
                 progress=lambda **values: None,
             )
 
-            def no_board(_project_path, logs):
+            def no_board(_project_path, logs, anchor=None):
                 logs.append(f"No .kicad_pcb file found to generate thumbnail for {_project_path}")
                 return False
 

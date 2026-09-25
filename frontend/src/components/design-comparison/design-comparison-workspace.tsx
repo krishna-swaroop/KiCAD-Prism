@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import {
     AlertCircle,
     Cpu,
@@ -30,14 +29,15 @@ import { useComparisonComments } from "./use-comparison-comments";
 import { useComparisonUrlState } from "./use-comparison-url-state";
 import { ComparisonPresentationShell } from "./comparison-presentation-shell";
 import type { ComparisonSelection } from "./comparison-selection-bridge";
+import { referenceFor } from "./comparison-change-facts";
+import { selectedChanges } from "./revision-sources";
 import {
     logComparisonDebug,
     startComparisonDebugSession,
 } from "./comparison-debug-log";
-import {
-    readComparisonUrlState,
-    type ComparisonPresentationMode,
-    type ComparisonUrlTab,
+import type {
+    ComparisonPresentationMode,
+    ComparisonUrlTab,
 } from "./comparison-url";
 import { comparisonDomainStatus } from "./comparison-readiness";
 import { BomPanel } from "./bom-panel";
@@ -75,6 +75,18 @@ import type {
 type WorkspaceTab = ComparisonUrlTab;
 export type PresentationMode = ComparisonPresentationMode;
 
+/** The impact filter when no tab owns one: empty, and never mutated. */
+const EMPTY_IMPACTS: Set<ReviewImpact> = new Set();
+
+/**
+ * The review for a tab that has no semantic changes of its own.
+ *
+ * Shared rather than built inline: `domainChanges` is in the dependency list
+ * of the selection re-anchor effect, and a fresh empty array per render put
+ * that effect back in the queue on every pass.
+ */
+const EMPTY_DOMAIN_REVIEW = { changes: [] as ChangeItem[], suppressedCount: 0 };
+
 interface DesignComparisonWorkspaceProps {
     projectId: string;
     base: string;
@@ -90,20 +102,7 @@ interface SemanticFocus {
     net?: string | null;
 }
 
-export function readInitialUrlState(
-    search: string | URLSearchParams = window.location.search,
-) {
-    const state = readComparisonUrlState(search);
-    return {
-        activeTab: state.diff,
-        presentationOverride: state.presentationOverride,
-        selectedChangeId: state.item,
-        showSecondary: state.showSecondary,
-        layers: state.layers,
-    };
-}
-
-
+// react-doctor-disable-next-line no-giant-component - presentation switcher and domain shells are already extracted; what remains couples five tabs worth of selection state
 export function DesignComparisonWorkspace({
     projectId,
     base,
@@ -112,65 +111,72 @@ export function DesignComparisonWorkspace({
     canComment,
     onClose,
 }: DesignComparisonWorkspaceProps) {
-    const [searchParams] = useSearchParams();
     const { result, status: jobStatus, error } = useDesignCompareJob(
         projectId,
         base,
         head,
     );
-    const [comments, setComments] = useComparisonComments(
+    const [comments, setComments, commentConnection] = useComparisonComments(
         projectId,
         base,
         head,
     );
-    const initial = useMemo(
-        () => readInitialUrlState(searchParams),
-        [searchParams],
-    );
-    const [activeTab, setActiveTab] = useState<WorkspaceTab>(initial.activeTab);
     /**
-     * A reviewer's explicit presentation choice for the change they are looking
-     * at right now, or null to follow the policy's recommendation.
-     *
-     * Auto is not a mode to select, it is what happens when nothing has been
-     * selected. An override answers "show me *this* change differently" and is
-     * discarded when the reviewer moves to another change, so the workspace
-     * never carries a stale choice into evidence it was not made for.
+     * Tab, presentation, focused change, secondary filter and layer visibility
+     * are read straight out of the address bar rather than copied into state,
+     * so a pasted link and a click take the same path. Everything below this is
+     * ordinary local state: it is not part of what a reviewer shares.
      */
-    const [presentationOverride, setPresentationOverride] =
-        useState<PresentationMode | null>(initial.presentationOverride);
+    const {
+        activeTab,
+        presentationOverride,
+        selection: reviewSelection,
+        showSecondary,
+        visibleLayers,
+        setActiveTab,
+        setPresentationOverride,
+        setSelection: setReviewSelection,
+        setShowSecondary,
+        setVisibleLayers,
+    } = useComparisonUrlState({ base, compare: head });
     const [statuses, setStatuses] = useState<Set<ChangeKind>>(
         () => new Set(["added", "changed", "removed"]),
     );
     // Empty means "no owner filter". Six owners would otherwise need five
     // clicks to isolate one, so these chips narrow rather than exclude.
-    const [impacts, setImpacts] = useState<Set<ReviewImpact>>(() => new Set());
+    const [impactsFor, setImpactsFor] = useState<{
+        tab: ComparisonUrlTab;
+        values: Set<ReviewImpact>;
+    } | null>(null);
+    // The owner of an impact filter is the tab it was set on: "PCB
+    // fabrication" has no meaning in the schematic queue, so a filter carried
+    // across tabs would silently empty it. Carrying the tab on the value makes
+    // the filter expire by comparison during render, with no effect to reset
+    // it after the fact.
+    const impacts = impactsFor?.tab === activeTab
+        ? impactsFor.values
+        : EMPTY_IMPACTS;
     const [search, setSearch] = useState("");
-    const [showSecondary, setShowSecondary] = useState(initial.showSecondary);
-    const [selectedChangeId, setSelectedChangeId] = useState<string | null>(
-        initial.selectedChangeId,
-    );
-    const [reviewSelection, setReviewSelection] = useState<ComparisonSelection>(
-        initial.selectedChangeId
-            ? { kind: "item", id: initial.selectedChangeId }
-            : null,
-    );
-    const [visibleLayers, setVisibleLayers] = useState<string[]>(initial.layers);
     // Board layer state, lifted so the property panel can draw a selected net's
     // layers with the same swatches the layer panel uses.
     const [pcbLayers, setPcbLayers] = useState<EcadPcbLayerState[]>([]);
-    // Closed by default; the user opens it deliberately from the rail.
-    const [comparisonRightRailTab, setComparisonRightRailTab] =
-        useState<"layers" | null>(null);
+    // Closed by default; the user opens it deliberately from the rail. The
+    // layers panel only means anything for the pcb tab, so the state carries
+    // the tab it was opened on and reads as closed everywhere else — it
+    // expires by comparison during render instead of being closed by an
+    // effect after the tab change.
+    const [rightRailFor, setRightRailFor] = useState<{
+        tab: "layers";
+        forTab: ComparisonUrlTab;
+    } | null>(null);
+    const comparisonRightRailTab =
+        rightRailFor?.forTab === activeTab ? rightRailFor.tab : null;
+    const setComparisonRightRailTab = (tab: "layers" | null) => {
+        setRightRailFor(tab ? { tab, forTab: activeTab } : null);
+    };
     const [previewSelection, setPreviewSelection] =
         useState<ComparisonSelection>(null);
     const semanticFocusRef = useRef<SemanticFocus | null>(null);
-
-    useEffect(() => {
-        if (activeTab !== "pcb" && comparisonRightRailTab === "layers") {
-            setComparisonRightRailTab(null);
-        }
-    }, [activeTab, comparisonRightRailTab]);
 
     useEffect(() => {
         startComparisonDebugSession({ projectId, base, compare: head });
@@ -195,7 +201,6 @@ export function DesignComparisonWorkspace({
      */
     const dismissSelection = () => {
         semanticFocusRef.current = null;
-        setSelectedChangeId(null);
         setReviewSelection(null);
         setPreviewSelection(null);
         setComparisonRightRailTab(null);
@@ -219,7 +224,7 @@ export function DesignComparisonWorkspace({
     );
     const domainReview = activeTab === "sch"
         ? schematicReview
-        : activeTab === "pcb" ? pcbReview : { changes: [], suppressedCount: 0 };
+        : activeTab === "pcb" ? pcbReview : EMPTY_DOMAIN_REVIEW;
     const domainChanges = domainReview.changes;
     /**
      * Built once per domain and shared by every grouping below.
@@ -239,13 +244,6 @@ export function DesignComparisonWorkspace({
         [pcbReview.changes, result?.bom],
     );
     const grouping = activeTab === "pcb" ? pcbGrouping : schematicGrouping;
-    const statusFilteredChanges = useMemo(
-        () => domainChanges.filter((change) => (
-            statuses.has(change.kind)
-            && (showSecondary || change.classification !== "secondary")
-        )),
-        [domainChanges, showSecondary, statuses],
-    );
     // Counted before the status, owner, and search filters so a chip always
     // answers "how many review items of this kind exist", not "how many
     // survive the filters I already applied".
@@ -268,21 +266,21 @@ export function DesignComparisonWorkspace({
         [unfilteredGroups],
     );
     const groups = useMemo(
-        () => groupChanges(statusFilteredChanges, comments, grouping)
-            .filter((group) => groupMatchesSearch(group, search))
-            .filter((group) => (
-                !impacts.size || impacts.has(reviewImpactForGroup(group))
-            )),
-        [comments, grouping, impacts, search, statusFilteredChanges],
+        () => unfilteredGroups.filter((group) => (
+            statuses.has(group.kind)
+            && (
+                groupMatchesSearch(group, search)
+                && (!impacts.size || impacts.has(reviewImpactForGroup(group)))
+            )
+        )),
+        [impacts, search, statuses, unfilteredGroups],
     );
     const secondaryGroupCount = useMemo(
         () => groupChanges(
-            domainChanges.filter((change) => (
-                statuses.has(change.kind) && change.classification === "secondary"
-            )),
+            domainChanges.filter((change) => change.classification === "secondary"),
             [],
             grouping,
-        ).length,
+        ).filter((group) => statuses.has(group.kind)).length,
         [domainChanges, grouping, statuses],
     );
     // Exports the filtered queue, not the whole delta: the reviewer's filters
@@ -320,26 +318,66 @@ export function DesignComparisonWorkspace({
     if (activeTab === "sch") visitedDomainsRef.current.add("schematic");
     if (activeTab === "pcb") visitedDomainsRef.current.add("pcb");
 
-    // Owners are domain-specific: "PCB fabrication" has no meaning in the
-    // schematic queue, so a filter carried across tabs would silently empty it.
-    useEffect(() => {
-        setImpacts(new Set());
-    }, [activeTab]);
+    // Impacts reset by scope, not by effect: see the `impactsFor` state above.
 
-    const selectedChange = useMemo(
-        () => domainChanges.find((change) => change.id === selectedChangeId) ?? null,
-        [domainChanges, selectedChangeId],
+    const selectedReviewChanges = useMemo(
+        () => selectedChanges(reviewSelection, navigationGroups),
+        [navigationGroups, reviewSelection],
     );
+    const selectedChange = selectedReviewChanges[0] ?? null;
+    const selectedChangeId = selectedChange?.id ?? null;
     const selectedReviewGroup = useMemo(
         () => navigationGroups.find((group) =>
-            group.id === (reviewSelection?.kind === "group" ? reviewSelection.id : "")
+            group.id === (
+                reviewSelection?.kind === "group"
+                || reviewSelection?.kind === "instance"
+                    ? reviewSelection.id
+                    : ""
+            )
             || group.changes.some((change) => change.id === selectedChangeId),
         ) ?? null,
         [navigationGroups, reviewSelection, selectedChangeId],
     );
+    const selectedPropertyGroup = useMemo<ChangeGroup | null>(() => {
+        if (!selectedReviewGroup || !selectedReviewChanges.length) return null;
+        const references = reviewSelection?.kind === "instance"
+            ? [reviewSelection.reference]
+            : [...new Set(
+                selectedReviewChanges
+                    .map((change) => referenceFor(change))
+                    .filter((reference): reference is string => Boolean(reference)),
+            )];
+        return {
+            ...selectedReviewGroup,
+            changes: selectedReviewChanges,
+            references,
+        };
+    }, [reviewSelection, selectedReviewChanges, selectedReviewGroup]);
+    const discussionAnchor = useMemo(() => {
+        if (!selectedPropertyGroup || !reviewSelection) return null;
+        if (reviewSelection.kind === "instance") {
+            return {
+                id: `${reviewSelection.id}::instance:${reviewSelection.reference}`,
+                label: `${selectedPropertyGroup.label} · ${reviewSelection.reference}`,
+                page: selectedChange?.page,
+            };
+        }
+        if (reviewSelection.kind === "item") {
+            return {
+                id: `${selectedPropertyGroup.id}::item:${reviewSelection.id}`,
+                label: selectedChange?.label ?? selectedPropertyGroup.label,
+                page: selectedChange?.page,
+            };
+        }
+        return {
+            id: selectedPropertyGroup.id,
+            label: selectedPropertyGroup.label,
+            page: selectedChange?.page,
+        };
+    }, [reviewSelection, selectedChange, selectedPropertyGroup]);
     /**
-     * The evidence Auto reasons about: one change when the reviewer picked a
-     * single instance, the whole group when they picked the row.
+     * The evidence the presentation policy reasons about: one change when the
+     * reviewer picked a single instance, the whole group when they picked the row.
      *
      * Picking one designator out of a part row asks about *that* instance, and
      * recommending a view from its twenty-seven siblings would answer a
@@ -347,11 +385,9 @@ export function DesignComparisonWorkspace({
      */
     const presentationChanges = useMemo(
         () => (
-            reviewSelection?.kind === "item" && selectedChange
-                ? [selectedChange]
-                : selectedReviewGroup?.changes ?? []
+            selectedReviewChanges
         ),
-        [reviewSelection?.kind, selectedChange, selectedReviewGroup],
+        [selectedReviewChanges],
     );
     const presentationRecommendation = useMemo(
         () => recommendPresentationForTab(activeTab, presentationChanges),
@@ -359,7 +395,6 @@ export function DesignComparisonWorkspace({
     );
     const presentationMode =
         presentationOverride ?? presentationRecommendation.mode;
-    const compositeRecommended = presentationRecommendation.mode === "composite";
 
     useEffect(() => {
         logComparisonDebug("workspace.state", {
@@ -378,30 +413,16 @@ export function DesignComparisonWorkspace({
         selectedChangeId,
     ]);
 
-    useComparisonUrlState(
-        {
-            base,
-            compare: head,
-            activeTab,
-            presentationOverride,
-            selectedChangeId,
-            showSecondary,
-            visibleLayers,
-        },
-        {
-            setActiveTab,
-            setPresentationOverride,
-            setSelectedChangeId,
-            setShowSecondary,
-            setVisibleLayers,
-        },
-    );
-
     // An override belongs to one change. Selecting a different one hands the
     // decision back to the policy. The ref makes the first render a no-op so a
     // deep link carrying `presentation` survives arriving at its own item.
     const presentationSelectionKey =
-        `${reviewSelection?.kind ?? ""}:${reviewSelection?.id ?? ""}`;
+        [
+            reviewSelection?.kind ?? "",
+            reviewSelection?.id ?? "",
+            reviewSelection?.kind === "instance" ? reviewSelection.reference : "",
+            reviewSelection?.documentPath ?? "",
+        ].join(":");
     const lastPresentationSelectionRef = useRef(presentationSelectionKey);
     useEffect(() => {
         if (lastPresentationSelectionRef.current === presentationSelectionKey) {
@@ -409,7 +430,7 @@ export function DesignComparisonWorkspace({
         }
         lastPresentationSelectionRef.current = presentationSelectionKey;
         setPresentationOverride(null);
-    }, [presentationSelectionKey]);
+    }, [presentationSelectionKey, setPresentationOverride]);
 
     const selectChange = (change: ChangeItem, documentPath?: string) => {
         logComparisonDebug("difference.click", {
@@ -438,11 +459,24 @@ export function DesignComparisonWorkspace({
             reference: change.reference,
             net: change.net,
         };
-        setSelectedChangeId(change.id);
         setReviewSelection({ kind: "item", id: change.id, documentPath });
     };
 
-    const selectGroup = (group: ChangeGroup) => {
+    const selectInstance = (group: ChangeGroup, reference: string) => {
+        const changes = group.changes.filter(
+            (change) => referenceFor(change) === reference,
+        );
+        const change = changes[0];
+        if (!change) return;
+        semanticFocusRef.current = {
+            semanticId: change.semantic_id,
+            reference,
+            net: change.net,
+        };
+        setReviewSelection({ kind: "instance", id: group.id, reference });
+    };
+
+    const selectGroup = (group: ChangeGroup, documentPath?: string) => {
         const change = group.changes[0];
         if (!change) return;
         logComparisonDebug("difference.click", {
@@ -472,36 +506,18 @@ export function DesignComparisonWorkspace({
             reference: change.reference,
             net: change.net,
         };
-        setSelectedChangeId(change.id);
-        setReviewSelection({ kind: "group", id: group.id });
+        setReviewSelection({ kind: "group", id: group.id, documentPath });
     };
 
     useEffect(() => {
         if (!result) return;
-        const current = domainChanges.find((change) => change.id === selectedChangeId);
+        const current = selectedReviewChanges[0];
         if (current) {
             semanticFocusRef.current = {
                 semanticId: current.semantic_id,
                 reference: current.reference,
                 net: current.net,
             };
-            // Search/status filters only change what is listed. They must not
-            // dissolve the selected semantic group or change Auto's review
-            // presentation while the reviewer refines the panel.
-            const validGroupSelection = reviewSelection?.kind === "group"
-                && navigationGroups.some((group) => (
-                    group.id === reviewSelection.id
-                    && group.changes.some((change) => change.id === current.id)
-                ));
-            if (
-                !validGroupSelection
-                && (
-                    reviewSelection?.kind !== "item"
-                    || reviewSelection.id !== current.id
-                )
-            ) {
-                setReviewSelection({ kind: "item", id: current.id });
-            }
             return;
         }
         const focus = semanticFocusRef.current;
@@ -513,13 +529,19 @@ export function DesignComparisonWorkspace({
             ))
             : null;
         if (counterpart) {
-            setSelectedChangeId(counterpart.id);
             setReviewSelection({ kind: "item", id: counterpart.id });
         } else {
-            setSelectedChangeId(null);
+// react-doctor-disable-next-line no-adjust-state-on-prop-change - cross-domain re-anchor: remapping the selection to the counterpart when the tab changes is this effect’s entire job
             setReviewSelection(null);
         }
-    }, [activeTab, domainChanges, navigationGroups, result, reviewSelection, selectedChangeId]);
+    }, [
+        activeTab,
+        domainChanges,
+        result,
+        reviewSelection,
+        selectedReviewChanges,
+        setReviewSelection,
+    ]);
 
     const navigate = (direction: -1 | 1) => {
         if (!groups.length) return;
@@ -632,7 +654,6 @@ export function DesignComparisonWorkspace({
                 className="h-7 text-xs"
                 onClick={() => choosePresentationMode("composite")}
                 aria-pressed={presentationMode === "composite"}
-                title={compositeRecommended ? presentationRecommendation.reason : undefined}
             >
                 <Square className="mr-1.5 h-3.5 w-3.5" />
                 Composite
@@ -691,7 +712,9 @@ export function DesignComparisonWorkspace({
                     toolbarContent={isActive ? presentationSwitcher : null}
                     initialVisibleLayers={visibleLayers}
                     onVisibleLayersChange={setVisibleLayers}
-                    onPcbLayersChange={isActive ? setPcbLayers : undefined}
+                    onPcbLayersChange={
+                        shellDomain === "pcb" ? setPcbLayers : undefined
+                    }
                     rightRailTab={comparisonRightRailTab}
                     onRightRailTabChange={setComparisonRightRailTab}
                 />
@@ -830,11 +853,15 @@ export function DesignComparisonWorkspace({
                                             impactCounts={impactCounts}
                                             impacts={impacts}
                                             onToggleImpact={(impact) => {
-                                                setImpacts((current) => {
-                                                    const next = new Set(current);
-                                                    if (next.has(impact)) next.delete(impact);
-                                                    else next.add(impact);
-                                                    return next;
+                                                const values = new Set(impacts);
+                                                if (values.has(impact)) {
+                                                    values.delete(impact);
+                                                } else {
+                                                    values.add(impact);
+                                                }
+                                                setImpactsFor({
+                                                    tab: activeTab,
+                                                    values,
                                                 });
                                             }}
                                             onExport={exportReviewQueue}
@@ -854,14 +881,21 @@ export function DesignComparisonWorkspace({
                                             selectedChangeId={selectedChangeId}
                                             selectedGroupId={
                                                 reviewSelection?.kind === "group"
+                                                || reviewSelection?.kind === "instance"
                                                     ? reviewSelection.id
                                                     : null
+                                            }
+                                            selectedReference={
+                                                reviewSelection?.kind === "instance"
+                                                    ? reviewSelection.reference
+                                                    : undefined
                                             }
                                             selectedDocumentPath={
                                                 reviewSelection?.documentPath
                                             }
                                             onSelectChange={selectChange}
                                             onSelectGroup={selectGroup}
+                                            onSelectInstance={selectInstance}
                                             onPreviewChange={setPreviewSelection}
                                             onPrevious={() => navigate(-1)}
                                             onNext={() => navigate(1)}
@@ -902,33 +936,38 @@ export function DesignComparisonWorkspace({
                                         aria-label="Selected change"
                                     >
                                         <ComparisonPropertyPanel
-                                            group={selectedReviewGroup ?? null}
+                                            group={selectedPropertyGroup}
                                             bom={result.bom}
                                             routeMetrics={result.pcb.route_metrics}
                                             pcbLayers={pcbLayers}
                                             diagnosticsCount={
                                                 result.document_diff?.diagnostics.length ?? 0
                                             }
-                                            discussion={(
-                                                <ComparisonDiscussionRail
+                                                    discussion={(
+                                                        <>
+                                                        {(commentConnection.error || !commentConnection.hasLoaded || commentConnection.status !== "live") && (
+                                                            <div className="border-b px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
+                                                                {commentConnection.error
+                                                                    ? `${commentConnection.error}${commentConnection.hasLoaded ? " Showing the last loaded comments." : ""}`
+                                                                    : !commentConnection.hasLoaded
+                                                                        ? "Loading comments…"
+                                                                        : "Live comments reconnecting; updates may be delayed."}
+                                                            </div>
+                                                        )}
+                                                        <ComparisonDiscussionRail
                                                     projectId={projectId}
                                                     base={base}
                                                     compare={head}
                                                     domain={domain === "pcb" ? "PCB" : "SCH"}
-                                                    anchor={selectedReviewGroup
-                                                        ? {
-                                                            id: selectedReviewGroup.id,
-                                                            label: selectedReviewGroup.label,
-                                                            page: selectedChange?.page,
-                                                        }
-                                                        : null}
+                                                    anchor={discussionAnchor}
                                                     comments={comments}
                                                     canComment={canComment}
                                                     onCommentsChange={setComments}
                                                     onClose={() => undefined}
-                                                    embedded
-                                                />
-                                            )}
+                                                            embedded
+                                                        />
+                                                        </>
+                                                    )}
                                         />
                                     </ResizablePanel>
                                 </div>
@@ -994,7 +1033,7 @@ export function DesignComparisonWorkspace({
                                 {jobStatus?.percent != null && (
                                     <div className="h-1.5 w-64 overflow-hidden rounded-full bg-muted">
                                         <div
-                                            className="h-full bg-primary transition-all"
+                                            className="h-full bg-primary transition-[width]"
                                             style={{ width: `${jobStatus.percent}%` }}
                                         />
                                     </div>

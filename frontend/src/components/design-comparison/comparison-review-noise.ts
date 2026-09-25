@@ -142,21 +142,23 @@ export function prepareChangesForReview(
 ): PreparedReviewChanges {
     const netRenames = options.netRenames ?? new Set<string>();
     const parentSymbolEvents = new Set(
-        changes
-            .filter((change) => change.domain === "schematic" && objectKind(change) === "symbol")
-            .map(parentSymbolKey),
+        changes.flatMap((change) => (
+            change.domain === "schematic" && objectKind(change) === "symbol"
+                ? [parentSymbolKey(change)]
+                : []
+        )),
     );
     const prepared: ChangeItem[] = [];
     let suppressedCount = 0;
     const netRenameKeys = semanticNetRenameKeys(changes);
     const parentFootprintEvents = new Set(
-        changes
-            .filter((change) => (
-                change.domain === "pcb"
-                && objectKind(change) === "footprint"
-                && (change.kind === "added" || change.kind === "removed")
-            ))
-            .map(parentSymbolKey),
+        changes.flatMap((change) => (
+            change.domain === "pcb"
+            && objectKind(change) === "footprint"
+            && (change.kind === "added" || change.kind === "removed")
+                ? [parentSymbolKey(change)]
+                : []
+        )),
     );
 
     for (const change of changes) {

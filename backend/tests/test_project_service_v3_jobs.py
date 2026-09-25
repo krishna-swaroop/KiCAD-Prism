@@ -11,6 +11,33 @@ from app.services.job_runtime import PreparedArtifact
 
 
 class ProjectServiceV3JobTests(unittest.TestCase):
+    def test_semantic_and_webgpu_artifact_identity_includes_the_anchor(self) -> None:
+        def keys(anchor: str) -> tuple[str, str]:
+            row = {
+                "id": "project-1",
+                "repo_id": "repo-1",
+                "last_modified": "revision",
+                "project_file_rel": anchor,
+            }
+            with mock.patch.object(
+                project_service.workspace,
+                "get_project_by_id",
+                return_value=row,
+            ), mock.patch.object(
+                project_service.v3_jobs,
+                "enqueue",
+                return_value={"job_id": "job"},
+            ) as enqueue:
+                project_service.start_semantic_index_job("project-1", commit="abc")
+                semantic_key = str(enqueue.call_args.kwargs["artifact_key"])
+                project_service.start_workflow_job(
+                    "project-1", "webgpu_3d", commit="abc"
+                )
+                webgpu_key = str(enqueue.call_args.kwargs["artifact_key"])
+            return semantic_key, webgpu_key
+
+        self.assertNotEqual(keys("top.kicad_pro"), keys("base.kicad_pro"))
+
     def test_job_status_preserves_authoritative_queue_status(self) -> None:
         with mock.patch.object(
             project_service.v3_jobs,
@@ -170,6 +197,25 @@ class ProjectServiceV3JobTests(unittest.TestCase):
         self.assertEqual(result.artifact, prepared)
         self.assertTrue(result.details["available"])
         prepare.assert_called_once()
+
+    def test_semantic_handler_rejects_an_anchor_changed_after_enqueue(self) -> None:
+        context = SimpleNamespace(
+            payload={
+                "project_id": "project-1",
+                "project_file_rel": "top.kicad_pro",
+                "artifact_key": "semantic-key",
+            }
+        )
+        with mock.patch.object(
+            project_service.workspace,
+            "get_project_by_id",
+            return_value={
+                "id": "project-1",
+                "project_file_rel": "base.kicad_pro",
+            },
+        ):
+            with self.assertRaisesRegex(RuntimeError, "anchor changed"):
+                project_service.run_semantic_index_job_v3(context)
 
     def test_kicad_workflow_enqueue_uses_global_slot_and_repository_write_lock(
         self,

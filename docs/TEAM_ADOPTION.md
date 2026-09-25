@@ -50,13 +50,13 @@ Suggested responsibilities:
 
 | Responsibility | Prism role |
 | --- | --- |
-| catalog authoring and remediation | `component_designer` |
-| independent QA and release | `component_qa` |
+| catalog authoring and remediation | `designer` |
+| independent QA | `qa` |
 | policy, access, exceptional overrides | `admin` |
-| project import and job execution | `designer` |
+| project import, job execution, and Released after QA | `designer` |
 
 The current one-role model means a person cannot independently hold `designer`
-and `component_designer`. Use a small number of administrators where combined
+and `qa`. Use a small number of administrators where combined
 duties are unavoidable, and document why.
 
 Define:

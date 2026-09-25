@@ -3,6 +3,12 @@ import { ExternalLink, PackageSearch, RefreshCw, RotateCcw } from "lucide-react"
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+    BomAssemblyFilterControl,
+    filterComponentsForAssembly,
+    isAssembled,
+    type BomAssemblyFilter,
+} from "@/components/design-variants/assembly-filter";
 import { cn } from "@/lib/utils";
 import type {
     PrismSelection,
@@ -15,6 +21,7 @@ export const BOM_REQUIRED_COLUMNS = [
     "Qty",
     "Value",
     "DNP",
+    "In BOM",
     "Description",
     "Datasheet",
     "Manufacturer",
@@ -30,6 +37,8 @@ export const BOM_REQUIRED_COLUMNS = [
     "Power Dissipation (W)",
     "Rate",
 ] as const;
+
+const EMPTY_COMPONENTS: SemanticComponent[] = [];
 
 interface BomGroup {
     key: string;
@@ -50,6 +59,11 @@ interface EngineeringBomTableProps {
     selection: PrismSelection | null;
     onSelection: (selection: PrismSelection) => void;
     onRetry: () => void;
+    /**
+     * Effective components for the active assembly selection (VAR-11's
+     * projection). When omitted the table shows the base index.
+     */
+    components?: SemanticComponent[] | null;
 }
 
 const naturalReferenceSort = (left: SemanticComponent, right: SemanticComponent) =>
@@ -143,11 +157,20 @@ const groupMatchesQuery = (group: BomGroup, query: string): boolean => {
     if (!terms.length) return true;
     const references = group.components.map((component) => component.reference.toLocaleLowerCase());
     const haystack = [...references, ...Object.values(group.fields)].join(" ").toLocaleLowerCase();
+    // Each field search builds the same alias string per term; resolve it once
+    // per field so repeated terms share the lookup.
+    const fieldValues = new Map<string, string>();
+    for (const term of terms) {
+        if (term.field && !fieldValues.has(term.field)) {
+            fieldValues.set(term.field, searchableField(group, term.field));
+        }
+    }
     return terms.every((term, index) => {
         if (term.field === "ref" || term.field === "reference") {
             return references.some((reference) => reference === term.value);
         }
-        if (term.field) return searchableField(group, term.field).includes(term.value);
+// react-doctor-disable-next-line js-set-map-lookups - the receiver is a string haystack, not an array; a Set would break substring matching
+        if (term.field) return (fieldValues.get(term.field) ?? "").includes(term.value);
         const referenceLike = /^[a-z]+\d+[a-z0-9._-]*$/.test(term.value);
         if (referenceLike) {
             const exact = term.quoted || (lockLastReference && index === terms.length - 1);
@@ -157,6 +180,7 @@ const groupMatchesQuery = (group: BomGroup, query: string): boolean => {
     });
 };
 
+// react-doctor-disable-next-line no-giant-component - the table's grouping, field model, search syntax, resizing and rendering share one column/group model, and the D1 filter adds only its own small state on top; splitting it would scatter that single model across files.
 export function EngineeringBomTable({
     semanticIndex,
     loading,
@@ -164,8 +188,20 @@ export function EngineeringBomTable({
     selection,
     onSelection,
     onRetry,
+    components,
 }: EngineeringBomTableProps) {
     const [query, setQuery] = useState("");
+    const [assemblyFilter, setAssemblyFilter] =
+        useState<BomAssemblyFilter>("all");
+    const allComponents = components ?? semanticIndex?.components ?? EMPTY_COMPONENTS;
+    const assemblyCount = useMemo(
+        () => allComponents.filter(isAssembled).length,
+        [allComponents],
+    );
+    const filteredComponents = useMemo(
+        () => filterComponentsForAssembly(allComponents, assemblyFilter),
+        [allComponents, assemblyFilter],
+    );
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
         if (typeof window === "undefined") return {};
         try {
@@ -197,17 +233,17 @@ export function EngineeringBomTable({
     const columns = useMemo(() => {
         const required = new Set<string>(BOM_REQUIRED_COLUMNS);
         const extras = new Set<string>();
-        for (const component of semanticIndex?.components || []) {
+        for (const component of allComponents) {
             for (const field of Object.keys(component.fields || {})) {
                 if (!required.has(field) && !isInternalField(field)) extras.add(field);
             }
         }
         return [...BOM_REQUIRED_COLUMNS, ...[...extras].sort((left, right) => left.localeCompare(right))];
-    }, [semanticIndex]);
+    }, [allComponents]);
 
     const groups = useMemo(() => {
         const byValue = new Map<string, SemanticComponent[]>();
-        for (const component of semanticIndex?.components || []) {
+        for (const component of filteredComponents) {
             const fields = componentFields(component);
             const valueKey = fields.Value.trim().toLocaleLowerCase();
             const group = byValue.get(valueKey) || [];
@@ -226,7 +262,7 @@ export function EngineeringBomTable({
                     sensitivity: "base",
                 }),
             );
-    }, [semanticIndex]);
+    }, [filteredComponents]);
 
     const visibleGroups = useMemo(() => {
         if (!query.trim()) return groups;
@@ -273,14 +309,27 @@ export function EngineeringBomTable({
                         onChange={(event) => setQuery(event.target.value)}
                         placeholder="Search references and fields…"
                         aria-label="Filter bill of materials"
+                        // The syntax this accepts -- prefix matching, a
+                        // trailing space to lock an exact reference, and the
+                        // `ref:`/`value:`/`mfr:`/`mpn:`/`vendor:`/`footprint:`
+                        // filters -- is documented on the field itself rather
+                        // than in a paragraph under it.
+                        title="Prefixes match while typing; add a trailing space to lock an exact reference. Filters: ref:, value:, mfr:, mpn:, vendor:, footprint:"
                         className="h-8 max-w-xl"
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                        Reference prefixes match while typing; add a trailing space to lock an exact reference. Filters: ref:, value:, mfr:, mpn:, vendor:, footprint:.
-                    </p>
                 </div>
                 <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{semanticIndex.components.length} components</span>
+                    <BomAssemblyFilterControl
+                        value={assemblyFilter}
+                        onChange={setAssemblyFilter}
+                        allCount={allComponents.length}
+                        assemblyCount={assemblyCount}
+                    />
+                    <span>
+                        {assemblyFilter === "all"
+                            ? `${allComponents.length} components`
+                            : `${filteredComponents.length} of ${allComponents.length} components`}
+                    </span>
                     <Badge variant="outline">{visibleGroups.length} groups</Badge>
                     <Button
                         type="button"
@@ -342,25 +391,45 @@ export function EngineeringBomTable({
                                         let content: React.ReactNode;
                                         if (column === "Reference") {
                                             content = (
+                                                /* Rows are grouped by value, so a single row can carry
+                                                   a dozen designators and each one selects a different
+                                                   part. Ghost styling left them reading as plain text
+                                                   until the pointer was already on one; a resting
+                                                   outline says "these are separate things you can
+                                                   pick" before anyone hovers, and the accent tint on
+                                                   hover confirms it. */
                                                 <div className="flex max-w-md flex-wrap gap-1">
-                                                    {group.components.map((component) => (
-                                                        <Button
-                                                            key={component.reference}
-                                                            type="button"
-                                                            size="sm"
-                                                            variant={selectedReference === component.reference ? "default" : "ghost"}
-                                                            className="h-6 px-1.5 font-mono text-xs"
-                                                            onClick={() => onSelection({
-                                                                kind: "component",
-                                                                sourceContext: "BOM",
-                                                                sourceRevisionKey: semanticIndex.sourceRevisionKey,
-                                                                reference: component.reference,
-                                                                componentUid: component.componentUid,
-                                                            })}
-                                                        >
-                                                            {component.reference}
-                                                        </Button>
-                                                    ))}
+                                                    {group.components.map((component) => {
+                                                        const isSelected =
+                                                            selectedReference === component.reference;
+                                                        return (
+                                                            <Button
+                                                                key={component.reference}
+                                                                type="button"
+                                                                size="sm"
+                                                                variant={isSelected ? "default" : "ghost"}
+                                                                aria-pressed={isSelected}
+                                                                title={`Select ${component.reference}`}
+                                                                className={cn(
+                                                                    "h-6 cursor-pointer px-1.5 font-mono text-xs transition-colors",
+                                                                    !isSelected && [
+                                                                        "border-border/70 bg-muted/40 text-muted-foreground",
+                                                                        "hover:border-primary/60 hover:bg-primary/10",
+                                                                        "hover:text-foreground",
+                                                                    ],
+                                                                )}
+                                                                onClick={() => onSelection({
+                                                                    kind: "component",
+                                                                    sourceContext: "BOM",
+                                                                    sourceRevisionKey: semanticIndex.sourceRevisionKey,
+                                                                    reference: component.reference,
+                                                                    componentUid: component.componentUid,
+                                                                })}
+                                                            >
+                                                                {component.reference}
+                                                            </Button>
+                                                        );
+                                                    })}
                                                 </div>
                                             );
                                         } else if (column === "Qty") {
@@ -383,6 +452,9 @@ export function EngineeringBomTable({
                                             } else if (column === "DNP") {
                                                 const isDnp = value.toLocaleLowerCase() === "yes";
                                                 content = <Badge variant={isDnp ? "destructive" : "outline"}>{value || "No"}</Badge>;
+                                            } else if (column === "In BOM") {
+                                                const excluded = value.toLocaleLowerCase() === "no";
+                                                content = <Badge variant={excluded ? "destructive" : "outline"}>{value || "Yes"}</Badge>;
                                             } else {
                                                 content = <span className="block max-w-sm truncate" title={value}>{value || "—"}</span>;
                                             }

@@ -147,8 +147,7 @@ ranked by how often they will be raised in an evaluation:
    blocked.
 6. **No constraint governance.** Specifically an Xpedition-migration blocker.
 7. **Non-composable roles.** A person cannot be both `designer` and
-   `component_designer`. This will be hit on day one of any real rollout, and
-   it blocks several features proposed below.
+   `qa`. Independent review still needs a second account.
 
 Everything else is differentiation rather than parity.
 

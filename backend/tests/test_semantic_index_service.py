@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -100,11 +101,259 @@ class SemanticIndexServiceTests(unittest.TestCase):
             payload = semantic_index_service.build_semantic_index(
                 Path(temporary) / "board.kicad_pro",
                 source_revision_key="revision-a",
+                include_assembly=False,
                 include_pcb=False,
             )
 
         self.assertFalse(design.include_pcb)
         self.assertEqual(payload["components"], [])
+
+    def test_an_injected_pcb_is_not_reparsed(self) -> None:
+        class FakeDesign:
+            def __init__(self):
+                self._pcb = None
+
+            def to_netlist(self):
+                return SimpleNamespace(components=[], nets=[])
+
+            @property
+            def pcb(self):
+                if self._pcb is not None:
+                    return self._pcb
+                raise AssertionError("semantic index re-parsed the PCB")
+
+            def to_json(self, include_indexes=True, *, include_pcb=True):
+                return {"components": [], "nets": []}
+
+        design = FakeDesign()
+        injected = object()
+
+        class FakeKiCadDesign:
+            @staticmethod
+            def from_project_file(_path):
+                return design
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            sys.modules,
+            {"kicad_monkey": SimpleNamespace(KiCadDesign=FakeKiCadDesign)},
+        ):
+            semantic_index_service.build_semantic_index(
+                Path(temporary) / "board.kicad_pro",
+                source_revision_key="revision-a",
+                include_assembly=False,
+                pcb=injected,
+            )
+
+        self.assertIs(design._pcb, injected)
+        self.assertIs(design.pcb, injected)
+
+    def test_split_nets_fold_into_the_board_net_through_shared_pads(self) -> None:
+        # A bus member crossing sheet pins: the board calls it /SIG, the
+        # netlist splits it into two sheet-local nets. R1.2 sits on a net the
+        # netlist names the same way; R1.1 is on a board-only net; U2.1's net
+        # straddles two board nets and must be left alone.
+        def net(name, *terminals, wires=()):
+            return {
+                "name": name,
+                "net_class": "Fast",
+                "aliases": [],
+                "terminals": [{"designator": d, "pin": p} for d, p in terminals],
+                "graphical": {
+                    "wires": list(wires),
+                    "pins": [{"designator": d, "pin": p, "svg_id": f"pin-{d}-{p}"} for d, p in terminals],
+                },
+            }
+
+        payload = {
+            "components": [{"designator": d} for d in ("U1", "J1", "R1", "U2")],
+            "nets": [
+                net("/Port/SIG", ("U1", "1"), ("U1", "2"), wires=("wire-port",)),
+                net("/SOM/SIG", ("J1", "2"), wires=("wire-som",)),
+                net("GND", ("R1", "2")),
+                net("/Ambiguous", ("U2", "1"), ("U2", "2")),
+            ],
+        }
+
+        class FakeDesign:
+            _pcb = None
+
+            @property
+            def pcb(self):
+                return self._pcb
+
+            def to_netlist(self):
+                return SimpleNamespace(components=[], nets=[])
+
+            def to_json(self, include_indexes=True, *, include_pcb=True):
+                return payload
+
+        def pad(number, uuid, name, code):
+            return SimpleNamespace(uuid=uuid, number=number, net=SimpleNamespace(name=name, ordinal=code))
+
+        def footprint(reference, uuid, *pads):
+            return SimpleNamespace(
+                uuid=uuid,
+                properties=[SimpleNamespace(name="Reference", value=reference)],
+                pads=list(pads),
+            )
+
+        board = SimpleNamespace(
+            footprints=[
+                footprint("U1", "fp-u1", pad("1", "pad-u1-1", "/SIG", 7)),  # U1.2 has no pad
+                footprint("J1", "fp-j1", pad("2", "pad-j1-2", "/SIG", 7)),
+                footprint("R1", "fp-r1", pad("1", "pad-r1-1", "/ORPHAN", 8), pad("2", "pad-r1-2", "GND", 1)),
+                footprint("U2", "fp-u2", pad("1", "pad-u2-1", "/X", 9), pad("2", "pad-u2-2", "/Y", 10)),
+            ],
+            segments=[SimpleNamespace(uuid="track-sig", net=SimpleNamespace(name="/SIG", ordinal=7))],
+            arcs=[],
+            vias=[],
+            zones=[],
+        )
+
+        class FakeKiCadDesign:
+            @staticmethod
+            def from_project_file(_path):
+                return FakeDesign()
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            sys.modules,
+            {"kicad_monkey": SimpleNamespace(KiCadDesign=FakeKiCadDesign)},
+        ):
+            index = semantic_index_service.build_semantic_index(
+                Path(temporary) / "board.kicad_pro",
+                source_revision_key="revision-a",
+                include_assembly=False,
+                pcb=board,
+            )
+
+        nets = {entry["name"]: entry for entry in index["nets"]}
+        self.assertEqual(
+            list(nets),
+            ["GND", "/Ambiguous", "/SIG", "/ORPHAN", "/X", "/Y"],
+        )
+        sig = nets["/SIG"]
+        self.assertEqual(sig["aliases"], ["/Port/SIG", "/SOM/SIG"])
+        self.assertEqual(sig["netCode"], 7)
+        self.assertEqual(sig["netClass"], "Fast")
+        self.assertEqual(sig["netUid"], semantic_index_service._stable_uid("net", "/SIG"))
+        self.assertEqual(sig["pcbRefs"][0]["padUuids"], ["pad-u1-1", "pad-j1-2"])
+        self.assertEqual(sig["pcbRefs"][0]["trackUuids"], ["track-sig"])
+        wires = sorted(uuid for ref in sig["schematicRefs"] for uuid in ref["wireUuids"])
+        self.assertEqual(wires, ["wire-port", "wire-som"])
+        pins = sorted(uuid for ref in sig["schematicRefs"] for uuid in ref["pinUuids"])
+        self.assertEqual(pins, ["pin-J1-2", "pin-U1-1", "pin-U1-2"])
+
+        by_name = index["indexes"]["netByName"]
+        sig_index = index["nets"].index(sig)
+        for name in ("/SIG", "/Port/SIG", "/SOM/SIG"):
+            self.assertEqual(by_name[name], sig_index, name)
+        self.assertEqual(index["indexes"]["netByNetCode"]["7"], sig_index)
+        self.assertEqual(index["indexes"]["netByPcbUuid"]["track-sig"], sig_index)
+        self.assertEqual(index["indexes"]["netByPcbUuid"]["pad-j1-2"], sig_index)
+        self.assertEqual(index["indexes"]["netBySchematicUuid"]["wire-som"], sig_index)
+        self.assertEqual(index["indexes"]["netBySchematicUuid"]["pin-U1-2"], sig_index)
+        # Every other index still points at its own record after renumbering.
+        self.assertEqual(index["indexes"]["netByName"]["GND"], index["nets"].index(nets["GND"]))
+        self.assertEqual(index["indexes"]["netByPcbUuid"]["pad-r1-1"], index["nets"].index(nets["/ORPHAN"]))
+        self.assertEqual(index["indexes"]["netBySchematicUuid"]["pin-U2-1"], index["nets"].index(nets["/Ambiguous"]))
+
+        terminals = {f"{t['reference']}.{t['pin']}": t for t in index["terminals"]}
+        for pair in ("U1.1", "U1.2", "J1.2"):
+            self.assertEqual(terminals[pair]["netName"], "/SIG", pair)
+            self.assertEqual(terminals[pair]["netUid"], sig["netUid"], pair)
+        self.assertEqual(index["indexes"]["terminalByPcbPadUuid"]["pad-j1-2"], index["terminals"].index(terminals["J1.2"]))
+        # The straddling net keeps its wires; its pads belong to the board nets.
+        self.assertEqual(nets["/Ambiguous"]["pcbRefs"][0]["padUuids"], [])
+        self.assertEqual(nets["/X"]["pcbRefs"][0]["padUuids"], ["pad-u2-1"])
+        self.assertNotIn("aliases", nets["/X"])
+
+    def test_upstream_to_json_detaches_the_board_for_a_schematic_build(self) -> None:
+        # The default production build is the pip kicad-monkey, whose to_json has
+        # no include_pcb switch. Model that shape: the adapter must detach the
+        # board so the PnP projection does not lazily parse the whole
+        # .kicad_pcb. Pin that the board is dropped and pcb_path cleared, so
+        # design.pcb returns None instead of re-parsing.
+        class UpstreamDesign:
+            def __init__(self):
+                self._pcb = "a-parsed-board"
+                self.pcb_path = "/somewhere/board.kicad_pcb"
+                self.calls = []
+
+            def to_netlist(self):
+                return SimpleNamespace(components=[], nets=[])
+
+            @property
+            def pcb(self):
+                raise AssertionError("the schematic build re-parsed the PCB")
+
+            def to_json(self, include_indexes=True, *, compiled_schematic_graph=None):
+                # Pinned upstream signature: no include_pcb keyword.
+                self.calls.append("fallback")
+                return {"components": [], "nets": []}
+
+        design = UpstreamDesign()
+
+        class FakeKiCadDesign:
+            @staticmethod
+            def from_project_file(_path):
+                return design
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            sys.modules,
+            {"kicad_monkey": SimpleNamespace(KiCadDesign=FakeKiCadDesign)},
+        ):
+            semantic_index_service.build_semantic_index(
+                Path(temporary) / "board.kicad_pro",
+                source_revision_key="revision-a",
+                include_assembly=False,
+                include_pcb=False,
+            )
+
+        self.assertEqual(design.calls, ["fallback"])
+        self.assertIsNone(design._pcb)
+        self.assertIsNone(design.pcb_path)
+
+    def test_upstream_fallback_keeps_an_injected_board(self) -> None:
+        # If a caller both injects an already-parsed board and asks for a
+        # schematic-only build, the detach must not throw the injected board
+        # away: the caller paid to parse it.
+        injected = object()
+
+        class UpstreamDesign:
+            def __init__(self):
+                self._pcb = None
+                self.pcb_path = "/somewhere/board.kicad_pcb"
+
+            def to_netlist(self):
+                return SimpleNamespace(components=[], nets=[])
+
+            @property
+            def pcb(self):
+                return self._pcb
+
+            def to_json(self, include_indexes=True, *, compiled_schematic_graph=None):
+                return {"components": [], "nets": []}
+
+        design = UpstreamDesign()
+
+        class FakeKiCadDesign:
+            @staticmethod
+            def from_project_file(_path):
+                return design
+
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(
+            sys.modules,
+            {"kicad_monkey": SimpleNamespace(KiCadDesign=FakeKiCadDesign)},
+        ):
+            semantic_index_service.build_semantic_index(
+                Path(temporary) / "board.kicad_pro",
+                source_revision_key="revision-a",
+                include_assembly=False,
+                include_pcb=False,
+                pcb=injected,
+            )
+
+        self.assertIs(design._pcb, injected)
 
     def test_full_bundle_overlay_commits_bundle_json_last(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -236,11 +485,35 @@ class SemanticIndexServiceTests(unittest.TestCase):
             status = semantic_visualizer_service.get_status_fast(project)
 
         self.assertEqual(status, ready)
+        anchor_suffix = semantic_visualizer_service._anchor_selector_suffix(project)
         lookup.assert_called_once_with(
             "prj_test",
-            "workspace:revision-7",
+            f"workspace:revision-7{anchor_suffix}",
             semantic_visualizer_service.BUILD_FINGERPRINT,
         )
+
+    def test_build_fingerprint_hashes_the_selected_rust_helper(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            helper = root / "prism-kicad-native"
+            helper.write_bytes(b"helper-a")
+            environment = {
+                "PRISM_PCB_GEOMETRY_BACKEND": "rust",
+                "PRISM_KICAD_NATIVE_PATH": str(helper),
+            }
+            with patch.dict(
+                semantic_visualizer_service.os.environ,
+                environment,
+                clear=False,
+            ), patch(
+                "app.services.semantic_viewer_runtime.find_viewer_repo_root",
+                return_value=root,
+            ):
+                first = semantic_visualizer_service._compute_build_fingerprint()
+                helper.write_bytes(b"helper-b")
+                second = semantic_visualizer_service._compute_build_fingerprint()
+
+        self.assertNotEqual(first, second)
 
     def test_webgpu_fast_status_returns_metadata_only_missing_record(self) -> None:
         project = SimpleNamespace(
@@ -257,7 +530,12 @@ class SemanticIndexServiceTests(unittest.TestCase):
 
         self.assertEqual(status["status"], "missing")
         self.assertFalse(status["available"])
-        self.assertEqual(status["status_selector"], "workspace:revision-8")
+        self.assertEqual(
+            status["status_selector"],
+            semantic_visualizer_service.status_selector_for_project(
+                project, last_modified="revision-8"
+            ),
+        )
 
     def test_webgpu_fast_status_never_invokes_git_for_symbolic_refs(self) -> None:
         project = SimpleNamespace(
@@ -311,6 +589,9 @@ class SemanticIndexServiceTests(unittest.TestCase):
             "prj_test",
             semantic_visualizer_service.BUILD_FINGERPRINT,
             "abcdef012345",
+            selector_suffix=semantic_visualizer_service._anchor_selector_suffix(
+                project
+            ),
         )
 
     def test_source_revision_key_ignores_heavy_assets(self) -> None:
@@ -404,6 +685,7 @@ class SemanticIndexServiceTests(unittest.TestCase):
             payload = semantic_index_service.build_semantic_index(
                 Path(temporary) / "board.kicad_pro",
                 source_revision_key="revision-a",
+                include_assembly=False,
             )
 
         component_index = payload["indexes"]["componentByReference"]["U12"]
@@ -476,6 +758,7 @@ class SemanticIndexServiceTests(unittest.TestCase):
             payload = semantic_index_service.build_semantic_index(
                 Path(temporary) / "board.kicad_pro",
                 source_revision_key="revision-a",
+                include_assembly=False,
             )
 
         terminal = payload["terminals"][0]
@@ -813,6 +1096,323 @@ class CanonicalFieldTests(unittest.TestCase):
         )
 
         self.assertEqual(fields["Datasheet"], "https://example.invalid/ds.pdf")
+
+
+class VariantAssemblyIntegrationTests(unittest.TestCase):
+    """VAR-10: the index publishes the packet-3.2 ``assembly`` block.
+
+    Fixture expectations key components by reference because the index owns
+    the componentUid join; this test translates through
+    ``indexes.componentByReference`` exactly as the packet notes say a
+    consumer does.
+    """
+
+    FIXTURES = Path(__file__).resolve().parent / "fixtures" / "design_variants"
+    CATALOG_CODES = {"catalog-name-case-mismatch", "source-unparseable"}
+
+    def _project_file(self, fixture: str) -> Path:
+        expected = json.loads(
+            (self.FIXTURES / "expected" / f"{fixture}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        return self.FIXTURES / fixture / expected["project"]
+
+    def _build(self, fixture: str, *, include_assembly: bool = True) -> dict:
+        return semantic_index_service.build_semantic_index(
+            self._project_file(fixture),
+            source_revision_key="revision-variants",
+            include_assembly=include_assembly,
+        )
+
+    def _expected(self, fixture: str) -> dict:
+        return json.loads(
+            (self.FIXTURES / "expected" / f"{fixture}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+    @staticmethod
+    def _uid_map(payload: dict) -> dict[str, str]:
+        return {
+            component["reference"]: component["componentUid"]
+            for component in payload["components"]
+        }
+
+    def _translate_components(
+        self, payload: dict, mapping: dict[str, dict]
+    ) -> dict[str, dict]:
+        uids = self._uid_map(payload)
+        return {
+            uids.get(reference, reference): state
+            for reference, state in mapping.items()
+        }
+
+    @staticmethod
+    def _without_component_uid(entry: dict) -> dict:
+        return {key: value for key, value in entry.items() if key != "componentUid"}
+
+    def _project_occurrences(self, mapping: dict[str, dict]) -> dict[str, dict]:
+        return {
+            occurrence_id: self._without_component_uid(entry)
+            for occurrence_id, entry in mapping.items()
+        }
+
+    def _project_footprints(self, mapping: dict[str, dict]) -> dict[str, dict]:
+        return {
+            uuid: self._without_component_uid(entry)
+            for uuid, entry in mapping.items()
+        }
+
+    def test_the_oracle_fixture_matches_the_differential_expectations(self) -> None:
+        payload = self._build("oracle")
+        assembly = payload["assembly"]
+        expected = self._expected("oracle")
+
+        self.assertEqual(assembly["schema"], "prism.assembly_state_a0")
+        self.assertEqual(assembly["catalog"], expected["catalog"])
+        self.assertEqual(
+            self._project_occurrences(assembly["default"]["occurrences"]),
+            expected["default"]["occurrences"],
+        )
+        self.assertEqual(
+            self._translate_components(
+                payload, assembly["default"]["components"]
+            ),
+            self._translate_components(payload, expected["default"]["components"]),
+        )
+        self.assertEqual(
+            self._project_footprints(assembly["default"]["footprints"]),
+            expected["default"]["footprints"],
+        )
+
+        for expected_variant in expected["variants"]:
+            actual = next(
+                variant
+                for variant in assembly["variants"]
+                if variant["name"] == expected_variant["name"]
+            )
+            self.assertEqual(
+                self._project_occurrences(actual["occurrences"]),
+                expected_variant["occurrences"],
+                expected_variant["name"],
+            )
+            self.assertEqual(
+                self._translate_components(payload, actual["components"]),
+                self._translate_components(payload, expected_variant["components"]),
+                expected_variant["name"],
+            )
+            self.assertEqual(
+                self._project_footprints(actual["footprints"]),
+                expected_variant["footprints"],
+                expected_variant["name"],
+            )
+
+    def test_diagnostics_match_the_expectation(self) -> None:
+        payload = self._build("oracle")
+        expected = self._expected("oracle")
+
+        def projection(diagnostic: dict) -> dict:
+            return {
+                key: diagnostic[key]
+                for key in (
+                    "code",
+                    "variant",
+                    "reference",
+                    "path",
+                    "detail",
+                    "footprintUuids",
+                )
+                if key in diagnostic
+            }
+
+        self.assertEqual(
+            [projection(d) for d in payload["assembly"]["diagnostics"]],
+            [projection(d) for d in expected["diagnostics"]],
+        )
+
+    def test_component_default_state_corrects_dnp_and_in_bom(self) -> None:
+        payload = self._build("oracle")
+        by_reference = {
+            component["reference"]: component for component in payload["components"]
+        }
+
+        # R2 is base-DNP; R3 is populated by default.
+        self.assertEqual(by_reference["R2"]["fields"]["DNP"], "Yes")
+        self.assertEqual(by_reference["R2"]["fields"]["In BOM"], "Yes")
+        self.assertEqual(by_reference["R3"]["fields"]["DNP"], "No")
+        self.assertEqual(by_reference["R3"]["fields"]["In BOM"], "Yes")
+
+    def test_schematic_refs_gain_the_representative_occurrence_id(self) -> None:
+        payload = self._build("oracle")
+        component = next(
+            entry for entry in payload["components"] if entry["reference"] == "Q1"
+        )
+        occurrence_id = component["schematicRefs"][0]["occurrenceId"]
+        expected_id = (
+            "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/"
+            "7d201bda-eaa8-50cb-a4b8-98b6f582e55e"
+        )
+        self.assertEqual(occurrence_id, expected_id)
+        # Q1 carries no default-state flags, so its occurrence appears only in
+        # the differential Lite map, where it resolves its field overrides.
+        lite = next(
+            variant
+            for variant in payload["assembly"]["variants"]
+            if variant["name"] == "Lite"
+        )
+        self.assertIn(expected_id, lite["occurrences"])
+
+    def test_the_index_join_adds_component_uids_to_every_map(self) -> None:
+        payload = self._build("oracle")
+        assembly = payload["assembly"]
+        uids = set(self._uid_map(payload).values())
+
+        for entry in assembly["default"]["occurrences"].values():
+            self.assertIn(entry["componentUid"], uids)
+        for key in assembly["default"]["components"]:
+            self.assertIn(key, uids)
+        for entry in assembly["default"]["footprints"].values():
+            if entry["componentUid"] is not None:
+                self.assertIn(entry["componentUid"], uids)
+
+    def test_the_key_sets_are_the_frozen_ones(self) -> None:
+        payload = self._build("oracle")
+        assembly = payload["assembly"]
+        flags = {
+            "dnp",
+            "excludeFromBom",
+            "excludeFromBoard",
+            "excludeFromSim",
+            "excludeFromPosFiles",
+        }
+
+        for entry in assembly["default"]["occurrences"].values():
+            self.assertLessEqual(set(entry), flags | {"reference", "componentUid"})
+            self.assertLessEqual({"reference", "componentUid"}, set(entry))
+        for entry in assembly["default"]["components"].values():
+            self.assertLessEqual(set(entry), flags)
+            self.assertTrue(entry)
+        for entry in assembly["default"]["footprints"].values():
+            self.assertLessEqual(
+                set(entry),
+                {"reference", "componentUid", "dnp", "excludeFromBom", "excludeFromPosFiles"},
+            )
+            self.assertIn("reference", entry)
+            self.assertIn("componentUid", entry)
+        for variant in assembly["variants"]:
+            for entry in variant["occurrences"].values():
+                self.assertLessEqual(set(entry), flags | {"fields"})
+            for entry in variant["components"].values():
+                self.assertLessEqual(set(entry), flags | {"fields"})
+            for entry in variant["footprints"].values():
+                self.assertLessEqual(
+                    set(entry),
+                    {"dnp", "excludeFromBom", "excludeFromPosFiles", "fields"},
+                )
+
+    def test_existing_keys_are_unchanged_apart_from_the_documented_fields(self) -> None:
+        with_assembly = self._build("oracle", include_assembly=True)
+        without_assembly = self._build("oracle", include_assembly=False)
+
+        self.assertNotIn("assembly", without_assembly)
+        for key in ("nets", "terminals", "sheetInstances", "buses", "indexes"):
+            self.assertEqual(with_assembly[key], without_assembly[key], key)
+
+        differences: list[tuple[str, str]] = []
+        for before, after in zip(
+            without_assembly["components"], with_assembly["components"]
+        ):
+            self.assertEqual(before["componentUid"], after["componentUid"])
+            self.assertEqual(before["value"], after["value"])
+            self.assertEqual(before["footprint"], after["footprint"])
+            for field in set(before["fields"]) | set(after["fields"]):
+                if before["fields"].get(field) != after["fields"].get(field):
+                    differences.append((before["reference"], field))
+            for ref_before, ref_after in zip(
+                before["schematicRefs"], after["schematicRefs"]
+            ):
+                self.assertEqual(
+                    {k: v for k, v in ref_after.items() if k != "occurrenceId"},
+                    ref_before,
+                )
+        self.assertEqual(
+            sorted(set(differences)),
+            sorted(
+                {
+                    (reference, field)
+                    for reference, field in differences
+                    if field in ("DNP", "In BOM")
+                }
+            ),
+            "only DNP and In BOM may be corrected by the assembly join",
+        )
+
+    def test_empty_catalog_still_publishes_an_additive_assembly_block(self) -> None:
+        payload = self._build("no_variants")
+        assembly = payload["assembly"]
+        self.assertEqual(assembly["catalog"], [])
+        self.assertEqual(assembly["variants"], [])
+        self.assertEqual(
+            assembly["default"],
+            {"occurrences": {}, "components": {}, "footprints": {}},
+        )
+
+    def test_catalog_diagnostics_are_merged_into_the_block_first(self) -> None:
+        payload = self._build("case_fold")
+        codes = [
+            diagnostic["code"] for diagnostic in payload["assembly"]["diagnostics"]
+        ]
+        self.assertEqual(codes[0], "catalog-name-case-mismatch")
+        self.assertEqual(codes.count("catalog-name-case-mismatch"), 2)
+        self.assertIn("source-state-mismatch", codes)
+
+    def test_case_fold_publishes_source_state_mismatches(self) -> None:
+        payload = self._build("case_fold")
+        diagnostics = payload["assembly"]["diagnostics"]
+        mismatches = [
+            diagnostic
+            for diagnostic in diagnostics
+            if diagnostic["code"] == "source-state-mismatch"
+        ]
+        self.assertEqual(
+            [(d["variant"], d["reference"]) for d in mismatches],
+            [("Lite", "R2"), ("lite", "R1")],
+        )
+
+    def test_generator_identity_covers_the_variant_modules(self) -> None:
+        from app.services import (
+            project_source_snapshot,
+            semantic_index_variants,
+            variant_catalog_service,
+        )
+
+        for module in (
+            semantic_index_variants,
+            variant_catalog_service,
+            project_source_snapshot,
+        ):
+            self.assertIn(
+                Path(module.__file__),
+                semantic_index_service.GENERATOR_MODULE_PATHS,
+                module.__name__,
+            )
+        recomputed = hashlib.sha256(
+            b"\0".join(
+                (
+                    "|".join(semantic_index_service._GENERATOR_INPUTS).encode("utf-8"),
+                    *(
+                        path.read_bytes()
+                        for path in semantic_index_service.GENERATOR_MODULE_PATHS
+                    ),
+                )
+            )
+        ).hexdigest()[:12]
+        self.assertEqual(recomputed, semantic_index_service.GENERATOR_BUILD)
+        self.assertEqual(semantic_index_service.GENERATOR_VERSION, "0.2.0")
+        self.assertIn(
+            "0.2.0", semantic_index_service.generator_cache_tag()
+        )
 
 
 if __name__ == "__main__":

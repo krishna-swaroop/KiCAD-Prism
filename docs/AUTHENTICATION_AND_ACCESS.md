@@ -39,6 +39,35 @@ Register:
 `localhost` and `127.0.0.1` are different redirect origins. Register the exact
 origin used during local testing.
 
+## Password login
+
+Password login is opt-in and can run instead of OIDC, or alongside it. One email
+is one Prism user. Admins assign the role (and optionally a password) in
+Settings. Password login never creates an account and there is no public signup.
+
+```env
+AUTH_ENABLED=true
+PASSWORD_AUTH_ENABLED=true
+PASSWORD_MIN_LENGTH=12
+SESSION_REMEMBER_ME_DAYS=30
+SESSION_SECRET=<random-value>
+BOOTSTRAP_ADMIN_USERS_STR=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=<one-time-password>
+```
+
+`BOOTSTRAP_ADMIN_PASSWORD` seeds a must-change password for bootstrap admins
+that do not already have one. Clear it after first sign-in; Prism will not
+overwrite a real password on restart.
+
+There is no mailer. People who know their current password can change it in
+Settings → General (other sessions are revoked). A lost password is reset by an
+administrator in Settings → Access as a one-time password; the account must
+change it on next sign-in and all other sessions end. Login copy tells the user
+to ask an administrator.
+
+`ALLOWED_USERS_STR` and `ALLOWED_DOMAINS_STR` apply to password login and OIDC
+the same way.
+
 ## Sessions
 
 Prism stores session records in PostgreSQL and sends an opaque signed identifier
@@ -54,17 +83,15 @@ invalidates provider tokens signed with the old value.
 
 Each user currently has exactly one role:
 
-| Role | Project access | Project mutations | Catalog access |
-| --- | --- | --- | --- |
-| `viewer` | browse and review | none | none |
-| `designer` | browse and review | import, sync, comments, workflows, organization | read |
-| `component_designer` | browse and review | none | create and edit drafts |
-| `component_qa` | browse and review | none | QA and release actions |
-| `admin` | full | full | full |
+| Role | Project access | Project mutations | Catalog access | Project releases |
+| --- | --- | --- | --- | --- |
+| `viewer` | browse and review | none | none | inspect |
+| `designer` | browse and review | import, sync, comments, workflows, organization | create and edit drafts; Released after QA | start builds, Designer sign-off, publish after dual sign-off |
+| `qa` | browse and review | none | QA review actions | QA sign-off, publish after dual sign-off |
+| `admin` | full | full | full | either sign-off with a written override, publish |
 
-This is not yet a composable permission model. A person who must both import
-projects and author catalog components needs `admin` today. Account for that
-constraint when assigning responsibilities.
+This is not a composable permission model. `designer` covers both project work
+and catalog authoring. Independent QA still requires a separate `qa` account.
 
 Use `BOOTSTRAP_ADMIN_USERS_STR` only to establish initial administrators. After
 first login, manage ordinary assignments in Settings. `DEFAULT_VIEWER_DOMAINS_STR`
@@ -82,6 +109,9 @@ Guest mode removes the login wall and grants the selected role to every request.
 Use it only for a deliberately public read-only demonstration or a private local
 development instance. Never use guest `admin` on a shared network.
 
+A single-user evaluation that must start builds **and** complete dual sign-off
+should set `DEV_GUEST_ROLE=admin`. A guest `designer` cannot skip the QA slot.
+
 `DEV_MODE` does not disable authentication.
 
 ## KiCad Remote Symbol Provider OAuth
@@ -90,8 +120,10 @@ KiCad discovers Prism's authorization metadata and uses an authorization-code
 flow with PKCE. The resulting token is scoped to `remote_symbols.read` and cannot
 mutate projects, catalog state, or administration settings.
 
-Provider authentication depends on the same OIDC identity provider but uses a
-separate Prism authorization server and redirect URI. See
+Provider authentication uses the same Prism login as the browser. If a Prism
+session already exists, KiCad authorize-and-done continues. If not, the user is
+sent to the Prism login page (`/?next=…`) and returned to `/oauth/authorize`.
+The resulting token is still scoped to `remote_symbols.read`. See
 [Remote Symbol Provider](REMOTE_SYMBOL_PROVIDER.md).
 
 ## Service clients
@@ -109,6 +141,27 @@ Prism can also validate externally issued JWTs when issuer, audience, role
 claim, and scope claim settings are configured. Audience validation is
 mandatory.
 
+## Tracker user OAuth
+
+GitHub user account linking for tracker writes uses a separate OAuth flow from
+human SSO and from the KiCad provider. Administrators configure a GitHub App on
+each connector; users link accounts from **Connected accounts** after signing in.
+
+Register this callback on the GitHub App (derive from `PUBLIC_BASE_URL`):
+
+| Flow | Redirect URI |
+| --- | --- |
+| Tracker user linking | `https://prism.example.com/api/trackers/oauth/callback` |
+
+Prism binds OAuth state to the signed-in session and connector. Cross-user
+callbacks, replayed state, and arbitrary redirects are rejected. Unlinking removes
+usable user credentials without revoking the bot installation that backs promoted
+threads.
+
+Connector and user tokens are envelope-encrypted with `TRACKER_CREDENTIAL_ROOT_KEY`.
+That root key must be set before linking accounts and must match on `backend` and
+`prism-worker`. See [Tracker integration](TRACKER_INTEGRATION.md).
+
 ## Access review checklist
 
 At least quarterly:
@@ -116,7 +169,9 @@ At least quarterly:
 1. review bootstrap administrators and explicit role assignments;
 2. remove departed accounts and confirm their sessions are revoked;
 3. rotate unused service clients;
-4. review OIDC redirect URIs and allowed origins;
+4. review OIDC redirect URIs, password-auth settings, and allowed origins;
 5. confirm guest mode is disabled;
 6. verify the public backend port is not directly reachable;
-7. test a viewer account and each catalog role.
+7. test a viewer account and each catalog role;
+8. confirm tracker root key rotation grace keys are cleared after migration;
+9. review GitHub App webhook and OAuth callback URLs against `PUBLIC_BASE_URL`.

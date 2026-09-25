@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, Box, CheckCircle2, CircuitBoard, FileCode2, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,23 +24,32 @@ interface LibraryFolderDiscoveryDialogProps {
 export function LibraryFolderDiscoveryDialog({ discovery, open, submitting, onOpenChange, onApprove, onAttachFootprint, onAttachModel }: LibraryFolderDiscoveryDialogProps) {
   const importableIds = useMemo(() => new Set(
     (discovery?.components || [])
-      .filter((component) => component.footprint.status === "resolved" && !component.existing_component)
-      .map((component) => component.id)
+      .flatMap((component) => (
+        component.footprint.status === "resolved" && !component.existing_component
+          ? [component.id]
+          : []
+      ))
   ), [discovery]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Everything importable is selected unless the reviewer said otherwise, so
+  // the state to keep is the opt-outs. Re-running discovery -- which is what
+  // attaching a footprint does -- then keeps their choices *and* picks up the
+  // component that just became importable. Resetting the whole set on every
+  // discovery, as the effect here used to, lost the first and never did the
+  // second.
+  const [deselected, setDeselected] = useState<Set<string>>(new Set());
+  const selected = useMemo(() => {
+    const chosen = new Set<string>();
+    for (const id of importableIds) if (!deselected.has(id)) chosen.add(id);
+    return chosen;
+  }, [deselected, importableIds]);
   const [footprintChoices, setFootprintChoices] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [attachingId, setAttachingId] = useState("");
 
-  useEffect(() => {
-    setSelected(new Set(importableIds));
-    setFootprintChoices({});
-  }, [importableIds]);
-
-  const toggle = (id: string, checked: boolean) => setSelected((current) => {
+  const toggle = (id: string, checked: boolean) => setDeselected((current) => {
     const next = new Set(current);
-    if (checked) next.add(id); else next.delete(id);
+    if (checked) next.delete(id); else next.add(id);
     return next;
   });
   const needsAttention = discovery?.components.filter((component) => component.footprint.status !== "resolved").length || 0;
@@ -200,7 +209,12 @@ export function LibraryFolderDiscoveryDialog({ discovery, open, submitting, onOp
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</Button>
-          <Button onClick={() => onApprove([...selected], footprintChoices)} disabled={submitting || selected.size === 0}>
+          <Button onClick={() => onApprove(
+            [...selected],
+            Object.fromEntries(
+              Object.entries(footprintChoices).filter(([id]) => selected.has(id)),
+            ),
+          )} disabled={submitting || selected.size === 0}>
             {submitting ? "Capturing referenced assets…" : `Approve ${selected.size} component${selected.size === 1 ? "" : "s"}`}
           </Button>
         </DialogFooter>

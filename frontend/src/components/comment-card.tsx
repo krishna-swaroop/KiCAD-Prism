@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
     CheckCircle,
     Circle,
@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { CommentSeverityBadge } from "@/components/comment-severity-badge";
+import { TrackerIssueAction } from "@/features/tracker-integration/tracker-issue-action";
+import { formatCommentTimestamp } from "@/components/comment-date";
 import { cn } from "@/lib/utils";
 import { commentClassLabel, type Comment } from "@/types/comments";
 
@@ -21,6 +23,8 @@ interface CommentCardProps {
     onResolve: (commentId: string, resolved: boolean) => void;
     onReply: (commentId: string, content: string) => Promise<void>;
     onDelete: (commentId: string) => Promise<void>;
+    onPromote?: (commentId: string) => Promise<void>;
+    onRetrySync?: (commentId: string) => Promise<void>;
 }
 
 /**
@@ -34,12 +38,22 @@ export function CommentCard({
     onResolve,
     onReply,
     onDelete,
+    onPromote,
+    onRetrySync,
 }: CommentCardProps) {
     const [replyOpen, setReplyOpen] = useState(false);
     const [replyContent, setReplyContent] = useState("");
     const [busy, setBusy] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const replyRef = useRef<HTMLTextAreaElement>(null);
     const isResolved = comment.status === "RESOLVED";
+
+    // Opening the reply box is a deliberate request to type in it, so focus
+    // follows the reveal. The card is a non-modal dialog and never takes focus
+    // on its own.
+    useEffect(() => {
+        if (replyOpen) replyRef.current?.focus();
+    }, [replyOpen]);
 
     const style: CSSProperties = screenPosition
         ? {
@@ -65,20 +79,20 @@ export function CommentCard({
     };
 
     return (
-        <div
+        <dialog
+            open
             className={cn(
-                "fixed z-[110] w-72 rounded-md border bg-background shadow-lg",
+                "fixed z-[110] m-0 w-72 rounded-md border bg-background p-0 text-foreground shadow-lg",
                 isResolved && "opacity-80",
             )}
             style={style}
-            role="dialog"
             aria-label="Comment details"
         >
             <div className="flex items-start justify-between gap-2 border-b px-3 py-2">
                 <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{comment.author}</div>
                     <div className="text-[10px] text-muted-foreground">
-                        {new Date(comment.timestamp).toLocaleString()}
+                        {formatCommentTimestamp(comment.timestamp)}
                         {comment.elementRef ? ` · ${comment.elementRef}` : ""}
                     </div>
                 </div>
@@ -102,6 +116,12 @@ export function CommentCard({
 
             <p className="whitespace-pre-wrap px-3 py-2 text-sm">{comment.content}</p>
 
+            {(comment.tracker?.linkState || comment.permissions?.canPublish) && (
+                <div className="px-3 pb-2">
+                    <TrackerIssueAction comment={comment} onPromote={onPromote} onRetry={onRetrySync} />
+                </div>
+            )}
+
             {comment.mentions && comment.mentions.length > 0 && (
                 <div className="flex flex-wrap gap-1 px-3 pb-2">
                     {comment.mentions.map((email) => (
@@ -114,8 +134,8 @@ export function CommentCard({
 
             {comment.replies.length > 0 && (
                 <div className="space-y-2 border-t bg-muted/30 px-3 py-2">
-                    {comment.replies.slice(-3).map((reply, index) => (
-                        <div key={`${reply.timestamp}-${index}`} className="text-xs">
+                    {comment.replies.slice(-3).map((reply) => (
+                        <div key={`${reply.timestamp}-${reply.author}-${reply.content}`} className="text-xs">
                             <span className="font-medium">{reply.author}</span>
                             <span className="text-muted-foreground"> · {reply.content}</span>
                         </div>
@@ -125,8 +145,12 @@ export function CommentCard({
 
             {replyOpen && canModify && (
                 <div className="border-t px-3 py-2">
+                    <label htmlFor={`comment-card-reply-${comment.id}`} className="mb-1 block text-xs font-medium">
+                        Reply
+                    </label>
                     <textarea
-                        autoFocus
+                        ref={replyRef}
+                        id={`comment-card-reply-${comment.id}`}
                         value={replyContent}
                         onChange={(e) => setReplyContent(e.target.value)}
                         placeholder="Write a reply…"
@@ -206,6 +230,6 @@ export function CommentCard({
                     void onDelete(comment.id);
                 }}
             />
-        </div>
+        </dialog>
     );
 }

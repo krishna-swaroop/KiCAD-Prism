@@ -1,0 +1,5 @@
+{
+  "_": "Ceiling for scripts/react-doctor-gate.mjs. Lower it whenever findings are cleared; raising it needs a reason in the PR.",
+  "errors": 0,
+  "warnings": 0
+}

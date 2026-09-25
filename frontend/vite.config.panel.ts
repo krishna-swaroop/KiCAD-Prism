@@ -18,8 +18,14 @@ export default defineConfig({
       input: path.resolve(__dirname, "panel.html"),
       output: {
         entryFileNames: "panel.js",
-        assetFileNames: "panel[extname]",
-        chunkFileNames: "panel-[name].js",
+        // The panel entry bundle keeps fixed names (versioned server-side via
+        // ?v=<digest>); every other asset gets a content hash so font/image
+        // URLs inside panel.css are immutable and cache-safe forever.
+        assetFileNames: (info) => {
+          const name = info.names?.[0] ?? info.name ?? ""
+          return name.endsWith(".css") ? "panel.css" : "[name]-[hash][extname]"
+        },
+        chunkFileNames: "panel-[name]-[hash].js",
       },
     },
   },

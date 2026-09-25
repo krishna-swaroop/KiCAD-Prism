@@ -55,9 +55,25 @@ export interface KiCanvasSelectDetail {
     semantic?: EcadSemanticSelectionDetail;
 }
 
+/** Modifier keys held during the click, as observed by the viewer. */
+export interface EcadSelectionModifiers {
+    shift: boolean;
+    ctrl: boolean;
+    meta: boolean;
+    alt: boolean;
+}
+
+/**
+ * What the gesture means for the highlighted-net set: a shift-click on a
+ * net-bearing item is `toggle`; everything else is `replace`.
+ */
+export type EcadSelectionOperation = "replace" | "toggle";
+
 export interface EcadSemanticSelectionDetail {
     sourceContext: "SCH" | "PCB";
     itemType: string;
+    operation?: EcadSelectionOperation;
+    modifiers?: EcadSelectionModifiers;
     uuid?: string;
     crossIndex?: string;
     reference?: string;
@@ -93,11 +109,62 @@ export interface EcadPcbLayerState {
     highlighted: boolean;
 }
 
+/**
+ * Object kinds the viewer can show or hide on the board. The first four are
+ * footprint text layers; the label kinds drive the zoom-gated pad-number and
+ * net-name overlays (KiCad's "Show pad numbers" / "Show net names").
+ */
+export type EcadPcbObjectVisibilityKind =
+    | "references"
+    | "values"
+    | "footprintText"
+    | "hiddenText"
+    | "padNumbers"
+    | "padNetNames"
+    | "trackNetNames";
+
 export interface EcadPcbViewState {
     layers: EcadPcbLayerState[];
     objectOpacity: Record<"tracks" | "vias" | "pads" | "zones", number>;
-    objectVisibility: Record<"references" | "values" | "footprintText" | "hiddenText", boolean>;
+    objectVisibility: Record<EcadPcbObjectVisibilityKind, boolean>;
     highlightTracks: boolean;
+}
+
+/**
+ * Routing summary for one board net, as `getNetStatistics` reports it.
+ * `routedLength` is millimetres along track centrelines (straight and arc
+ * tracks; pads and via barrels excluded); `layers` is every copper layer a
+ * track of the net sits on, in board stack order.
+ */
+export interface EcadNetStatistics {
+    net: string;
+    netCode: number;
+    routedLength: number;
+    layers: string[];
+    trackCount: number;
+    viaCount: number;
+}
+
+/** A board net as the viewer's highlight API refers to it. */
+export interface EcadNetRef {
+    /** Board net name. */
+    name: string;
+    /** Board-local code, valid only for the loaded board; a hint. */
+    netCode?: number;
+    /** Copper item uuids of the net, for names the board does not carry. */
+    uuids?: readonly string[];
+}
+
+export interface EcadHighlightChangeDetail {
+    /** The resulting set, in insertion order. */
+    nets: EcadNetRef[];
+    /** Why the viewer changed the set itself. */
+    source: "gesture" | "crossprobe" | "clear";
+}
+
+export interface EcadNetStatisticsRef {
+    name?: string;
+    netCode?: number;
 }
 
 export interface EcadViewportInsets {
@@ -111,7 +178,13 @@ export type EcadCommentContext = "SCH" | "PCB";
 
 export type EcadCommentAnchor =
     | { kind: "world"; x: number; y: number; page?: string }
-    | { kind: "source-item"; uuid: string; page?: string };
+    | { kind: "source-item"; uuid: string; page?: string; relativePoint?: [number, number] };
+
+export interface EcadCommentAnchorResolution {
+    id: string;
+    state: "resolved" | "missing" | "not-loaded";
+    location?: { x: number; y: number; page?: string; bounds?: [number, number, number, number] };
+}
 
 export interface EcadCommentOverlaySet {
     context: EcadCommentContext;
@@ -315,14 +388,39 @@ export interface EcadTransitionTraceDetail {
 
 export interface ECadViewerElement extends HTMLElement {
     readonly isReady: boolean;
+    /** Design-variant API (packet 3.4); required by the vendored bundle. */
+    setVariant(name: string | null): boolean;
+    getVariant(): string | null;
+    getVariants(): Array<{ name: string; description: string | null }>;
     replaceSources(update: { revisionKey: string; sources: Array<{ filename: string; content: string }> }): Promise<void>;
     appendSources(update: { revisionKey: string; sources: Array<{ filename: string; content: string }> }): Promise<void>;
     setActive(active: boolean): void;
     setViewportInsets(insets: EcadViewportInsets | null): void;
     resize?(): void;
-    clearSelection(): void;
+    /**
+     * Drop the inspected object; the highlighted nets too unless
+     * `keepHighlights` is set.
+     */
+    clearSelection(options?: { keepHighlights?: boolean }): void;
+    /**
+     * Replace the board's highlighted nets. Resolved by name, then code, then
+     * copper uuids; unresolved refs are reported. Never moves the camera
+     * unless `focus` is set, and emits no highlight-change for it.
+     */
+    setHighlightedNets?(
+        nets: readonly EcadNetRef[],
+        options?: { focus?: boolean },
+    ): { applied: EcadNetRef[]; unresolved: EcadNetRef[] };
+    getHighlightedNets?(): EcadNetRef[];
+    /** Fit the board camera to the highlighted copper. False when empty. */
+    focusHighlightedNets?(): boolean;
+    /**
+     * Routing summary for a board net, resolved by name first and net code
+     * second. Null until the board has loaded or when the net is not on it.
+     */
+    getNetStatistics?(ref: EcadNetStatisticsRef): EcadNetStatistics | null;
     setCommentMode?(enabled: boolean): void;
-    setCommentOverlays(request: EcadCommentOverlaySet): void;
+    setCommentOverlays(request: EcadCommentOverlaySet): EcadCommentAnchorResolution[];
     clearCommentOverlays(context?: EcadCommentContext): void;
     loadDocumentComparison(
         request: EcadDocumentComparisonRequest,
@@ -380,7 +478,7 @@ export interface ECadViewerElement extends HTMLElement {
     setPcbLayerHighlight?(name: string | null): boolean;
     applyPcbLayerPreset?(preset: "front" | "back" | "copper" | "outer-copper" | "inner-copper" | "drawings" | "all" | "none"): void;
     setPcbObjectOpacity?(kind: "tracks" | "vias" | "pads" | "zones", opacity: number): void;
-    setPcbObjectVisibility?(kind: "references" | "values" | "footprintText" | "hiddenText", visible: boolean): void;
+    setPcbObjectVisibility?(kind: EcadPcbObjectVisibilityKind, visible: boolean): void;
     setPcbTrackHighlight?(enabled: boolean): void;
     getScreenLocation(x: number, y: number): { x: number; y: number } | null;
     requestCrossProbe(request: CrossProbeRequest): Promise<
@@ -405,6 +503,7 @@ declare global {
         "ecad-viewer:crossprobe:result": CustomEvent<CrossProbeResult>;
         "ecad-viewer:selection": CustomEvent<EcadSemanticSelectionDetail>;
         "ecad-viewer:crossprobe": CustomEvent<EcadSemanticSelectionDetail>;
+        "ecad-viewer:highlight-change": CustomEvent<EcadHighlightChangeDetail>;
         "ecad-viewer:view-state-change": CustomEvent<void>;
         "ecad-viewer:comment-overlay-click": CustomEvent<EcadCommentOverlayHitDetail>;
         "ecad-viewer:document-comparison-ready": CustomEvent<EcadDocumentComparisonPreparation>;

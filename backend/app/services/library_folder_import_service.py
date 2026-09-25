@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.services.catalog.asset_files import CatalogAssetFiles
 from app.services.component_catalog_service import catalog_service
 from app.services.local_artifact_store import artifact_store
 from app.services.kicad_library_discovery import discover_library, footprint_name_from_text
@@ -207,7 +208,7 @@ def build_folder_proposals(
         if source["suffix"] != ".kicad_sym":
             continue
         text = Path(str(source["object_path"])).read_text(encoding="utf-8", errors="replace")
-        blocks = catalog_service._extract_top_level_symbol_blocks(text)  # type: ignore[attr-defined]
+        blocks = CatalogAssetFiles.extract_top_level_symbol_blocks(text)
         block_names = {name for name, _ in blocks}
         for symbol_name, symbol_block in blocks:
             unit_base = re.sub(r"_\d+_\d+$", "", symbol_name)
@@ -220,7 +221,7 @@ def build_folder_proposals(
                 continue
             discovered_component = discovery_by_id.get(discovery_id, {})
             try:
-                symbol_payload = catalog_service._single_symbol_payload(text, symbol_name)  # type: ignore[attr-defined]
+                symbol_payload = CatalogAssetFiles.single_symbol_payload(text, symbol_name)
             except ValueError:
                 continue
             symbol_artifact = _store_generated(symbol_payload)

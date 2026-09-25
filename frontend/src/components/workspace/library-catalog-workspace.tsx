@@ -125,12 +125,14 @@ const VALIDATION_LABELS: Record<CatalogValidationStatus, string> = {
   not_run: "Not run",
 };
 
+// Constructing an Intl formatter is the expensive part; the runtime locale
+// cannot change mid-session, so build it once.
+const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+
 const formatDate = (value?: string) => {
   if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+  return Number.isNaN(date.getTime()) ? value : DATE_FORMAT.format(date);
 };
 
 function SortControl({
@@ -276,6 +278,7 @@ function CreateComponentDialog({
   );
 }
 
+// react-doctor-disable-next-line no-giant-component - query params, grid, and facet state are one page
 export function LibraryCatalogWorkspace({
   user,
   onOpenComponent,
@@ -450,14 +453,13 @@ export function LibraryCatalogWorkspace({
         <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
           <div>
             <div className="flex items-center gap-2"><Database className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Component Catalog</h2></div>
-            <p className="mt-1 text-xs text-muted-foreground">Server-indexed component identity, lifecycle, CAD readiness, and revision evidence.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" aria-label="Refresh component catalog" disabled={loading} onClick={() => setRefreshKey((value) => value + 1)}><RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh</Button>
             {/* Shown disabled rather than hidden: a reader who cannot find the
                 button assumes the feature is missing, where a disabled one that
                 explains itself tells them exactly what to ask for. */}
-            <PermissionHint blocked={!canCreate} action="create catalog components" allowedRoles={["component_designer", "admin"]}>
+            <PermissionHint blocked={!canCreate} action="create catalog components" allowedRoles={["designer", "admin"]}>
               <Button size="sm" disabled={!canCreate} onClick={() => setCreateOpen(true)}><Plus className="h-3.5 w-3.5" /> New component</Button>
             </PermissionHint>
           </div>
@@ -471,7 +473,7 @@ export function LibraryCatalogWorkspace({
           <Select value={workflow} onValueChange={(value) => updateCatalogParams({ catalogWorkflow: value === "all" ? null : value, catalogPage: null })}><SelectTrigger size="sm" aria-label="Filter by workflow"><SelectValue placeholder="Workflow" /></SelectTrigger><SelectContent><SelectItem value="all">All workflow stages</SelectItem>{Object.entries(WORKFLOW_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
           <Select value={availability} onValueChange={(value) => updateCatalogParams({ catalogAvailability: value === "all" ? null : value, catalogPage: null })}><SelectTrigger size="sm" aria-label="Filter by CAD availability"><SelectValue placeholder="CAD availability" /></SelectTrigger><SelectContent><SelectItem value="all">All CAD states</SelectItem>{Object.entries(AVAILABILITY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
           <Select value={validation} onValueChange={(value) => updateCatalogParams({ catalogValidation: value === "all" ? null : value, catalogPage: null })}><SelectTrigger size="sm" aria-label="Filter by validation"><SelectValue placeholder="Validation" /></SelectTrigger><SelectContent><SelectItem value="all">All validation states</SelectItem>{Object.entries(VALIDATION_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
-          <Select value={category} onValueChange={(value) => updateCatalogParams({ catalogCategory: value === "all" ? null : value, catalogPage: null })}><SelectTrigger size="sm" aria-label="Filter by category" className="max-w-48"><SelectValue placeholder="Category" /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem><SelectItem value="uncategorized">Uncategorized</SelectItem>{categories.filter((item) => item.name).map((item) => <SelectItem key={item.name} value={item.name}>{item.name} ({item.count})</SelectItem>)}</SelectContent></Select>
+          <Select value={category} onValueChange={(value) => updateCatalogParams({ catalogCategory: value === "all" ? null : value, catalogPage: null })}><SelectTrigger size="sm" aria-label="Filter by category" className="max-w-48"><SelectValue placeholder="Category" /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem><SelectItem value="uncategorized">Uncategorized</SelectItem>{categories.flatMap((item) => (item.name ? [<SelectItem key={item.name} value={item.name}>{item.name} ({item.count})</SelectItem>] : []))}</SelectContent></Select>
           {isFiltered ? <Button size="sm" variant="ghost" className="h-7" onClick={clearFilters}><FilterX className="h-3.5 w-3.5" /> Clear {activeFilterCount ? `(${activeFilterCount})` : ""}</Button> : null}
         </div>
       </header>

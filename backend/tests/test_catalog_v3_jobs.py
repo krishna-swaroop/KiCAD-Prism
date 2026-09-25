@@ -8,7 +8,14 @@ from unittest import mock
 
 from app.services import catalog_worker_tasks
 from app.services.catalog_job_service import CatalogJobService
-from app.services.job_runtime import PreparedArtifact, RetryableJobError
+from app.services.catalog.conflicts import ASSET_REFERENCED_CODE, CatalogConflict
+from app.services.job_runtime import (
+    JobCancelled,
+    LostJobLease,
+    PermanentJobError,
+    PreparedArtifact,
+    RetryableJobError,
+)
 
 
 class CatalogV3JobTests(unittest.TestCase):
@@ -141,8 +148,119 @@ class CatalogV3JobTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 RetryableJobError,
                 "transient compiler failure",
-            ):
+            ) as raised:
                 catalog_worker_tasks.run_catalog_job_v3(context)
+        self.assertEqual(raised.exception.code, "catalog_job_failed")
+
+    def test_catalog_conflicts_fail_permanently_with_their_code(self) -> None:
+        context = SimpleNamespace(
+            job_id="job-1",
+            job={"kind": "test_catalog_conflict"},
+            payload={
+                "catalog_payload": {},
+                "catalog_checkpoint": {},
+                "catalog_result": {},
+                "created_by": "",
+                "catalog_artifact_key": "",
+            },
+            check_cancelled=mock.Mock(),
+            progress=mock.Mock(),
+        )
+
+        def fail(_job: dict, _progress: object) -> dict:
+            raise CatalogConflict("still attached", code=ASSET_REFERENCED_CODE)
+
+        with (
+            mock.patch.dict(
+                catalog_worker_tasks.HANDLERS,
+                {"test_catalog_conflict": fail},
+            ),
+            mock.patch.object(catalog_worker_tasks.catalog_service, "initialize"),
+            mock.patch.object(catalog_worker_tasks.artifact_store, "initialize"),
+        ):
+            with self.assertRaisesRegex(PermanentJobError, "still attached") as raised:
+                catalog_worker_tasks.run_catalog_job_v3(context)
+        self.assertEqual(raised.exception.code, ASSET_REFERENCED_CODE)
+
+    def test_metadata_input_errors_fail_permanently_without_retry(self) -> None:
+        context = SimpleNamespace(
+            job_id="job-1",
+            job={"kind": "catalog_metadata_batch"},
+            payload={
+                "catalog_payload": {"batch_id": "batch-1", "item_ids": ["item-1"]},
+                "catalog_checkpoint": {},
+                "catalog_result": {},
+                "created_by": "",
+                "catalog_artifact_key": "",
+            },
+            check_cancelled=mock.Mock(),
+            progress=mock.Mock(),
+        )
+        apply = mock.Mock(side_effect=ValueError("Metadata batch item is not valid"))
+        with (
+            mock.patch.object(catalog_worker_tasks.catalog_service, "initialize"),
+            mock.patch.object(catalog_worker_tasks.artifact_store, "initialize"),
+            mock.patch.object(
+                catalog_worker_tasks.catalog_service,
+                "apply_metadata_batch",
+                apply,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                PermanentJobError,
+                "Metadata batch item is not valid",
+            ) as raised:
+                catalog_worker_tasks.run_catalog_job_v3(context)
+        self.assertEqual(raised.exception.code, "catalog_invalid_input")
+        apply.assert_called_once()
+
+    def test_cancellation_and_lost_leases_are_not_reclassified(self) -> None:
+        context = SimpleNamespace(
+            job_id="job-1",
+            job={"kind": "test_catalog_control"},
+            payload={
+                "catalog_payload": {},
+                "catalog_checkpoint": {},
+                "catalog_result": {},
+                "created_by": "",
+                "catalog_artifact_key": "",
+            },
+            check_cancelled=mock.Mock(),
+            progress=mock.Mock(),
+        )
+        for error in (JobCancelled("stop"), LostJobLease("gone")):
+            with self.subTest(error=type(error).__name__):
+                def fail(_job: dict, _progress: object, captured=error) -> dict:
+                    raise captured
+
+                with (
+                    mock.patch.dict(
+                        catalog_worker_tasks.HANDLERS,
+                        {"test_catalog_control": fail},
+                    ),
+                    mock.patch.object(catalog_worker_tasks.catalog_service, "initialize"),
+                    mock.patch.object(catalog_worker_tasks.artifact_store, "initialize"),
+                ):
+                    with self.assertRaises(type(error)):
+                        catalog_worker_tasks.run_catalog_job_v3(context)
+
+    def test_unsupported_catalog_job_fails_permanently(self) -> None:
+        context = SimpleNamespace(
+            job_id="job-1",
+            job={"kind": "not-a-catalog-job"},
+            payload={
+                "catalog_payload": {},
+                "catalog_checkpoint": {},
+                "catalog_result": {},
+                "created_by": "",
+                "catalog_artifact_key": "",
+            },
+            check_cancelled=mock.Mock(),
+            progress=mock.Mock(),
+        )
+        with self.assertRaisesRegex(PermanentJobError, "Unsupported catalog job type") as raised:
+            catalog_worker_tasks.run_catalog_job_v3(context)
+        self.assertEqual(raised.exception.code, "unsupported_catalog_job")
 
 
 if __name__ == "__main__":

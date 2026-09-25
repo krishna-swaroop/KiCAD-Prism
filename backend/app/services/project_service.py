@@ -1,7 +1,6 @@
 import os
 import hashlib
 import json
-import shlex
 import time
 import shutil
 import datetime
@@ -12,7 +11,8 @@ from urllib.parse import quote
 from git import Repo
 from pydantic import BaseModel
 
-from app.services import path_config_service, semantic_index_service
+from app.release_studio.jobset import WORKFLOW_OUTPUT_IDS as _WORKFLOW_OUTPUT_IDS
+from app.services import kicad_jobset_service, path_config_service, semantic_index_service
 from app.services.workspace_service import workspace
 from app.services.job_artifact_service import job_artifacts
 from app.services.job_runtime import JobContext, JobResult
@@ -33,6 +33,11 @@ class Project(BaseModel):
     # this to know which thumbnail actions to offer.
     thumbnail_source: Optional[str] = None
     sub_path: Optional[str] = None  # Relative path within parent repo
+    # This project's own file inside its directory (its .kicad_pro, or the board
+    # KiCad would regenerate one from). A directory can hold several KiCad
+    # projects, and this is what tells them apart. Empty for projects registered
+    # before Prism recorded it, which are the only project in their directory.
+    project_file: Optional[str] = None
     parent_repo: Optional[str] = None  # Parent monorepo name
     repo_url: Optional[str] = None  # Original Git URL
     import_type: Optional[str] = None  # "type1" or "type2_subproject"
@@ -97,16 +102,52 @@ def _save_project_registry(registry: Dict[str, dict]) -> None:
         print(f"Warning: Failed to save project registry: {e}")
 
 
-def invalidate_project_caches() -> None:
-    from app.services import project_properties_service
+# The project file that identifies one project inside a shared directory.
+# Accepts either a `Project` or a raw workspace row, because callers hold one or
+# the other depending on how deep in the stack they are.
+project_anchor = path_config_service.anchor_for_project
 
+
+def _project_path_of(project: Any) -> str:
+    if isinstance(project, dict):
+        return str(project.get("path") or "")
+    return str(getattr(project, "path", "") or "")
+
+
+def path_config_for(project: Any, use_cache: bool = True) -> path_config_service.PathConfig:
+    """Load a project's path configuration, honouring its anchor."""
+    return path_config_service.get_path_config(
+        _project_path_of(project), use_cache, anchor=project_anchor(project)
+    )
+
+
+def resolved_paths_for(
+    project: Any,
+    config: Optional[path_config_service.PathConfig] = None,
+) -> path_config_service.ResolvedPaths:
+    """Resolve a project's paths, honouring its anchor."""
+    return path_config_service.resolve_paths(
+        _project_path_of(project), config, anchor=project_anchor(project)
+    )
+
+
+def save_path_config_for(project: Any, config: path_config_service.PathConfig) -> None:
+    """Persist a project's path configuration under its own anchor."""
+    path_config_service.save_path_config(
+        _project_path_of(project), config, anchor=project_anchor(project)
+    )
+
+
+def invalidate_project_caches() -> None:
+    # Project metadata used to be memoised in-process here as well. It now
+    # lives in ws_project_metadata, keyed by a fingerprint of the files it was
+    # computed from, so it invalidates itself and has nothing to clear.
     global _project_records_cache, _project_records_cache_time
     global _projects_cache, _projects_cache_time
     _project_records_cache = []
     _project_records_cache_time = 0
     _projects_cache = []
     _projects_cache_time = 0
-    project_properties_service.invalidate_project_properties_cache()
 
 def register_project(project_id: str, name: str, path: str, repo_url: str,
                      sub_path: Optional[str] = None, parent_repo: Optional[str] = None,
@@ -383,6 +424,12 @@ def _workspace_row_to_project(row: dict) -> Project:
         thumbnail_url=thumbnail_url_for_row(row),
         thumbnail_source=row.get("thumbnail_source") or "generated",
         sub_path=row.get("relative_path") if row.get("relative_path") != "." else None,
+        # Background jobs resolve their project through here, not through the
+        # API's converter. Dropping the anchor sent every WebGPU render,
+        # semantic index and KiCad workflow back to "the first .kicad_pro that
+        # sorts", so a directory holding two projects built the wrong one while
+        # the workspace, reading the other converter, showed the right one.
+        project_file=row.get("project_file_rel") or None,
         parent_repo=row.get("parent_repo"),
         repo_url=row.get("repo_url"),
         import_type=row.get("import_type"),
@@ -425,11 +472,9 @@ def get_job_status(job_id: str):
 
 # Workflow Jobs
 def _find_cli_path():
-    # Check standard Mac path first
-    mac_path = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
-    if os.path.exists(mac_path):
-        return mac_path
-    return "kicad-cli" # Fallback to PATH
+    """Keep the legacy lookup seam while delegating to the jobset service."""
+
+    return kicad_jobset_service.find_kicad_cli_path()
 
 def start_workflow_job(
     project_id: str,
@@ -444,6 +489,7 @@ def start_workflow_job(
     if not row:
         raise ValueError("Project not found")
     repository_id = str(row.get("repo_id") or "")
+    project_file_rel = str(row.get("project_file_rel") or "")
 
     if workflow_type == "webgpu_3d":
         source_selector = commit or f"workspace:{row.get('last_modified') or ''}"
@@ -451,6 +497,7 @@ def start_workflow_job(
             json.dumps(
                 {
                     "project": project_id,
+                    "projectFileRel": project_file_rel,
                     "source": source_selector,
                     "force": bool(force),
                     "generator": semantic_index_service.generator_cache_tag(),
@@ -466,6 +513,7 @@ def start_workflow_job(
                 "commit": commit,
                 "force": bool(force),
                 "artifact_key": artifact_key,
+                "project_file_rel": project_file_rel,
             },
             worker_pool="prism",
             artifact_key="" if force else artifact_key,
@@ -489,6 +537,7 @@ def start_workflow_job(
         json.dumps(
             {
                 "project": project_id,
+                "projectFileRel": project_file_rel,
                 "workflow": workflow_type,
             },
             sort_keys=True,
@@ -501,6 +550,7 @@ def start_workflow_job(
             "project_id": project_id,
             "workflow_type": workflow_type,
             "author": author,
+            "project_file_rel": project_file_rel,
         },
         worker_pool="prism",
         artifact_key=active_key,
@@ -532,11 +582,13 @@ def start_semantic_index_job(
     if not row:
         raise ValueError("Project not found")
     repository_id = str(row.get("repo_id") or "")
+    project_file_rel = str(row.get("project_file_rel") or "")
     source_selector = commit or f"workspace:{row.get('last_modified') or ''}"
     artifact_key = hashlib.sha256(
         json.dumps(
             {
                 "project": project_id,
+                "projectFileRel": project_file_rel,
                 "source": source_selector,
                 "generator": semantic_index_service.generator_cache_tag(),
             },
@@ -551,6 +603,7 @@ def start_semantic_index_job(
             "commit": commit,
             "force": bool(force),
             "artifact_key": artifact_key,
+            "project_file_rel": project_file_rel,
         },
         worker_pool="prism",
         artifact_key="" if force else artifact_key,
@@ -578,12 +631,20 @@ def run_webgpu_3d_job_v3(context: JobContext) -> JobResult:
     row = workspace.get_project_by_id(project_id)
     if not row:
         raise ValueError("Project not found")
+    expected_anchor = str(payload.get("project_file_rel") or "")
+    current_anchor = str(row.get("project_file_rel") or "")
+    if current_anchor != expected_anchor:
+        raise RuntimeError(
+            "Project anchor changed after WebGPU generation was queued; retry the job"
+        )
     project = _workspace_row_to_project(row)
     commit = payload.get("commit")
     force = bool(payload.get("force"))
     artifact_key = str(payload["artifact_key"])
-    status_selector = (
-        f"commit:{commit}" if commit else f"workspace:{row.get('last_modified') or ''}"
+    status_selector = semantic_visualizer_service.status_selector_for_project(
+        project,
+        commit=str(commit) if commit else None,
+        last_modified=row.get("last_modified") or "",
     )
     state: dict[str, Any] = {
         "job_id": context.job_id,
@@ -680,10 +741,10 @@ def run_webgpu_3d_job_v3(context: JobContext) -> JobResult:
         generator_version=build_fingerprint,
         readiness="ready",
     )
-    status_selector = (
-        f"commit:{status.get('commit') or commit}"
-        if commit
-        else f"workspace:{row.get('last_modified') or ''}"
+    status_selector = semantic_visualizer_service.status_selector_for_project(
+        project,
+        commit=str(status.get("commit") or commit) if commit else None,
+        last_modified=row.get("last_modified") or "",
     )
     return JobResult(
         message="WebGPU 3D assets are ready",
@@ -703,6 +764,12 @@ def run_semantic_index_job_v3(context: JobContext) -> JobResult:
     row = workspace.get_project_by_id(project_id)
     if not row:
         raise ValueError("Project not found")
+    expected_anchor = str(payload.get("project_file_rel") or "")
+    current_anchor = str(row.get("project_file_rel") or "")
+    if current_anchor != expected_anchor:
+        raise RuntimeError(
+            "Project anchor changed after semantic indexing was queued; retry the job"
+        )
     project = _workspace_row_to_project(row)
     commit = payload.get("commit")
     context.progress(
@@ -736,25 +803,24 @@ def run_semantic_index_job_v3(context: JobContext) -> JobResult:
     )
 
 
-_WORKFLOW_OUTPUT_IDS = {
-    "design": "28dab1d3-7bf2-4d8a-9723-bcdd14e1d814",
-    "manufacturing": "9e5c254b-cb26-4a49-beea-fa7af8a62903",
-    "render": "81c80ad4-e8b9-4c9a-8bed-df7864fdefc6",
-}
-
-
 def run_kicad_workflow_job_v3(context: JobContext) -> JobResult:
     payload = context.payload
     project_id = str(payload["project_id"])
     workflow_type = str(payload["workflow_type"])
     author = str(payload.get("author") or "anonymous")
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        raise ValueError("Project not found")
+    expected_anchor = str(payload.get("project_file_rel") or "")
+    current_anchor = str(row.get("project_file_rel") or "")
+    if current_anchor != expected_anchor:
+        raise RuntimeError(
+            "Project anchor changed after the KiCad workflow was queued; retry the job"
+        )
     output_id = _WORKFLOW_OUTPUT_IDS.get(workflow_type)
     if output_id is None:
         raise ValueError(f"Unknown workflow type: {workflow_type}")
 
-    row = workspace.get_project_by_id(project_id)
-    if not row:
-        raise ValueError("Project not found")
     project = _workspace_row_to_project(row)
     context.progress(
         stage="resolve-inputs",
@@ -764,112 +830,47 @@ def run_kicad_workflow_job_v3(context: JobContext) -> JobResult:
     )
     context.check_cancelled()
 
-    pro_file = next(
-        (name for name in sorted(os.listdir(project.path)) if name.endswith(".kicad_pro")),
-        None,
-    )
+    # This project's own .kicad_pro, not whichever one sorts first: a directory
+    # holding two projects would otherwise build the wrong board.
+    pro_file = project_anchor(project)
+    if not pro_file or not pro_file.endswith(".kicad_pro"):
+        pro_file = next(
+            (name for name in sorted(os.listdir(project.path)) if name.endswith(".kicad_pro")),
+            None,
+        )
     if not pro_file:
         raise ValueError(".kicad_pro file not found in project root")
 
-    config = path_config_service.get_path_config(project.path)
-    resolved_paths = path_config_service.resolve_paths(project.path, config)
+    config = path_config_for(project)
+    resolved_paths = resolved_paths_for(project, config)
     jobset_path = resolved_paths.jobset_path
     configured_jobset = config.jobset or "Outputs.kicad_jobset"
     if not jobset_path:
         raise ValueError(f"{configured_jobset} not found in project root")
 
-    try:
-        project_root_abs = os.path.abspath(project.path)
-        jobset_abs = os.path.abspath(jobset_path)
-        jobset_file = (
-            os.path.relpath(jobset_abs, project_root_abs)
-            if os.path.commonpath([project_root_abs, jobset_abs]) == project_root_abs
-            else jobset_path
-        )
-    except ValueError:
-        jobset_file = jobset_path
-
-    command = [
-        _find_cli_path(),
-        "jobset",
-        "run",
-        "-f",
-        jobset_file,
-        "--output",
-        output_id,
-        pro_file,
-    ]
-    print(f"Running: {shlex.join(command)}", flush=True)
-    context.progress(
-        stage="run-jobset",
-        message=f"Generating {workflow_type} outputs",
-        percent=15,
-        force=True,
+    execution = kicad_jobset_service.execute_kicad_jobset(
+        context,
+        project_path=project.path,
+        jobset_path=jobset_path,
+        project_file=pro_file,
+        output_id=output_id,
+        workflow_type=workflow_type,
+        author=author,
+        routing="repository",
+        cli_path=_find_cli_path(),
+        # Keep the old project_service.Repo patch seam for the legacy handler
+        # while the generic service remains independently testable.
+        repository_factory=Repo,
+        timestamp_factory=datetime.datetime.now,
     )
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        cwd=project.path,
-        text=True,
-        bufsize=1,
-    )
-    if process.stdout is not None:
-        for line in process.stdout:
-            line = line.rstrip()
-            if line:
-                print(line, flush=True)
-    return_code = process.wait()
-    if return_code != 0:
-        raise RuntimeError(f"KiCad workflow exited with code {return_code}")
-
-    context.check_cancelled()
-    context.progress(
-        stage="git-sync",
-        message="Synchronizing generated outputs",
-        percent=90,
-        force=True,
-    )
-    warnings: list[str] = []
-    generated_commit = ""
-    try:
-        repo = Repo(project.path)
-        if repo.is_dirty(untracked_files=True):
-            repo.git.add(".")
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            commit_message = (
-                f"Generated {workflow_type} outputs - {timestamp} by {author}"
-            )
-            repo.git.commit(
-                m=commit_message,
-                author="KiCAD Prism <prism@example.com>",
-            )
-            generated_commit = str(repo.head.commit.hexsha)
-            context.check_cancelled()
-            # Share the import path's environment rather than rolling a second
-            # one: this push previously had neither the GITHUB_TOKEN rewrite nor
-            # the strict host-key check that every other remote operation uses.
-            from app.services.project_import_service import git_env
-
-            push_info = repo.remote(name="origin").push(env=git_env())
-            for info in push_info:
-                if info.flags & info.ERROR:
-                    raise RuntimeError(f"Push failed: {info.summary}")
-            print(f"Generated commit {generated_commit} pushed successfully", flush=True)
-        else:
-            print("No generated changes detected to commit", flush=True)
-    except Exception as error:
-        warning = f"Git sync warning: {error}"
-        warnings.append(warning)
-        print(warning, flush=True)
 
     return JobResult(
         message="Workflow completed successfully",
         details={
             "project_id": project_id,
             "workflow_type": workflow_type,
-            "generated_commit": generated_commit,
-            "warnings": warnings,
+            "generated_commit": execution.generated_commit,
+            "warnings": list(execution.warnings),
         },
     )
 
@@ -880,8 +881,8 @@ def get_project_thumbnail_path(project_id: str) -> Optional[str]:
         return None
     
     # Use path config service to get thumbnail path
-    config = path_config_service.get_path_config(project.path)
-    resolved = path_config_service.resolve_paths(project.path, config)
+    config = path_config_for(project)
+    resolved = resolved_paths_for(project, config)
     thumbnail_path = resolved.thumbnail_dir
     
     print(f"[DEBUG] Project: {project.path}")
@@ -908,14 +909,14 @@ def get_project_thumbnail_path(project_id: str) -> Optional[str]:
     print(f"[DEBUG] No valid thumbnail found")
     return None
 
-def find_schematic_file(project_path: str) -> Optional[str]:
+def find_schematic_file(project_path: str, anchor: Optional[str] = None) -> Optional[str]:
     """Find the main .kicad_sch file using path config."""
-    resolved = path_config_service.resolve_paths(project_path)
+    resolved = path_config_service.resolve_paths(project_path, anchor=anchor)
     return resolved.schematic
 
-def find_pcb_file(project_path: str) -> Optional[str]:
+def find_pcb_file(project_path: str, anchor: Optional[str] = None) -> Optional[str]:
     """Find the main .kicad_pcb file using path config."""
-    resolved = path_config_service.resolve_paths(project_path)
+    resolved = path_config_service.resolve_paths(project_path, anchor=anchor)
     return resolved.pcb
 
 def find_3d_model(project_path: str) -> Optional[str]:
@@ -1022,9 +1023,9 @@ def update_project_description(project_id: str, description: str) -> bool:
     if not project:
         return False
 
-    config = path_config_service.get_path_config(project.path)
+    config = path_config_for(project)
     config.description = description
-    path_config_service.save_path_config(project.path, config)
+    save_path_config_for(project, config)
 
     # Keep registry mirrored for legacy fallback/search compatibility on older code paths.
     registry = _load_project_registry()

@@ -41,6 +41,35 @@ class JobArtifactServiceTests(unittest.TestCase):
             )
             context.check_cancelled.assert_called_once()
 
+    def test_prepare_file_skips_handle_fsync_on_windows(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            staging = root / "staging" / "job" / "7"
+            staging.mkdir(parents=True)
+            source = staging / "result.json"
+            source.write_bytes(b'{"ready":true}')
+            context = SimpleNamespace(
+                staging_dir=staging,
+                check_cancelled=mock.Mock(),
+            )
+            service = JobArtifactService(root)
+
+            with (
+                mock.patch("app.services.job_artifact_service.os.name", "nt"),
+                mock.patch("app.services.job_artifact_service.os.fsync") as fsync,
+            ):
+                artifact = service.prepare_file(
+                    context,
+                    source,
+                    kind="test",
+                    artifact_key="key",
+                    media_type="application/json",
+                )
+
+            fsync.assert_not_called()
+            self.assertTrue(Path(artifact.object_path).is_file())
+            self.assertEqual(Path(artifact.object_path).read_bytes(), b'{"ready":true}')
+
     def test_failed_promotion_never_returns_an_authoritative_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

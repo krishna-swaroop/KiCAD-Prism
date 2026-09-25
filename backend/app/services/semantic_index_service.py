@@ -16,18 +16,40 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Iterator
 
 from app.core.config import settings
-from app.services import semantic_visualizer_service
+from app.services import (
+    kicad_monkey_design_adapter,
+    path_config_service,
+    project_source_snapshot,
+    semantic_index_nets,
+    semantic_index_variants,
+    semantic_visualizer_service,
+    variant_catalog_service,
+    variant_source_scan,
+)
+from app.services.kicad_monkey_design_adapter import KiCadMonkeyDesign
 
 
 SCHEMA = "prism.semantic_index_a0"
 GENERATOR_NAME = "kicad-prism-semantic-index"
-GENERATOR_VERSION = "0.1.0"
+GENERATOR_VERSION = "0.2.0"
 _GENERATOR_INPUTS = ("semantic-index", SCHEMA, GENERATOR_VERSION)
+# The build identity covers every module whose logic shapes the payload, so a
+# change to the kicad-monkey adapter, the variant resolver or the catalog
+# discovery invalidates cached indexes like a change to this file does.
+GENERATOR_MODULE_PATHS = (
+    Path(__file__),
+    Path(kicad_monkey_design_adapter.__file__),
+    Path(semantic_index_nets.__file__),
+    Path(semantic_index_variants.__file__),
+    Path(variant_catalog_service.__file__),
+    Path(project_source_snapshot.__file__),
+    Path(variant_source_scan.__file__),
+)
 GENERATOR_BUILD = hashlib.sha256(
     b"\0".join(
         (
             "|".join(_GENERATOR_INPUTS).encode("utf-8"),
-            Path(__file__).read_bytes(),
+            *(path.read_bytes() for path in GENERATOR_MODULE_PATHS),
         )
     )
 ).hexdigest()[:12]
@@ -83,10 +105,14 @@ def _blob_id(data: bytes) -> str:
     return digest.hexdigest()
 
 
-def _revision_key(entries: Iterable[tuple[str, str]]) -> str:
-    """Reduce (project-relative path, blob id) pairs to a cache key."""
+def _revision_key(
+    entries: Iterable[tuple[str, str]], *, project_file_rel: str = ""
+) -> str:
+    """Reduce source entries and the selected project anchor to a cache key."""
 
     digest = hashlib.sha256()
+    digest.update(project_file_rel.encode("utf-8"))
+    digest.update(b"\0")
     for path, blob in sorted(entries):
         digest.update(path.encode("utf-8"))
         digest.update(b"\0")
@@ -100,7 +126,7 @@ def _source_entries_on_disk(root: Path) -> list[tuple[str, str]]:
     for path in sorted(root.rglob("*")):
         if not path.is_file() or ".git" in path.parts:
             continue
-        if path.suffix.lower() not in SEMANTIC_SOURCE_SUFFIXES:
+        if path.suffix.lower() not in SEMANTIC_SOURCE_SUFFIXES and path.name != ".prism.json":
             continue
         entries.append((path.relative_to(root).as_posix(), _blob_id(path.read_bytes())))
     return entries
@@ -140,14 +166,18 @@ def _source_entries_in_commit(
         if not path.startswith(prefix):
             continue
         relative = path[len(prefix):]
-        if Path(relative).suffix.lower() not in SEMANTIC_SOURCE_SUFFIXES:
+        if Path(relative).suffix.lower() not in SEMANTIC_SOURCE_SUFFIXES and Path(relative).name != ".prism.json":
             continue
         entries.append((relative, parts[2]))
     return entries
 
 
 def source_revision_key_for_project_file(project_file: Path) -> str:
-    return _revision_key(_source_entries_on_disk(project_file.resolve().parent))
+    resolved = project_file.resolve()
+    return _revision_key(
+        _source_entries_on_disk(resolved.parent),
+        project_file_rel=resolved.name,
+    )
 
 
 def _lock(project_id: str, source_revision_key: str) -> threading.Lock:
@@ -157,16 +187,20 @@ def _lock(project_id: str, source_revision_key: str) -> threading.Lock:
 
 
 def _add_kicad_monkey_import_paths() -> None:
+    """Apply only an explicit development override.
+
+    Production, CI, and ordinary host development import the distribution from
+    the locked environment. Walking parent directories for a sibling checkout
+    silently replaced that distribution while version metadata still reported
+    the installed wheel, poisoning both cache identity and acceptance evidence.
+    """
+
     explicit = os.environ.get("KICAD_MONKEY_PYTHONPATH", "").strip()
-    candidates = [Path(explicit).expanduser()] if explicit else []
-    for parent in Path(__file__).resolve().parents:
-        candidates.extend(
-            (
-                parent / "kicad-monkey" / "src" / "py",
-                parent / "kicad_monkey" / "src" / "py",
-            )
-        )
-    candidates.extend((Path("/opt/kicad-monkey/src/py"), Path("/opt/kicad_monkey/src/py")))
+    candidates = [
+        Path(entry).expanduser()
+        for entry in explicit.split(os.pathsep)
+        if entry.strip()
+    ]
     for candidate in candidates:
         if candidate.is_dir() and str(candidate.resolve()) not in sys.path:
             sys.path.insert(0, str(candidate.resolve()))
@@ -194,29 +228,47 @@ def _revision_identity(project: Any, commit: str | None) -> tuple[str, str | Non
     same question, because git's blob ids are content hashes already.
     """
 
+    anchor = path_config_service.anchor_for_project(project)
     if not commit:
-        project_file = semantic_visualizer_service.find_kicad_project(project.path)
-        return _revision_key(_source_entries_on_disk(project_file.resolve().parent)), None
+        project_file = semantic_visualizer_service.find_kicad_project(project.path, anchor)
+        return (
+            _revision_key(
+                _source_entries_on_disk(project_file.resolve().parent),
+                project_file_rel=anchor or project_file.name,
+            ),
+            None,
+        )
 
     repo_root = semantic_visualizer_service._repo_root(Path(project.path))
     resolved_commit = semantic_visualizer_service._resolve_commit(repo_root, commit)
-    project_rel = semantic_visualizer_service._project_relative_path(repo_root, Path(project.path))
+    project_rel = semantic_visualizer_service._project_relative_path(
+        repo_root, Path(project.path), anchor
+    )
     project_dir = PurePosixPath(project_rel).parent.as_posix()
     if project_dir == ".":
         project_dir = ""
     entries = _source_entries_in_commit(repo_root, resolved_commit, project_dir)
-    return _revision_key(entries), resolved_commit
+    return (
+        _revision_key(
+            entries,
+            project_file_rel=anchor or PurePosixPath(project_rel).name,
+        ),
+        resolved_commit,
+    )
 
 
 @contextlib.contextmanager
 def _project_file_for_revision(project: Any, commit: str | None) -> Iterator[tuple[Path, str | None]]:
+    anchor = path_config_service.anchor_for_project(project)
     if not commit:
-        yield semantic_visualizer_service.find_kicad_project(project.path), None
+        yield semantic_visualizer_service.find_kicad_project(project.path, anchor), None
         return
 
     repo_root = semantic_visualizer_service._repo_root(Path(project.path))
     resolved_commit = semantic_visualizer_service._resolve_commit(repo_root, commit)
-    project_rel = semantic_visualizer_service._project_relative_path(repo_root, Path(project.path))
+    project_rel = semantic_visualizer_service._project_relative_path(
+        repo_root, Path(project.path), anchor
+    )
     with tempfile.TemporaryDirectory(prefix="semantic-index-commit-") as tmp:
         checkout = Path(tmp) / "checkout"
         semantic_visualizer_service._archive_checkout(repo_root, resolved_commit, checkout)
@@ -464,9 +516,14 @@ def _canonical_fields(component: dict[str, Any]) -> dict[str, str]:
         return ""
 
     dnp = _resolve_dnp(parameters, casefolded)
+    # KiCad's "in BOM" flag, parsed by kicad-monkey as kicad_in_bom. Surface it
+    # as a clean Yes/No field; absent flag defaults to Yes (KiCad's default).
+    in_bom_raw = casefolded.get("kicadinbom", "").strip()
+    in_bom = "No" if in_bom_raw and in_bom_raw.casefold() not in _TRUTHY_FLAGS else "Yes"
     required = {
         "Value": _string(component.get("value")) or pick("Value"),
         "DNP": dnp,
+        "In BOM": in_bom,
         "Description": _string(component.get("description")) or pick("Description"),
         "Datasheet": pick("Datasheet", "Data Sheet", "Datasheet URL", "Datasheet Link"),
         "Manufacturer": pick("Manufacturer", "MFR", "Mfr"),
@@ -762,6 +819,8 @@ def build_semantic_index(
     timing_callback: Callable[[dict[str, Any]], None] | None = None,
     include_pcb: bool = True,
     include_components: bool = True,
+    include_assembly: bool = True,
+    pcb: Any = None,
 ) -> dict[str, Any]:
     def timed(phase: str, action: Callable[[], Any], **metadata: Any) -> Any:
         started_ns = time.perf_counter_ns()
@@ -788,39 +847,26 @@ def build_semantic_index(
             "KICAD_MONKEY_PYTHONPATH or install the package in the backend runtime"
         ) from exc
 
-    design = timed("load-project", lambda: KiCadDesign.from_project_file(project_file))
-    compile_netlist = getattr(design, "to_netlist", None)
-    netlist = timed("compile-netlist", compile_netlist) if callable(compile_netlist) else None
+    design = timed(
+        "load-project",
+        lambda: KiCadMonkeyDesign(KiCadDesign.from_project_file(project_file), board=pcb),
+    )
+    netlist = timed("compile-netlist", design.netlist)
     # kicad_design_to_json materializes PnP data and therefore accesses the
     # lazily parsed board. Resolve it explicitly so benchmark output separates
     # the parser cost from the much smaller JSON projection cost.
-    pcb = timed("load-pcb", lambda: design.pcb) if include_pcb else None
-
-    def materialize_design_json() -> dict[str, Any]:
-        try:
-            return design.to_json(
-                include_indexes=True,
-                include_pcb=include_pcb,
-            )
-        except TypeError as exc:
-            # Compatibility with an older installed kicad-monkey. The local
-            # optimized tree supports include_pcb=False; upstream releases
-            # without it remain functional, although they cannot defer PCB
-            # parsing during Stage 1.
-            if "include_pcb" not in str(exc):
-                raise
-            return design.to_json(include_indexes=True)
+    pcb = timed("load-pcb", design.board) if include_pcb else None
 
     design_payload = timed(
         "materialize-design-json",
-        materialize_design_json,
+        lambda: design.to_json(include_indexes=True, include_pcb=include_pcb),
         components=len(getattr(netlist, "components", ()) or ()),
         nets=len(getattr(netlist, "nets", ()) or ()),
         includePcb=include_pcb,
     )
     sheet_instances, buses, schematic_placements = timed(
         "project-schematic-instances",
-        lambda: _schematic_semantic_projection(design, project_file),
+        lambda: _schematic_semantic_projection(design.native, project_file),
     )
     source_fields_by_uuid = (
         timed(
@@ -1022,6 +1068,7 @@ def build_semantic_index(
         # One snapshot for the whole board: resolving each element against the
         # board rebuilds the net mapping every time.
         net_table = _net_table(pcb)
+        split_nets = semantic_index_nets.SplitNetClaims(net_by_name)
 
         def ensure_pcb_net(name: str, code: int | None) -> tuple[dict[str, Any], int] | tuple[None, None]:
             if not name:
@@ -1088,8 +1135,8 @@ def build_semantic_index(
                 elif terminal is not None:
                     terminal["pcbPadUuid"] = pad_uuid
                     if net_entry is not None:
-                        terminal["netUid"] = net_entry["netUid"]
-                        terminal["netName"] = name
+                        split_nets.note_pad(name, _string(terminal.get("netName")))
+                        terminal.update(netUid=net_entry["netUid"], netName=name)
                 if pad_uuid and terminal_index is not None:
                     indexes["terminalByPcbPadUuid"][pad_uuid] = terminal_index
 
@@ -1108,6 +1155,8 @@ def build_semantic_index(
                     continue
                 net_entry["pcbRefs"][0][target_key].append(source_uuid)
                 indexes["netByPcbUuid"][source_uuid] = net_index
+
+        split_nets.reconcile(nets, terminals, indexes)
 
     if timing_callback is not None:
         timing_callback(
@@ -1142,4 +1191,11 @@ def build_semantic_index(
         "buses": buses,
         "indexes": indexes,
     }
+    if include_assembly:
+        result["assembly"] = timed(
+            "resolve-variants",
+            lambda: semantic_index_variants.assemble_semantic_index(
+                design, project_file, components, schematic_placements
+            ),
+        )
     return result

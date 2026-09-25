@@ -51,12 +51,17 @@ const EMPTY_SUMMARY: CatalogReleaseQueueResponse["summary"] = {
   blocked: 0,
 };
 
+// Constructing an Intl formatter is the expensive part; the runtime locale
+// cannot change mid-session, so build it once.
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 const formatDate = (value?: string) => {
   if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+  return Number.isNaN(date.getTime()) ? value : DATE_TIME_FORMAT.format(date);
 };
 
 function QueueMetric({ label, value, detail }: { label: string; value: number; detail: string }) {
@@ -104,7 +109,7 @@ function QueueEmpty({ filtered }: { filtered: boolean }) {
     <div className="flex min-h-64 flex-col items-center justify-center gap-2 border border-dashed p-6 text-center">
       <ClipboardCheck className="h-7 w-7 text-muted-foreground" />
       <p className="text-sm font-medium">{filtered ? "No matching release work" : "Release queue is clear"}</p>
-      <p className="max-w-xl text-xs text-muted-foreground">{filtered ? "Try a different search or stage filter." : "Components submitted for QA or approved for release will appear here automatically."}</p>
+      {filtered ? <p className="max-w-xl text-xs text-muted-foreground">Try a different search or stage filter.</p> : null}
     </div>
   );
 }
@@ -188,7 +193,6 @@ export function LibraryReleaseQueue({ onOpenComponent }: { onOpenComponent: (com
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2"><FileCheck2 className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Release Queue</h2></div>
-            <p className="mt-1 text-xs text-muted-foreground">Review immutable component revisions, resolve blockers, and release with auditable decisions.</p>
           </div>
           <Button size="sm" variant="outline" aria-label="Refresh release queue" disabled={loading} onClick={() => setRefreshKey((value) => value + 1)}>
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh

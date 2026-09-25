@@ -62,13 +62,19 @@ class TemporaryPathTests(unittest.TestCase):
         )
 
     def test_the_compare_roots_sit_under_the_platform_temporary_directory(self) -> None:
-        from app.services import design_compare_service, diff_service
+        if os.environ.get("PRISM_DESIGN_COMPARE_CACHE") or os.environ.get(
+            "PRISM_DESIGN_COMPARE_JOBS"
+        ):
+            self.skipTest(
+                "compare roots are overridden by deployment env "
+                "(PRISM_DESIGN_COMPARE_CACHE / PRISM_DESIGN_COMPARE_JOBS)"
+            )
+        from app.services import design_compare_service
 
         temporary = Path(tempfile.gettempdir())
         for root in (
             design_compare_service._CACHE_ROOT,
             design_compare_service._JOB_ROOT,
-            diff_service.DIFF_ROOT,
         ):
             self.assertEqual(root.parent, temporary, root)
 

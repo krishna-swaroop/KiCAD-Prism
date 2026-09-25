@@ -1,0 +1,26 @@
+{
+  "set": "F8",
+  "title": "Edits, deletes, tombstones, privacy, publication",
+  "decisions": ["D4", "D5", "D8"],
+  "owner": "TR-29",
+  "cases": [
+    {"id": "F8.local_reply_edit_mirrors", "owner": "TR-29", "given": "prism-origin reply confirmed", "when": "author edits", "expect": "edit_comment op with expected_body_hash; remote updated; revision 2 locally", "proves": "D5"},
+    {"id": "F8.local_reply_delete_mirrors", "owner": "TR-29", "given": "prism-origin reply confirmed", "when": "author deletes", "expect": "delete_comment op; local tombstone deleted_at set; history retained", "proves": "D5"},
+    {"id": "F8.remote_reply_delete", "owner": "TR-33", "given": "remote comment removed on GitHub", "when": "sweep diff", "expect": "local reply tombstoned with editorKind remote_unknown; never re-created", "proves": "D5"},
+    {"id": "F8.root_prose_roundtrip", "owner": "TR-30", "given": "root content edited locally; then prose block edited on GitHub", "when": "both sync", "expect": "outbound update_issue rewrites only the prose block; inbound prose edit becomes root revision; context and marker blocks unchanged", "proves": "D5"},
+    {"id": "F8.local_root_deleted", "owner": "TR-30", "given": "linked root", "when": "author deletes", "expect": "post_note op 'deleted in Prism', link unlinked_at set, lineage kept, remote issue not deleted", "proves": "D5"},
+    {"id": "F8.deletion_note_crash", "owner": "TR-30", "given": "root deleted; post_note op sent; crash", "when": "restart", "expect": "recovery matches note by marker; no duplicate note", "proves": "D2"},
+    {"id": "F8.remote_issue_deleted", "owner": "TR-34", "given": "link deleted", "when": "user clicks Promote again", "expect": "new op with lineage_of; new issue; old lineage kept", "proves": "D7"},
+    {"id": "F8.no_repromote_from_inaccessible", "owner": "TR-34", "given": "link inaccessible", "when": "UI/API Promote again", "expect": "refused with reason; button disabled", "proves": "D7"},
+    {"id": "F8.public_change_while_queued", "owner": "TR-26", "given": "op pending; container becomes public; ack was private", "when": "dispatch", "expect": "paused:visibility; health shows; resumes after admin ack", "proves": "D7"},
+    {"id": "F8.viewer_reply_on_linked", "owner": "TR-25", "given": "promote_min_role=designer; viewer replies on linked thread", "when": "POST reply", "expect": "201; sync.state='unsynced_local'; badge; no op", "proves": "D4"},
+    {"id": "F8.share_to_github", "owner": "TR-25", "given": "unsynced_local reply", "when": "designer clicks Share", "expect": "add_comment op with original author attribution; state confirmed", "proves": "D4"},
+    {"id": "F8.viewer_task_not_auto_promoted", "owner": "TR-25", "given": "promote_min_role=designer", "when": "viewer creates class=task", "expect": "no op; chip 'Not promoted — ask a designer'; designer Promote works later", "proves": "D4"},
+    {"id": "F8.mention_linked", "owner": "TR-22", "given": "@[Arjun](user:u_7f2a) linked as arjun-gh", "when": "draft rendered", "expect": "'@arjun-gh' in prose; assignees ['arjun-gh']", "proves": "D8"},
+    {"id": "F8.mention_unlinked", "owner": "TR-22", "given": "mention of Mira (not linked)", "when": "draft rendered", "expect": "'**Mira**' in prose; hint line 'Assignment hint: Mira (not linked)'; no email anywhere", "proves": "D8"},
+    {"id": "F8.mention_overflow", "owner": "TR-22", "given": "11 linked mentions on GitHub (max 10)", "when": "draft rendered", "expect": "10 assignees; 11th in hint line; op warning not failure", "proves": "D8"},
+    {"id": "F8.prose_email_passthrough", "owner": "TR-24", "given": "user prose contains 'ping ops@example.com'", "when": "draft rendered", "expect": "prose mirrored verbatim (documented scope); generated blocks contain no email", "proves": "D8"},
+    {"id": "F8.legacy_email_mention_import", "owner": "TR-06", "given": "content with '@arjun@example.com'", "when": "POST or import", "expect": "converted to @[Arjun](user:u_7f2a) when the email matches a user; otherwise left as prose and not treated as a mention", "proves": "D8"},
+    {"id": "F8.inbound_never_enqueues", "owner": "TR-28", "given": "any inbound application", "when": "reducer writes locally", "expect": "origin=remote path asserts zero sync_ops inserted", "proves": "C6"}
+  ]
+}

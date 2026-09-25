@@ -5,20 +5,21 @@ import concurrent.futures
 import hashlib
 import json
 import os
-import shutil
 import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from .bom import build_bom_artifact
 from .compiler import compile_topology
 from .context import PrismCompilationContext
+from .copper_geometry import pcb_geometry_backend
 from .exporter import export_viewer_html
 from .kicad_cli_export import export_project_geometry_assets, finalize_project_geometry
-from .schematic_scene import build_schematic_scene
-from .schematic_world import build_schematic_world
-from .semantic_gltf import build_semantic_gltf_scene
+from .semantic_gltf import (
+    build_packed_semantic_gltf_scene,
+    build_semantic_gltf_scene,
+    patch_semantic_gltf_components,
+)
 
 _STAGE_TIMINGS_MS: dict[str, float] = {}
 _PROFILE_EVENTS: list[dict] = []
@@ -26,16 +27,12 @@ REQUIRED_FROM_PROJECT_TIMINGS = (
     "design_load_ms",
     "netlist_ms",
     "design_json_topology_ms",
-    "design_json_svg_ms",
     "pcb_ir_ms",
     "pcb_ir_to_dict_ms",
     "pcb_metadata_unified_ms",
     "copper_emit_ms",
     "pcb_metadata_copper_ms",
     "board_compilation_ms",
-    "bom_design_reuse_ms",
-    "bom_assembly_ms",
-    "bom_normalize_group_ms",
 )
 
 
@@ -153,11 +150,23 @@ def cmd_from_project(args: argparse.Namespace) -> None:
             compatibility_design_json=args.compat_design_json,
             progress=_progress,
             profile=_profile("context"),
+            native_semantic_output=args.output / ".native-semantic-pack",
+            semantic_tile_size=args.tile_size,
+            semantic_meshopt_level=args.meshopt_level,
+        )
+        # The native compiler reads the board file directly. Start it before
+        # KiCadDesign hydration so Rust analytics overlap both the topology
+        # model load and the independent KiCad export lane.
+        board_future = (
+            export_pool.submit(lambda: context.board_compilation)
+            if pcb_geometry_backend() == "rust"
+            else None
         )
         try:
-            design = context.design
+            context.design
             # Overlap copper emit / board compilation with topology JSON work.
-            board_future = export_pool.submit(lambda: context.board_compilation)
+            if board_future is None:
+                board_future = export_pool.submit(lambda: context.board_compilation)
             design_payload = context.design_payload_for_topology
             board_future.result()
             pcb_metadata = context.pcb_metadata
@@ -175,6 +184,44 @@ def cmd_from_project(args: argparse.Namespace) -> None:
                 "board_bbox_mm": pcb_metadata.get("bbox_mm"),
             },
         )
+
+        def build_semantic_lane() -> dict:
+            # Copper tiles use an explicit stackup-derived coordinate frame and
+            # do not depend on either KiCad GLB. Component node bindings are
+            # joined atomically after the component export completes.
+            with _stage("build semantic GLTF scene tiles"):
+                if context.semantic_mesh_pack is not None:
+                    result = build_packed_semantic_gltf_scene(
+                        topology,
+                        context.semantic_mesh_pack,
+                        args.output,
+                        force_rebuild=args.force_rebuild,
+                        clean_cache=args.clean_cache,
+                        progress=_progress,
+                        profile_callback=_profile("semantic_gltf"),
+                    )
+                else:
+                    result = build_semantic_gltf_scene(
+                        topology,
+                        {"assets": {}, "components": []},
+                        context.semantic_geometry_source,
+                        args.output,
+                        pad_holes=context.pad_holes,
+                        force_rebuild=args.force_rebuild,
+                        clean_cache=args.clean_cache,
+                        cache_dir=args.cache_dir,
+                        meshopt_level=args.meshopt_level,
+                        tile_size_mm=tile_size_mm,
+                        progress=_progress,
+                        profile_callback=_profile("semantic_gltf"),
+                    )
+            _STAGE_TIMINGS_MS["semantic_copper_ready_ms"] = (
+                time.perf_counter() - total_started
+            ) * 1000.0
+            _progress("MILESTONE semantic-copper-ready")
+            return result
+
+        semantic_future = export_pool.submit(build_semantic_lane)
         try:
             export_artifacts = export_future.result()
             _STAGE_TIMINGS_MS["kicad_glb_ms"] = export_artifacts.elapsed_ms
@@ -189,52 +236,13 @@ def cmd_from_project(args: argparse.Namespace) -> None:
                 progress=_progress,
                 profile_callback=_profile("kicad_cli"),
             )
-            with _stage("build semantic GLTF scene tiles"):
-                semantic_geometry["semantic_gltf"] = build_semantic_gltf_scene(
-                    topology,
-                    semantic_geometry,
-                    context.semantic_geometry_source,
-                    args.output,
-                    pad_holes=context.pad_holes,
-                    force_rebuild=args.force_rebuild,
-                    clean_cache=args.clean_cache,
-                    cache_dir=args.cache_dir,
-                    meshopt_level=args.meshopt_level,
-                    tile_size_mm=tile_size_mm,
-                    progress=_progress,
-                    profile_callback=_profile("semantic_gltf"),
-                )
+            semantic_geometry["semantic_gltf"] = semantic_future.result()
+            patch_semantic_gltf_components(
+                args.output / "scene-gltf" / "scene.manifest.json",
+                topology,
+                semantic_geometry.get("components", []) or [],
+            )
             semantic_geometry["assets"]["scene_manifest"] = "scene-gltf/scene.manifest.json"
-            if args.scope == "all":
-                with _stage("build schematic SVG world fallback"):
-                    semantic_geometry["schematic_world"] = build_schematic_world(
-                        design,
-                        context.design_payload_for_svg_world,
-                        args.output,
-                        progress=_progress,
-                    )
-                semantic_geometry["assets"]["schematic_manifest"] = semantic_geometry["schematic_world"]["path"]
-                if args.emit_schematic_native:
-                    with _stage("build schematic vector/DOM semantic scene"):
-                        semantic_geometry["schematic_vector"] = build_schematic_scene(
-                            design,
-                            context.design_payload_for_svg_world,
-                            args.output,
-                            topology=topology,
-                            progress=_progress,
-                        )
-                    semantic_geometry["assets"]["schematic_native_manifest"] = semantic_geometry["schematic_vector"]["path"]
-                else:
-                    _remove_stale_schematic_native(args.output)
-                with _stage("build normalized BoM model"):
-                    semantic_geometry["bom"] = build_bom_artifact(
-                        project_file,
-                        args.output,
-                        raw_components=context.bom_assembly_by_variant(None),
-                        timings=context.timings,
-                        progress=_progress,
-                    )
-                semantic_geometry["assets"]["bom"] = semantic_geometry["bom"]["path"]
         except Exception as exc:
             print(f"error: semantic PCB geometry export failed for {project_file}: {exc}", file=sys.stderr)
             raise SystemExit(3)
@@ -255,12 +263,98 @@ def cmd_from_project(args: argparse.Namespace) -> None:
     _progress("from-project complete")
 
 
+def cmd_semantic_copper(args: argparse.Namespace) -> None:
+    """Build only semantic copper tiles, without invoking kicad-cli GLB export."""
+
+    _STAGE_TIMINGS_MS.clear()
+    _PROFILE_EVENTS.clear()
+    total_started = time.perf_counter()
+    project_file = args.project
+    _progress(f"semantic-copper input={project_file} output={args.output}")
+    context = PrismCompilationContext(
+        project_file,
+        compatibility_design_json=args.compat_design_json,
+        progress=_progress,
+        profile=_profile("context"),
+        native_semantic_output=args.output / ".native-semantic-pack",
+        semantic_tile_size=args.tile_size,
+        semantic_meshopt_level=args.meshopt_level,
+    )
+    # This command measures the copper lane itself.  Do not hydrate the
+    # schematic or compile a netlist: board metadata is sufficient to build
+    # the layer/net/feature tables consumed by the semantic tile packer.  The
+    # legacy backend may still load KiCadDesign internally to produce PCB IR.
+    try:
+        context.board_compilation
+        pcb_metadata = context.pcb_metadata
+    except Exception as exc:
+        print(f"error: kicad_monkey failed to compile {project_file}: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+
+    with _stage("compile board-only topology model"):
+        topology = compile_topology(
+            {},
+            [],
+            pcb_metadata,
+            _discover_project_assets(project_file),
+        )
+    try:
+        tile_size_mm = _resolve_semantic_tile_size(args.tile_size, pcb_metadata)
+        _profile("compiler")(
+            "tile_size",
+            {
+                "requested": args.tile_size,
+                "resolved_mm": tile_size_mm,
+                "board_bbox_mm": pcb_metadata.get("bbox_mm"),
+            },
+        )
+        with _stage("build semantic GLTF scene tiles"):
+            if context.semantic_mesh_pack is not None:
+                semantic_result = build_packed_semantic_gltf_scene(
+                    topology,
+                    context.semantic_mesh_pack,
+                    args.output,
+                    force_rebuild=True,
+                    clean_cache=True,
+                    progress=_progress,
+                    profile_callback=_profile("semantic_gltf"),
+                )
+            else:
+                semantic_result = build_semantic_gltf_scene(
+                    topology,
+                    {"assets": {}, "components": []},
+                    context.semantic_geometry_source,
+                    args.output,
+                    pad_holes=context.pad_holes,
+                    force_rebuild=True,
+                    clean_cache=True,
+                    cache_dir=args.cache_dir,
+                    meshopt_level=args.meshopt_level,
+                    tile_size_mm=tile_size_mm,
+                    progress=_progress,
+                    profile_callback=_profile("semantic_gltf"),
+                )
+    except Exception as exc:
+        print(f"error: semantic copper export failed for {project_file}: {exc}", file=sys.stderr)
+        raise SystemExit(3)
+
+    _STAGE_TIMINGS_MS["semantic_copper_ready_ms"] = (
+        time.perf_counter() - total_started
+    ) * 1000.0
+    _STAGE_TIMINGS_MS.update(context.timings)
+    result_path = args.output / "semantic-copper-result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text(json.dumps(semantic_result, indent=2), encoding="utf-8")
+    _write_from_project_metrics(project_file, args.output, total_started)
+    _progress("MILESTONE semantic-copper-ready")
+    _progress("semantic-copper complete")
+
+
 def _stage_metric_key(label: str) -> str | None:
     mapping = {
         "load KiCad project with kicad_monkey": "project_load_ms",
         "compile design JSON and indexes": "design_json_ms",
         "compile topology design JSON": "design_json_topology_ms",
-        "compile schematic-world design JSON": "design_json_svg_ms",
         "emit renderer-ready PCB copper geometry": "copper_emit_ms",
         "derive PCB topology indexes from copper geometry": "pcb_metadata_copper_ms",
         "compile PCB IR": "pcb_ir_ms",
@@ -269,9 +363,6 @@ def _stage_metric_key(label: str) -> str | None:
         "compile unified PCB artifacts": "board_compilation_ms",
         "export KiCad GLB context and component models": "kicad_glb_ms",
         "build semantic GLTF scene tiles": "semantic_tile_ms",
-        "build schematic SVG world fallback": "schematic_world_ms",
-        "build schematic vector/DOM semantic scene": "schematic_vector_ms",
-        "build normalized BoM model": "bom_ms",
         "write final viewer bundle files": "final_write_ms",
     }
     return mapping.get(label)
@@ -307,88 +398,13 @@ def _write_from_project_metrics(
     )
 
 
-def cmd_benchmark_semantic_gltf(args: argparse.Namespace) -> None:
-    from .semantic_gltf_benchmark import run_semantic_gltf_benchmark
-
-    report = run_semantic_gltf_benchmark(args)
-    print(json.dumps({"report": str(Path(args.output) / "benchmark-report.json"), "comparison": report.get("comparison")}, indent=2))
-
-
-def cmd_benchmark_semantic_suite(args: argparse.Namespace) -> None:
-    from .semantic_gltf_benchmark import run_semantic_gltf_suite
-
-    report = run_semantic_gltf_suite(args)
-    print(json.dumps({"report": str(Path(args.output) / "benchmark-suite-report.json"), "aggregate": report.get("aggregate")}, indent=2))
-
-
 def cmd_clipper2_info(args: argparse.Namespace) -> None:
     from .prism_clipper2 import prism_clipper2_library_info
 
     print(json.dumps(prism_clipper2_library_info(args.library), indent=2))
 
 
-def cmd_schematic_world(args: argparse.Namespace) -> None:
-    project_file = args.project
-    output_dir = args.output
-    topology_path = output_dir / "topology.json"
-    semantic_geometry_path = output_dir / "semantic_geometry.json"
-    if not topology_path.exists() or not semantic_geometry_path.exists():
-        print(
-            f"error: {output_dir} must contain topology.json and semantic_geometry.json",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-    topology = json.loads(topology_path.read_text(encoding="utf-8"))
-    try:
-        from kicad_monkey import KiCadDesign  # type: ignore
-
-        with _stage("load KiCad project with kicad_monkey"):
-            design = KiCadDesign.from_project_file(project_file)
-        with _stage("compile design JSON and indexes"):
-            design_payload = design.to_json(include_indexes=True)
-        with _stage("build schematic SVG world fallback"):
-            schematic_world = build_schematic_world(design, design_payload, output_dir, progress=_progress)
-        schematic_vector = None
-        if args.emit_schematic_native:
-            with _stage("build schematic vector/DOM semantic scene"):
-                schematic_vector = build_schematic_scene(
-                    design,
-                    design_payload,
-                    output_dir,
-                    topology=topology,
-                    progress=_progress,
-                )
-        else:
-            _remove_stale_schematic_native(output_dir)
-    except Exception as exc:
-        print(f"error: schematic world export failed for {project_file}: {exc}", file=sys.stderr)
-        raise SystemExit(3)
-
-    semantic_geometry = json.loads(semantic_geometry_path.read_text(encoding="utf-8"))
-    semantic_geometry["schematic_world"] = schematic_world
-    semantic_geometry.setdefault("assets", {})["schematic_manifest"] = schematic_world["path"]
-    if schematic_vector:
-        semantic_geometry["schematic_vector"] = schematic_vector
-        semantic_geometry.setdefault("assets", {})["schematic_native_manifest"] = schematic_vector["path"]
-    else:
-        semantic_geometry.pop("schematic_vector", None)
-        semantic_geometry.setdefault("assets", {}).pop("schematic_native_manifest", None)
-    semantic_geometry_path.write_text(json.dumps(semantic_geometry, indent=2), encoding="utf-8")
-    export_viewer_html(
-        topology,
-        output_dir / "viewer.html",
-        title=topology.get("design", {}).get("project", {}).get("filename", "KiCad 3D Viz"),
-        semantic_geometry=semantic_geometry,
-    )
-    artifact_manifest = write_artifact_manifest(output_dir)
-    _log_artifact_manifest(artifact_manifest)
-
-
 ARTIFACT_MANIFEST_SCHEMA = "prism.artifact_manifest_a0"
-
-
-def _remove_stale_schematic_native(output_dir: Path) -> None:
-    shutil.rmtree(output_dir / "schematic-vector", ignore_errors=True)
 
 
 def _artifact_family(path: Path) -> str:
@@ -498,15 +514,10 @@ def main() -> None:
         help="Use the legacy indexed design JSON payload for topology compilation",
     )
     from_project.add_argument(
-        "--emit-schematic-native",
-        action="store_true",
-        help="Also emit the legacy schematic-vector native manifest artifacts",
-    )
-    from_project.add_argument(
         "--scope",
         choices=["3d", "all"],
         default="all",
-        help="Generate only WebGPU 3D assets, or the legacy all-in-one artifact set",
+        help="Generate WebGPU 3D assets, or also emit the standalone viewer HTML",
     )
     from_project.add_argument(
         "--meshopt-level",
@@ -521,56 +532,30 @@ def main() -> None:
     )
     from_project.set_defaults(func=cmd_from_project)
 
-    schematic_world = sub.add_parser(
-        "schematic-world",
-        help="Add or refresh schematic-world assets in an existing visualizer bundle",
+    semantic_copper = sub.add_parser(
+        "semantic-copper",
+        help="Compile semantic copper tiles without KiCad GLB export",
     )
-    schematic_world.add_argument("project", type=Path)
-    schematic_world.add_argument("--output", type=Path, required=True)
-    schematic_world.add_argument(
-        "--emit-schematic-native",
+    semantic_copper.add_argument("project", type=Path)
+    semantic_copper.add_argument("--output", type=Path, required=True)
+    semantic_copper.add_argument("--cache-dir", type=Path)
+    semantic_copper.add_argument(
+        "--compat-design-json",
         action="store_true",
-        help="Also emit the legacy schematic-vector native manifest artifacts",
+        help="Use the legacy indexed design JSON payload for topology compilation",
     )
-    schematic_world.set_defaults(func=cmd_schematic_world)
-
-    benchmark = sub.add_parser(
-        "benchmark-semantic-gltf",
-        help="Benchmark JS versus Prism Clipper2 semantic GLTF clipping and tile packaging",
+    semantic_copper.add_argument(
+        "--meshopt-level",
+        choices=["low", "medium", "high"],
+        default="medium",
+        help="Meshoptimizer compression level for semantic GLTF tiles",
     )
-    benchmark.add_argument("project", type=Path, nargs="?", help="KiCad .kicad_pro project or fixed semantic input JSON")
-    benchmark.add_argument("--output", type=Path, required=True)
-    benchmark.add_argument("--trials", type=int, default=7)
-    benchmark.add_argument("--warmups", type=int, default=1)
-    benchmark.add_argument("--workers", type=int, default=6)
-    benchmark.add_argument("--meshopt-level", choices=["low", "medium", "high"], default="medium")
-    benchmark.add_argument("--tile-size", type=float, default=20.0)
-    benchmark.add_argument(
-        "--synthetic-fixture",
-        choices=["coverage"],
-        help="Use the deterministic synthetic semantic input fixture instead of a KiCad project",
+    semantic_copper.add_argument(
+        "--tile-size",
+        default="auto",
+        help="Semantic GLTF tile edge length in millimetres, or auto for a board-adaptive size",
     )
-    benchmark.add_argument(
-        "--full-trials",
-        type=int,
-        default=0,
-        help="Optional secondary full from-project trials per mode; default keeps the primary benchmark isolated",
-    )
-    benchmark.set_defaults(func=cmd_benchmark_semantic_gltf)
-
-    suite = sub.add_parser(
-        "benchmark-semantic-suite",
-        help="Benchmark JS versus Prism Clipper2 A2 semantic GLTF clipping across multiple KiCad projects",
-    )
-    suite.add_argument("--project", type=Path, action="append", default=[], help="KiCad .kicad_pro project path")
-    suite.add_argument("--manifest", type=Path, help="JSON manifest containing projects")
-    suite.add_argument("--output", type=Path, required=True)
-    suite.add_argument("--trials", type=int, default=7)
-    suite.add_argument("--warmups", type=int, default=1)
-    suite.add_argument("--workers", type=int, default=6)
-    suite.add_argument("--meshopt-level", choices=["low", "medium", "high"], default="medium")
-    suite.add_argument("--tile-size", type=float, default=20.0)
-    suite.set_defaults(func=cmd_benchmark_semantic_suite)
+    semantic_copper.set_defaults(func=cmd_semantic_copper)
 
     clipper2_info = sub.add_parser("clipper2-info", help="Print bundled Prism Clipper2 library diagnostics")
     clipper2_info.add_argument("--library", type=Path, help="Explicit libprism_clipper2 shared library path")

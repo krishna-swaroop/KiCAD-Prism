@@ -1,0 +1,63 @@
+{
+  "board": {
+    "design_settings": {
+      "defaults": {}
+    },
+    "layer_presets": [],
+    "viewports": []
+  },
+  "libraries": {
+    "pinned_footprint_libs": [],
+    "pinned_symbol_libs": []
+  },
+  "meta": {
+    "filename": "variants_oracle.kicad_pro",
+    "version": 3
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "clearance": 0.2,
+        "track_width": 0.2,
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "priority": 2147483647
+      }
+    ],
+    "meta": {
+      "version": 4
+    }
+  },
+  "pcbnew": {
+    "last_paths": {},
+    "page_layout_descr_file": ""
+  },
+  "schematic": {
+    "legacy_lib_dir": "",
+    "legacy_lib_list": [],
+    "variants": [
+      {
+        "name": "Lite",
+        "description": "Cost-reduced build"
+      },
+      {
+        "name": "Pro"
+      },
+      {
+        "name": "Unused"
+      },
+      {
+        "name": "Édition-µ",
+        "description": "Ünïcode ✓"
+      }
+    ]
+  },
+  "sheets": [
+    [
+      "df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+      "Root"
+    ]
+  ],
+  "text_variables": {}
+}

@@ -51,6 +51,8 @@ function extractMentions(content: string, candidates: MentionCandidate[]): strin
  * Modal dialog for adding a new design review comment.
  * Cmd/Ctrl+Enter submits; Escape closes; @ opens mention suggestions.
  */
+const NO_MENTION_CANDIDATES: MentionCandidate[] = [];
+
 export function CommentForm({
     isOpen,
     onClose,
@@ -58,7 +60,7 @@ export function CommentForm({
     location,
     context,
     isSubmitting = false,
-    mentionCandidates = [],
+    mentionCandidates = NO_MENTION_CANDIDATES,
 }: CommentFormProps) {
     const [content, setContent] = useState("");
     const [commentClass, setCommentClass] = useState<CommentClass>(DEFAULT_COMMENT_CLASS);
@@ -67,15 +69,13 @@ export function CommentForm({
     const [mentionIndex, setMentionIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+    // Visualizer mounts this per open, keyed on the pinned location, so the
+    // initial state above is the reset. Focus still needs asking for: the form
+    // is a bare fixed overlay, not a Radix dialog, so nothing moves focus for
+    // us and the autoFocus attribute is what react-doctor objects to.
     useEffect(() => {
-        if (isOpen) {
-            setContent("");
-            setCommentClass(DEFAULT_COMMENT_CLASS);
-            setSeverity(DEFAULT_COMMENT_SEVERITY);
-            setMentionQuery(null);
-            setMentionIndex(0);
-        }
-    }, [isOpen, location?.x, location?.y]);
+        textareaRef.current?.focus();
+    }, []);
 
     const mentionMatches = useMemo(() => {
         if (mentionQuery === null) return [];
@@ -233,9 +233,12 @@ export function CommentForm({
 
                 <form onSubmit={handleSubmit} className="p-4">
                     <div className="relative">
+                        <label htmlFor="new-comment-content" className="mb-1 block text-xs font-medium">
+                            Comment
+                        </label>
                         <textarea
+                            id="new-comment-content"
                             ref={textareaRef}
-                            autoFocus
                             value={content}
                             onChange={(e) => {
                                 const value = e.target.value;

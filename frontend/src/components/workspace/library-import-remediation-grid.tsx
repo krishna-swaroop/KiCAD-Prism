@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowDownToLine, Check, CheckCheck, Combine, Download, Loader2, Redo2, Save,
-  Undo2, Upload,
+  Rows3, Undo2, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,11 +17,13 @@ import type {
   BulkAcceptResult, ImportProposalDraft, ProjectComponentImportProposal,
 } from "@/types/catalog";
 import { LibraryAssetLinkPicker } from "./library-asset-link-picker";
+import { useEditHistory } from "./use-edit-history";
 
 interface LibraryImportRemediationGridProps {
   sessionId: string;
   proposals: ProjectComponentImportProposal[];
   canWrite: boolean;
+  onShowDetailView: () => void;
   onRefresh: () => Promise<void> | void;
 }
 
@@ -209,18 +211,20 @@ export function rowProblems(
   return problems;
 }
 
+// react-doctor-disable-next-line no-giant-component - grouped grid with per-row edit state and bulk accept flow
 export function LibraryImportRemediationGrid({
   sessionId,
   proposals,
   canWrite,
+  onShowDetailView,
   onRefresh,
 }: LibraryImportRemediationGridProps) {
-  const [edits, setEdits] = useState<RowEdits>({});
   // Every cell edit, fill-down, and link change pushes the previous state here so a
-  // mis-aimed fill-down across 300 rows is one keystroke to undo.
-  const [undoStack, setUndoStack] = useState<RowEdits[]>([]);
-  const [redoStack, setRedoStack] = useState<RowEdits[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // mis-aimed fill-down across 300 rows is one keystroke to undo. The three
+  // pieces move through one pure reducer (useEditHistory) so history can never
+  // duplicate or desync.
+  const { edits, undoStack, redoStack, commitEdits, replaceEdits, resetHistory, undo, redo } = useEditHistory();
+  const [rawSelected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [filter, setFilter] = useState("");
@@ -272,51 +276,17 @@ export function LibraryImportRemediationGrid({
 
   const dirtyCount = Object.keys(edits).length;
 
-  useEffect(() => {
-    // Group keys change when rows merge or a refresh removes accepted rows, so drop
-    // selections that no longer name a live row.
-    setSelected((current) => {
-      const live = new Set(groups.map((group) => group.key));
-      const next = new Set([...current].filter((key) => live.has(key)));
-      return next.size === current.size ? current : next;
-    });
-  }, [groups]);
+  // Group keys change when rows merge or a refresh removes accepted rows. A
+  // selection is only ever read against the live rows -- the copy-down, the
+  // ready count, and the header checkbox all intersect with them -- so it is
+  // narrowed during render rather than pruned a commit later.
+  const selected = useMemo(() => {
+    const live = new Set<string>();
+    for (const group of groups) if (rawSelected.has(group.key)) live.add(group.key);
+    return live;
+  }, [groups, rawSelected]);
 
   /** Apply an edit through the history so it can be undone. */
-  const commitEdits = useCallback((update: (current: RowEdits) => RowEdits) => {
-    setEdits((current) => {
-      const next = update(current);
-      if (next === current) return current;
-      setUndoStack((stack) => [...stack.slice(-49), current]);
-      setRedoStack([]);
-      return next;
-    });
-  }, []);
-
-  const undo = useCallback(() => {
-    setUndoStack((stack) => {
-      if (stack.length === 0) return stack;
-      const previous = stack[stack.length - 1];
-      setEdits((current) => {
-        setRedoStack((redo) => [...redo, current]);
-        return previous;
-      });
-      return stack.slice(0, -1);
-    });
-  }, []);
-
-  const redo = useCallback(() => {
-    setRedoStack((stack) => {
-      if (stack.length === 0) return stack;
-      const next = stack[stack.length - 1];
-      setEdits((current) => {
-        setUndoStack((undoEntries) => [...undoEntries, current]);
-        return next;
-      });
-      return stack.slice(0, -1);
-    });
-  }, []);
-
   /** A grouped row stands for one component, so an edit applies to every member. */
   const setCell = useCallback(
     (group: ProposalGroup, field: EditableField, value: string) => {
@@ -396,9 +366,7 @@ export function LibraryImportRemediationGrid({
         { method: "PUT", body: JSON.stringify({ drafts: buildDrafts() }) },
         "Failed to save import edits"
       );
-      setEdits({});
-      setUndoStack([]);
-      setRedoStack([]);
+      resetHistory();
       // Saved edits are no longer pending, so a stale selection would leave the
       // "Import selected" count disagreeing with the checkboxes.
       setSelected(new Set());
@@ -409,7 +377,7 @@ export function LibraryImportRemediationGrid({
     } finally {
       setSaving(false);
     }
-  }, [buildDrafts, dirtyCount, onRefresh, sessionId]);
+  }, [buildDrafts, dirtyCount, onRefresh, resetHistory, sessionId]);
 
   const acceptRows = useCallback(
     async (rows: ProposalGroup[]) => {
@@ -419,7 +387,7 @@ export function LibraryImportRemediationGrid({
         // Every member is submitted. They carry identical metadata, so the backend
         // resolves them to one component and records each reference as a usage
         // rather than creating a duplicate or an extra revision.
-        const items = rows.flatMap((group) => group.members).map((proposal) => {
+        const items = rows.flatMap((group) => group.members.map((proposal) => {
           const metadata_overrides: Record<string, string> = {};
           for (const column of COLUMNS) {
             metadata_overrides[column.key] = effectiveValue(proposal, column.key, edits);
@@ -431,7 +399,7 @@ export function LibraryImportRemediationGrid({
             asset_links: footprintAssetId ? { footprint: footprintAssetId } : {},
             change_summary: `Import ${proposal.reference || "component"} from Prism project`,
           };
-        });
+        }));
 
         const result = await fetchJson<BulkAcceptResult>(
           `/api/catalog/import-sessions/${sessionId}/proposals/bulk-accept`,
@@ -439,7 +407,7 @@ export function LibraryImportRemediationGrid({
           "Failed to accept import rows"
         );
 
-        setEdits((current) => {
+        replaceEdits((current) => {
           const next = { ...current };
           for (const entry of result.results) {
             if (entry.status === "accepted") delete next[entry.proposal_id];
@@ -452,9 +420,11 @@ export function LibraryImportRemediationGrid({
         // result.accepted counts proposals; a grouped row submits one per reference
         // but yields a single component, so report distinct components instead.
         const componentCount = new Set(
-          result.results
-            .filter((entry) => entry.status === "accepted" && entry.component_id)
-            .map((entry) => entry.component_id)
+          result.results.flatMap((entry) => (
+            entry.status === "accepted" && entry.component_id
+              ? [entry.component_id]
+              : []
+          ))
         ).size;
 
         if (result.failed === 0) {
@@ -477,7 +447,7 @@ export function LibraryImportRemediationGrid({
         setAccepting(false);
       }
     },
-    [edits, onRefresh, sessionId]
+    [edits, onRefresh, replaceEdits, sessionId]
   );
 
   const exportCsv = useCallback(() => {
@@ -497,7 +467,7 @@ export function LibraryImportRemediationGrid({
         );
         if (!response.ok) throw new Error(await readApiError(response, "Failed to import CSV"));
         const result = (await response.json()) as { saved: number; skipped_unknown_rows: number };
-        setEdits({});
+        replaceEdits(() => ({}));
         await onRefresh();
         toast.success(
           `Applied ${result.saved} rows` +
@@ -510,7 +480,7 @@ export function LibraryImportRemediationGrid({
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [onRefresh, sessionId]
+    [onRefresh, replaceEdits, sessionId]
   );
 
   // Undo, redo, and save stay live while a cell is focused — the whole point is
@@ -547,8 +517,8 @@ export function LibraryImportRemediationGrid({
   const gridTemplate = `36px 40px 150px ${COLUMNS.map((column) => `${column.width}px`).join(" ")} 200px`;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-3" data-testid="import-remediation-grid">
+      <div className="flex shrink-0 flex-wrap items-center gap-2" data-testid="import-remediation-controls">
         <Input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
@@ -575,34 +545,36 @@ export function LibraryImportRemediationGrid({
           Group by MPN
           {groupByMpn && mergedGroupCount > 0 ? ` (${mergedGroupCount} merged)` : ""}
         </Button>
+        <Button variant="outline" size="sm" className="ml-auto h-8 text-xs" onClick={onShowDetailView}>
+          <Rows3 className="mr-1.5 h-3.5 w-3.5" />Detail view
+        </Button>
 
         <PermissionHint
           blocked={!canWrite}
           action="edit or accept import proposals"
-          allowedRoles={["component_designer", "admin"]}
-          className="ml-auto"
+          allowedRoles={["designer", "admin"]}
+          className="basis-full"
         >
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full basis-full flex-wrap items-center gap-2">
           <Button
             variant="outline"
-            size="sm"
-            className="h-8 text-xs"
+            size="icon-sm"
+            aria-label="Undo"
             title="Undo (⌘Z)"
             disabled={!canWrite || undoStack.length === 0}
             onClick={undo}
           >
-            <Undo2 className="mr-1.5 h-3.5 w-3.5" /> Undo
+            <Undo2 className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="outline"
-            size="sm"
-            className="h-8 text-xs"
+            size="icon-sm"
+            aria-label="Redo"
             title="Redo (⇧⌘Z)"
             disabled={!canWrite || redoStack.length === 0}
             onClick={redo}
           >
             <Redo2 className="h-3.5 w-3.5" />
-            <span className="sr-only">Redo</span>
           </Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportCsv}>
             <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
@@ -637,37 +609,40 @@ export function LibraryImportRemediationGrid({
             )}
             Save edits{dirtyCount > 0 ? ` (${dirtyCount})` : ""}
           </Button>
-          <Button
-            size="sm"
-            className="h-8 text-xs"
-            disabled={!canWrite || accepting || selectedReady.length === 0}
-            onClick={() => void acceptRows(selectedReady)}
-          >
-            {accepting ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Check className="mr-1.5 h-3.5 w-3.5" />
-            )}
-            Import selected ({selectedReady.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="h-8 text-xs"
-            disabled={!canWrite || accepting || readyRows.length === 0}
-            onClick={() => void acceptRows(readyRows)}
-          >
-            <CheckCheck className="mr-1.5 h-3.5 w-3.5" />
-            Import all ready ({readyRows.length})
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              disabled={!canWrite || accepting || selectedReady.length === 0}
+              onClick={() => void acceptRows(selectedReady)}
+            >
+              {accepting ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Import selected ({selectedReady.length})
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-8 text-xs"
+              disabled={!canWrite || accepting || readyRows.length === 0}
+              onClick={() => void acceptRows(readyRows)}
+            >
+              <CheckCheck className="mr-1.5 h-3.5 w-3.5" />
+              Import all ready ({readyRows.length})
+            </Button>
+          </div>
         </div>
         </PermissionHint>
       </div>
 
-      <div className="overflow-x-auto border">
+      <div className="themed-scrollbar min-h-0 flex-1 overflow-auto border" data-testid="import-remediation-scroll-region">
         <div className="min-w-max">
           <div
-            className="sticky top-0 z-20 grid items-center border-b bg-muted/60 text-xs font-medium"
+            className="sticky top-0 z-20 grid items-center border-b bg-muted text-xs font-medium"
+            data-testid="import-remediation-column-headings"
             style={{ gridTemplateColumns: gridTemplate }}
           >
             <div className="flex h-9 items-center justify-center border-r">
@@ -795,15 +770,10 @@ export function LibraryImportRemediationGrid({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <Badge variant="outline">{visibleRows.length} shown</Badge>
         <Badge variant="outline">{readyRows.length} ready</Badge>
         <Badge variant="outline">{groups.length - readyRows.length} need attention</Badge>
-        <span>
-          {groupByMpn
-            ? "Each row is one catalog component. Linking a footprint reuses an existing asset instead of importing a duplicate."
-            : "Showing one row per placed reference. Linking a footprint reuses an existing asset instead of importing a duplicate."}
-        </span>
       </div>
     </div>
   );

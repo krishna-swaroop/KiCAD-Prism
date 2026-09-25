@@ -1,9 +1,4 @@
-"""Which kicad-monkey the compiler imports, and who gets to decide.
-
-Two sibling checkouts both satisfy `import kicad_monkey`, so the search
-order is load-bearing: if the winner is missing an optional accelerator the
-pipeline falls back silently and the only symptom is a slower build.
-"""
+"""Only the lock or an explicit operator choice may select kicad-monkey."""
 
 from __future__ import annotations
 
@@ -46,11 +41,17 @@ class ExplicitPathsTests(unittest.TestCase):
 
 
 class PythonPathTests(unittest.TestCase):
-    def test_the_callers_pythonpath_comes_first(self) -> None:
-        # It used to be appended, so a deliberately configured checkout lost
-        # to whatever discovery happened to find first.
-        rendered = vendor_paths.pythonpath(current="/caller/src/py")
-        self.assertEqual(rendered.split(os.pathsep)[0], "/caller/src/py")
+    def test_the_named_kicad_checkout_outranks_the_callers_pythonpath(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temporary:
+            chosen = Path(temporary) / "chosen" / "src" / "py"
+            chosen.mkdir(parents=True)
+            with mock.patch.dict(
+                os.environ, {"KICAD_MONKEY_PYTHONPATH": str(chosen)}
+            ):
+                rendered = vendor_paths.pythonpath(current="/caller/src/py")
+        self.assertEqual(rendered.split(os.pathsep)[0], str(chosen))
 
     def test_a_repeated_entry_is_not_emitted_twice(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -60,20 +61,20 @@ class PythonPathTests(unittest.TestCase):
 
 
 class AmbiguityWarningTests(unittest.TestCase):
-    def test_two_importable_checkouts_are_reported(self) -> None:
+    def test_two_explicit_checkouts_are_reported(self) -> None:
         import tempfile
 
         with tempfile.TemporaryDirectory() as temporary:
-            platform_root = Path(temporary)
-            _make_checkout(platform_root, "kicad-monkey")
-            _make_checkout(platform_root, "kicad_monkey")
-            # reference_paths() derives the platform root from repo_root's
-            # grandparent, so nest the fake repo two levels down.
-            repo_root = platform_root / "prism" / "viewer"
+            root = Path(temporary)
+            first = _make_checkout(root, "kicad-monkey")
+            second = _make_checkout(root, "kicad_monkey")
+            repo_root = root / "viewer"
             repo_root.mkdir(parents=True)
 
-            with mock.patch.dict(os.environ, {}, clear=False):
-                os.environ.pop("KICAD_MONKEY_PYTHONPATH", None)
+            with mock.patch.dict(
+                os.environ,
+                {"KICAD_MONKEY_PYTHONPATH": os.pathsep.join((str(first), str(second)))},
+            ):
                 with self.assertLogs(vendor_paths.logger, level="WARNING") as logged:
                     found = vendor_paths.warn_on_ambiguous_kicad_monkey(repo_root)
 
@@ -83,7 +84,7 @@ class AmbiguityWarningTests(unittest.TestCase):
         self.assertIn("kicad_monkey", message)
         self.assertIn("KICAD_MONKEY_PYTHONPATH", message)
 
-    def test_a_single_checkout_warns_about_nothing(self) -> None:
+    def test_sibling_checkouts_are_not_discovered_implicitly(self) -> None:
         import tempfile
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -97,7 +98,7 @@ class AmbiguityWarningTests(unittest.TestCase):
                 with mock.patch.object(vendor_paths.logger, "warning") as warning:
                     found = vendor_paths.warn_on_ambiguous_kicad_monkey(repo_root)
 
-        self.assertEqual(len(found), 1)
+        self.assertEqual(found, [])
         warning.assert_not_called()
 
 

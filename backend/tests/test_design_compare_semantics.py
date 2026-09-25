@@ -389,3 +389,28 @@ class DesignCompareSemanticsTests(SemanticFixtures, unittest.TestCase):
         self.assertEqual(change["source_id_base"], "wire-1")
         self.assertEqual(change["source_id_compare"], "wire-1")
         self.assertNotIn("connections", change["fields"])
+
+
+class NetPairingEvidenceTests(SemanticFixtures, unittest.TestCase):
+    def test_shared_connectivity_never_pairs_one_net_twice(self) -> None:
+        """Two nets with identical terminals: the name match wins, the other
+        base net takes the remaining head net rather than the same one."""
+        base = self._design(
+            nets=[self._net("X", "net:x", "wire-x"), self._net("Y", "net:y", "wire-y")],
+            terminals=[
+                {"reference": "U1", "pin": "1", "netUid": "net:x"},
+                {"reference": "U1", "pin": "1", "netUid": "net:y"},
+            ],
+        )
+        compare = self._design(
+            nets=[self._net("Y", "net:y2", "wire-y"), self._net("Z", "net:z", "wire-z")],
+            terminals=[
+                {"reference": "U1", "pin": "1", "netUid": "net:y2"},
+                {"reference": "U1", "pin": "1", "netUid": "net:z"},
+            ],
+        )
+        result = design_compare_service._diff_designs(base, compare)
+        self.assertEqual(
+            [(change["kind"], change["label"], change["fields"].get("name")) for change in result["changes"]],
+            [("changed", "Z", {"old": "X", "new": "Z"})],
+        )

@@ -1,31 +1,32 @@
-# Opt-in Docker override for testing the adjacent kicad-monkey working tree.
+# Opt-in Docker override for testing a local modern kicad_monkey monorepo.
 # Use together with docker-compose.yml; normal Compose builds remain pinned to
-# the upstream release in kicad-prism-viewer/requirements-runtime.txt.
+# the published pair in requirements/runtime.lock. KICAD_TOOLCHAIN_CONTEXT may
+# name another checkout; the default remains the adjacent historical location.
 #
-# PRISM_COPPER_EMIT_ENABLED skips Plotter IR and uses emit_pcb_copper_geometry
-# for semantic 3D copper. Requires a local monkey tree that exports that API.
+# The local Python toolchain remains useful for upstream parity experiments.
+# PCB semantic geometry itself uses Prism's pinned Rust helper.
 services:
   backend:
     build:
       additional_contexts:
-        kicad_monkey: ../kicad_monkey
+        kicad_toolchain: ${KICAD_TOOLCHAIN_CONTEXT:-../kicad_monkey}
       args:
         KICAD_MONKEY_VARIANT: kicad-monkey-local
     environment:
-      - PRISM_COPPER_EMIT_ENABLED=true
+      - PRISM_PCB_GEOMETRY_BACKEND=rust
 
   catalog-worker:
     build:
       additional_contexts:
-        kicad_monkey: ../kicad_monkey
+        kicad_toolchain: ${KICAD_TOOLCHAIN_CONTEXT:-../kicad_monkey}
       args:
         KICAD_MONKEY_VARIANT: kicad-monkey-local
 
   prism-worker:
     build:
       additional_contexts:
-        kicad_monkey: ../kicad_monkey
+        kicad_toolchain: ${KICAD_TOOLCHAIN_CONTEXT:-../kicad_monkey}
       args:
         KICAD_MONKEY_VARIANT: kicad-monkey-local
     environment:
-      - PRISM_COPPER_EMIT_ENABLED=true
+      - PRISM_PCB_GEOMETRY_BACKEND=rust

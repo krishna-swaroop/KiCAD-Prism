@@ -47,7 +47,7 @@ describe("permissionHintMessage", () => {
   });
 
   it("lists several sufficient roles readably", () => {
-    const message = permissionHintMessage("edit the catalog", ["component_designer", "component_qa", "admin"]);
-    expect(message).toContain("Component Designer, Component QA or Admin role");
+    const message = permissionHintMessage("edit the catalog", ["designer", "qa", "admin"]);
+    expect(message).toContain("Designer, QA or Admin role");
   });
 });

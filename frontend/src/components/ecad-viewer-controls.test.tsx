@@ -1,6 +1,69 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { SchematicPageTree } from "./ecad-viewer-controls";
+import type { ECadViewerElement, EcadPcbViewState } from "@/types/ecad-viewer";
+import { EcadViewerControls, SchematicPageTree } from "./ecad-viewer-controls";
+
+/**
+ * The slice of <ecad-viewer> the PCB objects tab talks to: a state snapshot,
+ * the visibility setter, and the event surface the panel subscribes to.
+ */
+function stubPcbViewer(overrides: Partial<EcadPcbViewState["objectVisibility"]> = {}) {
+  const state: EcadPcbViewState = {
+    layers: [{ name: "F.Cu", color: "#c83434", visible: true, highlighted: false }],
+    objectOpacity: { tracks: 1, vias: 1, pads: 1, zones: 0.6 },
+    objectVisibility: {
+      references: true,
+      values: true,
+      footprintText: true,
+      hiddenText: false,
+      padNumbers: true,
+      padNetNames: true,
+      trackNetNames: true,
+      ...overrides,
+    },
+    highlightTracks: true,
+  };
+  const setPcbObjectVisibility = vi.fn((kind: keyof EcadPcbViewState["objectVisibility"], visible: boolean) => {
+    state.objectVisibility[kind] = visible;
+  });
+  const viewer = {
+    // Like the element, hand out a fresh snapshot each time.
+    getPcbViewState: () => ({ ...state, objectVisibility: { ...state.objectVisibility } }),
+    setPcbObjectVisibility,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  } as unknown as ECadViewerElement;
+  return { viewer, state, setPcbObjectVisibility };
+}
+
+describe("EcadViewerControls PCB objects tab", () => {
+  it("lists the pad-number and net-name toggles and forwards a change to the viewer", () => {
+    const { viewer, setPcbObjectVisibility } = stubPcbViewer();
+    const view = render(<EcadViewerControls context="PCB" viewer={viewer} />);
+
+    fireEvent.click(view.getByRole("button", { name: "Objects & filters" }));
+
+    const padNumbers = view.getByRole("checkbox", { name: "Pad numbers" });
+    const padNets = view.getByRole("checkbox", { name: "Net names on pads" });
+    const trackNets = view.getByRole("checkbox", { name: "Net names on tracks & vias" });
+    expect(padNumbers.getAttribute("aria-checked")).toBe("true");
+    expect(padNets.getAttribute("aria-checked")).toBe("true");
+    expect(trackNets.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(trackNets);
+    expect(setPcbObjectVisibility).toHaveBeenCalledWith("trackNetNames", false);
+    // The panel re-reads the viewer after every mutation, so the box follows.
+    expect(view.getByRole("checkbox", { name: "Net names on tracks & vias" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("reflects a viewer that already has pad numbers off", () => {
+    const { viewer } = stubPcbViewer({ padNumbers: false });
+    const view = render(<EcadViewerControls context="PCB" viewer={viewer} />);
+    fireEvent.click(view.getByRole("button", { name: "Objects & filters" }));
+    expect(view.getByRole("checkbox", { name: "Pad numbers" }).getAttribute("aria-checked")).toBe("false");
+    expect(view.getByRole("checkbox", { name: "Net names on pads" }).getAttribute("aria-checked")).toBe("true");
+  });
+});
 
 describe("SchematicPageTree", () => {
   it("emits the resolved parent page for controlled navigation", () => {

@@ -84,9 +84,14 @@ class PrismWorker:
         self.stopping = False
         self._last_database_error_log = 0.0
         self._catalog_maintenance_date = ""
+        self._auto_sync_attempts: dict[str, datetime] = {}
+        self._next_auto_sync_scan = 0.0
+        self._next_tracker_scan = 0.0
 
     @staticmethod
     def resource_capacities() -> dict[str, int]:
+        from app.services.trackers.scheduler import TRACKER_RESOURCE, TRACKER_RESOURCE_CAPACITY
+
         return {
             "prism_worker": settings.PRISM_WORKER_CONCURRENCY,
             "webgpu": settings.PRISM_WEBGPU_CONCURRENCY,
@@ -96,6 +101,7 @@ class PrismWorker:
             "semantic_compile": settings.PRISM_SEMANTIC_COMPILE_SLOTS,
             "catalog_worker": settings.CATALOG_WORKER_CONCURRENCY,
             "catalog_kicad": settings.CATALOG_KICAD_CONCURRENCY,
+            TRACKER_RESOURCE: TRACKER_RESOURCE_CAPACITY,
         }
 
     def request_stop(self, *_args: object) -> None:
@@ -498,6 +504,46 @@ class PrismWorker:
         )
         self._catalog_maintenance_date = today
 
+    def schedule_project_fetches(self) -> None:
+        interval = settings.PRISM_AUTO_SYNC_INTERVAL_SECONDS
+        if self.worker_pool != "prism" or interval <= 0:
+            return
+        now_mono = time.monotonic()
+        if now_mono < self._next_auto_sync_scan:
+            return
+        from app.services.project_auto_sync_service import enqueue_due_fetches
+
+        enqueue_due_fetches(
+            self._auto_sync_attempts,
+            interval_seconds=interval,
+            now=datetime.now(timezone.utc),
+        )
+        self._next_auto_sync_scan = now_mono + min(30, interval)
+
+    def schedule_tracker_jobs(self) -> None:
+        if self.worker_pool != "prism" or time.monotonic() < self._next_tracker_scan:
+            return
+        from app.services.trackers.scheduler import schedule_due_tracker_jobs
+
+        schedule_due_tracker_jobs()
+        self._next_tracker_scan = time.monotonic() + 5
+
+    def mount_tracker_composition(self) -> None:
+        """The scheduling loop needs the same mounts as the API and job runner.
+
+        Without them ``schedule_due_tracker_jobs`` treats the hint applier as
+        unmounted and webhook hints wait for the next poll or an unrelated
+        outbound op instead of getting a dispatch job of their own.
+        """
+        if self.worker_pool != "prism":
+            return
+        from app.services.trackers.composition import initialize_tracker_composition
+
+        try:
+            initialize_tracker_composition()
+        except Exception:
+            logger.exception("Tracker composition failed to mount in the worker")
+
     def run(self) -> None:
         while not self.stopping:
             try:
@@ -509,6 +555,7 @@ class PrismWorker:
                 time.sleep(min(1.0, self.poll_seconds))
         if self.stopping:
             return
+        self.mount_tracker_composition()
         logger.info(
             "Worker %s started pool=%s concurrency=%s",
             self.worker_id,
@@ -520,6 +567,14 @@ class PrismWorker:
                 self.schedule_catalog_maintenance()
             except Exception:
                 self._log_database_error("schedule catalog maintenance")
+            try:
+                self.schedule_project_fetches()
+            except Exception:
+                self._log_database_error("schedule project fetches")
+            try:
+                self.schedule_tracker_jobs()
+            except Exception:
+                self._log_database_error("schedule tracker jobs")
             self.supervise()
             available_slots = self.concurrency - len(self.running) - len(self.pending_releases)
             while available_slots > 0:

@@ -177,3 +177,35 @@ describe("ErrorBoundary", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong in the visualizer.");
   });
 });
+
+describe("ErrorBoundary after a redeploy", () => {
+  it("offers a reload instead of a retry when a lazy chunk from the previous build is gone", () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    render(
+      <ErrorBoundary label="this section">
+        <Boom shouldThrow message="Failed to fetch dynamically imported module: https://prism.example/assets/library-component-workspace-67x0hQkZ.js" />
+      </ErrorBoundary>,
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Prism was updated while this page was open.");
+    expect(screen.queryByRole("button", { name: /Try again/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reload Prism" }));
+    expect(reload).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    "error loading dynamically imported module: https://prism.example/assets/a.js",
+    "Importing a module script failed.",
+    "Unable to preload CSS for /assets/a.css",
+  ])("recognises %s", (message) => {
+    render(
+      <ErrorBoundary>
+        <Boom shouldThrow message={message} />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole("button", { name: "Reload Prism" })).toBeInTheDocument();
+  });
+});

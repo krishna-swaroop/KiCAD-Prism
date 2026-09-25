@@ -28,6 +28,18 @@ class RetryableJobError(RuntimeError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class PermanentJobError(RuntimeError):
+    """A handler failure that must not be retried.
+
+    Codes stay on the job row so callers can distinguish known domain failures
+    from an unclassified crash. Unknown catalog errors stay retryable instead.
+    """
+
+    def __init__(self, message: str, *, code: str = "handler_failed") -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class LostJobLease(RuntimeError):
     pass
 

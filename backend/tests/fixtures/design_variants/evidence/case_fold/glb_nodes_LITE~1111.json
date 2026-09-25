@@ -1,0 +1,8 @@
+{
+  "variant": "LITE",
+  "noDnp": true,
+  "nodes": [
+    "",
+    "=>[0:1:1:2]"
+  ]
+}

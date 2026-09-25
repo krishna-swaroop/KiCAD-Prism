@@ -5,6 +5,7 @@ import {
     useMemo,
     useRef,
     useState,
+    type PointerEvent as ReactPointerEvent,
     type ReactNode,
 } from "react";
 import {
@@ -33,6 +34,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import { useCommittedRef } from "@/hooks/use-committed-ref";
 import type {
     ECadViewerElement,
     EcadPcbLayerState,
@@ -45,6 +47,10 @@ type EcadViewerControlsProps = {
     viewer: ECadViewerElement | null;
     onVisibleWidthChange?: (width: number) => void;
 };
+
+const DEFAULT_RAIL_WIDTH = 256;
+const MIN_RAIL_WIDTH = 200;
+const MAX_RAIL_WIDTH = 420;
 
 const pcbPresets = [
     ["front", "Front"],
@@ -63,10 +69,11 @@ export function EcadViewerControls({
     onVisibleWidthChange,
 }: EcadViewerControlsProps) {
     const [open, setOpen] = useState(true);
+    const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
+    const [resizing, setResizing] = useState(false);
     const railRef = useRef<HTMLElement | null>(null);
     const handleRef = useRef<HTMLDivElement | null>(null);
-    const openRef = useRef(open);
-    openRef.current = open;
+    const openRef = useCommittedRef(open);
     const [section, setSection] = useState<"layers" | "objects">("layers");
     const [pcbState, setPcbState] = useState<EcadPcbViewState | null>(null);
 
@@ -127,21 +134,53 @@ export function EcadViewerControls({
             observer?.disconnect();
             onVisibleWidthChange(0);
         };
-    }, [onVisibleWidthChange]);
+    }, [onVisibleWidthChange, openRef]);
 
     useLayoutEffect(() => {
         if (!onVisibleWidthChange) return;
         const target = open ? railRef.current : handleRef.current;
+        // The rail's width is a layout fact, measured after layout and reported
+        // to the host that has to leave room for it. There is no earlier event
+        // carrying it: laying out at this width *is* the event.
+        // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
         onVisibleWidthChange(target?.getBoundingClientRect().width ?? 0);
-    }, [onVisibleWidthChange, open]);
+    }, [onVisibleWidthChange, open, railWidth]);
+
+    const onResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (!open) return;
+        event.preventDefault();
+        const pointerId = event.pointerId;
+        const startX = event.clientX;
+        const startWidth = railWidth;
+        const target = event.currentTarget;
+        setResizing(true);
+        target.setPointerCapture(pointerId);
+        const onMove = (move: PointerEvent) => {
+            const next = Math.min(
+                MAX_RAIL_WIDTH,
+                Math.max(MIN_RAIL_WIDTH, startWidth + (move.clientX - startX)),
+            );
+            setRailWidth(next);
+        };
+        const onUp = () => {
+            setResizing(false);
+            target.releasePointerCapture(pointerId);
+            target.removeEventListener("pointermove", onMove);
+            target.removeEventListener("pointerup", onUp);
+        };
+        target.addEventListener("pointermove", onMove);
+        target.addEventListener("pointerup", onUp);
+    };
 
     return (
         <aside
             ref={railRef}
             className={cn(
-                "absolute inset-y-0 left-0 z-30 flex w-80 flex-col border-r bg-background/95 shadow-lg backdrop-blur-sm transition-transform duration-200",
+                "absolute inset-y-0 left-0 z-30 flex flex-col border-r bg-background/95 shadow-lg backdrop-blur-sm",
+                !resizing && "transition-transform duration-200",
                 open ? "translate-x-0" : "-translate-x-[calc(100%_-_2.75rem)]",
             )}
+            style={{ width: railWidth }}
             aria-label={context === "SCH" ? "Schematic pages" : "PCB display controls"}
         >
             <div className="flex h-10 shrink-0 items-center border-b">
@@ -207,7 +246,7 @@ export function EcadViewerControls({
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <ScrollArea className="min-h-0 flex-1">
+                            <ScrollArea className="themed-scrollbar min-h-0 flex-1">
                                 <div className="p-2">
                                     <PcbLayerList
                                         layers={pcbState?.layers ?? []}
@@ -249,6 +288,9 @@ export function EcadViewerControls({
                                     ["values", "Values"],
                                     ["footprintText", "Footprint text"],
                                     ["hiddenText", "Hidden text"],
+                                    ["padNumbers", "Pad numbers"],
+                                    ["padNetNames", "Net names on pads"],
+                                    ["trackNetNames", "Net names on tracks & vias"],
                                 ] as const).map(([kind, label]) => (
                                     <label key={kind} className="flex cursor-pointer items-center justify-between gap-3 text-xs">
                                         <span>{label}</span>
@@ -269,6 +311,15 @@ export function EcadViewerControls({
                         </ScrollArea>
                     )}
                 </>
+            )}
+            {open && (
+                <div
+                    className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize touch-none hover:bg-primary/20"
+                    onPointerDown={onResizePointerDown}
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize side menu"
+                />
             )}
         </aside>
     );

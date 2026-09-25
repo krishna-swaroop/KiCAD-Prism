@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import mimetypes
 import os
 import posixpath
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from app.api._helpers import get_project_for_role_or_404, _row_to_project, require_output_type, resolve_path_within_root
 from app.core.config import settings
+from app.core.roles import role_meets_minimum
 from app.core.security import AuthenticatedUser, require_designer, require_viewer
 from app.services import (
     derived_assets,
@@ -22,12 +24,13 @@ from app.services import (
     git_access_service,
     path_config_service,
     project_import_service,
-    project_properties_service,
+    project_metadata_service,
     project_service,
     semantic_index_service,
     semantic_visualizer_service,
 )
-from app.services.workspace_service import workspace
+from app.services.comments_store_service import comments_store
+from app.services.workspace_service import ProjectHasSignedReleasesError, workspace
 from app.services.comments_url_service import build_comments_source_urls, resolve_comments_base_url
 from app.services.git_service import (
     get_branches,
@@ -42,6 +45,8 @@ from app.services.git_failures import GitAccessError
 from app.services.git_remote_url import RemoteUrlError, parse_remote_url
 from app.services.path_config_service import PathConfig
 from app.services.job_service import jobs as v3_jobs
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
@@ -63,11 +68,11 @@ class Monorepo(BaseModel):
 
 
 class ProjectPropertiesTitleBlock(BaseModel):
+    # KiCad's title block also carries rev, company and numbered comments.
+    # Prism parsed all of them and rendered none; narrowed to what the
+    # properties panel displays.
     title: str = ""
     date: str = ""
-    rev: str = ""
-    company: str = ""
-    comments: Dict[str, str] = Field(default_factory=dict)
 
 
 class ProjectPropertiesSchematicFile(BaseModel):
@@ -76,8 +81,6 @@ class ProjectPropertiesSchematicFile(BaseModel):
     version: Optional[int] = None
     generator: Optional[str] = None
     generator_version: Optional[str] = None
-    paper: Optional[str] = None
-    uuid: Optional[str] = None
     title_block: Optional[ProjectPropertiesTitleBlock] = None
 
 
@@ -87,7 +90,6 @@ class ProjectPropertiesPcbFile(BaseModel):
     version: Optional[int] = None
     generator: Optional[str] = None
     generator_version: Optional[str] = None
-    paper: Optional[str] = None
     dimensions_mm: Optional[Dict[str, float]] = None
     thickness_mm: Optional[float] = None
     title_block: Optional[ProjectPropertiesTitleBlock] = None
@@ -134,8 +136,8 @@ def _repo_context(project: project_service.Project) -> tuple[str, Optional[str]]
     return project.path, None
 
 
-def _resolve_output_dir(project_path: str, output_type: str) -> str:
-    resolved = path_config_service.resolve_paths(project_path)
+def _resolve_output_dir(project: project_service.Project, output_type: str) -> str:
+    resolved = project_service.resolved_paths_for(project)
     output_dir = (
         resolved.design_outputs_dir
         if output_type == "design"
@@ -160,13 +162,18 @@ def _join_relative_paths(*parts: Optional[str]) -> str:
     return posixpath.join(*cleaned) if cleaned else ""
 
 
+#: One implementation of the `.prism.json` merge for both the working tree and
+#: a Git commit; they disagreed, and that disagreement was the bug.
+_merge_commit_config = path_config_service.config_for_anchor
+
+
 def _default_commit_path_config() -> PathConfig:
     return PathConfig(**path_config_service.DEFAULT_PATHS)
 
 
 def _path_config_from_commit(project: project_service.Project, commit: Optional[str]) -> PathConfig:
     if not commit:
-        return path_config_service.get_path_config(project.path)
+        return project_service.path_config_for(project)
 
     repo_path, sub_path = _repo_context(project)
     try:
@@ -190,12 +197,13 @@ def _path_config_from_commit(project: project_service.Project, commit: Optional[
     if not isinstance(raw_config, dict):
         return _default_commit_path_config()
 
-    merged: Dict[str, object] = {}
-    if isinstance(raw_config.get("paths"), dict):
-        merged.update(raw_config["paths"])
-    for key, value in raw_config.items():
-        if key != "paths":
-            merged[key] = value
+    # Settings for one project of several sharing a directory live under
+    # `projects.<anchor>`. Flattening the file without that namespace handed a
+    # co-located sibling the first project's paths -- or the bare defaults --
+    # at every historical revision, while the working tree looked right.
+    merged: Dict[str, object] = dict(
+        _merge_commit_config(raw_config, project_service.project_anchor(project))
+    )
 
     for key, default_value in path_config_service.DEFAULT_PATHS.items():
         if not str(merged.get(key) or "").strip():
@@ -237,6 +245,42 @@ def _read_commit_file(
     )
 
 
+def _anchored_commit_path(
+    project: project_service.Project,
+    paths: List[str],
+    suffix: str,
+) -> Optional[str]:
+    """Select this project's root file from a commit listing.
+
+    The default schematic/PCB globs are shared by every project in the
+    directory. Once a project has an anchor, falling back to the first match is
+    the same identity bug as ignoring the anchor altogether. Legacy rows have
+    no anchor and retain the deterministic first-match behaviour.
+    """
+    if not paths:
+        return None
+    anchor = project_service.project_anchor(project)
+    if not anchor:
+        return paths[0]
+    expected = Path(anchor).with_suffix(suffix).name
+    return next((path for path in paths if path == expected), None)
+
+
+def _sibling_root_schematic_names(
+    project: project_service.Project, project_paths: List[str]
+) -> set[str]:
+    """Root schematics owned by the other anchored projects in this directory."""
+    anchor = project_service.project_anchor(project)
+    if not anchor:
+        return set()
+    own_project = Path(anchor).name
+    return {
+        Path(path).with_suffix(".kicad_sch").name
+        for path in project_paths
+        if Path(path).name != own_project
+    }
+
+
 def _read_configured_commit_file(
     project: project_service.Project,
     commit: str,
@@ -255,7 +299,16 @@ def _read_configured_commit_file(
     matches = file_service.find_files_in_commit(repo_path, commit, path, relative_prefix=sub_path)
     if not matches:
         raise HTTPException(status_code=404, detail=not_found_detail)
-    return _read_commit_file(project, commit, matches[0], not_found_detail=not_found_detail)
+    selected = matches[0]
+    default_suffix = {
+        path_config_service.DEFAULT_PATHS["schematic"]: ".kicad_sch",
+        path_config_service.DEFAULT_PATHS["pcb"]: ".kicad_pcb",
+    }.get(path)
+    if default_suffix:
+        selected = _anchored_commit_path(project, matches, default_suffix)
+        if selected is None:
+            raise HTTPException(status_code=404, detail=not_found_detail)
+    return _read_commit_file(project, commit, selected, not_found_detail=not_found_detail)
 
 
 def _commit_file_response(
@@ -404,7 +457,7 @@ def _load_project_readme_content(
                 return None
             raise
 
-    resolved = path_config_service.resolve_paths(project.path, config)
+    resolved = project_service.resolved_paths_for(project, config)
     readme_path = resolved.readme_path
     if not readme_path:
         return None
@@ -895,7 +948,11 @@ def _resolve_thumbnail_file(project, row: Optional[dict]) -> Optional[Path]:
         return None
     source = str(row.get("thumbnail_source") or "generated")
     if source in ("generated", "custom"):
-        return derived_assets.find_thumbnail(project.path, kind=source)
+        return derived_assets.find_thumbnail(
+            project.path,
+            kind=source,
+            anchor=path_config_service.anchor_for_project(project),
+        )
     abs_path = resolve_path_within_root(
         project.path,
         str(row["thumbnail_rel"]),
@@ -1052,7 +1109,10 @@ async def upload_project_thumbnail(
     data = await file.read(derived_assets.MAX_UPLOAD_BYTES + 1)
     try:
         stored, digest, size = await asyncio.to_thread(
-            derived_assets.store_uploaded_thumbnail, project.path, data
+            derived_assets.store_uploaded_thumbnail,
+            project.path,
+            data,
+            anchor=path_config_service.anchor_for_project(project),
         )
     except derived_assets.ThumbnailImageError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -1081,7 +1141,10 @@ async def clear_project_thumbnail(
     """Drop an uploaded thumbnail and go back to the rendered board."""
     project = get_project_for_role_or_404(project_id, user.role)
     await asyncio.to_thread(
-        derived_assets.discard_thumbnail, project.path, kind="custom"
+        derived_assets.discard_thumbnail,
+        project.path,
+        kind="custom",
+        anchor=path_config_service.anchor_for_project(project),
     )
     cached = await asyncio.to_thread(project_import_service.refresh_project_assets, project_id)
 
@@ -1113,23 +1176,51 @@ async def get_project_properties(project_id: str, user: AuthenticatedUser = Depe
     return await asyncio.to_thread(_build_project_properties, project)
 
 
+def _stored_project_metadata(
+    project: project_service.Project,
+) -> tuple[Optional[dict], Optional[dict], Optional[dict]]:
+    """Read the project's stored KiCad metadata, refreshing it out of band.
+
+    This used to derive both dictionaries inline, which meant reading and
+    scanning the schematic and the board on every open of the workspace preview
+    panel. On a 57 MB design that scan pinned a core for minutes and, being
+    pure Python, starved the event loop serving every other request -- which is
+    what made opening a large project take tens of seconds.
+
+    The facts change only when the files change, so the import and sync jobs
+    compute them and this reads the row. A project imported before the table
+    existed, or one whose files moved without a sync, has its refresh queued
+    here and returns what is stored meanwhile. That is a card with some blank
+    fields for one job's duration, never a request that blocks on kicad-cli.
+    """
+    anchor = project_service.project_anchor(project)
+    repo_path, _relative_path = _repo_context(project)
+
+    record, current = project_metadata_service.stored_metadata_is_current(
+        project.id, project.path, anchor, repo_path
+    )
+    if not current:
+        try:
+            project_import_service.start_project_metadata_job(
+                project.id, requested_by="project-properties"
+            )
+        except Exception as error:
+            # The queue being unavailable must not take the panel down with it;
+            # the card simply keeps whatever was last stored.
+            logger.warning(
+                "Could not queue metadata refresh for %s: %s", project.id, error
+            )
+
+    if not record:
+        return None, None, None
+    return record.get("schematic"), record.get("pcb"), record.get("repository")
+
+
 def _build_project_properties(project: project_service.Project) -> ProjectPropertiesResponse:
-    repo_path, relative_path = _repo_context(project)
-    if relative_path:
-        releases = get_releases_filtered(repo_path, relative_path)
-        latest_page = get_commits_list_filtered(repo_path, relative_path, 1)
-    else:
-        releases = get_releases(repo_path)
-        latest_page = get_commits_list(repo_path, 1)
-
-    latest_commits = latest_page["commits"] if isinstance(latest_page, dict) else latest_page
-    latest_commit = latest_commits[0] if latest_commits else None
-    latest_tag = releases[0] if releases else None
-
-    schematic_path = project_service.find_schematic_file(project.path)
-    pcb_path = project_service.find_pcb_file(project.path)
-    schematic_metadata = project_properties_service.extract_schematic_metadata(project.path, schematic_path)
-    pcb_metadata = project_properties_service.extract_pcb_metadata(project.path, pcb_path)
+    schematic_metadata, pcb_metadata, repository = _stored_project_metadata(project)
+    repository = repository or {}
+    latest_commit = repository.get("latest_commit")
+    latest_tag = repository.get("latest_tag")
 
     return ProjectPropertiesResponse(
         project=project,
@@ -1211,6 +1302,8 @@ async def delete_project_endpoint(project_id: str, user: AuthenticatedUser = Dep
     Delete a project from the registry.
     For standalone projects, this also deletes the project files.
     For monorepo sub-projects, only removes the registry entry.
+    Admins always cascade associated workspace and release-studio listings.
+    Designers can delete a project that has no signed release records.
     """
     project = get_project_for_role_or_404(project_id, user.role)
     row = workspace.get_project_by_id(project_id)
@@ -1220,14 +1313,27 @@ async def delete_project_endpoint(project_id: str, user: AuthenticatedUser = Dep
     repo_id = row.get("repo_id")
     import_type = row.get("import_type") or "single"
     clone_path = row.get("parent_repo_path") or project.path
-    success = await asyncio.to_thread(workspace.delete_project, project_id)
+    force = role_meets_minimum(user.role, "admin")
+    try:
+        success = await asyncio.to_thread(
+            workspace.delete_project, project_id, force=force
+        )
+    except ProjectHasSignedReleasesError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not success:
         raise HTTPException(status_code=404, detail="Project not found")
 
     remaining_projects = await asyncio.to_thread(workspace.get_projects_by_repo, repo_id) if repo_id else []
     should_delete_repo = import_type == "single" or not remaining_projects
     removed_files = False
-    file_warning = None
+    warnings: List[str] = []
+
+    try:
+        await asyncio.to_thread(comments_store.delete_project_comments, project_id)
+    except Exception as exc:
+        warnings.append(
+            f"Project was removed from the workspace, but comments could not be deleted: {exc}"
+        )
 
     if should_delete_repo and repo_id:
         await asyncio.to_thread(workspace.delete_repository, repo_id)
@@ -1238,11 +1344,13 @@ async def delete_project_endpoint(project_id: str, user: AuthenticatedUser = Dep
                 await asyncio.to_thread(shutil.rmtree, target)
                 removed_files = True
         except Exception as exc:
-            file_warning = f"Project was removed from the workspace, but files could not be deleted: {exc}"
+            warnings.append(
+                f"Project was removed from the workspace, but files could not be deleted: {exc}"
+            )
 
     response = {"message": "Project deleted successfully", "removed_files": removed_files}
-    if file_warning:
-        response["warning"] = file_warning
+    if warnings:
+        response["warning"] = " ".join(warnings)
     response["repository_deleted"] = should_delete_repo
     return response
 
@@ -1299,7 +1407,7 @@ async def download_file(
         )
         return _commit_file_response(commit_file, inline=inline)
 
-    output_dir = _resolve_output_dir(project.path, output_type)
+    output_dir = _resolve_output_dir(project, output_type)
 
     file_path = resolve_path_within_root(output_dir, path, invalid_detail="Invalid file path")
 
@@ -1376,7 +1484,7 @@ async def get_docs_files(
         docs_path = config.documentation or "docs"
         return _files_from_commit(project, commit, docs_path)
     
-    resolved = path_config_service.resolve_paths(project.path)
+    resolved = project_service.resolved_paths_for(project)
     docs_dir = resolved.documentation_dir
     
     if not docs_dir or not os.path.exists(docs_dir):
@@ -1411,7 +1519,7 @@ async def get_doc_file_content(
             raise
     
     # Otherwise read from filesystem
-    resolved = path_config_service.resolve_paths(project.path)
+    resolved = project_service.resolved_paths_for(project)
     docs_dir = resolved.documentation_dir
     
     if not docs_dir or not os.path.exists(docs_dir):
@@ -1556,6 +1664,46 @@ async def get_project_commit_summary(
     )
 
 
+@router.get("/{project_id}/commits/{commit_hash}/file")
+async def get_project_commit_file(
+    project_id: str,
+    commit_hash: str,
+    path: str,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    """
+    Serve one file from a commit as inline content, keyed by the repo-relative
+    path the commit summary returns. Used to open non-CAD files (PDFs, images)
+    in the browser's own viewer rather than routing them to the visualizer.
+
+    The mime type is guessed from the name, so a PDF is served as
+    application/pdf and the browser opens it inline. History only opens this
+    endpoint for PDF, CSV, text, and markdown; CAD files go to the visualizer.
+    """
+    project = get_project_for_role_or_404(project_id, user.role)
+    repo_path, relative_path = _repo_context(project)
+
+    # The summary path is already repo-relative (it includes the subproject
+    # prefix for Type-2 projects), so read it against the repo root with no
+    # extra prefix. Confine it to the project's own subtree so one subproject
+    # cannot read a sibling's files out of the shared parent repo.
+    normalized = posixpath.normpath(path).lstrip("/")
+    if normalized.startswith("..") or normalized == ".":
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    if relative_path:
+        prefix = f"{posixpath.normpath(relative_path).strip('/')}/"
+        if not (normalized + "/").startswith(prefix):
+            raise HTTPException(status_code=404, detail="File not found")
+
+    commit_file = file_service.read_file_from_commit(
+        repo_path,
+        commit_hash,
+        normalized,
+        not_found_detail="File not found",
+    )
+    return _commit_file_response(commit_file, inline=True)
+
+
 @router.get("/{project_id}/schematic")
 async def get_project_schematic(
     project_id: str,
@@ -1574,7 +1722,9 @@ async def get_project_schematic(
         )
         return _commit_file_response(commit_file, inline=True)
     
-    path = project_service.find_schematic_file(project.path)
+    path = project_service.find_schematic_file(
+        project.path, project_service.project_anchor(project)
+    )
     if not path:
         raise HTTPException(status_code=404, detail="Schematic not found")
     return FileResponse(path)
@@ -1596,6 +1746,15 @@ async def get_project_subsheets(
             not_found_detail="Schematic not found",
         )
         repo_path, sub_path = _repo_context(project)
+        sibling_roots = _sibling_root_schematic_names(
+            project,
+            file_service.find_files_in_commit(
+                repo_path,
+                commit,
+                "*.kicad_pro",
+                relative_prefix=sub_path,
+            ),
+        )
         root_sheets = [
             path for path in file_service.find_files_in_commit(
                 repo_path,
@@ -1603,7 +1762,7 @@ async def get_project_subsheets(
                 "*.kicad_sch",
                 relative_prefix=sub_path,
             )
-            if path != main_schematic.path
+            if path != main_schematic.path and path not in sibling_roots
         ]
         subsheets_dir = config.subsheets or "Subsheets"
         nested_sheets = [
@@ -1621,7 +1780,9 @@ async def get_project_subsheets(
         ]
         return {"files": subsheet_urls}
     
-    main_path = project_service.find_schematic_file(project.path)
+    main_path = project_service.find_schematic_file(
+        project.path, project_service.project_anchor(project)
+    )
     if not main_path:
         raise HTTPException(status_code=404, detail="Schematic not found")
         
@@ -1653,12 +1814,9 @@ async def get_project_viewer_support_files(
         )
         if not pro_paths:
             return {"files": []}
-        config = _path_config_from_commit(project, commit)
-        expected_stem = Path(config.schematic or "").stem
-        pro_path = next(
-            (path for path in pro_paths if Path(path).stem == expected_stem),
-            pro_paths[0],
-        )
+        pro_path = _anchored_commit_path(project, pro_paths, ".kicad_pro")
+        if pro_path is None:
+            return {"files": []}
         pro_file = _read_commit_file(project, commit, pro_path)
         files = [
             {
@@ -1702,7 +1860,9 @@ async def get_project_viewer_support_files(
                 )
         return {"files": files}
 
-    project_file = semantic_visualizer_service.find_kicad_project(project.path)
+    project_file = semantic_visualizer_service.find_kicad_project(
+        project.path, project_service.project_anchor(project)
+    )
     files = [
         {
             "filename": project_file.name,
@@ -1759,7 +1919,9 @@ async def get_project_pcb(
         )
         return _commit_file_response(commit_file, inline=True)
     
-    path = project_service.find_pcb_file(project.path)
+    path = project_service.find_pcb_file(
+        project.path, project_service.project_anchor(project)
+    )
     if not path:
         raise HTTPException(status_code=404, detail="PCB not found")
     return FileResponse(path)
@@ -1819,9 +1981,10 @@ async def get_project_config(project_id: str, user: AuthenticatedUser = Depends(
     """
     project = get_project_for_role_or_404(project_id, user.role)
     
-    config = path_config_service.get_path_config(project.path)
-    resolved = path_config_service.resolve_paths(project.path, config)
-    explicit_config = path_config_service._load_prism_config(project.path)
+    anchor = project_service.project_anchor(project)
+    config = project_service.path_config_for(project)
+    resolved = project_service.resolved_paths_for(project, config)
+    explicit_config = path_config_service._load_prism_config(project.path, anchor)
     effective_config = config.model_copy(deep=True)
     if not effective_config.project_name:
         effective_config.project_name = project.display_name
@@ -1843,7 +2006,9 @@ async def detect_project_paths(project_id: str, user: AuthenticatedUser = Depend
     """
     project = get_project_for_role_or_404(project_id, user.role)
     
-    detected = path_config_service.detect_paths(project.path)
+    detected = path_config_service.detect_paths(
+        project.path, anchor=project_service.project_anchor(project)
+    )
     
     return {
         "detected": detected.model_dump(),
@@ -1875,14 +2040,14 @@ async def update_project_config(
     validation = path_config_service.validate_config(project.path, config)
     
     # Save the configuration
-    path_config_service.save_path_config(project.path, config)
-    
+    project_service.save_path_config_for(project, config)
+
     # Clear cache to ensure fresh resolution
     path_config_service.clear_config_cache(project.path)
     file_service.invalidate_file_listing_cache()
-    
+
     # Get resolved paths
-    resolved = path_config_service.resolve_paths(project.path, config)
+    resolved = project_service.resolved_paths_for(project, config)
     
     return {
         "config": config.model_dump(),
@@ -1929,13 +2094,13 @@ async def update_project_name(
         raise HTTPException(status_code=400, detail="Display name cannot be empty")
 
     # Get current config
-    config = path_config_service.get_path_config(project.path)
-    
+    config = project_service.path_config_for(project)
+
     # Update project name
     config.project_name = display_name
     
     # Save to .prism.json
-    path_config_service.save_path_config(project.path, config)
+    project_service.save_path_config_for(project, config)
     await asyncio.to_thread(workspace.update_project, project_id, display_name=display_name)
     
     return {
@@ -1976,9 +2141,9 @@ async def update_project_description(
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Also persist to .prism.json for compatibility
-    config = path_config_service.get_path_config(project.path)
+    config = project_service.path_config_for(project)
     config.description = next_description
-    path_config_service.save_path_config(project.path, config)
+    project_service.save_path_config_for(project, config)
 
     return {
         "description": next_description,

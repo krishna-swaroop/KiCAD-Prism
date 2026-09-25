@@ -1,0 +1,21 @@
+{
+  "set": "F3",
+  "title": "Connector, bot and user identities, OAuth, visibility generations",
+  "decisions": ["D7", "C3"],
+  "owner": "TR-15",
+  "cases": [
+    {"id": "F3.bot_identity_captured", "owner": "TR-19", "given": "GitHub App credentials", "when": "Test connection", "expect": "connector.bot_forge_user_id and bot login stored from GET /app then /users/<slug>[bot]; installation id recorded", "proves": "C3"},
+    {"id": "F3.installation_token_expiry", "owner": "TR-15", "given": "installation token expiring in 60 s", "when": "a write is dispatched", "expect": "token refreshed before use; no request sent with an expired token; refresh failure classified auth_lost", "proves": "C3"},
+    {"id": "F3.ghes_base_url", "owner": "TR-15", "given": "connector base_url=https://ghe.example.com/api/v3", "when": "any request", "expect": "all URLs derived from base_url; host allowlisted via PRISM_FORGE_HOSTS; github.com never contacted", "proves": "C3"},
+    {"id": "F3.oauth_state_mismatch", "owner": "TR-20", "given": "callback with unknown or reused state", "when": "GET /oauth/callback", "expect": "400; no identity written; state single-use", "proves": "C3"},
+    {"id": "F3.oauth_pkce_required", "owner": "TR-20", "given": "authorize URL", "when": "authorize URL is generated and the code is exchanged", "expect": "code_challenge S256 present; exchange sends verifier", "proves": "C3"},
+    {"id": "F3.oauth_refresh", "owner": "TR-20", "given": "user token expired, refresh token valid", "when": "dashboard read", "expect": "refreshed and re-encrypted; old token unusable", "proves": "C3"},
+    {"id": "F3.oauth_revoke", "owner": "TR-21", "given": "linked identity", "when": "user unlinks / admin revokes", "expect": "row status='revoked', tokens erased, mentions resolve as unlinked, audit row", "proves": "C3"},
+    {"id": "F3.identity_bound_to_user_and_connector", "owner": "TR-21", "given": "identity linked by u_1 on cn_gh1", "when": "u_2 or connector cn_gh2 tries to use it", "expect": "not found; unique (user_id, connector_id) enforced by the database", "proves": "C3"},
+    {"id": "F3.envelope_encryption_roundtrip", "owner": "TR-10", "given": "secret with context (connector_id, field)", "when": "encrypt, restore into another environment with the same root key, decrypt with wrong context", "expect": "roundtrip ok; wrong context fails authentication; ciphertext carries key version", "proves": "C3"},
+    {"id": "F3.key_rotation", "owner": "TR-10", "given": "root key v1 and v2", "when": "the root key is rotated", "expect": "records re-wrapped to v2; v1 still decrypts during grace; no plaintext logged", "proves": "C3"},
+    {"id": "F3.visibility_generations", "owner": "TR-23", "given": "project destination acme/openswitch (private, ack v1, generation 1)", "when": "admin changes destination to acme/hardware-issues (generation 2)", "expect": "existing links keep generation 1 and keep writing to acme/openswitch; new promotions require a generation-2 ack", "proves": "D7"},
+    {"id": "F3.public_without_ack_pauses", "owner": "TR-23", "given": "destination observed public, no ack for public", "when": "promotion dispatched", "expect": "op paused:visibility; health shows the reason; nothing sent", "proves": "D7"},
+    {"id": "F3.unknown_visibility_pauses", "owner": "TR-23", "given": "get_container returns visibility=unknown", "when": "promotion dispatched", "expect": "op paused:visibility_unknown", "proves": "C4"}
+  ]
+}

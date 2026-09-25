@@ -134,3 +134,16 @@ Stable releases become GitHub's latest release. Prereleases do not.
   verify the final release bundle contains the intended image digests.
 
 Do not manually publish substitute images under a release tag.
+
+## v4.0.0-alpha promotion
+
+The next release is `v4.0.0-alpha`, directly after `v3.0.2-alpha`; no intervening
+3.x minor release is required. Review [the release notes](releases/v4.0.0-alpha.md)
+and the complete dev-to-main PR before promotion. The previous v3.1 notes are
+an unpublished planning record.
+
+Every tag requires nonempty `docs/releases/<tag>.md`. The workflow uses that
+file as the GitHub Release body and includes it as `RELEASE_NOTES.md` in the
+checksummed deployment archive. Keep the v4 tag pending until the reviewed
+`dev` is merged into `main` and the resulting main commit passes the Quality
+gate. Prerelease images publish only `4.0.0-alpha`, never floating stable tags.

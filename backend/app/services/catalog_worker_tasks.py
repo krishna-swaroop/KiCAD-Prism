@@ -13,8 +13,10 @@ from app.services.job_runtime import (
     JobContext,
     JobResult,
     LostJobLease,
+    PermanentJobError,
     RetryableJobError,
 )
+from app.services.catalog.conflicts import CatalogConflict
 from app.services.project_component_import_service import run_project_import_session
 from app.services.library_folder_import_service import run_folder_import_session
 from app.services.local_artifact_store import artifact_store
@@ -23,25 +25,54 @@ from app.services.local_artifact_store import artifact_store
 Progress = Callable[..., bool]
 
 
+def _list_active_component_ids() -> list[str]:
+    ids: list[str] = []
+    page = 1
+    while True:
+        result = catalog_service.list_components(
+            include_inactive=False, page=page, page_size=10000, lightweight=True
+        )
+        ids.extend(str(component["id"]) for component in result["items"])
+        if page >= int(result.get("pages") or 1):
+            break
+        page += 1
+    return ids
+
+
+def resolve_validation_worklist(job: dict[str, Any]) -> list[str]:
+    """Return the frozen validation worklist for this job.
+
+    Resume uses checkpoint.component_ids, never a fresh catalog listing. A
+    crash after validating item i but before checkpointing i+1 re-runs i:
+    the index is at-least-once, not exact-once.
+    """
+    saved = job.get("checkpoint", {}).get("component_ids")
+    if saved is not None:
+        return [str(value) for value in saved]
+    requested = job.get("payload", {}).get("component_ids")
+    if requested is not None:
+        return [str(value) for value in requested]
+    return _list_active_component_ids()
+
+
 def run_validation(job: dict[str, Any], progress: Progress) -> dict[str, Any]:
-    requested = job["payload"].get("component_ids")
-    if requested is None:
-        ids: list[str] = []
-        page = 1
-        while True:
-            result = catalog_service.list_components(
-                include_inactive=False, page=page, page_size=10000, lightweight=True
-            )
-            ids.extend(str(component["id"]) for component in result["items"])
-            if page >= int(result.get("pages") or 1):
-                break
-            page += 1
-    else:
-        ids = [str(value) for value in requested]
+    ids = resolve_validation_worklist(job)
     errors: list[dict[str, str]] = list(job["result"].get("errors") or [])
     validated = int(job["checkpoint"].get("index") or 0)
     component_payload: dict[str, Any] | None = None
     total = len(ids)
+    if validated < total:
+        start_message = f"Validating {validated + 1}/{total} components"
+    elif total:
+        start_message = f"Validated {validated}/{total} components"
+    else:
+        start_message = "No components to validate"
+    progress(
+        progress=(validated / total) * 100 if total else 100,
+        message=start_message,
+        checkpoint={"index": validated, "component_ids": ids},
+        result={"validated": validated, "total": total, "errors": errors},
+    )
     for index in range(validated, total):
         component_id = ids[index]
         progress(
@@ -170,12 +201,17 @@ def run_metadata_batch(job: dict[str, Any], progress: Progress) -> dict[str, Any
             result={"batch_id": batch_id, **counts},
         )
 
-    result = catalog_service.apply_metadata_batch(
-        batch_id,
-        actor=actor,
-        item_ids=[str(value) for value in job["payload"].get("item_ids") or []],
-        progress_callback=callback,
-    )
+    try:
+        result = catalog_service.apply_metadata_batch(
+            batch_id,
+            actor=actor,
+            item_ids=[str(value) for value in job["payload"].get("item_ids") or []],
+            progress_callback=callback,
+        )
+    except CatalogConflict:
+        raise
+    except ValueError as error:
+        raise PermanentJobError(str(error), code="catalog_invalid_input") from error
     progress(progress=100, message="Metadata batch applied", result=result)
     return result
 
@@ -202,7 +238,10 @@ def run_catalog_job_v3(context: JobContext) -> JobResult:
     job_type = str(context.job["kind"])
     handler = HANDLERS.get(job_type)
     if handler is None:
-        raise RuntimeError(f"Unsupported catalog job type: {job_type}")
+        raise PermanentJobError(
+            f"Unsupported catalog job type: {job_type}",
+            code="unsupported_catalog_job",
+        )
 
     catalog_service.initialize()
     artifact_store.initialize()
@@ -245,8 +284,10 @@ def run_catalog_job_v3(context: JobContext) -> JobResult:
 
     try:
         result = handler(legacy_job, progress)
-    except (JobCancelled, LostJobLease, RetryableJobError):
+    except (JobCancelled, LostJobLease, RetryableJobError, PermanentJobError):
         raise
+    except CatalogConflict as error:
+        raise PermanentJobError(str(error), code=error.code) from error
     except Exception as error:
         raise RetryableJobError(
             str(error),

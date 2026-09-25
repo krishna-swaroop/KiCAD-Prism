@@ -2,7 +2,6 @@ import type {
     PrismComponentSelection,
     PrismNetSelection,
     PrismSelection,
-    PrismSelectionContext,
     PrismSemanticIndex,
     PrismTerminalSelection,
     SemanticComponent,
@@ -11,6 +10,7 @@ import type {
 } from "@/types/prism-selection";
 import type {
     CrossProbeRequest,
+    EcadNetStatisticsRef,
     EcadSemanticSelectionDetail,
 } from "@/types/ecad-viewer";
 
@@ -179,15 +179,24 @@ export function enrichPrismSelection(
         : revisionSelection;
 }
 
+/**
+ * The board net a selection belongs to, for `getNetStatistics`: the net
+ * itself, or the net a terminal sits on. Components have no single net.
+ */
+export function netStatisticsRefForSelection(
+    selection: PrismSelection | null,
+): EcadNetStatisticsRef | null {
+    if (!selection || selection.kind === "component") return null;
+    const name = selection.netName || undefined;
+    const netCode = selection.netCode;
+    if (!name && netCode === undefined) return null;
+    return { name, netCode };
+}
+
 export function selectionLabel(selection: PrismSelection): string {
     if (selection.kind === "component") return selection.reference;
     if (selection.kind === "terminal") return `${selection.reference}.${selection.pin}`;
     return selection.netName || selection.netUid || selection.uuid || "Unresolved net";
-}
-
-export function contextLabel(context: PrismSelectionContext): string {
-    if (context === "3D") return "3D";
-    return context;
 }
 
 const semanticNetForSelection = (

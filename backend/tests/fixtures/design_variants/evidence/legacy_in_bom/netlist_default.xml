@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<export version="E">
+  <design>
+    <source>legacy.kicad_sch</source>
+    <date>normalized</date>
+    <tool>Eeschema 10.0.6</tool>
+    <sheet number="1" name="/" tstamps="/">
+      <title_block>
+        <title/>
+        <company/>
+        <rev/>
+        <date/>
+        <source>legacy.kicad_sch</source>
+        <comment number="1" value=""/>
+        <comment number="2" value=""/>
+        <comment number="3" value=""/>
+        <comment number="4" value=""/>
+        <comment number="5" value=""/>
+        <comment number="6" value=""/>
+        <comment number="7" value=""/>
+        <comment number="8" value=""/>
+        <comment number="9" value=""/>
+      </title_block>
+    </sheet>
+  </design>
+  <components>
+    <comp ref="R10">
+      <value>10k</value>
+      <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
+      <fields>
+        <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="Sheetname" value="legacy"/>
+      <property name="Sheetfile" value="legacy.kicad_sch"/>
+      <variants>
+        <variant name="Lite">
+          <property name="exclude_from_bom" value="1"/>
+        </variant>
+      </variants>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>f83e6fc8-026f-519d-aa91-1e8ce63730a5</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="R11">
+      <value>22k</value>
+      <footprint>Resistor_SMD:R_0603_1608Metric</footprint>
+      <fields>
+        <field name="Footprint">Resistor_SMD:R_0603_1608Metric</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="Sheetname" value="legacy"/>
+      <property name="Sheetfile" value="legacy.kicad_sch"/>
+      <property name="exclude_from_bom"/>
+      <variants>
+        <variant name="Lite">
+          <property name="exclude_from_bom" value="0"/>
+        </variant>
+      </variants>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>330b79bb-a70e-5c71-80e7-c0efa00b66e9</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+  </components>
+  <libparts>
+    <libpart lib="Device" part="R">
+      <description>Resistor</description>
+      <fields>
+        <field name="Reference">R</field>
+        <field name="Value">R</field>
+        <field name="Footprint"/>
+        <field name="Datasheet"/>
+        <field name="Description">Resistor</field>
+      </fields>
+      <pins>
+        <pin num="1" name="~" type="passive"/>
+        <pin num="2" name="~" type="passive"/>
+      </pins>
+    </libpart>
+  </libparts>
+  <libraries>
+    <library logical="Device">
+      <uri>${KICAD10_SYMBOL_DIR}/Device.kicad_sym</uri>
+    </library>
+  </libraries>
+  <nets>
+    <net code="1" name="unconnected-(R10-~-Pad1)" class="Default">
+      <node ref="R10" pin="1" pinfunction="~_1" pintype="passive"/>
+    </net>
+    <net code="2" name="unconnected-(R10-~-Pad2)" class="Default">
+      <node ref="R10" pin="2" pinfunction="~_2" pintype="passive"/>
+    </net>
+    <net code="3" name="unconnected-(R11-~-Pad1)" class="Default">
+      <node ref="R11" pin="1" pinfunction="~_1" pintype="passive"/>
+    </net>
+    <net code="4" name="unconnected-(R11-~-Pad2)" class="Default">
+      <node ref="R11" pin="2" pinfunction="~_2" pintype="passive"/>
+    </net>
+  </nets>
+</export>

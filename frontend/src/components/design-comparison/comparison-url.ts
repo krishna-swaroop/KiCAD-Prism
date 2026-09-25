@@ -1,3 +1,5 @@
+import type { ComparisonSelection } from "./comparison-selection-bridge";
+
 export type ComparisonUrlTab = "sch" | "pcb" | "bom" | "stackup" | "fabrication";
 export type ComparisonPresentationMode =
     | "composite"
@@ -18,6 +20,9 @@ export type ComparisonUrlState = {
      */
     presentationOverride: ComparisonPresentationMode | null;
     item: string | null;
+    group: string | null;
+    reference: string | null;
+    documentPath: string | null;
     showSecondary: boolean;
     layers: string[];
 };
@@ -29,14 +34,17 @@ const COMPARISON_KEYS = [
     "diff",
     "presentation",
     "item",
+    "group",
+    "ref",
+    "document",
     "secondary",
     "layers",
 ] as const;
 
 /**
  * No `presentation` parameter is the shareable default: Prism follows the
- * selected change. An explicit mode records a reviewer's override, `auto`
- * being the long-hand way of saying there isn't one.
+ * selected change. An explicit mode records a reviewer's override. Legacy or
+ * unknown values are treated as no override.
  */
 function parsePresentationOverride(
     raw: string | null,
@@ -66,6 +74,9 @@ export function readComparisonUrlState(
         diff,
         presentationOverride: parsePresentationOverride(rawPresentation),
         item: params.get("item"),
+        group: params.get("group"),
+        reference: params.get("ref"),
+        documentPath: params.get("document"),
         showSecondary: params.get("secondary") === "1",
         layers: (params.get("layers") ?? "").split(",").filter(Boolean),
     };
@@ -81,6 +92,11 @@ export function applyOpenComparisonParams(
         presentationOverride?: ComparisonPresentationMode | null;
         /** Exact semantic change to focus after the comparison is ready. */
         item?: string | null;
+        /** Authored-decision group to focus after the comparison is ready. */
+        group?: string | null;
+        /** One designator inside `group`; absent means the whole decision. */
+        reference?: string | null;
+        documentPath?: string | null;
     },
 ): URLSearchParams {
     const next = new URLSearchParams(params);
@@ -96,6 +112,12 @@ export function applyOpenComparisonParams(
     }
     if (input.item) next.set("item", input.item);
     else next.delete("item");
+    if (input.group) next.set("group", input.group);
+    else next.delete("group");
+    if (input.group && input.reference) next.set("ref", input.reference);
+    else next.delete("ref");
+    if (input.documentPath) next.set("document", input.documentPath);
+    else next.delete("document");
     // Review filters and layer visibility belong to the comparison being left.
     // Workspace URL syncing adds current values back after this reset.
     next.delete("secondary");
@@ -122,7 +144,7 @@ export function applyWorkspaceComparisonParams(
         compare: string;
         activeTab: ComparisonUrlTab;
         presentationOverride: ComparisonPresentationMode | null;
-        selectedChangeId: string | null;
+        selection: ComparisonSelection;
         showSecondary: boolean;
         visibleLayers: string[];
     },
@@ -133,8 +155,28 @@ export function applyWorkspaceComparisonParams(
         diff: state.activeTab,
         presentationOverride: state.presentationOverride,
     });
-    if (state.selectedChangeId) next.set("item", state.selectedChangeId);
-    else next.delete("item");
+    if (state.selection?.kind === "item") {
+        next.set("item", state.selection.id);
+        next.delete("group");
+        next.delete("ref");
+    } else if (state.selection) {
+        next.delete("item");
+        next.set("group", state.selection.id);
+        if (state.selection.kind === "instance") {
+            next.set("ref", state.selection.reference);
+        } else {
+            next.delete("ref");
+        }
+    } else {
+        next.delete("item");
+        next.delete("group");
+        next.delete("ref");
+    }
+    if (state.selection?.documentPath) {
+        next.set("document", state.selection.documentPath);
+    } else {
+        next.delete("document");
+    }
     if (state.showSecondary) next.set("secondary", "1");
     else next.delete("secondary");
     if (state.visibleLayers.length) {

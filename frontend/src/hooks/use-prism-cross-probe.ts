@@ -8,6 +8,11 @@ import type {
 
 interface PrismCrossProbeBus {
     selection: PrismSelection | null;
+    /**
+     * True when the current selection is a cross-probe (double-click focus that
+     * mirrors into the other viewer), false for a plain single-view selection.
+     */
+    isProbing: boolean;
     /** Panel-only: updates inspector state without mirroring into other viewers. */
     select: (selection: PrismSelection) => void;
     /** Full cross-probe: updates inspector and applies to other ready viewers. */
@@ -21,6 +26,7 @@ export function usePrismCrossProbe(
     semanticIndex: PrismSemanticIndex | null,
 ): PrismCrossProbeBus {
     const [selection, setSelection] = useState<PrismSelection | null>(null);
+    const [isProbing, setIsProbing] = useState(false);
     const selectionRef = useRef<PrismSelection | null>(null);
     const probingRef = useRef(false);
     const clientsRef = useRef(new Map<string, PrismViewerClient>());
@@ -54,6 +60,7 @@ export function usePrismCrossProbe(
     const select = useCallback((next: PrismSelection) => {
         const enriched = enrichPrismSelection(next, semanticIndex);
         probingRef.current = false;
+        setIsProbing(false);
         selectionRef.current = enriched;
         setSelection(enriched);
     }, [semanticIndex]);
@@ -61,6 +68,7 @@ export function usePrismCrossProbe(
     const crossProbe = useCallback((next: PrismSelection) => {
         const enriched = enrichPrismSelection(next, semanticIndex);
         probingRef.current = true;
+        setIsProbing(true);
         selectionRef.current = enriched;
         setSelection(enriched);
         dispatch(enriched);
@@ -68,6 +76,7 @@ export function usePrismCrossProbe(
 
     const clear = useCallback(() => {
         probingRef.current = false;
+        setIsProbing(false);
         selectionRef.current = null;
         setSelection(null);
         dispatch(null);
@@ -104,5 +113,5 @@ export function usePrismCrossProbe(
         if (probingRef.current) dispatch(enriched);
     }, [dispatch, semanticIndex]);
 
-    return { selection, select, crossProbe, clear, registerClient, notifyClientReady };
+    return { selection, isProbing, select, crossProbe, clear, registerClient, notifyClientReady };
 }

@@ -1,0 +1,17 @@
+{
+  "variant": "Lite",
+  "bom": [
+    {
+      "OEMDesignNumberRef": "Resistor_SMD_R_0603_1608Metric_10k",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "R1",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "false"
+        }
+      ]
+    }
+  ]
+}

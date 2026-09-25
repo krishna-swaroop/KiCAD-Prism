@@ -83,7 +83,7 @@ def _default_workers() -> int:
 
 
 def _build_ready_preview_index(service: Any, conn: Any) -> dict[str, set[str]]:
-    from app.services.component_catalog_domain import _sha256_file  # noqa: PLC0415
+    from app.services.catalog.normalization import sha256_file  # noqa: PLC0415
 
     rows = conn.execute(
         """
@@ -96,13 +96,13 @@ def _build_ready_preview_index(service: Any, conn: Any) -> dict[str, set[str]]:
     index: dict[str, set[str]] = defaultdict(set)
     for row in rows:
         kind = str(row["kind"])
-        expected = service._preview_generator_identity(kind)["generator_fingerprint"]  # type: ignore[attr-defined]
+        expected = service.previews.generator_identity(service.runtime, kind)["generator_fingerprint"]
         if str(row["generator_fingerprint"]) != expected:
             continue
         file_path = Path(str(row["file_path"] or ""))
         if not file_path.is_file():
             continue
-        if _sha256_file(file_path) != str(row["sha256"]):
+        if sha256_file(file_path) != str(row["sha256"]):
             continue
         index[str(row["asset_id"])].add(kind)
     return index
@@ -122,13 +122,13 @@ def _asset_preview_complete(asset: dict[str, Any], ready_index: dict[str, set[st
 
 
 def _generate_asset_previews(service: Any, asset: dict[str, Any]) -> AssetGenerationResult:
-    from app.services.component_catalog_domain import _preview_kind  # noqa: PLC0415
+    from app.services.catalog.normalization import preview_kind  # noqa: PLC0415
 
     asset_id = str(asset["id"])
     asset_type = str(asset["asset_type"])
     try:
         if asset_type == "symbol":
-            status, result = service._generate_symbol_preview_units(asset)  # type: ignore[attr-defined]
+            status, result = service.previews.render_symbol_units(service.runtime, asset)
             if status != PREVIEW_STATUS_READY or not isinstance(result, list):
                 return AssetGenerationResult(
                     asset_id=asset_id,
@@ -138,12 +138,12 @@ def _generate_asset_previews(service: Any, asset: dict[str, Any]) -> AssetGenera
             return AssetGenerationResult(
                 asset_id=asset_id,
                 previews=[
-                    GeneratedPreview(kind=_preview_kind(PREVIEW_KIND_SYMBOL, unit), payload=payload)
+                    GeneratedPreview(kind=preview_kind(PREVIEW_KIND_SYMBOL, unit), payload=payload)
                     for unit, payload in result
                 ],
             )
         if asset_type == "footprint":
-            status, result = service._generate_footprint_preview(asset)  # type: ignore[attr-defined]
+            status, result = service.previews.render_footprint(service.runtime, asset)
             if status != PREVIEW_STATUS_READY or not isinstance(result, bytes):
                 return AssetGenerationResult(
                     asset_id=asset_id,
@@ -178,8 +178,9 @@ def _persist_asset_previews(
         return
     ready_count = 0
     for preview in result.previews:
-        stored = service._store_preview_version(  # type: ignore[attr-defined]
+        stored = service.previews.store_preview_version(
             conn,
+            service.runtime,
             asset=asset,
             kind=preview.kind,
             payload=preview.payload,
@@ -201,7 +202,7 @@ def _relink_revision_preview_outputs(
     changed = 0
     assets = [
         asset
-        for asset in service._load_assets_for_revision(conn, revision_id)  # type: ignore[attr-defined]
+        for asset in service.revisions.load_assets_for_revision(conn, revision_id)
         if str(asset["asset_type"]) in PLACE_REQUIRED_ASSET_TYPES
     ]
     for asset in assets:
@@ -383,7 +384,7 @@ def _relink_components(
     commit_batch: int,
     limit: int,
 ) -> None:
-    from app.services.component_catalog_domain import _utc_now_iso  # noqa: PLC0415
+    from app.services.catalog.normalization import utc_now_iso  # noqa: PLC0415
 
     component_ids = _load_target_components(conn, limit=limit)
     stats.components_seen = len(component_ids)
@@ -392,11 +393,11 @@ def _relink_components(
 
     for index, component_id in enumerate(component_ids, start=1):
         try:
-            component = service._component_row(conn, component_id)  # type: ignore[attr-defined]
+            component = service.revisions.component_row(conn, component_id)
             if not component:
                 continue
             revision_id = str(component["current_revision_id"])
-            changed = _relink_revision_preview_outputs(service, conn, revision_id, now=_utc_now_iso())
+            changed = _relink_revision_preview_outputs(service, conn, revision_id, now=utc_now_iso())
             if changed:
                 stats.components_relinked += 1
             pending += 1
@@ -460,7 +461,7 @@ def _resolve_projects_root(explicit: str) -> str:
 
 
 def _validate_runtime_layout(service: Any, projects_root: str) -> None:
-    store_root = Path(service._store_root)  # type: ignore[attr-defined]
+    store_root = Path(service.store_root)
     previews_root = store_root / "previews"
     expected_store = Path(projects_root).resolve() / ".kicad-prism" / "components"
     if store_root != expected_store.resolve():
@@ -502,10 +503,10 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     print(f"Using projects root: {projects_root}", flush=True)
-    print(f"Catalog store root: {service._store_root}", flush=True)  # type: ignore[attr-defined]
+    print(f"Catalog store root: {service.store_root}", flush=True)
     only_missing = not args.force_regenerate
 
-    with service._connect() as conn:  # type: ignore[attr-defined]
+    with service.connection() as conn:
         _begin_batch(conn)
         if not args.relink_only:
             print(
@@ -537,7 +538,7 @@ def main() -> int:
     report["only_missing"] = only_missing
     report["workers"] = args.workers
     report["projects_root"] = projects_root
-    report["store_root"] = str(service._store_root)  # type: ignore[attr-defined]
+    report["store_root"] = str(service.store_root)
     report["assets_only"] = bool(args.assets_only)
     report["relink_only"] = bool(args.relink_only)
     if args.report_json:

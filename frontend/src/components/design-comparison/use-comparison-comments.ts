@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { fetchApi } from "@/lib/api";
-import type { Comment, CommentsFile } from "@/types/comments";
+import type { Dispatch, SetStateAction } from "react";
+import { useLiveComments, type CommentConnectionStatus } from "@/features/live-comments/use-live-comments";
+import type { Comment } from "@/types/comments";
 
 /**
  * Review threads anchored to this revision pair.
@@ -12,35 +12,15 @@ export function useComparisonComments(
     projectId: string,
     base: string,
     compare: string,
-): [Comment[], (comments: Comment[]) => void] {
-    const [comments, setComments] = useState<Comment[]>([]);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        void (async () => {
-            try {
-                const params = new URLSearchParams({ base, compare });
-                const response = await fetchApi(
-                    `/api/projects/${projectId}/comparison-comments?${params}`,
-                    { signal: controller.signal },
-                );
-                if (!response.ok) return;
-                const payload = (await response.json()) as CommentsFile;
-                if (!controller.signal.aborted) {
-                    setComments(payload.comments ?? []);
-                }
-            } catch (caught) {
-                // The cleanup aborts this fetch on every re-run; that rejection
-                // is expected, not an error. Without this catch it surfaced as
-                // an "Uncaught (in promise) AbortError" on each render.
-                if (caught instanceof DOMException && caught.name === "AbortError") {
-                    return;
-                }
-                throw caught;
-            }
-        })();
-        return () => controller.abort();
-    }, [projectId, base, compare]);
-
-    return [comments, setComments];
+): [Comment[], Dispatch<SetStateAction<Comment[]>>, {
+    status: CommentConnectionStatus;
+    error: string | null;
+    hasLoaded: boolean;
+}] {
+    const live = useLiveComments(projectId, { kind: "comparison", base, compare });
+    return [live.comments, live.setComments, {
+        status: live.status,
+        error: live.error,
+        hasLoaded: live.hasLoaded,
+    }];
 }

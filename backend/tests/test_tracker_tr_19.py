@@ -1,0 +1,579 @@
+"""TR-19: admin connector lifecycle and Test connection (F3, F7)."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+import unittest
+import uuid
+from contextlib import contextmanager
+from pathlib import Path
+from urllib.parse import urlsplit
+
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from pydantic import SecretStr
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.core.config import Settings  # noqa: E402
+from app.core.security import AuthenticatedUser  # noqa: E402
+from app.api import tracker_connectors as connectors_api  # noqa: E402
+from app.services import comments_schema_migrations  # noqa: E402
+from app.services.trackers.connector_service import ConnectorService  # noqa: E402
+from app.services.trackers.errors import ProviderError  # noqa: E402
+from app.services.trackers.migrations import (  # noqa: E402
+    migrate_tracker_webhook_oauth_tables,
+    migrate_workspace_tracker_tables,
+)
+from app.services.trackers.secrets import decrypt_secret  # noqa: E402
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # pragma: no cover
+    psycopg = None  # type: ignore[assignment]
+    dict_row = None  # type: ignore[assignment]
+
+POSTGRES_URL = os.environ.get("TEST_POSTGRES_URL", "").strip()
+APPLICATION_POSTGRES_URL = os.environ.get("PRISM_DATABASE_URL", "").strip()
+DOCS = Path(__file__).resolve().parents[2] / "docs" / "tracker-integration"
+F3 = json.loads((DOCS / "fixtures" / "F03.json").read_text(encoding="utf-8"))
+F7 = json.loads((DOCS / "fixtures" / "F07.json").read_text(encoding="utf-8"))
+INSTALLATION_MATERIAL = "installation-private-key-fixture-text"
+WEBHOOK_SECRET = "webhook-secret-fixture-tr19"
+OAUTH_CLIENT_SECRET = "oauth-client-secret-fixture-tr19"
+TEST_SESSION_SECRET = "unit-test-session-secret-not-a-credential"
+ROOT_KEY = "aa" * 32
+
+
+def _identity(url: str):
+    parsed = urlsplit(url)
+    return (parsed.username or "", (parsed.hostname or "").lower(), parsed.port, parsed.path.lstrip("/"))
+
+
+SHARED_APPLICATION_DATABASE = bool(
+    POSTGRES_URL
+    and APPLICATION_POSTGRES_URL
+    and _identity(POSTGRES_URL) == _identity(APPLICATION_POSTGRES_URL)
+)
+
+
+def _dsn() -> str:
+    return POSTGRES_URL.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
+def _settings(**overrides) -> Settings:
+    base = {
+        "AUTH_ENABLED": True,
+        "OIDC_ISSUER_URL": "https://idp.example.com",
+        "OIDC_CLIENT_ID": "prism",
+        "OIDC_CLIENT_SECRET": "shhh",
+        "SESSION_SECRET": TEST_SESSION_SECRET,
+        "PRISM_DATABASE_URL": "postgresql://prism@localhost/prism",
+        "GITHUB_TOKEN": "env-github-token-fixture",
+        "TRACKER_CREDENTIAL_ROOT_KEY": SecretStr(ROOT_KEY),
+        "TRACKER_CREDENTIAL_ROOT_KEY_ID": "v1",
+        "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY": SecretStr(""),
+        "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID": "",
+        "PUBLIC_BASE_URL": "https://prism.example.com",
+    }
+    base.update(overrides)
+    return Settings(_env_file=None, **base)
+
+
+def session(role: str, *, user_id: str = "u_admin") -> AuthenticatedUser:
+    return AuthenticatedUser(
+        email=f"{user_id}@example.com",
+        name=role,
+        role=role,  # type: ignore[arg-type]
+        session_id="sid",
+        user_id=user_id,
+    )
+
+
+def run(coro):
+    return asyncio.run(coro)
+
+
+class RoutingContractTests(unittest.TestCase):
+    def test_main_registers_admin_connector_routes(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn("tracker_connectors_router", source)
+        self.assertIn("initialize_tracker_connector_service", source)
+        app = FastAPI()
+        app.include_router(connectors_api.router)
+        paths = set(app.openapi()["paths"])
+        self.assertIn("/api/admin/trackers/connectors", paths)
+        self.assertIn("/api/admin/trackers/connectors/{connector_id}/test", paths)
+        self.assertIn("/api/admin/trackers/connectors/{connector_id}/revoke", paths)
+        self.assertIn("/api/admin/trackers/connectors/{connector_id}/health", paths)
+
+    def test_viewer_and_designer_fail_require_admin(self) -> None:
+        from app.core.security import require_admin
+
+        for role in ("viewer", "designer"):
+            with self.assertRaises(HTTPException) as caught:
+                run(require_admin(session(role, user_id=f"u_{role}")))
+            self.assertEqual(caught.exception.status_code, 403)
+        run(require_admin(session("admin")))
+
+    def test_fixture_cases_are_present(self) -> None:
+        self.assertIn("F3.bot_identity_captured", {case["id"] for case in F3["cases"]})
+        self.assertIn("F7.unauthorized_401", {case["id"] for case in F7["cases"]})
+
+
+@unittest.skipUnless(POSTGRES_URL, "TEST_POSTGRES_URL is required for tracker persistence tests")
+@unittest.skipUnless(psycopg is not None, "psycopg is required for tracker persistence tests")
+@unittest.skipIf(SHARED_APPLICATION_DATABASE, "TEST_POSTGRES_URL must not target PRISM_DATABASE_URL")
+class ConnectorAdminApiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.schema = f"tr19_{uuid.uuid4().hex[:12]}"
+        self.conn = psycopg.connect(_dsn(), row_factory=dict_row)
+        self.addCleanup(self._cleanup)
+        self.conn.execute(f'CREATE SCHEMA "{self.schema}"')
+        self.conn.execute(f'SET search_path TO "{self.schema}", public')
+        self.conn.execute(
+            """
+            CREATE TABLE comments (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                author TEXT NOT NULL DEFAULT '',
+                timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                status TEXT NOT NULL DEFAULT 'OPEN',
+                context TEXT NOT NULL DEFAULT 'PCB',
+                location_x REAL NOT NULL DEFAULT 0,
+                location_y REAL NOT NULL DEFAULT 0,
+                location_layer TEXT NOT NULL DEFAULT '',
+                location_page TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE comment_replies (
+                id TEXT PRIMARY KEY,
+                comment_id TEXT NOT NULL REFERENCES comments(id),
+                project_id TEXT NOT NULL,
+                author TEXT NOT NULL DEFAULT '',
+                timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                content TEXT NOT NULL DEFAULT ''
+            );
+            """,
+            prepare=False,
+        )
+        comments_schema_migrations.apply_comments_migrations(self.conn)
+        migrate_workspace_tracker_tables(self.conn)
+        migrate_tracker_webhook_oauth_tables(self.conn)
+        self.conn.commit()
+        self.settings = _settings()
+        self.service = ConnectorService(
+            connect=self._factory,
+            settings=self.settings,
+            tester=self._tester,
+            repository_lister=lambda row, material: [
+                {"id": "1379354799", "fullName": "krishna-swaroop/prism-tracker-acceptance", "private": True, "archived": False, "htmlUrl": ""},
+            ] if material.get("privateKey") else [],
+            comments_schema=self.schema,
+            workspace_schema=self.schema,
+        )
+        self._probe = {
+            "ok": True,
+            "writesEnabled": True,
+            "pausedReason": None,
+            "bot": {"id": "199001", "login": "prism[bot]", "isBot": True},
+            "permissions": {"issues": "write"},
+            "visibility": "private",
+        }
+        connectors_api.service = self.service
+        self.admin = session("admin")
+
+    def _cleanup(self) -> None:
+        connectors_api.service = ConnectorService()
+        try:
+            self.conn.rollback()
+            self.conn.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
+            self.conn.commit()
+        finally:
+            self.conn.close()
+
+    @contextmanager
+    def _factory(self):
+        conn = psycopg.connect(_dsn(), row_factory=dict_row)
+        conn.execute(f'SET search_path TO "{self.schema}", public')
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def _tester(self, row, material):  # noqa: ANN001
+        del row
+        if material.get("privateKey") == "env-github-token-fixture":
+            raise ProviderError("invalid_request", "env bootstrap")
+        return dict(self._probe)
+
+    def _create(self):
+        return run(
+            connectors_api.create_connector(
+                connectors_api.CreateConnectorRequest(
+                    id="cn_gh1",
+                    provider="github",
+                    instanceKind="github.com",
+                    displayName="GitHub",
+                    credentials=connectors_api.ConnectorCredentials(
+                        appId="772215",
+                        installationId="88001122",
+                        privateKey=INSTALLATION_MATERIAL,
+                    ),
+                ),
+                self.admin,
+            )
+        )
+
+    def test_create_persists_webhook_and_oauth_sidecars(self) -> None:
+        created = run(
+            connectors_api.create_connector(
+                connectors_api.CreateConnectorRequest(
+                    id="cn_sidecar",
+                    provider="github",
+                    instanceKind="github.com",
+                    displayName="GitHub",
+                    credentials=connectors_api.ConnectorCredentials(
+                        appId="772215",
+                        installationId="88001122",
+                        privateKey=INSTALLATION_MATERIAL,
+                        webhookSecret=WEBHOOK_SECRET,
+                        oauthClientId="ov_client_fixture",
+                        oauthClientSecret=OAUTH_CLIENT_SECRET,
+                    ),
+                ),
+                self.admin,
+            )
+        )
+        self.assertTrue(created["credentialConfigured"])
+        self.assertTrue(created["webhookConfigured"])
+        self.assertTrue(created["oauthClientConfigured"])
+        # The forge-facing URL comes from PUBLIC_BASE_URL and carries the provider
+        # segment TR-27 registered; the admin's browser origin is not a substitute.
+        self.assertEqual(
+            created["webhookUrl"],
+            "https://prism.example.com/api/trackers/webhooks/github/cn_sidecar",
+        )
+        self.assertIsNone(
+            ConnectorService(settings=_settings(PUBLIC_BASE_URL="")).webhook_url("cn_sidecar")
+        )
+        dumped = json.dumps(created)
+        self.assertNotIn(WEBHOOK_SECRET, dumped)
+        self.assertNotIn(OAUTH_CLIENT_SECRET, dumped)
+        webhook_row = self.conn.execute(
+            "SELECT secret_envelope FROM tracker_webhook_secrets WHERE connector_id = 'cn_sidecar'"
+        ).fetchone()
+        oauth_row = self.conn.execute(
+            "SELECT client_id, client_secret_envelope FROM tracker_oauth_clients WHERE connector_id = 'cn_sidecar'"
+        ).fetchone()
+        self.assertIsNotNone(webhook_row)
+        self.assertEqual(oauth_row["client_id"], "ov_client_fixture")
+
+    def test_create_read_hides_secrets_and_ignores_env_token(self) -> None:
+        created = self._create()
+        dumped = json.dumps(created)
+        self.assertNotIn(INSTALLATION_MATERIAL, dumped)
+        self.assertNotIn("env-github-token-fixture", dumped)
+        self.assertNotIn("privateKey", dumped)
+        self.assertTrue(created["credentialConfigured"])
+        self.assertFalse(created["writesEnabled"])
+        self.assertEqual(created["bot"]["id"], None)
+        listed = run(connectors_api.list_connectors(self.admin))
+        self.assertEqual(listed[0]["id"], "cn_gh1")
+        self.assertIn("bot", listed[0])
+        self.assertNotIn("botForgeUserId", created)
+        envelope = self.conn.execute(
+            "SELECT credential_envelope FROM tracker_connectors WHERE id = 'cn_gh1'"
+        ).fetchone()["credential_envelope"]
+        plain = json.loads(
+            decrypt_secret(envelope, {"record": "cn_gh1", "field": "github_app"}, settings=self.settings).decode()
+        )
+        self.assertEqual(plain["privateKey"], INSTALLATION_MATERIAL)
+        self.assertNotEqual(plain["privateKey"], self.settings.GITHUB_TOKEN)
+
+    def test_test_connection_captures_bot_and_failed_test_cannot_publish(self) -> None:
+        self._create()
+        ok = run(connectors_api.test_connector("cn_gh1", self.admin))
+        self.assertTrue(ok["test"]["writesEnabled"])
+        self.assertEqual(ok["bot"]["id"], "199001")
+        self.assertEqual(ok["bot"]["login"], "prism[bot]")
+        self._probe = {
+            "ok": False,
+            "writesEnabled": False,
+            "pausedReason": "auth_lost",
+            "bot": {"id": "199001", "login": "prism[bot]"},
+            "permissions": {},
+            "visibility": "unknown",
+        }
+        failed = run(connectors_api.test_connector("cn_gh1", self.admin))
+        self.assertFalse(failed["writesEnabled"])
+        self.assertFalse(failed["test"]["writesEnabled"])
+        self.assertTrue(failed["paused"])
+        with self.assertRaises(HTTPException) as caught:
+            run(connectors_api.resume_connector("cn_gh1", self.admin))
+        self.assertEqual(caught.exception.status_code, 403)
+
+    def test_rotation_requires_new_probe_and_success_allows_resume(self) -> None:
+        self._create()
+        run(connectors_api.test_connector("cn_gh1", self.admin))
+        rotated = self.service.update(
+            "cn_gh1", actor_user_id="u_admin", credentials={"privateKey": "replacement-key"}
+        )
+        self.assertTrue(rotated["paused"])
+        self.assertFalse(rotated["writesEnabled"])
+        self.assertIsNone(rotated["bot"]["id"])
+        envelope = self.conn.execute(
+            "SELECT credential_envelope FROM tracker_connectors WHERE id = 'cn_gh1'"
+        ).fetchone()["credential_envelope"]
+        material = json.loads(decrypt_secret(
+            envelope, {"record": "cn_gh1", "field": "github_app"}, settings=self.settings
+        ).decode())
+        self.assertEqual(material, {
+            "appId": "772215",
+            "installationId": "88001122",
+            "privateKey": "replacement-key",
+        })
+        with self.assertRaises(ProviderError):
+            self.service.resume("cn_gh1", actor_user_id="u_admin")
+        tested = self.service.test_connection("cn_gh1", actor_user_id="u_admin")
+        self.assertTrue(tested["test"]["writesEnabled"])
+        self.assertFalse(tested["writesEnabled"])
+        self.assertTrue(tested["paused"])
+        resumed = self.service.resume("cn_gh1", actor_user_id="u_admin")
+        self.assertTrue(resumed["writesEnabled"])
+
+    def test_probe_result_cannot_publish_after_concurrent_rotation(self) -> None:
+        self._create()
+
+        def rotate_during_probe(_row, _material):
+            self.service.update(
+                "cn_gh1", actor_user_id="u_admin", credentials={"privateKey": "replacement-key"}
+            )
+            return dict(self._probe)
+
+        self.service._tester = rotate_during_probe
+        with self.assertRaisesRegex(ProviderError, "changed during the test"):
+            self.service.test_connection("cn_gh1", actor_user_id="u_admin")
+        connector = self.service.get("cn_gh1")
+        self.assertTrue(connector["paused"])
+        self.assertFalse(connector["writesEnabled"])
+
+    def test_probe_requires_explicit_write_permission(self) -> None:
+        self._create()
+        self._probe = {**self._probe, "writesEnabled": False, "pausedReason": "permissions"}
+        tested = self.service.test_connection("cn_gh1", actor_user_id="u_admin")
+        self.assertFalse(tested["test"]["writesEnabled"])
+        self.assertTrue(tested["paused"])
+
+    def test_repositories_listing_needs_credentials_and_admin(self) -> None:  # TR-46 destination picker
+        self._create()
+        listed = run(connectors_api.list_connector_repositories("cn_gh1", self.admin))
+        self.assertEqual([item["fullName"] for item in listed], ["krishna-swaroop/prism-tracker-acceptance"])
+        run(connectors_api.revoke_connector("cn_gh1", self.admin))
+        with self.assertRaises(HTTPException) as caught:
+            run(connectors_api.list_connector_repositories("cn_gh1", self.admin))
+        self.assertIn(caught.exception.status_code, (409, 502, 503))
+
+    def test_revoke_pauses_and_erases_envelope(self) -> None:
+        self._create()
+        revoked = run(connectors_api.revoke_connector("cn_gh1", self.admin))
+        self.assertTrue(revoked["paused"])
+        self.assertEqual(revoked["pausedReason"], "revoked")
+        self.assertFalse(revoked["credentialConfigured"])
+        self.assertFalse(revoked["writesEnabled"])
+        row = self.conn.execute(
+            "SELECT credential_envelope, paused FROM tracker_connectors WHERE id = 'cn_gh1'"
+        ).fetchone()
+        self.assertIsNone(row["credential_envelope"])
+        audit = self.conn.execute(
+            "SELECT action, detail FROM tracker_audit WHERE connector_id = 'cn_gh1' ORDER BY id"
+        ).fetchall()
+        self.assertTrue(any(item["action"] == "connector.revoke" for item in audit))
+        self.assertTrue(all(INSTALLATION_MATERIAL not in json.dumps(dict(item), default=str) for item in audit))
+
+    def test_health_route_matches_frozen_connector_health(self) -> None:
+        self._create()
+        health = run(connectors_api.connector_health("cn_gh1", self.admin))
+        self.assertEqual(health["connectorId"], "cn_gh1")
+        self.assertFalse(health["paused"])
+        self.assertEqual(health["pendingOps"], 0)
+        self.assertFalse(health["degraded"])
+        dumped = json.dumps(health)
+        self.assertNotIn(INSTALLATION_MATERIAL, dumped)
+        self.assertNotIn("privateKey", dumped)
+
+    def test_health_route_reports_worker_checkpoints(self) -> None:  # TR-46 settings card showed "Never"
+        self._create()
+        from app.services.trackers.inbox_store import apply_schema as apply_inbox_schema
+
+        apply_inbox_schema(self.conn)
+        self.conn.execute(
+            """
+            INSERT INTO sync_checkpoints (kind, scope_key, cursor, last_success_at, next_run_at)
+            VALUES ('poll', 'cn_gh1:987654321', '{"since": "2026-09-21T14:01:36Z"}'::jsonb,
+                    '2026-09-21T14:02:05Z', '2026-09-21T14:17:05Z'),
+                   ('sweep', 'cn_gh1:987654321', '{}'::jsonb, '2026-09-21T14:03:05Z', '2026-09-21T15:03:05Z')
+            """
+        )
+        self.conn.commit()
+        health = run(connectors_api.connector_health("cn_gh1", self.admin))
+        self.assertEqual(health["lastPollAt"], "2026-09-21T14:02:05Z")
+        self.assertEqual(health["lastSweepAt"], "2026-09-21T14:03:05Z")
+        self.assertIsNone(health["lastWebhookAt"])
+        self.assertFalse(health["degraded"])
+
+    def test_delete_refuses_while_in_use_then_removes_connector(self) -> None:  # TR-46 settings: remove connection
+        self._create()
+        self.conn.execute(
+            """
+            INSERT INTO comments(id, project_id, author, content)
+            VALUES ('c_del', 'prj_a', 'Priya', 'stub')
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO tracked_threads (
+                id, comment_id, project_tracker_id, destination_generation,
+                connector_id, remote_container_id, external_id, link_state
+            ) VALUES ('tt_del', 'c_del', 'pt_del', 1, 'cn_gh1', '111', '42', 'linked')
+            """
+        )
+        self.conn.commit()
+        with self.assertRaises(HTTPException) as caught:
+            run(connectors_api.delete_connector("cn_gh1", self.admin))
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertIn("linked thread", json.dumps(caught.exception.detail))
+        self.conn.execute("UPDATE tracked_threads SET unlinked_at = NOW() WHERE id = 'tt_del'")
+        self.conn.execute("INSERT INTO remote_deliveries (connector_id, delivery_id) VALUES ('cn_gh1', 'del_x')")
+        self.conn.execute(
+            """
+            INSERT INTO remote_hints (id, connector_id, delivery_id, object_kind, remote_container_id, external_id, event, state)
+            VALUES ('hint_del', 'cn_gh1', 'del_x', 'issue', '111', '42', 'edited', 'pending')
+            """
+        )
+        self.conn.execute(
+            "INSERT INTO sync_checkpoints (kind, scope_key, next_run_at) VALUES ('poll', 'cn_gh1:111', NOW())"
+        )
+        self.conn.commit()
+
+        removed = run(connectors_api.delete_connector("cn_gh1", self.admin))
+        self.assertEqual(removed, {"deleted": "cn_gh1"})
+        self.assertEqual(run(connectors_api.list_connectors(self.admin)), [])
+        secrets = self.conn.execute("SELECT COUNT(*) AS n FROM tracker_webhook_secrets WHERE connector_id = 'cn_gh1'").fetchone()
+        self.assertEqual(secrets["n"], 0)
+        # Inbound state goes with it, so the scheduler never chases orphan hints.
+        for table, where in (
+            ("remote_hints", "connector_id = 'cn_gh1'"),
+            ("remote_deliveries", "connector_id = 'cn_gh1'"),
+            ("sync_checkpoints", "scope_key LIKE 'cn_gh1:%'"),
+        ):
+            left = self.conn.execute(f"SELECT COUNT(*) AS n FROM {table} WHERE {where}").fetchone()
+            self.assertEqual(left["n"], 0, table)
+        audit = self.conn.execute(
+            "SELECT action FROM tracker_audit WHERE connector_id = 'cn_gh1' ORDER BY id"
+        ).fetchall()
+        self.assertIn("connector.delete", [row["action"] for row in audit])
+        with self.assertRaises(HTTPException) as missing:
+            run(connectors_api.get_connector("cn_gh1", self.admin))
+        self.assertEqual(missing.exception.status_code, 404)
+
+    def test_health_counts_sync_ops_and_marks_degraded(self) -> None:
+        self._create()
+        self.conn.execute(
+            """
+            INSERT INTO project_trackers (
+                id, project_id, connector_id, container_kind, container_path,
+                remote_container_id, destination_generation
+            ) VALUES ('pt_a', 'prj_a', 'cn_gh1', 'repo', 'acme/openswitch', '111', 1)
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO comments(id, project_id, author, content)
+            VALUES ('c_1', 'prj_a', 'Priya', 'stub')
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO tracked_threads (
+                id, comment_id, project_tracker_id, destination_generation,
+                connector_id, remote_container_id, external_id, link_state
+            ) VALUES (
+                'tt_1', 'c_1', 'pt_a', 1, 'cn_gh1', '111', '42', 'linked'
+            )
+            """
+        )
+        self.conn.execute(
+            """
+            INSERT INTO sync_ops (
+                id, tracked_thread_id, op, state, destination_generation
+            ) VALUES
+                ('op_pending', 'tt_1', 'add_comment', 'pending', 1),
+                ('op_sent', 'tt_1', 'add_comment', 'sent', 1),
+                ('op_quarantine', 'tt_1', 'add_comment', 'quarantine', 1),
+                ('op_failed', 'tt_1', 'add_comment', 'failed', 1)
+            """
+        )
+        self.conn.commit()
+        health = run(connectors_api.connector_health("cn_gh1", self.admin))
+        self.assertEqual(health["pendingOps"], 1)
+        self.assertEqual(health["sentOps"], 1)
+        self.assertEqual(health["quarantinedOps"], 1)
+        self.assertEqual(health["failedOps"], 1)
+        self.assertTrue(health["degraded"])
+        self.assertIsNotNone(health["oldestPendingOpAge"])
+
+    def test_create_rejects_existing_connector_id(self) -> None:
+        self._create()
+        with self.assertRaises(HTTPException) as caught:
+            run(
+                connectors_api.create_connector(
+                    connectors_api.CreateConnectorRequest(
+                        id="cn_gh1",
+                        provider="github",
+                        instanceKind="github.com",
+                        displayName="Duplicate",
+                    ),
+                    self.admin,
+                )
+            )
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertIn("already exists", caught.exception.detail["message"])
+
+    def test_validation_errors_do_not_echo_private_key(self) -> None:
+        from types import SimpleNamespace
+
+        exc = RequestValidationError(
+            [
+                {
+                    "type": "string_type",
+                    "loc": ("body", "credentials", "appId"),
+                    "msg": "Input should be a valid string",
+                    "input": 772215,
+                },
+                {
+                    "type": "string_type",
+                    "loc": ("body", "credentials", "privateKey"),
+                    "msg": "Input should be a valid string",
+                    "input": INSTALLATION_MATERIAL,
+                },
+            ]
+        )
+        response = run(
+            connectors_api._validation_exception_handler(
+                SimpleNamespace(url=SimpleNamespace(path="/api/admin/trackers/connectors")),
+                exc,
+            )
+        )
+        self.assertEqual(response.status_code, 422)
+        body_text = response.body.decode()
+        self.assertNotIn(INSTALLATION_MATERIAL, body_text)
+        self.assertNotIn('"input"', body_text)
+
+
+if __name__ == "__main__":
+    unittest.main()

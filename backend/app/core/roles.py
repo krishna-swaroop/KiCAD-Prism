@@ -1,11 +1,15 @@
 from typing import Literal, Optional
 
-Role = Literal["admin", "designer", "viewer", "component_designer", "component_qa"]
+Role = Literal["admin", "designer", "viewer", "qa"]
+
+_LEGACY_ROLES = {
+    "component_designer": "designer",
+    "component_qa": "qa",
+}
 
 ROLE_ORDER: dict[Role, int] = {
     "viewer": 1,
-    "component_designer": 1,
-    "component_qa": 1,
+    "qa": 1,
     "designer": 2,
     "admin": 3,
 }
@@ -14,20 +18,21 @@ ROLE_LABELS: dict[Role, str] = {
     "admin": "Admin",
     "designer": "Designer",
     "viewer": "Viewer",
-    "component_designer": "Component Designer",
-    "component_qa": "Component QA",
+    "qa": "QA",
 }
 
-CATALOG_READ_ROLES: frozenset[Role] = frozenset({"admin", "designer", "component_designer", "component_qa"})
-CATALOG_WRITE_ROLES: frozenset[Role] = frozenset({"admin", "component_designer"})
-CATALOG_QA_ROLES: frozenset[Role] = frozenset({"admin", "component_qa"})
-PROJECT_VIEW_ROLES: frozenset[Role] = frozenset({"viewer", "component_designer", "component_qa"})
+CATALOG_READ_ROLES: frozenset[Role] = frozenset({"admin", "designer", "qa"})
+CATALOG_WRITE_ROLES: frozenset[Role] = frozenset({"admin", "designer"})
+CATALOG_QA_ROLES: frozenset[Role] = frozenset({"admin", "qa"})
+PROJECT_VIEW_ROLES: frozenset[Role] = frozenset({"viewer", "qa"})
+PROJECT_RELEASE_ACTOR_ROLES: frozenset[Role] = frozenset({"admin", "designer", "qa"})
 
 
 def normalize_role(value: Optional[str]) -> Optional[Role]:
     if value is None:
         return None
     lowered = value.strip().lower()
+    lowered = _LEGACY_ROLES.get(lowered, lowered)
     if lowered not in ROLE_ORDER:
         return None
     return lowered  # type: ignore[return-value]

@@ -6,12 +6,14 @@ import { Toaster } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { ApiHttpError, fetchApi } from '@/lib/api';
-import { fetchAuthConfig, fetchCurrentUser, isAuthCallbackPath } from '@/lib/auth';
+import { fetchAuthConfig, fetchCurrentUser, isAuthCallbackPath, stashCurrentLocation } from '@/lib/auth';
 import { IS_APPLE_PLATFORM } from '@/lib/shortcuts';
 import { useHotkeys } from '@/hooks/use-hotkeys';
+import { clearWorkspaceDataCache } from '@/hooks/use-workspace-data';
 import { CommandPalette } from '@/components/command-palette';
 import { KeyboardShortcutsDialog } from '@/components/keyboard-shortcuts-dialog';
 import { RoleAuthorityPopover } from '@/components/role-authority-popover';
+import { SessionExpiredBanner, SESSION_BANNER_HEIGHT } from '@/components/session-expired-banner';
 import prismLogoMark from './assets/branding/kicad-prism/kicad-prism-icon.svg';
 
 const LoginPage = lazy(() =>
@@ -53,6 +55,9 @@ function App() {
     const isAuthCallbackRoute = typeof window !== "undefined" && isAuthCallbackPath();
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
+    // Set when a data endpoint 401s mid-session. The app stays mounted so the
+    // user keeps their context; the banner routes them through sign-in.
+    const [sessionExpired, setSessionExpired] = useState(false);
 
     /**
      * Screens mark their own search box with `data-shortcut-search`. "/" focuses
@@ -130,6 +135,14 @@ function App() {
             const customEvent = event as CustomEvent<{ status?: number; url?: string }>;
             const status = customEvent.detail?.status;
             const url = customEvent.detail?.url ?? "";
+            if (status === 401 && !url.includes('/api/auth/')) {
+                // A data endpoint rejected the session mid-work. Do not tear the
+                // workspace down: stash the current URL so sign-in returns here,
+                // and let the session-expired banner explain what happened.
+                stashCurrentLocation();
+                setSessionExpired(true);
+                return;
+            }
             if (status === 401) {
                 setUser(null);
                 return;
@@ -144,14 +157,17 @@ function App() {
 
     const handleLogout = () => {
         void fetchApi('/api/auth/logout', { method: 'POST' }).finally(() => {
+            clearWorkspaceDataCache();
             setUser(null);
             setAuthError(null);
+            setSessionExpired(false);
         });
     };
 
     const handleAuthCodeSuccess = (currentUser: User) => {
         setUser(currentUser);
         setAuthError(null);
+        setSessionExpired(false);
     };
 
     // Show loading state while fetching auth config
@@ -171,7 +187,7 @@ function App() {
         );
     }
     // If auth is enabled and no user, show login page. The backend refuses to start
-    // with incomplete OIDC configuration, so there is no misconfigured state to
+    // with incomplete auth configuration, so there is no misconfigured state to
     // detect here any more.
     if (authConfig.auth_enabled && !user) {
         return (
@@ -181,6 +197,11 @@ function App() {
                     devMode={authConfig.dev_mode}
                     workspaceName={authConfig.workspace_name}
                     initialError={authError}
+                    onLoginSuccess={(signedIn) => {
+                        setUser(signedIn);
+                        setAuthError(null);
+                        setSessionExpired(false);
+                    }}
                 />
             </Suspense>
         );
@@ -192,7 +213,37 @@ function App() {
 
     // User is authenticated or auth is disabled - show app
     return (
-        <BrowserRouter>
+        /*
+         * Location updates render at normal priority, not as a transition.
+         *
+         * The router's default wraps them in `startTransition`, which makes
+         * them interruptible. That is fine while the URL only records where
+         * you are, but the comparison keeps its tab, selection and layer
+         * visibility there, so a click on a tab *is* a location update. With
+         * a change selected the board viewer is busy applying route focus and
+         * republishing layers, and those normal-priority updates restarted the
+         * pending transition on every pass: the address bar moved to the new
+         * tab, the screen never did, and only an unrelated plain state update
+         * -- Escape clearing the selection -- let it through.
+         */
+        <BrowserRouter useTransitions={false}>
+            {/* The banner sits in normal flow and route layouts subtract its
+                height through --app-chrome-offset, so it never covers the
+                sticky header underneath it. */}
+            <div
+                style={sessionExpired
+                    ? ({ '--app-chrome-offset': SESSION_BANNER_HEIGHT } as React.CSSProperties)
+                    : undefined}
+            >
+            {sessionExpired ? (
+                <SessionExpiredBanner
+                    key={user.email}
+                    authConfig={authConfig}
+                    email={user.email}
+                    onReauthenticated={(restored) => { setUser(restored); setSessionExpired(false); }}
+                    onFullSignIn={() => { stashCurrentLocation(); setUser(null); }}
+                />
+            ) : null}
             <Toaster richColors position="top-right" />
             <CommandPalette
                 open={paletteOpen}
@@ -204,7 +255,7 @@ function App() {
             <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
             <Routes>
                 <Route path="/" element={
-                    <div className="min-h-screen bg-background text-foreground">
+                    <div className="min-h-app-viewport bg-background text-foreground">
                         <header className="border-b sticky top-0 bg-background/95 backdrop-blur z-10">
                             <div className="grid h-16 grid-cols-[auto_1fr_auto] items-center gap-4 px-3 md:px-4">
                                 <div className="flex items-center gap-2 text-primary">
@@ -258,7 +309,7 @@ function App() {
                             </div>
                         </header>
 
-                        <main className="h-[calc(100vh-4rem)]">
+                        <main className="h-app-main">
                             <Suspense fallback={<RouteFallback />}>
                                 <Workspace
                                     searchQuery={deferredWorkspaceSearchQuery}
@@ -278,6 +329,7 @@ function App() {
                 />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </div>
         </BrowserRouter>
     );
 }

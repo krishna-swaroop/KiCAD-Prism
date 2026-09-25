@@ -7,10 +7,11 @@ Configuration can be set via:
 
 See .env.example for available configuration options.
 """
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings
 from typing import List
 import os
+import re
 
 
 # Placeholders that appear in this repository's examples and in copy-pasted guides.
@@ -24,6 +25,7 @@ _WEAK_SESSION_SECRETS = {
     "your-session-secret",
     "replace-with-a-long-random-string",
 }
+_TRACKER_KEY_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
 class Settings(BaseSettings):
@@ -143,6 +145,15 @@ class Settings(BaseSettings):
         description="Comma-separated list of admin user emails provisioned from env"
     )
 
+    BOOTSTRAP_ADMIN_PASSWORD: str = Field(
+        default="",
+        description=(
+            "One-time password seeded for BOOTSTRAP_ADMIN_USERS on first startup "
+            "when password auth is enabled. The admin must change it on first "
+            "sign-in. Leave empty once real accounts exist."
+        ),
+    )
+
     # Comma-separated list of email domains that receive implicit viewer access.
     DEFAULT_VIEWER_DOMAINS_STR: str = Field(
         default="",
@@ -212,6 +223,25 @@ class Settings(BaseSettings):
         description="Sliding window for authentication attempt rate limiting."
     )
 
+    PASSWORD_AUTH_ENABLED: bool = Field(
+        default=False,
+        description="Enable local email/password login in addition to (or instead of) OIDC."
+    )
+
+    PASSWORD_MIN_LENGTH: int = Field(
+        default=12,
+        ge=8,
+        le=72,
+        description="Minimum length for a local password (bcrypt truncates at 72 bytes)."
+    )
+
+    SESSION_REMEMBER_ME_DAYS: int = Field(
+        default=30,
+        ge=1,
+        le=365,
+        description="Lifetime (days) of a remember-me session."
+    )
+
     # Comma-separated browser origins allowed to make credentialed API requests.
     CORS_ORIGINS_STR: str = Field(
         default="http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8080,http://localhost:8080",
@@ -244,7 +274,26 @@ class Settings(BaseSettings):
     # ===========================================
     GITHUB_TOKEN: str = Field(
         default="",
-        description="GitHub Personal Access Token for private repository access."
+        description=(
+            "GitHub token for HTTPS clone and Release publishing. "
+            "Publishing a Release Studio zip needs contents:write, not clone-only."
+        ),
+    )
+    GITLAB_TOKEN: str = Field(
+        default="",
+        description=(
+            "GitLab token for Release publishing. Creating a Release needs api scope; "
+            "the workspace SSH key can clone but cannot publish."
+        ),
+    )
+    PRISM_FORGE_HOSTS: str = Field(
+        default="",
+        description=(
+            "Extra GitLab hosts allowed for Release publishing, as comma-separated "
+            "host=gitlab pairs or a structured JSON array with per-host api_root "
+            "and token_name values. github.com and gitlab.com are always included. "
+            "A hostname that merely contains 'gitlab' is not treated as GitLab."
+        ),
     )
 
     COMMENTS_API_BASE_URL: str = Field(
@@ -255,6 +304,16 @@ class Settings(BaseSettings):
             "If empty, URL helpers derive host from PUBLIC_BASE_URL or the incoming request."
         ),
     )
+
+    PRISM_COMMENT_LIVE_ENABLED: bool = Field(
+        default=True,
+        description="Enable the comment WebSocket gateway; disable during staged rollout to use HTTP refresh fallback.",
+    )
+
+    TRACKER_CREDENTIAL_ROOT_KEY: SecretStr = Field(default=SecretStr(""))
+    TRACKER_CREDENTIAL_ROOT_KEY_ID: str = Field(default="v1")
+    TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY: SecretStr = Field(default=SecretStr(""))
+    TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID: str = Field(default="")
 
     PUBLIC_BASE_URL: str = Field(
         default="",
@@ -400,6 +459,13 @@ class Settings(BaseSettings):
         ge=0.1,
         le=30.0,
         description="PostgreSQL queue polling interval for prism-worker.",
+    )
+
+    PRISM_AUTO_SYNC_INTERVAL_SECONDS: int = Field(
+        default=300,
+        ge=0,
+        le=86400,
+        description="Background Git fetch interval per repository; 0 disables automatic fetch.",
     )
 
     PRISM_JOB_LEASE_SECONDS: int = Field(
@@ -600,6 +666,25 @@ class Settings(BaseSettings):
         return self.OIDC_SCOPES.strip() or "openid profile email"
 
     @property
+    def OIDC_FULLY_CONFIGURED(self) -> bool:
+        """All three OIDC values are present, so OIDC is a usable login method."""
+        return bool(
+            self.EFFECTIVE_OIDC_ISSUER_URL
+            and self.EFFECTIVE_OIDC_CLIENT_ID
+            and self.EFFECTIVE_OIDC_CLIENT_SECRET
+        )
+
+    @property
+    def OIDC_PARTIALLY_CONFIGURED(self) -> bool:
+        """Some but not all OIDC values are present: a misconfiguration to flag."""
+        present = [
+            bool(self.EFFECTIVE_OIDC_ISSUER_URL),
+            bool(self.EFFECTIVE_OIDC_CLIENT_ID),
+            bool(self.EFFECTIVE_OIDC_CLIENT_SECRET),
+        ]
+        return any(present) and not all(present)
+
+    @property
     def KICAD_PROJECTS_ROOT(self) -> str:
         return os.environ.get(
             "KICAD_PROJECTS_ROOT",
@@ -694,7 +779,63 @@ class Settings(BaseSettings):
                 "installation is meant to reach."
             )
 
+        if self.BOOTSTRAP_ADMIN_PASSWORD.strip():
+            warnings.append(
+                "BOOTSTRAP_ADMIN_PASSWORD is set. It seeds a one-time admin password "
+                "for first login; clear it once the admin has signed in and set a real "
+                "password, so a bootstrap secret is not left in the environment."
+            )
+
+        status = self.tracker_credential_status()
+        if status == "disabled":
+            warnings.append("TRACKER_CREDENTIAL_ROOT_KEY is unset: tracker tokens cannot be stored.")
+        elif status == "locked":
+            warnings.extend(self.tracker_credential_key_errors())
+
         return warnings
+
+    @staticmethod
+    def _tracker_secret_text(value: SecretStr | str | None) -> str:
+        return value.get_secret_value() if isinstance(value, SecretStr) else str(value or "")
+
+    def tracker_credential_key_errors(self) -> List[str]:
+        from app.services.trackers.secrets import root_key_problem
+
+        errors: List[str] = []
+        current = self._tracker_secret_text(self.TRACKER_CREDENTIAL_ROOT_KEY).strip()
+        previous = self._tracker_secret_text(self.TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY).strip()
+        current_id = self.TRACKER_CREDENTIAL_ROOT_KEY_ID.strip()
+        previous_id = self.TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID.strip()
+        for label, value, key_id in (
+            ("TRACKER_CREDENTIAL_ROOT_KEY", current, current_id),
+            ("TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY", previous, previous_id),
+        ):
+            if value:
+                problem = root_key_problem(value)
+                if problem:
+                    errors.append(f"{label} is locked: {problem}")
+                if not _TRACKER_KEY_ID_RE.fullmatch(key_id):
+                    errors.append(f"{label}_ID must be 1–64 characters [A-Za-z0-9._-]")
+            elif key_id and (label != "TRACKER_CREDENTIAL_ROOT_KEY" or key_id != "v1"):
+                errors.append(f"{label}_ID is set without {label}")
+        if previous and previous_id == current_id:
+            errors.append("TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID must differ from the current key id")
+        return errors
+
+    def tracker_credential_status(self) -> str:
+        if self.tracker_credential_key_errors():
+            return "locked"
+        return "ready" if self._tracker_secret_text(self.TRACKER_CREDENTIAL_ROOT_KEY).strip() else "disabled"
+
+    @staticmethod
+    def tracker_deployment_env_keys() -> tuple[str, ...]:
+        return (
+            "PUBLIC_BASE_URL",
+            "TRACKER_CREDENTIAL_ROOT_KEY",
+            "TRACKER_CREDENTIAL_ROOT_KEY_ID",
+            "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY",
+            "TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID",
+        )
 
     def auth_configuration_errors(self) -> List[str]:
         """Return every reason this deployment must not serve authenticated traffic."""
@@ -702,15 +843,27 @@ class Settings(BaseSettings):
             return self._open_auth_errors()
 
         errors: List[str] = []
-        if not self.EFFECTIVE_OIDC_ISSUER_URL:
-            errors.append("OIDC_ISSUER_URL is required when AUTH_ENABLED=true")
-        elif not self.EFFECTIVE_OIDC_ISSUER_URL.startswith("https://"):
+        if not self.OIDC_FULLY_CONFIGURED and not self.PASSWORD_AUTH_ENABLED:
+            errors.append(
+                "AUTH_ENABLED=true requires a login method: configure OIDC "
+                "(OIDC_ISSUER_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET) or set "
+                "PASSWORD_AUTH_ENABLED=true."
+            )
+
+        if self.OIDC_PARTIALLY_CONFIGURED:
+            if not self.EFFECTIVE_OIDC_ISSUER_URL:
+                errors.append("OIDC_ISSUER_URL is required to enable OIDC")
+            if not self.EFFECTIVE_OIDC_CLIENT_ID:
+                errors.append("OIDC_CLIENT_ID is required to enable OIDC")
+            if not self.EFFECTIVE_OIDC_CLIENT_SECRET:
+                errors.append("OIDC_CLIENT_SECRET is required to enable OIDC")
+
+        if self.EFFECTIVE_OIDC_ISSUER_URL and not self.EFFECTIVE_OIDC_ISSUER_URL.startswith("https://"):
             errors.append("OIDC_ISSUER_URL must use https://")
-        if not self.EFFECTIVE_OIDC_CLIENT_ID:
-            errors.append("OIDC_CLIENT_ID is required when AUTH_ENABLED=true")
-        if not self.EFFECTIVE_OIDC_CLIENT_SECRET:
-            errors.append("OIDC_CLIENT_SECRET is required when AUTH_ENABLED=true")
-        if self.OIDC_TOKEN_AUTH_METHOD.strip().lower() not in {"client_secret_post", "client_secret_basic"}:
+        if self.OIDC_FULLY_CONFIGURED and self.OIDC_TOKEN_AUTH_METHOD.strip().lower() not in {
+            "client_secret_post",
+            "client_secret_basic",
+        }:
             errors.append("OIDC_TOKEN_AUTH_METHOD must be client_secret_post or client_secret_basic")
 
         secret = self.SESSION_SECRET.strip()

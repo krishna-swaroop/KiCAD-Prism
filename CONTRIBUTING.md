@@ -11,6 +11,9 @@ behavior.
 - Report bugs with the repository issue form.
 - Discuss large features, schema changes, API breaks, or workflow redesigns
   before implementation.
+- If you use a coding agent, start it at [AGENTS.md](AGENTS.md). The scoped maps
+  and task playbooks reduce repository-wide context loading; this contributing
+  guide remains the authority for branch, test, and pull-request policy.
 - During an announced feature freeze, obtain maintainer approval before starting
   behavior, schema, API, or deployment-contract changes.
 - Never use a public issue for a vulnerability. Read [SECURITY.md](SECURITY.md).
@@ -44,6 +47,19 @@ review, rollback, and alpha stabilization safer.
 
 ## Development setup
 
+Prism uses the exact runtimes in `.python-version` and `.node-version`. Install
+`uv`, select the declared Node version, and reproduce both dependency trees
+from the repository locks:
+
+```bash
+python scripts/sync_dependencies.py
+```
+
+The command recreates `backend/venv` from `requirements/runtime.lock` and runs
+`npm ci` for both JavaScript workspaces. Use `--python-only` or `--node-only`
+when working on one side. See [Dependency identity](docs/DEPENDENCIES.md) before
+adding or updating a package.
+
 ### Frontend
 
 ```bash
@@ -64,15 +80,12 @@ npm run build:panel
 ### Backend
 
 ```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-python -m pip install -r requirements.txt
-python -m unittest discover -s tests -p 'test_*.py'
+backend/venv/bin/python -m unittest discover -s backend/tests -p 'test_*.py'
 ```
 
-PostgreSQL integration tests use `TEST_POSTGRES_URL`. Use a disposable test
-database; do not point the suite at a production database.
+PostgreSQL integration tests use `TEST_POSTGRES_URL` and, for the catalog
+epoch-2 cutover, `LEGACY_SURVIVOR_TEST_POSTGRES_URL`. Use disposable test
+databases; do not point either suite at a production database.
 
 ### Semantic viewer
 
@@ -120,6 +133,10 @@ branch pushes never publish images. See [Release process](docs/RELEASES.md).
 - Preserve compatibility intentionally and document any break.
 - Avoid new direct `fetch` patterns when an existing API helper or domain client
   applies.
+- Change catalog workflow stages, aliases, transitions, or role rights only in
+  `backend/app/services/catalog/workflow_policy.py`, then regenerate the
+  frontend contract with `python3 scripts/export_workflow_policy.py`; the
+  backend suite fails while the generated module is stale.
 - Keep generated assets, secrets, local databases, and private certificates out
   of Git.
 - Update documentation in the same pull request when behavior or configuration

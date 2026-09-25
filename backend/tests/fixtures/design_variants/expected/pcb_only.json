@@ -1,0 +1,82 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "pcb_only",
+  "project": "board_only.kicad_pcb",
+  "notes": [
+    "No .kicad_pro and no schematic: the catalog comes from the board header and footprint records; components are empty; footprints have componentUid null.",
+    "Native: `Extra` is a footprint-record-only name, so pos honours it while glb/ipc2581 (which validate against the board header) export the default."
+  ],
+  "identity": {
+    "footprints": {
+      "a5a00e79-583d-5825-b802-d444463f02f3": {
+        "reference": "R1",
+        "package": "R_0603_1608Metric"
+      },
+      "319d3f24-17f8-52a6-8f02-447748d9a168": {
+        "reference": "R2",
+        "package": "R_0603_1608Metric"
+      }
+    }
+  },
+  "catalog": [
+    {
+      "name": "Lite",
+      "description": "Board header only",
+      "sources": [
+        "pcb",
+        "footprint"
+      ]
+    },
+    {
+      "name": "Extra",
+      "description": null,
+      "sources": [
+        "footprint"
+      ]
+    }
+  ],
+  "default": {
+    "occurrences": {},
+    "components": {},
+    "footprints": {},
+    "physical": {
+      "R1": "visible",
+      "R2": "visible"
+    }
+  },
+  "variants": [
+    {
+      "name": "Lite",
+      "occurrences": {},
+      "components": {},
+      "footprints": {
+        "a5a00e79-583d-5825-b802-d444463f02f3": {
+          "dnp": true
+        }
+      },
+      "physical": {
+        "R1": "hidden",
+        "R2": "visible"
+      }
+    },
+    {
+      "name": "Extra",
+      "occurrences": {},
+      "components": {},
+      "footprints": {
+        "319d3f24-17f8-52a6-8f02-447748d9a168": {
+          "excludeFromBom": true
+        }
+      },
+      "physical": {
+        "R1": "visible",
+        "R2": "visible"
+      }
+    }
+  ],
+  "diagnostics": []
+}

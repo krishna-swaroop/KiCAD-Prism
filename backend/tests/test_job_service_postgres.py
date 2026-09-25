@@ -459,7 +459,8 @@ class JobServicePostgresTests(unittest.TestCase):
         self.assertEqual(resolved_sidecar["kind"], "design_compare_sidecar")
 
     def test_webgpu_completion_publishes_o1_readiness_metadata(self) -> None:
-        selector = f"commit:{self.suffix}"
+        anchor_suffix = ":anchor:0123456789abcdef"
+        selector = f"commit:{self.suffix}{anchor_suffix}"
         project_id = f"project-{self.suffix}"
         queued = self.service.enqueue(
             "webgpu_3d",
@@ -509,8 +510,17 @@ class JobServicePostgresTests(unittest.TestCase):
             project_id,
             "build-a",
             "a" * 12,
+            selector_suffix=anchor_suffix,
         )
         self.assertEqual(prefixed["commit"], "a" * 40)
+        self.assertIsNone(
+            self.service.find_webgpu_ready_by_commit_prefix(
+                project_id,
+                "build-a",
+                "a" * 12,
+                selector_suffix=":anchor:fedcba9876543210",
+            )
+        )
 
     def test_webgpu_staged_upsert_exposes_building_status_via_fast_read(self) -> None:
         selector = f"workspace:staged-{self.suffix}"

@@ -1,0 +1,7 @@
+(version 1)
+(rule silk_text_over_via
+   (constraint silk_clearance (min 0.07mm))
+   (condition "A.Type == '*Text' && B.Type == 'Via'"))
+(rule silk_graphic_over_via
+   (constraint silk_clearance (min 0.02mm))
+   (condition "A.Type == 'Graphic' && B.Type == 'Via'"))

@@ -21,6 +21,9 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
+        # Both must be passed together. Passing only the platform lets the
+        # Dockerfile's AMD64-only default digest be forced to another platform,
+        # which builds a mixed-architecture image that fails in confusing ways.
         KICAD_BASE_IMAGE: ${KICAD_BASE_IMAGE:-kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c}
         KICAD_BASE_PLATFORM: ${KICAD_BASE_PLATFORM:-linux/amd64}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
@@ -40,6 +43,9 @@ services:
       - ./data/projects:/app/projects
       # Mount SSH directory for Git persistence (GitLab/GitHub SSH)
       - ./data/ssh:/root/.ssh:rw
+      # Release Studio signing key. Read-only, and mounted only into the API:
+      # the private key must never reach the worker or the database.
+      - ./data/secrets:/run/secrets/prism:ro
     environment:
       - PYTHONUNBUFFERED=1
       # Root directory for storing projects
@@ -73,12 +79,21 @@ services:
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-}
       - AUTH_LOGIN_RATE_LIMIT=${AUTH_LOGIN_RATE_LIMIT:-10}
       - AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS=${AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
+      - PASSWORD_AUTH_ENABLED=${PASSWORD_AUTH_ENABLED:-false}
+      - PASSWORD_MIN_LENGTH=${PASSWORD_MIN_LENGTH:-12}
+      - SESSION_REMEMBER_ME_DAYS=${SESSION_REMEMBER_ME_DAYS:-30}
+      - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-}
       - CORS_ORIGINS_STR=${CORS_ORIGINS_STR:-http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8080,http://localhost:8080}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - COMMENTS_API_BASE_URL=${COMMENTS_API_BASE_URL:-}
+      - PRISM_COMMENT_LIVE_ENABLED=${PRISM_COMMENT_LIVE_ENABLED:-true}
+      - TRACKER_CREDENTIAL_ROOT_KEY=${TRACKER_CREDENTIAL_ROOT_KEY:-}
+      - TRACKER_CREDENTIAL_ROOT_KEY_ID=${TRACKER_CREDENTIAL_ROOT_KEY_ID:-v1}
+      - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY:-}
+      - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID:-}
       # Setting this to false serves every request as an unauthenticated guest.
       # The backend logs a prominent warning and refuses to start if it is true
-      # while OIDC or SESSION_SECRET are incomplete.
+      # while a login method or SESSION_SECRET is incomplete.
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
       # Least privilege that still lets an evaluator look around. This default
       # is what actually applies in Docker -- it overrides the one in
@@ -86,8 +101,12 @@ services:
       - DEV_GUEST_ROLE=${DEV_GUEST_ROLE:-viewer}
       # Development affordances only; this no longer disables authentication.
       - DEV_MODE=false
-      # GitHub Token for private repository access (optional)
+      # GitHub Token for private repository access and Release publishing (optional)
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITLAB_TOKEN=${GITLAB_TOKEN:-}
+      # Custom token_name variables in PRISM_FORGE_HOSTS need a local env_file
+      # override; see docs/FORGE_HOSTS.md.
+      - PRISM_FORGE_HOSTS=${PRISM_FORGE_HOSTS:-}
       - PRISM_DATABASE_URL=${PRISM_DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-kicad-prism-local}@postgres:5432/${POSTGRES_DB:-kicad_prism}}
       - PRISM_DATABASE_POOL_MIN_SIZE=${PRISM_DATABASE_POOL_MIN_SIZE:-1}
       - PRISM_DATABASE_POOL_MAX_SIZE=${PRISM_DATABASE_POOL_MAX_SIZE:-10}
@@ -119,6 +138,7 @@ services:
       - PRISM_DESIGN_COMPARE_MAX_PCB_WORKERS=${PRISM_DESIGN_COMPARE_MAX_PCB_WORKERS:-2}
       - PRISM_DESIGN_COMPARE_CACHE=${PRISM_DESIGN_COMPARE_CACHE:-/app/projects/.kicad-prism/design-compare/revision-cache}
       - PRISM_SEMANTIC_VIEWER_CACHE=${PRISM_SEMANTIC_VIEWER_CACHE:-/app/projects/.kicad-prism/semantic-cache}
+      - PRISM_PCB_GEOMETRY_BACKEND=${PRISM_PCB_GEOMETRY_BACKEND:-legacy}
     command: >
       sh -c '/app/venv/bin/python -m uvicorn app.main:app
       --host 0.0.0.0
@@ -224,6 +244,7 @@ services:
       - PRISM_DATABASE_POOL_MAX_SIZE=${PRISM_WORKER_DATABASE_POOL_MAX_SIZE:-6}
       - PRISM_WORKER_CONCURRENCY=${PRISM_WORKER_CONCURRENCY:-4}
       - PRISM_WORKER_POLL_SECONDS=${PRISM_WORKER_POLL_SECONDS:-0.5}
+      - PRISM_AUTO_SYNC_INTERVAL_SECONDS=${PRISM_AUTO_SYNC_INTERVAL_SECONDS:-300}
       - PRISM_JOB_LEASE_SECONDS=${PRISM_JOB_LEASE_SECONDS:-30}
       - PRISM_JOB_HEARTBEAT_SECONDS=${PRISM_JOB_HEARTBEAT_SECONDS:-10}
       - PRISM_JOB_CANCEL_GRACE_SECONDS=${PRISM_JOB_CANCEL_GRACE_SECONDS:-10}
@@ -240,6 +261,12 @@ services:
       - PRISM_DESIGN_COMPARE_MAX_PCB_WORKERS=${PRISM_DESIGN_COMPARE_MAX_PCB_WORKERS:-2}
       - PRISM_DESIGN_COMPARE_CACHE=${PRISM_DESIGN_COMPARE_CACHE:-/app/projects/.kicad-prism/design-compare/revision-cache}
       - PRISM_SEMANTIC_VIEWER_CACHE=${PRISM_SEMANTIC_VIEWER_CACHE:-/app/projects/.kicad-prism/semantic-cache}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - TRACKER_CREDENTIAL_ROOT_KEY=${TRACKER_CREDENTIAL_ROOT_KEY:-}
+      - TRACKER_CREDENTIAL_ROOT_KEY_ID=${TRACKER_CREDENTIAL_ROOT_KEY_ID:-v1}
+      - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY:-}
+      - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID:-}
+      - PRISM_PCB_GEOMETRY_BACKEND=${PRISM_PCB_GEOMETRY_BACKEND:-legacy}
     command:
       - /app/venv/bin/python
       - -m

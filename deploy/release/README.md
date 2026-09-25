@@ -84,5 +84,19 @@ from the next release's `.env.example` and migrate site values; copying the old
 
 Full guides:
 
+- `UPGRADES.md` in this archive
+- `scripts/prism_backup.py` in this archive
 - <https://github.com/krishna-swaroop/KiCAD-Prism/blob/main/docs/DEPLOYMENT.md>
 - <https://github.com/krishna-swaroop/KiCAD-Prism/blob/main/docs/OPERATIONS.md>
+
+## Release notes and experimental settings
+
+Read `RELEASE_NOTES.md` and `UPGRADES.md` before replacing a running deployment.
+They are included in `SHA256SUMS`. A pre-epoch-2 catalog requires the documented
+catalog cutover; do not start the new API against it before preparing backups
+and survivor archives.
+
+Keep `PRISM_PCB_GEOMETRY_BACKEND=legacy` for normal use. Rust and Python-copper
+are experimental opt-ins. Changing an environment value requires recreating
+the affected containers. `PRISM_COMMENT_LIVE_ENABLED=false` disables live
+comment sockets while retaining HTTP comment refresh.

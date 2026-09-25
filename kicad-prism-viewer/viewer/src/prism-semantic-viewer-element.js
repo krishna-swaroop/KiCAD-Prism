@@ -1,5 +1,6 @@
 import viewerCss from "../styles.css";
 import { mountStandaloneViewer } from "./main.js";
+import { createReloadOwner, runSemanticViewerReload } from "./semantic-viewer-reload.js";
 
 const SUPPORTED_SCHEMA = "prism.visualizer_bundle.a0";
 
@@ -56,9 +57,9 @@ function escapeHtml(value) {
   );
 }
 
-async function fetchJson(url, timings = null, label = "fetch") {
+async function fetchJson(url, timings = null, label = "fetch", signal = undefined) {
   const started = performance.now();
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { cache: "no-store", signal });
   if (!response.ok) throw new Error(`Failed to load ${url}: ${response.status}`);
   const value = await response.json();
   if (timings) {
@@ -90,18 +91,18 @@ function absolutizeAssetPaths(semanticGeometry, bundleUrl, bundle, cacheKey) {
   return output;
 }
 
-async function loadBundle(bundleUrl, timings) {
+async function loadBundle(bundleUrl, timings, signal) {
   const absoluteBundleUrl = new URL(bundleUrl, document.baseURI).toString();
   const cacheKey = new URL(absoluteBundleUrl).searchParams.get("viewer") || "";
-  const bundle = await fetchJson(absoluteBundleUrl, timings, "bundle");
+  const bundle = await fetchJson(absoluteBundleUrl, timings, "bundle", signal);
   if (bundle.schema !== SUPPORTED_SCHEMA) {
     throw new Error(`Unsupported visualizer bundle schema: ${bundle.schema || "missing"}`);
   }
   const topologyUrl = new URL(bundle.topology || "topology.json", absoluteBundleUrl);
   const semanticGeometryUrl = new URL(bundle.semantic_geometry || "semantic_geometry.json", absoluteBundleUrl);
   const [topology, semanticGeometry] = await Promise.all([
-    fetchJson(topologyUrl, timings, "topology"),
-    fetchJson(semanticGeometryUrl, timings, "semantic_geometry"),
+    fetchJson(topologyUrl, timings, "topology", signal),
+    fetchJson(semanticGeometryUrl, timings, "semantic_geometry", signal),
   ]);
   return {
     bundle,
@@ -119,8 +120,9 @@ export class PrismSemanticViewerElement extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this.controller = null;
-    this.abortController = null;
+    this.reloadOwner = createReloadOwner();
     this.pendingSelection = null;
+    this.pendingHiddenComponents = null;
     this.reloadQueued = false;
     this.reloadSource = null;
   }
@@ -130,7 +132,7 @@ export class PrismSemanticViewerElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this.abortController?.abort();
+    this.reloadOwner.cancel();
     this.controller?.dispose?.();
     this.controller = null;
     this.reloadSource = null;
@@ -162,85 +164,122 @@ export class PrismSemanticViewerElement extends HTMLElement {
   }
 
   async reload() {
-    const reloadStarted = performance.now();
-    const timings = {};
     const bundleUrl = this.getAttribute("bundle-url");
-    this.abortController?.abort();
-    this.abortController = new AbortController();
+    const attempt = this.reloadOwner.begin();
     this.controller?.dispose?.();
     this.controller = null;
     if (!bundleUrl) {
       this.shadowRoot.innerHTML = `<style>:host{display:block;height:100%;font:14px system-ui;color:#94a3b8}</style><div>Semantic bundle URL is missing.</div>`;
       return;
     }
-    try {
-      this.shadowRoot.innerHTML = `<style>:host{display:block;height:100%;background:#020817;color:#e5e7eb;font:14px system-ui}</style><div style="display:grid;place-items:center;height:100%">Loading semantic visualizer...</div>`;
-      const bundleStarted = performance.now();
-      const { bundle, topology, semanticGeometry } = await loadBundle(bundleUrl, timings);
-      timings.bundle_group_total_ms = performance.now() - bundleStarted;
-      if (this.abortController.signal.aborted) return;
-      this.shadowRoot.innerHTML = shellHtml();
-      const mountStarted = performance.now();
-      this.controller = await mountStandaloneViewer({
-        root: this.shadowRoot,
-        topology,
-        semanticGeometry,
-        readiness: bundle.readiness,
-        workspaceScope: "3d",
-        isActive: () => this.getAttribute("active") === "true",
-        onSelectionChange: (selection) => {
-          this.dispatchEvent(new CustomEvent("prism-semantic-viewer:selectionchange", {
-            bubbles: true,
-            composed: true,
-            detail: { selection },
-          }));
-        },
-        onPerformanceEvent: (detail) => {
-          console.info("[prism-3d-perf]", detail);
-          this.dispatchEvent(new CustomEvent("prism-semantic-viewer:performance", {
-            bubbles: true,
-            composed: true,
-            detail,
-          }));
-        },
-      });
-      this.controller?.setWorkspace?.(this.workspace);
-      timings.mount_and_first_frame_ms = performance.now() - mountStarted;
-      Object.assign(timings, this.controller?.performance || {});
-      // A fresh viewer is already unselected. Avoid a redundant clearSelection()
-      // while the staged shell is completing its first-frame setup.
-      if (this.pendingSelection) this.controller?.setSelection?.(this.pendingSelection);
-      timings.reload_to_visible_ms = performance.now() - reloadStarted;
-      const detail = {
-        schema: "prism.semantic_viewer_performance.a0",
-        milestone: "board-visible",
-        readiness_stage: bundle.readiness?.stage || "semantic-ready",
-        readiness_progress: bundle.readiness?.progress ?? 100,
-        timings,
-      };
-      console.info("[prism-3d-perf]", detail);
-      this.dispatchEvent(new CustomEvent("prism-semantic-viewer:ready", {
-        bubbles: true,
-        composed: true,
-        detail,
-      }));
-    } catch (error) {
-      console.error(error);
-      this.shadowRoot.innerHTML = `
-        <style>
-          :host{display:block;height:100%;background:#020817;color:#e5e7eb;font:14px system-ui}
-          .error{height:100%;display:grid;place-items:center;padding:24px}
-          pre{max-width:100%;white-space:pre-wrap;color:#fecaca;background:#111827;border:1px solid #374151;padding:16px}
-        </style>
-        <div class="error"><pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre></div>
-      `;
-      this.dispatchEvent(new CustomEvent("prism-semantic-viewer:error", { bubbles: true, detail: { error } }));
+    await runSemanticViewerReload(this, attempt, { owner: this.reloadOwner, bundleUrl, loadBundle });
+  }
+
+  renderLoading() {
+    this.shadowRoot.innerHTML = `<style>:host{display:block;height:100%;background:#020817;color:#e5e7eb;font:14px system-ui}</style><div style="display:grid;place-items:center;height:100%">Loading semantic visualizer...</div>`;
+  }
+
+  renderShell() {
+    this.shadowRoot.innerHTML = shellHtml();
+  }
+
+  renderError(error) {
+    console.error(error);
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host{display:block;height:100%;background:#020817;color:#e5e7eb;font:14px system-ui}
+        .error{height:100%;display:grid;place-items:center;padding:24px}
+        pre{max-width:100%;white-space:pre-wrap;color:#fecaca;background:#111827;border:1px solid #374151;padding:16px}
+      </style>
+      <div class="error"><pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre></div>
+    `;
+  }
+
+  mountViewer({ topology, semanticGeometry, readiness, signal }) {
+    // Callbacks are bound to this attempt: a superseded mount that is still
+    // booting must not report selection or performance for the newer load.
+    return mountStandaloneViewer({
+      root: this.shadowRoot,
+      topology,
+      semanticGeometry,
+      readiness,
+      workspaceScope: "3d",
+      isActive: () => this.getAttribute("active") === "true",
+      onSelectionChange: (selection) => {
+        if (signal.aborted) return;
+        this.dispatchEvent(new CustomEvent("prism-semantic-viewer:selectionchange", {
+          bubbles: true,
+          composed: true,
+          detail: { selection },
+        }));
+      },
+      onPerformanceEvent: (detail) => {
+        if (signal.aborted) return;
+        console.info("[prism-3d-perf]", detail);
+        this.dispatchEvent(new CustomEvent("prism-semantic-viewer:performance", {
+          bubbles: true,
+          composed: true,
+          detail,
+        }));
+      },
+    });
+  }
+
+  publishController(controller) {
+    this.controller = controller;
+    this.controller?.setWorkspace?.(this.workspace);
+    // The hidden set is view state that must outlive a reload: a controller
+    // that was created after the last setHiddenComponents call replays it.
+    if (this.pendingHiddenComponents) {
+      this.controller?.setHiddenComponents?.(this.pendingHiddenComponents);
     }
+    // A fresh viewer is already unselected. Avoid a redundant clearSelection()
+    // while the staged shell is completing its first-frame setup.
+    if (this.pendingSelection) this.controller?.setSelection?.(this.pendingSelection);
+    if (this.pendingHighlightedNets?.length) {
+      this.controller?.setHighlightedNets?.(this.pendingHighlightedNets);
+    }
+  }
+
+  emitReady(detail) {
+    console.info("[prism-3d-perf]", detail);
+    this.dispatchEvent(new CustomEvent("prism-semantic-viewer:ready", {
+      bubbles: true,
+      composed: true,
+      detail,
+    }));
+  }
+
+  emitError(error) {
+    this.dispatchEvent(new CustomEvent("prism-semantic-viewer:error", { bubbles: true, detail: { error } }));
   }
 
   setSelection(selection) {
     this.pendingSelection = selection || null;
     this.controller?.setSelection?.(this.pendingSelection);
+  }
+
+  /**
+   * Replace the highlighted nets (Prism #305): every listed net renders
+   * emphasised alongside the inspected selection. Idempotent and safe before
+   * the viewer is ready or after a reload; the last call is replayed on the
+   * next controller. Unresolved references are dropped.
+   */
+  setHighlightedNets(nets) {
+    this.pendingHighlightedNets = Array.isArray(nets) ? [...nets] : [];
+    this.controller?.setHighlightedNets?.(this.pendingHighlightedNets);
+  }
+
+  /**
+   * Replace the hidden component references (VAR-18). Idempotent and safe
+   * before the viewer is ready or after a reload: the last call is replayed on
+   * the next controller.
+   */
+  setHiddenComponents(references) {
+    this.pendingHiddenComponents = Array.isArray(references)
+      ? [...references]
+      : [];
+    this.controller?.setHiddenComponents?.(this.pendingHiddenComponents);
   }
 
   resize() {

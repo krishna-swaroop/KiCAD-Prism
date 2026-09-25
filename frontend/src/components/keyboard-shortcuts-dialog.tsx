@@ -50,8 +50,8 @@ export function KeyboardShortcutsDialog({
                     <div key={shortcut.description} className="flex items-start justify-between gap-3">
                       <dt className="text-sm text-foreground">{shortcut.description}</dt>
                       <dd className="flex shrink-0 items-center gap-1 pt-0.5">
-                        {keys.map((key, index) => (
-                          <KeyCap key={`${key}-${index}`}>{key}</KeyCap>
+                        {keys.map((key) => (
+                          <KeyCap key={`${shortcut.description}-${key}`}>{key}</KeyCap>
                         ))}
                       </dd>
                     </div>

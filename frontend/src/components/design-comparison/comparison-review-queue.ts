@@ -110,7 +110,9 @@ export function reviewImpactForGroup(group: {
     }
 
     const reasons = new Set(group.changes.flatMap((change) => change.reasons ?? []));
-    const layers = group.changes.flatMap(changeLayers).map((layer) => layer.toLocaleLowerCase());
+    const layers = group.changes.flatMap((change) => (
+        changeLayers(change).map((layer) => layer.toLocaleLowerCase())
+    ));
     const mechanical = group.label === "Board outline"
         || layers.some((layer) => layer.includes("edge.cuts") || layer.includes("margin"))
         || group.changes.some((change) => Object.keys(change.fields ?? {}).some((field) => (
@@ -183,7 +185,11 @@ export function groupSummary(group: ChangeGroup): string {
     const pages = groupDocumentEntries(group);
     const hasAdded = group.changes.some((change) => change.kind === "added");
     const hasRemoved = group.changes.some((change) => change.kind === "removed");
-    const references = new Set(group.changes.map((change) => change.reference).filter(Boolean));
+    const references = new Set(
+        group.changes.flatMap((change) => (
+            change.reference ? [change.reference] : []
+        )),
+    );
     if (hasAdded && hasRemoved && references.size === 1 && pages.length > 1) {
         const oldPage = group.changes.find((change) => change.kind === "removed");
         const newPage = group.changes.find((change) => change.kind === "added");

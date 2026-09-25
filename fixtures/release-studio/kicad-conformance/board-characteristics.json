@@ -1,0 +1,20 @@
+{
+  "schema": "prism.release-studio.kicad-conformance.board-characteristics/1",
+  "kicad_version": "10.0.4",
+  "kicad_source_commit": "f7414d419cae",
+  "source_file": "pcbnew/board_tables/board_characteristics_table.cpp",
+  "table_title": "BOARD CHARACTERISTICS",
+  "labels": [
+    "Copper layer count",
+    "Board thickness",
+    "Board overall dimensions",
+    "Min track/spacing",
+    "Min hole diameter",
+    "Copper finish",
+    "Impedance control",
+    "Castellated pads",
+    "Press-fit pads",
+    "Plated board edge",
+    "Edge card connectors"
+  ]
+}

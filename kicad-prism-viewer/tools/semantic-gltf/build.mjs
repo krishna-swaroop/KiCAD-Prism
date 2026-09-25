@@ -44,6 +44,14 @@ async function runMain() {
   const parseStart = performance.now();
   const input = JSON.parse(await fs.readFile(inputPath, "utf8"));
   metrics.input_parse_ms = elapsedMs(parseStart);
+  if (input.schema === "prism.semantic_mesh_pack.v1") {
+    await runPackedMain(input, inputPath, outputDir, metrics);
+    return;
+  }
+  if (input.schema === "prism.board_mesh_pack.v1") {
+    await runBoardPackedMain(input, inputPath, outputDir, metrics);
+    return;
+  }
   const tileSize = Number(input.tileSizeMm || 20);
   const meshoptLevel = normalizeMeshoptLevel(
     input.meshoptLevel || process.env.PRISM_SEMANTIC_GLTF_MESHOPT_LEVEL || "medium",
@@ -139,6 +147,148 @@ async function runMain() {
     workerCount,
   });
   progress(`done manifestTiles=${manifest.tiles.length}`);
+}
+
+async function runPackedMain(input, inputPath, outputDir, metrics) {
+  const tileSize = Number(input.tileSizeMm || 20);
+  const meshoptLevel = normalizeMeshoptLevel(
+    input.meshoptLevel || process.env.PRISM_SEMANTIC_GLTF_MESHOPT_LEVEL || "medium",
+  );
+  const startedAt = performance.now();
+  const progress = createProgress(startedAt);
+  const packRoot = path.dirname(inputPath);
+  const tiles = (input.tiles || []).map((tile) => ({
+    ...tile,
+    packedPath: path.resolve(packRoot, String(tile.path || "")),
+  }));
+  progress(
+    `packed input tiles=${tiles.length} features=${(input.objectFeatures || []).length - 1} ` +
+    `tileSizeMm=${tileSize} meshopt=${meshoptLevel}`,
+  );
+  await fs.mkdir(outputDir, { recursive: true });
+  const manifest = {
+    schema: "prism.semantic_gltf_a0",
+    version: 0,
+    tileSizeMm: tileSize,
+    geometryRevision: input.geometryRevision,
+    coordinateSystem: input.coordinateSystem,
+    layers: input.layers || [],
+    nets: input.nets || [],
+    objectFeatures: input.objectFeatures || [],
+    components: [],
+    barrels: input.barrels || [],
+    geometryCompiler: {
+      compilerVersion: "prism-native-semantic-pack-v1",
+      sourceGeometryRevision: input.sourceGeometryRevision,
+      analyticContractRevision: input.analyticContractRevision,
+      kicadMonkeyRevision: input.kicadMonkeyRevision,
+      meshoptLevel,
+    },
+    clipper: {
+      protocolVersion: 1,
+      requested: "native-packed",
+      backend: "native-analytic",
+      native: null,
+      stats: {
+        direct_operations: Number(input.metrics?.directOperations || 0),
+        native_boolean_jobs: Number(input.metrics?.geometerOperations || 0),
+      },
+    },
+    nativeMeshPack: {
+      schema: input.schema,
+      sourceDigest: input.sourceDigest,
+      metrics: input.metrics || {},
+    },
+    copperLayerIds: (input.layers || [])
+      .filter((layer) => layer.role === "copper" || String(layer.name || "").endsWith(".Cu"))
+      .map((layer) => Number(layer.id)),
+    bbox: input.bbox,
+    tiles: [],
+    netToTiles: {},
+    analysis: {
+      featureKey: "objectFeatureId",
+      netKey: "netId",
+      resultBinding: "geometryRevision + objectFeatureId",
+    },
+  };
+  const workerCount = workerCountFor(tiles.length);
+  progress(`packed tile workers=${workerCount} tiles=${tiles.length}`);
+  const tileResults = await buildTilesWithWorkers(tiles, {
+    outputDir,
+    meshoptLevel,
+    tileSize,
+    workerCount,
+    metrics,
+    progress,
+  });
+  for (const result of tileResults) {
+    if (!result?.tile) continue;
+    manifest.tiles.push(result.tile);
+    for (const netId of result.tile.netIds) {
+      if (!netId) continue;
+      (manifest.netToTiles[String(netId)] ||= []).push(result.tile.id);
+    }
+  }
+  await fs.writeFile(path.join(outputDir, "scene.manifest.json"), JSON.stringify(manifest));
+  metrics.total_ms = elapsedMs(startedAt);
+  metrics.geometry_stats.tile_count = manifest.tiles.length;
+  metrics.geometry_stats.vertices = manifest.tiles.reduce((sum, tile) => sum + Number(tile.vertices || 0), 0);
+  metrics.geometry_stats.triangles = manifest.tiles.reduce((sum, tile) => sum + Number(tile.triangles || 0), 0);
+  metrics.geometry_stats.output_bytes = manifest.tiles.reduce((sum, tile) => sum + Number(tile.bytes || 0), 0);
+  await writeMetrics(metrics, {
+    inputPath,
+    outputDir,
+    clipperMode: "native-packed",
+    backend: "native-analytic",
+    meshoptLevel,
+    tileSize,
+    workerCount,
+  });
+  progress(`packed done manifestTiles=${manifest.tiles.length}`);
+}
+
+async function runBoardPackedMain(input, inputPath, outputDir, metrics) {
+  const startedAt = performance.now();
+  const progress = createProgress(startedAt);
+  const packRoot = path.dirname(inputPath);
+  const packedPath = path.resolve(packRoot, String(input.meshPath || ""));
+  await fs.mkdir(outputDir, { recursive: true });
+  const readStart = performance.now();
+  const geometry = await readPackedBoardGeometry(packedPath);
+  const silkscreenGeometry = input.silkscreenMeshPath
+    ? await readPackedBoardGeometry(path.resolve(packRoot, String(input.silkscreenMeshPath)))
+    : null;
+  metrics.packed_read_ms = elapsedMs(readStart);
+  const authorStart = performance.now();
+  const document = createBoardDocument(input, geometry, silkscreenGeometry);
+  metrics.gltf_authoring_ms = elapsedMs(authorStart);
+  await MeshoptEncoder.ready;
+  const meshoptStart = performance.now();
+  await document.transform(meshopt({ encoder: MeshoptEncoder, level: "medium" }));
+  metrics.meshopt_ms = elapsedMs(meshoptStart);
+  const io = new NodeIO()
+    .registerExtensions([EXTMeshoptCompression, KHRMeshQuantization])
+    .registerDependencies({ "meshopt.encoder": MeshoptEncoder });
+  const outputPath = path.join(outputDir, "base_board.glb");
+  const writeStart = performance.now();
+  await io.write(outputPath, document);
+  metrics.glb_write_ms = elapsedMs(writeStart);
+  metrics.total_ms = elapsedMs(startedAt);
+  metrics.geometry_stats = {
+    vertices: geometry.positions.length / 3,
+    triangles: geometry.indices.length / 3,
+    silkscreen_vertices: silkscreenGeometry?.positions.length / 3 || 0,
+    silkscreen_triangles: silkscreenGeometry?.indices.length / 3 || 0,
+    output_bytes: (await fs.stat(outputPath)).size,
+  };
+  await writeMetrics(metrics, {
+    inputPath,
+    outputDir,
+    backend: "native-board-body",
+    meshoptLevel: "medium",
+    workerCount: 1,
+  });
+  progress(`native board body done vertices=${metrics.geometry_stats.vertices} triangles=${metrics.geometry_stats.triangles}`);
 }
 
 async function runWorker() {
@@ -242,6 +392,7 @@ async function buildTilesWithWorkers(tiles, options) {
   }).finally(async () => {
     options.metrics.node_pack_total_ms = elapsedMs(workerWallStart);
     options.metrics.earcut_ms = options.metrics.worker_phase_ms.earcut_ms;
+    options.metrics.packed_read_ms = options.metrics.worker_phase_ms.packed_read_ms;
     options.metrics.gltf_authoring_ms = options.metrics.worker_phase_ms.gltf_authoring_ms;
     options.metrics.meshopt_ms = options.metrics.worker_phase_ms.meshopt_ms;
     options.metrics.glb_write_ms = options.metrics.worker_phase_ms.glb_write_ms;
@@ -273,13 +424,21 @@ function waitForWorkerReady(worker) {
 async function buildTileFile(tile, options) {
   const metrics = {
     earcut_ms: 0,
+    packed_read_ms: 0,
     gltf_authoring_ms: 0,
     meshopt_ms: 0,
     glb_write_ms: 0,
   };
-  const earcutStart = performance.now();
-  const geometry = buildTileGeometry(tile);
-  metrics.earcut_ms = elapsedMs(earcutStart);
+  let geometry;
+  if (tile.packedPath) {
+    const readStart = performance.now();
+    geometry = await readPackedTileGeometry(tile.packedPath);
+    metrics.packed_read_ms = elapsedMs(readStart);
+  } else {
+    const earcutStart = performance.now();
+    geometry = buildTileGeometry(tile);
+    metrics.earcut_ms = elapsedMs(earcutStart);
+  }
   if (!geometry.indices.length) return { tile: null, metrics };
   const authorStart = performance.now();
   const document = createDocument(tile, geometry);
@@ -333,6 +492,7 @@ function createMetrics() {
     tile_assignment_ms: 0,
     js_clip_ms: 0,
     preclipped_ingest_ms: 0,
+    packed_read_ms: 0,
     earcut_ms: 0,
     gltf_authoring_ms: 0,
     meshopt_ms: 0,
@@ -342,12 +502,151 @@ function createMetrics() {
     total_ms: 0,
     worker_phase_ms: {
       earcut_ms: 0,
+      packed_read_ms: 0,
       gltf_authoring_ms: 0,
       meshopt_ms: 0,
       glb_write_ms: 0,
     },
     geometry_stats: {},
   };
+}
+
+async function readPackedTileGeometry(filePath) {
+  const source = await fs.readFile(filePath);
+  const bytes = source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+  const view = new DataView(bytes);
+  const magic = new TextDecoder().decode(new Uint8Array(bytes, 0, 8));
+  if (magic !== "PRSMTL01") {
+    throw new Error(`invalid Prism packed tile magic in ${filePath}`);
+  }
+  const version = view.getUint32(8, true);
+  if (version !== 1) {
+    throw new Error(`unsupported Prism packed tile version ${version} in ${filePath}`);
+  }
+  const vertexCount = view.getUint32(12, true);
+  const indexCount = view.getUint32(16, true);
+  if (view.getUint32(20, true) !== 0) {
+    throw new Error(`Prism packed tile reserved field is nonzero in ${filePath}`);
+  }
+  let offset = 24;
+  const positionBytes = vertexCount * 3 * 4;
+  const scalarBytes = vertexCount * 4;
+  const indexBytes = indexCount * 4;
+  const expected = offset + positionBytes + scalarBytes * 2 + indexBytes;
+  if (expected !== bytes.byteLength) {
+    throw new Error(
+      `Prism packed tile size mismatch in ${filePath}: expected ${expected}, got ${bytes.byteLength}`,
+    );
+  }
+  const positions = new Float32Array(bytes, offset, vertexCount * 3).slice();
+  offset += positionBytes;
+  const sourceNetIds = new Uint32Array(bytes, offset, vertexCount).slice();
+  offset += scalarBytes;
+  const sourceFeatureIds = new Uint32Array(bytes, offset, vertexCount).slice();
+  offset += scalarBytes;
+  const indices = new Uint32Array(bytes, offset, indexCount).slice();
+  const normals = new Float32Array(vertexCount * 3);
+  for (let index = 0; index < vertexCount; index += 1) normals[index * 3 + 1] = 1;
+  return {
+    positions,
+    normals,
+    netIds: Float32Array.from(sourceNetIds),
+    objectFeatureIds: Float32Array.from(sourceFeatureIds),
+    indices,
+  };
+}
+
+async function readPackedBoardGeometry(filePath) {
+  const source = await fs.readFile(filePath);
+  const bytes = source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+  const view = new DataView(bytes);
+  const magic = new TextDecoder().decode(new Uint8Array(bytes, 0, 8));
+  if (magic !== "PRSMBD01") {
+    throw new Error(`invalid Prism packed board magic in ${filePath}`);
+  }
+  const version = view.getUint32(8, true);
+  if (version !== 1) {
+    throw new Error(`unsupported Prism packed board version ${version} in ${filePath}`);
+  }
+  const vertexCount = view.getUint32(12, true);
+  const indexCount = view.getUint32(16, true);
+  if (view.getUint32(20, true) !== 0) {
+    throw new Error(`Prism packed board reserved field is nonzero in ${filePath}`);
+  }
+  let offset = 24;
+  const vectorBytes = vertexCount * 3 * 4;
+  const indexBytes = indexCount * 4;
+  const expected = offset + vectorBytes * 2 + indexBytes;
+  if (expected !== bytes.byteLength) {
+    throw new Error(
+      `Prism packed board size mismatch in ${filePath}: expected ${expected}, got ${bytes.byteLength}`,
+    );
+  }
+  const positions = new Float32Array(bytes, offset, vertexCount * 3).slice();
+  offset += vectorBytes;
+  const normals = new Float32Array(bytes, offset, vertexCount * 3).slice();
+  offset += vectorBytes;
+  const indices = new Uint32Array(bytes, offset, indexCount).slice();
+  return { positions, normals, indices };
+}
+
+function createBoardDocument(input, geometry, silkscreenGeometry) {
+  const document = new Document().setLogger(new Logger(Logger.Verbosity.ERROR));
+  const buffer = document.createBuffer("board-geometry");
+  const primitiveFor = (name, source) => document
+    .createPrimitive()
+    .setAttribute(
+      "POSITION",
+      document
+        .createAccessor(`${name}-POSITION`, buffer)
+        .setType(Accessor.Type.VEC3)
+        .setArray(source.positions),
+    )
+    .setAttribute(
+      "NORMAL",
+      document
+        .createAccessor(`${name}-NORMAL`, buffer)
+        .setType(Accessor.Type.VEC3)
+        .setArray(source.normals),
+    )
+    .setIndices(
+      document
+        .createAccessor(`${name}-indices`, buffer)
+        .setType(Accessor.Type.SCALAR)
+        .setArray(
+          source.positions.length / 3 <= 65535
+            ? new Uint16Array(source.indices)
+            : source.indices,
+        ),
+    );
+  const primitive = primitiveFor("substrate", geometry);
+  const material = document
+    .createMaterial("substrate")
+    .setBaseColorFactor([0.055, 0.19, 0.095, 1])
+    .setMetallicFactor(0)
+    .setRoughnessFactor(0.78);
+  primitive.setMaterial(material);
+  const mesh = document.createMesh("_PCB_SUBSTRATE").addPrimitive(primitive);
+  const node = document.createNode("board_substrate").setMesh(mesh);
+  const scene = document.createScene("PCB").addChild(node);
+  if (silkscreenGeometry && silkscreenGeometry.positions.length) {
+    const silkMaterial = document
+      .createMaterial("silkscreen")
+      .setBaseColorFactor([0.92, 0.92, 0.88, 1])
+      .setMetallicFactor(0)
+      .setRoughnessFactor(0.7)
+      .setDoubleSided(true);
+    const silkPrimitive = primitiveFor("silkscreen", silkscreenGeometry).setMaterial(silkMaterial);
+    const silkMesh = document.createMesh("_silkscreen").addPrimitive(silkPrimitive);
+    scene.addChild(document.createNode("board_silkscreen").setMesh(silkMesh));
+  }
+  document.getRoot().setExtras({
+    schema: "prism.native_board_body_a0",
+    sourceDigest: input.sourceDigest,
+    kicadMonkeyRevision: input.kicadMonkeyRevision,
+    thicknessMm: input.thicknessMm,
+  });
+  return document;
 }
 
 async function writeMetrics(metrics, context) {

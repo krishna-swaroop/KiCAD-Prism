@@ -64,6 +64,17 @@ class GitBranchViewingTests(unittest.TestCase):
             branches = git_service.get_branches(str(checkout_path))
 
             self.assertIn("origin/remote-feature", {branch["ref"] for branch in branches["branches"]})
+            self.assertNotIn(checkout.active_branch.name, {branch["ref"] for branch in branches["branches"]})
+            self.assertEqual(branches["default_ref"], f"origin/{checkout.active_branch.name}")
+
+            (source_path / "README.md").write_text("updated", encoding="utf-8")
+            latest = _commit_all(source, "update main")
+            source.git.push(str(remote_path), source.active_branch.name)
+            checkout.remotes.origin.fetch()
+            refreshed = git_service.get_branches(str(checkout_path))
+            current = next(branch for branch in refreshed["branches"] if branch["is_current"])
+            self.assertEqual(current["commit"], latest.hexsha)
+            self.assertEqual(checkout.head.commit.hexsha, initial.hexsha)
 
     def test_scopes_history_and_distance_to_the_selected_ref(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

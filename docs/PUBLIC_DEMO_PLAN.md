@@ -136,13 +136,22 @@ Why this wins:
 - **Traffic is effectively free** at 20 TB. Your demo will use single-digit GB.
   This satisfies the spirit of "charges by traffic" better than metered hosts do,
   because the traffic bill is simply zero.
-- **x86 matters.** Your `.env` currently targets
-  `KICAD_BASE_IMAGE=kicad/kicad:10.0.4-arm64-local` — a base image you built
-  yourself on Apple Silicon, which does not exist in any registry. On an x86 host
-  use the repository's pinned upstream `kicad/kicad:10.0.4` AMD64 image and its
-  digest. Native ARM64 release images are not published; Docker Desktop can
-  emulate the supported AMD64 image for local testing, but AMD64 is the public
-  deployment target.
+- **x86 matters.** `.env` does not select the KiCad base image. Source builds use
+  the repository's pinned upstream `kicad/kicad:10.0.4` AMD64 image and its
+  digest from `backend/Dockerfile`. Native ARM64 release images are not
+  published; Docker Desktop can emulate the supported AMD64 image for local
+  testing, but AMD64 is the public deployment target. For a locally built ARM
+  image on Apple Silicon, keep `KICAD_BASE_PLATFORM` and `DOCKER_PLATFORM`
+  aligned in `.env`, then select that image at build time:
+
+  ```bash
+  docker compose build \
+    --build-arg KICAD_BASE_IMAGE=kicad/kicad:10.0.4-arm64-local
+  docker compose up -d
+  ```
+
+  `KICAD_BASE_IMAGE` is a build-time override, not a runtime Compose
+  environment variable.
 - Everything you already have — `docker-compose.yml`, `deploy/Caddyfile` — runs
   unchanged.
 
@@ -332,8 +341,8 @@ Edit `.env`. The demo-critical values (see §4 for the full rationale — **do n
 skip that section, the defaults are unsafe for public hosting**):
 
 ```env
-# --- Platform: switch off the local ARM base image ---
-KICAD_BASE_IMAGE=kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c
+# --- Runtime/build platform: use the Dockerfile AMD64 KiCad default ---
+# The base image is selected during `docker compose build`, not in this file.
 KICAD_BASE_PLATFORM=linux/amd64
 DOCKER_PLATFORM=linux/amd64
 
@@ -358,6 +367,16 @@ SESSION_SECRET=<generate with the command below>
 GITHUB_TOKEN=
 ```
 
+The values above configure the runtime environment and build platform. Build the
+backend image separately so the Dockerfile default is used for the public AMD64
+deployment, or pass an explicit build-time override when testing another image:
+
+```bash
+docker compose build
+# Override example:
+# docker compose build --build-arg KICAD_BASE_IMAGE=<image>
+```
+
 Generate secrets:
 
 ```bash
@@ -375,10 +394,10 @@ demo.kicadprism.com {
 ```
 
 Caddy obtains and renews a Let's Encrypt certificate automatically. Bring the
-stack up with the proxy overlay:
+stack up with the proxy overlay after the image build:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --wait
 ```
 
 The first build compiles the frontend and installs the Python environment on top
@@ -503,13 +522,12 @@ anonymous-admin configuration when the public origin is not local. Startup
 also logs a prominent guest-mode warning. An administrator guest is appropriate
 only for a private local seed/evaluation machine.
 
-### 4.2 `viewer` breaks two features you probably want in the demo
+### 4.2 `viewer` keeps the public demo read-only
 
 Audited guards on the mutating endpoints:
 
 | Feature | Endpoint | Guard | Works as guest viewer? |
 |---|---|---|---|
-| Visual SCH/PCB/BOM diff | `POST /api/projects/{id}/diff` | `require_designer` | **No** |
 | Design comparison | `POST /api/projects/{id}/design-compare` | `require_viewer` | Yes |
 | Trigger jobset workflow | `POST /api/projects/{id}/workflows` | `require_designer` | No (good) |
 | Generate semantic index | `POST /api/projects/{id}/semantic-index/generate` | `require_designer` | No (good) |
@@ -519,20 +537,10 @@ Audited guards on the mutating endpoints:
 | Delete project | `DELETE /api/projects/{id}` | `require_designer` | No (good) |
 | Folder create/move/delete | `folders.py` | `require_designer` | No (good) |
 
-The problem: **visual diff is designer-gated**, and it's one of the most
-compelling things Prism does. Two ways to handle it:
-
-- **Simplest (do this first):** pre-compute diffs locally for a few interesting
-  commit pairs so the cached results render, and deep-link to them from your demo
-  landing copy. Your own USB-PD board already has a tag (`A.1.0.0`) and a commit
-  history to diff against.
-- **Better long-term:** introduce an explicit `PRISM_DEMO_MODE=true` flag that
-  relaxes *read-only-but-expensive* operations for viewers while keeping all
-  destructive operations designer-gated. Implement it as a dedicated dependency
-  (e.g. `require_designer_or_demo`) applied only to `POST .../diff`, so the
-  permission widening is visible at each call site rather than hidden in role
-  resolution. Do **not** solve this by promoting guests to `designer` — that
-  would hand them project deletion, repo import, and jobset execution.
+The current Design Comparison path is viewer-accessible and is the supported
+SCH/PCB/BOM comparison experience. The older raster-diff endpoint at
+`POST /api/projects/{id}/diff` has been removed; do not build demo setup or role
+exceptions around it.
 
 The comments UI is shipped, but guest viewers cannot create or reply to
 comments. That keeps a public demo read-only while preserving discussion review;

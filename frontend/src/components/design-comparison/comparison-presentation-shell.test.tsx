@@ -13,6 +13,7 @@ import type {
     EcadComparisonSessionMetrics,
     EcadDocumentComparisonPreparation,
     EcadDocumentComparisonRequest,
+    EcadDocumentComparisonSelection,
     EcadPcbLayerState,
     EcadSchematicPageState,
 } from "@/types/ecad-viewer";
@@ -26,6 +27,8 @@ import type { ChangeItem, KiCadProjectDiffBundle } from "./types";
 class FakeEcadViewer extends HTMLElement {
     static instances: FakeEcadViewer[] = [];
     static sessions: FakeComparisonSession[] = [];
+    static resetLayersWhenSelectionSettles = false;
+    static resetLayersWhenPreviewClears = false;
 
     readonly ready = Promise.resolve();
     readonly isReady = true;
@@ -51,14 +54,29 @@ class FakeEcadViewer extends HTMLElement {
     readonly setViewportInsets = vi.fn();
     readonly resize = vi.fn();
     readonly abortDocumentComparisonLoad = vi.fn();
-    readonly selectDocumentDiff = vi.fn(async () => ({
-        status: "applied" as const,
-        requestId: 1,
-        clickToFrameMs: 0,
-        paintCount: 0,
-        parserCount: 0,
-    }));
-    readonly previewDocumentDiff = vi.fn();
+    readonly selectDocumentDiff = vi.fn(async () => {
+        await Promise.resolve();
+        if (FakeEcadViewer.resetLayersWhenSelectionSettles) {
+            for (const layer of this.layers) layer.visible = true;
+        }
+        return {
+            status: "applied" as const,
+            requestId: 1,
+            clickToFrameMs: 0,
+            paintCount: 0,
+            parserCount: 0,
+        };
+    });
+    readonly previewDocumentDiff = vi.fn(
+        (selection: EcadDocumentComparisonSelection | null) => {
+            if (
+                selection === null
+                && FakeEcadViewer.resetLayersWhenPreviewClears
+            ) {
+                for (const layer of this.layers) layer.visible = true;
+            }
+        },
+    );
     readonly showPage = vi.fn(async () => undefined);
     readonly focusBBox = vi.fn(async () => null);
     readonly focusItem = vi.fn(async () => null);
@@ -338,6 +356,8 @@ beforeAll(() => {
 beforeEach(() => {
     FakeEcadViewer.instances = [];
     FakeEcadViewer.sessions = [];
+    FakeEcadViewer.resetLayersWhenSelectionSettles = false;
+    FakeEcadViewer.resetLayersWhenPreviewClears = false;
     vi.stubGlobal(
         "fetch",
         vi.fn(async (input: string | URL | Request) => {
@@ -573,6 +593,66 @@ describe("ComparisonPresentationShell", () => {
             expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
                 .toHaveBeenCalledWith({ kind: "change", id: "/r5" });
             expect(FakeEcadViewer.instances[1]?.selectDocumentDiff)
+                .toHaveBeenCalledWith({ kind: "change", id: "/r5" });
+        });
+    });
+
+    it("reapplies the selection when a presentation is returned to", async () => {
+        // Selecting a change lets the policy pick the presentation, so a
+        // reviewer who then asks for a different one is switching *away* from
+        // a mode the selection was already applied in -- and switching back is
+        // the common next step. The application key is built from the mode,
+        // the side, the document, the selection and the pane set, none of
+        // which distinguish a freshly prepared session from the one that
+        // consumed the key the first time round, so the second visit to a mode
+        // used to be skipped and the board came up with nothing highlighted.
+        const selectedChange: ChangeItem = {
+            id: "changed-r5-returning",
+            kind: "changed",
+            domain: "schematic",
+            category: "components",
+            label: "R5",
+            page: "main.kicad_sch",
+        };
+        const diff: KiCadProjectDiffBundle = {
+            ...documentDiff,
+            navigation: {
+                [selectedChange.id]: {
+                    documentPath: "main.kicad_sch",
+                    changeId: "/r5",
+                    changeIds: ["/r5"],
+                },
+            },
+        };
+        const props = {
+            ...shellProps,
+            documentDiff: diff,
+            selection: { kind: "item" as const, id: selectedChange.id },
+            reviewGroups: [{ id: "component-r5", changes: [selectedChange] }],
+        };
+        const view = render(
+            <ComparisonPresentationShell {...props} presentationMode="composite" />,
+        );
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
+                .toHaveBeenCalledWith({ kind: "change", id: "/r5" });
+        });
+
+        view.rerender(
+            <ComparisonPresentationShell {...props} presentationMode="side-by-side" />,
+        );
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[1]?.selectDocumentDiff)
+                .toHaveBeenCalledWith({ kind: "change", id: "/r5" });
+        });
+
+        FakeEcadViewer.instances[0]!.selectDocumentDiff.mockClear();
+        view.rerender(
+            <ComparisonPresentationShell {...props} presentationMode="composite" />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
                 .toHaveBeenCalledWith({ kind: "change", id: "/r5" });
         });
     });
@@ -1570,7 +1650,11 @@ describe("ComparisonPresentationShell", () => {
         });
     });
 
-    it("leaves layer visibility alone for a non-routing selection", async () => {
+    it("isolates the side a selected part is mounted on", async () => {
+        // A part is copper on one side of the board, so selecting one isolates
+        // that side the way selecting a route isolates the layers it runs on.
+        // This used to leave the whole stack visible, which meant a change on
+        // the back was read through the front artwork drawn over it.
         const change: ChangeItem = {
             id: "pcb-changed-footprint",
             kind: "changed",
@@ -1598,13 +1682,350 @@ describe("ComparisonPresentationShell", () => {
         await waitFor(() => {
             expect(FakeEcadViewer.instances.length).toBeGreaterThan(1);
         });
-        expect(visibleLayers(0)).toEqual([
-            "F.Cu",
-            "In1.Cu",
-            "B.Cu",
-            "Edge.Cuts",
-            "F.SilkS",
-        ]);
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["F.Cu", "Edge.Cuts"]);
+        });
+    });
+
+    it("keeps relevant outer copper behind a non-copper selection", async () => {
+        // Silkscreen is evidence like any other: isolating it is the same
+        // question as isolating copper, and reading a moved designator through
+        // the artwork stacked over it is what the focus exists to stop.
+        const change: ChangeItem = {
+            id: "pcb-changed-silk",
+            kind: "changed",
+            domain: "pcb",
+            category: "graphics",
+            label: "U1 designator",
+            object_kind: "footprint_text",
+            reference: "U1",
+            reasons: ["moved"],
+            base_item: { source_id: "s1", layers: ["F.SilkS"] },
+            compare_item: { source_id: "s1", layers: ["F.SilkS"] },
+        };
+        render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "silk-u1" }}
+                reviewGroups={[{ id: "silk-u1", changes: [change] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances.length).toBeGreaterThan(1);
+        });
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["F.Cu", "Edge.Cuts", "F.SilkS"]);
+        });
+    });
+
+    // The row a reviewer clicks is the part group, and the backend files the
+    // part's fab text in it beside the copper. While a single non-copper
+    // member vetoed the whole focus, that group -- the most ordinary selection
+    // in the tool -- isolated nothing at all.
+    it("isolates a part group that carries a fab annotation with it", async () => {
+        const footprint: ChangeItem = {
+            id: "pcb-changed-r52",
+            kind: "changed",
+            domain: "pcb",
+            category: "components",
+            label: "R52",
+            object_kind: "footprint",
+            reference: "R52",
+            reasons: ["properties-changed"],
+            base_item: { source_id: "r52", layers: ["B.Cu"] },
+            compare_item: { source_id: "r52", layers: ["B.Cu"] },
+        };
+        const fabText: ChangeItem = {
+            ...footprint,
+            id: "pcb-changed-r52-text",
+            object_kind: "footprint_text",
+            base_item: { source_id: "r52t", layers: ["B.Fab"] },
+            compare_item: { source_id: "r52t", layers: ["B.Fab"] },
+        };
+        render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "component-r52" }}
+                reviewGroups={[{
+                    id: "component-r52",
+                    changes: [footprint, fabText],
+                }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances.length).toBeGreaterThan(1);
+        });
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["B.Cu", "Edge.Cuts"]);
+        });
+    });
+
+    it("reapplies layer focus after native selection settles", async () => {
+        const change: ChangeItem = {
+            id: "pcb-changed-r52",
+            kind: "changed",
+            domain: "pcb",
+            category: "components",
+            label: "R52",
+            object_kind: "footprint",
+            reference: "R52",
+            reasons: ["properties-changed"],
+            base_item: { source_id: "r52", layers: ["B.Cu"] },
+            compare_item: { source_id: "r52", layers: ["B.Cu"] },
+        };
+        FakeEcadViewer.resetLayersWhenSelectionSettles = true;
+        const selectablePcbDiff: KiCadProjectDiffBundle = {
+            ...pcbDocumentDiff,
+            navigation: {
+                [change.id]: {
+                    documentPath: "board.kicad_pcb",
+                    changeId: "/footprint-r52",
+                },
+            },
+        };
+
+        render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={selectablePcbDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "component-r52" }}
+                reviewGroups={[{ id: "component-r52", changes: [change] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.selectDocumentDiff)
+                .toHaveBeenCalled();
+            expect(visibleLayers(0)).toEqual(["B.Cu", "Edge.Cuts"]);
+        });
+    });
+
+    // Hover is a reversible highlight preview, not review state. A pointer
+    // crossing the queue must never repaint the board's layer stack.
+    it("previews a hovered row without changing visible layers", async () => {
+        const change: ChangeItem = {
+            id: "pcb-changed-r52",
+            kind: "changed",
+            domain: "pcb",
+            category: "components",
+            label: "R52",
+            object_kind: "footprint",
+            reference: "R52",
+            reasons: ["properties-changed"],
+            base_item: { source_id: "r52", layers: ["B.Cu"] },
+            compare_item: { source_id: "r52", layers: ["B.Cu"] },
+        };
+        const { rerender } = render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                selection={null}
+                reviewGroups={[{ id: "component-r52", changes: [change] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances.length).toBeGreaterThan(1);
+        });
+        const untouched = visibleLayers(0);
+        expect(untouched).toContain("F.Cu");
+
+        rerender(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                selection={null}
+                previewSelection={{ kind: "group", id: "component-r52" }}
+                reviewGroups={[{ id: "component-r52", changes: [change] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(untouched);
+        });
+
+        // Leaving the row puts the board back the way the reviewer had it.
+        rerender(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                selection={null}
+                previewSelection={null}
+                reviewGroups={[{ id: "component-r52", changes: [change] }]}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(untouched);
+        });
+    });
+
+    it("keeps the clicked listing's layer focus after pointer leave", async () => {
+        const change: ChangeItem = {
+            id: "pcb-changed-q15",
+            kind: "changed",
+            domain: "pcb",
+            category: "components",
+            label: "Q15",
+            object_kind: "footprint",
+            reference: "Q15",
+            reasons: ["rotated"],
+            base_item: { source_id: "q15", layers: ["B.Cu"] },
+            compare_item: { source_id: "q15", layers: ["B.Cu"] },
+        };
+        const selectablePcbDiff: KiCadProjectDiffBundle = {
+            ...pcbDocumentDiff,
+            navigation: {
+                [change.id]: {
+                    documentPath: "board.kicad_pcb",
+                    changeId: "/footprint-q15",
+                },
+            },
+        };
+        const reviewGroups = [{ id: "component-q15", changes: [change] }];
+        FakeEcadViewer.resetLayersWhenPreviewClears = true;
+        const view = render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={selectablePcbDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "component-q15" }}
+                previewSelection={{ kind: "group", id: "component-q15" }}
+                reviewGroups={reviewGroups}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["B.Cu", "Edge.Cuts"]);
+        });
+
+        view.rerender(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={selectablePcbDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "component-q15" }}
+                previewSelection={null}
+                reviewGroups={reviewGroups}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.previewDocumentDiff)
+                .toHaveBeenLastCalledWith(null);
+            expect(visibleLayers(0)).toEqual(["B.Cu", "Edge.Cuts"]);
+        });
+    });
+
+    it("does not rewrite focused layers when hover leaves visibility unchanged", async () => {
+        const selected: ChangeItem = {
+            id: "pcb-changed-q15",
+            kind: "changed",
+            domain: "pcb",
+            category: "components",
+            label: "Q15",
+            object_kind: "footprint",
+            reference: "Q15",
+            reasons: ["rotated"],
+            base_item: { source_id: "q15", layers: ["B.Cu"] },
+            compare_item: { source_id: "q15", layers: ["B.Cu"] },
+        };
+        const hovered: ChangeItem = {
+            ...selected,
+            id: "pcb-changed-r52",
+            label: "R52",
+            reference: "R52",
+            base_item: { source_id: "r52", layers: ["B.Cu"] },
+            compare_item: { source_id: "r52", layers: ["B.Cu"] },
+        };
+        const selectablePcbDiff: KiCadProjectDiffBundle = {
+            ...pcbDocumentDiff,
+            navigation: {
+                [selected.id]: {
+                    documentPath: "board.kicad_pcb",
+                    changeId: "/footprint-q15",
+                },
+                [hovered.id]: {
+                    documentPath: "board.kicad_pcb",
+                    changeId: "/footprint-r52",
+                },
+            },
+        };
+        const reviewGroups = [
+            { id: "component-q15", changes: [selected] },
+            { id: "component-r52", changes: [hovered] },
+        ];
+        const view = render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={selectablePcbDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "component-q15" }}
+                previewSelection={null}
+                reviewGroups={reviewGroups}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(visibleLayers(0)).toEqual(["B.Cu", "Edge.Cuts"]);
+        });
+        const referenceWrites = FakeEcadViewer.instances[0]!
+            .setPcbLayerVisibility.mock.calls.length;
+        const comparisonWrites = FakeEcadViewer.instances[1]!
+            .setPcbLayerVisibility.mock.calls.length;
+
+        view.rerender(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={selectablePcbDiff}
+                files={pcbFiles}
+                selection={{ kind: "group", id: "component-q15" }}
+                previewSelection={{ kind: "group", id: "component-r52" }}
+                reviewGroups={reviewGroups}
+            />,
+        );
+
+        await waitFor(() => {
+            expect(FakeEcadViewer.instances[0]?.previewDocumentDiff)
+                .toHaveBeenLastCalledWith({
+                    kind: "changes",
+                    ids: ["/footprint-r52"],
+                });
+        });
+        expect(FakeEcadViewer.instances[0]?.setPcbLayerVisibility)
+            .toHaveBeenCalledTimes(referenceWrites);
+        expect(FakeEcadViewer.instances[1]?.setPcbLayerVisibility)
+            .toHaveBeenCalledTimes(comparisonWrites);
     });
 
     it("hands layer control back to the reviewer after a manual toggle", async () => {

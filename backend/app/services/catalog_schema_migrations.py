@@ -48,7 +48,6 @@ def _portable_column_types(conn: Any) -> None:
     integer, and OAuth expiry timestamps are seconds since the epoch.
     """
     for table, column, target in (
-        ("components", "stock_quantity", "DOUBLE PRECISION"),
         ("component_heads", "stock_quantity", "DOUBLE PRECISION"),
         ("remote_component_heads", "stock_quantity", "DOUBLE PRECISION"),
         ("assets", "size_bytes", "BIGINT"),

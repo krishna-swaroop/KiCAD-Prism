@@ -1,0 +1,7 @@
+"Reference","Value","Footprint","MPN","Note","DNP","ExcludeFromBOM","ExcludeFromSim","ExcludeFromBoard","Quantity"
+"C1","100nF","Capacitor_SMD:C_0603_1608Metric","X-LITE","He said ""hi""","","","","","1"
+"Q1","BCX56","Package_TO_SOT_SMD:SOT-89-3","","","","","","","1"
+"R2","22k","Resistor_SMD:R_0603_1608Metric","","","","","","","1"
+"R4","47k","Resistor_SMD:R_0603_1608Metric","R4-LITE","","","","","","1"
+"R7","100R","Resistor_SMD:R_0603_1608Metric","A-LITE","","","","","","1"
+"R9","1k","Resistor_SMD:R_0603_1608Metric","","","","","Excluded from simulation","","1"

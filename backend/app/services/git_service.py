@@ -471,7 +471,8 @@ def get_commit_distance(repo_path: str, commit_hash: str, relative_path: str = N
 
 def get_branches(repo_path: str, relative_path: str = None) -> dict[str, Any]:
     """
-    Return local and remote branch refs without changing the working tree.
+    Show fetched remote branches as the canonical view of a linked repository.
+    Fall back to local branches for repositories without fetched remote refs.
     For Type-2 projects, branches that do not contain the subproject path are omitted.
     """
     repo = _open_repo(repo_path)
@@ -505,22 +506,37 @@ def get_branches(repo_path: str, relative_path: str = None) -> dict[str, Any]:
             }
         )
 
-    for branch in repo.heads:
-        add_branch(
-            name=branch.name,
-            ref=branch.name,
-            source="local",
-            is_current=branch.name == active_branch,
-        )
-
-    for remote in repo.remotes:
+    origin = next((remote for remote in repo.remotes if remote.name == "origin"), None)
+    remotes = [origin] if origin else repo.remotes
+    remote_branches = []
+    for remote in remotes:
         for remote_ref in remote.refs:
             if remote_ref.remote_head == "HEAD":
                 continue
+            remote_branches.append(remote_ref)
+
+    if remote_branches:
+        tracked_ref = None
+        if active_branch:
+            tracking = repo.active_branch.tracking_branch()
+            tracked_ref = tracking.name if tracking else None
+        for remote_ref in remote_branches:
             add_branch(
                 name=remote_ref.remote_head,
                 ref=remote_ref.name,
                 source="remote",
+                is_current=(
+                    remote_ref.name == tracked_ref
+                    or (tracked_ref is None and remote_ref.remote_head == active_branch)
+                ),
+            )
+    else:
+        for branch in repo.heads:
+            add_branch(
+                name=branch.name,
+                ref=branch.name,
+                source="local",
+                is_current=branch.name == active_branch,
             )
 
     branches.sort(

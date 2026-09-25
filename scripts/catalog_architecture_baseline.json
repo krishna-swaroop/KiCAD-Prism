@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "private_catalog_uses": [
+    {
+      "path": "backend/tests/test_catalog_asset_browse.py",
+      "symbol": "_ASSET_BROWSE_CACHE_TTL_SECONDS",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_catalog_asset_browse.py",
+      "symbol": "_asset_root",
+      "count": 4
+    },
+    {
+      "path": "backend/tests/test_catalog_asset_browse.py",
+      "symbol": "_browse_cache",
+      "count": 3
+    },
+    {
+      "path": "backend/tests/test_catalog_asset_browse.py",
+      "symbol": "_ensure_storage_dirs",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_catalog_asset_browse.py",
+      "symbol": "_invalidate_browse_cache",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_catalog_asset_browse.py",
+      "symbol": "_write_canonical_file",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_catalog_asset_content.py",
+      "symbol": "_connect",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_catalog_preview_generation.py",
+      "symbol": "_generate_footprint_preview",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_catalog_workflow_clone.py",
+      "symbol": "_normalize_workflow_stage",
+      "count": 6
+    },
+    {
+      "path": "backend/tests/test_component_catalog_postgres_compat.py",
+      "symbol": "_postgres_dsn",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_component_catalog_postgres_compat.py",
+      "symbol": "_split_sql_script",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_component_catalog_postgres_integration.py",
+      "symbol": "_connect",
+      "count": 21
+    },
+    {
+      "path": "backend/tests/test_legacy_catalog_survivor_postgres_integration.py",
+      "symbol": "_connect",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_library_folder_import_service.py",
+      "symbol": "_store_root",
+      "count": 1
+    },
+    {
+      "path": "backend/tests/test_supply_source_payload.py",
+      "symbol": "_supply_sources",
+      "count": 2
+    }
+  ],
+  "module_line_ceilings": {
+    "backend/app/api/catalog_admin.py": 1595,
+    "backend/app/api/projects.py": 2153,
+    "backend/app/release_studio/closure.py": 1336,
+    "backend/app/release_studio/documents/artwork.py": 1533,
+    "backend/app/services/component_catalog_domain.py": 2014,
+    "backend/app/services/design_compare_service.py": 2185,
+    "backend/app/services/fabrication_compare_service.py": 1543,
+    "backend/app/services/job_service.py": 1916,
+    "backend/app/services/project_import_service.py": 1547,
+    "backend/app/services/release_studio_build_service.py": 1579,
+    "backend/app/services/release_studio_service.py": 1313,
+    "backend/app/services/semantic_index_service.py": 1201,
+    "backend/app/services/semantic_visualizer_service.py": 1251,
+    "scripts/benchmark_concurrent_users.py": 1384,
+    "scripts/import_database_library.py": 1644
+  }
+}

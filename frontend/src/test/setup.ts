@@ -38,3 +38,35 @@ configure({ asyncUtilTimeout: 5_000 });
  * reason — there are no vitest globals here.
  */
 afterEach(cleanup);
+
+/**
+ * jsdom implements no layout, so it ships no `Element.scrollIntoView`.
+ *
+ * Any component that keeps a keyboard-highlighted row in view calls it and
+ * would otherwise throw during a passive effect — a failure in the component
+ * under test that says nothing about the component. Stubbed centrally rather
+ * than guarded at each call site, so production code is not shaped around a
+ * gap in the test environment.
+ */
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+
+/**
+ * The same gap, one layer up: no layout means no `ResizeObserver`.
+ *
+ * `use-virtual-viewport` observes its scroll container to decide how many rows
+ * to mount, so every test that renders a virtualized grid constructs one during
+ * a passive effect and throws before the component under test does anything.
+ * The stub reports nothing, which is the honest answer in an environment with
+ * no layout: the viewport hook keeps its fallback height and mounts its default
+ * window of rows, which is what a test asserting on grid contents wants.
+ */
+if (!("ResizeObserver" in globalThis)) {
+  class NoLayoutResizeObserver implements ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = NoLayoutResizeObserver;
+}

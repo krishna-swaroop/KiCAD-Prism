@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     CheckCircle,
     ChevronDown,
@@ -12,11 +12,14 @@ import {
 } from "lucide-react";
 import { commentClassLabel, type Comment } from "@/types/comments";
 import { CommentSeverityBadge } from "@/components/comment-severity-badge";
+import { ReplyTrackerState } from "@/features/tracker-integration/reply-tracker-state";
+import { TrackerIssueAction } from "@/features/tracker-integration/tracker-issue-action";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import type { EcadCommentAnchorResolution } from "@/types/ecad-viewer";
 
 interface CommentPanelProps {
     comments: Comment[];
@@ -28,6 +31,11 @@ interface CommentPanelProps {
     canModify: boolean;
     highlightedId?: string | null;
     embedded?: boolean;
+    anchorStatuses?: Record<string, EcadCommentAnchorResolution>;
+    onReattach?: (comment: Comment) => Promise<void>;
+    onPromote?: (commentId: string) => Promise<void>;
+    onRetrySync?: (commentId: string) => Promise<void>;
+    onShareReply?: (commentId: string, replyId: string) => Promise<void>;
 }
 
 export function CommentPanel({
@@ -40,6 +48,11 @@ export function CommentPanel({
     canModify,
     highlightedId = null,
     embedded = false,
+    anchorStatuses = {},
+    onReattach,
+    onPromote,
+    onRetrySync,
+    onShareReply,
 }: CommentPanelProps) {
     const [filter, setFilter] = useState<"ALL" | "OPEN" | "RESOLVED">("ALL");
 
@@ -113,6 +126,11 @@ export function CommentPanel({
                                                 onDelete={onDelete}
                                                 onClick={() => onCommentClick(comment)}
                                                 canModify={canModify}
+                                                anchorStatus={anchorStatuses[comment.id]}
+                                                onReattach={onReattach}
+                                                onPromote={onPromote}
+                                                onRetrySync={onRetrySync}
+                                                onShareReply={onShareReply}
                                             />
                                         ))}
                                     </div>
@@ -134,6 +152,11 @@ function PanelCommentCard({
     onDelete,
     onClick,
     canModify,
+    anchorStatus,
+    onReattach,
+    onPromote,
+    onRetrySync,
+    onShareReply,
 }: {
     comment: Comment;
     highlighted: boolean;
@@ -142,13 +165,35 @@ function PanelCommentCard({
     onDelete: (id: string) => Promise<void>;
     onClick: () => void;
     canModify: boolean;
+    anchorStatus?: EcadCommentAnchorResolution;
+    onReattach?: (comment: Comment) => Promise<void>;
+    onPromote?: (commentId: string) => Promise<void>;
+    onRetrySync?: (commentId: string) => Promise<void>;
+    onShareReply?: (commentId: string, replyId: string) => Promise<void>;
 }) {
     const [isReplying, setIsReplying] = useState(false);
     const [replyContent, setReplyContent] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [expanded, setExpanded] = useState(true);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const replyRef = useRef<HTMLTextAreaElement>(null);
+
+    // Revealing the reply box is a deliberate request to type in it.
+    useEffect(() => {
+        if (isReplying && canModify) replyRef.current?.focus();
+    }, [isReplying, canModify]);
     const isResolved = comment.status === "RESOLVED";
+    const anchorIssue = comment.anchorResolution?.state === "unresolved"
+        ? ({
+            unpinned: "Not pinned to a commit",
+            outside_history: "Outside this revision's history",
+            ambiguous_merge: "Two branch attachments conflict",
+            coordinate_review: "Area needs review on this revision",
+        } as Record<string, string>)[comment.anchorResolution.reason] ?? "Anchor needs review"
+        : anchorStatus?.state === "missing" ? "Object is missing on this revision" : null;
+    const creationCommit = comment.anchor?.commit;
+    const creationUrl = creationCommit ? new URL(window.location.href) : null;
+    creationUrl?.searchParams.set("commit", creationCommit ?? "");
 
     const handleReply = async () => {
         if (!replyContent.trim()) return;
@@ -168,12 +213,11 @@ function PanelCommentCard({
                 isResolved ? "opacity-70" : ""
             } ${highlighted ? "ring-2 ring-primary" : ""}`}
         >
-            <div
-                className="cursor-pointer rounded-t-lg p-3 hover:bg-muted/50"
-                onClick={(e) => {
-                    if ((e.target as HTMLElement).closest("button")) return;
-                    onClick();
-                }}
+            <button
+                type="button"
+                className="block w-full cursor-pointer rounded-t-lg p-3 pb-0 text-left hover:bg-muted/50"
+                onClick={onClick}
+                aria-label={`Open comment from ${comment.author}`}
             >
                 <div className="mb-2 flex items-start justify-between">
                     <div className="flex items-center gap-2">
@@ -192,6 +236,7 @@ function PanelCommentCard({
                 <div className="mb-2 flex flex-wrap gap-1">
                     <Badge variant="secondary">{commentClassLabel(comment.commentClass ?? "general")}</Badge>
                     <CommentSeverityBadge severity={comment.severity ?? "info"} />
+                    {anchorIssue && <Badge variant="outline">{anchorIssue}</Badge>}
                 </div>
 
                 <p className="mb-3 whitespace-pre-wrap text-sm">{comment.content}</p>
@@ -206,64 +251,80 @@ function PanelCommentCard({
                     </div>
                 )}
 
-                <div className="flex items-center justify-between">
-                    {canModify ? (
-                        <>
-                            <div className="flex gap-1">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2 text-xs"
-                                    onClick={() => setIsReplying(!isReplying)}
-                                >
-                                    <ReplyIcon className="mr-1 h-3 w-3" />
-                                    Reply
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 px-2 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setConfirmDelete(true);
-                                    }}
-                                >
-                                    <Trash2 className="mr-1 h-3 w-3" />
-                                    Delete
-                                </Button>
-                            </div>
+            </button>
+
+            {(creationUrl || (anchorIssue && comment.permissions?.canEdit && onReattach)) && (
+                <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs">
+                    {creationUrl && <a className="text-primary underline" href={creationUrl.toString()}>Creation revision</a>}
+                    {anchorIssue && comment.permissions?.canEdit && onReattach && (
+                        <button type="button" className="text-primary underline"
+                            onClick={() => void onReattach(comment)}>Reattach to selected object</button>
+                    )}
+                </div>
+            )}
+
+            {(comment.tracker?.linkState || comment.permissions?.canPublish) && (
+                <div className="px-3 pb-2">
+                    <TrackerIssueAction comment={comment} onPromote={onPromote} onRetry={onRetrySync} />
+                </div>
+            )}
+
+            <div className="flex items-center justify-between px-3 pb-3 pt-2">
+                {canModify ? (
+                    <>
+                        <div className="flex gap-1">
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className={`h-6 px-2 text-xs ${isResolved ? "text-success" : "text-muted-foreground"}`}
-                                onClick={() => onResolve(comment.id, !isResolved)}
+                                className="h-6 px-2 text-xs"
+                                onClick={() => setIsReplying(!isReplying)}
                             >
-                                {isResolved ? (
-                                    <>
-                                        <CheckCircle className="mr-1 h-3 w-3" />
-                                        Resolved
-                                    </>
-                                ) : (
-                                    <>
-                                        <Circle className="mr-1 h-3 w-3" />
-                                        Resolve
-                                    </>
-                                )}
+                                <ReplyIcon className="mr-1 h-3 w-3" />
+                                Reply
                             </Button>
-                        </>
-                    ) : (
-                        <div className="text-xs text-muted-foreground">Read-only</div>
-                    )}
-                </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => setConfirmDelete(true)}
+                            >
+                                <Trash2 className="mr-1 h-3 w-3" />
+                                Delete
+                            </Button>
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`h-6 px-2 text-xs ${isResolved ? "text-success" : "text-muted-foreground"}`}
+                            onClick={() => onResolve(comment.id, !isResolved)}
+                        >
+                            {isResolved ? (
+                                <>
+                                    <CheckCircle className="mr-1 h-3 w-3" />
+                                    Resolved
+                                </>
+                            ) : (
+                                <>
+                                    <Circle className="mr-1 h-3 w-3" />
+                                    Resolve
+                                </>
+                            )}
+                        </Button>
+                    </>
+                ) : (
+                    <div className="text-xs text-muted-foreground">Read-only</div>
+                )}
             </div>
 
             {(comment.replies.length > 0 || (isReplying && canModify)) && (
                 <div className="space-y-3 border-t bg-muted/20 p-3">
                     {comment.replies.length > 0 && (
                         <div className="space-y-3">
-                            <div
-                                className="flex cursor-pointer select-none items-center gap-1 text-xs text-muted-foreground"
+                            <button
+                                type="button"
+                                className="flex select-none items-center gap-1 text-xs text-muted-foreground"
                                 onClick={() => setExpanded(!expanded)}
+                                aria-expanded={expanded}
                             >
                                 {expanded ? (
                                     <ChevronDown className="h-3 w-3" />
@@ -271,10 +332,10 @@ function PanelCommentCard({
                                     <ChevronRight className="h-3 w-3" />
                                 )}
                                 {comment.replies.length} replies
-                            </div>
+                            </button>
                             {expanded &&
-                                comment.replies.map((reply, idx) => (
-                                    <div key={idx} className="relative border-l-2 border-muted pl-2 text-sm">
+                                comment.replies.map((reply) => (
+                                    <div key={reply.id ?? `${reply.timestamp}-${reply.author}-${reply.content}`} className="relative border-l-2 border-muted pl-2 text-sm">
                                         <div className="mb-1 flex items-center justify-between">
                                             <span className="text-xs font-medium">{reply.author}</span>
                                             <span className="text-[10px] text-muted-foreground">
@@ -282,6 +343,13 @@ function PanelCommentCard({
                                             </span>
                                         </div>
                                         <p className="text-muted-foreground">{reply.content}</p>
+                                        <ReplyTrackerState
+                                            reply={reply}
+                                            provider={comment.tracker?.provider}
+                                            onShare={onShareReply
+                                                ? (replyId) => onShareReply(comment.id, replyId)
+                                                : undefined}
+                                        />
                                     </div>
                                 ))}
                         </div>
@@ -289,24 +357,28 @@ function PanelCommentCard({
 
                     {isReplying && canModify && (
                         <div className="mt-2 flex items-end gap-2 pt-2">
-                            <textarea
-                                value={replyContent}
-                                onChange={(e) => setReplyContent(e.target.value)}
-                                placeholder="Write a reply..."
-                                className="min-h-[60px] flex-1 resize-none rounded border bg-background p-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                                autoFocus
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                                        e.preventDefault();
-                                        void handleReply();
-                                    }
-                                }}
-                            />
+                            <label className="flex-1 space-y-1 text-xs font-medium">
+                                <span>Reply</span>
+                                <textarea
+                                    ref={replyRef}
+                                    value={replyContent}
+                                    onChange={(e) => setReplyContent(e.target.value)}
+                                    placeholder="Write a reply..."
+                                    className="min-h-[60px] w-full resize-none rounded border bg-background p-2 text-sm font-normal text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                            e.preventDefault();
+                                            void handleReply();
+                                        }
+                                    }}
+                                />
+                            </label>
                             <Button
                                 size="icon"
                                 className="mb-0.5 h-8 w-8"
                                 disabled={isSubmitting || !replyContent.trim()}
                                 onClick={() => void handleReply()}
+                                aria-label="Send reply"
                             >
                                 <Send className="h-4 w-4" />
                             </Button>

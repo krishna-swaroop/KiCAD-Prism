@@ -1,49 +1,87 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
-  ExternalLink,
-  Download,
-  Loader2,
   ChevronDown,
   ChevronUp,
+  CircleAlert,
+  ExternalLink,
+  FileText,
+  Loader2,
+  MoreHorizontal,
+  RefreshCw,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import type { PanelComponent } from "@/panel/lib/panel-api";
-import { getComponent } from "@/panel/lib/panel-api";
+import type { PanelComponent, PanelSupplySource } from "@/panel/lib/panel-api";
 import {
-  sendRpcCommand,
-  retry,
-  hasSession,
-} from "@/panel/lib/kicad-bridge";
-import {
-  getPartManifest,
+  classifyPanelLoadFailure,
+  getComponent,
   getInlineBundle,
+  getPartManifest,
 } from "@/panel/lib/panel-api";
+import { usePanelAssetLoader } from "@/panel/lib/use-panel-asset-loader";
+import { getSessionId, KiCadRpcError, sendRpcCommand } from "@/panel/lib/kicad-bridge";
+import { formatPlacementError, PLACEMENT_RESPONSE_TIMEOUT_MS } from "@/panel/lib/panel-placement";
+import { LibraryPreviewPair } from "@/components/workspace/library-preview-inspector";
+import { cn } from "@/lib/utils";
+import { inventoryWarnings } from "@/lib/inventory-presentation";
 
 interface PartDetailScreenProps {
   componentId: string;
-  /** If the component was already loaded (from a list), pass it to avoid re-fetch */
+  /** Slim list row used as a labeled preview while full detail loads. */
   prefetched?: PanelComponent | null;
   onBack: () => void;
+  onAuthRequired: () => void;
   appendLog: (msg: string) => void;
 }
 
-const PARAMETER_ORDER = [
+type DetailLoad =
+  | { phase: "loading"; preview: PanelComponent | null }
+  | { phase: "ready"; component: PanelComponent }
+  | {
+      phase: "error";
+      preview: PanelComponent | null;
+      kind: "not_found" | "failed";
+      message: string;
+    };
+
+function previewFor(
+  componentId: string,
+  prefetched?: PanelComponent | null,
+): PanelComponent | null {
+  return prefetched?.id === componentId ? prefetched : null;
+}
+
+const CORE_PARAMETERS = [
   { label: "Value", key: "name" },
-  { label: "Manufacturer", key: "manufacturer" },
   { label: "MPN", key: "mpn" },
+  { label: "Manufacturer", key: "manufacturer" },
   { label: "Package", key: "package_name" },
+] as const;
+
+const EXTENDED_PARAMETERS = [
   { label: "Category", key: "category" },
   { label: "Library", key: "library_name" },
   { label: "Symbol Name", key: "symbol_name" },
   { label: "Version", key: "version" },
   { label: "Availability", key: "availability_state" },
-];
+] as const;
 
 function formatAvailability(state: string): string {
   if (state === "place_ready") return "CAD complete";
@@ -51,312 +89,330 @@ function formatAvailability(state: string): string {
   return "Metadata only";
 }
 
+function formatAsOf(iso: string): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "";
+  const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return `${days} d ago`;
+}
+
+function formatPrice(value: number, currency?: string): string {
+  return `${currency ? currency + " " : ""}${value.toFixed(value < 1 ? 3 : 2)}`;
+}
+
+// react-doctor-disable-next-line no-giant-component - detail panel whose sections share one part resource
 export function PartDetailScreen({
   componentId,
   prefetched,
   onBack,
+  onAuthRequired,
   appendLog,
 }: PartDetailScreenProps) {
-  const [component, setComponent] = useState<PanelComponent | null>(
-    prefetched ?? null
-  );
-  const [loading, setLoading] = useState(!prefetched);
+  const loadPreviewAsset = usePanelAssetLoader(onAuthRequired);
+  const [load, setLoad] = useState<DetailLoad>(() => ({
+    phase: "loading",
+    preview: previewFor(componentId, prefetched),
+  }));
+  const [retryNonce, setRetryNonce] = useState(0);
   const [showAllParams, setShowAllParams] = useState(false);
   const [placing, setPlacing] = useState(false);
-  const [placingInline, setPlacingInline] = useState(false);
+  const [placementError, setPlacementError] = useState<string | null>(null);
+  const placingRef = useRef(false);
+  const placementControllerRef = useRef<AbortController | null>(null);
+  const [representationId, setRepresentationId] = useState("");
 
-  // Fetch full component details. List screens pass a slim payload, so detail
-  // refreshes the component before previews/assets are shown.
+  useEffect(() => () => placementControllerRef.current?.abort(), [componentId]);
+
+  // List rows are slim (empty representations). Only a successful detail
+  // response is authoritative; prefetch is labeled loading, never Place-ready.
   useEffect(() => {
+    const preview = previewFor(componentId, prefetched);
+    setLoad({ phase: "loading", preview });
+    setRepresentationId("");
+    setShowAllParams(false);
+    setPlacementError(null);
     const controller = new AbortController();
     getComponent(componentId, controller.signal)
-      .then((c) => {
-        if (!controller.signal.aborted) {
-          setComponent(c);
-          setLoading(false);
-        }
+      .then((detail) => {
+        if (controller.signal.aborted) return;
+        setLoad({ phase: "ready", component: detail });
+        setRepresentationId(
+          detail.default_representation_id || detail.representations[0]?.id || "",
+        );
       })
       .catch((err) => {
-        if (!controller.signal.aborted) {
-          appendLog(`Failed to load component: ${(err as Error).message}`);
-          setLoading(false);
+        if (controller.signal.aborted) return;
+        const kind = classifyPanelLoadFailure(err);
+        if (kind === "auth") {
+          onAuthRequired();
+          return;
         }
+        appendLog(`Failed to load component: ${(err as Error).message}`);
+        setLoad({
+          phase: "error",
+          preview,
+          kind,
+          message: err instanceof Error ? err.message : String(err),
+        });
       });
     return () => controller.abort();
-  }, [componentId, prefetched, appendLog]);
+  }, [componentId, retryNonce, prefetched, appendLog, onAuthRequired]);
 
-  // ─── Place via manifest ────────────────────────────────────────
-
-  async function handlePlace() {
-    if (!component || !hasSession()) {
+  async function runPlacement(path: "manifest" | "inline") {
+    const sessionId = getSessionId();
+    if (load.phase !== "ready" || !sessionId) {
       appendLog("Cannot place: no session or component.");
       return;
     }
+    const component = load.component;
+    if (placingRef.current) return;
+    placingRef.current = true;
+    const controller = new AbortController();
+    placementControllerRef.current = controller;
+    let dispatchAttempted = false;
     setPlacing(true);
+    setPlacementError(null);
     try {
-      const manifest = await getPartManifest(component.id);
-      await retry(async () => {
-        await sendRpcCommand(
-          "PLACE_COMPONENT",
-          manifest as Record<string, unknown>
-        );
-      });
-      appendLog(`Placed ${component.name} via manifest.`);
+      const payload = path === "manifest"
+        ? await getPartManifest(component.id, representationId, controller.signal)
+        : await getInlineBundle(component.id, representationId, controller.signal);
+      if (controller.signal.aborted) return;
+      if (sessionId !== getSessionId()) {
+        throw new KiCadRpcError("pre_dispatch", "KiCad session changed while preparing placement. Try again in the current schematic.");
+      }
+      dispatchAttempted = true;
+      await sendRpcCommand(
+        "PLACE_COMPONENT",
+        path === "manifest" ? payload : {
+          library: payload.library,
+          symbol_name: payload.symbol_name,
+          compression: payload.compression,
+        },
+        path === "inline" ? (payload.data as string) || "" : "",
+        PLACEMENT_RESPONSE_TIMEOUT_MS,
+      );
+      if (!controller.signal.aborted) appendLog(`Placed ${component.name} via ${path === "inline" ? "inline bundle" : "manifest"}.`);
     } catch (err) {
-      appendLog(`Placement failed: ${(err as Error).message}`);
+      if (controller.signal.aborted) return;
+      const failure = dispatchAttempted || err instanceof KiCadRpcError ? err
+        : new KiCadRpcError("pre_dispatch", err instanceof Error ? err.message : String(err));
+      const message = formatPlacementError(failure);
+      setPlacementError(message);
+      appendLog(message);
     } finally {
-      setPlacing(false);
+      if (placementControllerRef.current === controller) {
+        placingRef.current = false;
+        placementControllerRef.current = null;
+        setPlacing(false);
+      }
     }
   }
 
-  // ─── Place via inline ──────────────────────────────────────────
-
-  async function handleInline() {
-    if (!component || !hasSession()) {
-      appendLog("Cannot place: no session or component.");
-      return;
-    }
-    setPlacingInline(true);
-    try {
-      const bundle = (await getInlineBundle(component.id)) as Record<
-        string,
-        unknown
-      >;
-      await retry(async () => {
-        await sendRpcCommand(
-          "PLACE_COMPONENT",
-          {
-            library: bundle.library,
-            symbol_name: bundle.symbol_name,
-            compression: bundle.compression,
-          },
-          (bundle.data as string) || ""
-        );
-      });
-      appendLog(`Placed ${component.name} via inline bundle.`);
-    } catch (err) {
-      appendLog(`Inline placement failed: ${(err as Error).message}`);
-    } finally {
-      setPlacingInline(false);
-    }
-  }
-
-  // ─── Loading state ─────────────────────────────────────────────
-
-  if (loading || !component) {
+  if (load.phase !== "ready") {
+    const preview = load.preview;
     return (
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon-xs" onClick={onBack}>
+          <Button variant="ghost" size="icon-xs" onClick={onBack} aria-label="Back">
             <ArrowLeft className="h-3.5 w-3.5" />
           </Button>
-          <Skeleton className="h-4 w-32" />
+          {preview ? (
+            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+              Details
+            </span>
+          ) : (
+            <Skeleton className="h-4 w-32" />
+          )}
         </div>
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-3 w-36" />
-        <Skeleton className="h-3 w-64" />
-        <Separator />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-32 w-full" />
+        {preview ? (
+          <div className="px-0.5">
+            <h2 className="break-all text-base font-bold leading-tight text-primary">
+              {preview.name}
+            </h2>
+            <p className="mt-0.5 text-xs text-foreground/80">
+              {preview.manufacturer || "Unknown Manufacturer"}
+            </p>
+            {load.phase === "loading" ? (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading details…
+              </p>
+            ) : null}
+          </div>
+        ) : load.phase === "loading" ? (
+          <>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-3 w-36" />
+            <Skeleton className="h-3 w-64" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-40 w-full" />
+          </>
+        ) : null}
+        {load.phase === "error" ? (
+          <DetailErrorState
+            kind={load.kind}
+            message={load.message}
+            onRetry={() => setRetryNonce((nonce) => nonce + 1)}
+          />
+        ) : null}
       </div>
     );
   }
 
-  const visibleParams = showAllParams
-    ? PARAMETER_ORDER
-    : PARAMETER_ORDER.slice(0, 5);
+  const component = load.component;
+  const selectedRepresentation =
+    component.representations.find((r) => r.id === representationId) ||
+    component.representations.find((r) => r.is_default) ||
+    null;
+  const selectedComplete = Boolean(
+    selectedRepresentation?.symbol && selectedRepresentation?.footprint
+  );
+  const canPlace =
+    component.place_enabled && selectedComplete && component.identity_kind === "mpn";
+
+  const sources = component.supply?.sources ?? [];
+  const vendorSources = sources.filter((s) => s.kind === "vendor");
+  const localSources = sources.filter((s) => s.kind === "local");
+  const symbolAssetId = selectedRepresentation?.symbol?.id;
+  const footprintAssetId = selectedRepresentation?.footprint?.id;
+  const symbolMeta = selectedRepresentation?.symbol
+    ? `${selectedRepresentation.symbol.target_library}:${selectedRepresentation.symbol.target_name}`
+    : `${component.library_name}:${component.symbol_name}`;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-1 flex-col gap-3">
       {/* ── Header Row ─────────────────────────────────────────── */}
       <div className="flex items-start gap-2">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onBack}
-          className="mt-0.5 shrink-0"
-        >
+        <Button variant="ghost" size="icon-xs" onClick={onBack} className="mt-0.5 shrink-0">
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-[10px] font-medium text-muted-foreground">
-              Details
-            </span>
-            <Badge
-              variant="outline"
-              className="shrink-0 text-[10px] text-muted-foreground border-border/50 bg-secondary/20 font-medium"
-            >
-              Stock N/A
-            </Badge>
-          </div>
+        <span className="mt-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+          Details
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          {canPlace && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="More actions" disabled={placing}>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void runPlacement("inline")} disabled={placing}>
+                  {placing ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : null}
+                  Inline Fallback
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
-      {/* ── Part Identity ──────────────────────────────────────── */}
-      <div className="px-1">
+      {/* ── Part identity ──────────────────────────────────────── */}
+      <div className="px-0.5">
         <h2 className="break-all text-base font-bold leading-tight text-primary">
           {component.name}
         </h2>
         <p className="mt-0.5 text-xs text-foreground/80">
           {component.manufacturer || "Unknown Manufacturer"}
         </p>
-        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
           {component.description || component.summary || "No description."}
         </p>
       </div>
 
-      {/* ── Action Buttons ─────────────────────────────────────── */}
-      <div className="flex gap-2 px-1">
-        {component.datasheet_url && (
-          <a
-            href={component.datasheet_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={buttonVariants({ variant: "outline", size: "sm" }) + " flex-1"}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="pointer-events-none flex items-center gap-1.5">
-              <ExternalLink data-icon="inline-start" className="h-3 w-3" />
-              Datasheet
-            </span>
-          </a>
-        )}
-        <Button
-          size="sm"
-          className="flex-1"
-          onClick={handlePlace}
-          disabled={!component.place_enabled || placing}
+      {/* ── PART ───────────────────────────────────────────────── */}
+      <Section label="Part">
+        <ParameterTable
+          rows={[
+            ...CORE_PARAMETERS.map((p) => ({
+              ...p,
+              value: String((component as unknown as Record<string, unknown>)[p.key] ?? ""),
+              truncate: false,
+            })),
+            ...(showAllParams
+              ? EXTENDED_PARAMETERS.map((p) => ({
+                  ...p,
+                  value:
+                    p.key === "availability_state"
+                      ? formatAvailability(
+                          String((component as unknown as Record<string, unknown>)[p.key] ?? "")
+                        )
+                      : String((component as unknown as Record<string, unknown>)[p.key] ?? ""),
+                  truncate: false,
+                }))
+              : []),
+          ]}
+        />
+        <button
+          onClick={() => setShowAllParams((s) => !s)}
+          className="flex w-full items-center justify-center gap-1 py-1.5 text-[10px] font-medium text-primary hover:underline"
         >
-          {placing ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+          {showAllParams ? (
+            <>
+              Show Less <ChevronUp className="h-3 w-3" />
+            </>
           ) : (
-            <Download data-icon="inline-start" className="h-3 w-3" />
+            <>
+              Show More <ChevronDown className="h-3 w-3" />
+            </>
           )}
-          {component.place_enabled ? "Place" : "Unavailable"}
-        </Button>
-      </div>
-      {component.place_enabled && (
-        <div className="px-1">
-          <Button
-            variant="outline"
-            size="xs"
-            className="w-full text-[10px]"
-            onClick={handleInline}
-            disabled={placingInline}
-          >
-            {placingInline ? (
-              <Loader2 className="mr-1 h-2.5 w-2.5 animate-spin" />
-            ) : null}
-            Inline Fallback
-          </Button>
+        </button>
+      </Section>
+
+      {/* ── Provisional warning ────────────────────────────────── */}
+      {component.identity_kind === "provisional_ipn" && (
+        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+          Provisional part: add a real manufacturer and MPN before release or placement.
         </div>
       )}
 
-      <Separator />
-
-      {/* ── Parameters Table ───────────────────────────────────── */}
-      <div className="px-1">
-        <p className="pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Parameters
-        </p>
-        <div className="overflow-hidden rounded border border-border/50">
-          {visibleParams.map((param, i) => {
-            const rawVal =
-              (component as unknown as Record<string, unknown>)[param.key] ?? "";
-            const val =
-              param.key === "availability_state"
-                ? formatAvailability(String(rawVal))
-                : String(rawVal) || "—";
-            return (
-              <div
-                key={param.key}
-                className={`flex items-baseline justify-between gap-3 px-2.5 py-1.5 text-xs ${
-                  i > 0 ? "border-t border-border/30" : ""
-                }`}
-              >
-                <span className="shrink-0 text-muted-foreground">
-                  {param.label}
-                </span>
-                <span className="truncate text-right font-medium">{val}</span>
-              </div>
-            );
-          })}
-        </div>
-        {PARAMETER_ORDER.length > 5 && (
-          <button
-            onClick={() => setShowAllParams((s) => !s)}
-            className="mt-1 flex w-full items-center justify-center gap-1 py-1 text-[10px] font-medium text-primary hover:underline"
-          >
-            {showAllParams ? (
-              <>
-                Show Less <ChevronUp className="h-3 w-3" />
-              </>
-            ) : (
-              <>
-                Show More <ChevronDown className="h-3 w-3" />
-              </>
-            )}
-          </button>
-        )}
-      </div>
-
-      <Separator />
-
-      {/* ── Models / Previews ──────────────────────────────────── */}
-      <div className="px-1">
-        <p className="pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Models
-        </p>
-
-        {/* Symbol preview */}
-        <PreviewCard
-          label="Symbol"
-          status={component.preview_status?.symbol?.status}
-          url={component.symbol_preview_url}
-          meta={`${component.library_name}:${component.symbol_name}`}
-          version={component.version}
-        />
-
-        {/* Footprint preview */}
-        <PreviewCard
-          label="Footprint"
-          status={component.preview_status?.footprint?.status}
-          url={component.footprint_preview_url}
-          meta={component.package_name || "—"}
-        />
-      </div>
-
-      {/* ── Assets List ────────────────────────────────────────── */}
-      {component.assets.length > 0 && (
-        <>
-          <Separator />
-          <div className="px-1">
-            <p className="pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Attached Assets
-            </p>
-            <div className="space-y-1">
-              {component.assets.map((asset) => (
-                <div
-                  key={asset.id}
-                  className="flex items-center gap-2 rounded bg-secondary/40 px-2.5 py-1.5 text-[11px]"
+      {/* ── PREVIEW ────────────────────────────────────────────── */}
+      {selectedRepresentation && (
+        <Section label="Preview">
+          <Select value={representationId} onValueChange={setRepresentationId}>
+            <SelectTrigger className="mb-2 h-8 text-xs" aria-label="Representation">
+              <SelectValue placeholder="Select a representation" />
+            </SelectTrigger>
+            <SelectContent>
+              {component.representations.map((representation) => (
+                <SelectItem
+                  key={representation.id}
+                  value={representation.id}
+                  disabled={!representation.symbol || !representation.footprint}
                 >
-                  <Badge variant="outline" className="text-[9px]">
-                    {asset.asset_type}
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate text-foreground/80">
-                    {asset.target_name || asset.name}
-                  </span>
-                </div>
+                  {representation.label}
+                  {representation.is_default ? " · Default" : ""}
+                </SelectItem>
               ))}
-            </div>
-          </div>
-        </>
+            </SelectContent>
+          </Select>
+
+          <LibraryPreviewPair
+            key={`${symbolAssetId ?? "-"}:${footprintAssetId ?? "-"}`}
+            label={component.name}
+            symbolAssetId={symbolAssetId}
+            footprintAssetId={footprintAssetId}
+            source="panel"
+            compact
+            stacked
+            symbolMeta={`${symbolMeta} · Rev.${component.version}`}
+            footprintMeta={selectedRepresentation.footprint?.target_name || component.package_name || "—"}
+            loadAsset={loadPreviewAsset}
+          />
+        </Section>
       )}
 
-      {/* ── Missing Assets Warning ─────────────────────────────── */}
+      {/* ── Missing assets ─────────────────────────────────────── */}
       {component.missing_assets.length > 0 && (
-        <div className="mx-1 rounded border border-destructive/20 bg-destructive/5 px-2.5 py-2 text-[11px] text-destructive">
+        <div className="rounded border border-destructive/20 bg-destructive/5 px-2.5 py-2 text-[11px] text-destructive">
           Missing:{" "}
           {component.missing_assets.map((a) => (
             <Badge key={a} variant="destructive" className="ml-1 text-[9px]">
@@ -366,87 +422,264 @@ export function PartDetailScreen({
         </div>
       )}
 
-      {/* ── Stock Detail ───────────────────────────────────────── */}
-      <Separator />
-      <div className="px-1 pb-2">
-        <p className="pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Stock Status
-        </p>
-        <div className="flex gap-2">
-          <Badge
-            variant={component.stock_quantity > 0 ? "default" : "destructive"}
-            className={`text-[10px] ${
-              component.stock_quantity > 0 ? "bg-emerald-600/90 text-white" : ""
-            }`}
-          >
-            {component.stock_quantity > 0 ? "In Stock" : "Out of Stock"}
-          </Badge>
-          {component.stock_quantity > 0 && (
-            <Badge variant="secondary" className="text-[10px]">
-              Qty: {component.stock_quantity}
-              {component.stock_uom ? ` ${component.stock_uom}` : ""}
-            </Badge>
+      {/* ── AVAILABILITY ───────────────────────────────────────── */}
+      <Section
+        label="Availability"
+        action={
+          vendorSources.length > 0 ? (
+            <button
+              aria-label="Refresh availability"
+              title="Refresh availability"
+              className="text-muted-foreground transition-colors hover:text-primary"
+              onClick={() => appendLog("Vendor refresh is not configured yet.")}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </button>
+          ) : null
+        }
+      >
+        {sources.length === 0 ? (
+          <p className="px-0.5 py-1 text-[11px] leading-snug text-muted-foreground">
+            No availability data.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {sources.map((source) => (
+              <AvailabilityCard key={source.id} source={source} />
+            ))}
+          </div>
+        )}
+        {!localSources.length && (
+          <p className="mt-1 px-0.5 text-[10px] text-muted-foreground/70">
+            Local stock not recorded.
+          </p>
+        )}
+      </Section>
+
+      {/* ── Sticky action bar ──────────────────────────────────── */}
+      <div className="sticky bottom-0 z-30 -mx-3 mt-auto border-t bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex items-center gap-2">
+          {component.datasheet_url ? (
+            <a
+              href={component.datasheet_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open datasheet"
+              className={cn(buttonVariants({ variant: "outline" }), "shrink-0")}
+            >
+              <FileText data-icon="inline-start" className="h-4 w-4" />
+              Datasheet
+            </a>
+          ) : (
+            <Button variant="outline" disabled className="shrink-0" aria-label="No datasheet">
+              <FileText data-icon="inline-start" className="h-4 w-4" />
+              Datasheet
+            </Button>
           )}
-          {component.inventory_status && (
-            <Badge variant="outline" className="text-[10px]">
-              {component.inventory_status}
-            </Badge>
-          )}
+          <Button className="min-w-0 flex-1" onClick={() => void runPlacement("manifest")} disabled={!canPlace || placing}>
+            {placing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {canPlace ? "Place" : "Unavailable"}
+          </Button>
         </div>
+        {placementError ? (
+          <p className="text-[10px] text-destructive" role="alert">
+            {placementError}
+          </p>
+        ) : null}
       </div>
+
     </div>
   );
 }
 
-// ─── Preview Card ──────────────────────────────────────────────────
-
-interface PreviewCardProps {
-  label: string;
-  status?: string;
-  url?: string;
-  meta?: string;
-  version?: string;
+function DetailErrorState({
+  kind,
+  message,
+  onRetry,
+}: {
+  kind: "not_found" | "failed";
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="rounded border border-destructive bg-destructive/10 px-3 py-6 text-center">
+      <CircleAlert className="mx-auto h-4 w-4 text-destructive" />
+      <p className="mt-2 text-xs font-medium">
+        {kind === "not_found" ? "Part not found" : "Couldn't load this part"}
+      </p>
+      <p className="mt-1 text-[10px] text-muted-foreground">{message}</p>
+      <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
+        <RefreshCw className="h-3 w-3" /> Retry
+      </Button>
+    </div>
+  );
 }
 
-function PreviewCard({ label, status, url, meta, version }: PreviewCardProps) {
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState(false);
-  const isReady = status === "ready" && !!url;
+// ─── Section shell ─────────────────────────────────────────────────
+
+function Section({
+  label,
+  action,
+  children,
+}: {
+  label: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div className="flex items-center justify-between px-0.5 pb-1">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {label}
+        </span>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+// ─── Parameters ────────────────────────────────────────────────────
+
+function ParameterTable({
+  rows,
+}: {
+  rows: { label: string; value: string; truncate?: boolean }[];
+}) {
+  return (
+    <div className="overflow-hidden rounded border border-border/50">
+      {rows.map((row, i) => (
+        <div
+          key={row.label}
+          className={`flex items-baseline justify-between gap-3 px-2.5 py-1.5 text-xs ${
+            i > 0 ? "border-t border-border/30" : ""
+          }`}
+        >
+          <span className="shrink-0 text-muted-foreground">{row.label}</span>
+          <span
+            className={cn("text-right font-medium", row.truncate ? "line-clamp-1" : "break-all")}
+          >
+            {row.value || "—"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Availability cards ────────────────────────────────────────────
+
+function AvailabilityCard({ source }: { source: PanelSupplySource }) {
+  const isVendor = source.kind === "vendor";
+  const mixedUnits = Boolean(source.mixed_units);
+  const warnings = inventoryWarnings(source);
+  const uncertain = warnings.length > 0;
+  const asOf = formatAsOf(source.fetched_at);
+  const breaks = isVendor ? (source.price_breaks ?? []) : [];
+  const inStock = !uncertain && source.stock > 0;
+  const plentiful = inStock && source.stock > 100;
+  const dotTone =
+    uncertain ? "bg-muted-foreground/40" : plentiful ? "bg-emerald-500" : inStock ? "bg-amber-400" : "bg-red-500";
+  const qtyTone = uncertain || inStock ? "text-foreground" : "text-muted-foreground";
+  // Soft badge tones mirror the dot: plentiful emerald, scarce amber, none red.
+  const statusTone = uncertain
+    ? "border-border bg-secondary/40 text-muted-foreground"
+    : plentiful
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+      : inStock
+        ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
+        : "border-red-500/30 bg-red-500/10 text-red-400";
+  const statusLabel = uncertain ? warnings.join(" · ") : source.stock_status
+    ? source.stock_status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : null;
 
   return (
-    <div className="mb-2 overflow-hidden rounded border border-border/50">
-      {/* Preview image — light background for SVGs */}
-      <div className="relative flex min-h-[120px] items-center justify-center bg-preview-surface">
-        {isReady && !error ? (
-          <>
-            {!loaded && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" />
-              </div>
-            )}
-            <img
-              src={url}
-              alt={`${label} preview`}
-              className={`max-h-[160px] w-full object-contain p-2 transition-opacity ${
-                loaded ? "opacity-100" : "opacity-0"
-              }`}
-              onLoad={() => setLoaded(true)}
-              onError={() => setError(true)}
-            />
-          </>
-        ) : (
-          <span className="text-[11px] text-muted-foreground/50">
-            {status === "failed"
-              ? `${label} preview failed`
-              : `No ${label.toLowerCase()} preview`}
+    <div className="rounded-md border border-border/60 bg-secondary/20">
+      <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
+        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotTone)} />
+        <span className="truncate text-xs font-medium">{source.display_name}</span>
+        {isVendor && source.product_url ? (
+          <a
+            href={source.product_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${source.display_name} product page`}
+            className="shrink-0 text-muted-foreground/70 transition-colors hover:text-primary"
+          >
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : null}
+        {asOf ? (
+          <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/60">
+            {source.mixed_freshness ? "Latest location update" : "Updated"} {asOf}
           </span>
-        )}
+        ) : null}
       </div>
-      {/* Meta row */}
-      <div className="flex items-center justify-between border-t border-border/30 px-2.5 py-1.5 text-[10px] text-muted-foreground">
-        <span className="truncate">{meta || label}</span>
-        {version && <span>Rev.{version}</span>}
+
+      <div className="flex flex-wrap items-end justify-between gap-3 px-3 pb-3 pt-1">
+        <div>
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            {warnings.includes("Sync failed") ? "Last known on hand" : "On hand"}
+          </div>
+          <div
+            className={cn(
+              "mt-1.5 text-lg font-semibold leading-none tabular-nums",
+              qtyTone
+            )}
+          >
+            {mixedUnits ? (
+              "Mixed units"
+            ) : (
+              <>
+                {formatQuantity(source.stock)}
+                {source.uom ? (
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">{source.uom}</span>
+                ) : null}
+              </>
+            )}
+          </div>
+        </div>
+        <div className="flex max-w-full flex-wrap items-center gap-2">
+          {statusLabel ? (
+            <Badge variant="outline" className={cn("max-w-full whitespace-normal", statusTone)}>
+              {statusLabel}
+            </Badge>
+          ) : null}
+          {isVendor && source.unit_price != null ? (
+            <div className="text-right">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Unit{source.price_break_qty ? ` @ ${formatQuantity(source.price_break_qty)}` : ""}
+              </div>
+              <div className="mt-1.5 text-lg font-semibold leading-none tabular-nums">
+                {formatPrice(source.unit_price, source.currency)}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
+
+      {breaks.length > 0 ? (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-border/40 px-3 py-2">
+          {breaks.map((brk) => (
+            <div key={brk.qty} className="flex items-baseline justify-between text-[10px]">
+              <span className="tabular-nums text-muted-foreground">{formatQuantity(brk.qty)}+</span>
+              <span className="font-medium tabular-nums">{formatPrice(brk.price, source.currency)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+// Constructing an Intl formatter is the expensive part; the runtime locale
+// cannot change mid-session, so build it once.
+const QUANTITY_FORMAT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+
+function formatQuantity(value: number): string {
+  if (value >= 10000) {
+    const k = value / 1000;
+    return `${k >= 100 ? Math.round(k) : Math.round(k * 10) / 10}k`;
+  }
+  return QUANTITY_FORMAT.format(value);
 }

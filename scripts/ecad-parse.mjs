@@ -24,13 +24,121 @@
  */
 
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, extname, join, relative, sep } from "node:path";
+import { readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BoardParser, SchematicParser } from "./vendor/kicad-sexpr-parser.mjs";
 
 export const SCHEMA = "prism.ecad_object_index_v1";
+
+// Bump when the shape of a cached index (below) changes in a way the automatic
+// source hash below cannot see. The source hash already invalidates the cache
+// whenever this file or the vendored parser changes, so this is only for
+// deliberate cache-format breaks.
+const INDEX_CACHE_SCHEMA = "prism.ecad_object_index_cache_v1";
+
+// A hash of the code that produces an index: this module and the vendored
+// parser it calls. Folding it into every cache signature means a change to
+// either one invalidates existing caches automatically, so a fix to
+// index_board / index_schematic (or to the parser) is never masked by a stale
+// entry that shares the same commit dir and file stats. Computed once at load.
+const _PARSER_SOURCE_HASH = (() => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const sources = [
+        fileURLToPath(import.meta.url),
+        join(here, "vendor", "kicad-sexpr-parser.mjs"),
+    ];
+    const hash = createHash("sha256");
+    for (const file of sources) {
+        try {
+            hash.update(readFileSync(file));
+        } catch {
+            // A missing source file should not silently weaken the key; mark it
+            // so the hash still changes if the file appears or moves later.
+            hash.update(`\0missing:${file}\0`);
+        }
+    }
+    return hash.digest("hex").slice(0, 16);
+})();
+
+// Parsing a snapshot is ~1.2s per board; rehydrating its cached index is ~0.15s
+// (an 8x win). A snapshot lives under an immutable per-commit cache directory,
+// so its parse result is stable as long as the files on disk are unchanged.
+// The cache is disabled with ECAD_INDEX_CACHE=0. Read at call time so a test
+// (or a caller) can toggle it without re-importing the module.
+function _index_cache_enabled() {
+    const value = (process.env.ECAD_INDEX_CACHE ?? "1").toLowerCase();
+    return value !== "0" && value !== "false";
+}
+
+/** A fingerprint of the files index_snapshot would read: their relative path
+ * and content. Content rather than mtime because snapshots are materialized with
+ * `git archive | tar`, which stamps every file with the commit timestamp, so
+ * mtime carries no entropy and the key would degrade to (path, size). Reading
+ * the bytes here costs a few tens of milliseconds, against the ~1.2 s parse a
+ * hit avoids, and the miss path reads them again to parse. Kept separate from
+ * the parse so a hit never touches the parser. */
+function _snapshot_signature(root, documentPaths) {
+    const hash = createHash("sha256");
+    hash.update(INDEX_CACHE_SCHEMA);
+    hash.update("\0");
+    hash.update(SCHEMA);
+    hash.update("\0");
+    hash.update(_PARSER_SOURCE_HASH);
+    for (const path of documentPaths) {
+        const rel = relative(root, path).split(sep).join("/");
+        hash.update(`\0${rel}\0`);
+        hash.update(readFileSync(path));
+    }
+    return hash.digest("hex");
+}
+
+/** The cache file sits next to the snapshot directory (not inside it, so the
+ * signature never sees its own cache), in the immutable per-commit cache dir. */
+function _index_cache_path(root) {
+    return join(dirname(root), `${basename(root)}.index-cache.json`);
+}
+
+function _read_index_cache(root, signature) {
+    if (!_index_cache_enabled()) return null;
+    let raw;
+    try {
+        raw = readFileSync(_index_cache_path(root), "utf8");
+    } catch {
+        return null;
+    }
+    let cached;
+    try {
+        cached = JSON.parse(raw);
+    } catch {
+        return null;
+    }
+    if (
+        cached?.cacheSchema !== INDEX_CACHE_SCHEMA
+        || cached?.signature !== signature
+        || cached?.payload?.schema !== SCHEMA
+    ) {
+        return null;
+    }
+    return cached.payload;
+}
+
+function _write_index_cache(root, signature, payload) {
+    if (!_index_cache_enabled()) return;
+    const target = _index_cache_path(root);
+    const temporary = `${target}.${process.pid}.tmp`;
+    try {
+        writeFileSync(
+            temporary,
+            JSON.stringify({ cacheSchema: INDEX_CACHE_SCHEMA, signature, payload }),
+        );
+        renameSync(temporary, target);
+    } catch {
+        // A cache write failure must never fail the diff; the parse already
+        // produced a valid result, and the next run simply re-parses.
+    }
+}
 
 /** Mirrors design_compare_service._GENERATED_PARTS. */
 const GENERATED_PARTS = new Set([
@@ -1495,6 +1603,35 @@ export function index_document(text, documentPath) {
 
 export function index_snapshot(root) {
     const started = performance.now();
+    const documentPaths = collect_documents(root);
+
+    // A snapshot's parse result is stable while its files are unchanged, so a
+    // signature hit rehydrates the cached index instead of re-parsing (~8x).
+    const signature = _snapshot_signature(root, documentPaths);
+    const cached = _read_index_cache(root, signature);
+    if (cached !== null) {
+        return {
+            ...cached,
+            // per-document parseMs is a write-time measurement; on a hit nothing
+            // was parsed, so clear it rather than replay a stale figure that the
+            // "run-specific fields stay live" contract says should not persist.
+            documents: (cached.documents ?? []).map((document) => ({
+                ...document,
+                parseMs: null,
+            })),
+            timings: {
+                readMs: 0,
+                parserMs: 0,
+                indexMs: 0,
+                parseMs: 0,
+                totalMs: Math.round((performance.now() - started) * 1000) / 1000,
+                cacheHit: true,
+            },
+            peakRssBytes: process.resourceUsage().maxRSS * 1024,
+            node: process.version,
+        };
+    }
+
     const documents = [];
     const objects = [];
     const collections = {};
@@ -1507,7 +1644,7 @@ export function index_snapshot(root) {
     let readMs = 0;
     let parseMs = 0;
 
-    for (const path of collect_documents(root)) {
+    for (const path of documentPaths) {
         const documentPath = relative(root, path).split(sep).join("/");
         const readStarted = performance.now();
         const text = readFileSync(path, "utf8");
@@ -1575,7 +1712,9 @@ export function index_snapshot(root) {
         byKind[object.kind] = (byKind[object.kind] ?? 0) + 1;
     }
 
-    return {
+    // Everything a later run needs to skip the parse. Run-specific fields
+    // (timings, peakRssBytes, node) are deliberately excluded so they stay live.
+    const payload = {
         schema: SCHEMA,
         root,
         documents,
@@ -1583,12 +1722,18 @@ export function index_snapshot(root) {
         routeMetrics,
         counts: { total: objects.length, byKind, anonymous },
         collections,
+    };
+    _write_index_cache(root, signature, payload);
+
+    return {
+        ...payload,
         timings: {
             readMs: Math.round(readMs * 1000) / 1000,
             parserMs: Math.round(timings.parserMs * 1000) / 1000,
             indexMs: Math.round((parseMs - timings.parserMs) * 1000) / 1000,
             parseMs: Math.round(parseMs * 1000) / 1000,
             totalMs: Math.round((performance.now() - started) * 1000) / 1000,
+            cacheHit: false,
         },
         // libuv normalises ru_maxrss to kilobytes on every platform,
         // including Darwin where the syscall reports bytes -- verified
@@ -1716,9 +1861,22 @@ function main(argv) {
     // input, which is most of the difference between hitting M1's target and
     // missing it. Repeats also share the process on purpose: peak RSS is
     // monotone within one, so the reported ceiling is the worst case.
+    // --repeat measures JIT warm-up across genuine re-parses, so the cache must
+    // be off for it: otherwise runs 2..N are rehydrations and median/min describe
+    // cache reads, a phantom win against the numbers in the m1 parse doc. Honour
+    // an explicit ECAD_INDEX_CACHE=1 only for a single run.
+    if (repeat > 1) {
+        process.env.ECAD_INDEX_CACHE = "0";
+    }
+
     const snapshots = [];
     let report;
-    for (const root of positional) {
+    for (const rawRoot of positional) {
+        // Resolve to absolute so the cache file lands beside the snapshot dir,
+        // not in the caller's cwd. A relative root (`ecad-parse.mjs snapshot`
+        // from the repo root) otherwise dropped a multi-MB *.index-cache.json
+        // into the working tree.
+        const root = resolve(rawRoot);
         const runs = [];
         for (let index = 0; index < repeat; index += 1) {
             report = index_snapshot(root);

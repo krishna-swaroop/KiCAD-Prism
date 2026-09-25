@@ -1,0 +1,21 @@
+{
+  "set": "F2",
+  "title": "Immutable anchors and revisions",
+  "decisions": ["D6"],
+  "owner": "TR-05",
+  "cases": [
+    {"id": "F2.two_commit_pcb", "owner": "TR-05", "given": "project with commits A then B; viewer displays A", "when": "POST comment with revision.commit=A while HEAD is B", "expect": "anchor_commit=A (full SHA), anchor_source='client', anchor_state='pinned'; HEAD never consulted", "proves": "D6"},
+    {"id": "F2.short_sha_rejected", "owner": "TR-05", "given": "revision.commit='3f2c9a1'", "when": "POST comment", "expect": "422 commit must be 40 hex", "proves": "D6"},
+    {"id": "F2.unknown_commit_rejected", "owner": "TR-05", "given": "revision.commit is 40 hex but not in the project repository", "when": "POST comment", "expect": "422 unknown revision; no row", "proves": "D6"},
+    {"id": "F2.worktree_anchor", "owner": "TR-05", "given": "revision.worktree=true with sourceRevisionKey", "when": "POST comment", "expect": "anchor_state='unpinned', anchor_revision_key stored, commit null; tracker.notPromotableReason='unpinned_anchor'", "proves": "D6"},
+    {"id": "F2.multi_sheet_repeated_instance", "owner": "TR-05", "given": "schematic with sheet 'Port' instantiated twice (paths /Port1/ and /Port2/)", "when": "POST SCH comment on the second instance", "expect": "location.page carries the sheet occurrence path, not only the file name; context block renders 'Port (instance 2)'", "proves": "D6"},
+    {"id": "F2.monorepo_project_anchor", "owner": "TR-05", "given": "project whose kicad_pro lives at hw/boards/carrier/ inside the repo", "when": "POST comment", "expect": "context block includes the project-relative path; deep link resolves the project by id, not repo root", "proves": "D6"},
+    {"id": "F2.comparison_ordered_pair", "owner": "TR-05", "given": "comparison of base=A compare=B, selected side=compare", "when": "POST comparison comment", "expect": "anchor {baseCommit:A, compareCommit:B, selectedSide:'compare'}; swapping the pair yields a different anchor", "proves": "D6"},
+    {"id": "F2.missing_legacy_revision", "owner": "TR-05", "given": "legacy canvas row with base_commit NULL", "when": "read and attempt Promote", "expect": "anchor_state='unpinned'; Promote refused with unpinned_anchor; no HEAD assigned", "proves": "D6"},
+    {"id": "F2.admin_manual_pin", "owner": "TR-05", "given": "legacy unpinned row", "when": "admin pins commit A explicitly", "expect": "anchor_commit=A, anchor_source='manual', audit row written; now promotable", "proves": "D6"},
+    {"id": "F2.variant_url_preserved", "owner": "TR-41", "given": "comment created while variant=REV_B is active", "when": "deep link generated", "expect": "URL keeps variant=REV_B; restoring the link selects the variant before the marker", "proves": "C8"},
+    {"id": "F2.anchor_immutable_on_patch", "owner": "TR-03", "given": "pinned root", "when": "PATCH with location or revision fields", "expect": "422 anchor fields are immutable", "proves": "C1"},
+    {"id": "F2.stale_revision_conflict", "owner": "TR-03", "given": "root at revision 3", "when": "PATCH with expectedRevision=2", "expect": "409 revision_conflict with currentRevision=3; nothing written", "proves": "C1"},
+    {"id": "F2.export_v1_1_and_import_v1_0", "owner": "TR-01", "given": "export after TR-01 and a legacy comments.json 1.0", "when": "export then import", "expect": "meta.version='1.1' additive fields present; importing 1.0 yields legacy rows with unpinned anchors; no field removed", "proves": "D6"}
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "no_variants",
+  "project": "plain.kicad_pro",
+  "notes": [
+    "Empty catalog: HTTP 200 with variants []; assembly.catalog []; every map empty."
+  ],
+  "identity": {},
+  "catalog": [],
+  "default": {
+    "occurrences": {},
+    "components": {},
+    "footprints": {},
+    "physical": {}
+  },
+  "variants": [],
+  "diagnostics": []
+}

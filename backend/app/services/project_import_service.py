@@ -19,7 +19,37 @@ from app.services.git_failures import GitAccessError, as_access_error
 from app.services.git_remote_url import ParsedRemote, RemoteUrlPolicy, parse_remote_url
 from app.services.job_runtime import JobContext, JobResult
 from app.services.job_service import jobs as v3_jobs
+from app.services.project_import_followups import (
+    retry_import_follow_ups,
+    schedule_import_follow_ups,
+)
+from app.services.project_import_plan import (
+    ProjectImportPlan,
+    build_project_import_plan,
+)
 from app.services.workspace_service import workspace
+
+
+# Separates a directory from the project file inside it. A directory may hold
+# several KiCad projects, so the directory alone cannot name one.
+PROJECT_KEY_SEPARATOR = "::"
+
+
+def make_project_key(relative_path: str, project_file: str) -> str:
+    """The stable identifier for one project inside a repository.
+
+    Prism used to identify a project by its directory. That silently merged the
+    two projects of a repository that keeps, say, a fixture's top and base plate
+    side by side in the root: one checkbox ticked both, one of the two was
+    registered, and it was named after one board while the viewer rendered the
+    other. Naming the project file as well keeps them apart.
+
+    Projects registered before the anchor existed have no project file recorded;
+    their key stays the bare directory, which is what it has always been.
+    """
+    if not project_file:
+        return relative_path
+    return f"{relative_path}{PROJECT_KEY_SEPARATOR}{project_file}"
 
 
 @dataclass
@@ -34,6 +64,14 @@ class DiscoveredProject:
     # teams gitignore the project file because KiCad rewrites it on every open,
     # so its absence must not hide the board.
     has_project_file: bool = True
+    # The project's own file within ``relative_path``: its ``.kicad_pro``, or the
+    # board/schematic KiCad would regenerate one from. This is what tells two
+    # projects in the same directory apart.
+    project_file: str = ""
+
+    @property
+    def project_key(self) -> str:
+        return make_project_key(self.relative_path, self.project_file)
 
 
 def remote_url_policy() -> RemoteUrlPolicy:
@@ -50,14 +88,22 @@ def find_existing_repository(parsed: ParsedRemote) -> Optional[dict]:
     Compares canonical identities rather than URL strings, so importing
     ``git@github.com:org/repo.git`` after ``https://github.com/org/repo`` is
     recognised as the same repository instead of cloning it twice.
+
+    A stored URL is read under this deployment's policy, not the default one.
+    An operator running an internal Git server without TLS enables
+    ``IMPORT_ALLOW_INSECURE_HTTP`` to import from it; reading its own rows back
+    under a policy that rejects ``http://`` made those repositories fail to
+    canonicalize, leaving deduplication to an exact string comparison that a
+    trailing ``.git`` or a change of case defeats.
     """
+    policy = remote_url_policy()
     target = parsed.dedup_key
     for repository in workspace.get_repositories():
         stored = str(repository.get("url") or "")
         if not stored:
             continue
         try:
-            if parse_remote_url(stored).dedup_key == target:
+            if parse_remote_url(stored, policy).dedup_key == target:
                 return repository
         except Exception:
             # A row predating URL validation should not block a valid import.
@@ -321,13 +367,24 @@ def discover_projects_from_repo(repo: Repo) -> List[DiscoveredProject]:
         relative_path = dir_path if dir_path != "." else "."
         if pro_files:
             for pro_file in pro_files:
+                stem = Path(pro_file).stem
+                # With several projects in one directory, the subtree answer
+                # above ("does anything here have a board?") is about the
+                # directory, not about this project. Ask per project file.
+                if len(pro_files) > 1:
+                    project_has_sch = f"{stem}.kicad_sch" in filenames
+                    project_has_pcb = f"{stem}.kicad_pcb" in filenames
+                else:
+                    project_has_sch = has_sch
+                    project_has_pcb = has_pcb
                 projects.append(DiscoveredProject(
-                    name=Path(pro_file).stem,
+                    name=stem,
                     relative_path=relative_path,
                     full_path="", # No checkout path
-                    has_schematic=has_sch,
-                    has_pcb=has_pcb,
+                    has_schematic=project_has_sch,
+                    has_pcb=project_has_pcb,
                     has_project_file=True,
+                    project_file=pro_file,
                 ))
             continue
 
@@ -341,6 +398,7 @@ def discover_projects_from_repo(repo: Repo) -> List[DiscoveredProject]:
             has_schematic=has_sch,
             has_pcb=has_pcb,
             has_project_file=False,
+            project_file=anchor,
         ))
 
     # A `Subsheets/` or `sch/` directory sits inside a project and holds that
@@ -372,14 +430,20 @@ def discover_projects_from_repo(repo: Repo) -> List[DiscoveredProject]:
     return projects
 
 
-def resolve_cached_paths(project_path: str, *, current_source: Optional[str] = None) -> dict:
+def resolve_cached_paths(
+    project_path: str,
+    *,
+    current_source: Optional[str] = None,
+    anchor: Optional[str] = None,
+) -> dict:
     """Resolve and return cached path info for a project directory.
 
     ``current_source`` is the project's recorded ``thumbnail_source``, so a
-    thumbnail the user chose deliberately survives a re-scan.
+    thumbnail the user chose deliberately survives a re-scan. ``anchor`` is the
+    project's own file, needed when the directory holds more than one project.
     """
     try:
-        resolved = path_config_service.resolve_paths(project_path)
+        resolved = path_config_service.resolve_paths(project_path, anchor=anchor)
         sch = resolved.schematic
         pcb = resolved.pcb
         thumb = resolved.thumbnail_dir
@@ -406,14 +470,16 @@ def resolve_cached_paths(project_path: str, *, current_source: Optional[str] = N
 
         thumbnail_file = None
         if current_source == "custom":
-            uploaded = derived_assets.find_thumbnail(project_path, kind="custom")
+            uploaded = derived_assets.find_thumbnail(
+                project_path, kind="custom", anchor=anchor
+            )
             if uploaded is not None:
                 thumbnail_file = uploaded
                 thumb_rel = uploaded.name
                 thumbnail_source = "custom"
 
         if thumbnail_file is None:
-            generated = derived_assets.find_thumbnail(project_path)
+            generated = derived_assets.find_thumbnail(project_path, anchor=anchor)
             if generated is not None:
                 thumbnail_file = generated
                 thumb_rel = generated.name
@@ -457,6 +523,7 @@ def resolve_cached_paths(project_path: str, *, current_source: Optional[str] = N
                     if f.lower().endswith(('.glb', '.step', '.stp')):
                         has_3d = True
         return {
+            'project_file_rel': anchor or '',
             'schematic_rel': _rel(sch),
             'pcb_rel': _rel(pcb),
             'thumbnail_rel': thumb_rel,
@@ -472,6 +539,53 @@ def resolve_cached_paths(project_path: str, *, current_source: Optional[str] = N
         return {}
 
 
+def infer_project_anchor(project_path: str) -> str:
+    """Guess a project's own file for a row registered before anchors existed.
+
+    Only answers when the guess cannot be wrong: a directory holding exactly one
+    ``.kicad_pro`` has exactly one project, which is every project Prism has
+    registered so far that still works. A directory with several is the case
+    this whole mechanism exists for, and it must be re-imported rather than
+    guessed at.
+    """
+    try:
+        pro_files = sorted(
+            name for name in os.listdir(project_path) if name.endswith(".kicad_pro")
+        )
+    except OSError:
+        return ""
+    return pro_files[0] if len(pro_files) == 1 else ""
+
+
+def find_legacy_row_to_adopt(
+    rows: list[dict], relative_path: str, name: str
+) -> Optional[dict]:
+    """A pre-anchor project row this import should take over rather than duplicate.
+
+    An install predating anchors has one row per directory with an empty
+    ``project_file_rel``. Re-importing a directory that turns out to hold two
+    projects discovers both, neither matches that row's key, and both would
+    register as new -- leaving the old row, whose name came from one board
+    while it rendered another, registered alongside them.
+
+    Discovery has always named a project after its ``.kicad_pro`` stem, so the
+    row's name identifies which project it is exactly rather than by guess.
+    Taking it over keeps whatever is attached to that project id -- comments,
+    releases, history -- and makes it consistent with the board it renders.
+    Anything less than an exact, unique match is left alone: a duplicate row is
+    recoverable, silently rebinding a project's history to the wrong board is
+    not.
+    """
+    candidates = [
+        row
+        for row in rows
+        if str(row.get("relative_path") or ".") == relative_path
+        and not str(row.get("project_file_rel") or "").strip()
+        and str(row.get("name") or "") == name
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def refresh_project_assets(project_id: str) -> dict:
     """Re-scan a registered project's files, preserving its thumbnail choice.
 
@@ -484,22 +598,29 @@ def refresh_project_assets(project_id: str) -> dict:
     project_path = str(row.get("path") or "")
     if not project_path:
         return {}
+    anchor = str(row.get("project_file_rel") or "") or infer_project_anchor(project_path)
     cached = resolve_cached_paths(
-        project_path, current_source=str(row.get("thumbnail_source") or "") or None
+        project_path,
+        current_source=str(row.get("thumbnail_source") or "") or None,
+        anchor=anchor,
     )
     if cached:
         workspace.update_project(project_id, **cached)
     return cached
 
 
-def generate_thumbnail_for_project(project_path: str, logs_list: Optional[List[str]] = None) -> bool:
+def generate_thumbnail_for_project(
+    project_path: str,
+    logs_list: Optional[List[str]] = None,
+    anchor: Optional[str] = None,
+) -> bool:
     """
     Find the main .kicad_pcb file and run kicad-cli pcb render to generate a thumbnail.
     """
     try:
         from PIL import Image
 
-        resolved = path_config_service.resolve_paths(project_path)
+        resolved = path_config_service.resolve_paths(project_path, anchor=anchor)
         pcb_file = resolved.pcb
         if not pcb_file or not os.path.exists(pcb_file):
             if logs_list is not None:
@@ -530,7 +651,7 @@ def generate_thumbnail_for_project(project_path: str, logs_list: Optional[List[s
 
         # Render into a scratch directory outside the checkout. Nothing this
         # function does may leave a file inside the user's working tree.
-        staging_dir = derived_assets.thumbnail_dir(project_path)
+        staging_dir = derived_assets.thumbnail_dir(project_path, anchor)
         staging_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             dir=staging_dir,
@@ -589,7 +710,7 @@ def generate_thumbnail_for_project(project_path: str, logs_list: Optional[List[s
                     if webp_path.stat().st_size <= 250 * 1024:
                         break
             output_path, _digest, _size = derived_assets.store_thumbnail(
-                project_path, webp_path
+                project_path, webp_path, anchor=anchor
             )
         finally:
             render_path.unlink(missing_ok=True)
@@ -757,10 +878,20 @@ def run_project_analyze_job_v3(context: JobContext) -> JobResult:
     existing_repo = find_existing_repository(parsed)
     imported_paths: list[str] = []
     if existing_repo:
-        imported_paths = [
-            str(row.get("relative_path") or ".")
-            for row in workspace.get_projects_by_repo(str(existing_repo["id"]))
-        ]
+        rows = workspace.get_projects_by_repo(str(existing_repo["id"]))
+        # Both spellings: the key a project registered today reports, and the
+        # bare directory a project registered before anchors existed reports.
+        # The dialog matches on either, so an older project still shows as
+        # imported without hiding a sibling that shares its directory.
+        imported_paths = list(
+            dict.fromkeys(
+                make_project_key(
+                    str(row.get("relative_path") or "."),
+                    str(row.get("project_file_rel") or ""),
+                )
+                for row in rows
+            )
+        )
 
     result = {
         "repo_name": parsed.repo_name,
@@ -775,6 +906,8 @@ def run_project_analyze_job_v3(context: JobContext) -> JobResult:
             {
                 "name": project.name,
                 "relative_path": project.relative_path,
+                "project_key": project.project_key,
+                "project_file": project.project_file,
                 "has_schematic": project.has_schematic,
                 "has_pcb": project.has_pcb,
                 "has_project_file": project.has_project_file,
@@ -862,6 +995,51 @@ def _discover_remote_projects(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def _register_planned_projects(
+    plan: ProjectImportPlan,
+    target_path: Path,
+    repo_id: str,
+    context: JobContext,
+) -> list[str]:
+    """Register only the projects named by the plan."""
+
+    checkout_root = target_path.resolve()
+    imported_ids: list[str] = []
+    total = len(plan.selected)
+    for index, project in enumerate(plan.selected):
+        context.check_cancelled()
+        if plan.import_type == "type1":
+            project_root = target_path
+            description = f"Project {plan.repo_name}"
+        else:
+            project_root = target_path / project.relative_path
+            if not project_root.resolve().is_relative_to(checkout_root):
+                raise ValueError(
+                    f"Project path escapes the checkout: {project.relative_path}"
+                )
+            description = f"{plan.repo_name} / {project.name}"
+        cached = resolve_cached_paths(str(project_root), anchor=project.project_file)
+        if project.adopt_project_id:
+            workspace.update_project(project.adopt_project_id, **cached)
+            imported_ids.append(project.adopt_project_id)
+        else:
+            imported_ids.append(
+                workspace.register_project(
+                    repo_id=repo_id,
+                    name=project.name,
+                    relative_path=project.register_relative_path,
+                    description=description,
+                    **cached,
+                )
+            )
+        context.progress(
+            stage="register-projects",
+            message=f"Registered {index + 1} of {total} projects",
+            percent=80 + (15 * (index + 1) / total) if total else 80,
+        )
+    return imported_ids
+
+
 def run_project_import_job_v3(context: JobContext) -> JobResult:
     payload = context.payload
     parsed = parse_remote_url(str(payload["repo_url"]), remote_url_policy())
@@ -894,51 +1072,49 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
             "directories containing a .kicad_pro, .kicad_pcb or .kicad_sch file."
         )
 
-    # Importing three boards out of twenty used to make the other seventeen
-    # unreachable: the repository was registered, and every later import of the
-    # same URL failed as a duplicate. Adding to an existing repository is now
-    # the normal path, and only the projects not yet registered are imported.
     already_imported: set[str] = set()
+    existing_rows: list[dict] = []
+    existing_checkout_path = None
     if existing_repo:
+        existing_rows = list(workspace.get_projects_by_repo(str(existing_repo["id"])))
         already_imported = {
-            str(row.get("relative_path") or ".")
-            for row in workspace.get_projects_by_repo(str(existing_repo["id"]))
-        }
-
-    discovered_paths = {project.relative_path for project in discovered}
-    discovered_names = {project.relative_path: project.name for project in discovered}
-    if import_type == "type1":
-        requested_paths = ["."]
-    unknown = sorted(set(requested_paths) - discovered_paths)
-    if unknown:
-        raise ValueError(
-            "Selected paths are not KiCad projects in this repository: "
-            + ", ".join(unknown)
-        )
-    selected_paths = [path for path in requested_paths if path not in already_imported]
-    if not selected_paths:
-        if requested_paths and already_imported:
-            raise ValueError(
-                f"Every selected project is already imported from "
-                f"'{existing_repo.get('name') or repo_name}'."
+            make_project_key(
+                str(row.get("relative_path") or "."),
+                str(row.get("project_file_rel") or ""),
             )
-        raise ValueError("No projects selected for import")
+            for row in existing_rows
+        }
+        existing_checkout_path = workspace.repository_clone_path(existing_repo)
 
-    if existing_repo:
-        target_path = Path(workspace.repository_clone_path(existing_repo))
-        base_path = target_path.parent
-    else:
-        base_path = Path(project_service.PROJECTS_ROOT) / import_type
-        target_path = base_path / repo_name
+    plan = build_project_import_plan(
+        repo_url=repo_url,
+        repo_name=repo_name,
+        import_type=import_type,
+        discovered=discovered,
+        requested_paths=requested_paths,
+        already_imported=already_imported,
+        existing_repo=existing_repo,
+        existing_rows=existing_rows,
+        projects_root=str(project_service.PROJECTS_ROOT),
+        existing_checkout_path=existing_checkout_path,
+    )
+    target_path = Path(plan.target_path)
+    base_path = target_path.parent
 
     try:
         adopted_checkout = False
         if target_path.exists():
             existing_checkout = Repo(str(target_path))
+            # Under this deployment's policy, for the same reason as
+            # `find_existing_repository`: the default policy rejects `http://`,
+            # so on a workspace configured for a plaintext internal Git server
+            # every remote here raised and was dropped, and the checkout Prism
+            # had just cloned itself was reported as belonging to someone else.
+            policy = remote_url_policy()
             remotes = set()
             for remote in existing_checkout.remotes:
                 try:
-                    remotes.add(parse_remote_url(remote.url).dedup_key)
+                    remotes.add(parse_remote_url(remote.url, policy).dedup_key)
                 except Exception:
                     continue
             if parsed.dedup_key not in remotes:
@@ -992,47 +1168,7 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
                 clone_path_abs=str(target_path),
                 import_type="single" if import_type == "type1" else "multi",
             )
-        imported_ids: list[str] = []
-        if import_type == "type1":
-            cached = resolve_cached_paths(str(target_path))
-            imported_ids.append(
-                workspace.register_project(
-                    repo_id=repo_id,
-                    name=repo_name,
-                    relative_path=".",
-                    description=f"Project {repo_name}",
-                    **cached,
-                )
-            )
-        else:
-            checkout_root = target_path.resolve()
-            for index, relative_path in enumerate(selected_paths):
-                context.check_cancelled()
-                full_project_path = target_path / relative_path
-                # Paths are already validated against discovery; this keeps the
-                # guarantee local to the place that does the filesystem write.
-                if not full_project_path.resolve().is_relative_to(checkout_root):
-                    raise ValueError(f"Project path escapes the checkout: {relative_path}")
-                # Discovery already worked out the board name, including for
-                # directories whose .kicad_pro is gitignored.
-                board_name = discovered_names.get(
-                    relative_path, os.path.basename(relative_path)
-                )
-                cached = resolve_cached_paths(str(full_project_path))
-                imported_ids.append(
-                    workspace.register_project(
-                        repo_id=repo_id,
-                        name=board_name,
-                        relative_path=relative_path,
-                        description=f"{repo_name} / {board_name}",
-                        **cached,
-                    )
-                )
-                context.progress(
-                    stage="register-projects",
-                    message=f"Registered {index + 1} of {len(selected_paths)} projects",
-                    percent=80 + (15 * (index + 1) / len(selected_paths)),
-                )
+        imported_ids = _register_planned_projects(plan, target_path, repo_id, context)
         # Render boards in their own jobs. The projects are registered and
         # browsable now; thumbnails fill in as each render finishes, rather than
         # holding the import open for two minutes per board.
@@ -1042,17 +1178,14 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
             percent=97,
             force=True,
         )
-        thumbnail_job_ids: list[str] = []
-        for imported_id in imported_ids:
-            try:
-                job_id = start_thumbnail_job(imported_id, requested_by="project-import")
-            except Exception as error:
-                # A thumbnail is cosmetic; failing to queue one must not undo an
-                # otherwise complete import.
-                print(f"Could not queue thumbnail for {imported_id}: {error}", flush=True)
-                continue
-            if job_id:
-                thumbnail_job_ids.append(job_id)
+        follow_ups = schedule_import_follow_ups(
+            imported_ids, requested_by="project-import"
+        )
+        thumbnail_job_ids = [
+            str(item["job_id"])
+            for item in follow_ups
+            if item.get("operation") == "thumbnail" and item.get("job_id")
+        ]
 
         return JobResult(
             message=f"Imported {len(imported_ids)} project(s)",
@@ -1062,6 +1195,7 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
                 "repo_url": repo_url,
                 "import_type": import_type,
                 "thumbnail_job_ids": thumbnail_job_ids,
+                "follow_ups": follow_ups,
             },
         )
     except Exception:
@@ -1103,6 +1237,92 @@ def start_thumbnail_job(project_id: str, *, requested_by: str = "") -> Optional[
         ),
     )
     return str(queued["job_id"])
+
+
+def start_project_metadata_job(project_id: str, *, requested_by: str = "") -> Optional[str]:
+    """Queue a metadata refresh for one project.
+
+    Separate from the thumbnail job even though both shell out to kicad-cli:
+    a thumbnail is cosmetic and may be replaced by an upload, while this is the
+    data the project card reads. Keeping them apart means a render failure does
+    not take the card's size and title block with it.
+    """
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        return None
+    repository_id = str(row.get("repo_id") or "")
+    queued = v3_jobs.enqueue(
+        "project_metadata",
+        {"project_id": project_id},
+        worker_pool="prism",
+        artifact_key=hashlib.sha256(f"metadata:{project_id}".encode("utf-8")).hexdigest(),
+        project_id=project_id,
+        repository_id=repository_id or None,
+        requested_by=requested_by,
+        max_attempts=2,
+        resources={"prism_worker": 1},
+        # Same read lock as the render: kicad-cli must not read a checkout
+        # halfway through a sync fast-forward.
+        locks=(
+            [{"key": f"repository:{repository_id}", "mode": "read"}]
+            if repository_id
+            else []
+        ),
+    )
+    return str(queued["job_id"])
+
+
+def run_project_metadata_job_v3(context: JobContext) -> JobResult:
+    from app.services import project_metadata_service
+
+    project_id = str(context.payload["project_id"])
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        raise ValueError("Project not found")
+    project_path = str(row.get("path") or "")
+    if not project_path or not os.path.isdir(project_path):
+        raise ValueError(f"Project path not found: {project_path}")
+    anchor = str(row.get("project_file_rel") or "") or infer_project_anchor(project_path)
+
+    context.progress(
+        stage="read-metadata",
+        message="Reading project metadata",
+        percent=10,
+        force=True,
+    )
+    schematic_path = project_service.find_schematic_file(project_path, anchor)
+    pcb_path = project_service.find_pcb_file(project_path, anchor)
+    # The workspace row already resolves the checkout: parent_repo_path is the
+    # clone, relative_path is "." for a root project or the subproject path.
+    # Same split _repo_context makes on the API side.
+    repo_path = str(row.get("parent_repo_path") or project_path)
+    raw_relative = str(row.get("relative_path") or ".").strip()
+    relative_path = None if raw_relative in (".", "", "/") else raw_relative.strip("/")
+    context.check_cancelled()
+
+    computed = project_metadata_service.refresh_project_metadata(
+        project_id,
+        project_path,
+        schematic_path,
+        pcb_path,
+        repo_path=repo_path,
+        relative_path=relative_path, anchor=anchor,
+    )
+    pcb = computed.get("pcb") or {}
+    return JobResult(
+        message="Project metadata updated",
+        details={
+            "project_id": project_id,
+            "has_schematic": computed.get("schematic") is not None,
+            "has_pcb": computed.get("pcb") is not None,
+            # Recorded so a card with no size on it can be told apart from a
+            # board that genuinely has no outline.
+            "board_stats_source": computed.get("board_stats_source") or "unavailable",
+            "dimensions_mm": pcb.get("dimensions_mm"),
+            # A push that did not touch the design skips the kicad-cli pass.
+            "reused_file_metadata": bool(computed.get("reused_file_metadata")),
+        },
+    )
 
 
 def start_thumbnail_jobs(
@@ -1153,6 +1373,7 @@ def run_project_thumbnail_job_v3(context: JobContext) -> JobResult:
     project_path = str(row.get("path") or "")
     if not project_path or not os.path.isdir(project_path):
         raise ValueError(f"Project path not found: {project_path}")
+    anchor = str(row.get("project_file_rel") or "") or infer_project_anchor(project_path)
 
     context.progress(
         stage="render-thumbnail",
@@ -1161,7 +1382,7 @@ def run_project_thumbnail_job_v3(context: JobContext) -> JobResult:
         force=True,
     )
     logs: list[str] = []
-    rendered = generate_thumbnail_for_project(project_path, logs)
+    rendered = generate_thumbnail_for_project(project_path, logs, anchor=anchor)
     for line in logs:
         print(line, flush=True)
     context.check_cancelled()
@@ -1193,20 +1414,22 @@ def run_project_thumbnail_job_v3(context: JobContext) -> JobResult:
     )
 
 
-def start_sync_job(project_id: str, *, requested_by: str = "") -> str:
+def start_sync_job(project_id: str, *, requested_by: str = "", fetch_only: bool = False) -> str:
     row = workspace.get_project_by_id(project_id)
     if not row:
         raise ValueError("Project not found")
     repository_id = str(row.get("repo_id") or "")
-    active_key = hashlib.sha256(f"sync:{project_id}".encode("utf-8")).hexdigest()
+    mode = "fetch" if fetch_only else "sync"
+    active_key = hashlib.sha256(f"{mode}:{project_id}".encode("utf-8")).hexdigest()
     queued = v3_jobs.enqueue(
         "project_sync",
-        {"project_id": project_id},
+        {"project_id": project_id, "fetch_only": fetch_only},
         worker_pool="prism",
         artifact_key=active_key,
         project_id=project_id,
         repository_id=repository_id or None,
         requested_by=requested_by,
+        priority=200 if fetch_only else 100,
         max_attempts=2,
         resources={"prism_worker": 1, "import": 1},
         locks=(
@@ -1220,40 +1443,49 @@ def start_sync_job(project_id: str, *, requested_by: str = "") -> str:
 
 def run_project_sync_job_v3(context: JobContext) -> JobResult:
     project_id = str(context.payload["project_id"])
+    fetch_only = bool(context.payload.get("fetch_only", False))
     context.progress(
         stage="fetch",
         message="Fetching repository updates",
         percent=5,
         force=True,
     )
-    result = sync_project(project_id)
+    result = sync_project(project_id, fetch_only=fetch_only)
     context.check_cancelled()
     if result.get("status") == "error":
         raise RuntimeError(str(result.get("message") or "Project sync failed"))
     from app.services import file_service
 
     file_service.invalidate_file_listing_cache()
+    if fetch_only:
+        return JobResult(message=str(result.get("message") or "Fetched remote refs"), details=dict(result))
     # Re-render in its own job: a `kicad-cli` render can take two minutes, and
     # sync holds a write lock on the whole repository while it runs.
     try:
         start_thumbnail_job(project_id, requested_by="project-sync")
     except Exception as error:
         print(f"Could not queue thumbnail refresh for {project_id}: {error}", flush=True)
+    # A sync is the one event that can change what the files say about
+    # themselves, so it is the event that has to refresh the stored metadata.
+    try:
+        start_project_metadata_job(project_id, requested_by="project-sync")
+    except Exception as error:
+        print(f"Could not queue metadata refresh for {project_id}: {error}", flush=True)
     return JobResult(
         message=str(result.get("message") or "Sync completed"),
         details=dict(result),
     )
 
 
-def sync_project(project_id: str) -> dict:
+def sync_project(project_id: str, *, fetch_only: bool = False) -> dict:
     """
     Sync a project with its remote repository.
     For Type-1: syncs the project repo.
     For Type-2: syncs the parent repo.
 
-    Prism's checkout is a read-only mirror of the remote. Sync fetches every ref
-    and fast-forwards the current branch; it never merges, never rebases and
-    never commits, so the checkout cannot diverge from what the team pushed.
+    Fetch every ref. Manual Sync fast-forwards the checked-out branch when safe;
+    background refresh only updates remote-tracking refs. Neither mode rebases
+    or creates commits in the server-managed checkout.
     """
     row = workspace.get_project_by_id(project_id)
     if not row:
@@ -1269,24 +1501,18 @@ def sync_project(project_id: str) -> dict:
         repo = Repo(sync_path)
         origin = repo.remote('origin')
 
-        # Sync must reach the remote on the same terms as the clone that created
-        # this checkout. Building the environment here meant it kept an
-        # `accept-new` host key policy after import moved to pinned keys, so an
-        # operator who deliberately pinned a host was still exposed on every
-        # sync -- and sync is the operation that runs unattended, repeatedly,
-        # for the life of the project.
+        # Reuse the clone's pinned-host-key and noninteractive Git policy.
         env = git_env()
 
-        # Clear out thumbnails an older Prism wrote into the tree, so a checkout
-        # carrying them can still fast-forward.
-        derived_assets.purge_legacy_in_tree_thumbnails(sync_path, repo)
+        if not fetch_only:
+            derived_assets.purge_legacy_in_tree_thumbnails(sync_path, repo)
 
-        # Prune so branches deleted upstream stop showing up in the branch list,
-        # and fetch all refs rather than only the checked-out branch, so design
-        # comparison can reach any branch without a second network round trip.
+        # Fetch all refs for branch viewing and prune deleted branches.
         fetch_info = origin.fetch(env=env, prune=True)
 
-        if repo.head.is_detached:
+        if fetch_only:
+            message = f"Fetched {len(fetch_info)} ref(s)"
+        elif repo.head.is_detached:
             message = "Fetched refs; checkout is on a detached HEAD so nothing was advanced"
         elif repo.is_dirty(untracked_files=False):
             # Prism never writes into the tree, so a dirty checkout means someone
@@ -1301,13 +1527,12 @@ def sync_project(project_id: str) -> dict:
                 repo.git.merge("--ff-only", tracking.name)
                 message = f"Synced {len(fetch_info)} ref(s)"
 
-        # Refresh cached paths after sync
-        path_config_service.clear_config_cache()
-        project_path = row.get('path', '')
-        if project_path and os.path.isdir(project_path):
-            refresh_project_assets(project_id)
+        if not fetch_only:
+            path_config_service.clear_config_cache()
+            project_path = row.get('path', '')
+            if project_path and os.path.isdir(project_path):
+                refresh_project_assets(project_id)
 
-        # Update repo last_synced_at
         workspace.update_repository_synced(row.get('repo_id', ''))
 
         return {

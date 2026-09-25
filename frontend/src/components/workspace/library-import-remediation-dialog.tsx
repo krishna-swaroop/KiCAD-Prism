@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, Box, CircuitBoard, FileCode2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,37 +25,52 @@ interface LibraryImportRemediationDialogProps {
 
 const assetIcon = (assetType: string) => assetType === "symbol" ? FileCode2 : assetType === "footprint" ? CircuitBoard : Box;
 
-export function LibraryImportRemediationDialog({ proposal, open, submitting, onOpenChange, onAccept }: LibraryImportRemediationDialogProps) {
-  const [metadata, setMetadata] = useState<Record<string, string>>({});
-  const [selections, setSelections] = useState<Record<string, string[]>>({});
-  const [changeSummary, setChangeSummary] = useState("Import component from Prism project");
+function initialMetadata(
+  proposal: ProjectComponentImportProposal | null,
+): Record<string, string> {
+  const source = (proposal?.metadata ?? {}) as Record<string, unknown>;
+  return {
+    value: String(source.value || ""),
+    description: String(source.description || ""),
+    datasheet: String(source.datasheet || ""),
+    manufacturer: String(source.manufacturer || ""),
+    manufacturer_part_number: String(source.manufacturer_part_number || ""),
+    package_name: String(source.footprint || ""),
+  };
+}
 
+// Symbols and footprints take exactly one; everything else defaults to all of
+// it, because a 3D model or a datasheet is additive.
+function initialSelections(
+  assetsByType: Record<string, ProjectComponentImportProposal["assets"]>,
+): Record<string, string[]> {
+  const defaults: Record<string, string[]> = {};
+  for (const [assetType, assets] of Object.entries(assetsByType)) {
+    defaults[assetType] = assetType === "symbol" || assetType === "footprint"
+      ? assets.slice(0, 1).map((asset) => asset.sha256)
+      : assets.map((asset) => asset.sha256);
+  }
+  return defaults;
+}
+
+export function LibraryImportRemediationDialog({ proposal, open, submitting, onOpenChange, onAccept }: LibraryImportRemediationDialogProps) {
   const assetsByType = useMemo(() => {
     const grouped: Record<string, ProjectComponentImportProposal["assets"]> = {};
     for (const asset of proposal?.assets || []) (grouped[asset.asset_type] ||= []).push(asset);
     return grouped;
   }, [proposal]);
 
-  useEffect(() => {
-    if (!proposal) return;
-    const source = proposal.metadata as Record<string, unknown>;
-    setMetadata({
-      value: String(source.value || ""),
-      description: String(source.description || ""),
-      datasheet: String(source.datasheet || ""),
-      manufacturer: String(source.manufacturer || ""),
-      manufacturer_part_number: String(source.manufacturer_part_number || ""),
-      package_name: String(source.footprint || ""),
-    });
-    const defaults: Record<string, string[]> = {};
-    for (const [assetType, assets] of Object.entries(assetsByType)) {
-      defaults[assetType] = assetType === "symbol" || assetType === "footprint"
-        ? assets.slice(0, 1).map((asset) => asset.sha256)
-        : assets.map((asset) => asset.sha256);
-    }
-    setSelections(defaults);
-    setChangeSummary(`Import ${proposal.reference || "component"} from Prism project`);
-  }, [assetsByType, proposal]);
+  // Keyed on the proposal by library-import-center, so the form is built once,
+  // from the proposal it is for, and edits are the reviewer's from then on.
+  const [metadata, setMetadata] = useState<Record<string, string>>(
+    () => initialMetadata(proposal),
+  );
+  const [selections, setSelections] = useState<Record<string, string[]>>(
+    () => initialSelections(assetsByType),
+  );
+  const [changeSummary, setChangeSummary] = useState(
+    () => `Import ${proposal?.reference || "component"} from Prism project`,
+  );
 
   const requiredMetadataComplete = ["value", "description", "datasheet", "manufacturer", "manufacturer_part_number"]
     .every((field) => metadata[field]?.trim());
@@ -113,7 +128,7 @@ export function LibraryImportRemediationDialog({ proposal, open, submitting, onO
             </div>
           </section>
 
-          {proposal.findings.length > 0 && <section><h3 className="text-sm font-semibold">Import findings</h3><div className="mt-2 space-y-2">{proposal.findings.map((finding, index) => <div key={`${finding.code}-${index}`} className="flex gap-2 border p-2.5 text-sm"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /><span>{finding.message}</span></div>)}</div></section>}
+          {proposal.findings.length > 0 && <section><h3 className="text-sm font-semibold">Import findings</h3><div className="mt-2 space-y-2">{proposal.findings.map((finding) => <div key={`${finding.code}-${finding.message}`} className="flex gap-2 border p-2.5 text-sm"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /><span>{finding.message}</span></div>)}</div></section>}
           <div className="space-y-1.5"><Label htmlFor="import-summary">Revision summary</Label><Input id="import-summary" value={changeSummary} onChange={(event) => setChangeSummary(event.target.value)} /></div>
         </div>}
 

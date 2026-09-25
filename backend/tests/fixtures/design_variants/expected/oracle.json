@@ -1,0 +1,665 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "oracle",
+  "project": "variants_oracle.kicad_pro",
+  "notes": [
+    "components are keyed by reference; the semantic index keys them by componentUid, which tests map through indexes.componentByReference.",
+    "occurrences are keyed by occurrenceId = <sheetInstancePath>/<symbolUuid>; footprints by footprint uuid.",
+    "physical is the 2.6 classification per reference under that variant.",
+    "Values are differential (packet 2.7): variant maps list only differences from the effective default; default maps list only true flags."
+  ],
+  "identity": {
+    "occurrences": {
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/caa639b3-c965-5f5f-8579-1b1030520a32": {
+        "reference": "R1",
+        "symbolUuid": "caa639b3-c965-5f5f-8579-1b1030520a32",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/bdaa41e8-4b3e-516d-b481-b6b06f958325": {
+        "reference": "R2",
+        "symbolUuid": "bdaa41e8-4b3e-516d-b481-b6b06f958325",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/4ef94c69-7653-5842-9ae5-ff8865862183": {
+        "reference": "R3",
+        "symbolUuid": "4ef94c69-7653-5842-9ae5-ff8865862183",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/23f0e81a-7865-5d18-bd0e-1d11af24fc3d": {
+        "reference": "R4",
+        "symbolUuid": "23f0e81a-7865-5d18-bd0e-1d11af24fc3d",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c34fa430-f6b0-55a2-a210-f21b13a3d089": {
+        "reference": "C1",
+        "symbolUuid": "c34fa430-f6b0-55a2-a210-f21b13a3d089",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/3e98b5e2-e4d0-5512-91f4-b35191971034": {
+        "reference": "U1",
+        "symbolUuid": "3e98b5e2-e4d0-5512-91f4-b35191971034",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/1be1d8dc-a710-5986-ba18-62d6bc021e6b": {
+        "reference": "U1",
+        "symbolUuid": "1be1d8dc-a710-5986-ba18-62d6bc021e6b",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 2
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/7d201bda-eaa8-50cb-a4b8-98b6f582e55e": {
+        "reference": "Q1",
+        "symbolUuid": "7d201bda-eaa8-50cb-a4b8-98b6f582e55e",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/a902666b-3af7-54fc-b81f-3efbe0ea2470": {
+        "reference": "R9",
+        "symbolUuid": "a902666b-3af7-54fc-b81f-3efbe0ea2470",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/a5cfa1a3-dfa6-506d-9fc0-fdb3dcd9a7e5": {
+        "reference": "U2",
+        "symbolUuid": "a5cfa1a3-dfa6-506d-9fc0-fdb3dcd9a7e5",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/a9a5553f-6467-5f4c-99ec-239d47111690": {
+        "reference": "R12",
+        "symbolUuid": "a9a5553f-6467-5f4c-99ec-239d47111690",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/e466f341-d6de-5757-99d7-3cab7d8daea1/1c78f846-3def-57ae-ac80-247ce4b3b496": {
+        "reference": "R6",
+        "symbolUuid": "1c78f846-3def-57ae-ac80-247ce4b3b496",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/e466f341-d6de-5757-99d7-3cab7d8daea1",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/2b37a7b5-50d3-5e47-8b5a-0eb89cbfd3a1/900d8d20-7de0-547f-a978-fd9a5c67007c": {
+        "reference": "R7",
+        "symbolUuid": "900d8d20-7de0-547f-a978-fd9a5c67007c",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/2b37a7b5-50d3-5e47-8b5a-0eb89cbfd3a1",
+        "unit": 1
+      },
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/a3f95ab9-d212-5d48-93ad-8aff8aef4abf/900d8d20-7de0-547f-a978-fd9a5c67007c": {
+        "reference": "R8",
+        "symbolUuid": "900d8d20-7de0-547f-a978-fd9a5c67007c",
+        "sheetInstancePath": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/a3f95ab9-d212-5d48-93ad-8aff8aef4abf",
+        "unit": 1
+      }
+    },
+    "footprints": {
+      "ec3880bf-62c2-5c41-a50f-6381596c30ef": {
+        "reference": "R1",
+        "package": "R_0603_1608Metric"
+      },
+      "4b298f09-2eff-5fd1-982c-b1eb072ccbe8": {
+        "reference": "R2",
+        "package": "R_0603_1608Metric"
+      },
+      "2073849d-13a1-5c6f-b6f4-5f6b0e7f001f": {
+        "reference": "R3",
+        "package": "R_0603_1608Metric"
+      },
+      "3557800a-6a99-56d7-bd1f-6b1cf8abec66": {
+        "reference": "R4",
+        "package": "R_0603_1608Metric"
+      },
+      "78868d5e-e525-51b9-adcc-94b26de45321": {
+        "reference": "C1",
+        "package": "C_0603_1608Metric"
+      },
+      "f137ce95-5350-58e0-8833-623a61e2ba70": {
+        "reference": "U1",
+        "package": "SOIC-8_3.9x4.9mm_P1.27mm"
+      },
+      "5a220ef8-f143-59ec-941e-de3da0b7105e": {
+        "reference": "Q1",
+        "package": "SOT-23"
+      },
+      "8bdd2fcb-5aff-5a3a-a6e2-96f479a3fb83": {
+        "reference": "Q1",
+        "package": "SOT-89-3"
+      },
+      "b6537e7e-dfe7-5c02-8e83-0f273a34b98b": {
+        "reference": "U2",
+        "package": "SOIC-8_3.9x4.9mm_P1.27mm"
+      },
+      "5296bb19-4455-52ba-9eab-2f8aff8fe095": {
+        "reference": "R12",
+        "package": "R_0603_1608Metric"
+      },
+      "79e10a17-6c02-57db-aeca-8858a552f276": {
+        "reference": "R6",
+        "package": "R_0603_1608Metric"
+      },
+      "5332fc15-1d56-5263-98d2-33033b43605e": {
+        "reference": "R7",
+        "package": "R_0603_1608Metric"
+      },
+      "705904d1-297c-5955-ae0e-d36895ea5be4": {
+        "reference": "R8",
+        "package": "R_0603_1608Metric"
+      },
+      "72e28d8a-fadf-5e02-8a20-c37d1e474754": {
+        "reference": "J9",
+        "package": "PinHeader_1x02_P2.54mm_Vertical"
+      }
+    },
+    "representative": {
+      "U1": "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/1be1d8dc-a710-5986-ba18-62d6bc021e6b"
+    }
+  },
+  "catalog": [
+    {
+      "name": "Lite",
+      "description": "Cost-reduced build",
+      "sources": [
+        "project",
+        "pcb",
+        "schematic",
+        "footprint"
+      ]
+    },
+    {
+      "name": "Pro",
+      "description": null,
+      "sources": [
+        "project",
+        "pcb",
+        "schematic",
+        "footprint"
+      ]
+    },
+    {
+      "name": "Unused",
+      "description": null,
+      "sources": [
+        "project"
+      ]
+    },
+    {
+      "name": "Édition-µ",
+      "description": "Ünïcode ✓",
+      "sources": [
+        "project",
+        "schematic",
+        "footprint"
+      ]
+    },
+    {
+      "name": "BoardOnly",
+      "description": null,
+      "sources": [
+        "pcb"
+      ]
+    },
+    {
+      "name": "PcbOnly",
+      "description": null,
+      "sources": [
+        "footprint"
+      ]
+    }
+  ],
+  "default": {
+    "occurrences": {
+      "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/bdaa41e8-4b3e-516d-b481-b6b06f958325": {
+        "reference": "R2",
+        "dnp": true
+      }
+    },
+    "components": {
+      "R2": {
+        "dnp": true
+      }
+    },
+    "footprints": {
+      "4b298f09-2eff-5fd1-982c-b1eb072ccbe8": {
+        "reference": "R2",
+        "dnp": true
+      },
+      "8bdd2fcb-5aff-5a3a-a6e2-96f479a3fb83": {
+        "reference": "Q1",
+        "dnp": true
+      }
+    },
+    "physical": {
+      "R1": "visible",
+      "R2": "hidden",
+      "R3": "visible",
+      "R4": "visible",
+      "C1": "visible",
+      "U1": "visible",
+      "Q1": "ambiguous",
+      "R9": "absent",
+      "U2": "visible",
+      "R12": "visible",
+      "R6": "visible",
+      "R7": "visible",
+      "R8": "visible",
+      "J9": "visible"
+    }
+  },
+  "variants": [
+    {
+      "name": "Lite",
+      "occurrences": {
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/caa639b3-c965-5f5f-8579-1b1030520a32": {
+          "dnp": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/bdaa41e8-4b3e-516d-b481-b6b06f958325": {
+          "dnp": false
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/4ef94c69-7653-5842-9ae5-ff8865862183": {
+          "excludeFromBom": true,
+          "excludeFromPosFiles": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/23f0e81a-7865-5d18-bd0e-1d11af24fc3d": {
+          "fields": {
+            "MPN": "R4-LITE"
+          }
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c34fa430-f6b0-55a2-a210-f21b13a3d089": {
+          "fields": {
+            "Value": "100nF",
+            "MPN": "X-LITE"
+          }
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/3e98b5e2-e4d0-5512-91f4-b35191971034": {
+          "dnp": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/1be1d8dc-a710-5986-ba18-62d6bc021e6b": {
+          "dnp": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/7d201bda-eaa8-50cb-a4b8-98b6f582e55e": {
+          "fields": {
+            "Footprint": "Package_TO_SOT_SMD:SOT-89-3",
+            "Value": "BCX56"
+          }
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/a902666b-3af7-54fc-b81f-3efbe0ea2470": {
+          "excludeFromSim": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/a5cfa1a3-dfa6-506d-9fc0-fdb3dcd9a7e5": {
+          "dnp": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/a9a5553f-6467-5f4c-99ec-239d47111690": {
+          "dnp": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/e466f341-d6de-5757-99d7-3cab7d8daea1/1c78f846-3def-57ae-ac80-247ce4b3b496": {
+          "dnp": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/2b37a7b5-50d3-5e47-8b5a-0eb89cbfd3a1/900d8d20-7de0-547f-a978-fd9a5c67007c": {
+          "fields": {
+            "MPN": "A-LITE"
+          }
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/a3f95ab9-d212-5d48-93ad-8aff8aef4abf/900d8d20-7de0-547f-a978-fd9a5c67007c": {
+          "dnp": true
+        }
+      },
+      "components": {
+        "R1": {
+          "dnp": true
+        },
+        "R2": {
+          "dnp": false
+        },
+        "R3": {
+          "excludeFromBom": true,
+          "excludeFromPosFiles": true
+        },
+        "R4": {
+          "fields": {
+            "MPN": "R4-LITE"
+          }
+        },
+        "C1": {
+          "fields": {
+            "Value": "100nF",
+            "MPN": "X-LITE"
+          }
+        },
+        "U1": {
+          "dnp": true
+        },
+        "Q1": {
+          "fields": {
+            "Footprint": "Package_TO_SOT_SMD:SOT-89-3",
+            "Value": "BCX56"
+          }
+        },
+        "R9": {
+          "excludeFromSim": true
+        },
+        "U2": {
+          "dnp": true
+        },
+        "R12": {
+          "dnp": true
+        },
+        "R6": {
+          "dnp": true
+        },
+        "R7": {
+          "fields": {
+            "MPN": "A-LITE"
+          }
+        },
+        "R8": {
+          "dnp": true
+        }
+      },
+      "footprints": {
+        "ec3880bf-62c2-5c41-a50f-6381596c30ef": {
+          "dnp": true
+        },
+        "4b298f09-2eff-5fd1-982c-b1eb072ccbe8": {
+          "dnp": false
+        },
+        "2073849d-13a1-5c6f-b6f4-5f6b0e7f001f": {
+          "excludeFromBom": true,
+          "excludeFromPosFiles": true
+        },
+        "3557800a-6a99-56d7-bd1f-6b1cf8abec66": {
+          "fields": {
+            "MPN": "R4-LITE"
+          }
+        },
+        "78868d5e-e525-51b9-adcc-94b26de45321": {
+          "fields": {
+            "Value": "100nF",
+            "MPN": "X-LITE"
+          }
+        },
+        "f137ce95-5350-58e0-8833-623a61e2ba70": {
+          "dnp": true
+        },
+        "5a220ef8-f143-59ec-941e-de3da0b7105e": {
+          "dnp": true
+        },
+        "8bdd2fcb-5aff-5a3a-a6e2-96f479a3fb83": {
+          "dnp": false
+        },
+        "b6537e7e-dfe7-5c02-8e83-0f273a34b98b": {
+          "dnp": true
+        },
+        "5296bb19-4455-52ba-9eab-2f8aff8fe095": {
+          "dnp": true
+        },
+        "79e10a17-6c02-57db-aeca-8858a552f276": {
+          "dnp": true
+        },
+        "5332fc15-1d56-5263-98d2-33033b43605e": {
+          "fields": {
+            "MPN": "A-LITE"
+          }
+        },
+        "705904d1-297c-5955-ae0e-d36895ea5be4": {
+          "dnp": true
+        }
+      },
+      "physical": {
+        "R1": "hidden",
+        "R2": "visible",
+        "R3": "visible",
+        "R4": "visible",
+        "C1": "visible",
+        "U1": "hidden",
+        "Q1": "ambiguous",
+        "R9": "absent",
+        "U2": "hidden",
+        "R12": "hidden",
+        "R6": "hidden",
+        "R7": "visible",
+        "R8": "hidden",
+        "J9": "visible"
+      }
+    },
+    {
+      "name": "Pro",
+      "occurrences": {
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c34fa430-f6b0-55a2-a210-f21b13a3d089": {
+          "fields": {
+            "MPN": ""
+          }
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/3e98b5e2-e4d0-5512-91f4-b35191971034": {
+          "dnp": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/a902666b-3af7-54fc-b81f-3efbe0ea2470": {
+          "excludeFromBoard": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/a5cfa1a3-dfa6-506d-9fc0-fdb3dcd9a7e5": {
+          "excludeFromBom": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/a9a5553f-6467-5f4c-99ec-239d47111690": {
+          "excludeFromBom": true
+        },
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c33f383d-e37a-5ee0-b3d2-b1d64b3f8476/e466f341-d6de-5757-99d7-3cab7d8daea1/1c78f846-3def-57ae-ac80-247ce4b3b496": {
+          "excludeFromBom": true
+        }
+      },
+      "components": {
+        "C1": {
+          "fields": {
+            "MPN": ""
+          }
+        },
+        "R9": {
+          "excludeFromBoard": true
+        },
+        "U2": {
+          "excludeFromBom": true
+        },
+        "R12": {
+          "excludeFromBom": true
+        },
+        "R6": {
+          "excludeFromBom": true
+        }
+      },
+      "footprints": {
+        "78868d5e-e525-51b9-adcc-94b26de45321": {
+          "fields": {
+            "MPN": ""
+          }
+        },
+        "b6537e7e-dfe7-5c02-8e83-0f273a34b98b": {
+          "excludeFromBom": true
+        },
+        "5296bb19-4455-52ba-9eab-2f8aff8fe095": {
+          "excludeFromBom": true
+        },
+        "79e10a17-6c02-57db-aeca-8858a552f276": {
+          "excludeFromBom": true
+        }
+      },
+      "physical": {
+        "R1": "visible",
+        "R2": "hidden",
+        "R3": "visible",
+        "R4": "visible",
+        "C1": "visible",
+        "U1": "visible",
+        "Q1": "ambiguous",
+        "R9": "absent",
+        "U2": "visible",
+        "R12": "visible",
+        "R6": "visible",
+        "R7": "visible",
+        "R8": "visible",
+        "J9": "visible"
+      }
+    },
+    {
+      "name": "Unused",
+      "occurrences": {},
+      "components": {},
+      "footprints": {},
+      "physical": {
+        "R1": "visible",
+        "R2": "hidden",
+        "R3": "visible",
+        "R4": "visible",
+        "C1": "visible",
+        "U1": "visible",
+        "Q1": "ambiguous",
+        "R9": "absent",
+        "U2": "visible",
+        "R12": "visible",
+        "R6": "visible",
+        "R7": "visible",
+        "R8": "visible",
+        "J9": "visible"
+      }
+    },
+    {
+      "name": "Édition-µ",
+      "occurrences": {
+        "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/c34fa430-f6b0-55a2-a210-f21b13a3d089": {
+          "fields": {
+            "Value": "4.7µF",
+            "Note": "She said \"bye\""
+          }
+        }
+      },
+      "components": {
+        "C1": {
+          "fields": {
+            "Value": "4.7µF",
+            "Note": "She said \"bye\""
+          }
+        }
+      },
+      "footprints": {
+        "78868d5e-e525-51b9-adcc-94b26de45321": {
+          "fields": {
+            "Value": "4.7µF",
+            "Note": "She said \"bye\""
+          }
+        }
+      },
+      "physical": {
+        "R1": "visible",
+        "R2": "hidden",
+        "R3": "visible",
+        "R4": "visible",
+        "C1": "visible",
+        "U1": "visible",
+        "Q1": "ambiguous",
+        "R9": "absent",
+        "U2": "visible",
+        "R12": "visible",
+        "R6": "visible",
+        "R7": "visible",
+        "R8": "visible",
+        "J9": "visible"
+      }
+    },
+    {
+      "name": "BoardOnly",
+      "occurrences": {},
+      "components": {},
+      "footprints": {},
+      "physical": {
+        "R1": "visible",
+        "R2": "hidden",
+        "R3": "visible",
+        "R4": "visible",
+        "C1": "visible",
+        "U1": "visible",
+        "Q1": "ambiguous",
+        "R9": "absent",
+        "U2": "visible",
+        "R12": "visible",
+        "R6": "visible",
+        "R7": "visible",
+        "R8": "visible",
+        "J9": "visible"
+      }
+    },
+    {
+      "name": "PcbOnly",
+      "occurrences": {},
+      "components": {},
+      "footprints": {
+        "72e28d8a-fadf-5e02-8a20-c37d1e474754": {
+          "dnp": true
+        }
+      },
+      "physical": {
+        "R1": "visible",
+        "R2": "hidden",
+        "R3": "visible",
+        "R4": "visible",
+        "C1": "visible",
+        "U1": "visible",
+        "Q1": "ambiguous",
+        "R9": "absent",
+        "U2": "visible",
+        "R12": "visible",
+        "R6": "visible",
+        "R7": "visible",
+        "R8": "visible",
+        "J9": "hidden"
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "multi-unit-conflict",
+      "variant": "Pro",
+      "reference": "U1",
+      "detail": {
+        "dnp": {
+          "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/3e98b5e2-e4d0-5512-91f4-b35191971034": true,
+          "/df45a56d-eafa-53fe-96d8-7823ed0c0fa3/1be1d8dc-a710-5986-ba18-62d6bc021e6b": false
+        }
+      }
+    },
+    {
+      "code": "duplicate-reference-footprints",
+      "reference": "Q1",
+      "footprintUuids": [
+        "5a220ef8-f143-59ec-941e-de3da0b7105e",
+        "8bdd2fcb-5aff-5a3a-a6e2-96f479a3fb83"
+      ]
+    }
+  ],
+  "evidence": {
+    "knownDisagreements": [
+      {
+        "file": "evidence/oracle/bom_Pro.csv",
+        "reference": "U1",
+        "column": "DNP",
+        "native": "DNP",
+        "expected": "",
+        "why": "sch export bom lists the union of the grouped units' values (GetExportValue → listMixedValues), so the DNP of unit A shows although the representative unit B is not DNP; the netlist and Prism follow the representative unit (packet 2.3, N13)."
+      }
+    ],
+    "native": [
+      "Board exports that go through BOARD::SetCurrentVariant (glb, ipc2581, step, svg…) silently use the default for a name missing from the board (variants…) header (PcbOnly here, Lite in oracle_rev2); pos resolves per footprint record and honours such names (packet N18).",
+      "variants[*].occurrences and components: dnp, excludeFromBom, excludeFromSim, excludeFromPosFiles, fields — kicadxml <variants> block (representative unit only for U1) and sch export bom",
+      "variants[*].footprints: dnp — pcb export pos with/without --exclude-dnp; excludeFromPosFiles — absence from pos; excludeFromBom and dnp — ipc2581 BomItem/populate; fields.Value — pos Val column; 3D presence — glb --no-dnp node names",
+      "catalog: project registry and board header read directly; schematic/footprint record names verified by the kicadxml <variants> names and pos --variant on record-only names"
+    ],
+    "source-derived": [
+      "variants[Pro].components[R9].excludeFromBoard and occurrences[R9] (no per-variant board flag in any 10.0.6 export)",
+      "variants[Pro].occurrences[U1A].dnp (non-representative unit; the netlist reports U1 through the smaller-uuid unit)",
+      "physical classification (Prism-defined, packet 2.6); glb --no-dnp evidence covers the underlying footprint dnp only"
+    ]
+  }
+}

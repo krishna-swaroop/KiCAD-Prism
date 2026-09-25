@@ -211,8 +211,11 @@ function withoutStructuredGeometry(value: unknown): unknown {
     if (parsed && typeof parsed === "object") {
         return Object.fromEntries(
             Object.entries(parsed as Record<string, unknown>)
-                .filter(([key]) => !STRUCTURED_GEOMETRY_KEYS.has(key))
-                .map(([key, child]) => [key, withoutStructuredGeometry(child)]),
+                .flatMap(([key, child]) => (
+                    STRUCTURED_GEOMETRY_KEYS.has(key)
+                        ? []
+                        : [[key, withoutStructuredGeometry(child)]]
+                )),
         );
     }
     return parsed;

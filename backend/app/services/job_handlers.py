@@ -29,9 +29,14 @@ def load_builtin_job_handlers() -> None:
         run_catalog_job_v3,
     )
     from app.services.design_compare_service import run_design_compare_job_v3
+    from app.services.release_studio_build_service import (
+        run_release_studio_build_job,
+        run_release_studio_configuration_publish_job,
+    )
     from app.services.project_import_service import (
         run_project_analyze_job_v3,
         run_project_import_job_v3,
+        run_project_metadata_job_v3,
         run_project_sync_job_v3,
         run_project_thumbnail_job_v3,
     )
@@ -42,12 +47,21 @@ def load_builtin_job_handlers() -> None:
     )
 
     register_job_handler("design_compare", run_design_compare_job_v3)
+    register_job_handler("release_studio_build", run_release_studio_build_job)
+    register_job_handler(
+        "release_studio_configuration_publish",
+        run_release_studio_configuration_publish_job,
+    )
     register_job_handler("webgpu_3d", run_webgpu_3d_job_v3)
     register_job_handler("kicad_workflow", run_kicad_workflow_job_v3)
     register_job_handler("semantic_index", run_semantic_index_job_v3)
     register_job_handler("project_analyze", run_project_analyze_job_v3)
     register_job_handler("project_import", run_project_import_job_v3)
     register_job_handler("project_sync", run_project_sync_job_v3)
+    register_job_handler("project_metadata", run_project_metadata_job_v3)
     register_job_handler("project_thumbnail", run_project_thumbnail_job_v3)
     for job_type in catalog_handlers:
         register_job_handler(job_type, run_catalog_job_v3)
+    from app.services.trackers.jobs import register_tracker_job_handlers
+
+    register_tracker_job_handlers(register_job_handler)

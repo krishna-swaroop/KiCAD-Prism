@@ -1,0 +1,87 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "legacy_in_bom",
+  "project": "legacy.kicad_pro",
+  "notes": [
+    "(version 20260101) < 20260306: `(in_bom yes)` in a variant record means excluded=true and `(in_bom no)` means excluded=false (packet N3).",
+    "R10 base in_bom yes; Lite record (in_bom yes) \u2192 effective excludeFromBom true. R11 base in_bom no; Lite record (in_bom no) \u2192 excludeFromBom false.",
+    "Native oracle: kicadxml <variants> exclude_from_bom values for both symbols."
+  ],
+  "identity": {
+    "occurrences": {
+      "/973e14f6-cc09-56bb-9cfa-6726cfd8593d/f83e6fc8-026f-519d-aa91-1e8ce63730a5": {
+        "reference": "R10"
+      },
+      "/973e14f6-cc09-56bb-9cfa-6726cfd8593d/330b79bb-a70e-5c71-80e7-c0efa00b66e9": {
+        "reference": "R11"
+      }
+    }
+  },
+  "catalog": [
+    {
+      "name": "Lite",
+      "description": null,
+      "sources": [
+        "project",
+        "schematic"
+      ]
+    }
+  ],
+  "default": {
+    "occurrences": {
+      "/973e14f6-cc09-56bb-9cfa-6726cfd8593d/330b79bb-a70e-5c71-80e7-c0efa00b66e9": {
+        "reference": "R11",
+        "excludeFromBom": true
+      }
+    },
+    "components": {
+      "R11": {
+        "excludeFromBom": true
+      }
+    },
+    "footprints": {},
+    "physical": {
+      "R10": "absent",
+      "R11": "absent"
+    }
+  },
+  "variants": [
+    {
+      "name": "Lite",
+      "occurrences": {
+        "/973e14f6-cc09-56bb-9cfa-6726cfd8593d/f83e6fc8-026f-519d-aa91-1e8ce63730a5": {
+          "excludeFromBom": true
+        },
+        "/973e14f6-cc09-56bb-9cfa-6726cfd8593d/330b79bb-a70e-5c71-80e7-c0efa00b66e9": {
+          "excludeFromBom": false
+        }
+      },
+      "components": {
+        "R10": {
+          "excludeFromBom": true
+        },
+        "R11": {
+          "excludeFromBom": false
+        }
+      },
+      "footprints": {},
+      "physical": {
+        "R10": "absent",
+        "R11": "absent"
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "legacy-in-bom-semantics",
+      "path": "legacy.kicad_sch",
+      "detail": {
+        "version": 20260101
+      }
+    }
+  ]
+}

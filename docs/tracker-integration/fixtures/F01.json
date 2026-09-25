@@ -1,0 +1,20 @@
+{
+  "set": "F1",
+  "title": "Identity, roles and legacy attribution",
+  "decisions": ["D4", "D6"],
+  "owner": "TR-01",
+  "cases": [
+    {"id": "F1.legacy_display_name_author", "owner": "TR-01", "given": "comments row created before TR-01 with author='swaroop' and no author_user_id", "when": "the thread is read", "expect": "authorKind='legacy', authorUserId=null, author='swaroop', permissions.canEdit=false for every non-admin; admin canEdit=true", "proves": "D6"},
+    {"id": "F1.duplicate_display_names", "owner": "TR-01", "given": "two users u_1 and u_2 both named 'Alex Chen'; u_1 authored root c_1", "when": "u_2 (designer) PATCHes c_1 content", "expect": "403 (not owner); ownership compares author_user_id only", "proves": "D6"},
+    {"id": "F1.empty_user_id_session", "owner": "TR-02", "given": "session cookie whose user_sessions.user_id is '' but users row exists for the email", "when": "POST comment", "expect": "author_user_id = users.user_id resolved by email at request time; authorKind='user'", "proves": "D6"},
+    {"id": "F1.no_users_row_session", "owner": "TR-02", "given": "session with empty user_id and no users row", "when": "POST comment", "expect": "403 with code identity_unresolved; no row written", "proves": "D6"},
+    {"id": "F1.viewer_creates_root", "owner": "TR-03", "given": "session role=viewer", "when": "POST canvas comment and POST comparison comment", "expect": "201 for both; authorKind='user'", "proves": "D4"},
+    {"id": "F1.qa_ranks_as_viewer", "owner": "TR-03", "given": "session role=qa", "when": "resolve an unlinked thread", "expect": "403; canResolve=false", "proves": "D4"},
+    {"id": "F1.kicad_provider_read_only", "owner": "TR-02", "given": "bearer token auth_type=kicad_provider with designer role claim", "when": "POST comment / reply / PATCH / DELETE", "expect": "403 on every mutation; GET succeeds", "proves": "D4"},
+    {"id": "F1.service_client_write", "owner": "TR-02", "given": "service client token with scopes ['api:write'], role designer", "when": "POST comment", "expect": "201; author_user_id='service:<client_id>', authorKind='service', author=client display name", "proves": "D6"},
+    {"id": "F1.service_client_no_write_scope", "owner": "TR-02", "given": "service client token with scopes ['api:read']", "when": "POST comment", "expect": "403 scope required", "proves": "D4"},
+    {"id": "F1.guest_auth_disabled", "owner": "TR-02", "given": "AUTH_ENABLED=false", "when": "POST comment", "expect": "201; author_user_id='guest:local', authorKind='guest'; canPublish=false always", "proves": "D6"},
+    {"id": "F1.request_author_ignored", "owner": "TR-03", "given": "session user Priya", "when": "POST comment with body field author='Mallory'", "expect": "422 unknown field or field ignored; stored author is Priya", "proves": "D6"},
+    {"id": "F1.admin_edits_legacy", "owner": "TR-03", "given": "legacy root", "when": "admin PATCH content", "expect": "200; revision 2 with editor_user_id=admin, editorKind='user'; authorKind stays 'legacy'", "proves": "D6"}
+  ]
+}

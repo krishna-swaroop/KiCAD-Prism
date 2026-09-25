@@ -1,5 +1,7 @@
 import { fetchApi, readApiError } from "@/lib/api";
 
+import type { PipelineState } from "@/components/release-studio/types";
+
 export type PrismJobStatus = {
     job_id: string;
     kind: string;
@@ -10,6 +12,7 @@ export type PrismJobStatus = {
     error_code?: string;
     error_message?: string;
     result_metadata?: Record<string, unknown>;
+    pipeline?: PipelineState;
 };
 
 type WatchPrismJobOptions = {
@@ -60,6 +63,15 @@ async function readJobLogs(jobId: string, signal?: AbortSignal): Promise<string[
     return payload.lines ?? [];
 }
 
+export async function cancelPrismJob(jobId: string): Promise<void> {
+    const response = await fetchApi(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
+        method: "POST",
+    });
+    if (!response.ok) {
+        throw new Error(await readApiError(response, "Failed to cancel the build"));
+    }
+}
+
 export async function watchPrismJob(
     jobId: string,
     {
@@ -82,4 +94,11 @@ export function throwIfJobFailed(job: PrismJobStatus, fallback: string): void {
     if (job.status === "failed" || job.status === "cancelled") {
         throw new Error(job.error_message || job.message || fallback);
     }
+}
+
+export function jobPipeline(job: PrismJobStatus): PipelineState | undefined {
+    if (job.pipeline) return job.pipeline;
+    const meta = job.result_metadata?.pipeline;
+    if (meta && typeof meta === "object") return meta as PipelineState;
+    return undefined;
 }

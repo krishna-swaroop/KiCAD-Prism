@@ -9,6 +9,7 @@ from app.services.job_runtime import (
     JobCancelled,
     JobContext,
     LostJobLease,
+    PermanentJobError,
     RetryableJobError,
 )
 from app.services.job_service import jobs
@@ -23,6 +24,9 @@ logger = logging.getLogger("prism-job-runner")
 
 def execute(job_id: str, fence: int, worker_id: str) -> int:
     load_builtin_job_handlers()
+    from app.services.trackers.composition import initialize_tracker_composition
+
+    initialize_tracker_composition()
     job = jobs.get(job_id)
     if (
         job is None
@@ -90,6 +94,17 @@ def execute(job_id: str, fence: int, worker_id: str) -> int:
             retry_after_seconds=error.retry_after_seconds,
         )
         return 5
+    except PermanentJobError as error:
+        context.cleanup_staging()
+        jobs.fail(
+            job_id,
+            worker_id,
+            fence,
+            error_code=error.code,
+            error_message=str(error),
+        )
+        logger.exception("Job failed permanently")
+        return 1
     except LostJobLease:
         context.cleanup_staging()
         logger.exception("Job lease was lost")

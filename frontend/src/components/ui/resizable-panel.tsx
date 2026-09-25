@@ -3,6 +3,7 @@ import {
     useEffect,
     useRef,
     useState,
+    type MutableRefObject,
     type ReactNode,
 } from "react";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,14 @@ export type ResizablePanelProps = {
     children: ReactNode;
 };
 
+export type UseResizableWidthOptions = {
+    side: "left" | "right";
+    storageKey: string;
+    defaultWidth: number;
+    minWidth?: number;
+    maxWidth?: number;
+};
+
 /** Horizontal room a panel must leave for the canvas and the other panel. */
 const RESERVED_FOR_CONTENT = 480;
 
@@ -50,16 +59,13 @@ function viewportCap(minWidth: number): number {
     return Math.max(minWidth, window.innerWidth - RESERVED_FOR_CONTENT);
 }
 
-export function ResizablePanel({
+export function useResizableWidth({
     side,
     storageKey,
     defaultWidth,
     minWidth = 240,
     maxWidth = 720,
-    className,
-    "aria-label": ariaLabel,
-    children,
-}: ResizablePanelProps) {
+}: UseResizableWidthOptions) {
     const clamp = useCallback(
         (value: number) => Math.min(maxWidth, Math.max(minWidth, value)),
         [maxWidth, minWidth],
@@ -71,7 +77,7 @@ export function ResizablePanel({
     );
     const [viewportMax, setViewportMax] = useState(() => viewportCap(minWidth));
     const [dragging, setDragging] = useState(false);
-    const panelRef = useRef<HTMLElement | null>(null);
+    const panelRef: MutableRefObject<HTMLElement | null> = useRef(null);
     const width = Math.round(Math.min(preferredWidth, viewportMax));
 
     useEffect(() => {
@@ -136,6 +142,52 @@ export function ResizablePanel({
         }
     };
 
+    return {
+        width,
+        minWidth,
+        maxWidth,
+        dragging,
+        panelRef,
+        separatorProps: {
+            role: "separator" as const,
+            "aria-orientation": "vertical" as const,
+            "aria-valuenow": width,
+            "aria-valuemin": minWidth,
+            "aria-valuemax": maxWidth,
+            tabIndex: 0,
+            onPointerDown: startDrag,
+            onPointerMove: onDrag,
+            onPointerUp: endDrag,
+            onPointerCancel: endDrag,
+            onKeyDown,
+            onDoubleClick: () => setPreferredWidth(clamp(defaultWidth)),
+        },
+    };
+}
+
+export function ResizablePanel({
+    side,
+    storageKey,
+    defaultWidth,
+    minWidth = 240,
+    maxWidth = 720,
+    className,
+    "aria-label": ariaLabel,
+    children,
+}: ResizablePanelProps) {
+    const {
+        width,
+        dragging,
+        panelRef,
+        separatorProps,
+    } = useResizableWidth({
+        side,
+        storageKey,
+        defaultWidth,
+        minWidth,
+        maxWidth,
+    });
+
     return (
         <aside
             ref={panelRef}
@@ -153,19 +205,8 @@ export function ResizablePanel({
                 {children}
             </div>
             <div
-                role="separator"
-                aria-orientation="vertical"
+                {...separatorProps}
                 aria-label={`Resize ${ariaLabel ?? "panel"}`}
-                aria-valuenow={width}
-                aria-valuemin={minWidth}
-                aria-valuemax={maxWidth}
-                tabIndex={0}
-                onPointerDown={startDrag}
-                onPointerMove={onDrag}
-                onPointerUp={endDrag}
-                onPointerCancel={endDrag}
-                onKeyDown={onKeyDown}
-                onDoubleClick={() => setPreferredWidth(clamp(defaultWidth))}
                 className={cn(
                     "absolute inset-y-0 z-20 w-1.5 cursor-col-resize transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none",
                     dragging && "bg-primary/60",

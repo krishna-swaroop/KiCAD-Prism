@@ -1,0 +1,52 @@
+{
+  "board": {
+    "design_settings": {
+      "defaults": {}
+    },
+    "layer_presets": [],
+    "viewports": []
+  },
+  "libraries": {
+    "pinned_footprint_libs": [],
+    "pinned_symbol_libs": []
+  },
+  "meta": {
+    "filename": "sch_only.kicad_pro",
+    "version": 3
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "clearance": 0.2,
+        "track_width": 0.2,
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "priority": 2147483647
+      }
+    ],
+    "meta": {
+      "version": 4
+    }
+  },
+  "pcbnew": {
+    "last_paths": {},
+    "page_layout_descr_file": ""
+  },
+  "schematic": {
+    "legacy_lib_dir": "",
+    "legacy_lib_list": [],
+    "variants": [
+      {
+        "name": "Lite"
+      }
+    ]
+  },
+  "sheets": [
+    [
+      "68277ee9-365b-5b55-9430-57a0c2afc12d",
+      "Root"
+    ]
+  ],
+  "text_variables": {}
+}

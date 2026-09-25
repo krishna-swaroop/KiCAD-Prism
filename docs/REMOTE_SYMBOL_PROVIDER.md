@@ -11,7 +11,7 @@ URLs.
 - Shared deployments use HTTPS with a certificate trusted by the workstation
   operating system.
 - `PUBLIC_BASE_URL` is the exact external origin.
-- the identity provider allows the provider callback;
+- the identity provider allows the provider callback, or password login is enabled;
 - at least one component is released and place-ready.
 
 ## Verify server metadata
@@ -47,6 +47,12 @@ Prism's provider OAuth server accepts authorization code with PKCE and issues
 tokens scoped to `remote_symbols.read`. Those tokens cannot modify Prism
 projects or Library Manager state.
 
+If the workstation already has a Prism browser session, authorize-and-done
+continues. Otherwise KiCad is sent to the same Prism login page
+(`/?next=/oauth/authorize…`) used by the web app, then returned to complete
+the provider grant. Password-only deployments do not need a separate KiCad
+password form.
+
 ## Build a datasource package
 
 From the repository:
@@ -68,8 +74,9 @@ Depending on the supported KiCad build:
 2. open a schematic and the Remote Symbols panel;
 3. complete SSO in the system browser when prompted;
 4. search by part name, manufacturer part number, or category;
-5. open a component and inspect its symbol and footprint;
-6. place it into a disposable project;
+5. open a component, select a representation, and verify that both symbol and
+   footprint previews change together;
+6. place both the default and a non-default representation into a disposable project;
 7. verify the project-local remote library files were created.
 
 Default placement settings are:
@@ -82,6 +89,59 @@ destination: ${KIPRJMOD}/RemoteLibrary
 If KiCad uses different values, configure matching
 `REMOTE_PROVIDER_LIBRARY_PREFIX` and `REMOTE_PROVIDER_DESTINATION_DIR` values in
 Prism.
+
+Clients that omit the `representation` query parameter continue to receive the
+default representation. Representation-aware clients pass the selected ID to
+the component detail, part manifest, inline bundle, and signed asset download
+flows. Unknown and incomplete IDs are rejected rather than silently falling
+back.
+
+## Search and recovery
+
+The finder pages through the catalog rather than truncating it to the first
+page. Changing the query cancels superseded searches. Detail and preview errors
+are retryable; reauthenticate when the panel reports an expired session.
+Placement is dispatched once per request. If an attempt fails, inspect its
+status before explicitly retrying. Transfer logs are bounded and redact
+credentials.
+
+## Parts payload contract (parts_v1)
+
+Clients must read `provider_version` from the discovery metadata before
+assuming payload fields. Version `0.3.0` is a breaking change to the parts
+payload:
+
+Removed in `0.3.0` — the flat inventory fields
+`stock_known`, `stock_quantity`, `stock_uom`, `inventory_status`,
+`local_inventory`.
+
+Added in `0.3.0` — one availability structure carried identically by search
+results, list payloads, and component detail:
+
+```json
+"supply": {
+  "sources": [
+    {
+      "kind": "vendor",
+      "id": "csv",
+      "display_name": "InvenTree",
+      "stock": 0.0,
+      "uom": "pcs",
+      "stock_status": "available",
+      "fetch_status": "ok",
+      "fetched_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+- Every source is `"kind": "local"` today; distributor adapters will add
+  vendor rows with optional pricing fields (`unit_price`, `currency`,
+  `price_break_qty`, `price_breaks`, `product_url`) in a later version.
+- Clients must treat unknown kinds, extra fields, and absent optional fields
+  as non-fatal.
+- The admin API (`GET /api/catalog/components/{id}`) keeps the legacy flat
+  fields for existing internal consumers and additionally returns `supply`.
 
 ## What users can see
 

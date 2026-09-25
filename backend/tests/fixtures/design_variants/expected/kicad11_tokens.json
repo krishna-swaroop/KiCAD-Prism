@@ -1,0 +1,90 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "kicad11_tokens",
+  "project": "k11.kicad_pro",
+  "notes": [
+    "KiCad 11 tokens inside variant records: native 10.0.6 refuses to load these files (packet N22); Prism and ecad-viewer ignore the tokens and keep the supported ones.",
+    "Native evidence for this fixture is the parse error, recorded in the manifest; the expected state is source-derived."
+  ],
+  "identity": {
+    "occurrences": {
+      "/8b3d16ed-65fd-5f4a-87e6-0b85c2019a15/4a00a14a-886b-58fc-a24d-cfe8977b2871": {
+        "reference": "R1"
+      }
+    },
+    "footprints": {
+      "4f51eca6-3440-5334-a47a-8da5ed063624": {
+        "reference": "R1",
+        "package": "R_0603_1608Metric"
+      }
+    }
+  },
+  "catalog": [
+    {
+      "name": "Lite",
+      "description": null,
+      "sources": [
+        "project",
+        "pcb",
+        "schematic",
+        "footprint"
+      ]
+    }
+  ],
+  "default": {
+    "occurrences": {},
+    "components": {},
+    "footprints": {},
+    "physical": {
+      "R1": "visible"
+    }
+  },
+  "variants": [
+    {
+      "name": "Lite",
+      "occurrences": {
+        "/8b3d16ed-65fd-5f4a-87e6-0b85c2019a15/4a00a14a-886b-58fc-a24d-cfe8977b2871": {
+          "dnp": true
+        }
+      },
+      "components": {
+        "R1": {
+          "dnp": true
+        }
+      },
+      "footprints": {
+        "4f51eca6-3440-5334-a47a-8da5ed063624": {
+          "dnp": true
+        }
+      },
+      "physical": {
+        "R1": "hidden"
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "unsupported-variant-token",
+      "path": "k11.kicad_sch",
+      "detail": {
+        "tokens": [
+          "symbol_override",
+          "pin_map_override"
+        ]
+      }
+    },
+    {
+      "code": "unsupported-variant-token",
+      "path": "k11.kicad_pcb",
+      "detail": {
+        "tokens": [
+          "exclude_from_sim"
+        ]
+      }
+    }
+  ]
+}

@@ -48,6 +48,15 @@ Inspector UI reads net details from the manifest. Highlighting a net class
 uploads only an active class ID; the shader resolves membership through a
 compact `netId -> netClassId` table.
 
+A manifest net carries `name` (the schematic netlist's name) and `aliases`:
+the other names the same net goes by, chiefly the board's own name when the
+two disagree (a bus member crossing sheet pins is `/MGMT.D0_P` on the board
+and `/Managment Port/MGMT.D0_P` in the netlist). Copper is attributed by the
+board name, so the compiler reconciles every board net name to a topology net
+through the pads they share, appends board-only nets, and merges the sheet
+split copies under the earliest-listed record. Hosts resolve a name against
+`name` and `aliases` in list order.
+
 An FEM workflow should generate a solver-quality surface or volume mesh from
 the authoritative PCB contours and stackup thicknesses. Solver cells retain
 `objectFeatureId` and `netId`, either directly or through a mapping table.

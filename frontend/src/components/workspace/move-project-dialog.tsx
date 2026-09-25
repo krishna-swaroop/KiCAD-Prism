@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 
 import { isDialogSubmitShortcut } from "@/lib/dialog-shortcuts";
 import { FolderTreeItem, Project } from "@/types/project";
@@ -24,6 +24,16 @@ interface MoveProjectDialogProps {
 const ROOT_VALUE = "__root__";
 const UNSELECTED_VALUE = "__unselected__";
 
+// One shared source folder preselects it; a mixed selection forces a choice.
+// The dialog is mounted per move (workspace.tsx gates on projectsToMove), so
+// this is the initial value rather than a correction applied after render.
+function initialTarget(projects: Project[]): string {
+  if (projects.length === 0) return ROOT_VALUE;
+  const sourceFolderIds = new Set(projects.map((project) => project.folder_id ?? null));
+  if (sourceFolderIds.size === 1) return projects[0].folder_id ?? ROOT_VALUE;
+  return UNSELECTED_VALUE;
+}
+
 export function MoveProjectDialog({
   projects,
   folders,
@@ -32,7 +42,7 @@ export function MoveProjectDialog({
   onConfirm,
   getProjectDisplayName,
 }: MoveProjectDialogProps) {
-  const [targetFolderId, setTargetFolderId] = useState(ROOT_VALUE);
+  const [targetFolderId, setTargetFolderId] = useState(() => initialTarget(projects));
 
   const folderPathById = useMemo(() => {
     const folderById = new Map(folders.map((folder) => [folder.id, folder]));
@@ -87,20 +97,6 @@ export function MoveProjectDialog({
 
     return paths;
   }, [folders]);
-
-  useEffect(() => {
-    if (projects.length === 0) {
-      setTargetFolderId(ROOT_VALUE);
-      return;
-    }
-
-    const sourceFolderIds = new Set(projects.map((project) => project.folder_id ?? null));
-    if (sourceFolderIds.size === 1) {
-      setTargetFolderId(projects[0].folder_id ?? ROOT_VALUE);
-    } else {
-      setTargetFolderId(UNSELECTED_VALUE);
-    }
-  }, [projects]);
 
   const submit = () => {
     if (projects.length === 0 || targetFolderId === UNSELECTED_VALUE) {

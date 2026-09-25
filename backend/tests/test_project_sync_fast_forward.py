@@ -73,6 +73,24 @@ class SyncFastForwardsOnly(unittest.TestCase):
         project_import_service.sync_project("prj_1")
         self.assertTrue(self.origin.fetch.call_args.kwargs["prune"])
 
+    def test_background_fetch_does_not_change_the_checkout(self) -> None:
+        with mock.patch.object(
+            project_import_service.derived_assets, "purge_legacy_in_tree_thumbnails"
+        ) as purge:
+            result = project_import_service.sync_project("prj_1", fetch_only=True)
+        self.assertEqual(result["status"], "success")
+        self.origin.fetch.assert_called_once()
+        self.repo.git.merge.assert_not_called()
+        purge.assert_not_called()
+
+    def test_background_fetch_job_is_separate_and_lower_priority(self) -> None:
+        with mock.patch.object(
+            project_import_service.v3_jobs, "enqueue", return_value={"job_id": "job-1"}
+        ) as enqueue:
+            project_import_service.start_sync_job("prj_1", fetch_only=True)
+        self.assertEqual(enqueue.call_args.args[1]["fetch_only"], True)
+        self.assertEqual(enqueue.call_args.kwargs["priority"], 200)
+
     def test_dirty_checkout_is_reported_rather_than_clobbered(self) -> None:
         self.repo.is_dirty.return_value = True
         result = project_import_service.sync_project("prj_1")

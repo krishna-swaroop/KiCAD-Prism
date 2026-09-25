@@ -1,0 +1,159 @@
+{
+  "variant": "Unused",
+  "bom": [
+    {
+      "OEMDesignNumberRef": "Capacitor_SMD_C_0603_1608Metric_1uF",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "C1",
+          "packageRef": "C_0603_1608Metric",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Connector_PinHeader_2.54mm_PinHeader_1x02_P2.54mm_Vertical_Debug",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "J9",
+          "packageRef": "PinHeader_1x02_P2.54mm_Vertical",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Package_SO_SOIC-8_3.9x4.9mm_P1.27mm_DualAmp",
+      "quantity": "2",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "U1",
+          "packageRef": "SOIC-8_3.9x4.9mm_P1.27mm",
+          "populate": "true"
+        },
+        {
+          "name": "U2",
+          "packageRef": "SOIC-8_3.9x4.9mm_P1.27mm",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Package_TO_SOT_SMD_SOT-23_BC847",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "Q1",
+          "packageRef": "SOT-23",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Package_TO_SOT_SMD_SOT-89-3_BCX56",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "Q1_1",
+          "packageRef": "SOT-89-3",
+          "populate": "false"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Resistor_SMD_R_0603_1608Metric_0R",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "R6",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Resistor_SMD_R_0603_1608Metric_100R",
+      "quantity": "2",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "R7",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "true"
+        },
+        {
+          "name": "R8",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Resistor_SMD_R_0603_1608Metric_10k",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "R1",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Resistor_SMD_R_0603_1608Metric_22k",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "R2",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "false"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Resistor_SMD_R_0603_1608Metric_33k",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "R3",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Resistor_SMD_R_0603_1608Metric_47k",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "R4",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "true"
+        }
+      ]
+    },
+    {
+      "OEMDesignNumberRef": "Resistor_SMD_R_0603_1608Metric_4k7",
+      "quantity": "1",
+      "category": "ELECTRICAL",
+      "refDes": [
+        {
+          "name": "R12",
+          "packageRef": "R_0603_1608Metric",
+          "populate": "true"
+        }
+      ]
+    }
+  ]
+}

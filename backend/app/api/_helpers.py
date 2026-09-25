@@ -36,6 +36,7 @@ def _row_to_project(row: dict) -> project_service.Project:
         registered_at=row.get("registered_at"),
         thumbnail_url=project_service.thumbnail_url_for_row(row),
         sub_path=row.get("relative_path") if row.get("relative_path") != "." else None,
+        project_file=row.get("project_file_rel") or None,
         parent_repo=row.get("parent_repo"),
         repo_url=row.get("repo_url"),
         import_type=row.get("import_type"),

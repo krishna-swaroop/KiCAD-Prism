@@ -22,6 +22,7 @@ for candidate in (REPO_ROOT / "backend", REPO_ROOT):
         break
 
 ComponentCatalogService: Any = None
+CatalogAssetImports: Any = None
 _discover_footprint_name_in_text: Callable[[str], str]
 _discover_symbol_names_in_text: Callable[[str], list[str]]
 _sanitize_name: Callable[[str, str], str]
@@ -33,18 +34,24 @@ SPICE_EXTENSIONS = {".lib", ".mod", ".mdl", ".cir", ".sub", ".subckt", ".spice"}
 
 def _load_catalog_runtime(database_url: str = "") -> None:
     global ComponentCatalogService
+    global CatalogAssetImports
     global _discover_footprint_name_in_text
     global _discover_symbol_names_in_text
     global _sanitize_name
 
     try:
-        from app.services.component_catalog_domain import (  # noqa: PLC0415
-            _discover_footprint_name_in_text as loaded_discover_footprint_name,
-            _discover_symbol_names_in_text as loaded_discover_symbol_names,
-            _sanitize_name as loaded_sanitize_name,
+        from app.services.catalog.asset_imports import (  # noqa: PLC0415
+            CatalogAssetImports as loaded_asset_imports,
+        )
+        from app.services.catalog.asset_files import (  # noqa: PLC0415
+            discover_footprint_name_in_text as loaded_discover_footprint_name,
+            discover_symbol_names_in_text as loaded_discover_symbol_names,
         )
         from app.services.component_catalog_service_postgres import (  # noqa: PLC0415
             ComponentCatalogPostgresService,
+        )
+        from app.services.catalog.normalization import (  # noqa: PLC0415
+            sanitize_name as loaded_sanitize_name,
         )
         from app.core.config import settings  # noqa: PLC0415
     except ModuleNotFoundError as exc:
@@ -57,6 +64,7 @@ def _load_catalog_runtime(database_url: str = "") -> None:
 
     _ = database_url or settings.PRISM_DATABASE_URL
     ComponentCatalogService = ComponentCatalogPostgresService
+    CatalogAssetImports = loaded_asset_imports
     _discover_footprint_name_in_text = loaded_discover_footprint_name
     _discover_symbol_names_in_text = loaded_discover_symbol_names
     _sanitize_name = loaded_sanitize_name
@@ -342,7 +350,7 @@ def _single_symbol_payload_from_parsed_blocks(
     escaped_name = re.escape(selected_symbol)
     unit_pattern = re.compile(rf"^{escaped_name}_\d+_\d+$")
     unit_blocks = [block for name, block in blocks if unit_pattern.match(name)]
-    version, generator = service._symbol_header(text)  # type: ignore[attr-defined]
+    version, generator = service.asset_files.symbol_header(text)
     all_blocks_text = "\n  ".join([base_block] + unit_blocks)
     return f"(kicad_symbol_lib (version {version}) (generator {generator})\n  {all_blocks_text}\n)\n".encode("utf-8")
 
@@ -361,7 +369,8 @@ def _register_asset(
 ) -> None:
     if conn is None:
         return
-    asset = service._register_asset(  # type: ignore[attr-defined]
+    asset = service.asset_registry.register_asset(
+        service.runtime,
         conn,
         asset_type=asset_type,
         canonical_path=canonical_path,
@@ -372,7 +381,7 @@ def _register_asset(
     stats.assets_indexed += 1
     if generate_previews and asset_type in {"symbol", "footprint"}:
         stats.previews_attempted += 1
-        service._ensure_asset_preview(conn, asset)  # type: ignore[attr-defined]
+        service.previews.ensure_asset_previews(conn, service.runtime, asset)
 
 
 def _import_symbols(
@@ -405,10 +414,10 @@ def _import_symbols(
             if skip_upgrade:
                 normalized = payload
             else:
-                normalized = service._normalize_symbol_upload(symbol_file.name, payload)  # type: ignore[attr-defined]
+                normalized = CatalogAssetImports.normalize_symbol_upload(service.runtime, symbol_file.name, payload)
             text = normalized.decode("utf-8", errors="ignore")
             symbols = _discover_symbol_names_in_text(text)
-            parsed_blocks = service._extract_top_level_symbol_blocks(text)  # type: ignore[attr-defined]
+            parsed_blocks = service.asset_files.extract_top_level_symbol_blocks(text)
             blocks = dict(parsed_blocks)
             if not symbols:
                 local_stats.skipped_files += 1
@@ -419,7 +428,7 @@ def _import_symbols(
                 try:
                     print(f"  -> Extracting symbol: {symbol_name}")
                     canonical_payload = _single_symbol_payload_from_parsed_blocks(service, text, parsed_blocks, symbol_name)
-                    destination = service._symbol_destination(library, symbol_name)  # type: ignore[attr-defined]
+                    destination = service.asset_files.symbol_destination(service.runtime, library, symbol_name)
                     if destination.exists() and not _same_bytes(destination, canonical_payload) and not overwrite:
                         destination = _unique_destination(destination)
                     canonical = _write_canonical_file(
@@ -500,7 +509,7 @@ def _import_footprints(
             library = _library_from_footprint_file(footprint_file, footprints_root)
             text = _read_text(footprint_file)
             footprint_name = _discover_footprint_name_in_text(text) or footprint_file.stem
-            destination = service._footprint_destination(library, footprint_name)  # type: ignore[attr-defined]
+            destination = service.asset_files.footprint_destination(service.runtime, library, footprint_name)
             if destination.exists() and footprint_file.read_bytes() != destination.read_bytes() and not overwrite:
                 destination = _unique_destination(destination)
             canonical = _copy_canonical_file(
@@ -608,7 +617,7 @@ def _import_auxiliary_files(
             try:
                 print(f"Processing 3D model: {model_file.name} ...")
                 library = _relative_library_name(model_file, models_root, "Prism_Models")
-                destination = service._asset_root("3dmodel") / library / _sanitize_name(model_file.name, "model.step")  # type: ignore[attr-defined]
+                destination = service.asset_files.asset_root(service.runtime, "3dmodel") / library / _sanitize_name(model_file.name, "model.step")
                 canonical = _copy_canonical_file(
                     model_file,
                     destination,
@@ -638,7 +647,7 @@ def _import_auxiliary_files(
             try:
                 print(f"Processing SPICE file: {spice_file.name} ...")
                 library = _relative_library_name(spice_file, spice_root, "Prism_SPICE")
-                destination = service._asset_root("spice") / library / _sanitize_name(spice_file.name, "model.lib")  # type: ignore[attr-defined]
+                destination = service.asset_files.asset_root(service.runtime, "spice") / library / _sanitize_name(spice_file.name, "model.lib")
                 canonical = _copy_canonical_file(
                     spice_file,
                     destination,
@@ -737,12 +746,12 @@ def main() -> int:
     fatal_error = False
     try:
         if args.dry_run:
-            service._ensure_storage_dirs()  # type: ignore[attr-defined]
+            service.runtime.ensure_storage_dirs()
         elif args.no_index_db:
-            service._ensure_storage_dirs()  # type: ignore[attr-defined]
+            service.runtime.ensure_storage_dirs()
         else:
             service.initialize()
-            conn_context = service._connect()  # type: ignore[attr-defined]
+            conn_context = service.connection()
             conn = conn_context.__enter__()
             if jobs > 1:
                 print("--jobs is ignored while indexing DB rows directly; use --no-index-db for parallel file import.", file=sys.stderr)

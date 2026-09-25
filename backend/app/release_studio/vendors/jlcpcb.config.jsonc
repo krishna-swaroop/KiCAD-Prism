@@ -1,0 +1,54 @@
+// kicad-cruncher BOM/PnP configuration for the JLCPCB vendor pack.
+//
+// Why this file exists: `--format <kind>` emits one kind per invocation and
+// explicitly "overrides multi-output config mode", so asking for CSV and XLSX
+// of both the BOM and the CPL cost four full parses of the design. Config mode
+// emits every listed kind from one load, which halves the work -- measured on
+// JTYU-OBC at 114s -> 60s, with byte-identical CSVs and cell-identical XLSX.
+//
+// This file is hashed into `toolchain_digest` (see documents/renderer_resource_digest),
+// so editing it moves `build_key` instead of silently changing a vendor pack
+// under an unchanged one.
+//
+// Every value below is pinned to reproduce what `--format` produced before the
+// change. Two of them are load-bearing and were found by diffing real output:
+//
+//   include_dnp   The template ships `true`. Leaving it there added the board's
+//                 do-not-populate parts to the BOM handed to the assembler --
+//                 on USB-PD that was R6, R7 and R13. `--format jlc-csv`
+//                 excludes them, and so must we.
+//
+//   group_fields  The template ships ["mfg","mpn","description"]. `--format`
+//                 groups on value+footprint. On OBC the difference was real:
+//                 17 resistors share one Value and one footprint but carry
+//                 three different power ratings in their Description, so the
+//                 template's key split one BOM line into three. Matching
+//                 `--format` keeps this change purely a performance change.
+//                 (That OBC data is itself inconsistent -- Value says 0.0625W
+//                 where Description says 0.2W -- but that is the design's
+//                 problem to fix, not something a config change should mask.)
+//
+// variants.mode is pinned to "base" because the template ships "all", which
+// would emit a pack per variant. The caller passes --variant when a release
+// selects one.
+{
+  "schema": "kicad_cruncher.bom.config.a0",
+
+  "variants": {
+    "mode": "base",
+    "names": [],
+    "include_base": true
+  },
+
+  "bom": {
+    "outputs": ["jlc-csv", "jlc-xlsx"],
+    "group_fields": ["value", "footprint"],
+    "include_dnp": false,
+    "split_dnp": false
+  },
+
+  "pnp": {
+    "outputs": ["jlc-cpl", "jlc-cpl-xlsx"],
+    "units": "mm"
+  }
+}

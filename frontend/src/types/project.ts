@@ -71,9 +71,6 @@ export interface MonorepoStructure {
 export interface ProjectPropertiesFileTitleBlock {
     title: string;
     date: string;
-    rev: string;
-    company: string;
-    comments: Record<string, string>;
 }
 
 export interface ProjectPropertiesSchematicFile {
@@ -82,8 +79,6 @@ export interface ProjectPropertiesSchematicFile {
     version?: number;
     generator?: string;
     generator_version?: string;
-    paper?: string;
-    uuid?: string;
     title_block?: ProjectPropertiesFileTitleBlock | null;
 }
 
@@ -93,7 +88,6 @@ export interface ProjectPropertiesPcbFile {
     version?: number;
     generator?: string;
     generator_version?: string;
-    paper?: string;
     dimensions_mm?: {
         width_mm: number;
         height_mm: number;

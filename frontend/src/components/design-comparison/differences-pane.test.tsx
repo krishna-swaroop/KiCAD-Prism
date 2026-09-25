@@ -35,6 +35,7 @@ const group: ChangeGroup = {
 
 function renderPane(overrides: Partial<Parameters<typeof DifferencesPane>[0]> = {}) {
     const onSelectChange = vi.fn();
+    const onSelectInstance = vi.fn();
     render(
         <DifferencesPane
             title="PCB compare"
@@ -56,13 +57,14 @@ function renderPane(overrides: Partial<Parameters<typeof DifferencesPane>[0]> = 
             selectedGroupId={null}
             onSelectChange={onSelectChange}
             onSelectGroup={vi.fn()}
+            onSelectInstance={onSelectInstance}
             onPreviewChange={vi.fn()}
             onPrevious={vi.fn()}
             onNext={vi.fn()}
             {...overrides}
         />,
     );
-    return { onSelectChange };
+    return { onSelectChange, onSelectInstance };
 }
 
 describe("queue row members", () => {
@@ -80,16 +82,14 @@ describe("queue row members", () => {
     });
 
     it("selects the instance behind a designator in the opened list", () => {
-        const { onSelectChange } = renderPane();
+        const { onSelectInstance } = renderPane();
         fireEvent.click(
             screen.getByRole("button", { name: "Show all 28 designators" }),
         );
 
         fireEvent.click(screen.getByText("C28"));
 
-        expect(onSelectChange).toHaveBeenCalledWith(
-            expect.objectContaining({ reference: "C28" }),
-        );
+        expect(onSelectInstance).toHaveBeenCalledWith(group, "C28");
     });
 
     it("does not repeat the changes the property panel already states", () => {

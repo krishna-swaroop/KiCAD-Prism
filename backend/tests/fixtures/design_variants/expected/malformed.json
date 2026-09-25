@@ -1,0 +1,67 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "malformed",
+  "project": "broken.kicad_pro",
+  "notes": [
+    "broken.kicad_pro has `schematic.variants` as an object instead of an array; broken.kicad_sch has an unbalanced variant record.",
+    "Catalog endpoint: HTTP 200 with the board-derived entry and two source-unparseable diagnostics (packet 3.1). Semantic index generation for this project fails as it does today for any unparseable schematic; the catalog must not.",
+    "Native: kicad-cli refuses the schematic (recorded); the project file loads with the variants key ignored; the board exports normally."
+  ],
+  "identity": {
+    "footprints": {
+      "bfd2a907-d078-5792-b8ea-09c3431dcaf8": {
+        "reference": "R1",
+        "package": "R_0603_1608Metric"
+      }
+    }
+  },
+  "catalog": [
+    {
+      "name": "Lite",
+      "description": null,
+      "sources": [
+        "pcb",
+        "footprint"
+      ]
+    }
+  ],
+  "default": {
+    "occurrences": {},
+    "components": {},
+    "footprints": {},
+    "physical": {
+      "R1": "visible"
+    }
+  },
+  "variants": [
+    {
+      "name": "Lite",
+      "occurrences": {},
+      "components": {},
+      "footprints": {
+        "bfd2a907-d078-5792-b8ea-09c3431dcaf8": {
+          "dnp": true
+        }
+      },
+      "physical": {
+        "R1": "hidden"
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "source-unparseable",
+      "source": "project",
+      "path": "broken.kicad_pro"
+    },
+    {
+      "code": "source-unparseable",
+      "source": "schematic",
+      "path": "broken.kicad_sch"
+    }
+  ]
+}

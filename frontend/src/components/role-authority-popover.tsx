@@ -38,20 +38,21 @@ export function RoleAuthorityPopover({ role }: RoleAuthorityPopoverProps) {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-[min(52rem,calc(100vw-2rem))] gap-0 overflow-hidden rounded-md p-0"
+        collisionPadding={12}
+        className="flex max-h-[min(70vh,32rem)] w-[min(40rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden rounded-md p-0"
       >
-        <PopoverHeader className="border-b p-4">
+        <PopoverHeader className="shrink-0 border-b px-3 py-2">
           <PopoverTitle>Role permissions</PopoverTitle>
           <PopoverDescription>
-            Your role is {roleLabel(role)}. The highlighted column shows what you can do.
+            Highlighted column is {roleLabel(role)}.
           </PopoverDescription>
         </PopoverHeader>
 
-        <div className="overflow-x-auto">
-          <table aria-label="Role authority matrix" className="w-full min-w-[46rem] border-collapse text-left">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table aria-label="Role authority matrix" className="w-full min-w-[32rem] border-collapse text-left">
             <thead>
               <tr className="border-b bg-muted/40">
-                <th scope="col" className="w-[17rem] px-3 py-2 font-medium">
+                <th scope="col" className="w-[14rem] px-3 py-1.5 text-xs font-medium">
                   Permission
                 </th>
                 {ROLE_OPTIONS.map((matrixRole) => {
@@ -62,12 +63,11 @@ export function RoleAuthorityPopover({ role }: RoleAuthorityPopoverProps) {
                       scope="col"
                       aria-label={`${roleLabel(matrixRole)}${current ? " (current)" : ""}`}
                       className={cn(
-                        "min-w-[5.5rem] px-2 py-2 text-center text-[11px] font-medium leading-tight",
+                        "min-w-[4.5rem] px-1.5 py-1.5 text-center text-[11px] font-medium leading-tight",
                         current && "bg-primary/10 text-primary",
                       )}
                     >
                       {roleLabel(matrixRole)}
-                      {current && <span className="mt-0.5 block text-[10px] font-normal">Your role</span>}
                     </th>
                   );
                 })}
@@ -79,16 +79,13 @@ export function RoleAuthorityPopover({ role }: RoleAuthorityPopoverProps) {
                 previousCategory = authority.category;
                 return (
                   <tr key={authority.key} className="border-b last:border-b-0">
-                    <th scope="row" className="px-3 py-2 align-top font-normal">
+                    <th scope="row" className="px-3 py-1 align-middle font-normal">
                       {showCategory && (
-                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                           {authority.category}
                         </span>
                       )}
-                      <span className="block font-medium text-foreground">{authority.label}</span>
-                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
-                        {authority.description}
-                      </span>
+                      <span className="block text-xs font-medium text-foreground">{authority.label}</span>
                     </th>
                     {ROLE_OPTIONS.map((matrixRole) => {
                       const allowed = roleHasAuthority(matrixRole, authority.key);
@@ -97,14 +94,14 @@ export function RoleAuthorityPopover({ role }: RoleAuthorityPopoverProps) {
                           key={matrixRole}
                           aria-label={`${authority.label}: ${roleLabel(matrixRole)} is ${allowed ? "allowed" : "not allowed"}`}
                           className={cn(
-                            "px-2 py-2 text-center align-middle",
+                            "px-1.5 py-1 text-center align-middle",
                             matrixRole === role && "bg-primary/10",
                           )}
                         >
                           {allowed ? (
-                            <Check aria-hidden="true" className="mx-auto h-4 w-4 text-success" />
+                            <Check aria-hidden="true" className="mx-auto h-3.5 w-3.5 text-success" />
                           ) : (
-                            <Minus aria-hidden="true" className="mx-auto h-4 w-4 text-muted-foreground/50" />
+                            <Minus aria-hidden="true" className="mx-auto h-3.5 w-3.5 text-muted-foreground/50" />
                           )}
                         </td>
                       );

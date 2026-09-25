@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "fixture": "cynthion",
+  "tool": {
+    "name": "kicad-cli",
+    "version": "10.0.4"
+  },
+  "commands": [
+    {
+      "name": "pcb-drc",
+      "argv": ["kicad-cli", "pcb", "drc", "--output", "<output>/cynthion-drc.json", "<fixture>/cynthion.kicad_pcb"],
+      "exit_code": 0,
+      "stdout": ["Processed cynthion.kicad_pcb"],
+      "stderr": [],
+      "normalized_output": {
+        "format": "kicad-drc-json",
+        "board_parsed": true
+      }
+    },
+    {
+      "name": "sch-export-pdf",
+      "argv": ["kicad-cli", "sch", "export", "pdf", "--output", "<output>/cynthion.pdf", "<fixture>/cynthion.kicad_sch"],
+      "exit_code": 0,
+      "stdout": ["Processed cynthion.kicad_sch", "Loaded 14 child sheets"],
+      "stderr": [],
+      "normalized_output": {
+        "format": "pdf",
+        "schematic_parsed": true,
+        "sheet_count": 15
+      }
+    },
+    {
+      "name": "jobset-run",
+      "argv": ["kicad-cli", "jobset", "run", "--stop-on-error", "--file", "<fixture>/cynthion.kicad_jobset", "<fixture>/cynthion.kicad_pro"],
+      "exit_code": 0,
+      "stdout": ["Completed cynthion.kicad_jobset"],
+      "stderr": [],
+      "normalized_output": {
+        "format": "jobset",
+        "jobset_parsed": true,
+        "jobs_completed": 2
+      }
+    }
+  ]
+}

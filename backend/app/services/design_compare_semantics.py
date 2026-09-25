@@ -13,6 +13,8 @@ import json
 from collections import defaultdict, deque
 from typing import Any, Dict, Iterable, List, Optional
 
+from .design_compare_net_pairing import pair_nets
+
 
 def _native_item(
     *,
@@ -824,68 +826,15 @@ def _diff_nets(
     name over different terminals is a connectivity change.
     """
     changes: List[Dict[str, Any]] = []
-    base_nets = [item for item in base.get("nets") or [] if item.get("name")]
-    head_nets = [item for item in head.get("nets") or [] if item.get("name")]
-    base_by_fp: Dict[frozenset[tuple[str, str]], List[Dict[str, Any]]] = {}
-    head_by_fp: Dict[frozenset[tuple[str, str]], List[Dict[str, Any]]] = {}
-    for net in base_nets:
-        fp = _net_connectivity_fingerprint(base, net, base_lookups)
-        if fp:
-            base_by_fp.setdefault(fp, []).append(net)
-    for net in head_nets:
-        fp = _net_connectivity_fingerprint(head, net, head_lookups)
-        if fp:
-            head_by_fp.setdefault(fp, []).append(net)
+    pairing = pair_nets(
+        base.get("nets") or [],
+        head.get("nets") or [],
+        lambda item: _net_connectivity_fingerprint(base, item, base_lookups),
+        lambda item: _net_connectivity_fingerprint(head, item, head_lookups),
+    )
 
-    net_pairs: List[tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]] = []
-    used_base: set[int] = set()
-    used_head: set[int] = set()
-
-    for fp in sorted(base_by_fp.keys() & head_by_fp.keys(), key=lambda value: sorted(value)):
-        base_group = list(base_by_fp[fp])
-        head_group = list(head_by_fp[fp])
-        # Disambiguate identical connectivity by net name when possible.
-        head_by_name: Dict[str, deque[Dict[str, Any]]] = defaultdict(deque)
-        unmatched_heads: deque[Dict[str, Any]] = deque()
-        for item in head_group:
-            head_by_name[str(item.get("name"))].append(item)
-            unmatched_heads.append(item)
-        for old in base_group:
-            named_candidates = head_by_name.get(str(old.get("name")))
-            named = named_candidates.popleft() if named_candidates else None
-            if named is not None:
-                net_pairs.append((old, named))
-                used_base.add(id(old))
-                used_head.add(id(named))
-                continue
-            while unmatched_heads and id(unmatched_heads[0]) in used_head:
-                unmatched_heads.popleft()
-            if unmatched_heads:
-                candidate = unmatched_heads.popleft()
-                net_pairs.append((old, candidate))
-                used_base.add(id(old))
-                used_head.add(id(candidate))
-
-    leftover_base_nets = [net for net in base_nets if id(net) not in used_base]
-    leftover_head_nets = [net for net in head_nets if id(net) not in used_head]
-    by_name_base: Dict[str, deque[Dict[str, Any]]] = defaultdict(deque)
-    by_name_head: Dict[str, deque[Dict[str, Any]]] = defaultdict(deque)
-    for item in leftover_base_nets:
-        by_name_base[str(item.get("name"))].append(item)
-    for item in leftover_head_nets:
-        by_name_head[str(item.get("name"))].append(item)
-    for name in sorted(by_name_base.keys() | by_name_head.keys()):
-        old_group = by_name_base.get(name, deque())
-        new_group = by_name_head.get(name, deque())
-        while old_group or new_group:
-            net_pairs.append(
-                (
-                    old_group.popleft() if old_group else None,
-                    new_group.popleft() if new_group else None,
-                )
-            )
-
-    for old, new in net_pairs:
+    for pair in pairing.pairs:
+        old, new = pair.base, pair.head
         name = str((new or old or {}).get("name") or "")
         old_pairs = (
             _lookup_terminal_pairs(base, str(old.get("netUid") or ""), base_lookups)

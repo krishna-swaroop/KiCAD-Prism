@@ -6,81 +6,221 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { GitBranch, Copy, FileCode, Shield, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Copy, Shield, Plus, Trash2, KeyRound, Link2, MoreHorizontal, Server, type LucideIcon } from "lucide-react";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CodeHostsSettings } from "@/features/code-hosts/code-hosts-settings";
+import { ConnectedAccounts } from "@/features/code-hosts/connected-accounts";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
+import { changeOwnPassword, fetchAuthConfig } from "@/lib/auth";
 import { ROLE_OPTIONS, roleLabel } from "@/lib/roles";
+import type { SettingsTab } from "@/lib/settings-tabs";
 
 interface SettingsDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     user: User | null;
+    /** Page to show first, e.g. from a ``?settings=`` deep link. */
+    initialTab?: SettingsTab;
 }
-
-type SettingsTab = "git" | "access" | "general";
 
 interface RoleAssignment {
     email: string;
     role: UserRole;
     source: string;
+    has_password?: boolean;
 }
 
-export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps) {
-    const [activeTab, setActiveTab] = useState<SettingsTab>("git");
+interface NavItem {
+    tab: SettingsTab;
+    label: string;
+    icon: LucideIcon;
+    adminOnly?: boolean;
+}
+
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+    {
+        title: "Account",
+        items: [
+            { tab: "accounts", label: "Connected accounts", icon: Link2 },
+            { tab: "password", label: "Password", icon: KeyRound },
+        ],
+    },
+    {
+        title: "Workspace",
+        items: [
+            { tab: "code-hosts", label: "Code hosts", icon: Server, adminOnly: true },
+            { tab: "git", label: "Git & SSH", icon: GitBranch, adminOnly: true },
+            { tab: "access", label: "Access control", icon: Shield, adminOnly: true },
+        ],
+    },
+];
+
+export function SettingsDialog({ open, onOpenChange, user, initialTab }: SettingsDialogProps) {
     const isAdmin = user?.role === "admin";
+    const allowed = (tab: SettingsTab | undefined): tab is SettingsTab =>
+        Boolean(tab) && NAV_GROUPS.some((group) => group.items.some((item) => item.tab === tab && (!item.adminOnly || isAdmin)));
+    const [activeTab, setActiveTab] = useState<SettingsTab>(allowed(initialTab) ? initialTab : "accounts");
+    // Unknown until the auth config arrives; Connected accounts waits for it.
+    const [signInEnabled, setSignInEnabled] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        void fetchAuthConfig()
+            .then((config) => { if (!cancelled) setSignInEnabled(Boolean(config.auth_enabled)); })
+            .catch(() => { if (!cancelled) setSignInEnabled(true); });
+        return () => { cancelled = true; };
+    }, []);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl p-0 overflow-hidden flex h-[600px]">
-                <DialogTitle className="sr-only">Workspace Settings</DialogTitle>
+            <DialogContent className="max-w-4xl p-0 overflow-hidden flex h-[640px]">
+                <DialogTitle className="sr-only">Settings</DialogTitle>
                 <DialogDescription className="sr-only">
-                    Manage Git, SSH, and access control settings for this workspace.
+                    Manage your connected accounts and password, and the workspace's code hosts, Git access and roles.
                 </DialogDescription>
-                <div className="w-64 bg-muted/30 border-r p-4 flex flex-col gap-2">
-                    <div className="mb-4 px-2">
-                        <h2 className="text-lg font-semibold tracking-tight">Settings</h2>
-                        <p className="text-sm text-muted-foreground">Manage your workspace</p>
-                    </div>
-
-                    <Button
-                        variant={activeTab === "git" ? "secondary" : "ghost"}
-                        className="justify-start"
-                        onClick={() => setActiveTab("git")}
-                    >
-                        <GitBranch className="mr-2 h-4 w-4" />
-                        Git & SSH
-                    </Button>
-
-                    <Button
-                        variant={activeTab === "access" ? "secondary" : "ghost"}
-                        className="justify-start"
-                        onClick={() => setActiveTab("access")}
-                    >
-                        <Shield className="mr-2 h-4 w-4" />
-                        Access Control
-                    </Button>
-
-                    <Button
-                        variant={activeTab === "general" ? "secondary" : "ghost"}
-                        className="justify-start opacity-50 cursor-not-allowed"
-                        title="Coming soon"
-                    >
-                        <FileCode className="mr-2 h-4 w-4" />
-                        General
-                    </Button>
-                </div>
+                <nav className="w-60 shrink-0 bg-muted/30 border-r p-4 flex flex-col gap-4" aria-label="Settings sections">
+                    <h2 className="px-2 text-lg font-semibold tracking-tight">Settings</h2>
+                    {NAV_GROUPS.map((group) => {
+                        const items = group.items.filter((item) => !item.adminOnly || isAdmin);
+                        if (!items.length) return null;
+                        return (
+                            <div key={group.title} className="flex flex-col gap-1">
+                                <p className="px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                    {group.title}
+                                </p>
+                                {items.map((item) => (
+                                    <Button
+                                        key={item.tab}
+                                        variant={activeTab === item.tab ? "secondary" : "ghost"}
+                                        className="justify-start"
+                                        aria-current={activeTab === item.tab ? "page" : undefined}
+                                        onClick={() => setActiveTab(item.tab)}
+                                    >
+                                        <item.icon className="mr-2 h-4 w-4" />
+                                        {item.label}
+                                    </Button>
+                                ))}
+                            </div>
+                        );
+                    })}
+                </nav>
 
                 <div className="flex-1 overflow-y-auto p-6">
-                    {activeTab === "git" && <GitSettings user={user} />}
-                    {activeTab === "access" && <AccessControlSettings isAdmin={isAdmin} />}
-                    {activeTab === "general" && (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                            General settings coming soon.
-                        </div>
+                    {activeTab === "accounts" && signInEnabled !== null && (
+                        <ConnectedAccounts
+                            signInEnabled={signInEnabled}
+                            isAdmin={isAdmin}
+                            onSetUpCodeHosts={isAdmin ? () => setActiveTab("code-hosts") : undefined}
+                        />
                     )}
+                    {activeTab === "password" && <PasswordSettings />}
+                    {activeTab === "code-hosts" && isAdmin && (
+                        <CodeHostsSettings />
+                    )}
+                    {activeTab === "git" && isAdmin && <GitSettings user={user} />}
+                    {activeTab === "access" && isAdmin && <AccessControlSettings isAdmin={isAdmin} />}
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+function PasswordSettings() {
+    const [available, setAvailable] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        void fetchAuthConfig()
+            .then((config) => setAvailable(Boolean(config.password_auth_enabled)))
+            .catch(() => setAvailable(false));
+    }, []);
+
+    if (!available) {
+        return (
+            <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                Local passwords are not enabled on this deployment.
+            </div>
+        );
+    }
+
+    const submit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (newPassword !== confirmPassword) {
+            toast.error("The new passwords do not match.");
+            return;
+        }
+        setSaving(true);
+        try {
+            await changeOwnPassword(currentPassword, newPassword);
+            toast.success("Password updated. Other sessions were signed out.");
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to change password");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <h3 className="text-lg font-medium">Password</h3>
+                <p className="text-sm text-muted-foreground">
+                    Change the password for this account. Other signed-in sessions will end.
+                </p>
+            </div>
+            <form className="max-w-md space-y-3" onSubmit={(event) => void submit(event)}>
+                <div className="space-y-1.5">
+                    <Label htmlFor="current-password">Current password</Label>
+                    <Input
+                        id="current-password"
+                        type="password"
+                        autoComplete="current-password"
+                        value={currentPassword}
+                        onChange={(event) => setCurrentPassword(event.target.value)}
+                        required
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <Label htmlFor="settings-new-password">New password</Label>
+                    <Input
+                        id="settings-new-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        required
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <Label htmlFor="settings-confirm-password">Confirm new password</Label>
+                    <Input
+                        id="settings-confirm-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={confirmPassword}
+                        onChange={(event) => setConfirmPassword(event.target.value)}
+                        required
+                    />
+                </div>
+                <Button type="submit" disabled={saving}>
+                    {saving ? "Saving…" : "Update password"}
+                </Button>
+            </form>
+        </div>
     );
 }
 
@@ -121,6 +261,7 @@ interface AccessCheckResult {
     deploy_key_url?: string | null;
 }
 
+// react-doctor-disable-next-line no-giant-component - settings form and connection test flow are mutually coupled
 function GitSettings({ user }: { user: User | null }) {
     const [access, setAccess] = useState<GitAccessState | null>(null);
     const [loading, setLoading] = useState(false);
@@ -151,6 +292,10 @@ function GitSettings({ user }: { user: User | null }) {
             toast.error("Failed to load Git access settings");
         } finally {
             if (!signal?.aborted) {
+                // Already in `finally`, so the rejection path is covered. The
+                // rule reads the abort guard as a success-only branch; an
+                // aborted load has a successor in flight that owns the flag.
+                // react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
                 setLoading(false);
             }
         }
@@ -508,6 +653,7 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
     const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
     const [newEmail, setNewEmail] = useState("");
     const [newRole, setNewRole] = useState<UserRole>("viewer");
+    const [passwordAuthEnabled, setPasswordAuthEnabled] = useState(false);
     // The dialog names the person, so it holds the email rather than a boolean.
     const removalTarget = useConfirmTarget<string>();
 
@@ -536,6 +682,12 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
     useEffect(() => {
         void loadAssignments();
     }, [loadAssignments]);
+
+    useEffect(() => {
+        void fetchAuthConfig()
+            .then((config) => setPasswordAuthEnabled(Boolean(config.password_auth_enabled)))
+            .catch(() => setPasswordAuthEnabled(false));
+    }, []);
 
     const upsertRole = async (email: string, role: UserRole) => {
         const normalizedEmail = email.trim().toLowerCase();
@@ -579,6 +731,52 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
         }
     };
 
+    const [passwordEmail, setPasswordEmail] = useState<string | null>(null);
+    const [passwordValue, setPasswordValue] = useState("");
+    const [savingPassword, setSavingPassword] = useState(false);
+
+    const submitPassword = async () => {
+        if (!passwordEmail) return;
+        setSavingPassword(true);
+        try {
+            const response = await fetchApi(
+                `/api/settings/access/users/${encodeURIComponent(passwordEmail)}/password`,
+                {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ password: passwordValue, must_change: true }),
+                },
+            );
+            if (!response.ok) {
+                throw new Error(await readApiError(response, "Failed to set password"));
+            }
+            toast.success("Password set. The user must change it on next sign-in.");
+            setPasswordEmail(null);
+            setPasswordValue("");
+            await loadAssignments();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to set password");
+        } finally {
+            setSavingPassword(false);
+        }
+    };
+
+    const removePassword = async (email: string) => {
+        try {
+            const response = await fetchApi(
+                `/api/settings/access/users/${encodeURIComponent(email)}/password`,
+                { method: "DELETE" },
+            );
+            if (!response.ok) {
+                throw new Error(await readApiError(response, "Failed to remove password"));
+            }
+            toast.success("Local password removed");
+            await loadAssignments();
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to remove password");
+        }
+    };
+
     if (!isAdmin) {
         return (
             <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
@@ -590,84 +788,43 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
     return (
         <div className="space-y-6">
             <div>
-                <h3 className="text-lg font-medium">Access Control</h3>
-                <p className="text-sm text-muted-foreground">
-                    Manage role assignments for workspace users.
-                </p>
+                <h3 className="text-lg font-medium">Access control</h3>
+                <p className="text-sm text-muted-foreground">Who can use this workspace, and with which role.</p>
             </div>
 
-            <div className="rounded-lg border p-4 space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_auto] gap-2">
-                    <Input
-                        placeholder="user@example.com"
-                        value={newEmail}
-                        onChange={(event) => setNewEmail(event.target.value)}
-                    />
-                    <select
-                        className="h-10 rounded-md border bg-background px-3 text-sm"
-                        value={newRole}
-                        onChange={(event) => setNewRole(event.target.value as UserRole)}
-                    >
-                        {ROLE_OPTIONS.map((role) => (
-                            <option key={role} value={role}>{roleLabel(role)}</option>
-                        ))}
-                    </select>
-                    <Button onClick={() => void upsertRole(newEmail, newRole)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add / Update
-                    </Button>
-                </div>
-            </div>
+            <form
+                className="flex flex-col gap-2 sm:flex-row"
+                onSubmit={(event) => { event.preventDefault(); void upsertRole(newEmail, newRole); }}
+            >
+                <Input
+                    aria-label="User email address"
+                    placeholder="name@example.com"
+                    type="email"
+                    className="sm:flex-1"
+                    value={newEmail}
+                    onChange={(event) => setNewEmail(event.target.value)}
+                />
+                <Select value={newRole} onValueChange={(value) => setNewRole(value as UserRole)}>
+                    <SelectTrigger aria-label="Role for new assignment" className="sm:w-36"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        {ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{roleLabel(role)}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+                <Button type="submit" disabled={!newEmail.trim()}>
+                    <Plus className="mr-1.5 size-4" aria-hidden="true" />
+                    Add
+                </Button>
+            </form>
 
-            <div className="rounded-lg border overflow-hidden">
-                <div className="grid grid-cols-[2fr_1fr_1fr_auto] border-b bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    <div>Email</div>
-                    <div>Role</div>
-                    <div>Source</div>
-                    <div />
-                </div>
-                {loading ? (
-                    <div className="p-4 text-sm text-muted-foreground">Loading assignments...</div>
-                ) : assignments.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">No role assignments found.</div>
-                ) : (
-                    assignments.map((assignment) => {
-                        const isBootstrap = assignment.source === "bootstrap";
-                        return (
-                            <div
-                                key={assignment.email}
-                                className="grid grid-cols-[2fr_1fr_1fr_auto] items-center border-b px-4 py-2 gap-2"
-                            >
-                                <div className="truncate text-sm">{assignment.email}</div>
-                                <select
-                                    className="h-8 rounded-md border bg-background px-2 text-sm"
-                                    value={assignment.role}
-                                    disabled={isBootstrap}
-                                    onChange={(event) =>
-                                        void upsertRole(assignment.email, event.target.value as UserRole)
-                                    }
-                                >
-                                    {ROLE_OPTIONS.map((role) => (
-                                        <option key={role} value={role}>{roleLabel(role)}</option>
-                                    ))}
-                                </select>
-                                <div className="text-sm text-muted-foreground">{assignment.source}</div>
-                                <div className="flex justify-end">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        disabled={isBootstrap}
-                                        onClick={() => removalTarget.request(assignment.email)}
-                                        aria-label={`Remove role assignment for ${assignment.email}`}
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                        );
-                    })
-                )}
-            </div>
+            <RoleAssignmentsTable
+                assignments={assignments}
+                loading={loading}
+                passwordAuthEnabled={passwordAuthEnabled}
+                onChangeRole={(email, role) => void upsertRole(email, role)}
+                onSetPassword={(email) => { setPasswordEmail(email); setPasswordValue(""); }}
+                onRemovePassword={(email) => void removePassword(email)}
+                onRemove={(email) => removalTarget.request(email)}
+            />
 
             <ConfirmDialog
                 open={removalTarget.open}
@@ -678,6 +835,151 @@ function AccessControlSettings({ isAdmin }: { isAdmin: boolean }) {
                 requireHold
                 onConfirm={() => { if (removalTarget.target) void removeRole(removalTarget.target); }}
             />
+
+            <Dialog open={passwordAuthEnabled && passwordEmail !== null} onOpenChange={(next) => { if (!next) { setPasswordEmail(null); setPasswordValue(""); } }}>
+                <DialogContent className="max-w-sm">
+                    <DialogTitle>Set a password</DialogTitle>
+                    <DialogDescription>
+                        {passwordEmail} will be required to change this password on their next sign-in.
+                        Their existing sessions are ended.
+                    </DialogDescription>
+                    <form
+                        className="mt-2 space-y-3"
+                        onSubmit={(event) => { event.preventDefault(); void submitPassword(); }}
+                    >
+                        <Input
+                            type="password"
+                            autoComplete="new-password"
+                            placeholder="Temporary password"
+                            value={passwordValue}
+                            onChange={(event) => setPasswordValue(event.target.value)}
+                            required
+                        />
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="outline" onClick={() => { setPasswordEmail(null); setPasswordValue(""); }}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={savingPassword || !passwordValue}>
+                                {savingPassword ? "Saving…" : "Set password"}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
+
+interface RoleAssignmentsTableProps {
+    assignments: RoleAssignment[];
+    loading: boolean;
+    passwordAuthEnabled: boolean;
+    onChangeRole: (email: string, role: UserRole) => void;
+    onSetPassword: (email: string) => void;
+    onRemovePassword: (email: string) => void;
+    onRemove: (email: string) => void;
+}
+
+/** One row per user; fixed column widths keep every row's controls aligned. */
+function RoleAssignmentsTable({
+    assignments,
+    loading,
+    passwordAuthEnabled,
+    onChangeRole,
+    onSetPassword,
+    onRemovePassword,
+    onRemove,
+}: RoleAssignmentsTableProps) {
+    return (
+        <div className="overflow-hidden rounded-lg border">
+            <table className="w-full table-fixed text-sm">
+                <colgroup>
+                    <col />
+                    <col className="w-36" />
+                    <col className="w-28" />
+                    <col className="w-12" />
+                </colgroup>
+                <thead className="border-b bg-muted/30 text-left text-xs font-medium text-muted-foreground">
+                    <tr>
+                        <th scope="col" className="px-4 py-2 font-medium">User</th>
+                        <th scope="col" className="px-2 py-2 font-medium">Role</th>
+                        <th scope="col" className="px-2 py-2 font-medium">Source</th>
+                        <th scope="col" className="py-2"><span className="sr-only">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y">
+                    {loading ? (
+                        <tr><td colSpan={4} className="px-4 py-3 text-muted-foreground">Loading…</td></tr>
+                    ) : assignments.length === 0 ? (
+                        <tr><td colSpan={4} className="px-4 py-3 text-muted-foreground">No one has a role yet.</td></tr>
+                    ) : (
+                        assignments.map((assignment) => {
+                            const isBootstrap = assignment.source === "bootstrap";
+                            return (
+                                <tr key={assignment.email}>
+                                    <td className="px-4 py-2">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <span className="truncate" title={assignment.email}>{assignment.email}</span>
+                                            {passwordAuthEnabled && assignment.has_password && (
+                                                <KeyRound className="size-3.5 shrink-0 text-muted-foreground" aria-label="Has a local password" />
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-2 py-2">
+                                        <Select
+                                            value={assignment.role}
+                                            disabled={isBootstrap}
+                                            onValueChange={(value) => onChangeRole(assignment.email, value as UserRole)}
+                                        >
+                                            <SelectTrigger size="sm" className="w-full" aria-label={`Role for ${assignment.email}`}>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {ROLE_OPTIONS.map((role) => <SelectItem key={role} value={role}>{roleLabel(role)}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </td>
+                                    <td className="px-2 py-2 text-muted-foreground" title={isBootstrap ? "Set by BOOTSTRAP_ADMIN_USERS_STR in the deployment" : undefined}>
+                                        {isBootstrap ? "Deployment" : "Assigned"}
+                                    </td>
+                                    <td className="py-2 pr-2 text-right">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${assignment.email}`}>
+                                                    <MoreHorizontal aria-hidden="true" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                {passwordAuthEnabled && (
+                                                    <DropdownMenuItem onSelect={() => onSetPassword(assignment.email)}>
+                                                        <KeyRound aria-hidden="true" />
+                                                        {assignment.has_password ? "Reset password" : "Set password"}
+                                                    </DropdownMenuItem>
+                                                )}
+                                                {passwordAuthEnabled && assignment.has_password && (
+                                                    <DropdownMenuItem onSelect={() => onRemovePassword(assignment.email)}>
+                                                        <KeyRound aria-hidden="true" />
+                                                        Remove password
+                                                    </DropdownMenuItem>
+                                                )}
+                                                {passwordAuthEnabled && <DropdownMenuSeparator />}
+                                                <DropdownMenuItem
+                                                    variant="destructive"
+                                                    disabled={isBootstrap}
+                                                    onSelect={() => onRemove(assignment.email)}
+                                                >
+                                                    <Trash2 aria-hidden="true" />
+                                                    Remove access
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </td>
+                                </tr>
+                            );
+                        })
+                    )}
+                </tbody>
+            </table>
         </div>
     );
 }

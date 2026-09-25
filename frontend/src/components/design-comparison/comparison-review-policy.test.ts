@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-    presentationForSelection,
     recommendPresentationForChange,
     recommendPresentationForChanges,
 } from "./comparison-review-policy";
@@ -47,6 +46,16 @@ const schematicCases: PolicyCase[] = [
             fields: { Value: { old: "10k", new: "4.7k" } },
         },
         mode: "old-new",
+    },
+    {
+        name: "symbol field and placement edit",
+        change: {
+            category: "components",
+            object_kind: "symbol",
+            reasons: ["symbol-fields-changed", "moved"],
+            fields: { Value: { old: "10k", new: "4.7k" } },
+        },
+        mode: "side-by-side",
     },
     {
         name: "symbol placement edit",
@@ -216,6 +225,41 @@ const pcbCases: PolicyCase[] = [
         mode: "composite",
     },
     {
+        name: "added pad",
+        change: {
+            domain: "pcb",
+            kind: "added",
+            category: "nets",
+            object_kind: "pad",
+            reasons: ["object-added"],
+        },
+        mode: "composite",
+    },
+    {
+        name: "added fabrication graphic",
+        change: {
+            domain: "pcb",
+            kind: "added",
+            category: "graphics",
+            object_kind: "footprint_graphic",
+            layers: ["F.SilkS"],
+            reasons: ["object-added"],
+        },
+        mode: "side-by-side",
+    },
+    {
+        name: "added documentation graphic",
+        change: {
+            domain: "pcb",
+            kind: "added",
+            category: "graphics",
+            object_kind: "graphic",
+            layers: ["Dwgs.User"],
+            reasons: ["object-added"],
+        },
+        mode: "old-new",
+    },
+    {
         name: "footprint BOM and position-file state",
         change: {
             domain: "pcb",
@@ -333,6 +377,21 @@ describe("review presentation policy", () => {
         expect(recommendPresentationForChange(reviewChange(change)).mode).toBe(mode);
     });
 
+    it("gives structured evidence priority over geometric PCB rules", () => {
+        const result = recommendPresentationForChange(reviewChange({
+            domain: "pcb",
+            category: "components",
+            object_kind: "footprint",
+            reasons: ["moved"],
+            details: { reviewOnly: true, visualTargets: [] },
+        }));
+
+        expect(result).toMatchObject({
+            mode: "old-new",
+            rule: "structured-rule",
+        });
+    });
+
     it("uses the strongest evidence view for a mixed semantic group", () => {
         const result = recommendPresentationForChanges([
             reviewChange({ kind: "added", object_kind: "wire", category: "nets", reasons: ["object-added"] }),
@@ -372,21 +431,6 @@ describe("review presentation policy", () => {
 
     it("defaults the unselected overview to Composite", () => {
         expect(recommendPresentationForChanges([]).mode).toBe("composite");
-    });
-
-    it("applies recommendations only while Auto is enabled", () => {
-        const recommendation = recommendPresentationForChange(reviewChange({
-            category: "nets",
-            object_kind: "wire",
-            reasons: ["moved"],
-        }));
-
-        expect(presentationForSelection("composite", recommendation, true)).toBe(
-            "side-by-side",
-        );
-        expect(presentationForSelection("old-new", recommendation, false)).toBe(
-            "old-new",
-        );
     });
 
     /**

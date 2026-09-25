@@ -1,4 +1,4 @@
-export type ComponentSource = "manual" | "external";
+export type ComponentSource = "manual" | "external" | "import";
 export type AvailabilityState = "metadata_only" | "files_partial" | "place_ready";
 export type WorkflowStage = "open" | "in_progress" | "qa_review" | "done" | "released" | "archived";
 export type ReleaseStatus = WorkflowStage;
@@ -28,6 +28,34 @@ export interface CatalogPreview {
   file_path: string;
   generation_error: string;
   updated_at?: string;
+}
+
+export interface CatalogRepresentationAsset extends CatalogAsset {
+  preview_id?: string;
+}
+
+export interface CatalogRepresentation {
+  id: string;
+  label: string;
+  symbol: CatalogRepresentationAsset | null;
+  footprint: CatalogRepresentationAsset | null;
+  is_default: boolean;
+  display_order: number;
+  source_internal_part_number: string;
+  provenance: Record<string, unknown>;
+}
+
+export interface CatalogLocalInventory {
+  source: string;
+  quantity: number;
+  uom: string;
+  inventory_status: string;
+  fetch_status: string;
+  fetched_at: string;
+  mixed_units?: boolean;
+  mixed_status?: boolean;
+  mixed_fetch?: boolean;
+  mixed_freshness?: boolean;
 }
 
 export interface CatalogValidationRun {
@@ -103,6 +131,7 @@ export interface CatalogComponent {
   sync_status?: string;
   sync_error?: string;
   source: ComponentSource;
+  identity_kind: "mpn" | "provisional_ipn";
   name: string;
   value: string;
   manufacturer: string;
@@ -128,6 +157,8 @@ export interface CatalogComponent {
   stock_quantity: number;
   stock_uom: string;
   inventory_status: string;
+  stock_known: boolean;
+  local_inventory: CatalogLocalInventory | null;
   serial_number: string;
   lot_number: string;
   pedigree: string;
@@ -152,6 +183,9 @@ export interface CatalogComponent {
   summary: string;
   library_name: string;
   symbol_name: string;
+  representations: CatalogRepresentation[];
+  default_representation_id: string;
+  effective_representation_id?: string;
   release_status: ReleaseStatus;
   workflow_stage: WorkflowStage;
   assets: CatalogAsset[];
@@ -208,6 +242,7 @@ export interface CatalogRevisionDiff {
   summary: {
     metadataChanges: number;
     assetChanges: number;
+    representationChanges: number;
   };
   metadataChanges: Array<{
     field: string;
@@ -219,6 +254,12 @@ export interface CatalogRevisionDiff {
     key: string;
     before: CatalogRevisionDiffAsset | null;
     after: CatalogRevisionDiffAsset | null;
+    status: "added" | "removed" | "modified" | "unchanged";
+  }>;
+  representationChanges: Array<{
+    key: string;
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
     status: "added" | "removed" | "modified" | "unchanged";
   }>;
 }

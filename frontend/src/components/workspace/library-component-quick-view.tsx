@@ -15,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { CatalogComponent, CatalogValidationStatus, WorkflowStage } from "@/types/catalog";
-import { LibraryPreviewInspector } from "./library-preview-inspector";
+import { LibraryPreviewPair } from "./library-preview-inspector";
+import { resolveLibraryPreviewPairAssetIds } from "./library-preview-pair";
 
 const WORKFLOW_LABELS: Record<WorkflowStage, string> = {
   open: "Open",
@@ -58,6 +59,9 @@ export function LibraryComponentQuickView({
   onOpenWorkspace: () => void;
   onRetry: () => void;
 }) {
+  const previewPair = component
+    ? resolveLibraryPreviewPairAssetIds(component)
+    : {};
   return (
     <aside className="flex h-full w-96 shrink-0 flex-col border-l bg-card" aria-label="Component quick view">
       <div className="flex shrink-0 items-start justify-between gap-3 border-b p-4">
@@ -90,9 +94,14 @@ export function LibraryComponentQuickView({
                 <DefinitionRow label="Datasheet" value={component.datasheet_url ? <a className="inline-flex items-center justify-end gap-1 text-primary hover:underline" href={component.datasheet_url} target="_blank" rel="noreferrer">Open datasheet <ExternalLink className="h-3 w-3" /></a> : ""} />
               </section>
 
-              <section aria-label="Component previews" className="space-y-3 border-t pt-5">
-                <div><p className="mb-1.5 text-xs font-medium">Symbol</p><LibraryPreviewInspector previews={component.previews} kind="symbol" label={component.name} compact /></div>
-                <div><p className="mb-1.5 text-xs font-medium">Footprint</p><LibraryPreviewInspector previews={component.previews} kind="footprint" label={component.name} compact /></div>
+              <section aria-label="Component previews" className="border-t pt-5">
+                <LibraryPreviewPair
+                  label={component.name}
+                  symbolAssetId={previewPair.symbolAssetId}
+                  footprintAssetId={previewPair.footprintAssetId}
+                  compact
+                  stacked
+                />
               </section>
 
               <section aria-labelledby="quick-readiness" className="border-t pt-5">

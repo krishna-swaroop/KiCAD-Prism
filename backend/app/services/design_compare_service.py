@@ -247,19 +247,149 @@ def _snapshot_commit(repo_path: Path, commit: str, destination: Path, relative_p
 
 
 
+def _project_anchor(project_id: str) -> Optional[str]:
+    """Return this project's own KiCad project file, failing closed.
+
+    A missing workspace row or a database error must abort comparison work. If
+    either were treated as an unanchored project, source discovery would fall
+    back to the first co-located board and could cache a sibling's design.
+    """
+
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        raise ValueError(f"Project '{project_id}' not found")
+    return str(row.get("project_file_rel") or "").strip() or None
+
+
+def _project_cache_namespace(project_id: str) -> str:
+    """Keep caches for different anchors of a stable project id separate."""
+
+    anchor = _project_anchor(project_id) or ""
+    anchor_digest = hashlib.sha256(anchor.encode("utf-8")).hexdigest()[:16]
+    return f"{project_id}-{anchor_digest}"
+
+
 def _cache_dir(project_id: str, commit: str) -> Path:
+    namespace = _project_cache_namespace(project_id)
+    _touch_cache_entry(namespace, commit)
     return (
         _CACHE_ROOT
-        / project_id
+        / namespace
         / commit
         / semantic_index_service.generator_cache_tag()
     )
 
 
+def _touch_cache_entry(project_namespace: str, commit: str) -> None:
+    """Stamp a cache entry as used, so eviction can rank by last use.
+
+    Eviction ranks whole ``project/commit`` entries by that directory's mtime.
+    Writing a snapshot does not update it: a directory's mtime changes when its
+    own entries change, not when something deeper down does, so the build only
+    ever touches ``commit/<tag>/snapshot``. Left alone the entry's mtime is its
+    creation time, which makes eviction FIFO -- and the commit everyone diffs
+    against is usually the oldest, so it would be evicted first and every
+    comparison against it would pay the cold path. Stamping here, at the single
+    choke point every reader and writer goes through, makes it a real LRU.
+    """
+
+    entry = _CACHE_ROOT / project_namespace / commit
+    try:
+        if entry.is_dir():
+            os.utime(entry, None)
+    except OSError:
+        # Losing a timestamp only degrades eviction order; never fail a compare.
+        pass
+
+
 def _cache_lock(project_id: str, commit: str) -> threading.Lock:
-    key = f"{project_id}:{commit}:{semantic_index_service.generator_cache_tag()}"
+    namespace = _project_cache_namespace(project_id)
+    key = f"{namespace}:{commit}:{semantic_index_service.generator_cache_tag()}"
     with _CACHE_LOCKS_GUARD:
         return _CACHE_LOCKS.setdefault(key, threading.Lock())
+
+
+# The revision cache never rolled over: a snapshot plus its ~21 MB ecad object
+# index is kept per commit, forever, on a persistent volume. Cap the total and
+# evict least-recently-used commit directories so it cannot grow without bound.
+# 0 disables the cap.
+_CACHE_MAX_BYTES = int(os.environ.get("PRISM_DESIGN_COMPARE_CACHE_MAX_BYTES", str(20 * 1024**3)))
+
+# Never evict an entry used within this window. `_prune_revision_cache` runs in
+# one worker while three others may be mid-build, and the per-process
+# `_CACHE_LOCKS` cannot coordinate across them, so a plain size check could
+# delete a snapshot a live job is still reading. An entry is stamped on every
+# use, so a recent stamp means "someone may still be in here".
+_CACHE_MIN_AGE_SECONDS = float(os.environ.get("PRISM_DESIGN_COMPARE_CACHE_MIN_AGE", "900"))
+
+
+def _dir_size(path: Path) -> int:
+    total = 0
+    for child in path.rglob("*"):
+        try:
+            if child.is_file():
+                total += child.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _prune_revision_cache(
+    max_bytes: int = _CACHE_MAX_BYTES,
+    *,
+    min_age_seconds: float = _CACHE_MIN_AGE_SECONDS,
+) -> None:
+    """Keep the revision cache under a size cap, evicting least-recently-used first.
+
+    Each ``project/commit`` directory is one cache entry, stamped by
+    `_touch_cache_entry` every time a comparison resolves it. When the total
+    exceeds the cap, whole entries are removed oldest-stamp-first until it fits.
+    Entries stamped within ``min_age_seconds`` are never evicted, because a
+    concurrent worker may still be reading one. Best-effort: any error here is
+    logged and swallowed, because a comparison result is already published and a
+    full disk is a worse failure than a slightly oversized cache.
+    """
+
+    if max_bytes <= 0 or not _CACHE_ROOT.exists():
+        return
+    try:
+        now = time.time()
+        entries: list[tuple[float, Path, int]] = []
+        total = 0
+        for project_dir in _CACHE_ROOT.iterdir():
+            if not project_dir.is_dir():
+                continue
+            for commit_dir in project_dir.iterdir():
+                if not commit_dir.is_dir():
+                    continue
+                try:
+                    mtime = commit_dir.stat().st_mtime
+                except OSError:
+                    continue
+                size = _dir_size(commit_dir)
+                total += size
+                # In-use entries still count toward the total; they are just not
+                # candidates, so the cap is respected as soon as they age out.
+                if now - mtime >= min_age_seconds:
+                    entries.append((mtime, commit_dir, size))
+        if total <= max_bytes:
+            return
+        for _mtime, commit_dir, size in sorted(entries, key=lambda item: item[0]):
+            if total <= max_bytes:
+                break
+            shutil.rmtree(commit_dir, ignore_errors=True)
+            total -= size
+            logger.info("Evicted design-compare cache entry %s (%d bytes)", commit_dir, size)
+        if total > max_bytes:
+            logger.warning(
+                "Design-compare cache still %d bytes over the %d byte cap; "
+                "the remaining entries were used within the last %.0fs",
+                total - max_bytes,
+                max_bytes,
+                min_age_seconds,
+            )
+    except Exception:
+        logger.exception("Design-compare cache prune failed")
 
 
 def _read_revision_cache(
@@ -423,7 +553,7 @@ def _load_or_build_initial_revision(
         else:
             logs.append(f"Snapshot ready for {commit[:7]}")
 
-        pro = _find_pro(snap)
+        pro = _find_pro(snap, _project_anchor(project_id))
         semantic_index: Dict[str, Any] = {
             "schema": semantic_index_service.SCHEMA,
             "components": [],
@@ -532,15 +662,16 @@ def _load_or_build_pcb_revision(
         snap = cache / "snapshot"
         semantic_index = copy.deepcopy(initial.get("semantic") or {})
 
+        anchor = _project_anchor(project_id)
         try:
-            stackup = timed("stackup", lambda: _extract_stackup(snap))
+            stackup = timed("stackup", lambda: _extract_stackup(snap, anchor))
         except Exception as exc:
             logs.append(f"Stackup extract failed for {commit[:7]}: {exc}")
             stackup = {"present": False, "layers": []}
 
         fabrication = timed(
             "fabrication-export",
-            lambda: _export_fabrication(cache, snap, commit, logs),
+            lambda: _export_fabrication(cache, snap, commit, logs, anchor),
         )
 
         payload = {
@@ -567,6 +698,7 @@ def _export_fabrication(
     snap: Path,
     commit: str,
     logs: List[str],
+    anchor: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Plot this revision's Gerber package once, beside its snapshot.
 
@@ -580,7 +712,7 @@ def _export_fabrication(
     treated as a successful export on the next compare.
     """
 
-    board = _find_pcb(snap)
+    board = _find_pcb(snap, anchor)
     if board is None:
         return {"present": False, "reason": "no board file in this revision"}
     output = cache / "fabrication"
@@ -1705,6 +1837,7 @@ def start_design_compare_job(
         json.dumps(
             {
                 "project": project_id,
+                "projectFileRel": str(row.get("project_file_rel") or ""),
                 "base": base,
                 "head": head,
                 "includeUnchanged": include_unchanged,
@@ -1725,6 +1858,7 @@ def start_design_compare_job(
             "head": head,
             "include_unchanged": include_unchanged,
             "artifact_key": artifact_key,
+            "project_file_rel": str(row.get("project_file_rel") or ""),
         },
         worker_pool="prism",
         artifact_key=artifact_key,
@@ -1865,6 +1999,12 @@ def run_design_compare_job_v3(context: JobContext) -> JobResult:
     requested_head = str(payload["head"])
     include_unchanged = bool(payload.get("include_unchanged"))
     artifact_key = str(payload["artifact_key"])
+    expected_anchor = str(payload.get("project_file_rel") or "")
+    current_anchor = _project_anchor(project_id) or ""
+    if current_anchor != expected_anchor:
+        raise RuntimeError(
+            "Project anchor changed after the comparison was queued; retry the comparison"
+        )
     repo_path, relative_path, _checkout = _repo_paths(project_id)
     base = _resolve_revision(repo_path, requested_base)
     head = _resolve_revision(repo_path, requested_head)
@@ -2016,6 +2156,7 @@ def run_design_compare_job_v3(context: JobContext) -> JobResult:
             result,
             artifact_key=artifact_key,
         )
+        _prune_revision_cache()
         return JobResult(
             message="Design comparison ready",
             artifact=complete,

@@ -71,6 +71,10 @@
   --border: 217.2 32.6% 17.5%;
   --input: 217.2 32.6% 17.5%;
   --ring: 224.3 76.3% 48%;
+  /* Deliberately the same white as the light theme: this is the ground the
+     ECAD canvas paints on, and the renderer's own colours assume it. Chrome
+     drawn over it has to come from `--foreground`, not from this token, which
+     is why a preview's unit strip sits outside the frame rather than in it. */
   --preview-surface: 0 0% 100%;
 }
 
@@ -86,8 +90,72 @@
   }
 }
 
+@layer components {
+  /* The workspace sidebar changes this region's width without changing the
+     viewport breakpoint. Size the import cards from their own container so
+     the project controls keep a single row in either shell state. */
+  .import-sources-container {
+    container: import-sources / inline-size;
+  }
+
+  @container import-sources (min-width: 72rem) {
+    .import-source-groups--split {
+      grid-template-columns: minmax(23rem, 1fr) minmax(0, 2fr);
+    }
+
+    .import-source-card,
+    .import-source-controls {
+      flex-wrap: nowrap;
+    }
+  }
+}
+
 @layer utilities {
   .bg-preview-surface {
     background-color: hsl(var(--preview-surface));
+  }
+
+  /* A slim, theme-colored scrollbar so scrolling panels match the UI instead
+     of showing the OS default. Applied per-container rather than globally. */
+  .themed-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+  .themed-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .themed-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .themed-scrollbar::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 4px;
+  }
+  .themed-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+@layer base {
+  :root {
+    /* Height claimed by full-width app chrome above the routes (today: the
+       session-expired banner). Zero unless the shell sets it. */
+    --app-chrome-offset: 0px;
+  }
+}
+
+@layer utilities {
+  /* Viewport-height helpers that stay correct while that chrome is showing.
+     Route layouts sized in raw 100vh would otherwise overflow by exactly the
+     banner height and push their own footers off-screen. */
+  .h-app-viewport {
+    height: calc(100vh - var(--app-chrome-offset));
+  }
+  .min-h-app-viewport {
+    min-height: calc(100vh - var(--app-chrome-offset));
+  }
+  .h-app-main {
+    height: calc(100vh - 4rem - var(--app-chrome-offset));
   }
 }

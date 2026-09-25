@@ -31,33 +31,35 @@ export async function hydrateDesignComparePayload(
     signal?: AbortSignal,
 ): Promise<DesignCompareResult> {
     if (!isBundle(payload)) return payload;
-    const responses = await Promise.all(
-        SIDECARS.map(async (name) => {
-            const descriptor = payload.sidecars[name];
-            if (!descriptor?.url) {
-                throw new Error(`Comparison result is missing its ${name} sidecar`);
-            }
-            const response = await fetchApi(descriptor.url, { signal });
-            if (!response.ok) {
-                throw new Error(
-                    await readApiError(
-                        response,
-                        `Failed to load comparison ${name} data`,
-                    ),
-                );
-            }
-            return [name, await response.json()] as const;
-        }),
-    );
-    const optional = await Promise.all(
-        OPTIONAL_SIDECARS.map(async (name) => {
-            const descriptor = payload.sidecars[name];
-            if (!descriptor?.url) return [name, undefined] as const;
-            const response = await fetchApi(descriptor.url, { signal });
-            if (!response.ok) return [name, undefined] as const;
-            return [name, await response.json()] as const;
-        }),
-    );
+    const [responses, optional] = await Promise.all([
+        Promise.all(
+            SIDECARS.map(async (name) => {
+                const descriptor = payload.sidecars[name];
+                if (!descriptor?.url) {
+                    throw new Error(`Comparison result is missing its ${name} sidecar`);
+                }
+                const response = await fetchApi(descriptor.url, { signal });
+                if (!response.ok) {
+                    throw new Error(
+                        await readApiError(
+                            response,
+                            `Failed to load comparison ${name} data`,
+                        ),
+                    );
+                }
+                return [name, await response.json()] as const;
+            }),
+        ),
+        Promise.all(
+            OPTIONAL_SIDECARS.map(async (name) => {
+                const descriptor = payload.sidecars[name];
+                if (!descriptor?.url) return [name, undefined] as const;
+                const response = await fetchApi(descriptor.url, { signal });
+                if (!response.ok) return [name, undefined] as const;
+                return [name, await response.json()] as const;
+            }),
+        ),
+    ]);
     const sidecars = Object.fromEntries([...responses, ...optional]) as Record<
         (typeof SIDECARS)[number] | (typeof OPTIONAL_SIDECARS)[number],
         unknown

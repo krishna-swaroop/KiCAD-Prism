@@ -77,16 +77,8 @@ function MetadataCell({
   onActivate: () => void;
   onNavigate: (rowDelta: number, columnDelta: number) => void;
 }) {
-  const [draft, setDraft] = useState(value);
-  const cancelCommit = useRef(false);
   const editorRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(null);
-  useEffect(() => setDraft(value), [value]);
   useEffect(() => { if (active) editorRef.current?.focus(); }, [active]);
-  const error = validateCell(field, draft);
-  const commit = () => {
-    if (cancelCommit.current) { cancelCommit.current = false; return; }
-    if (!readOnly && !error && draft !== value) onCommit(draft);
-  };
   const pinnedClass = pinnedOffset === undefined ? "" : "sticky z-10 bg-background";
   const pinnedStyle = pinnedOffset === undefined ? undefined : { left: pinnedOffset };
 
@@ -97,6 +89,9 @@ function MetadataCell({
     return <div
       className={cn("flex h-9 min-w-0 items-center border-r px-2 text-xs outline-none focus:ring-1 focus:ring-inset focus:ring-ring", pinnedClass)}
       style={pinnedStyle}
+      role="gridcell"
+      aria-colindex={columnIndex + 2}
+      aria-label={`${field.label}: ${display}`}
       data-cell={`${rowIndex}:${columnIndex}`}
       tabIndex={0}
       title={field.description || display}
@@ -113,13 +108,14 @@ function MetadataCell({
   }
 
   if (field.type === "boolean") {
-    return <div className={cn("flex h-9 items-center justify-center border-r px-2", pinnedClass)} style={pinnedStyle} data-cell={`${rowIndex}:${columnIndex}`}>
-      <Checkbox ref={editorRef as React.Ref<HTMLButtonElement>} checked={["true", "1", "yes"].includes(value.toLocaleLowerCase())} onCheckedChange={(checked) => onCommit(checked ? "true" : "false")} />
+    return <div role="gridcell" aria-colindex={columnIndex + 2} className={cn("flex h-9 items-center justify-center border-r px-2", pinnedClass)} style={pinnedStyle} data-cell={`${rowIndex}:${columnIndex}`}>
+      <Checkbox aria-label={field.label} ref={editorRef as React.Ref<HTMLButtonElement>} checked={["true", "1", "yes"].includes(value.toLocaleLowerCase())} onCheckedChange={(checked) => onCommit(checked ? "true" : "false")} />
     </div>;
   }
   if (field.type === "enum") {
-    return <div className={cn("h-9 border-r p-1", pinnedClass)} style={pinnedStyle} data-cell={`${rowIndex}:${columnIndex}`}>
+    return <div role="gridcell" aria-colindex={columnIndex + 2} className={cn("h-9 border-r p-1", pinnedClass)} style={pinnedStyle} data-cell={`${rowIndex}:${columnIndex}`}>
       <select
+        aria-label={field.label}
         ref={editorRef as React.Ref<HTMLSelectElement>}
         className="h-full w-full border-0 bg-transparent px-1 text-xs outline-none focus:ring-1 focus:ring-ring"
         value={value}
@@ -130,9 +126,49 @@ function MetadataCell({
       </select>
     </div>;
   }
-  return <div className={cn("h-9 border-r p-1", pinnedClass, error && "bg-destructive/10")} style={pinnedStyle} data-cell={`${rowIndex}:${columnIndex}`} title={error || field.description}>
+  // Rendered only while the cell is active, so mounting *is* the start of an
+  // edit session and the draft seeds itself from the committed value. Keying
+  // on `value` instead would remount after the blur that commits it and pull
+  // focus back into the cell the user just left.
+  return <CellTextEditor
+    value={value}
+    field={field}
+    rowIndex={rowIndex}
+    columnIndex={columnIndex}
+    pinnedClass={pinnedClass}
+    pinnedStyle={pinnedStyle}
+    inputRef={editorRef as React.Ref<HTMLInputElement>}
+    readOnly={readOnly}
+    onCommit={onCommit}
+    onNavigate={onNavigate}
+  />;
+}
+
+function CellTextEditor({
+  value, field, rowIndex, columnIndex, pinnedClass, pinnedStyle, inputRef, readOnly, onCommit, onNavigate,
+}: {
+  value: string;
+  field: CatalogMetadataField;
+  rowIndex: number;
+  columnIndex: number;
+  pinnedClass: string;
+  pinnedStyle?: { left: number };
+  inputRef: React.Ref<HTMLInputElement>;
+  readOnly: boolean;
+  onCommit: (value: string) => void;
+  onNavigate: (rowDelta: number, columnDelta: number) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const cancelCommit = useRef(false);
+  const error = validateCell(field, draft);
+  const commit = () => {
+    if (cancelCommit.current) { cancelCommit.current = false; return; }
+    if (!readOnly && !error && draft !== value) onCommit(draft);
+  };
+  return <div role="gridcell" aria-colindex={columnIndex + 2} className={cn("h-9 border-r p-1", pinnedClass, error && "bg-destructive/10")} style={pinnedStyle} data-cell={`${rowIndex}:${columnIndex}`} title={error || field.description}>
     <input
-      ref={editorRef as React.Ref<HTMLInputElement>}
+      aria-label={field.label}
+      ref={inputRef}
       className="h-full w-full border-0 bg-transparent px-1 text-xs outline-none focus:bg-background focus:ring-1 focus:ring-ring disabled:cursor-default"
       type={field.type === "number" ? "text" : field.type === "url" ? "url" : "text"}
       inputMode={field.type === "number" ? "decimal" : undefined}
@@ -203,6 +239,7 @@ function BatchReviewDialog({
   const valid = batch?.items.filter((item) => item.validation_status === "valid") || [];
   const validKey = valid.map((item) => item.id).join("|");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   useEffect(() => setSelectedIds(validKey ? validKey.split("|") : []), [batch?.id, validKey]);
   const allSelected = valid.length > 0 && selectedIds.length === valid.length;
   return <Dialog open={open} onOpenChange={onOpenChange}>
@@ -224,7 +261,7 @@ function BatchReviewDialog({
         <ScrollArea className="min-h-0 flex-1 border">
           <div className="divide-y">
             {batch.items.map((item) => <div key={item.id} className="p-3 text-xs">
-              <div className="flex items-center gap-2">{item.validation_status === "valid" ? <Checkbox checked={selectedIds.includes(item.id)} onCheckedChange={(checked) => setSelectedIds((current) => checked === true ? [...current, item.id] : current.filter((id) => id !== item.id))} aria-label={`Select ${item.mpn || item.name}`} /> : null}<span className="font-medium">{item.mpn || item.name}</span><Badge variant={item.validation_status === "valid" || item.validation_status === "applied" ? "success" : item.validation_status === "noop" ? "secondary" : "destructive"}>{item.validation_status}</Badge></div>
+              <div className="flex items-center gap-2">{item.validation_status === "valid" ? <Checkbox checked={selectedIdSet.has(item.id)} onCheckedChange={(checked) => setSelectedIds((current) => checked === true ? [...current, item.id] : current.filter((id) => id !== item.id))} aria-label={`Select ${item.mpn || item.name}`} /> : null}<span className="font-medium">{item.mpn || item.name}</span><Badge variant={item.validation_status === "valid" || item.validation_status === "applied" ? "success" : item.validation_status === "noop" ? "secondary" : "destructive"}>{item.validation_status}</Badge></div>
               {item.error_message ? <p className="mt-1 text-destructive">{item.error_message}</p> : null}
               {item.diff.length ? <div className="mt-2 grid gap-1 sm:grid-cols-2">{item.diff.map((change) => <p key={change.field} className="truncate text-muted-foreground"><span className="font-medium text-foreground">{change.label}:</span> {change.before || "—"} → {change.after || "—"}</p>)}</div> : null}
             </div>)}
@@ -239,10 +276,13 @@ function BatchReviewDialog({
   </Dialog>;
 }
 
+// react-doctor-disable-next-line no-giant-component - spreadsheet grid, field preferences, and batch lifecycle share one page state
 export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
   const [items, setItems] = useState<CatalogComponent[]>([]);
   const [fields, setFields] = useState<CatalogMetadataField[]>([]);
   const [preferences, setPreferences] = useState<CatalogMetadataGridPreferences>({ visible: [], order: [], widths: {}, pinned: [] });
+  const visibleFieldKeySet = useMemo(() => new Set(preferences.visible), [preferences.visible]);
+  const pinnedFieldKeySet = useMemo(() => new Set(preferences.pinned), [preferences.pinned]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -295,10 +335,12 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
       ]);
       setFields(fieldResponse.items);
       setCategories(categoryResponse.categories);
-      const activeKeys = fieldResponse.items.filter((field) => !field.archived).map((field) => field.key);
+      const activeKeys = fieldResponse.items.flatMap((field) => (field.archived ? [] : [field.key]));
+      const activeKeySet = new Set(activeKeys);
+      const layoutOrderSet = new Set(layout.order ?? []);
       setPreferences({
-        visible: layout.visible?.length ? layout.visible.filter((key) => activeKeys.includes(key)) : activeKeys,
-        order: layout.order?.length ? [...layout.order.filter((key) => activeKeys.includes(key)), ...activeKeys.filter((key) => !layout.order.includes(key))] : activeKeys,
+        visible: layout.visible?.length ? layout.visible.filter((key) => activeKeySet.has(key)) : activeKeys,
+        order: layout.order?.length ? [...layout.order.filter((key) => activeKeySet.has(key)), ...activeKeys.filter((key) => !layoutOrderSet.has(key))] : activeKeys,
         widths: layout.widths || {}, pinned: layout.pinned || [],
       });
       preferencesLoaded.current = true;
@@ -338,14 +380,17 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
     return [...activeFields].sort((a, b) => (rank.get(a.key) ?? 10000 + a.display_order) - (rank.get(b.key) ?? 10000 + b.display_order));
   }, [activeFields, preferences.order]);
   const visibleFields = useMemo(() => {
-    const visible = orderedFields.filter((field) => preferences.visible.includes(field.key));
-    return [...visible.filter((field) => preferences.pinned.includes(field.key)), ...visible.filter((field) => !preferences.pinned.includes(field.key))];
+    const visibleSet = new Set(preferences.visible);
+    const pinnedSet = new Set(preferences.pinned);
+    const visible = orderedFields.filter((field) => visibleSet.has(field.key));
+    return [...visible.filter((field) => pinnedSet.has(field.key)), ...visible.filter((field) => !pinnedSet.has(field.key))];
   }, [orderedFields, preferences.pinned, preferences.visible]);
   const pinnedOffsets = useMemo(() => {
     const offsets = new Map<string, number>();
+    const pinnedSet = new Set(preferences.pinned);
     let left = IDENTITY_WIDTH;
     visibleFields.forEach((field) => {
-      if (!preferences.pinned.includes(field.key)) return;
+      if (!pinnedSet.has(field.key)) return;
       offsets.set(field.key, left);
       left += preferences.widths[field.key] || DEFAULT_WIDTH;
     });
@@ -359,8 +404,14 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
   const visibleRows = items.slice(firstVisibleRow, lastVisibleRow);
 
   const commitStaged = useCallback((next: StagedRows) => {
-    setStaged((current) => { undoStack.current.push(cloneStaged(current)); if (undoStack.current.length > 100) undoStack.current.shift(); redoStack.current = []; return next; });
-  }, []);
+    // History bookkeeping lives here, not inside a state updater: React may
+    // invoke an updater more than once, which would duplicate undo entries.
+    if (next === staged) return;
+    undoStack.current.push(cloneStaged(staged));
+    if (undoStack.current.length > 100) undoStack.current.shift();
+    redoStack.current = [];
+    setStaged(next);
+  }, [staged]);
   const undo = () => { const previous = undoStack.current.pop(); if (!previous) return; redoStack.current.push(cloneStaged(staged)); setStaged(previous); };
   const redo = () => { const next = redoStack.current.pop(); if (!next) return; undoStack.current.push(cloneStaged(staged)); setStaged(next); };
 
@@ -473,8 +524,13 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
       };
       await poll();
       const completed = await fetchJson<CatalogMetadataBatch>(`/api/catalog/metadata/batches/${batch.id}`);
+      const itemIdSet = new Set(itemIds);
       const appliedComponents = new Set(
-        completed.items.filter((item) => itemIds.includes(item.id) && item.validation_status === "applied").map((item) => item.component_id),
+        completed.items.flatMap((item) => (
+          itemIdSet.has(item.id) && item.validation_status === "applied"
+            ? [item.component_id]
+            : []
+        )),
       );
       setBatch(completed);
       setStaged((current) => Object.fromEntries(Object.entries(current).filter(([componentId]) => !appliedComponents.has(componentId))));
@@ -487,7 +543,7 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
     <input ref={csvInputRef} className="hidden" type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void uploadCsv(file); }} />
     <header className="shrink-0 border-b bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div><div className="flex items-center gap-2"><FilePenLine className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Bulk Edit Metadata</h2></div><p className="mt-1 text-xs text-muted-foreground">Stage engineering metadata changes without altering CAD assets.</p></div>
+        <div><div className="flex items-center gap-2"><FilePenLine className="h-5 w-5 text-primary" /><h2 className="text-lg font-semibold">Bulk Edit Metadata</h2></div></div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => void exportCsv()}><Download className="h-3.5 w-3.5" /> Export CSV</Button>
           {canEdit ? <Button size="sm" variant="outline" onClick={() => csvInputRef.current?.click()}><Upload className="h-3.5 w-3.5" /> Import CSV</Button> : null}
@@ -500,7 +556,7 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
         <Select value={workflow} onValueChange={(value) => { setWorkflow(value); setPage(1); }}><SelectTrigger size="sm" className="w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All workflow stages</SelectItem>{Object.entries(WORKFLOW_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
         <Select value={availability} onValueChange={(value) => { setAvailability(value); setPage(1); }}><SelectTrigger size="sm" className="w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All CAD states</SelectItem>{Object.entries(AVAILABILITY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
         <Select value={validation} onValueChange={(value) => { setValidation(value); setPage(1); }}><SelectTrigger size="sm" className="w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All validation</SelectItem>{Object.entries(VALIDATION_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
-        <Select value={category} onValueChange={(value) => { setCategory(value); setPage(1); }}><SelectTrigger size="sm" className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem><SelectItem value="uncategorized">Uncategorized</SelectItem>{categories.filter((item) => item.name).map((item) => <SelectItem key={item.name} value={item.name}>{item.name} ({item.count})</SelectItem>)}</SelectContent></Select>
+        <Select value={category} onValueChange={(value) => { setCategory(value); setPage(1); }}><SelectTrigger size="sm" className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem><SelectItem value="uncategorized">Uncategorized</SelectItem>{categories.flatMap((item) => (item.name ? [<SelectItem key={item.name} value={item.name}>{item.name} ({item.count})</SelectItem>] : []))}</SelectContent></Select>
         <Select value={`${sortBy}:${sortDir}`} onValueChange={(value) => { const [key, direction] = value.split(":"); setSortBy(key); setSortDir(direction); setPage(1); }}><SelectTrigger size="sm" className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="updated_at:desc">Recently updated</SelectItem><SelectItem value="mpn:asc">MPN A–Z</SelectItem><SelectItem value="manufacturer:asc">Manufacturer A–Z</SelectItem><SelectItem value="category:asc">Category A–Z</SelectItem></SelectContent></Select>
         {workflow !== "all" || availability !== "all" || validation !== "all" || category !== "all" || query ? <Button size="sm" variant="ghost" onClick={() => { setWorkflow("all"); setAvailability("all"); setValidation("all"); setCategory("all"); setQuery(""); setPage(1); }}><FilterX className="h-3.5 w-3.5" /> Clear filters</Button> : null}
         <div className="ml-auto flex items-center gap-1"><Button size="icon-sm" variant="ghost" aria-label="Undo metadata edit" disabled={!undoStack.current.length} onClick={undo}><Undo2 className="h-4 w-4" /></Button><Button size="icon-sm" variant="ghost" aria-label="Redo metadata edit" disabled={!redoStack.current.length} onClick={redo}><Redo2 className="h-4 w-4" /></Button><Button size="sm" variant="ghost" onClick={() => setPanelOpen((value) => !value)}><Columns3 className="h-4 w-4" /> Fields</Button></div>
@@ -513,10 +569,10 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
         <ScrollArea className="min-h-0 flex-1"><div>
           {groupedFieldList.map((section) => <section key={section.group}><div className="sticky top-0 z-10 border-y bg-muted px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{section.group}</div><div className="divide-y">{section.items.map((field) => <div key={field.id} className={cn("group flex items-center gap-1 p-2", field.archived && "opacity-60")} draggable={!field.archived} onDragStart={(event) => event.dataTransfer.setData("text/plain", field.key)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const dragged = event.dataTransfer.getData("text/plain"); const from = preferences.order.indexOf(dragged); const to = preferences.order.indexOf(field.key); if (from >= 0 && to >= 0) setPreferences((current) => { const order = [...current.order]; order.splice(to, 0, order.splice(from, 1)[0]); return { ...current, order }; }); }}>
             <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <button className="p-1 text-muted-foreground hover:text-foreground" aria-label={`${preferences.visible.includes(field.key) ? "Hide" : "Show"} ${field.label}`} disabled={field.archived} onClick={() => toggleField(field.key)}>{preferences.visible.includes(field.key) && !field.archived ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</button>
+            <button className="p-1 text-muted-foreground hover:text-foreground" aria-label={`${visibleFieldKeySet.has(field.key) ? "Hide" : "Show"} ${field.label}`} disabled={field.archived} onClick={() => toggleField(field.key)}>{visibleFieldKeySet.has(field.key) && !field.archived ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</button>
             <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium">{field.label}{field.unit ? ` (${field.unit})` : ""}</p><p className="truncate text-[10px] text-muted-foreground">{field.type} · {field.key}</p></div>
             {!field.archived ? <div className="hidden items-center group-hover:flex"><Button size="icon-xs" variant="ghost" aria-label={`Move ${field.label} up`} onClick={() => moveField(field.key, -1)}><ArrowUp className="h-3 w-3" /></Button><Button size="icon-xs" variant="ghost" aria-label={`Move ${field.label} down`} onClick={() => moveField(field.key, 1)}><ArrowDown className="h-3 w-3" /></Button></div> : null}
-            {!field.archived && preferences.visible.includes(field.key) ? <Button size="icon-xs" variant={preferences.pinned.includes(field.key) ? "secondary" : "ghost"} aria-label={`${preferences.pinned.includes(field.key) ? "Unpin" : "Pin"} ${field.label}`} onClick={() => togglePinned(field.key)}><Pin className="h-3 w-3" /></Button> : null}
+            {!field.archived && visibleFieldKeySet.has(field.key) ? <Button size="icon-xs" variant={pinnedFieldKeySet.has(field.key) ? "secondary" : "ghost"} aria-label={`${pinnedFieldKeySet.has(field.key) ? "Unpin" : "Pin"} ${field.label}`} onClick={() => togglePinned(field.key)}><Pin className="h-3 w-3" /></Button> : null}
             {isAdmin && !field.built_in ? <><Button size="icon-xs" variant="ghost" aria-label={`Edit ${field.label}`} onClick={() => { setEditingField(field); setFieldDialogOpen(true); }}><Pencil className="h-3 w-3" /></Button><Button size="icon-xs" variant="ghost" aria-label={`${field.archived ? "Restore" : "Archive"} ${field.label}`} onClick={() => fieldArchiveTarget.request(field)}>{field.archived ? <RotateCcw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}</Button></> : null}
           </div>)}</div></section>)}
         </div></ScrollArea>
@@ -526,41 +582,41 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
       <main className="flex min-w-0 flex-1 flex-col p-3">
         <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground"><span>{loading ? "Loading components…" : `${items.length ? (page - 1) * PAGE_SIZE + 1 : 0}–${Math.min(page * PAGE_SIZE, total)} of ${total.toLocaleString()}`}</span><span>{visibleFields.length} visible fields · {Object.keys(staged).length} staged components</span></div>
         <div ref={gridViewport.viewportRef} className={cn("min-h-0 flex-1 overflow-auto border", loading && "opacity-60")} onScroll={gridViewport.onScroll} onPaste={handleGridPaste} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); } if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "y") { event.preventDefault(); redo(); } }}>
-          <div className="min-w-max" style={{ width: IDENTITY_WIDTH + visibleFields.reduce((sum, field) => sum + (preferences.widths[field.key] || DEFAULT_WIDTH), 0) }}>
-            <div className="sticky top-0 z-20 grid h-10 border-b bg-muted text-xs font-medium" style={{ gridTemplateColumns: gridTemplate }}>
-              <div className="sticky left-0 z-30 flex items-center border-r bg-muted px-3">Component</div>
-              {visibleFields.map((field) => <div key={field.key} className={cn("group relative flex items-center gap-1 border-r bg-muted px-2", pinnedOffsets.has(field.key) && "sticky z-20")} style={pinnedOffsets.has(field.key) ? { left: pinnedOffsets.get(field.key) } : undefined}><span className="truncate">{field.label}</span>{field.unit ? <span className="text-muted-foreground">({field.unit})</span> : null}{field.required ? <span className="text-destructive">*</span> : null}<button type="button" aria-label={`Resize ${field.label}`} className="absolute inset-y-0 right-0 w-2 cursor-col-resize opacity-0 hover:bg-primary/20 group-hover:opacity-100" onPointerDown={(event) => { event.preventDefault(); resizeColumn(field.key, event.clientX, preferences.widths[field.key] || DEFAULT_WIDTH); }} /></div>)}
+          <div role="grid" aria-label="Component metadata" aria-rowcount={items.length + 1} aria-colcount={visibleFields.length + 1} className="min-w-max" style={{ width: IDENTITY_WIDTH + visibleFields.reduce((sum, field) => sum + (preferences.widths[field.key] || DEFAULT_WIDTH), 0) }}>
+            <div role="row" aria-rowindex={1} className="sticky top-0 z-20 grid h-10 border-b bg-muted text-xs font-medium" style={{ gridTemplateColumns: gridTemplate }}>
+              <div role="columnheader" aria-colindex={1} className="sticky left-0 z-30 flex items-center border-r bg-muted px-3">Component</div>
+              {visibleFields.map((field, columnIndex) => <div key={field.key} role="columnheader" aria-colindex={columnIndex + 2} className={cn("group relative flex items-center gap-1 border-r bg-muted px-2", pinnedOffsets.has(field.key) && "sticky z-20")} style={pinnedOffsets.has(field.key) ? { left: pinnedOffsets.get(field.key) } : undefined}><span className="truncate">{field.label}</span>{field.unit ? <span className="text-muted-foreground">({field.unit})</span> : null}{field.required ? <span className="text-destructive">*</span> : null}<button type="button" aria-label={`Resize ${field.label}`} className="absolute inset-y-0 right-0 w-2 cursor-col-resize opacity-0 hover:bg-primary/20 group-hover:opacity-100" onPointerDown={(event) => { event.preventDefault(); resizeColumn(field.key, event.clientX, preferences.widths[field.key] || DEFAULT_WIDTH); }} /></div>)}
             </div>
             {firstVisibleRow ? <div aria-hidden="true" style={{ height: firstVisibleRow * GRID_ROW_HEIGHT }} /> : null}
-            {visibleRows.map((component, visibleRowIndex) => { const rowIndex = firstVisibleRow + visibleRowIndex; return <div key={component.id} className={cn("grid border-b last:border-b-0", staged[component.id] && "bg-primary/5")} style={{ gridTemplateColumns: gridTemplate }}>
-              <div className="sticky left-0 z-10 flex h-9 min-w-0 items-center gap-2 border-r bg-background px-3"><span className="min-w-0 flex-1 truncate text-xs font-medium" title={component.name}>{component.mpn || component.name}</span><Badge variant={component.workflow_stage === "qa_review" ? "warning" : "outline"} className="shrink-0" title="Read-only workflow stage">{WORKFLOW_LABELS[component.workflow_stage]}</Badge><Badge variant="outline" className="shrink-0" title="Read-only revision">v{component.revision}</Badge></div>
+            {visibleRows.map((component, visibleRowIndex) => { const rowIndex = firstVisibleRow + visibleRowIndex; return <div key={component.id} role="row" aria-rowindex={rowIndex + 2} className={cn("grid border-b last:border-b-0", staged[component.id] && "bg-primary/5")} style={{ gridTemplateColumns: gridTemplate }}>
+              <div role="rowheader" aria-colindex={1} className="sticky left-0 z-10 flex h-9 min-w-0 items-center gap-2 border-r bg-background px-3"><span className="min-w-0 flex-1 truncate text-xs font-medium" title={component.name}>{component.mpn || component.name}</span><Badge variant={component.workflow_stage === "qa_review" ? "warning" : "outline"} className="shrink-0" title="Read-only workflow stage">{WORKFLOW_LABELS[component.workflow_stage]}</Badge><Badge variant="outline" className="shrink-0" title="Read-only revision">v{component.revision}</Badge></div>
               {visibleFields.map((field, columnIndex) => <MetadataCell key={field.key} value={displayValue(component, field)} field={field} readOnly={!canEdit} active={activeCell?.row === rowIndex && activeCell.column === columnIndex} rowIndex={rowIndex} columnIndex={columnIndex} pinnedOffset={pinnedOffsets.get(field.key)} onCommit={(value) => setCellValue(component, field, value)} onActivate={() => setActiveCell({ row: rowIndex, column: columnIndex })} onNavigate={(rowDelta, columnDelta) => navigateCell(rowIndex + rowDelta, columnIndex + columnDelta)} />)}
             </div>; })}
             {lastVisibleRow < items.length ? <div aria-hidden="true" style={{ height: (items.length - lastVisibleRow) * GRID_ROW_HEIGHT }} /> : null}
-            {!loading && !items.length ? (
-              <div className="sticky left-0 flex h-64 flex-col items-center justify-center gap-2 p-8 text-center">
-                <FilePenLine className="h-8 w-8 text-muted-foreground" />
-                <p className="text-sm font-medium">
-                  {bulkEditIsFiltered ? "No components match the current filters" : "There is nothing to bulk edit yet"}
-                </p>
-                <p className="max-w-md text-xs text-muted-foreground">
-                  {bulkEditIsFiltered
-                    ? "Search and filters run on the server. Clear them to edit the whole catalog."
-                    : "Import components from a KiCad project or library folder, then return here to edit their metadata as a spreadsheet."}
-                </p>
-                {bulkEditIsFiltered ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-1"
-                    onClick={() => { setQuery(""); setCategory("all"); setShowArchived(false); setPage(1); }}
-                  >
-                    <FilterX className="h-3.5 w-3.5" /> Clear search and filters
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
           </div>
+          {!loading && !items.length ? (
+            <div className="sticky left-0 flex h-64 flex-col items-center justify-center gap-2 p-8 text-center">
+              <FilePenLine className="h-8 w-8 text-muted-foreground" />
+              <p className="text-sm font-medium">
+                {bulkEditIsFiltered ? "No components match the current filters" : "There is nothing to bulk edit yet"}
+              </p>
+              <p className="max-w-md text-xs text-muted-foreground">
+                {bulkEditIsFiltered
+                  ? "Search and filters run on the server. Clear them to edit the whole catalog."
+                  : "Import components from a KiCad project or library folder, then return here to edit their metadata as a spreadsheet."}
+              </p>
+              {bulkEditIsFiltered ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1"
+                  onClick={() => { setQuery(""); setCategory("all"); setShowArchived(false); setPage(1); }}
+                >
+                  <FilterX className="h-3.5 w-3.5" /> Clear search and filters
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="mt-2 flex items-center justify-between"><span className="text-xs text-muted-foreground">Page {page} of {pages}</span><div className="flex gap-1"><Button size="sm" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}><ChevronLeft className="h-3.5 w-3.5" /> Previous</Button><Button size="sm" variant="outline" disabled={page >= pages || loading} onClick={() => setPage((value) => Math.min(pages, value + 1))}>Next <ChevronRight className="h-3.5 w-3.5" /></Button></div></div>
       </main>

@@ -16,7 +16,7 @@ from typing import Any, Callable, Dict, Mapping, Optional
 from app.core.config import settings
 from app.services import path_config_service
 from app.services.job_service import jobs
-from app.services.semantic_viewer_runtime import find_viewer_repo_root, pythonpath as semantic_viewer_pythonpath
+from app.services.semantic_viewer_runtime import find_viewer_repo_root, pythonpath as semantic_viewer_pythonpath, update_native_geometry_fingerprint
 
 SCHEMA = "prism.visualizer_bundle.a0"
 GENERATOR_NAME = "kicad-prism-webgpu-3d"
@@ -50,7 +50,7 @@ def _compute_build_fingerprint() -> str:
         ]
         hasher = hashlib.sha256()
         hasher.update(base.encode("utf-8"))
-        hasher.update(os.environ.get("PRISM_COPPER_EMIT_ENABLED", "").encode("utf-8"))
+        update_native_geometry_fingerprint(hasher)
         hasher.update(os.environ.get("PRISM_KICAD_MONKEY_SOURCE", "").encode("utf-8"))
         for rel_path in inputs:
             path = viewer_root / rel_path
@@ -133,14 +133,42 @@ def semantic_tile_size_mm() -> str:
     return str(value) if 1.0 <= value <= 1000.0 else "auto"
 
 
-def find_kicad_project(project_path: str) -> Path:
+def find_kicad_project(project_path: str, anchor: Optional[str] = None) -> Path:
+    """Locate the .kicad_pro this project is.
+
+    This used to return whichever project file sorted first in the directory,
+    ignoring the schematic and PCB paths configured for the project. A repo with
+    two projects in one directory therefore always rendered the same board, and
+    correcting the paths in project settings changed nothing.
+    """
     root = Path(project_path)
-    config = path_config_service.get_path_config(project_path)
-    configured = getattr(config, "project", None) or getattr(config, "project_file", None)
-    if configured:
-      candidate = (root / str(configured)).resolve()
-      if candidate.is_file() and candidate.suffix == ".kicad_pro":
-          return candidate
+    config = path_config_service.get_path_config(project_path, anchor=anchor)
+
+    def _candidate(name: object) -> Optional[Path]:
+        if not name:
+            return None
+        candidate = (root / str(name)).resolve()
+        return candidate if candidate.is_file() and candidate.suffix == ".kicad_pro" else None
+
+    # The project's own anchor first, then an explicitly configured project file.
+    for configured in (
+        anchor,
+        getattr(config, "project", None),
+        getattr(config, "project_file", None),
+    ):
+        candidate = _candidate(configured)
+        if candidate is not None:
+            return candidate
+
+    # Then the project file belonging to the configured board or schematic, so
+    # pointing settings at a board actually moves the viewer to it.
+    for configured in (config.pcb, config.schematic):
+        if not configured or "*" in str(configured):
+            continue
+        candidate = _candidate(f"{Path(str(configured)).stem}.kicad_pro")
+        if candidate is not None:
+            return candidate
+
     direct = sorted(root.glob("*.kicad_pro"))
     if direct:
         return direct[0]
@@ -150,16 +178,26 @@ def find_kicad_project(project_path: str) -> Path:
     raise ValueError(".kicad_pro file not found")
 
 
-def source_fingerprint(project_path: str) -> str:
-    return source_fingerprint_for_root(Path(project_path))
+def source_fingerprint(project_path: str, *, project_file_rel: str = "") -> str:
+    return source_fingerprint_for_root(
+        Path(project_path), project_file_rel=project_file_rel
+    )
 
 
 def source_fingerprint_for_root(
     project_root: Path,
     profile_callback: Callable[[str, Dict[str, Any]], None] | None = None,
+    *,
+    project_file_rel: str = "",
 ) -> str:
     root = project_root.resolve()
     digest = hashlib.sha256()
+    # Two projects may intentionally share one directory and therefore the
+    # same set of source files. The selected .kicad_pro is part of the render
+    # identity; without it, adopting a legacy row can reuse its sibling's
+    # pre-anchor bundle under the stable project id.
+    digest.update(project_file_rel.encode("utf-8"))
+    digest.update(b"\0")
     started = time.perf_counter()
     files = 0
     bytes_read = 0
@@ -167,9 +205,10 @@ def source_fingerprint_for_root(
     for path in sorted(root.rglob("*")):
         if not path.is_file() or ".git" in path.parts:
             continue
-        if path.name == ".prism.json":
-            continue
-        if path.suffix.lower() not in SOURCE_SUFFIXES:
+        # `.prism.json` decides which board a project resolves to, so a bundle
+        # built before it changed is stale. Excluding it here was why editing the
+        # schematic or PCB path in project settings appeared to do nothing.
+        if path.name != ".prism.json" and path.suffix.lower() not in SOURCE_SUFFIXES:
             continue
         rel = path.relative_to(root).as_posix()
         stat = path.stat()
@@ -197,7 +236,10 @@ def source_fingerprint_for_root(
 
 
 def source_fingerprint_for_project_file(project_file: Path) -> str:
-    return source_fingerprint_for_root(project_file.resolve().parent)
+    resolved = project_file.resolve()
+    return source_fingerprint_for_root(
+        resolved.parent, project_file_rel=resolved.name
+    )
 
 
 def _artifact_segment(value: object, label: str) -> str:
@@ -232,10 +274,30 @@ def _build_lock(project_id: str, source_hash: str) -> threading.Lock:
         return lock
 
 
+def _anchor_selector_suffix(project: Any) -> str:
+    anchor = path_config_service.anchor_for_project(project) or ""
+    digest = hashlib.sha256(anchor.encode("utf-8")).hexdigest()[:16]
+    return f":anchor:{digest}"
+
+
+def status_selector_for_project(
+    project: Any,
+    *,
+    commit: str | None = None,
+    last_modified: object = "",
+) -> str:
+    """Identify readiness by source selector and the selected project anchor."""
+
+    prefix = f"commit:{commit}" if commit else f"workspace:{last_modified or ''}"
+    return f"{prefix}{_anchor_selector_suffix(project)}"
+
+
 def get_status(project: Any, commit: str | None = None) -> Dict[str, Any]:
     if commit:
         return get_status_for_commit(project, commit)
-    current_source = source_fingerprint(project.path)
+    anchor = path_config_service.anchor_for_project(project)
+    project_file = find_kicad_project(project.path, anchor)
+    current_source = source_fingerprint_for_project_file(project_file)
     return get_status_for_source(project, current_source)
 
 
@@ -248,7 +310,7 @@ def get_status_fast(project: Any, commit: str | None = None) -> Dict[str, Any]:
         normalized_commit = commit.strip().lower()
         if re.fullmatch(r"[0-9a-f]{40}", normalized_commit):
             resolved_commit = normalized_commit
-            selector = f"commit:{resolved_commit}"
+            selector = status_selector_for_project(project, commit=resolved_commit)
             cached = jobs.get_webgpu_ready(
                 str(project.id),
                 selector,
@@ -259,6 +321,7 @@ def get_status_fast(project: Any, commit: str | None = None) -> Dict[str, Any]:
                 str(project.id),
                 BUILD_FINGERPRINT,
                 normalized_commit,
+                selector_suffix=_anchor_selector_suffix(project),
             )
             if cached and cached.get("commit"):
                 resolved_commit = str(cached["commit"])
@@ -266,7 +329,9 @@ def get_status_fast(project: Any, commit: str | None = None) -> Dict[str, Any]:
                     cached.get("status_selector") or f"commit:{resolved_commit}"
                 )
             else:
-                selector = f"commit:{normalized_commit}"
+                selector = status_selector_for_project(
+                    project, commit=normalized_commit
+                )
         else:
             # Symbolic refs require git; keep the fast path O(1) and let
             # diagnostic=true callers resolve through get_status().
@@ -274,7 +339,10 @@ def get_status_fast(project: Any, commit: str | None = None) -> Dict[str, Any]:
             selector = f"ref:{commit.strip()}"
             cached = None
     else:
-        selector = f"workspace:{getattr(project, 'last_modified', '') or ''}"
+        selector = status_selector_for_project(
+            project,
+            last_modified=getattr(project, "last_modified", "") or "",
+        )
         cached = jobs.get_webgpu_ready(
             str(project.id),
             selector,
@@ -367,7 +435,9 @@ def get_status_for_source(
 def get_status_for_commit(project: Any, commit: str, project_rel: str | None = None) -> Dict[str, Any]:
     repo_root = _repo_root(Path(project.path))
     resolved_commit = _resolve_commit(repo_root, commit)
-    rel = project_rel or _project_relative_path(repo_root, Path(project.path))
+    rel = project_rel or _project_relative_path(
+        repo_root, Path(project.path), path_config_service.anchor_for_project(project)
+    )
     indexed = lookup_commit_source(project.id, resolved_commit, rel)
     if indexed:
         indexed_status = get_status_for_source(project, indexed["source_fingerprint"], commit=resolved_commit, project_rel=rel)
@@ -583,9 +653,7 @@ def _run_preflight(viewer_root: Path, job: Dict[str, Any], persist: Callable[[],
             "-c",
             (
                 "import kicad_monkey; "
-                "import kicad_cruncher; "
-                "print('monkey:', getattr(kicad_monkey, '__file__', 'ok')); "
-                "print('cruncher:', getattr(kicad_cruncher, '__file__', 'ok'))"
+                "print('monkey:', getattr(kicad_monkey, '__file__', 'ok'))"
             ),
         ],
         stdout=subprocess.PIPE,
@@ -597,7 +665,7 @@ def _run_preflight(viewer_root: Path, job: Dict[str, Any], persist: Callable[[],
     )
     if result.returncode != 0:
         raise RuntimeError(
-            "Missing required Python libraries: kicad_monkey or kicad_cruncher. "
+            "Missing required Python library: kicad_monkey. "
             f"Output: {(result.stdout or '').strip()}"
         )
     job["logs"].append(f"Preflight OK: Python libraries -> {(result.stdout or '').strip()}")
@@ -840,8 +908,12 @@ def build_visualizer_bundle(
     force: bool = False,
 ) -> Dict[str, Any]:
     total_started = time.perf_counter()
-    project_file = find_kicad_project(project.path)
-    source_hash = source_fingerprint_for_root(project_file.resolve().parent, _job_profiler(job, persist))
+    project_file = find_kicad_project(project.path, path_config_service.anchor_for_project(project))
+    source_hash = source_fingerprint_for_root(
+        project_file.resolve().parent,
+        _job_profiler(job, persist),
+        project_file_rel=project_file.name,
+    )
     status = build_visualizer_bundle_from_project_file(
         project,
         project_file,
@@ -865,7 +937,9 @@ def build_visualizer_bundle_for_commit(
     total_started = time.perf_counter()
     repo_root = _repo_root(Path(project.path))
     resolved_commit = _resolve_commit(repo_root, commit)
-    rel = _project_relative_path(repo_root, Path(project.path))
+    rel = _project_relative_path(
+        repo_root, Path(project.path), path_config_service.anchor_for_project(project)
+    )
     indexed = lookup_commit_source(project.id, resolved_commit, rel)
     if indexed and not force:
         status = get_status_for_source(
@@ -889,7 +963,11 @@ def build_visualizer_bundle_for_commit(
         project_file = checkout / rel
         if not project_file.is_file():
             raise ValueError(f"KiCad project file not found in commit {resolved_commit}: {rel}")
-        source_hash = source_fingerprint_for_root(project_file.resolve().parent, _job_profiler(job, persist))
+        source_hash = source_fingerprint_for_root(
+            project_file.resolve().parent,
+            _job_profiler(job, persist),
+            project_file_rel=project_file.name,
+        )
         source_tree = git_project_tree_fingerprint(repo_root, resolved_commit, rel)
         record_commit_source(
             project.id,
@@ -1141,8 +1219,10 @@ def _repo_root(project_path: Path) -> Path:
     return Path(result.stdout.strip()).resolve()
 
 
-def _project_relative_path(repo_root: Path, project_path: Path) -> str:
-    project_file = find_kicad_project(str(project_path))
+def _project_relative_path(
+    repo_root: Path, project_path: Path, anchor: Optional[str] = None
+) -> str:
+    project_file = find_kicad_project(str(project_path), anchor)
     return project_file.resolve().relative_to(repo_root).as_posix()
 
 

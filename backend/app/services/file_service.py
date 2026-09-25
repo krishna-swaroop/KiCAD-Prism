@@ -74,17 +74,24 @@ def _entry_at_path(commit, tree_path: str, *, not_found_detail: str):
         raise HTTPException(status_code=404, detail=not_found_detail) from error
 
 
+def _entry_name(entry) -> str:
+    # GitPython cannot name a submodule found by walking a tree (its name lives
+    # in .gitmodules), so every tree entry is named by its path instead.
+    return posixpath.basename(entry.path)
+
+
 def _scan_commit_tree(tree, *, base_path: str, modified_date: str) -> List[FileItem]:
     items: List[FileItem] = []
-    for entry in sorted(tree, key=lambda item: item.name.casefold()):
-        if entry.name.startswith("."):
+    for entry in sorted(tree, key=lambda item: _entry_name(item).casefold()):
+        name = _entry_name(entry)
+        if name.startswith("."):
             continue
 
-        rel_path = posixpath.join(base_path, entry.name) if base_path else entry.name
+        rel_path = posixpath.join(base_path, name) if base_path else name
         if entry.type == "tree":
             items.append(
                 FileItem(
-                    name=entry.name,
+                    name=name,
                     path=rel_path,
                     size=0,
                     modified_date=modified_date,
@@ -94,10 +101,10 @@ def _scan_commit_tree(tree, *, base_path: str, modified_date: str) -> List[FileI
             )
             items.extend(_scan_commit_tree(entry, base_path=rel_path, modified_date=modified_date))
         elif entry.type == "blob":
-            ext = posixpath.splitext(entry.name)[1].lstrip(".")
+            ext = posixpath.splitext(name)[1].lstrip(".")
             items.append(
                 FileItem(
-                    name=entry.name,
+                    name=name,
                     path=rel_path,
                     size=entry.size,
                     modified_date=modified_date,
@@ -161,11 +168,12 @@ def read_file_from_commit(
 
 def _list_blob_paths(tree, *, base_path: str = "") -> List[str]:
     paths: List[str] = []
-    for entry in sorted(tree, key=lambda item: item.name.casefold()):
-        if entry.name.startswith("."):
+    for entry in sorted(tree, key=lambda item: _entry_name(item).casefold()):
+        name = _entry_name(entry)
+        if name.startswith("."):
             continue
 
-        rel_path = posixpath.join(base_path, entry.name) if base_path else entry.name
+        rel_path = posixpath.join(base_path, name) if base_path else name
         if entry.type == "tree":
             paths.extend(_list_blob_paths(entry, base_path=rel_path))
         elif entry.type == "blob":

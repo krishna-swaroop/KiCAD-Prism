@@ -35,7 +35,8 @@ class SharedPostgresSchemaSwitchingTests(unittest.TestCase):
 
             expected = (
                 (workspace, 'workspace, public'),
-                (comments, 'comments, public'),
+                # Comment writes read tracker rows in the workspace schema.
+                (comments, 'comments, workspace, public'),
                 (catalog, 'catalog, public'),
                 (artifacts, 'operations, catalog, public'),
                 # Re-enter the first service after every alternate schema has

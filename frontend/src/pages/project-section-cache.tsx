@@ -13,7 +13,8 @@ export type ProjectSection =
     | "visualizers"
     | "assets"
     | "documentation"
-    | "workflows";
+    | "workflows"
+    | "release-studio";
 
 type VisitedSectionState = {
     projectId: string | undefined;

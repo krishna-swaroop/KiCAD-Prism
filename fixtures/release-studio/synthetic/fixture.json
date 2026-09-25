@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "fixture": "synthetic",
+  "description": "Small board with power input, status resistor, and optional status LED.",
+  "entrypoints": {
+    "project": "synthetic.kicad_pro",
+    "board": "synthetic.kicad_pcb",
+    "schematic": "synthetic.kicad_sch",
+    "jobset": "synthetic.kicad_jobset"
+  },
+  "variants": [
+    {
+      "name": "default",
+      "description": "Populated reference assembly.",
+      "dnp": [],
+      "assembly": "full"
+    },
+    {
+      "name": "dnp-led",
+      "description": "Status LED omitted from the assembly.",
+      "dnp": ["D1"],
+      "assembly": "full-with-led-dnp"
+    },
+    {
+      "name": "assembly-reduced",
+      "description": "Status indication omitted for a reduced assembly.",
+      "dnp": ["D1", "R1"],
+      "assembly": "reduced"
+    }
+  ],
+  "provenance": {
+    "kind": "authored-test-fixture",
+    "source": "No third-party design source; authored for Release Studio R0.",
+    "license": "Repository-owned test fixture."
+  },
+  "recording": "../cli-recordings/synthetic.json"
+}

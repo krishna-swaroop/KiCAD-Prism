@@ -132,6 +132,7 @@ export const SHORTCUT_REFERENCE: ShortcutGroupDoc[] = [
     title: "Project viewer",
     shortcuts: [
       { keys: ["1", "–", "6"], description: "Switch between Schematic, PCB, 3D, BOM, Stackup, Assembly" },
+      { keys: ["/", "–", ...shortcutKeys("mod+f")], description: "Find component or net" },
       { combo: "c", description: "Comment on the current selection" },
       { keys: ["[", "]"], description: "Previous / next schematic page" },
       { combo: "alt+backspace", description: "Go up to the parent sheet" },

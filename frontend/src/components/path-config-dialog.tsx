@@ -88,6 +88,8 @@ const PATH_LABELS: Record<string, { label: string; description: string }> = {
     },
 };
 
+// react-doctor-disable-next-line no-giant-component - config form, workflow editor, and path resolution share one fetch/save flow
+// react-doctor-disable-next-line prefer-useReducer - the states belong to separate concerns: form draft, fetch results, busy flags
 export function PathConfigDialog({ projectId, open, onOpenChange }: PathConfigDialogProps) {
     const [config, setConfig] = useState<PathConfig>({});
     const [originalConfig, setOriginalConfig] = useState<PathConfig>({});

@@ -1,3 +1,18 @@
+import {
+  FEATURE_MASK_WGSL,
+  MIN_FEATURE_MASK_CAPACITY,
+  featureMaskCapacityFor,
+  normalizeHiddenFeatureIds,
+  packFeatureVisibility,
+} from "./feature-visibility.js";
+import {
+  MIN_NET_MASK_CAPACITY,
+  NET_MASK_WGSL,
+  netMaskCapacityFor,
+  normalizeNetIds,
+  packNetEmphasis,
+} from "./net-emphasis.js";
+
 const VERTEX_STRIDE = 40;
 // WebGPU dynamic uniform offsets require 256-byte alignment; each draw buffer is padded to that size.
 const DRAW_UNIFORM_SIZE = 256;
@@ -24,6 +39,10 @@ struct Draw {
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<uniform> draw: Draw;
+@group(0) @binding(3) var<storage, read> hiddenMask: array<u32>;
+@group(0) @binding(4) var<storage, read> netMask: array<u32>;
+${FEATURE_MASK_WGSL}
+${NET_MASK_WGSL}
 
 struct VertexInput {
   @location(0) position: vec3f,
@@ -61,7 +80,8 @@ fn aces(color: vec3f) -> vec3f {
   let kind = u32(draw.flags.x);
   let copper = kind == 1u;
   let component = kind == 2u;
-  let selected = globals.activeNet != 0u && input.netId == globals.activeNet;
+  if (component && featureHidden(input.objectId)) { discard; }
+  let selected = netEmphasized(input.netId) || (globals.activeNet != 0u && input.netId == globals.activeNet);
   let selectedComponent = component && globals.selectedFeature != 0u && input.objectId == globals.selectedFeature;
   var base = draw.color.rgb;
   if (selected && copper) {
@@ -109,6 +129,8 @@ struct Globals {
 struct Draw { color: vec4f, material: vec4f, offset: vec4f, flags: vec4f };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<uniform> draw: Draw;
+@group(0) @binding(3) var<storage, read> hiddenMask: array<u32>;
+${FEATURE_MASK_WGSL}
 struct Input {
   @location(0) position: vec3f,
   @location(1) normal: vec3f,
@@ -127,7 +149,10 @@ struct Output {
   output.objectId = input.objectId;
   return output;
 }
-@fragment fn fs(input: Output) -> @location(0) u32 { return input.objectId; }
+@fragment fn fs(input: Output) -> @location(0) u32 {
+  if (u32(draw.flags.x) == 2u && featureHidden(input.objectId)) { discard; }
+  return input.objectId;
+}
 `;
 
 const BARREL_SHADER = `
@@ -147,6 +172,8 @@ struct Draw { color: vec4f, material: vec4f, offset: vec4f, flags: vec4f };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<uniform> draw: Draw;
 @group(0) @binding(2) var<storage, read> layerOffsets: array<f32>;
+@group(0) @binding(4) var<storage, read> netMask: array<u32>;
+${NET_MASK_WGSL}
 struct Input {
   @location(0) unit: vec3f,
   @location(1) normal: vec3f,
@@ -184,7 +211,7 @@ struct Output {
 }
 @fragment fn fs(input: Output) -> @location(0) vec4f {
   if (input.visible == 0u) { discard; }
-  let selected = globals.activeNet != 0u && input.netId == globals.activeNet;
+  let selected = netEmphasized(input.netId) || (globals.activeNet != 0u && input.netId == globals.activeNet);
   var base = draw.color.rgb;
   if (selected) {
     if (draw.flags.z < 0.5) {
@@ -282,6 +309,8 @@ export class Renderer {
         { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
         { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
         { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
       ],
     });
     const layout = device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] });
@@ -310,6 +339,110 @@ export class Renderer {
     this.drawScratch = new Float32Array(DRAW_UNIFORM_SIZE / 4);
     this.barrelDrawScratch = new Float32Array(DRAW_UNIFORM_SIZE / 4);
     this.nextEntryId = 1;
+    // Feature-visibility mask: default-visible, indexed by component feature
+    // id. It always exists so every bind group is valid before any hide call.
+    this.hiddenFeatureIds = new Set();
+    this.featureMaskCapacity = MIN_FEATURE_MASK_CAPACITY;
+    this.featureMaskBuffer = this.createFeatureMaskBuffer(
+      this.featureMaskCapacity,
+    );
+    this.uploadFeatureMask();
+    // Net-emphasis mask: default-off, indexed by net id (Prism #305). It always
+    // exists so every bind group is valid before the first highlight.
+    this.emphasizedNetIds = new Set();
+    this.netMaskCapacity = MIN_NET_MASK_CAPACITY;
+    this.netMaskBuffer = this.createNetMaskBuffer(this.netMaskCapacity);
+    this.uploadNetMask();
+  }
+
+  createNetMaskBuffer(capacity) {
+    return this.device.createBuffer({
+      label: "net-emphasis-mask",
+      size: capacity * Uint32Array.BYTES_PER_ELEMENT,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+  }
+
+  uploadNetMask() {
+    const data = packNetEmphasis(this.emphasizedNetIds, this.netMaskCapacity);
+    this.device.queue.writeBuffer(this.netMaskBuffer, 0, data);
+  }
+
+  /**
+   * Replace the emphasised net set. Idempotent; the mask is rebuilt from
+   * scratch so no stale slot survives, and the buffer only grows.
+   */
+  setEmphasizedNetIds(ids) {
+    this.emphasizedNetIds = normalizeNetIds(ids);
+    const capacity = netMaskCapacityFor(this.emphasizedNetIds, this.netMaskCapacity);
+    if (capacity !== this.netMaskCapacity) {
+      this.netMaskBuffer?.destroy?.();
+      this.netMaskCapacity = capacity;
+      this.netMaskBuffer = this.createNetMaskBuffer(capacity);
+      this.rebindAll();
+    }
+    this.uploadNetMask();
+  }
+
+  rebindAll() {
+    for (const entry of this.entries) {
+      entry.bindGroup = this.makeBindGroup(entry.drawBuffer);
+    }
+    if (this.barrels) {
+      this.barrels.bindGroup = this.makeBindGroup(this.barrels.drawBuffer);
+    }
+    this.bundleCache.clear();
+  }
+
+  createFeatureMaskBuffer(capacity) {
+    return this.device.createBuffer({
+      label: "feature-visibility-mask",
+      size: capacity * Uint32Array.BYTES_PER_ELEMENT,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+  }
+
+  makeBindGroup(drawBuffer) {
+    return this.device.createBindGroup({
+      layout: this.bindGroupLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.globalBuffer } },
+        { binding: 1, resource: { buffer: drawBuffer } },
+        { binding: 2, resource: { buffer: this.layerOffsetBuffer } },
+        { binding: 3, resource: { buffer: this.featureMaskBuffer } },
+        { binding: 4, resource: { buffer: this.netMaskBuffer } },
+      ],
+    });
+  }
+
+  uploadFeatureMask() {
+    const data = packFeatureVisibility(
+      this.hiddenFeatureIds,
+      this.featureMaskCapacity,
+    );
+    this.device.queue.writeBuffer(this.featureMaskBuffer, 0, data);
+  }
+
+  /**
+   * Replace the hidden feature set (component feature ids). Idempotent; safe
+   * before any primitives exist. Invalid ids are dropped, the mask is rebuilt
+   * from scratch so no stale zeros survive, and the buffer only grows — a
+   * growth recreates the buffer and rebinds every draw.
+   */
+  setHiddenFeatureIds(ids) {
+    this.hiddenFeatureIds = normalizeHiddenFeatureIds(ids);
+    const capacity = featureMaskCapacityFor(
+      this.hiddenFeatureIds,
+      this.featureMaskCapacity,
+    );
+    if (capacity !== this.featureMaskCapacity) {
+      this.featureMaskBuffer?.destroy?.();
+      this.featureMaskCapacity = capacity;
+      this.featureMaskBuffer = this.createFeatureMaskBuffer(capacity);
+      this.rebindAll();
+    }
+    this.uploadFeatureMask();
+    this.bundleCache.clear();
   }
 
   makePipeline(layout, code, format, buffers, label) {
@@ -433,14 +566,7 @@ export class Renderer {
     const indexBuffer = this.device.createBuffer({ size: indices.byteLength, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST });
     this.device.queue.writeBuffer(indexBuffer, 0, indices);
     const drawBuffer = this.device.createBuffer({ size: DRAW_UNIFORM_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const bindGroup = this.device.createBindGroup({
-      layout: this.bindGroupLayout,
-      entries: [
-        { binding: 0, resource: { buffer: this.globalBuffer } },
-        { binding: 1, resource: { buffer: drawBuffer } },
-        { binding: 2, resource: { buffer: this.layerOffsetBuffer } },
-      ],
-    });
+    const bindGroup = this.makeBindGroup(drawBuffer);
     const entry = {
       ...metadata,
       bounds: primitive.bounds || metadata.bounds || null,
@@ -479,8 +605,10 @@ export class Renderer {
     }
     this.depth?.destroy();
     this.pickTexture?.destroy();
+    this.featureMaskBuffer?.destroy?.();
     this.depth = null;
     this.pickTexture = null;
+    this.featureMaskBuffer = null;
     this.bundleCache.clear();
   }
 
@@ -528,14 +656,7 @@ export class Renderer {
     this.device.queue.writeBuffer(indexBuffer, 0, indexArray);
     this.device.queue.writeBuffer(instanceBuffer, 0, instances);
     const drawBuffer = this.device.createBuffer({ size: DRAW_UNIFORM_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const bindGroup = this.device.createBindGroup({
-      layout: this.bindGroupLayout,
-      entries: [
-        { binding: 0, resource: { buffer: this.globalBuffer } },
-        { binding: 1, resource: { buffer: drawBuffer } },
-        { binding: 2, resource: { buffer: this.layerOffsetBuffer } },
-      ],
-    });
+    const bindGroup = this.makeBindGroup(drawBuffer);
     this.barrels = { records, vertexBuffer, indexBuffer, instanceBuffer, indexCount: indexArray.length, instanceCount: records.length, drawBuffer, bindGroup };
   }
 
@@ -631,7 +752,7 @@ export class Renderer {
     view.setUint32(64, activeNetId || 0, true);
     view.setUint32(68, selectedLayer || 0, true);
     view.setFloat32(72, time, true);
-    view.setFloat32(76, activeNetId ? 1 : 0, true);
+    view.setFloat32(76, activeNetId || this.emphasizedNetIds.size ? 1 : 0, true);
     view.setUint32(80, selectedFeatureId || 0, true);
     floats.set([0.35, -0.5, 0.8, 0], 24);
     this.device.queue.writeBuffer(this.globalBuffer, 0, data);

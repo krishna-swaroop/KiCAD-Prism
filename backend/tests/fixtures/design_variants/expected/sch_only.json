@@ -1,0 +1,81 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "sch_only",
+  "project": "sch_only.kicad_pro",
+  "notes": [
+    "No board: footprints map empty; physical classification absent for every reference."
+  ],
+  "identity": {
+    "occurrences": {
+      "/68277ee9-365b-5b55-9430-57a0c2afc12d/987acaba-d63d-51fb-aa2b-d86d12a9fc06": {
+        "reference": "R1"
+      }
+    }
+  },
+  "catalog": [
+    {
+      "name": "Lite",
+      "description": null,
+      "sources": [
+        "project",
+        "schematic"
+      ]
+    },
+    {
+      "name": "SchOnly",
+      "description": null,
+      "sources": [
+        "schematic"
+      ]
+    }
+  ],
+  "default": {
+    "occurrences": {},
+    "components": {},
+    "footprints": {},
+    "physical": {
+      "R1": "absent"
+    }
+  },
+  "variants": [
+    {
+      "name": "Lite",
+      "occurrences": {
+        "/68277ee9-365b-5b55-9430-57a0c2afc12d/987acaba-d63d-51fb-aa2b-d86d12a9fc06": {
+          "dnp": true
+        }
+      },
+      "components": {
+        "R1": {
+          "dnp": true
+        }
+      },
+      "footprints": {},
+      "physical": {
+        "R1": "absent"
+      }
+    },
+    {
+      "name": "SchOnly",
+      "occurrences": {
+        "/68277ee9-365b-5b55-9430-57a0c2afc12d/987acaba-d63d-51fb-aa2b-d86d12a9fc06": {
+          "excludeFromBom": true
+        }
+      },
+      "components": {
+        "R1": {
+          "excludeFromBom": true
+        }
+      },
+      "footprints": {},
+      "physical": {
+        "R1": "absent"
+      }
+    }
+  ],
+  "diagnostics": []
+}

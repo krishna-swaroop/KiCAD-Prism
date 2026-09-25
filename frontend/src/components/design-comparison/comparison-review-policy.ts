@@ -428,10 +428,11 @@ export function recommendPresentationForChanges(
         );
     }
     const schematicReferences = new Set(
-        changes
-            .filter((change) => change.domain === "schematic")
-            .map((change) => change.reference)
-            .filter(Boolean),
+        changes.flatMap((change) => (
+            change.domain === "schematic" && change.reference
+                ? [change.reference]
+                : []
+        )),
     );
     const pages = new Set(changes.flatMap((change) => [
         change.page,
@@ -462,14 +463,7 @@ export function recommendPresentationForChanges(
     };
 }
 
-/**
- * Auto for a whole tab, where the differences queue has nothing to say.
- *
- * Fabrication output is manufactured evidence, which the PCB rules below
- * already review side by side. Returning a recommendation rather than setting
- * the mode directly keeps the Auto button's tooltip honest about what Auto
- * chose.
- */
+/** Recommendation for a whole tab when the differences queue has no selection. */
 export function recommendPresentationForTab(
     tab: string,
     changes: ChangeItem[],
@@ -482,12 +476,4 @@ export function recommendPresentationForTab(
         );
     }
     return recommendPresentationForChanges(changes);
-}
-
-export function presentationForSelection(
-    current: ComparisonPresentationMode,
-    recommendation: ComparisonPresentationRecommendation,
-    autoPresentation: boolean,
-): ComparisonPresentationMode {
-    return autoPresentation ? recommendation.mode : current;
 }

@@ -24,13 +24,15 @@ and dangerous Git remote-helper transports.
 
 Project views include:
 
-- schematic and PCB viewers;
+- schematic and PCB viewers, with component and net search in the Visualizer header;
 - cross-probing between compatible schematic, PCB, and BOM identities;
 - WebGPU 3D board views;
 - engineering BOM, stackup, assembly, and Interactive HTML BOM outputs when
   available;
 - commit history, release tags, and semantic design comparison;
-- comments, replies, severity, resolution, and area or object markers;
+- live comments, replies, revision-aware anchors, severity, resolution, and markers;
+- design variants with effective BOM and DNP visibility;
+- pad/net labels, multiple highlighted nets, and per-net routing statistics;
 - generated design, manufacturing, and render assets.
 
 Prism is a review surface, not an in-browser ECAD editor. Design changes continue
@@ -51,9 +53,15 @@ Library Manager provides:
 Only released, place-ready components with the required symbol and footprint
 assets are exposed to desktop placement.
 
+### Release Studio
+
+[Release Studio](release-studio/README.md) builds fabrication, assembly,
+documentation, and vendor packs from a committed revision, records evidence
+and dual sign-off, and publishes approved dossiers to GitHub or GitLab.
+
 ### Authentication and integration
 
-Prism supports OIDC single sign-on, server-side sessions, workspace roles,
+Prism supports OIDC single sign-on, optional local password login, server-side sessions, workspace roles,
 OAuth2 for the KiCad Remote Symbol Provider, and scoped service credentials for
 read-only PLM or automation integrations.
 
@@ -77,11 +85,13 @@ are required to recover the collaboration and governance state.
 - Prism is a single-workspace deployment, not a multi-tenant SaaS.
 - A user currently has one Prism role. Workspace and catalog permissions are not
   independently composable.
-- Standard project comments are project-scoped. Comparison comments are pinned
-  to the compared commit SHAs.
+- New canvas comments retain creation-commit provenance and revision-aware
+  bindings. Legacy unpinned comments remain visible for review.
 - Mentions are stored but do not yet produce email or inbox notifications.
-- GitHub/GitLab webhooks, pull-request status integration, and built-in PLM
-  connectors are not shipped.
+- GitHub and GitLab issue publication, webhooks, and polling are available
+  through configured tracker connectors. Gitea/Forgejo account linking is
+  available, but issue publication for those hosts is not shipped. Pull-request
+  status integration and built-in PLM connectors remain outside this release.
 - The Workflows page exposes the current fixed design, manufacturing, and render
   jobset paths; arbitrary workflows are not first-class yet.
 - Prism does not provide real-time multi-user design editing.

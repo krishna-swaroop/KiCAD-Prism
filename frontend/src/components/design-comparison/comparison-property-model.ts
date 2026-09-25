@@ -163,8 +163,11 @@ function withoutSchematicPlacement(value: unknown): unknown {
     if (value && typeof value === "object") {
         return Object.fromEntries(
             Object.entries(value as Record<string, unknown>)
-                .filter(([key]) => !["at", "position"].includes(key.toLocaleLowerCase()))
-                .map(([key, child]) => [key, withoutSchematicPlacement(child)]),
+                .flatMap(([key, child]) => (
+                    ["at", "position"].includes(key.toLocaleLowerCase())
+                        ? []
+                        : [[key, withoutSchematicPlacement(child)]]
+                )),
         );
     }
     return value;
@@ -442,6 +445,8 @@ export function terminalSummary(changes: ChangeItem[]) {
     const entries = connectionEntries(changes);
     if (!entries.length) return null;
     const named = (kind: ConnectionEntry["kind"]) =>
-        entries.filter((entry) => entry.kind === kind).map((entry) => entry.label);
+        entries.flatMap((entry) => (
+            entry.kind === kind ? [entry.label] : []
+        ));
     return { added: named("added"), removed: named("removed") };
 }

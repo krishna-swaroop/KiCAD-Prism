@@ -1,0 +1,58 @@
+{
+  "schema": "prism.variant_fixture_expectations_a0",
+  "contract": {
+    "packet": "CONTRACT_PACKET_v1.md",
+    "version": "1.0"
+  },
+  "fixture": "rule_area",
+  "project": "rule_area.kicad_pro",
+  "notes": [
+    "R11 sits inside a rule area with (dnp yes); R13 is outside. Native 10.0.6 reports R11 as DNP (<property name=\"dnp\"/> in the netlist).",
+    "Prism does not evaluate rule-area containment (decision D2): default state shows R11 dnp false and emits rule-area-flags-unsupported. This is a documented divergence, not an oracle match."
+  ],
+  "identity": {
+    "occurrences": {
+      "/8b3ed35c-c23c-5fbf-9d71-a2f5f98022d0/0c5b067b-fa0e-5b53-bdef-a8313254278f": {
+        "reference": "R11",
+        "insideRuleArea": true
+      },
+      "/8b3ed35c-c23c-5fbf-9d71-a2f5f98022d0/d35d922d-5289-5038-b957-d08d95fa48ac": {
+        "reference": "R13",
+        "insideRuleArea": false
+      }
+    }
+  },
+  "catalog": [
+    {
+      "name": "Lite",
+      "description": null,
+      "sources": [
+        "project"
+      ]
+    }
+  ],
+  "default": {
+    "occurrences": {},
+    "components": {},
+    "footprints": {},
+    "physical": {}
+  },
+  "variants": [
+    {
+      "name": "Lite",
+      "occurrences": {},
+      "components": {},
+      "footprints": {},
+      "physical": {}
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "rule-area-flags-unsupported",
+      "path": "rule_area.kicad_sch",
+      "detail": {
+        "dnp": true
+      }
+    }
+  ]
+}

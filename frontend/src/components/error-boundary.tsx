@@ -1,7 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { AlertTriangle, RefreshCw, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { isStaleBuildError } from "@/lib/stale-build";
 
 /**
  * Contains a render-phase crash to one region of the app.
@@ -87,6 +88,27 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const { error } = this.state;
     if (!error) return this.props.children;
     if (this.props.fallback) return this.props.fallback({ error, reset: this.reset });
+
+    if (isStaleBuildError(error)) {
+      return (
+        <div
+          role="alert"
+          className="flex h-full min-h-[12rem] w-full flex-col items-center justify-center gap-3 bg-background p-6 text-center"
+        >
+          <RefreshCw className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">Prism was updated while this page was open.</p>
+            <p className="max-w-prose text-xs text-muted-foreground">
+              Reload to switch to the new version. Anything you already saved is kept.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => window.location.reload()} className="gap-1.5">
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            Reload Prism
+          </Button>
+        </div>
+      );
+    }
 
     const { label } = this.props;
     return (

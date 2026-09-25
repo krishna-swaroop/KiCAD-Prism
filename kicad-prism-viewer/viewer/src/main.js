@@ -1,6 +1,12 @@
 import { CameraController } from "./camera.js";
 import { BomViewer } from "./bom-viewer.js";
+import {
+  buildComponentFeatureGroups,
+  isComponentHidden,
+  planComponentVisibility,
+} from "./component-visibility.js";
 import { escapeHtml } from "./escape-html.js";
+import { findNetByName, resolveNetIds } from "./net-emphasis.js";
 import { loadGltf } from "./gltf-loader.js";
 import { clamp } from "./math.js";
 import { Renderer } from "./renderer.js";
@@ -83,11 +89,14 @@ function initialState() {
     desiredCompareLayers: new Set(),
     visible3dLayers: new Set(),
     activeNetId: 0,
+    /** Host-highlighted nets (Prism #305), emphasised alongside the active net. */
+    highlightedNetIds: new Set(),
     selectedFeatureId: 0,
     selectionAnchor: null,
     showBoard: true,
     showComponents: true,
     isolateNet: false,
+    hiddenComponents: new Set(),
     /** User/view prefs restored after Esc; not overwritten by net-probe toggles. */
     savedShowBoard: true,
     savedShowComponents: true,
@@ -145,6 +154,7 @@ function initialScene() {
     failed: new Map(),
     residentTiles: new Map(),
     componentFeatures: new Map(),
+    componentModelCounts: new Map(),
     runtimeBounds: null,
     layerZOffsets: new Float32Array(256),
     layerZOffsetSignature: "",
@@ -337,9 +347,8 @@ export async function mountStandaloneViewer(options = {}) {
       try {
         if (!selection) clearSelection();
         else if (selection?.netName || selection?.netUid) {
-          const match = scene.nets.find((item) =>
-            (selection.netUid && item.uid === selection.netUid)
-            || (selection.netName && item.name === selection.netName));
+          const match = (selection.netUid && scene.nets.find((item) => item.uid === selection.netUid))
+            || (selection.netName && findNetByName(scene.nets, selection.netName));
           if (match) selectNet(Number(match.id), true);
         }
         else if (selection?.netId) selectNet(Number(selection.netId), true);
@@ -359,6 +368,12 @@ export async function mountStandaloneViewer(options = {}) {
     setWorkspace(workspace) {
       const nextWorkspace = workspace === "stackup" ? "stackup" : "pcb";
       if (state.workspace !== nextWorkspace) switchWorkspace(nextWorkspace);
+    },
+    setHiddenComponents(references) {
+      return applyHiddenComponents(references);
+    },
+    setHighlightedNets(refs) {
+      return applyHighlightedNets(refs);
     },
     dispose() {
       disposeViewerSession(token);
@@ -420,6 +435,33 @@ function applyComponentProbeVisibility() {
   state.showComponents = true;
   syncNetIsolationControls();
   if (typeof refreshControls === "function") refreshControls();
+}
+
+/** Net ids drawn emphasised: the active (inspected) net plus the highlight set. */
+function emphasizedNetIds() {
+  const ids = new Set(state.highlightedNetIds);
+  if (state.activeNetId) ids.add(Number(state.activeNetId));
+  return ids;
+}
+
+/**
+ * Replace the host's highlighted nets. Resolved by uid then exact name;
+ * unresolved references are dropped. Entering or leaving an emphasised view
+ * follows the single-net probe's board/component visibility so the copper
+ * reads the same way whether one net or several are lit.
+ */
+function applyHighlightedNets(refs) {
+  const requested = Array.isArray(refs) ? refs : [];
+  const ids = resolveNetIds(scene.nets, requested);
+  const hadEmphasis = emphasizedNetIds().size > 0;
+  state.highlightedNetIds = ids;
+  renderer?.setEmphasizedNetIds(ids);
+  const hasEmphasis = emphasizedNetIds().size > 0;
+  if (hasEmphasis && !hadEmphasis) applyNetProbeVisibility();
+  else if (!hasEmphasis && hadEmphasis) restoreViewVisibilityPrefs();
+  if (state.isolateNet && hasEmphasis) applyNetIsolationLayers();
+  scheduleTileResidency(performance.now(), { force: true });
+  return { applied: ids.size, requested: requested.length };
 }
 
 function applyNetProbeVisibility() {
@@ -777,10 +819,15 @@ function neededTileIdsForView() {
   }
 
   const activeNetTiles = new Set();
-  if (state.activeNetId) {
+  const emphasized = emphasizedNetIds();
+  if (emphasized.size) {
     for (const tile of scene.tiles.values()) {
-      if (visibleLayers.has(Number(tile.layerId)) && tileHasNet(tile, state.activeNetId)) {
-        activeNetTiles.add(tile.id);
+      if (!visibleLayers.has(Number(tile.layerId))) continue;
+      for (const netId of emphasized) {
+        if (tileHasNet(tile, netId)) {
+          activeNetTiles.add(tile.id);
+          break;
+        }
       }
     }
   }
@@ -971,6 +1018,11 @@ async function loadComponents(token = activeViewerToken) {
     const component = scene.componentFeatures.get(primitive.designator);
     if (component) mergeFeatureBounds(component.featureId, primitive.position);
   }
+  // A reference whose GLB has two top-level model nodes is an
+  // alternate-footprint pair; the group builder keeps it visible.
+  for (const [designator, count] of loaded.componentNodeCounts || []) {
+    scene.componentModelCounts.set(designator, count);
+  }
   for (const primitive of mergePrimitivesByMaterial(loaded.primitives)) {
     renderer.addPrimitive(primitive, {
       kind: "component",
@@ -1142,7 +1194,7 @@ function frame(now, token = activeViewerToken) {
     showBoard: state.showBoard,
     showComponents: state.showComponents,
     componentOpacity: clamp(1 - state.separation / 0.1, 0, 1),
-    boardOpacity: state.activeNetId ? 0.34 : 1 - state.separation * 0.72,
+    boardOpacity: emphasizedNetIds().size ? 0.34 : 1 - state.separation * 0.72,
     isolateNet: state.isolateNet,
     compareMode: state.mode === "layer",
     compareOffsets,
@@ -1724,12 +1776,18 @@ function syncNetIsolationControls() {
 
 function layersForActiveNet() {
   const layers = new Set();
-  if (!state.activeNetId) return layers;
+  for (const netId of emphasizedNetIds()) {
+    for (const layerId of layersForNet(netId)) layers.add(layerId);
+  }
+  return layers;
+}
 
+function layersForNet(netId) {
+  const layers = new Set();
   // The manifest's net record is the source of truth. It is available before
   // tile residency begins, whereas deriving membership only from resident tile
   // state can leave isolation with an empty layer set on its first activation.
-  const net = scene.nets.find((item) => Number(item.id) === Number(state.activeNetId));
+  const net = scene.nets.find((item) => Number(item.id) === Number(netId));
   const copperLayerIds = new Set(scene.copperLayers.map((layer) => Number(layer.id)));
   for (const layerId of Object.keys(net?.layerBoundsMm || {})) {
     const numericId = Number(layerId);
@@ -1748,7 +1806,7 @@ function layersForActiveNet() {
   // Retain compatibility with manifests generated before per-net layer bounds.
   if (layers.size) return layers;
   for (const tile of scene.tiles.values()) {
-    if (tileHasNet(tile, state.activeNetId)) layers.add(Number(tile.layerId));
+    if (tileHasNet(tile, netId)) layers.add(Number(tile.layerId));
   }
   return layers;
 }
@@ -1766,7 +1824,7 @@ function applyNetIsolationLayers() {
 }
 
 function setNetIsolation(enabled) {
-  const next = Boolean(enabled && state.activeNetId);
+  const next = Boolean(enabled && emphasizedNetIds().size);
   const wasIsolating = state.isolateNet;
   if (next && !state.isolateNet) {
     state.preIsolation3dLayers = new Set(state.visible3dLayers);
@@ -1935,7 +1993,8 @@ function renderSearch(query) {
   }
   const nets = scene.nets.filter((net) => String(net.name).toLowerCase().includes(value)).slice(0, 8);
   const components = [...scene.componentFeatures.values()].filter((item) =>
-    `${item.designator} ${item.value} ${item.footprint}`.toLowerCase().includes(value)).slice(0, 6);
+    !state.hiddenComponents.has(String(item.designator || ""))
+    && `${item.designator} ${item.value} ${item.footprint}`.toLowerCase().includes(value)).slice(0, 6);
   container.innerHTML = [
     ...nets.map((net) => `<button data-net="${net.id}"><b>${escapeHtml(net.name)}</b><span>${escapeHtml(net.netClass || "")}</span></button>`),
     ...components.map((item) => `<button data-feature="${item.featureId}"><b>${escapeHtml(item.designator)}</b><span>${escapeHtml(item.value)}</span></button>`),
@@ -1968,6 +2027,10 @@ function selectNet(netId, shouldFrame) {
 
 function selectFeature(featureId, shouldFrame = false) {
   const feature = scene.features.get(featureId);
+  if (
+    feature?.kind === "component"
+    && isComponentHidden(componentReferenceFromFeature(feature), state.hiddenComponents)
+  ) return;
   if (shouldFrame) state.selectionAnchor = null;
   state.selectedFeatureId = featureId;
   state.activeNetId = Number(feature?.netId || 0);
@@ -1985,6 +2048,7 @@ function selectFeature(featureId, shouldFrame = false) {
 }
 
 function selectComponentReference(reference, shouldFrame = false) {
+  if (isComponentHidden(reference, state.hiddenComponents)) return;
   const component = scene.componentFeatures.get(reference);
   bomViewer?.setSelectionByReference(reference, { scroll: state.workspace === "bom" });
   if (!component?.featureId) return;
@@ -2024,6 +2088,42 @@ function selectComponentReference(reference, shouldFrame = false) {
 
 function componentReferenceFromFeature(feature) {
   return feature?.designator || feature?.reference || feature?.componentDesignator || "";
+}
+
+function componentFeatureGroups() {
+  return buildComponentFeatureGroups(
+    scene.manifest?.components || [],
+    scene.componentModelCounts,
+  );
+}
+
+/**
+ * Replace the hidden component set (VAR-18). Ambiguous references (alternate
+ * footprints) and unknown references are reported and stay visible; hiding the
+ * current selection clears it, and search results drop hidden references so
+ * nothing can frame an invisible model.
+ */
+function applyHiddenComponents(references) {
+  const plan = planComponentVisibility(references, componentFeatureGroups());
+  state.hiddenComponents = plan.hiddenReferences;
+  renderer?.setHiddenFeatureIds(plan.hiddenFeatureIds);
+  if (plan.ambiguous.length) {
+    console.warn(
+      `[prism-semantic-viewer] keeping ambiguous components visible: ${plan.ambiguous.join(", ")}`,
+    );
+  }
+  if (plan.unknown.length) {
+    console.warn(
+      `[prism-semantic-viewer] ignoring unknown components: ${plan.unknown.join(", ")}`,
+    );
+  }
+  const selectedReference = componentReferenceFromFeature(
+    scene.features.get(state.selectedFeatureId),
+  );
+  if (isComponentHidden(selectedReference, state.hiddenComponents)) clearSelection();
+  const searchInput = searchControlsEl.querySelector("input");
+  if (searchInput?.value) renderSearch(searchInput.value);
+  return plan;
 }
 
 function framePcbFeature(feature, forceComponent = false) {
@@ -2066,18 +2166,24 @@ function findSchematicFeatureByReference(reference) {
   return null;
 }
 
+/**
+ * Drop the inspected object. The highlighted net set is the host's: only
+ * `setHighlightedNets` changes it, so an empty click or Esc here reads the
+ * same as on the board — the inspected object goes, the nets stay lit.
+ */
 function clearSelection() {
   state.activeNetId = 0;
   state.selectedFeatureId = 0;
   state.selectedSchematicFeature = null;
   state.selectionAnchor = null;
+  const stillEmphasised = emphasizedNetIds().size > 0;
   const wasIsolating = state.isolateNet;
-  if (wasIsolating) setNetIsolation(false);
-  else {
+  if (wasIsolating && !stillEmphasised) setNetIsolation(false);
+  else if (!stillEmphasised) {
     // Still clear isolation bookkeeping without forcing substrate ON.
     state.isolateNet = false;
-  }
-  restoreViewVisibilityPrefs();
+  } else if (wasIsolating) applyNetIsolationLayers();
+  if (!stillEmphasised) restoreViewVisibilityPrefs();
   schematicScene.activeNetUid = "";
   if (schematicRenderer) schematicRenderer.activeNetUid = "";
   schematicDomRenderer?.setSelection(null);
@@ -2319,7 +2425,7 @@ function updateSelectionCard() {
     if (schematicFeature.netUid) {
       net = scene.nets.find(n => n.uid === schematicFeature.netUid);
     } else if (schematicFeature.netName) {
-      net = scene.nets.find(n => n.name === schematicFeature.netName);
+      net = findNetByName(scene.nets, schematicFeature.netName);
     }
   }
 
@@ -2416,7 +2522,7 @@ function updateSelectionCard() {
     netRef.addEventListener("click", () => {
       const netName = netRef.dataset.netName;
       if (!netName) return;
-      const targetNet = scene.nets.find(n => n.name === netName);
+      const targetNet = findNetByName(scene.nets, netName);
       if (targetNet) {
         selectNet(Number(targetNet.id), true);
       }
@@ -2768,7 +2874,7 @@ function handleKey(event) {
     openTab("search");
     searchControlsEl.querySelector("#entity-search").focus();
   } else if (key === "escape") clearSelection();
-  else if (key === "i" && state.workspace === "pcb" && state.activeNetId) {
+  else if (key === "i" && state.workspace === "pcb" && emphasizedNetIds().size) {
     event.preventDefault();
     setNetIsolation(!state.isolateNet);
   }
