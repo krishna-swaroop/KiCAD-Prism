@@ -37,10 +37,10 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       # Mount projects directory for persistence
-      - ./data/projects:/app/projects
+      - ${PROJECTS_DATA_DIR:-./data/projects}:/app/projects
       # Mount SSH directory for Git persistence (GitLab/GitHub SSH)
       - ./data/ssh:/root/.ssh:rw
       # Release Studio signing key. Read-only, and mounted only into the API:
@@ -277,7 +277,7 @@ services:
     container_name: kicad-prism-frontend
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "${FRONTEND_PORT:-8080}:80"
     depends_on:
       - backend
     volumes:
