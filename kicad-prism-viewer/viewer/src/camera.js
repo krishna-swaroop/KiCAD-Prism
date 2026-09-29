@@ -35,7 +35,7 @@ export class CameraController {
     const amount = 1 - Math.exp(-dt * 14);
     this.focus = this.focus.map((value, index) => mix(value, this.targetFocus[index], amount));
     this.azimuth = mixAngle(this.azimuth, this.targetAzimuth, amount);
-    this.polar = mix(this.polar, this.targetPolar, amount);
+    this.polar = mixAngle(this.polar, this.targetPolar, amount);
     this.distance = mix(this.distance, this.targetDistance, amount);
     this.orthoScale = mix(this.orthoScale, this.targetOrthoScale, amount);
   }
@@ -82,9 +82,21 @@ export class CameraController {
     return mat4Multiply(projection, view);
   }
 
+  /**
+   * Free orbit: the polar angle wraps instead of stopping at straight above or
+   * below, so a drag rolls over either pole (the view turns upside down, as in
+   * KiCad). The up vector stays perpendicular to the view at any angle.
+   */
   orbit(dx, dy) {
-    this.targetAzimuth -= dx * 0.006;
-    this.targetPolar = clamp(this.targetPolar - dy * 0.006, 0.015, Math.PI - 0.015);
+    // Upside down, turning about the board normal reads mirrored; follow the mouse.
+    const sign = Math.sin(this.targetPolar) < 0 ? -1 : 1;
+    this.targetAzimuth -= sign * dx * 0.006;
+    this.targetPolar = wrapAngle(this.targetPolar - dy * 0.006);
+  }
+
+  /** True while the camera looks at the board from below. */
+  isBelow() {
+    return Math.cos(this.targetPolar) < 0;
   }
 
   pan(dx, dy, viewportHeight, orthographicMode = false) {
@@ -143,8 +155,12 @@ export class CameraController {
   }
 
   flip() {
-    this.targetPolar = Math.PI - this.targetPolar;
+    this.targetPolar = wrapAngle(Math.PI - this.targetPolar);
   }
+}
+
+function wrapAngle(angle) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
 function mixAngle(current, target, amount) {

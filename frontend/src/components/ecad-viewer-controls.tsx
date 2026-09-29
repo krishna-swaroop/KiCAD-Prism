@@ -68,12 +68,6 @@ export function EcadViewerControls({
     viewer,
     onVisibleWidthChange,
 }: EcadViewerControlsProps) {
-    const [open, setOpen] = useState(true);
-    const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
-    const [resizing, setResizing] = useState(false);
-    const railRef = useRef<HTMLElement | null>(null);
-    const handleRef = useRef<HTMLDivElement | null>(null);
-    const openRef = useCommittedRef(open);
     const [section, setSection] = useState<"layers" | "objects">("layers");
     const [pcbState, setPcbState] = useState<EcadPcbViewState | null>(null);
 
@@ -117,6 +111,126 @@ export function EcadViewerControls({
         action();
         setPcbState(viewer?.getPcbViewState?.() ?? null);
     }, [viewer]);
+
+    return (
+        <ViewerSideRail
+            ariaLabel={context === "SCH" ? "Schematic pages" : "PCB display controls"}
+            icon={context === "SCH" ? <ListFilter className="size-4" /> : <Layers3 className="size-4" />}
+            title={context === "SCH" ? "Schematic pages" : "Board display"}
+            onVisibleWidthChange={onVisibleWidthChange}
+        >
+            {context === "SCH" && <SchematicPageTree viewer={viewer} />}
+
+            {context === "PCB" && (
+                <>
+                    <RailSectionSwitch
+                        value={section}
+                        onChange={setSection}
+                        options={[["layers", "Layers"], ["objects", "Objects & filters"]]}
+                    />
+                    {section === "layers" ? (
+                        <>
+                            <div className="border-b p-3">
+                                <Select
+                                    onValueChange={(value) => mutatePcb(() => viewer?.applyPcbLayerPreset?.(value as Parameters<NonNullable<ECadViewerElement["applyPcbLayerPreset"]>>[0]))}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Layer preset" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {pcbPresets.map(([value, label]) => (
+                                            <SelectItem key={value} value={value}>{label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <ScrollArea className="themed-scrollbar min-h-0 flex-1">
+                                <div className="p-2">
+                                    <PcbLayerList
+                                        layers={pcbState?.layers ?? []}
+                                        onToggleVisibility={(name, visible) => mutatePcb(
+                                            () => viewer?.setPcbLayerVisibility?.(name, visible),
+                                        )}
+                                        onHighlight={(name) => mutatePcb(
+                                            () => viewer?.setPcbLayerHighlight?.(name),
+                                        )}
+                                    />
+                                </div>
+                            </ScrollArea>
+                        </>
+                    ) : (
+                        <ScrollArea className="min-h-0 flex-1">
+                            <div className="space-y-5 p-4">
+                                <ControlHeading>Object opacity</ControlHeading>
+                                {([
+                                    ["tracks", "Tracks"],
+                                    ["vias", "Vias"],
+                                    ["pads", "Pads"],
+                                    ["zones", "Zones"],
+                                ] as const).map(([kind, label]) => (
+                                    <RailSlider
+                                        key={kind}
+                                        label={label}
+                                        value={pcbState?.objectOpacity[kind] ?? 1}
+                                        onChange={(value) => mutatePcb(() => viewer?.setPcbObjectOpacity?.(kind, value))}
+                                    />
+                                ))}
+                                <Separator />
+                                <ControlHeading>Visibility filters</ControlHeading>
+                                {([
+                                    ["references", "References"],
+                                    ["values", "Values"],
+                                    ["footprintText", "Footprint text"],
+                                    ["hiddenText", "Hidden text"],
+                                    ["padNumbers", "Pad numbers"],
+                                    ["padNetNames", "Net names on pads"],
+                                    ["trackNetNames", "Net names on tracks & vias"],
+                                ] as const).map(([kind, label]) => (
+                                    <RailCheckbox
+                                        key={kind}
+                                        label={label}
+                                        checked={pcbState?.objectVisibility[kind] ?? false}
+                                        onChange={(checked) => mutatePcb(() => viewer?.setPcbObjectVisibility?.(kind, checked))}
+                                    />
+                                ))}
+                                <RailCheckbox
+                                    label="Highlight connected track"
+                                    checked={pcbState?.highlightTracks ?? true}
+                                    onChange={(checked) => mutatePcb(() => viewer?.setPcbTrackHighlight?.(checked))}
+                                />
+                            </div>
+                        </ScrollArea>
+                    )}
+                </>
+            )}
+        </ViewerSideRail>
+    );
+}
+
+/**
+ * The left side menu shared by the Schematic, PCB and 3D views: collapsible to
+ * a handle, reviewer-resizable, and reporting its visible width so the viewer
+ * can keep content clear of it. Children render only while it is open.
+ */
+export function ViewerSideRail({
+    ariaLabel,
+    icon,
+    title,
+    onVisibleWidthChange,
+    children,
+}: {
+    ariaLabel: string;
+    icon: ReactNode;
+    title: string;
+    onVisibleWidthChange?: (width: number) => void;
+    children: ReactNode;
+}) {
+    const [open, setOpen] = useState(true);
+    const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
+    const [resizing, setResizing] = useState(false);
+    const railRef = useRef<HTMLElement | null>(null);
+    const handleRef = useRef<HTMLDivElement | null>(null);
+    const openRef = useCommittedRef(open);
 
     useLayoutEffect(() => {
         if (!onVisibleWidthChange) return;
@@ -181,7 +295,7 @@ export function EcadViewerControls({
                 open ? "translate-x-0" : "-translate-x-[calc(100%_-_2.75rem)]",
             )}
             style={{ width: railWidth }}
-            aria-label={context === "SCH" ? "Schematic pages" : "PCB display controls"}
+            aria-label={ariaLabel}
         >
             <div className="flex h-10 shrink-0 items-center border-b">
                 {/* Always reserve the leading flex area so the collapse handle stays on the
@@ -190,8 +304,8 @@ export function EcadViewerControls({
                 <div className="flex min-w-0 flex-1 items-center gap-2 pl-3 text-xs font-medium">
                     {open && (
                         <>
-                            {context === "SCH" ? <ListFilter className="size-4" /> : <Layers3 className="size-4" />}
-                            <span>{context === "SCH" ? "Schematic pages" : "Board display"}</span>
+                            {icon}
+                            <span>{title}</span>
                         </>
                     )}
                 </div>
@@ -208,110 +322,8 @@ export function EcadViewerControls({
                 </div>
             </div>
 
-            {open && context === "SCH" && <SchematicPageTree viewer={viewer} />}
+            {open && children}
 
-            {open && context === "PCB" && (
-                <>
-                    <div className="grid grid-cols-2 border-b p-2">
-                        <Button
-                            variant={section === "layers" ? "secondary" : "ghost"}
-                            size="sm"
-                            className="h-8 text-xs"
-                            onClick={() => setSection("layers")}
-                        >
-                            Layers
-                        </Button>
-                        <Button
-                            variant={section === "objects" ? "secondary" : "ghost"}
-                            size="sm"
-                            className="h-8 text-xs"
-                            onClick={() => setSection("objects")}
-                        >
-                            Objects & filters
-                        </Button>
-                    </div>
-                    {section === "layers" ? (
-                        <>
-                            <div className="border-b p-3">
-                                <Select
-                                    onValueChange={(value) => mutatePcb(() => viewer?.applyPcbLayerPreset?.(value as Parameters<NonNullable<ECadViewerElement["applyPcbLayerPreset"]>>[0]))}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Layer preset" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {pcbPresets.map(([value, label]) => (
-                                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <ScrollArea className="themed-scrollbar min-h-0 flex-1">
-                                <div className="p-2">
-                                    <PcbLayerList
-                                        layers={pcbState?.layers ?? []}
-                                        onToggleVisibility={(name, visible) => mutatePcb(
-                                            () => viewer?.setPcbLayerVisibility?.(name, visible),
-                                        )}
-                                        onHighlight={(name) => mutatePcb(
-                                            () => viewer?.setPcbLayerHighlight?.(name),
-                                        )}
-                                    />
-                                </div>
-                            </ScrollArea>
-                        </>
-                    ) : (
-                        <ScrollArea className="min-h-0 flex-1">
-                            <div className="space-y-5 p-4">
-                                <ControlHeading>Object opacity</ControlHeading>
-                                {(["tracks", "vias", "pads", "zones"] as const).map((kind) => (
-                                    <div key={kind} className="space-y-2">
-                                        <div className="flex items-center justify-between text-xs">
-                                            <span className="capitalize">{kind}</span>
-                                            <span className="font-mono text-[10px] text-muted-foreground">
-                                                {Math.round((pcbState?.objectOpacity[kind] ?? 1) * 100)}%
-                                            </span>
-                                        </div>
-                                        <Slider
-                                            min={0}
-                                            max={1}
-                                            step={0.01}
-                                            value={[pcbState?.objectOpacity[kind] ?? 1]}
-                                            onValueChange={([value]) => mutatePcb(() => viewer?.setPcbObjectOpacity?.(kind, value ?? 1))}
-                                        />
-                                    </div>
-                                ))}
-                                <Separator />
-                                <ControlHeading>Visibility filters</ControlHeading>
-                                {([
-                                    ["references", "References"],
-                                    ["values", "Values"],
-                                    ["footprintText", "Footprint text"],
-                                    ["hiddenText", "Hidden text"],
-                                    ["padNumbers", "Pad numbers"],
-                                    ["padNetNames", "Net names on pads"],
-                                    ["trackNetNames", "Net names on tracks & vias"],
-                                ] as const).map(([kind, label]) => (
-                                    <label key={kind} className="flex cursor-pointer items-center justify-between gap-3 text-xs">
-                                        <span>{label}</span>
-                                        <Checkbox
-                                            checked={pcbState?.objectVisibility[kind] ?? false}
-                                            onCheckedChange={(checked) => mutatePcb(() => viewer?.setPcbObjectVisibility?.(kind, checked === true))}
-                                        />
-                                    </label>
-                                ))}
-                                <label className="flex cursor-pointer items-center justify-between gap-3 text-xs">
-                                    <span>Highlight connected track</span>
-                                    <Checkbox
-                                        checked={pcbState?.highlightTracks ?? true}
-                                        onCheckedChange={(checked) => mutatePcb(() => viewer?.setPcbTrackHighlight?.(checked === true))}
-                                    />
-                                </label>
-                            </div>
-                        </ScrollArea>
-                    )}
-                </>
-            )}
             {open && (
                 <div
                     className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize touch-none hover:bg-primary/20"
@@ -322,6 +334,85 @@ export function EcadViewerControls({
                 />
             )}
         </aside>
+    );
+}
+
+export function RailSectionSwitch<T extends string>({
+    value,
+    onChange,
+    options,
+}: {
+    value: T;
+    onChange: (value: T) => void;
+    options: readonly (readonly [T, string])[];
+}) {
+    return (
+        <div
+            className="grid border-b p-2"
+            style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+        >
+            {options.map(([option, label]) => (
+                <Button
+                    key={option}
+                    variant={value === option ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-8 text-xs"
+                    onClick={() => onChange(option)}
+                    aria-pressed={value === option}
+                >
+                    {label}
+                </Button>
+            ))}
+        </div>
+    );
+}
+
+export function RailSlider({
+    label,
+    value,
+    onChange,
+}: {
+    label: string;
+    /** 0..1, shown as a percentage. */
+    value: number;
+    onChange: (value: number) => void;
+}) {
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+                <span>{label}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                    {Math.round(value * 100)}%
+                </span>
+            </div>
+            <Slider
+                min={0}
+                max={1}
+                step={0.01}
+                value={[value]}
+                onValueChange={([next]) => onChange(next ?? 1)}
+            />
+        </div>
+    );
+}
+
+export function RailCheckbox({
+    label,
+    checked,
+    onChange,
+}: {
+    label: string;
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+}) {
+    return (
+        <label className="flex cursor-pointer items-center justify-between gap-3 text-xs">
+            <span>{label}</span>
+            <Checkbox
+                checked={checked}
+                onCheckedChange={(next) => onChange(next === true)}
+            />
+        </label>
     );
 }
 

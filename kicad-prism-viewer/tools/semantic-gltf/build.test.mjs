@@ -52,6 +52,68 @@ test("writes a native packed board body GLB", async () => {
   assert.equal(bytes.includes(Buffer.from("_silkscreen")), true);
 });
 
+test("writes the solder mask GLB with one outward face per side, and paste", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "soldermask-gltf-"));
+  const inputPath = path.join(root, "soldermask.json");
+  const outputDir = path.join(root, "geometry");
+  // A 10 mm square with a 2 mm square opening.
+  const polygon = {
+    outer: [[0, 0], [10, 0], [10, 10], [0, 10]],
+    holes: [[[4, 4], [6, 4], [6, 6], [4, 6]]],
+  };
+  await fs.writeFile(
+    inputPath,
+    JSON.stringify({
+      schema: "prism.soldermask.v1",
+      color: [0.06, 0.16, 0.11, 0.83],
+      sides: {
+        top: { faceZMm: 1.54, polygons: [polygon] },
+        bottom: { faceZMm: -0.05, polygons: [polygon] },
+      },
+      pasteColor: [0.62, 0.63, 0.65, 1],
+      paste: { top: { faceZMm: 1.545, polygons: [{ outer: [[1, 1], [2, 1], [2, 2], [1, 2]], holes: [] }] } },
+    }),
+  );
+  await run(process.execPath, [
+    path.resolve("tools/semantic-gltf/build.mjs"),
+    inputPath,
+    outputDir,
+  ]);
+  const { NodeIO } = await import("@gltf-transform/core");
+  const { EXTMeshoptCompression, KHRMeshQuantization } = await import("@gltf-transform/extensions");
+  const { MeshoptDecoder } = await import("meshoptimizer");
+  await MeshoptDecoder.ready;
+  const document = await new NodeIO()
+    .registerExtensions([EXTMeshoptCompression, KHRMeshQuantization])
+    .registerDependencies({ "meshopt.decoder": MeshoptDecoder })
+    .read(path.join(outputDir, "soldermask.glb"));
+  const nodes = new Map(
+    document.getRoot().listNodes().filter((node) => node.getMesh()).map((node) => [node.getMesh().getName(), node]),
+  );
+  assert.deepEqual(
+    [...nodes.keys()].sort(),
+    ["board_paste_top", "board_soldermask_bottom", "board_soldermask_top"],
+  );
+  const paste = nodes.get("board_paste_top").getMesh().listPrimitives()[0];
+  assert.equal(paste.getMaterial().getName(), "paste_top");
+  assert.equal(paste.getMaterial().getAlphaMode(), "OPAQUE");
+  assert.equal(paste.getIndices().getCount() / 3, 2);
+  for (const [name, y, normalY] of [["board_soldermask_top", 0.00154, 1], ["board_soldermask_bottom", -0.00005, -1]]) {
+    const node = nodes.get(name);
+    const primitive = node.getMesh().listPrimitives()[0];
+    const positions = primitive.getAttribute("POSITION");
+    // Square minus opening: 8 corners, 8 triangles.
+    assert.equal(positions.getCount(), 8);
+    assert.equal(primitive.getIndices().getCount() / 3, 8);
+    // Quantized positions carry their scale and offset on the node.
+    const local = positions.getElement(0, []);
+    const m = node.getWorldMatrix();
+    const worldY = m[1] * local[0] + m[5] * local[1] + m[9] * local[2] + m[13];
+    assert.ok(Math.abs(worldY - y) < 1e-6, `${name} face at ${worldY}`);
+    assert.ok(Math.sign(primitive.getAttribute("NORMAL").getElement(0, [])[1]) === normalY);
+  }
+});
+
 test("writes tiled GLB with net and object feature IDs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "semantic-gltf-"));
   const inputPath = path.join(root, "input.json");

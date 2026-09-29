@@ -419,7 +419,7 @@ input {
 
 #axis-gizmo {
   position: absolute;
-  left: 14px;
+  left: calc(var(--prism-viewport-inset-left, 0px) + 14px);
   bottom: 14px;
   width: 104px;
   height: 104px;
@@ -1056,10 +1056,6 @@ h2 {
   white-space: nowrap;
 }
 
-.camera-toolbar {
-  margin-bottom: 14px;
-}
-
 .toggle-list {
   display: grid;
   gap: 2px;
@@ -1257,51 +1253,34 @@ pre {
   display: none !important;
 }
 
-.stackup-header {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--border);
-}
 
-.stackup-header-title {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 
-.stackup-header-title h1 {
-  font-size: clamp(22px, 2vw, 30px);
-  font-weight: 700;
-  margin: 0;
-  color: var(--foreground);
-}
 
-.stackup-header-title p {
-  font-size: 13px;
-  color: var(--muted);
-  margin: 0;
-}
 
 .stackup-summary-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 4px;
+}
+
+.stackup-summary-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .stackup-summary-card {
   background: color-mix(in srgb, var(--panel-raised) 54%, var(--panel));
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 12px 16px;
+  border-radius: 4px;
+  padding: 5px 10px;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .stackup-summary-card label {
+  flex: none;
   font-size: 9px;
   color: var(--muted);
   text-transform: uppercase;
@@ -1310,9 +1289,14 @@ pre {
 }
 
 .stackup-summary-card span {
-  font-size: 16px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
   font-weight: 650;
   color: var(--foreground);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stackup-workspace-body {
@@ -1335,17 +1319,16 @@ pre {
   border-radius: 6px;
   min-height: 0;
   height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 32px;
+  overflow: hidden;
+  padding: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .stackup-visual-svg {
-  width: 96%;
-  max-width: 720px;
-  height: auto;
-  flex: none;
+  display: block;
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: visible;
 }
 
@@ -1400,7 +1383,7 @@ pre {
 
 .stackup-svg-column-headings text {
   fill: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1416,7 +1399,7 @@ pre {
 
 .stackup-total-dimension text {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-anchor: middle;
@@ -1427,6 +1410,47 @@ pre {
 .stackup-layer-thickness,
 .stackup-layer-metadata {
   transition: fill 120ms ease, font-weight 120ms ease;
+}
+
+.stackup-layer-index,
+.stackup-layer-name,
+.stackup-layer-thickness,
+.stackup-layer-metadata {
+  dominant-baseline: central;
+}
+
+.stackup-layer-name {
+  fill: var(--foreground);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.stackup-layer-index,
+.stackup-layer-thickness {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.stackup-layer-index {
+  font-weight: 700;
+}
+
+.stackup-layer-metadata {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.stackup-layer-leader {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.stackup-svg-layer.active .stackup-layer-leader {
+  stroke: var(--primary);
+  opacity: 1;
 }
 
 .stackup-svg-layer:hover {
@@ -1543,10 +1567,6 @@ pre {
   background: var(--control-hover);
 }
 
-.stackup-table tbody tr[data-layer-id] {
-  cursor: crosshair;
-}
-
 .stackup-table tbody tr[data-layer-id]:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: -2px;
@@ -1600,6 +1620,10 @@ pre {
     min-height: auto;
     height: auto;
     overflow: visible;
+  }
+
+  .stackup-visual-svg {
+    flex: none;
   }
 
   .stackup-side-panel {

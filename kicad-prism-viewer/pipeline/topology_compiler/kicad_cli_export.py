@@ -17,7 +17,8 @@ from .copper_geometry import native_helper_path, pcb_geometry_backend
 
 
 DEFAULT_KICAD_CLI = Path("/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli")
-BOARD_CONTEXT_CACHE_VERSION = "board-context-no-pads-a6"
+# a7: the solder mask comes from soldermask.py, not the kicad-cli board export.
+BOARD_CONTEXT_CACHE_VERSION = "board-context-no-mask-a7"
 NATIVE_BOARD_CONTEXT_CACHE_VERSION = "native-board-body-a0"
 
 
@@ -51,6 +52,8 @@ class GeometryExportArtifacts:
     pcb_hash: str
     exports: list[ExportResult]
     elapsed_ms: float
+    # Board-mm mask polygons per side (soldermask.soldermask_polygons), or None.
+    soldermask: dict[str, Any] | None = None
 
 
 def find_kicad_cli() -> Path:
@@ -182,6 +185,33 @@ def export_project_geometry_assets(
             )
         return result
 
+    def build_mask() -> dict[str, Any] | None:
+        # The default backend builds the PCB IR in-process and the mask is made
+        # from it in finalize_project_geometry. The others never parse the board
+        # in Python, so the mask parses it here, in its own process so parsing
+        # and clipping do not contend for the GIL with the topology compile.
+        if pcb_geometry_backend() == "legacy":
+            return None
+        if _soldermask_cache_path(cache_dir, pcb_hash).is_file():
+            return None
+        from .soldermask import soldermask_polygons_from_file
+
+        started = time.perf_counter()
+        try:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=1) as mask_pool:
+                polygons = mask_pool.submit(soldermask_polygons_from_file, str(pcb_file)).result()
+        except Exception as exc:
+            # The board still renders without a mask; say why it is missing.
+            if progress:
+                progress(f"warning: solder mask not built: {exc}")
+            return None
+        if profile_callback:
+            profile_callback(
+                "soldermask.polygons",
+                {"elapsed_ms": (time.perf_counter() - started) * 1000.0},
+            )
+        return polygons
+
     parallel_exports = os.environ.get("PRISM_KICAD_EXPORT_PARALLEL", "1").strip().lower() in {
         "1",
         "true",
@@ -192,14 +222,17 @@ def export_project_geometry_assets(
     if parallel_exports:
         if progress:
             progress("kicad-cli exports: guarded parallel mode")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             board_future = pool.submit(export_board)
             component_future = pool.submit(export_components)
+            mask_future = pool.submit(build_mask)
             board_export = board_future.result()
             component_export = component_future.result()
+            soldermask = mask_future.result()
     else:
         board_export = export_board()
         component_export = export_components()
+        soldermask = build_mask()
     if profile_callback:
         profile_callback(
             "exports.wall",
@@ -226,6 +259,7 @@ def export_project_geometry_assets(
         pcb_hash=pcb_hash,
         exports=exports,
         elapsed_ms=(time.perf_counter() - lane_started) * 1000.0,
+        soldermask=soldermask,
     )
 
 
@@ -233,10 +267,15 @@ def finalize_project_geometry(
     topology: dict[str, Any],
     artifacts: GeometryExportArtifacts,
     *,
+    soldermask_source: Callable[[], dict[str, Any] | None] | None = None,
     progress: Callable[[str], None] | None = None,
     profile_callback: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    """Join completed KiCad exports with topology-dependent semantic metadata."""
+    """Join completed KiCad exports with topology-dependent semantic metadata.
+
+    ``soldermask_source`` builds the mask polygons from an IR the caller already
+    has; it is only called when no cached mask exists for this board.
+    """
 
     output_dir = artifacts.output_dir
     geometry_dir = output_dir / "geometry"
@@ -309,6 +348,15 @@ def finalize_project_geometry(
         "components": components,
         "visibility_groups": visibility_groups,
     }
+    soldermask_asset = _write_soldermask_glb(
+        topology,
+        artifacts,
+        soldermask_source=soldermask_source,
+        progress=progress,
+        profile_callback=profile_callback,
+    )
+    if soldermask_asset:
+        manifest["assets"]["soldermask_glb"] = soldermask_asset
     manifest_path = output_dir / "semantic_geometry.json"
     started = time.perf_counter()
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -330,6 +378,93 @@ def _export_profile(result: ExportResult) -> dict[str, Any]:
     }
 
 
+def _soldermask_cache_path(cache_dir: Path, pcb_hash: str) -> Path:
+    """Cached mask GLB for a board, keyed by the code that builds it too."""
+
+    from .soldermask import SOLDERMASK_VERSION
+
+    here = Path(__file__).resolve()
+    code = hashlib.sha256()
+    for source in (
+        here.parent / "soldermask.py",
+        here.parent / "pcb_geometry.py",
+        here.parents[2] / "tools" / "semantic-gltf" / "build.mjs",
+    ):
+        if source.is_file():
+            code.update(source.read_bytes())
+    return cache_dir / f"soldermask-{pcb_hash}-{SOLDERMASK_VERSION}-{code.hexdigest()[:12]}.glb"
+
+
+def _write_soldermask_glb(
+    topology: dict[str, Any],
+    artifacts: GeometryExportArtifacts,
+    *,
+    soldermask_source: Callable[[], dict[str, Any] | None] | None = None,
+    progress: Callable[[str], None] | None = None,
+    profile_callback: Callable[[str, dict[str, Any]], None] | None = None,
+) -> str | None:
+    """Place the mask at its stackup height and pack it; the asset path or None."""
+
+    from .soldermask import place_soldermask
+
+    geometry_dir = artifacts.output_dir / "geometry"
+    output_path = geometry_dir / "soldermask.glb"
+    cache_path = _soldermask_cache_path(artifacts.output_dir.parent / ".cache" / "geometry", artifacts.pcb_hash)
+    if cache_path.is_file() and cache_path.stat().st_size:
+        shutil.copy2(cache_path, output_path)
+        if progress:
+            progress(f"solder mask: cache hit ({output_path.stat().st_size / 1_000_000:.1f} MB)")
+        return "geometry/soldermask.glb"
+
+    started = time.perf_counter()
+    polygons = artifacts.soldermask
+    if polygons is None and soldermask_source is not None:
+        try:
+            polygons = soldermask_source()
+        except Exception as exc:
+            # The board still renders without a mask; say why it is missing.
+            if progress:
+                progress(f"warning: solder mask not built: {exc}")
+            return None
+        if profile_callback:
+            profile_callback(
+                "soldermask.polygons",
+                {"elapsed_ms": (time.perf_counter() - started) * 1000.0},
+            )
+    document = place_soldermask(polygons, topology)
+    if not document:
+        return None
+    started = time.perf_counter()
+    input_path = geometry_dir / "soldermask.json"
+    input_path.write_text(json.dumps(document), encoding="utf-8")
+    tool = Path(__file__).resolve().parents[2] / "tools" / "semantic-gltf" / "build.mjs"
+    try:
+        packed = subprocess.run(
+            ["node", str(tool), str(input_path), str(geometry_dir)],
+            text=True,
+            capture_output=True,
+            timeout=float(os.environ.get("PRISM_KICAD_NATIVE_TIMEOUT_SECONDS", "300")),
+        )
+    finally:
+        input_path.unlink(missing_ok=True)
+    if packed.returncode != 0 or not output_path.is_file():
+        if progress:
+            detail = packed.stderr.strip() or packed.stdout.strip() or "no diagnostic output"
+            progress(f"warning: solder mask GLB not written: {detail}")
+        return None
+    if profile_callback:
+        profile_callback(
+            "soldermask.glb",
+            {"elapsed_ms": (time.perf_counter() - started) * 1000.0, "bytes": output_path.stat().st_size},
+        )
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(output_path, cache_path)
+    except OSError:
+        pass
+    return "geometry/soldermask.glb"
+
+
 def _board_context_export_args(geometry_dir: Path, pcb_file: Path) -> list[str]:
     return [
         "pcb",
@@ -340,7 +475,6 @@ def _board_context_export_args(geometry_dir: Path, pcb_file: Path) -> list[str]:
         str(geometry_dir / "base_board.glb"),
         "--no-components",
         "--include-silkscreen",
-        "--include-soldermask",
         str(pcb_file),
     ]
 

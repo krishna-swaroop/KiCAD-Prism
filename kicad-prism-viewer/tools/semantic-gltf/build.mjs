@@ -52,6 +52,11 @@ async function runMain() {
     await runBoardPackedMain(input, inputPath, outputDir, metrics);
     return;
   }
+  if (input.schema === "prism.soldermask.v1") {
+    await fs.mkdir(outputDir, { recursive: true });
+    await writeSoldermaskGlb(input, path.join(outputDir, "soldermask.glb"));
+    return;
+  }
   const tileSize = Number(input.tileSizeMm || 20);
   const meshoptLevel = normalizeMeshoptLevel(
     input.meshoptLevel || process.env.PRISM_SEMANTIC_GLTF_MESHOPT_LEVEL || "medium",
@@ -157,9 +162,13 @@ async function runPackedMain(input, inputPath, outputDir, metrics) {
   const startedAt = performance.now();
   const progress = createProgress(startedAt);
   const packRoot = path.dirname(inputPath);
+  // Centred stackup z per layer; the native pack serialises it as zMm.
+  const layerZById = new Map((input.layers || []).map((layer) => [Number(layer.id), layer.zMm ?? layer.z_mm]));
   const tiles = (input.tiles || []).map((tile) => ({
     ...tile,
     packedPath: path.resolve(packRoot, String(tile.path || "")),
+    // Layers below the board centre are drawn by their bottom face.
+    surfaceSign: Number(layerZById.get(Number(tile.layerId)) ?? 0) < 0 ? -1 : 1,
   }));
   progress(
     `packed input tiles=${tiles.length} features=${(input.objectFeatures || []).length - 1} ` +
@@ -432,7 +441,7 @@ async function buildTileFile(tile, options) {
   let geometry;
   if (tile.packedPath) {
     const readStart = performance.now();
-    geometry = await readPackedTileGeometry(tile.packedPath);
+    geometry = await readPackedTileGeometry(tile.packedPath, tile.surfaceSign === -1 ? -1 : 1);
     metrics.packed_read_ms = elapsedMs(readStart);
   } else {
     const earcutStart = performance.now();
@@ -511,7 +520,7 @@ function createMetrics() {
   };
 }
 
-async function readPackedTileGeometry(filePath) {
+async function readPackedTileGeometry(filePath, normalY = 1) {
   const source = await fs.readFile(filePath);
   const bytes = source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
   const view = new DataView(bytes);
@@ -546,7 +555,7 @@ async function readPackedTileGeometry(filePath) {
   offset += scalarBytes;
   const indices = new Uint32Array(bytes, offset, indexCount).slice();
   const normals = new Float32Array(vertexCount * 3);
-  for (let index = 0; index < vertexCount; index += 1) normals[index * 3 + 1] = 1;
+  for (let index = 0; index < vertexCount; index += 1) normals[index * 3 + 1] = normalY;
   return {
     positions,
     normals,
@@ -647,6 +656,62 @@ function createBoardDocument(input, geometry, silkscreenGeometry) {
     thicknessMm: input.thicknessMm,
   });
   return document;
+}
+
+/**
+ * Solder mask and paste from pipeline polygons (board mm): one flat face per
+ * side at its outer height, facing out. Mesh names carry "soldermask" or
+ * "paste" and the side, which the viewer reads.
+ */
+function buildSoldermaskDocument(input) {
+  const document = new Document().setLogger(new Logger(Logger.Verbosity.ERROR));
+  const buffer = document.createBuffer("soldermask");
+  const scene = document.createScene("soldermask");
+  const groups = [
+    ["soldermask", input.sides, input.color || [0.06, 0.16, 0.11, 0.83], "BLEND", 0.6],
+    ["paste", input.paste, input.pasteColor || [0.62, 0.63, 0.65, 1], "OPAQUE", 0.45],
+  ];
+  for (const [role, sides, color, alphaMode, roughness] of groups) {
+    for (const [side, data] of Object.entries(sides || {})) {
+      const sign = side === "bottom" ? -1 : 1;
+      // One material per side and role: the viewer merges board primitives by
+      // material and places each side on its own, so they must stay apart.
+      const material = document
+        .createMaterial(`${role}_${side}`)
+        .setBaseColorFactor(color)
+        .setAlphaMode(alphaMode)
+        .setMetallicFactor(0)
+        .setRoughnessFactor(roughness);
+      const geometry = { positions: [], normals: [], netIds: [], objectFeatureIds: [], indices: [] };
+      for (const polygon of data.polygons || []) {
+        appendSurfacePolygon(geometry, [polygon.outer, ...(polygon.holes || [])], Number(data.faceZMm), 0, 0, sign);
+      }
+      if (!geometry.indices.length) continue;
+      const key = `${role}-${side}`;
+      const primitive = document
+        .createPrimitive()
+        .setAttribute("POSITION", document.createAccessor(`${key}-POSITION`, buffer)
+          .setType(Accessor.Type.VEC3).setArray(new Float32Array(geometry.positions)))
+        .setAttribute("NORMAL", document.createAccessor(`${key}-NORMAL`, buffer)
+          .setType(Accessor.Type.VEC3).setArray(new Float32Array(geometry.normals)))
+        .setIndices(document.createAccessor(`${key}-indices`, buffer)
+          .setType(Accessor.Type.SCALAR).setArray(new Uint32Array(geometry.indices)))
+        .setMaterial(material);
+      const mesh = document.createMesh(`board_${role}_${side}`).addPrimitive(primitive);
+      scene.addChild(document.createNode(`${role}_${side}`).setMesh(mesh));
+    }
+  }
+  return document;
+}
+
+async function writeSoldermaskGlb(input, outputPath) {
+  const document = buildSoldermaskDocument(input);
+  await MeshoptEncoder.ready;
+  await document.transform(meshopt({ encoder: MeshoptEncoder, level: "medium" }));
+  const io = new NodeIO()
+    .registerExtensions([EXTMeshoptCompression, KHRMeshQuantization])
+    .registerDependencies({ "meshopt.encoder": MeshoptEncoder });
+  await io.write(outputPath, document);
 }
 
 async function writeMetrics(metrics, context) {
@@ -1195,6 +1260,7 @@ function appendTilePolygon(tiles, object, tile, polygon, sourcePolygon = null) {
     layerName: object.layerName,
     zMm: object.zMm,
     thicknessMm: object.thicknessMm,
+    surfaceSign: object.surfaceSign === -1 ? -1 : 1,
     tile,
     objects: [],
   };
@@ -1297,7 +1363,9 @@ function buildTileGeometry(tile) {
     objectFeatureIds: [],
     indices: [],
   };
-  const y1 = Number(tile.zMm) + Number(tile.thicknessMm) / 2;
+  // Outward face: top of layers above the board centre, bottom of those below.
+  const sign = tile.surfaceSign === -1 ? -1 : 1;
+  const y1 = Number(tile.zMm) + sign * Number(tile.thicknessMm) / 2;
   for (const object of tile.objects) {
     appendSurfacePolygon(
       geometry,
@@ -1305,19 +1373,20 @@ function buildTileGeometry(tile) {
       y1,
       Number(object.netId || 0),
       Number(object.objectFeatureId || 0),
+      sign,
     );
   }
   return geometry;
 }
 
-function appendSurfacePolygon(geometry, polygon, y, netId, objectFeatureId) {
+function appendSurfacePolygon(geometry, polygon, y, netId, objectFeatureId, normalY = 1) {
   const rings = polygon.map(openRing).filter((ring) => ring.length >= 3);
   if (!rings.length) return;
   const flat = flattenRings(rings);
   const triangles = earcut(flat.vertices, flat.holes, flat.dimensions);
   const base = geometry.positions.length / 3;
   for (let index = 0; index < flat.vertices.length; index += 2) {
-    appendVertex(geometry, flat.vertices[index], y, flat.vertices[index + 1], 0, 1, 0, netId, objectFeatureId);
+    appendVertex(geometry, flat.vertices[index], y, flat.vertices[index + 1], 0, normalY, 0, netId, objectFeatureId);
   }
   for (let index = 0; index < triangles.length; index += 3) {
     const a = triangles[index];

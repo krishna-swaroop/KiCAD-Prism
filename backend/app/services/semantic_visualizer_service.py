@@ -28,18 +28,16 @@ def _compute_build_fingerprint() -> str:
     try:
         from app.services.semantic_viewer_runtime import find_viewer_repo_root
         viewer_root = find_viewer_repo_root()
-        inputs = [
-            "pipeline/topology_compiler/__main__.py",
-            "pipeline/topology_compiler/compiler.py",
-            "pipeline/topology_compiler/context.py",
-            "pipeline/topology_compiler/copper_geometry.py",
-            "pipeline/topology_compiler/pcb_extract.py",
+        compiler_modules = (
+            "__main__", "compiler", "context", "copper_geometry", "pcb_extract",
             # Every pad and track outline is built here, so a change to it has
             # to invalidate cached bundles the same way pcb_extract does.
-            "pipeline/topology_compiler/pcb_geometry.py",
-            "pipeline/topology_compiler/semantic_gltf.py",
-            "pipeline/topology_compiler/kicad_cli_export.py",
-            "pipeline/topology_compiler/exporter.py",
+            "pcb_geometry", "semantic_gltf", "kicad_cli_export", "exporter", "soldermask",
+        )
+        inputs = [
+            *(f"pipeline/topology_compiler/{name}.py" for name in compiler_modules),
+            # Builds the copper tile and solder mask meshes.
+            "tools/semantic-gltf/build.mjs",
             "package.json",
             "package-lock.json",
             "requirements-runtime.txt",

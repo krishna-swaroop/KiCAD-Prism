@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Box, Eye, EyeOff, Layers3, Loader2, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import { Box, Eye, EyeOff, Focus, Layers3, Loader2, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
     Card,
     CardAction,
@@ -15,11 +21,13 @@ import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useCommittedRef } from "@/hooks/use-committed-ref";
 import { dnpVisibilityNotice } from "./design-variants/dnp-visibility";
+import { Semantic3dControls } from "./semantic-3d-controls";
 import type { User } from "@/types/auth";
 import type { PrismSelection } from "@/types/prism-selection";
 import type { HighlightedNet } from "@/lib/net-highlights";
 import type {
     PrismRendererSelection,
+    PrismSemanticContextMenuDetail,
     PrismSemanticViewerElement,
     PrismSemanticViewerSelectionDetail,
 } from "@/types/prism-semantic-viewer";
@@ -152,6 +160,12 @@ export function WebGpu3dTab({
     const [jobId, setJobId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [viewerRevision, setViewerRevision] = useState(0);
+    const [leftInset, setLeftInset] = useState(0);
+    /** Models the reviewer hid from the 3D context menu, on top of the DNP set. */
+    const [userHidden, setUserHidden] = useState<string[]>([]);
+    /** The one model left visible by "Show only", or null. */
+    const [isolated, setIsolated] = useState<string | null>(null);
+    const [contextMenu, setContextMenu] = useState<PrismSemanticContextMenuDetail | null>(null);
     const canGenerate = user?.role === "admin" || user?.role === "designer";
     const isStackup = workspace === "stackup";
 
@@ -330,6 +344,9 @@ export function WebGpu3dTab({
                 sourceRevisionKey: status?.sourceRevisionKey,
             });
         };
+        const handleContextMenu = (event: Event) => {
+            setContextMenu((event as CustomEvent<PrismSemanticContextMenuDetail>).detail);
+        };
         const handleError = (event: Event) => {
             const custom = event as CustomEvent<{ error?: Error }>;
             setError(custom.detail?.error?.message || "The WebGPU renderer failed to load");
@@ -338,11 +355,13 @@ export function WebGpu3dTab({
         node.addEventListener("prism-semantic-viewer:performance", handlePerformance);
         node.addEventListener("prism-semantic-viewer:selectionchange", handleSelection);
         node.addEventListener("prism-semantic-viewer:error", handleError);
+        node.addEventListener("prism-semantic-viewer:contextmenu", handleContextMenu);
         return () => {
             node.removeEventListener("prism-semantic-viewer:ready", handleReady);
             node.removeEventListener("prism-semantic-viewer:performance", handlePerformance);
             node.removeEventListener("prism-semantic-viewer:selectionchange", handleSelection);
             node.removeEventListener("prism-semantic-viewer:error", handleError);
+            node.removeEventListener("prism-semantic-viewer:contextmenu", handleContextMenu);
         };
     }, [onClearSelection, onSelection, projectId, selectionRef, status?.sourceRevisionKey, tabLoadStartedAt, viewerElement]);
 
@@ -358,10 +377,15 @@ export function WebGpu3dTab({
         let cancelled = false;
         void customElements.whenDefined("prism-semantic-viewer").then(() => {
             if (cancelled) return;
-            node.setHiddenComponents([...hiddenComponents]);
+            // "Show only" hides every other reference; alternate-footprint parts
+            // stay visible, as they do for DNP and Hide.
+            const hidden = isolated
+                ? (node.getComponentReferences?.() ?? []).filter((reference) => reference !== isolated)
+                : [...hiddenComponents, ...userHidden];
+            node.setHiddenComponents([...new Set(hidden)]);
         });
         return () => { cancelled = true; };
-    }, [hiddenComponents, isStackup, viewerElement, viewerReady]);
+    }, [hiddenComponents, isStackup, isolated, userHidden, viewerElement, viewerReady]);
 
     const ambiguityNotice = dnpVisibilityNotice({
         hidden: [],
@@ -506,6 +530,7 @@ export function WebGpu3dTab({
                 "--prism-border": "hsl(var(--border))",
                 "--prism-primary": "hsl(var(--primary))",
                 "--prism-primary-foreground": "hsl(var(--primary-foreground))",
+                "--prism-viewport-inset-left": `${isStackup ? 0 : leftInset}px`,
             } as CSSProperties}
         >
             <prism-semantic-viewer
@@ -514,12 +539,50 @@ export function WebGpu3dTab({
                 bundle-url={bundleUrl}
                 workspace={workspace}
                 active={active && !isStackup ? "true" : undefined}
+                hide-panel={isStackup ? undefined : "true"}
                 className="block h-full min-h-0 w-full"
             />
+            {!isStackup && (
+                <Semantic3dControls viewer={viewerElement} onVisibleWidthChange={setLeftInset} />
+            )}
+            <DropdownMenu open={Boolean(contextMenu)} onOpenChange={(open) => { if (!open) setContextMenu(null); }}>
+                <DropdownMenuTrigger asChild>
+                    <span
+                        aria-hidden="true"
+                        className="pointer-events-none fixed size-0"
+                        style={{ left: contextMenu?.clientX ?? 0, top: contextMenu?.clientY ?? 0 }}
+                    />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-auto" sideOffset={2}>
+                    {contextMenu?.reference ? (
+                        <>
+                            <DropdownMenuItem
+                                onSelect={() => {
+                                    const reference = contextMenu.reference!;
+                                    setIsolated(null);
+                                    setUserHidden((current) => current.includes(reference) ? current : [...current, reference]);
+                                }}
+                            >
+                                <EyeOff className="size-3.5" />
+                                Hide {contextMenu.reference}
+                                {contextMenu.value && (
+                                    <span className="text-muted-foreground">{contextMenu.value}</span>
+                                )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => setIsolated(contextMenu.reference!)}>
+                                <Focus className="size-3.5" />
+                                Show only {contextMenu.reference}
+                            </DropdownMenuItem>
+                        </>
+                    ) : (
+                        <DropdownMenuItem disabled>No model here</DropdownMenuItem>
+                    )}
+                </DropdownMenuContent>
+            </DropdownMenu>
             <div className={cn(
                 "pointer-events-none absolute flex items-center gap-2",
-                isStackup ? "right-5 top-5" : "left-3 top-3",
-            )}>
+                isStackup ? "right-5 top-5" : "top-3",
+            )} style={isStackup ? undefined : { left: leftInset + 12 }}>
                 {readinessStage !== "semantic-ready" && (
                     <Badge variant="secondary" className="pointer-events-auto gap-1 shadow-sm">
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -539,9 +602,24 @@ export function WebGpu3dTab({
                         {showDnp ? "Showing DNP" : "Show DNP"}
                     </Button>
                 )}
+                {!isStackup && (isolated || userHidden.length > 0) && (
+                    <Button
+                        className="pointer-events-auto shadow-sm"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                            setIsolated(null);
+                            setUserHidden([]);
+                        }}
+                        title={isolated ? `Showing only ${isolated}` : `Hidden: ${userHidden.join(", ")}`}
+                    >
+                        <Eye className="mr-2 h-3.5 w-3.5" />
+                        {isolated ? `Show all (only ${isolated} shown)` : `Show all (${userHidden.length} hidden)`}
+                    </Button>
+                )}
                 {!isStackup && ambiguityNotice && (
                     <Badge
-                        variant="outline"
+                        variant="secondary"
                         className="pointer-events-auto shadow-sm"
                         title={ambiguityNotice}
                     >

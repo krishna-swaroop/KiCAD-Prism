@@ -118,8 +118,12 @@ class TopologyCompilerTests(unittest.TestCase):
         )
         self.assertEqual(builder.board_y_min_mm, 0.0)
         self.assertAlmostEqual(builder.board_y_max_mm or 0.0, 1.86)
-        self.assertAlmostEqual(builder._runtime_z_mm(-1.0), 0.0)
-        self.assertAlmostEqual(builder._runtime_z_mm(1.0), 1.86)
+        # Shifted, not scaled: outer copper inner faces land on the substrate faces,
+        # and the copper itself sits outside them.
+        self.assertAlmostEqual(builder._runtime_z_mm(-0.93), 0.0)
+        self.assertAlmostEqual(builder._runtime_z_mm(0.93), 1.86)
+        self.assertAlmostEqual(builder._runtime_z_mm(0.95), 1.88)
+        self.assertAlmostEqual(builder._runtime_z_mm(-0.95), -0.02)
 
     def test_component_bindings_patch_manifest_without_rebuilding_tiles(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -215,6 +219,36 @@ class TopologyCompilerTests(unittest.TestCase):
         self.assertEqual(len(topology["nets"]), 1)
         self.assertEqual(len(topology["terminals"]), 2)
         self.assertEqual(topology["indexes"]["net_name_to_net"]["VBUS"], "net_vbus")
+
+    def test_footprint_body_prefers_the_courtyard_then_the_pads(self) -> None:
+        design = {"components": [{"designator": "U1"}, {"designator": "J1"}, {"designator": "TP1"}], "nets": []}
+        pcb_metadata = {
+            "board": {"bbox_mm": [0.0, 0.0, 50.0, 50.0]},
+            "components": [
+                {"designator": "U1", "layer": "F.Cu", "x_mm": 40.0, "y_mm": 40.0,
+                 "bbox_mm": [39.0, 39.0, 41.0, 41.0], "body_bbox_mm": [37.5, 38.0, 42.5, 42.0]},
+                {"designator": "J1", "layer": "B.Cu", "x_mm": 15.0, "y_mm": 12.0,
+                 "bbox_mm": [10.0, 10.0, 20.0, 14.0]},
+                {"designator": "TP1", "layer": "F.Cu", "x_mm": 30.0, "y_mm": 30.0},
+            ],
+        }
+        topology = compile_topology(design, [], pcb_metadata, {})
+        bodies = {
+            item["designator"]: item
+            for item in topology["physical_objects"]
+            if item["kind"] == "footprint_body"
+        }
+
+        def rounded(bbox: list[float]) -> list[float]:
+            return [round(value, 6) for value in bbox]
+
+        # Courtyard or fab outline, as given.
+        self.assertEqual(rounded(bodies["U1"]["bbox_mm"]), [37.5, 38.0, 42.5, 42.0])
+        # Pads only: their extent plus a margin.
+        self.assertEqual(rounded(bodies["J1"]["bbox_mm"]), [9.65, 9.65, 20.35, 14.35])
+        self.assertEqual(bodies["J1"]["layer"], "B.Cu")
+        # No pad extent: a small box around the position.
+        self.assertEqual(rounded(bodies["TP1"]["bbox_mm"]), [28.05, 29.0, 31.95, 31.0])
 
     def test_board_net_names_reconcile_with_the_schematic_netlist(self) -> None:
         # A bus member crossing sheet pins: the board calls it /SIG, the
@@ -852,11 +886,70 @@ class TopologyCompilerTests(unittest.TestCase):
 
     def test_board_context_export_excludes_duplicate_pad_geometry(self) -> None:
         args = _board_context_export_args(Path("geometry"), Path("unit.kicad_pcb"))
-        self.assertIn("--include-soldermask", args)
+        # The mask comes from soldermask.py; kicad-cli only cuts pad openings
+        # into it when it also exports the pads.
+        self.assertNotIn("--include-soldermask", args)
         self.assertIn("--include-silkscreen", args)
         self.assertIn("--no-components", args)
         self.assertNotIn("--include-pads", args)
-        self.assertIn("no-pads", BOARD_CONTEXT_CACHE_VERSION)
+        self.assertIn("no-mask", BOARD_CONTEXT_CACHE_VERSION)
+
+    def test_soldermask_opens_mask_pads_and_drills(self) -> None:
+        from shapely.geometry import Point, Polygon
+
+        from pipeline.topology_compiler.soldermask import (
+            board_paste_margin,
+            board_tenting,
+            soldermask_polygons,
+        )
+
+        pcb_text = """(kicad_pcb (version 20240108) (generator "pcbnew")
+  (general (thickness 1.6))
+  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (35 "F.Paste" user) (38 "B.Mask" user) (39 "F.Mask" user) (44 "Edge.Cuts" user))
+  (setup (pad_to_mask_clearance 0.1) (pad_to_paste_clearance -0.05))
+  (net 0 "")
+  (gr_rect (start 0 0) (end 20 10) (stroke (width 0.1) (type solid)) (layer "Edge.Cuts") (uuid "edge"))
+  (footprint "Device:R" (layer "F.Cu") (at 5 5 0) (uuid "fp-r1")
+    (property "Reference" "R1" (at 0 0 0) (layer "F.SilkS"))
+    (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (uuid "pad-mask"))
+    (pad "2" smd rect (at 3 0) (size 1 1) (layers "F.Cu") (uuid "pad-covered"))
+    (pad "3" smd rect (at -3 0) (size 1 1) (layers "F.Cu" "F.Mask" "F.Paste") (uuid "pad-paste"))
+    (fp_circle (center 8 0) (end 8.5 0) (stroke (width 0) (type solid)) (fill yes) (layer "F.Mask") (uuid "mask-circle")))
+  (via (at 15 5) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 0) (uuid "via1"))
+)
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            board_path = Path(tmp) / "mask.kicad_pcb"
+            board_path.write_text(pcb_text, encoding="utf-8")
+            from kicad_monkey import KiCadPcb
+
+            pcb = KiCadPcb.from_file(board_path)
+            pcb_ir = pcb.to_ir(source_path=str(board_path)).to_dict()
+            paste_margin = board_paste_margin(pcb)
+            polygons = soldermask_polygons(pcb_ir, tented=board_tenting(pcb), paste_margin_mm=paste_margin)
+
+        self.assertIsNotNone(polygons)
+        top = [Polygon(ring["outer"], ring["holes"]) for ring in polygons["sides"]["top"]]
+        bottom = [Polygon(ring["outer"], ring["holes"]) for ring in polygons["sides"]["bottom"]]
+
+        def covered(shapes, x, y):
+            return any(shape.contains(Point(x, y)) for shape in shapes)
+
+        self.assertFalse(covered(top, 5.0, 5.0), "pad on F.Mask is open")
+        self.assertFalse(covered(top, 5.55, 5.0), "board mask margin widens the opening")
+        self.assertTrue(covered(top, 8.0, 5.0), "pad without F.Mask stays covered")
+        self.assertFalse(covered(top, 13.0, 5.0), "F.Mask graphic is an opening")
+        self.assertFalse(covered(top, 15.0, 5.0), "via drill goes through")
+        self.assertTrue(covered(top, 15.25, 5.0), "tented via ring stays covered")
+        self.assertTrue(covered(bottom, 5.0, 5.0), "top pad does not open the bottom mask")
+        self.assertTrue(covered(top, 1.0, 1.0))
+
+        self.assertAlmostEqual(paste_margin, -0.05)
+        paste = [Polygon(ring["outer"], ring["holes"]) for ring in polygons["paste"]["top"]]
+        self.assertTrue(covered(paste, 2.0, 5.0), "pad on F.Paste gets paste")
+        self.assertFalse(covered(paste, 2.48, 5.0), "board paste clearance shrinks it")
+        self.assertFalse(covered(paste, 5.0, 5.0), "pad without F.Paste gets none")
+        self.assertNotIn("bottom", polygons["paste"])
 
     def test_native_board_manifest_retains_native_silkscreen_group(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

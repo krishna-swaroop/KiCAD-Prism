@@ -337,8 +337,23 @@ def compile_topology(
             component = component_by_designator.get(designator)
             x = float(raw.get("x_mm") or 0.0)
             y = float(raw.get("y_mm") or 0.0)
-            w = 3.0 + min(8.0, len(designator) * 0.3)
-            h = 2.0
+            body_bbox = raw.get("body_bbox_mm")
+            pad_bbox = raw.get("bbox_mm")
+            if isinstance(body_bbox, (list, tuple)) and len(body_bbox) == 4:
+                # Courtyard or fab outline: the footprint's own size.
+                bbox = [float(value) for value in body_bbox]
+            elif isinstance(pad_bbox, (list, tuple)) and len(pad_bbox) == 4:
+                # Pad extent, with the same margin pcb_extract gives footprint bodies.
+                bbox = [
+                    float(pad_bbox[0]) - 0.35,
+                    float(pad_bbox[1]) - 0.35,
+                    float(pad_bbox[2]) + 0.35,
+                    float(pad_bbox[3]) + 0.35,
+                ]
+            else:
+                w = 3.0 + min(8.0, len(designator) * 0.3)
+                h = 2.0
+                bbox = [x - w / 2, y - h / 2, x + w / 2, y + h / 2]
             physical_objects.append(
                 PhysicalObject(
                     uid=stable_id("obj", f"component:{designator}"),
@@ -346,7 +361,7 @@ def compile_topology(
                     layer=str(raw.get("layer") or "F.Cu"),
                     component_uid=component.uid if component else "",
                     designator=designator,
-                    bbox_mm=[x - w / 2, y - h / 2, x + w / 2, y + h / 2],
+                    bbox_mm=bbox,
                     source_ids=[str(raw.get("unique_id") or "")],
                 )
             )

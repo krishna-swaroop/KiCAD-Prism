@@ -12,6 +12,10 @@ function shellHtml() {
       #app.panel-collapsed { grid-template-columns: minmax(0, 1fr) 46px; }
       #app.workspace-stackup { grid-template-columns: minmax(0, 1fr); }
       #selection-card { display: none !important; }
+      /* The host renders the PCB controls itself (see getViewState). */
+      :host([hide-panel]) #app,
+      :host([hide-panel]) #app.panel-collapsed { grid-template-columns: minmax(0, 1fr); }
+      :host([hide-panel]) .panel { display: none !important; }
     </style>
     <main id="app">
       <section class="viewport-shell">
@@ -213,6 +217,18 @@ export class PrismSemanticViewerElement extends HTMLElement {
           detail: { selection },
         }));
       },
+      onContextMenu: (detail) => {
+        if (signal.aborted) return;
+        this.dispatchEvent(new CustomEvent("prism-semantic-viewer:contextmenu", {
+          bubbles: true,
+          composed: true,
+          detail,
+        }));
+      },
+      onViewStateChange: (detail) => {
+        if (signal.aborted) return;
+        this.emitViewState(detail);
+      },
       onPerformanceEvent: (detail) => {
         if (signal.aborted) return;
         console.info("[prism-3d-perf]", detail);
@@ -239,6 +255,16 @@ export class PrismSemanticViewerElement extends HTMLElement {
     if (this.pendingHighlightedNets?.length) {
       this.controller?.setHighlightedNets?.(this.pendingHighlightedNets);
     }
+    const viewState = this.getViewState();
+    if (viewState) this.emitViewState(viewState);
+  }
+
+  emitViewState(detail) {
+    this.dispatchEvent(new CustomEvent("prism-semantic-viewer:viewstatechange", {
+      bubbles: true,
+      composed: true,
+      detail,
+    }));
   }
 
   emitReady(detail) {
@@ -282,8 +308,58 @@ export class PrismSemanticViewerElement extends HTMLElement {
     this.controller?.setHiddenComponents?.(this.pendingHiddenComponents);
   }
 
+  /** Every component reference on the board; empty until the viewer is ready. */
+  getComponentReferences() {
+    return this.controller?.getComponentReferences?.() ?? [];
+  }
+
   resize() {
     this.controller?.resize?.();
+  }
+
+  /** PCB 3D controls for a host that sets `hide-panel`. Null until ready. */
+  getViewState() {
+    return this.controller?.getViewState?.() ?? null;
+  }
+
+  setViewMode(mode) {
+    this.controller?.setViewMode?.(mode);
+  }
+
+  setLayerVisible(layerId, visible) {
+    this.controller?.setLayerVisible?.(layerId, visible);
+  }
+
+  applyLayerPreset(preset) {
+    this.controller?.applyLayerPreset?.(preset);
+  }
+
+  setShowBoard(visible) {
+    this.controller?.setShowBoard?.(visible);
+  }
+
+  setShowComponents(visible) {
+    this.controller?.setShowComponents?.(visible);
+  }
+
+  setShowPlaceholders(visible) {
+    this.controller?.setShowPlaceholders?.(visible);
+  }
+
+  setRealisticColors(enabled) {
+    this.controller?.setRealisticColors?.(enabled);
+  }
+
+  setSeparation(value) {
+    this.controller?.setSeparation?.(value);
+  }
+
+  showNetLayers() {
+    this.controller?.showNetLayers?.();
+  }
+
+  setNetIsolation(enabled) {
+    this.controller?.setNetIsolation?.(enabled);
   }
 }
 

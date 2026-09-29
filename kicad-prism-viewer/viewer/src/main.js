@@ -11,6 +11,7 @@ import { loadGltf } from "./gltf-loader.js";
 import { clamp } from "./math.js";
 import { Renderer } from "./renderer.js";
 import { SchematicWorldRenderer } from "./schematic-world-renderer.js";
+import { layoutStackup, naturalStackupHeight, stackupDiagramMarkup } from "./stackup-diagram.js";
 import { collectStackupViaData } from "./stackup-vias.js";
 import { SvgDomSchematicRenderer } from "./svg-dom-schematic-renderer.js";
 
@@ -84,7 +85,6 @@ function initialState() {
   return {
     workspace: "pcb",
     mode: "3d",
-    cameraTool: "orbit",
     compareLayers: new Set(),
     desiredCompareLayers: new Set(),
     visible3dLayers: new Set(),
@@ -95,6 +95,8 @@ function initialState() {
     selectionAnchor: null,
     showBoard: true,
     showComponents: true,
+    showPlaceholders: true,
+    realisticColors: true,
     isolateNet: false,
     hiddenComponents: new Set(),
     /** User/view prefs restored after Esc; not overwritten by net-probe toggles. */
@@ -212,6 +214,10 @@ let lastFrame = performance.now();
 let activeViewerToken = 0;
 let animationFrameId = 0;
 let selectionChangeCallback = null;
+let viewStateChangeCallback = null;
+let contextMenuCallback = null;
+let viewStateChangeQueued = false;
+let stackupDiagramObserver = null;
 let suppressSelectionChange = false;
 let viewerIsActive = () => true;
 let legacyWorkspacesEnabled = true;
@@ -335,6 +341,10 @@ export async function mountStandaloneViewer(options = {}) {
   selectionChangeCallback = typeof options.onSelectionChange === "function"
     ? options.onSelectionChange
     : null;
+  contextMenuCallback = typeof options.onContextMenu === "function" ? options.onContextMenu : null;
+  viewStateChangeCallback = typeof options.onViewStateChange === "function"
+    ? options.onViewStateChange
+    : null;
   viewerIsActive = typeof options.isActive === "function" ? options.isActive : () => true;
   legacyWorkspacesEnabled = options.workspaceScope !== "3d";
   resolveDom(options.root || document);
@@ -372,12 +382,59 @@ export async function mountStandaloneViewer(options = {}) {
     setHiddenComponents(references) {
       return applyHiddenComponents(references);
     },
+    getComponentReferences() {
+      return [...scene.componentFeatures.keys()];
+    },
     setHighlightedNets(refs) {
       return applyHighlightedNets(refs);
     },
+    getViewState: pcbViewState,
+    setViewMode,
+    setLayerVisible,
+    applyLayerPreset,
+    setShowBoard,
+    setShowComponents,
+    setShowPlaceholders,
+    setRealisticColors,
+    setSeparation,
+    showNetLayers,
+    setNetIsolation,
     dispose() {
       disposeViewerSession(token);
     },
+  };
+}
+
+/**
+ * The PCB 3D controls a host renders in place of the built-in panel. Coalesced
+ * to one callback per task: a single click can touch several of these fields.
+ */
+function notifyViewStateChange() {
+  if (!viewStateChangeCallback || viewStateChangeQueued) return;
+  viewStateChangeQueued = true;
+  queueMicrotask(() => {
+    viewStateChangeQueued = false;
+    viewStateChangeCallback?.(pcbViewState());
+  });
+}
+
+function pcbViewState() {
+  const selected = state.mode === "3d" ? state.visible3dLayers : state.desiredCompareLayers;
+  return {
+    mode: state.mode,
+    layers: scene.copperLayers.map((layer) => ({
+      id: Number(layer.id),
+      name: String(layer.name),
+      color: rgbCss(layerColor(layer)),
+      visible: selected.has(Number(layer.id)),
+    })),
+    showBoard: state.showBoard,
+    showComponents: state.showComponents,
+    showPlaceholders: state.showPlaceholders,
+    realisticColors: state.realisticColors,
+    separation: state.separation,
+    isolateNet: state.isolateNet,
+    hasNet: Boolean(state.activeNetId) || emphasizedNetIds().size > 0,
   };
 }
 
@@ -548,6 +605,7 @@ async function boot(token, performanceTimings = {}, onPerformanceEvent = null) {
     return;
   }
   renderer.setBarrels(scene.manifest.barrels || []);
+  applyCopperColors();
   started = performance.now();
   const boardBounds = await loadBoard(token);
   performanceTimings.board_fetch_parse_upload_ms = performance.now() - started;
@@ -580,6 +638,7 @@ async function boot(token, performanceTimings = {}, onPerformanceEvent = null) {
     const componentsStarted = performance.now();
     void loadComponents(token).then(() => {
       if (!viewerSessionActive(token)) return;
+      addFootprintPlaceholders(boardBounds);
       onPerformanceEvent?.({
         schema: "prism.semantic_viewer_performance.a0",
         milestone: "components-loaded",
@@ -588,6 +647,8 @@ async function boot(token, performanceTimings = {}, onPerformanceEvent = null) {
         bytes_loaded: state.loadedBytes,
       });
     });
+  } else {
+    addFootprintPlaceholders(boardBounds);
   }
   scheduleTileResidency(performance.now(), { force: true });
   scheduleFrame(token);
@@ -719,7 +780,8 @@ async function loadTile(tile, token = activeViewerToken) {
           kind: "copper",
           tileId: tile.id,
           layerId: Number(tile.layerId),
-          color: layerColor(layer),
+          color: copperColor(layer),
+          stencilMark: isOuterCopper(layer),
           baseZ: Number(layer?.z_mm || 0) / 1000,
           material: { baseColor: [1, 1, 1, 1], metallic: 0.78, roughness: 0.32 },
         });
@@ -965,15 +1027,33 @@ function tileDistanceToFocus(tile) {
 async function loadBoard(token = activeViewerToken) {
   const path = semanticGeometry.assets?.base_board_glb;
   if (!path) return null;
-  const loaded = await loadGltf(new URL(path, location.href).toString(), { defaultFeatureId: 0 });
+  // The pipeline's own mask (with pad openings) replaces any the board export
+  // carries. Fetched alongside the board; a failed mask leaves the board bare.
+  const maskPath = semanticGeometry.assets?.soldermask_glb;
+  const [loaded, mask] = await Promise.all([
+    loadGltf(new URL(path, location.href).toString(), { defaultFeatureId: 0 }),
+    maskPath
+      ? loadGltf(new URL(maskPath, location.href).toString(), { defaultFeatureId: 0 }).catch((error) => {
+        console.warn("[prism-semantic-viewer] solder mask failed to load", error);
+        return null;
+      })
+      : null,
+  ]);
   if (!viewerSessionActive(token) || !renderer) return null;
   state.loadedBytes += loaded.byteLength;
-  const contextPrimitives = loaded.primitives.filter((primitive) => boardRole(primitive) !== "pad");
+  if (mask) state.loadedBytes += mask.byteLength;
+  const contextPrimitives = [
+    ...loaded.primitives.filter((primitive) => {
+      const role = boardRole(primitive);
+      return role !== "pad" && !(mask && role === "soldermask");
+    }),
+    ...(mask?.primitives || []),
+  ];
   for (const primitive of mergePrimitivesByMaterial(contextPrimitives, boardRole)) {
     renderer.addPrimitive(primitive, {
       kind: "board",
       boardRole: primitive.groupKey,
-      layerId: 0,
+      layerId: primitive.groupKey === "paste" ? pasteLayerId(primitive) : 0,
       material: primitive.material,
       color: primitive.material.baseColor,
     });
@@ -1003,7 +1083,16 @@ function boardRole(primitive) {
   if (name.includes("_pad") || name.includes(".pad") || name.endsWith("pad")) return "pad";
   if (name.includes("silkscreen")) return "silkscreen";
   if (name.includes("soldermask")) return "soldermask";
+  if (name.includes("paste")) return "paste";
   return "substrate";
+}
+
+function pasteLayerId(primitive) {
+  const bottom = String(primitive.material?.name || "").endsWith("_bottom");
+  const layers = scene.copperLayers;
+  const layer = layers.find((item) => item.name === (bottom ? "B.Cu" : "F.Cu"))
+    || (bottom ? layers[layers.length - 1] : layers[0]);
+  return Number(layer?.id || 0);
 }
 
 async function loadComponents(token = activeViewerToken) {
@@ -1031,6 +1120,91 @@ async function loadComponents(token = activeViewerToken) {
       color: primitive.material.baseColor,
     });
   }
+}
+
+const PLACEHOLDER_HEIGHT_M = 0.0004;
+// Clear of the mask and silkscreen, so the box's base never shares their plane.
+const PLACEHOLDER_GAP_M = 0.00005;
+const PLACEHOLDER_MATERIAL = { baseColor: [0.62, 0.7, 0.8, 1], metallic: 0, roughness: 0.8, emissive: [0, 0, 0] };
+
+/**
+ * Footprints without a 3D model get a faint box over their pad extent, on their
+ * board side, tagged with the component's feature id. Picking, cross-probe
+ * highlight, framing and hiding then work as for a real model.
+ */
+function addFootprintPlaceholders(boardBounds) {
+  if (!renderer) return;
+  const bodies = new Map();
+  for (const item of topology.physical_objects || []) {
+    if (item.kind === "footprint_body" && item.designator && item.bbox_mm?.length === 4) {
+      bodies.set(item.designator, item);
+    }
+  }
+  const top = (boardBounds?.[5] ?? 0.0008) + PLACEHOLDER_GAP_M;
+  const bottom = (boardBounds?.[2] ?? -0.0008) - PLACEHOLDER_GAP_M;
+  const primitives = [];
+  for (const component of scene.componentFeatures.values()) {
+    const featureId = Number(component.featureId);
+    const feature = scene.features.get(featureId);
+    const body = bodies.get(component.designator);
+    if (!feature || feature.bounds || !body) continue;
+    const [x0, y0, x1, y1] = body.bbox_mm.map(Number);
+    const back = String(body.layer || "").startsWith("B.");
+    const bounds = [
+      x0 / 1000,
+      -y1 / 1000,
+      back ? bottom - PLACEHOLDER_HEIGHT_M : top,
+      x1 / 1000,
+      -y0 / 1000,
+      back ? bottom : top + PLACEHOLDER_HEIGHT_M,
+    ];
+    feature.bounds = bounds;
+    feature.placeholder = true;
+    primitives.push(boxPrimitive(bounds, featureId));
+  }
+  if (!primitives.length) return;
+  for (const primitive of mergePrimitivesByMaterial(primitives)) {
+    renderer.addPrimitive(primitive, {
+      kind: "component",
+      layerId: 0,
+      material: primitive.material,
+      color: primitive.material.baseColor,
+      opacityScale: 0.3,
+      translucent: true,
+      placeholder: true,
+    });
+  }
+}
+
+function boxPrimitive([x0, y0, z0, x1, y1, z1], featureId) {
+  const faces = [
+    [[0, 0, 1], [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]],
+    [[0, 0, -1], [[x0, y1, z0], [x1, y1, z0], [x1, y0, z0], [x0, y0, z0]]],
+    [[1, 0, 0], [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]]],
+    [[-1, 0, 0], [[x0, y1, z0], [x0, y0, z0], [x0, y0, z1], [x0, y1, z1]]],
+    [[0, 1, 0], [[x1, y1, z0], [x0, y1, z0], [x0, y1, z1], [x1, y1, z1]]],
+    [[0, -1, 0], [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]]],
+  ];
+  const position = new Float32Array(24 * 3);
+  const normal = new Float32Array(24 * 3);
+  const indices = new Uint32Array(36);
+  faces.forEach(([faceNormal, corners], face) => {
+    corners.forEach((corner, index) => {
+      position.set(corner, (face * 4 + index) * 3);
+      normal.set(faceNormal, (face * 4 + index) * 3);
+    });
+    const first = face * 4;
+    indices.set([first, first + 1, first + 2, first, first + 2, first + 3], face * 6);
+  });
+  return {
+    position,
+    normal,
+    netId: new Uint32Array(24),
+    objectFeatureId: new Uint32Array(24).fill(featureId),
+    indices,
+    material: PLACEHOLDER_MATERIAL,
+    bounds: [x0, y0, z0, x1, y1, z1],
+  };
 }
 
 function mergePrimitivesByMaterial(primitives, classifier = () => "") {
@@ -1146,6 +1320,48 @@ function layerColor(layer) {
   return [...hex(colors[name] || inner[index % inner.length]), 1];
 }
 
+const DEFAULT_BARREL_COLOR = [0.55, 0.35, 0.16, 0.78];
+const FINISH_COLORS = {
+  gold: [0.83, 0.69, 0.37, 1],
+  silver: [0.74, 0.75, 0.77, 1],
+  copper: [0.76, 0.47, 0.28, 1],
+};
+
+/** Exposed outer copper by surface finish; gold (ENIG, KiCad's default look) when unknown. */
+function finishColor() {
+  const finish = String(topology?.board?.stackup?.copper_finish || "").toLowerCase();
+  if (/hasl|hal\b|tin|silver|lead/.test(finish)) return FINISH_COLORS.silver;
+  if (/osp|bare|none/.test(finish)) return FINISH_COLORS.copper;
+  return FINISH_COLORS.gold;
+}
+
+function isOuterCopper(layer) {
+  const name = String(layer?.name || "");
+  const layers = scene.copperLayers;
+  return Boolean(name) && (name === layers[0]?.name || name === layers[layers.length - 1]?.name);
+}
+
+// Separation at which copper has fully turned to layer colours.
+const LAYER_COLOR_SEPARATION = 0.25;
+
+/**
+ * 1 for KiCad-like copper, 0 for layer colours. Opening the stackup blends to
+ * layer colours, so separated layers stay tell-apart; 2D always uses them.
+ */
+function copperRealism() {
+  if (!state.realisticColors || state.mode === "layer") return 0;
+  return 1 - clamp(state.separation / LAYER_COLOR_SEPARATION, 0, 1);
+}
+
+function copperColor(layer) {
+  const realistic = isOuterCopper(layer) ? finishColor() : FINISH_COLORS.copper;
+  return mixColor(layerColor(layer), realistic, copperRealism());
+}
+
+function mixColor(from, to, amount) {
+  return from.map((value, index) => value + (to[index] - value) * amount);
+}
+
 function hex(value) {
   const clean = value.replace("#", "");
   return [0, 2, 4].map((offset) => parseInt(clean.slice(offset, offset + 2), 16) / 255);
@@ -1173,6 +1389,7 @@ function frame(now, token = activeViewerToken) {
   camera.update(dt);
   renderer.resize();
   const layerZOffsets = stackupOffsets();
+  if (scene.copperRealism !== copperRealism()) applyCopperColors();
   for (const entry of renderer.entries) entry.layerOffset = layerZOffsets[entry.layerId] || 0;
   updateCompareTransition(now);
   compareOffsets = updateCompareLayout(now);
@@ -1184,7 +1401,7 @@ function frame(now, token = activeViewerToken) {
   };
   scheduleTileResidency(now);
   const visibleLayers = state.mode === "3d" ? state.visible3dLayers : compareRenderLayers();
-  renderer.render({
+  const inputs = {
     panels: [panel],
     activeNetId: state.activeNetId,
     selectedFeatureId: state.selectedFeatureId,
@@ -1193,6 +1410,8 @@ function frame(now, token = activeViewerToken) {
     visibleLayers,
     showBoard: state.showBoard,
     showComponents: state.showComponents,
+    // Paste is a fabrication layer: shown on the assembled board only.
+    showPaste: state.separation === 0,
     componentOpacity: clamp(1 - state.separation / 0.1, 0, 1),
     boardOpacity: emphasizedNetIds().size ? 0.34 : 1 - state.separation * 0.72,
     isolateNet: state.isolateNet,
@@ -1200,12 +1419,75 @@ function frame(now, token = activeViewerToken) {
     compareOffsets,
     layerAlphas: compareAlphas,
     visibleTileIds: state.mode === "3d" ? state.visibleTileIds : null,
-  });
-  drawGizmo();
-  updateLayerLabels();
+  };
+  if (frameNeedsRender(now, inputs)) {
+    renderer.render(inputs);
+    drawGizmo();
+    updateLayerLabels();
+  }
   recordFrameSample(frameInterval, performance.now() - frameStarted);
   updateDiagnostics(now);
   scheduleFrame(token);
+}
+
+// The picture only changes with its inputs, so an idle view skips the GPU work.
+// Highlights pulse, so they keep drawing; a slow refresh covers anything missed.
+const IDLE_REFRESH_MS = 1000;
+const lastRender = { key: "", matrix: new Float32Array(16), tiles: null, at: 0 };
+
+function frameNeedsRender(now, inputs) {
+  const matrix = inputs.panels[0].matrix;
+  let moved = false;
+  for (let index = 0; index < 16; index += 1) {
+    if (matrix[index] !== lastRender.matrix[index]) {
+      moved = true;
+      break;
+    }
+  }
+  if (moved) {
+    // While the camera moves nothing else needs comparing.
+    lastRender.matrix.set(matrix);
+    lastRender.key = "";
+    lastRender.at = now;
+    return true;
+  }
+  const key = [
+    canvas.width,
+    canvas.height,
+    renderer.version,
+    state.workspace,
+    state.mode,
+    inputs.activeNetId,
+    inputs.selectedFeatureId,
+    inputs.showBoard,
+    inputs.showComponents,
+    inputs.showPaste,
+    inputs.componentOpacity,
+    inputs.boardOpacity,
+    inputs.isolateNet,
+    scene.layerZOffsetSignature,
+    [...inputs.visibleLayers].join(","),
+    [...inputs.compareOffsets].map(([id, offset]) => `${id}:${offset}`).join(";"),
+    inputs.layerAlphas ? [...inputs.layerAlphas].join(";") : "",
+  ].join("|");
+  const animating = Boolean(inputs.activeNetId || inputs.selectedFeatureId || renderer.emphasizedNetIds.size);
+  const stale = animating
+    || key !== lastRender.key
+    || !sameSet(inputs.visibleTileIds, lastRender.tiles)
+    || now - lastRender.at > IDLE_REFRESH_MS;
+  if (!stale) return false;
+  lastRender.key = key;
+  // The tile set is replaced, never mutated, so keeping the reference is enough.
+  lastRender.tiles = inputs.visibleTileIds;
+  lastRender.at = now;
+  return true;
+}
+
+function sameSet(a, b) {
+  if (!a || !b) return a === b;
+  if (a.size !== b.size) return false;
+  for (const value of a) if (!b.has(value)) return false;
+  return true;
 }
 
 function schematicPageScreenMetrics(page) {
@@ -1459,9 +1741,6 @@ function renderControls() {
       <button id="clear-selection">Clear</button>
     </div>`;
   viewControlsEl.innerHTML = `
-    <div class="camera-toolbar mode-toolbar">
-      <button data-tool="orbit">Orbit</button><button data-tool="pan">Pan</button>
-    </div>
     <div class="toggle-list">
       <label class="toggle-row"><input id="show-board" type="checkbox"><span>Board substrate</span></label>
       <label class="toggle-row"><input id="show-components" type="checkbox"><span>Components</span></label>
@@ -1772,6 +2051,7 @@ function syncNetIsolationControls() {
   if (boardToggle) boardToggle.checked = state.showBoard;
   const componentsToggle = viewControlsEl?.querySelector?.("#show-components");
   if (componentsToggle) componentsToggle.checked = state.showComponents;
+  notifyViewStateChange();
 }
 
 function layersForActiveNet() {
@@ -1874,9 +2154,6 @@ function refreshControls() {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  viewControlsEl.querySelectorAll("[data-tool]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.tool === state.cameraTool);
-  });
   viewControlsEl.querySelector("#show-board").checked = state.showBoard;
   viewControlsEl.querySelector("#show-components").checked = state.showComponents;
   viewControlsEl.querySelector("#separation").value = state.separation;
@@ -1889,61 +2166,106 @@ function refreshControls() {
       <span>${escapeHtml(layer.name)}</span><small>${index + 1}</small>
     </label>`).join("");
   list.querySelectorAll("[data-layer]").forEach((input) => input.addEventListener("change", () => {
-    const layerId = Number(input.dataset.layer);
-    if (state.mode === "3d") {
-      input.checked ? state.visible3dLayers.add(layerId) : state.visible3dLayers.delete(layerId);
-      scheduleTileResidency(performance.now(), { force: true });
-    } else {
-      const target = new Set(state.desiredCompareLayers);
-      input.checked ? target.add(layerId) : target.delete(layerId);
-      beginCompareLayerTransition(target);
-    }
+    setLayerVisible(Number(input.dataset.layer), input.checked);
   }));
   syncNetIsolationControls();
 }
 
+function setViewMode(mode) {
+  if (mode === "layer") {
+    activatePcbLayerMode();
+  } else {
+    state.mode = "3d";
+    camera.frame(sceneRuntimeBounds());
+    camera.snap();
+    state.visibleTileIds = new Set();
+    scheduleTileResidency(performance.now(), { force: true });
+  }
+  refreshControls();
+}
+
+function setLayerVisible(layerId, visible) {
+  if (state.mode === "3d") {
+    visible ? state.visible3dLayers.add(layerId) : state.visible3dLayers.delete(layerId);
+    scheduleTileResidency(performance.now(), { force: true });
+  } else {
+    const target = new Set(state.desiredCompareLayers);
+    visible ? target.add(layerId) : target.delete(layerId);
+    beginCompareLayerTransition(target);
+  }
+  refreshControls();
+}
+
+function applyLayerPreset(preset) {
+  const target = state.mode === "3d" ? state.visible3dLayers : new Set();
+  target.clear();
+  for (const [index, layer] of scene.copperLayers.entries()) {
+    const include = preset === "all"
+      || (preset === "outer" && (index === 0 || index === scene.copperLayers.length - 1))
+      || (preset === "inner" && index > 0 && index < scene.copperLayers.length - 1);
+    if (include) target.add(Number(layer.id));
+  }
+  if (state.mode === "3d") scheduleTileResidency(performance.now(), { force: true });
+  else beginCompareLayerTransition(target);
+  refreshControls();
+}
+
+function setShowBoard(visible) {
+  state.showBoard = Boolean(visible);
+  state.savedShowBoard = state.showBoard;
+  if (state.showBoard && state.isolateNet) setNetIsolation(false);
+  else syncNetIsolationControls();
+}
+
+function setShowComponents(visible) {
+  state.showComponents = Boolean(visible);
+  state.savedShowComponents = state.showComponents;
+  syncNetIsolationControls();
+}
+
+function setShowPlaceholders(visible) {
+  state.showPlaceholders = Boolean(visible);
+  renderer?.setPlaceholdersVisible(state.showPlaceholders);
+  notifyViewStateChange();
+}
+
+/** KiCad-like copper (surface finish outside, bare copper inside) or per-layer colours. */
+function setRealisticColors(enabled) {
+  state.realisticColors = Boolean(enabled);
+  applyCopperColors();
+  notifyViewStateChange();
+}
+
+function applyCopperColors() {
+  if (!renderer) return;
+  const layers = new Map(scene.layers.map((layer) => [Number(layer.id), layer]));
+  for (const entry of renderer.entries) {
+    if (entry.kind === "copper") entry.color = copperColor(layers.get(Number(entry.layerId)));
+  }
+  renderer.setBarrelColor(mixColor(DEFAULT_BARREL_COLOR, [...finishColor().slice(0, 3), 0.78], copperRealism()));
+  scene.copperRealism = copperRealism();
+}
+
+function setSeparation(value) {
+  state.separation = clamp(Number(value) || 0, 0, 1);
+  notifyViewStateChange();
+}
+
 function bindControlEvents() {
   (modeSwitchEl || layersEl).querySelectorAll("[data-mode]").forEach((button) => button.addEventListener("click", () => {
-    if (button.dataset.mode === "layer") {
-      activatePcbLayerMode();
-    } else {
-      state.mode = "3d";
-      camera.frame(sceneRuntimeBounds());
-      camera.snap();
-      state.visibleTileIds = new Set();
-      scheduleTileResidency(performance.now(), { force: true });
-    }
-    refreshControls();
+    setViewMode(button.dataset.mode);
   }));
   layersEl.querySelectorAll("[data-preset]").forEach((button) => button.addEventListener("click", () => {
-    const target = state.mode === "3d" ? state.visible3dLayers : new Set();
-    target.clear();
-    const preset = button.dataset.preset;
-    for (const [index, layer] of scene.copperLayers.entries()) {
-      const include = preset === "all"
-        || (preset === "outer" && (index === 0 || index === scene.copperLayers.length - 1))
-        || (preset === "inner" && index > 0 && index < scene.copperLayers.length - 1);
-      if (include) target.add(Number(layer.id));
-    }
-    if (state.mode === "3d") scheduleTileResidency(performance.now(), { force: true });
-    else beginCompareLayerTransition(target);
-    refreshControls();
-  }));
-  viewControlsEl.querySelectorAll("[data-tool]").forEach((button) => button.addEventListener("click", () => {
-    state.cameraTool = button.dataset.tool;
-    refreshControls();
+    applyLayerPreset(button.dataset.preset);
   }));
   viewControlsEl.querySelector("#show-board").addEventListener("change", (event) => {
-    state.showBoard = event.target.checked;
-    state.savedShowBoard = state.showBoard;
-    if (state.showBoard && state.isolateNet) setNetIsolation(false);
+    setShowBoard(event.target.checked);
   });
   viewControlsEl.querySelector("#show-components").addEventListener("change", (event) => {
-    state.showComponents = event.target.checked;
-    state.savedShowComponents = state.showComponents;
+    setShowComponents(event.target.checked);
   });
   viewControlsEl.querySelector("#separation").addEventListener("input", (event) => {
-    state.separation = Number(event.target.value);
+    setSeparation(event.target.value);
   });
   searchControlsEl.querySelector("#clear-selection").addEventListener("click", clearSelection);
   searchControlsEl.querySelector("#isolate-net").addEventListener("click", () => {
@@ -2135,7 +2457,7 @@ function framePcbFeature(feature, forceComponent = false) {
     // Compare against the destination orientation as well as the current
     // interpolated camera. Repeated cross-probes during an in-progress flip
     // must not cancel or reverse the requested board side.
-    const isCameraBottom = camera.targetPolar > Math.PI / 2;
+    const isCameraBottom = camera.isBelow();
     if (isBottomComponent !== isCameraBottom) {
       camera.setAxis("z", isBottomComponent);
     }
@@ -2406,6 +2728,7 @@ function schematicFeatureSelectionContent(feature, page) {
 }
 
 function updateSelectionCard() {
+  notifyViewStateChange();
   if (state.workspace === "bom") {
     selectionCardEl.hidden = true;
     selectionCardEl.innerHTML = "";
@@ -2554,7 +2877,6 @@ function bindInteractions() {
     state.pointerStartY = event.clientY;
     state.dragMode =
       state.mode === "layer"
-      || state.cameraTool === "pan"
       || event.shiftKey
       || event.button !== 0
         ? "pan"
@@ -2573,9 +2895,9 @@ function bindInteractions() {
   canvas.addEventListener("pointerup", async (event) => {
     state.dragging = false;
     canvas.releasePointerCapture(event.pointerId);
-    if (Math.hypot(event.clientX - state.pointerStartX, event.clientY - state.pointerStartY) < 3) {
-      await pickAt(event);
-    }
+    if (Math.hypot(event.clientX - state.pointerStartX, event.clientY - state.pointerStartY) >= 3) return;
+    if (event.button === 0) await pickAt(event);
+    else if (event.button === 2) await contextPickAt(event);
   });
   canvas.addEventListener("dblclick", async (event) => {
     await pickAt(event);
@@ -2789,13 +3111,37 @@ function bindSchematicInteractions() {
 async function pickAt(event) {
   if (!panel) return;
   const rect = canvas.getBoundingClientRect();
-  const x = (event.clientX - rect.left) * canvas.width / rect.width;
-  const y = (event.clientY - rect.top) * canvas.height / rect.height;
   state.selectionAnchor = {
     x: event.clientX - rect.left,
     y: event.clientY - rect.top,
   };
-  const featureId = await renderer.pick(panel, x, y, {
+  const featureId = await pickFeatureAt(event);
+  if (featureId) selectFeature(featureId, true);
+  else clearSelection();
+}
+
+/**
+ * Right-click without a drag: report what is under the cursor to the host,
+ * which owns the menu. The selection is left alone.
+ */
+async function contextPickAt(event) {
+  if (!panel || !contextMenuCallback) return;
+  const feature = scene.features.get(await pickFeatureAt(event));
+  const reference = componentReferenceFromFeature(feature);
+  const component = reference ? findTopologyComponent(reference) : null;
+  contextMenuCallback({
+    clientX: event.clientX,
+    clientY: event.clientY,
+    reference: reference || undefined,
+    value: String(component?.value || feature?.value || "") || undefined,
+  });
+}
+
+async function pickFeatureAt(event) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) * canvas.width / rect.width;
+  const y = (event.clientY - rect.top) * canvas.height / rect.height;
+  return renderer.pick(panel, x, y, {
     activeNetId: state.activeNetId,
     selectedFeatureId: state.selectedFeatureId,
     layerOffsets: stackupOffsets(),
@@ -2809,8 +3155,6 @@ async function pickAt(event) {
     compareOffsets,
     visibleTileIds: state.mode === "3d" ? state.visibleTileIds : null,
   });
-  if (featureId) selectFeature(featureId, true);
-  else clearSelection();
 }
 
 function handleKey(event) {
@@ -3274,11 +3618,7 @@ function renderStackupWorkspace() {
   buriedCount = viaData.counts.buried;
   const uniqueSpans = viaData.spans;
 
-  // --- SVG cross-section diagram ---
-  const svgTopPadding = 30;
-  let svgHeight = svgTopPadding;
-  const svgLayersData = [];
-
+  // --- SVG cross-section diagram (laid out per size by stackup-diagram.js) ---
   const originalOrder = new Map(physicalLayers.map((layer, index) => [layer, index]));
   const fallbackDisplayOrder = fallbackStackupDisplayOrder(physicalLayers);
   const stackOrder = (layer, fallbackIndex) => {
@@ -3295,115 +3635,35 @@ function renderStackupWorkspace() {
     return (b.z_mm || 0) - (a.z_mm || 0);
   });
 
-  sortedLayers.forEach((layer) => {
-    let layerHeight = 12;
-    if (layer.role === "dielectric") {
-      layerHeight = Math.max(160, Math.min(360, (layer.thickness_mm || 0.1) * 140));
-    } else if (layer.role === "copper") {
-      layerHeight = 22;
-    } else if (layer.role === "soldermask") {
-      layerHeight = 14;
-    }
-    svgLayersData.push({
-      ...layer,
-      svgY: svgHeight,
-      svgHeight: layerHeight
-    });
-    svgHeight += layerHeight;
-  });
-
-  const svgWidth = 800;
-  const boardX = 130;
-  const boardWidth = 240;
-  const dimensionX = boardX + boardWidth + 16;
-  const labelX = dimensionX + 84;
-
-  let svgRectsHtml = "";
-  svgLayersData.forEach((layer) => {
+  const diagramLayers = sortedLayers.map((layer) => {
     let color = layer.color || "#7f7f7f";
     if (layer.role === "copper") color = layer.color || "#f97316";
     else if (layer.role === "dielectric") color = "#a98d5c";
     else if (layer.role === "paste") color = "#cbd5e1";
     else if (layer.role === "soldermask") color = "#1b4332";
     else if (layer.role === "silkscreen") color = "#e2e8f0";
-
-    const copperIdx = copperLayers.findIndex(cl => cl.name === layer.name);
     const details = layerGraphicDetails(layer);
-    const centerY = layer.svgY + layer.svgHeight / 2;
-    const showSecondary = Boolean(details.secondary) && layer.svgHeight >= 38;
-    const primaryY = showSecondary ? centerY - 5 : centerY + 3;
-    const layerId = escapeHtml(layer.id);
-    const layerName = escapeHtml(layer.name);
     const hasThickness = Number.isFinite(Number(layer.thickness_mm)) && Number(layer.thickness_mm) > 0;
-    const thickness = escapeHtml(hasThickness ? layerThicknessLabel(layer) : "—");
-    const fullDescription = escapeHtml([
-      details.primary,
-      details.secondary,
-      `Thickness ${layerThicknessLabel(layer)}`,
-    ].filter(Boolean).join("; "));
-
-    svgRectsHtml += `
-      <g class="stackup-svg-layer" data-layer-id="${layerId}" data-layer-name="${layerName}">
-        <title>${fullDescription}</title>
-        <rect x="${boardX}" y="${layer.svgY}" width="${boardWidth}" height="${layer.svgHeight}" fill="${color}" opacity="0.85" rx="1"/>
-        <text x="${boardX - 8}" y="${layer.svgY + layer.svgHeight / 2 + 3}" fill="var(--muted)" font-size="9px" text-anchor="end" font-weight="700">
-          ${layer.role === "copper" ? (copperIdx + 1) : ""}
-        </text>
-        <path class="stackup-layer-dimension" d="M ${dimensionX + 6} ${layer.svgY + 1} H ${dimensionX} V ${layer.svgY + layer.svgHeight - 1} H ${dimensionX + 6}" />
-        <text class="stackup-layer-thickness" x="${dimensionX + 10}" y="${centerY + 3}" fill="var(--muted)" font-size="8.5px" font-weight="650">
-          ${thickness}
-        </text>
-        <text class="stackup-layer-name" x="${labelX}" y="${primaryY}" fill="var(--foreground)" font-size="9px" font-weight="650">
-          ${escapeHtml(details.primary)}
-        </text>
-        ${showSecondary ? `<text class="stackup-layer-metadata" x="${labelX}" y="${centerY + 10}" fill="var(--muted)" font-size="8px">${escapeHtml(details.secondary)}</text>` : ""}
-      </g>
-    `;
-  });
-
-  // Via span lines in SVG
-  let svgViasHtml = "";
-  const copperSvgLayers = svgLayersData.filter(l => l.role === "copper");
-
-  uniqueSpans.forEach((span, spanIdx) => {
-    const topL = svgLayersData.find(l => l.name === span.startName);
-    const botL = svgLayersData.find(l => l.name === span.endName);
-    if (!topL || !botL) return;
-
-    const yStart = topL.svgY;
-    const yEnd = botL.svgY + botL.svgHeight;
-    const xPos = boardX + ((spanIdx + 1) * boardWidth) / (uniqueSpans.length + 1);
-    const viaLabel = span.type === "thru" ? "Thru" : span.type === "blind" ? "Blind" : "Buried";
-    const viaColor = `var(--stackup-via-${span.type})`;
-
-    svgViasHtml += `
-      <g class="stackup-svg-via" data-via-type="${span.type}">
-        <title>${viaLabel}: ${span.startName} → ${span.endName}</title>
-        ${copperSvgLayers.map(cl => {
-          if (cl.svgY >= topL.svgY && cl.svgY <= botL.svgY) {
-            return `<rect x="${xPos - 5}" y="${cl.svgY}" width="10" height="${cl.svgHeight}" fill="${viaColor}" rx="0.5" />`;
-          }
-          return "";
-        }).join("")}
-        <rect x="${xPos - 2}" y="${yStart}" width="4" height="${yEnd - yStart}" fill="${viaColor}" opacity="0.95" />
-        <rect x="${xPos - 0.75}" y="${yStart - 1}" width="1.5" height="${yEnd - yStart + 2}" fill="var(--panel)" opacity="0.9" />
-      </g>
-    `;
+    return {
+      id: String(layer.id),
+      name: String(layer.name),
+      role: layer.role,
+      color,
+      thicknessMm: Number(layer.thickness_mm) || 0,
+      thicknessLabel: hasThickness ? layerThicknessLabel(layer) : "-",
+      primary: details.primary,
+      secondary: details.secondary,
+      copperIndex: copperLayers.findIndex((cl) => cl.name === layer.name) + 1,
+      description: [
+        details.primary,
+        details.secondary,
+        `Thickness ${layerThicknessLabel(layer)}`,
+      ].filter(Boolean).join("; "),
+    };
   });
 
   const svgMarkup = `
-    <svg class="stackup-visual-svg" viewBox="0 0 ${svgWidth} ${svgHeight + 10}" width="${svgWidth}" height="${svgHeight + 10}">
-      <g class="stackup-svg-column-headings" aria-hidden="true">
-        <text x="${dimensionX + 10}" y="15">Thickness</text>
-        <text x="${labelX}" y="15">Layer / material properties</text>
-      </g>
-      <g class="stackup-total-dimension" aria-label="Total board thickness ${totalThickness.toFixed(4)} millimetres">
-        <path d="M 76 ${svgTopPadding} H 68 V ${svgHeight} H 76" />
-        <text x="68" y="15">Total ${totalThickness.toFixed(4)} mm</text>
-      </g>
-      ${svgRectsHtml}
-      ${svgViasHtml}
-    </svg>
+    <svg class="stackup-visual-svg" aria-label="Board cross-section, total thickness ${totalThickness.toFixed(4)} mm"></svg>
     <div class="stackup-via-legend" aria-label="Via span legend">
       <span><i data-via-type="thru"></i>Thru</span>
       <span><i data-via-type="blind"></i>Blind</span>
@@ -3469,20 +3729,13 @@ function renderStackupWorkspace() {
 
   // --- Build full-screen layout ---
   stackupWorkspaceViewEl.innerHTML = `
-    <div class="stackup-header">
-      <div class="stackup-header-title">
-        <h1>Layer Stackup</h1>
-        <p>Board cross-section profile, layer properties & design rules</p>
-      </div>
-    </div>
-
     <div class="stackup-workspace-body">
       <div class="stackup-diagram-card">
         <span class="stackup-section-title">Cross-Section Profile</span>
         ${svgMarkup}
       </div>
       <aside class="stackup-side-panel">
-      <div class="stackup-summary-grid">
+      <div class="stackup-summary-grid stackup-summary-grid-3">
         <div class="stackup-summary-card">
           <label>Total Thickness</label>
           <span>${totalThickness.toFixed(4)} mm</span>
@@ -3619,8 +3872,47 @@ function renderStackupWorkspace() {
     });
   };
 
-  addLayerListeners(stackupWorkspaceViewEl.querySelectorAll(".stackup-svg-layer"));
   addLayerListeners(stackupWorkspaceViewEl.querySelectorAll(".stackup-table tbody tr[data-layer-id]"), { revealDiagram: true });
+  mountStackupDiagram(stackupWorkspaceViewEl.querySelector(".stackup-visual-svg"), {
+    layers: diagramLayers,
+    spans: uniqueSpans,
+    totalLabel: `Total ${totalThickness.toFixed(4)} mm`,
+    onLayerHover: (layerId) => syncLayerSelection(layerId, Boolean(layerId)),
+  });
+}
+
+/**
+ * Lay the diagram out for the size it is shown at, and again on every resize.
+ * The stacked narrow layout gives the card no height, so it takes its natural one.
+ */
+function mountStackupDiagram(svg, { layers, spans, totalLabel, onLayerHover }) {
+  stackupDiagramObserver?.disconnect();
+  stackupDiagramObserver = null;
+  if (!svg) return;
+  const stacked = () => window.matchMedia?.("(max-width: 1180px)")?.matches;
+  let lastSize = "";
+  const render = () => {
+    const width = svg.clientWidth;
+    const height = stacked() ? naturalStackupHeight(layers) : svg.clientHeight;
+    if (!width || !height) return;
+    const size = `${width}x${height}`;
+    if (size === lastSize) return;
+    lastSize = size;
+    if (stacked()) svg.style.height = `${height}px`;
+    else svg.style.removeProperty("height");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.innerHTML = stackupDiagramMarkup(layoutStackup(layers, { width, height }), { spans, totalLabel });
+  };
+  svg.addEventListener("mouseover", (event) => {
+    const layer = event.target.closest?.(".stackup-svg-layer");
+    onLayerHover(layer ? layer.dataset.layerId : null);
+  });
+  svg.addEventListener("mouseleave", () => onLayerHover(null));
+  if (typeof ResizeObserver !== "undefined") {
+    stackupDiagramObserver = new ResizeObserver(render);
+    stackupDiagramObserver.observe(svg);
+  }
+  render();
 }
 
 function fallbackStackupDisplayOrder(layers) {

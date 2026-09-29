@@ -99,6 +99,8 @@ class SemanticGltfBuilder:
         self.source_polygon_record_id = 0
         self.board_y_min_mm: float | None = None
         self.board_y_max_mm: float | None = None
+        # Centred stackup z plus this is KiCad's board frame (bottom copper inner face at 0).
+        self.board_z_offset_mm: float | None = None
         self.board_thickness_mm = float(topology.get("board", {}).get("thickness_mm") or 0.0)
         self._set_canonical_board_y_range()
 
@@ -149,9 +151,10 @@ class SemanticGltfBuilder:
         """Derive KiCad's board-body frame from stackup facts, without opening a GLB.
 
         KiCad's exported substrate spans the inward faces of the outer copper
-        layers.  Mapping the authored stackup thickness onto that interval is
-        equivalent to the former mesh-axis inspection while allowing semantic
-        compilation to run before either GLB export finishes.
+        layers, and its outer copper sits on those faces.  The stackup is therefore
+        shifted, not scaled, into that frame: scaling the full board thickness onto
+        the substrate pushed the outer copper inside the substrate, where the solder
+        mask openings showed substrate instead of copper.
         """
 
         if len(self.copper_layers) < 2 or self.board_thickness_mm <= 0:
@@ -169,16 +172,12 @@ class SemanticGltfBuilder:
         if body_thickness > 0:
             self.board_y_min_mm = 0.0
             self.board_y_max_mm = body_thickness
+            self.board_z_offset_mm = -bottom_inner
 
     def _runtime_z_mm(self, centered_z_mm: float) -> float:
-        if (
-            self.board_y_min_mm is None
-            or self.board_y_max_mm is None
-            or self.board_thickness_mm <= 0
-        ):
+        if self.board_z_offset_mm is None:
             return centered_z_mm
-        normalized = (centered_z_mm + self.board_thickness_mm / 2.0) / self.board_thickness_mm
-        return self.board_y_min_mm + normalized * (self.board_y_max_mm - self.board_y_min_mm)
+        return centered_z_mm + self.board_z_offset_mm
 
     def _layers_for(self, values: list[Any]) -> list[str]:
         names = [str(item) for item in values]
@@ -278,7 +277,8 @@ class SemanticGltfBuilder:
             feature_id = self._feature_id(source_uid, net_id, layer_id, kind)
         self.source_polygon_record_id += 1
         source_polygon_record_id = self.source_polygon_record_id
-        z_mm = self._runtime_z_mm(float(layer.get("z_mm") or 0.0))
+        centered_z_mm = float(layer.get("z_mm") or 0.0)
+        z_mm = self._runtime_z_mm(centered_z_mm)
         thickness_mm = float(layer.get("thickness_mm") or 0.035) or 0.035
         xs = [point[0] for point in outer]
         ys = [point[1] for point in outer]
@@ -298,6 +298,8 @@ class SemanticGltfBuilder:
                 "layerName": layer_name,
                 "zMm": z_mm,
                 "thicknessMm": thickness_mm,
+                # Face drawn for the layer: the outward one, so outer copper is on the surface.
+                "surfaceSign": 1 if centered_z_mm >= 0 else -1,
                 "kindId": KIND_IDS.get(kind, KIND_IDS["unknown"]),
                 "polygons": [
                     {

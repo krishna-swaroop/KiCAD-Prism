@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 from typing import Any
@@ -717,12 +718,52 @@ def _extract_footprints(pcb: Any, *, include_geometry: bool = True) -> tuple[lis
     return objects, terminal_pad_links
 
 
+# Layers that outline a footprint's physical size, most specific first.
+BODY_LAYER_SUFFIXES = (".CrtYd", ".Fab")
+
+
+def _footprint_body_bbox(footprint: Any) -> list[float] | None:
+    """Board-space extent of the courtyard, else the fab outline, else None."""
+
+    for suffix in BODY_LAYER_SUFFIXES:
+        corners: list[tuple[float, float]] = []
+        for collection in ("fp_lines", "fp_rects", "fp_circles", "fp_polys", "fp_arcs"):
+            for item in getattr(footprint, collection, []) or []:
+                if not str(getattr(item, "layer", "") or "").endswith(suffix):
+                    continue
+                if collection == "fp_arcs":
+                    # FpArc.get_bounds covers the end points only, not the bulge.
+                    corners.extend(_arc_points(
+                        (float(item.start_x), float(item.start_y)),
+                        (float(item.mid_x), float(item.mid_y)),
+                        (float(item.end_x), float(item.end_y)),
+                    ))
+                    continue
+                local = _bbox_list(item.get_bounds()) if hasattr(item, "get_bounds") else None
+                if local:
+                    corners.extend([
+                        (local[0], local[1]), (local[2], local[1]),
+                        (local[2], local[3]), (local[0], local[3]),
+                    ])
+        if corners:
+            return _bbox_from_points(_transform_contour(
+                corners,
+                float(getattr(footprint, "at_x", 0.0) or 0.0),
+                float(getattr(footprint, "at_y", 0.0) or 0.0),
+                _placement_angle(footprint),
+            ))
+    return None
+
+
 def _component_footprints(pcb: Any) -> list[dict[str, Any]]:
     components: list[dict[str, Any]] = []
     for footprint in getattr(pcb, "footprints", []) or []:
         designator = _value(footprint.get_property_value("Reference", ""))
         source_id = _value(getattr(footprint, "uuid", ""))
-        bbox = _bbox_list(footprint.get_bounds())
+        bbox = None
+        for pad in getattr(footprint, "pads", []) or []:
+            bbox = _merge_bbox(bbox, _pad_world_bbox(pad, footprint))
+        body_bbox = _footprint_body_bbox(footprint)
         components.append(
             {
                 "designator": designator,
@@ -730,6 +771,7 @@ def _component_footprints(pcb: Any) -> list[dict[str, Any]]:
                 "unique_id": source_id,
                 "layer": _value(getattr(footprint, "layer", "")) or "F.Cu",
                 "bbox_mm": bbox,
+                "body_bbox_mm": body_bbox,
                 "x_mm": float(getattr(footprint, "at_x", 0.0) or 0.0),
                 "y_mm": float(getattr(footprint, "at_y", 0.0) or 0.0),
                 "angle_deg": float(getattr(footprint, "at_angle", 0.0) or 0.0),
@@ -1070,6 +1112,143 @@ def extract_pcb_metadata_light(pcb: Any, project_file: Path, profile_callback=No
     return metadata
 
 
+def _ir_pad_local_points(operation: dict[str, Any]) -> list[tuple[float, float]]:
+    """Outline points of one IR pad flash, in footprint-local nanometres."""
+
+    kind = str(operation.get("kind") or "")
+    if kind == "Circle":
+        # Non-plated pad: no copper flash, only its hole (sized by the pad).
+        cx = float(operation.get("cx") or 0)
+        cy = float(operation.get("cy") or 0)
+        diameter = float(operation.get("diameter_nm") or 0)
+        half_x = max(diameter, float(operation.get("pad_size_x_nm") or 0)) / 2
+        half_y = max(diameter, float(operation.get("pad_size_y_nm") or 0)) / 2
+        return [(cx - half_x, cy - half_y), (cx + half_x, cy + half_y)]
+    x = float(operation.get("x") or 0)
+    y = float(operation.get("y") or 0)
+    if kind == "FlashPadCircle":
+        radius = float(operation.get("diameter_nm") or 0) / 2
+        return [(x - radius, y - radius), (x + radius, y + radius)]
+    angle = math.radians(float(operation.get("orient_deg") or 0))
+    cos, sin = math.cos(angle), math.sin(angle)
+
+    def place(dx: float, dy: float) -> tuple[float, float]:
+        return (x + dx * cos + dy * sin, y - dx * sin + dy * cos)
+
+    half_x = float(operation.get("size_x_nm") or 0) / 2
+    half_y = float(operation.get("size_y_nm") or 0) / 2
+    points = [place(dx, dy) for dx, dy in ((-half_x, -half_y), (half_x, -half_y), (half_x, half_y), (-half_x, half_y))]
+    widths = list(operation.get("polygon_widths_nm") or [])
+    for index, polygon in enumerate(operation.get("polygons") or []):
+        pad = float(widths[index] if index < len(widths) else 0) / 2
+        for vertex in polygon or []:
+            vx, vy = float(vertex[0]), float(vertex[1])
+            points.extend(place(vx + dx, vy + dy) for dx, dy in ((-pad, -pad), (pad, pad)))
+    return points
+
+
+def _ir_graphic_local_points(operation: dict[str, Any]) -> list[tuple[float, float, float]]:
+    """Outline of one IR footprint graphic as (x, y, radius) in local nanometres."""
+
+    kind = str(operation.get("kind") or "")
+    if kind == "ThickSegment":
+        return [
+            (float(operation.get("start_x") or 0), float(operation.get("start_y") or 0), 0.0),
+            (float(operation.get("end_x") or 0), float(operation.get("end_y") or 0), 0.0),
+        ]
+    if kind == "Circle":
+        radius = float(operation.get("diameter_nm") or 0) / 2
+        return [(float(operation.get("cx") or 0), float(operation.get("cy") or 0), radius)]
+    if kind == "Rect":
+        x1, y1 = float(operation.get("x1") or 0), float(operation.get("y1") or 0)
+        x2, y2 = float(operation.get("x2") or 0), float(operation.get("y2") or 0)
+        return [(x1, y1, 0.0), (x2, y1, 0.0), (x2, y2, 0.0), (x1, y2, 0.0)]
+    if kind == "PlotPoly":
+        return [(float(point[0]), float(point[1]), 0.0) for point in operation.get("points") or []]
+    if kind == "ArcThreePoint":
+        return [(x, y, 0.0) for x, y in _arc_points(
+            (float(operation.get("start_x") or 0), float(operation.get("start_y") or 0)),
+            (float(operation.get("mid_x") or 0), float(operation.get("mid_y") or 0)),
+            (float(operation.get("end_x") or 0), float(operation.get("end_y") or 0)),
+        )]
+    return []
+
+
+def _arc_points(
+    start: tuple[float, float],
+    mid: tuple[float, float],
+    end: tuple[float, float],
+    steps: int = 16,
+) -> list[tuple[float, float]]:
+    """Points along the arc from start through mid to end."""
+
+    (ax, ay), (bx, by), (cx, cy) = start, mid, end
+    determinant = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    if abs(determinant) < 1e-9:
+        return [start, mid, end]
+    ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / determinant
+    uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / determinant
+    radius = math.hypot(ax - ux, ay - uy)
+    a0 = math.atan2(ay - uy, ax - ux)
+    am = math.atan2(by - uy, bx - ux)
+    a1 = math.atan2(cy - uy, cx - ux)
+    sweep = (a1 - a0) % (2 * math.pi)
+    # Sweep the way that passes through mid.
+    if (am - a0) % (2 * math.pi) > sweep:
+        sweep -= 2 * math.pi
+    return [
+        (ux + radius * math.cos(a0 + sweep * index / steps), uy + radius * math.sin(a0 + sweep * index / steps))
+        for index in range(steps + 1)
+    ]
+
+
+def _ir_footprint_body_bbox(record: dict[str, Any]) -> list[float] | None:
+    """Board-space extent of the courtyard, else the fab outline, in millimetres."""
+
+    placement = record.get("placement") or {}
+    origin_x = float(placement.get("x_nm") or 0)
+    origin_y = float(placement.get("y_nm") or 0)
+    angle = math.radians(float(placement.get("angle_deg") or 0))
+    cos, sin = math.cos(angle), math.sin(angle)
+    for suffix in BODY_LAYER_SUFFIXES:
+        points = []
+        for operation in record.get("operations", []) or []:
+            layer = str((operation.get("extra_attrs") or {}).get("layer_name") or operation.get("layer") or "")
+            if not layer.endswith(suffix):
+                continue
+            for x, y, radius in _ir_graphic_local_points(operation):
+                wx = origin_x + x * cos + y * sin
+                wy = origin_y - x * sin + y * cos
+                points.extend([
+                    ((wx - radius) * 1e-6, (wy - radius) * 1e-6),
+                    ((wx + radius) * 1e-6, (wy + radius) * 1e-6),
+                ])
+        if points:
+            return _bbox_from_points(points)
+    return None
+
+
+def _ir_footprint_pad_bbox(record: dict[str, Any]) -> list[float] | None:
+    """Board-space extent of a footprint's pads, in millimetres."""
+
+    placement = record.get("placement") or {}
+    origin_x = float(placement.get("x_nm") or 0)
+    origin_y = float(placement.get("y_nm") or 0)
+    angle = math.radians(float(placement.get("angle_deg") or 0))
+    cos, sin = math.cos(angle), math.sin(angle)
+    points = []
+    for operation in record.get("operations", []) or []:
+        kind = str(operation.get("kind") or "")
+        if not (kind.startswith("FlashPad") or (kind == "Circle" and operation.get("role") == "npth_hole")):
+            continue
+        for x, y in _ir_pad_local_points(operation):
+            points.append((
+                (origin_x + x * cos + y * sin) * 1e-6,
+                (origin_y - x * sin + y * cos) * 1e-6,
+            ))
+    return _bbox_from_points(points)
+
+
 def _unified_ir_metadata_records(
     pcb_ir: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, dict[str, Any]], dict[str, int]]:
@@ -1106,7 +1285,8 @@ def _unified_ir_metadata_records(
                 "uid": _component_uid(designator),
                 "unique_id": footprint_uuid,
                 "layer": str(record.get("layer") or "F.Cu"),
-                "bbox_mm": None,
+                "bbox_mm": _ir_footprint_pad_bbox(record),
+                "body_bbox_mm": _ir_footprint_body_bbox(record),
                 "x_mm": round(float(placement.get("x_nm") or 0) * 1e-6, 6),
                 "y_mm": round(float(placement.get("y_nm") or 0) * 1e-6, 6),
                 "angle_deg": float(placement.get("angle_deg") or 0.0),

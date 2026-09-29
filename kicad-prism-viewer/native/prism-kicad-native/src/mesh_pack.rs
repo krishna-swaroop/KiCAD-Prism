@@ -685,13 +685,15 @@ fn layer_records(document: &Document) -> Result<Vec<LayerRecord>> {
         .iter()
         .max_by(|a, b| a.z_mm.total_cmp(&b.z_mm))
         .unwrap();
+    // KiCad's board body spans the inner faces of the outer copper and its outer
+    // copper sits on those faces, so the stackup is shifted into that frame, not
+    // scaled: scaling pushed the outer copper inside the body.
     let body_min = bottom.z_mm + bottom.thickness_mm / 2.0;
-    let body_max = top.z_mm - top.thickness_mm / 2.0;
-    let body_thickness = body_max - body_min;
+    if top.z_mm - top.thickness_mm / 2.0 <= body_min {
+        bail!("semantic mesh pack stackup has no board body between the outer copper layers");
+    }
     for layer in &mut raw {
-        let normalized =
-            (layer.z_mm + document.board.thickness_mm / 2.0) / document.board.thickness_mm;
-        layer.runtime_z_mm = normalized * body_thickness;
+        layer.runtime_z_mm = layer.z_mm - body_min;
     }
     Ok(raw)
 }
@@ -1294,8 +1296,13 @@ fn normalized_kind(kind: &str) -> &str {
     }
 }
 
+/// The outward face: top of layers above the board centre, bottom of those below.
 fn layer_surface_y_mm(layer: &LayerRecord) -> f64 {
-    layer.runtime_z_mm + layer.thickness_mm / 2.0
+    if layer.z_mm >= 0.0 {
+        layer.runtime_z_mm + layer.thickness_mm / 2.0
+    } else {
+        layer.runtime_z_mm - layer.thickness_mm / 2.0
+    }
 }
 
 fn layer_role(name: &str, type_name: &str) -> &'static str {

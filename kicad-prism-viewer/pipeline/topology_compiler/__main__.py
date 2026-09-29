@@ -129,6 +129,25 @@ def _resolve_semantic_tile_size(requested: str, pcb_metadata: dict) -> float:
     return 160.0
 
 
+def _soldermask_source(context: PrismCompilationContext):
+    """Mask builder over the IR this run already compiled, or None without one."""
+
+    if context.pcb_ir is None:
+        return None
+
+    def build():
+        from .soldermask import board_paste_margin, board_tenting, soldermask_polygons
+
+        with _stage("build solder mask from PCB IR"):
+            return soldermask_polygons(
+                context.pcb_ir,
+                tented=board_tenting(context.pcb),
+                paste_margin_mm=board_paste_margin(context.pcb),
+            )
+
+    return build
+
+
 def cmd_from_project(args: argparse.Namespace) -> None:
     _STAGE_TIMINGS_MS.clear()
     _PROFILE_EVENTS.clear()
@@ -233,6 +252,7 @@ def cmd_from_project(args: argparse.Namespace) -> None:
             semantic_geometry = finalize_project_geometry(
                 topology,
                 export_artifacts,
+                soldermask_source=_soldermask_source(context),
                 progress=_progress,
                 profile_callback=_profile("kicad_cli"),
             )

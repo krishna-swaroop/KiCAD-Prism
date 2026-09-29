@@ -119,13 +119,16 @@ export function lookAt(eye, target, up) {
   ]);
 }
 
+// Both projections use reversed depth (near -> 1, far -> 0). With a float
+// depth buffer and a "greater" test that keeps precision roughly constant with
+// distance, which layers a few microns apart (copper, mask, paste) need.
 export function perspective(fov, aspect, near, far) {
   const f = 1 / Math.tan(fov / 2);
   return new Float32Array([
     f / aspect, 0, 0, 0,
     0, f, 0, 0,
-    0, 0, far / (near - far), -1,
-    0, 0, (near * far) / (near - far), 0,
+    0, 0, near / (far - near), -1,
+    0, 0, (near * far) / (far - near), 0,
   ]);
 }
 
@@ -133,8 +136,8 @@ export function orthographic(width, height, near, far) {
   return new Float32Array([
     2 / width, 0, 0, 0,
     0, 2 / height, 0, 0,
-    0, 0, 1 / (near - far), 0,
-    0, 0, 0, 1,
+    0, 0, 1 / (far - near), 0,
+    0, 0, 1, 1,
   ]);
 }
 
