@@ -26,6 +26,9 @@ services:
         # which builds a mixed-architecture image that fails in confusing ways.
         KICAD_BASE_IMAGE: ${KICAD_BASE_IMAGE:-kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c}
         KICAD_BASE_PLATFORM: ${KICAD_BASE_PLATFORM:-linux/amd64}
+        PRISM_RELEASE: ${PRISM_RELEASE:-development}
+        PRISM_REVISION: ${PRISM_REVISION:-unknown}
+        PRISM_BUILD_DATE: ${PRISM_BUILD_DATE:-unknown}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: kicad-prism-backend
     # CPU/memory ceilings protect interactive API capacity from unbounded worker
@@ -158,6 +161,9 @@ services:
       args:
         KICAD_BASE_IMAGE: ${KICAD_BASE_IMAGE:-kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c}
         KICAD_BASE_PLATFORM: ${KICAD_BASE_PLATFORM:-linux/amd64}
+        PRISM_RELEASE: ${PRISM_RELEASE:-development}
+        PRISM_REVISION: ${PRISM_REVISION:-unknown}
+        PRISM_BUILD_DATE: ${PRISM_BUILD_DATE:-unknown}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: kicad-prism-catalog-worker
     restart: unless-stopped
@@ -221,6 +227,9 @@ services:
       args:
         KICAD_BASE_IMAGE: ${KICAD_BASE_IMAGE:-kicad/kicad:10.0.4@sha256:ee71e88396f8563168eb1ef282cda9ff2670fe86a677c63dd78b35e3d464454c}
         KICAD_BASE_PLATFORM: ${KICAD_BASE_PLATFORM:-linux/amd64}
+        PRISM_RELEASE: ${PRISM_RELEASE:-development}
+        PRISM_REVISION: ${PRISM_REVISION:-unknown}
+        PRISM_BUILD_DATE: ${PRISM_BUILD_DATE:-unknown}
     platform: ${DOCKER_PLATFORM:-linux/amd64}
     container_name: kicad-prism-worker
     # Worker ceilings; pair with PRISM_*_CONCURRENCY slot caps in PostgreSQL.
@@ -282,7 +291,14 @@ services:
       - app.prism_worker
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      # Identity shown in the About dialog and bug reports. deploy.sh sets these
+      # from the checkout; published release images get them from CI.
+      args:
+        PRISM_RELEASE: ${PRISM_RELEASE:-development}
+        PRISM_REVISION: ${PRISM_REVISION:-unknown}
+        PRISM_BUILD_DATE: ${PRISM_BUILD_DATE:-unknown}
     container_name: kicad-prism-frontend
     restart: unless-stopped
     ports:

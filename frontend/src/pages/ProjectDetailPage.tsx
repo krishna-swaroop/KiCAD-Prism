@@ -22,6 +22,7 @@ import {
 import { VISUALIZER_DESIGN_SEARCH_SLOT_ID } from "@/lib/design-search";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { projectLastUpdated } from "@/lib/project-dates";
+import { HelpMenu } from "@/features/bug-report/help-menu";
 
 const AssetsPortal = lazy(() =>
     import("@/components/assets-portal").then((module) => ({ default: module.AssetsPortal }))
@@ -593,6 +594,8 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         <Settings className="h-4 w-4" />
                     </Button>
                 )}
+
+                <HelpMenu />
 
                 {projectId && pathConfigOpen && (
                     <Suspense fallback={null}>

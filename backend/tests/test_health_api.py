@@ -98,6 +98,42 @@ class HealthApiTests(unittest.TestCase):
         self.assertFalse(is_ready)
         self.assertEqual(checks, {"database": "ok", "projects": "failed"})
 
+    def test_about_requires_a_signed_in_user(self) -> None:
+        route = next(r for r in health.router.routes if getattr(r, "path", "") == "/api/health/about")
+        dependencies = [dependency.call for dependency in route.dependant.dependencies]
+        self.assertIn(health.require_viewer, dependencies)
+
+    def test_about_reports_build_metadata_and_kicad_cli_version(self) -> None:
+        with (
+            patch.dict(os.environ, {"PRISM_RELEASE": "v4.0.0", "PRISM_REVISION": "abc123"}, clear=False),
+            patch.object(health, "kicad_cli_version", return_value="10.0.4"),
+        ):
+            payload = health.about(MagicMock())
+
+        self.assertEqual(payload["release"], "v4.0.0")
+        self.assertEqual(payload["revision"], "abc123")
+        self.assertEqual(payload["kicadCli"], "10.0.4")
+
+    def test_kicad_cli_version_keeps_first_line_and_caches_it(self) -> None:
+        completed = MagicMock(returncode=0, stdout="10.0.4\nextra detail\n")
+        with (
+            patch.object(health, "_kicad_cli_version", None),
+            patch.object(health.shutil, "which", return_value="/usr/bin/kicad-cli"),
+            patch.object(health.subprocess, "run", return_value=completed) as run,
+        ):
+            self.assertEqual(health.kicad_cli_version(), "10.0.4")
+            self.assertEqual(health.kicad_cli_version(), "10.0.4")
+
+        run.assert_called_once()
+
+    def test_kicad_cli_version_does_not_cache_a_missing_binary(self) -> None:
+        with (
+            patch.object(health, "_kicad_cli_version", None),
+            patch.object(health.shutil, "which", return_value=None),
+        ):
+            self.assertEqual(health.kicad_cli_version(), "unavailable")
+            self.assertIsNone(health._kicad_cli_version)
+
 
 if __name__ == "__main__":
     unittest.main()

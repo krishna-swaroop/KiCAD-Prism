@@ -10,8 +10,14 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --include=dev
 
-# Copy source and build
+# Copy source and build. The build args reach `npm run build` as environment
+# variables, where vite.config.ts bakes them into the bundle for the About
+# dialog and bug reports. They come after the source copy so a new revision
+# does not invalidate the dependency layer.
 COPY . .
+ARG PRISM_RELEASE=development
+ARG PRISM_REVISION=unknown
+ARG PRISM_BUILD_DATE=unknown
 RUN npm run build
 
 # Stage 2: Serve with Nginx

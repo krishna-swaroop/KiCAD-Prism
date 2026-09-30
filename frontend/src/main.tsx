@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client"
 import "./index.css"
 import App from "./App.tsx"
 import { ErrorBoundary } from "./components/error-boundary.tsx"
+import { installErrorToastReportAction } from "./features/bug-report/error-toast-report-action.ts"
 import prismFavicon from "./assets/branding/kicad-prism/kicad-prism-favicon.ico"
 
 const faviconLink = document.querySelector("link[rel='icon']") ?? document.createElement("link")
@@ -13,6 +14,8 @@ faviconLink.setAttribute("href", prismFavicon)
 if (!faviconLink.parentNode) {
   document.head.appendChild(faviconLink)
 }
+
+installErrorToastReportAction()
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

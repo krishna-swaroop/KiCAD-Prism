@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import interview, preflight, render, tui
 from .apply import apply, load_existing_env
+from .build_identity import compose_environment
 from .render import CADDY_IMAGE_TAG
 from .schemes import DNS_01, DNS_PROVIDERS, HTTP_01, PLAIN_HTTP, SCHEMES, TAILSCALE
 
@@ -144,7 +145,7 @@ def promote(root: Path, *, assume_yes: bool, dry_run: bool) -> int:
         tui.write()
         tui.note(label)
         tui.info("$ " + " ".join(command))
-        result = subprocess.run(command, cwd=root)
+        result = subprocess.run(command, cwd=root, env=compose_environment(root))
         if result.returncode != 0:
             tui.fail(f"{label} failed.", f"Inspect with: {' '.join(compose + ['logs', '--tail=100'])}")
             if "volume" in command:
@@ -293,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.start:
         tui.write()
         tui.note("Starting")
-        result = subprocess.run(compose + ["up", "-d", "--wait"], cwd=root)
+        result = subprocess.run(compose + ["up", "-d", "--wait"], cwd=root, env=compose_environment(root))
         if result.returncode != 0:
             tui.fail("Startup failed.", f"Inspect with: {' '.join(compose + ['logs', '--tail=100'])}")
             return result.returncode

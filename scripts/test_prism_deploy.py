@@ -15,6 +15,7 @@ from pathlib import Path
 
 from prism_deploy import render
 from prism_deploy.apply import load_existing_env, write_text
+from prism_deploy.build_identity import compose_environment, source_build_identity
 from prism_deploy.__main__ import load_answers
 from prism_deploy.schemes import (
     DNS_01, DNS_PROVIDERS, EXTERNAL_PROXY, HTTP_01, INTERNAL_CA, PLAIN_HTTP, TAILSCALE, SCHEMES,
@@ -495,6 +496,46 @@ class WriteTests(unittest.TestCase):
             target = Path(directory) / ".env"
             write_text(target, "# comment\nA=1\nB=two words\n\n")
             self.assertEqual(load_existing_env(target), {"A": "1", "B": "two words"})
+
+
+
+class BuildIdentityTests(unittest.TestCase):
+    """Images built from a checkout must name the commit they came from."""
+
+    def test_checkout_identity_names_the_commit(self) -> None:
+        import subprocess
+        from datetime import datetime, timezone
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git = ["git", "-C", directory, "-c", "user.email=t@example.com", "-c", "user.name=t"]
+            subprocess.run(git + ["init", "-q"], check=True)
+            (root / "README").write_text("x", encoding="utf-8")
+            subprocess.run(git + ["add", "README"], check=True)
+            subprocess.run(git + ["commit", "-q", "-m", "init"], check=True)
+            subprocess.run(git + ["tag", "v9.9.9"], check=True)
+            head = subprocess.run(git + ["rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+
+            identity = source_build_identity(root, now=datetime(2026, 9, 27, 10, 0, tzinfo=timezone.utc))
+
+        self.assertEqual(identity, {
+            "PRISM_RELEASE": "v9.9.9",
+            "PRISM_REVISION": head,
+            "PRISM_BUILD_DATE": "2026-09-27T10:00:00Z",
+        })
+
+    def test_outside_a_checkout_only_the_date_is_set(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            identity = source_build_identity(Path(directory))
+        self.assertEqual(set(identity), {"PRISM_BUILD_DATE"})
+
+    def test_operator_exported_values_win(self) -> None:
+        from unittest import mock
+
+        with mock.patch.dict("os.environ", {"PRISM_RELEASE": "custom-build"}):
+            environment = compose_environment(REPOSITORY_ROOT)
+        self.assertEqual(environment["PRISM_RELEASE"], "custom-build")
+        self.assertIn("PATH", environment)
 
 
 if __name__ == "__main__":

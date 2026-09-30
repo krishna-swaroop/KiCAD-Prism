@@ -4,6 +4,9 @@ import path from "node:path";
 
 export default defineConfig({
     plugins: [react()],
+    define: {
+        __PRISM_BUILD__: JSON.stringify({ release: "v0.0.0-test", revision: "0123456789abcdef", buildDate: "2026-01-01T00:00:00Z" }),
+    },
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),

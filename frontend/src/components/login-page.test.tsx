@@ -18,8 +18,9 @@ vi.mock("@/lib/auth", () => ({
     consumeStashedLoginNext: () => null,
 }));
 
-// Release-tag fetch on mount; keep it from making a real network call.
-vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false })) as unknown as typeof fetch);
+// The page shows the release it was built from; it must not ask GitHub.
+const fetchSpy = vi.fn(async () => ({ ok: false }));
+vi.stubGlobal("fetch", fetchSpy as unknown as typeof fetch);
 
 // The Radix checkbox uses ResizeObserver, which jsdom does not provide.
 vi.stubGlobal(
@@ -49,6 +50,12 @@ describe("LoginPage method rendering", () => {
     afterEach(() => {
         cleanup();
         loginWithPassword.mockReset();
+    });
+
+    it("shows the release this frontend was built from without calling GitHub", () => {
+        render(<LoginPage authConfig={config({ oidc_enabled: true })} />);
+        expect(screen.getByText("Release v0.0.0-test")).toBeTruthy();
+        expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it("shows only the SSO button when password auth is off", () => {

@@ -10,10 +10,12 @@ import {
 import { useNavigate } from "react-router-dom";
 import Fuse from "fuse.js";
 import {
+  Bug,
   CircuitBoard,
   Cpu,
   Database,
   DownloadCloud,
+  Info,
   Keyboard,
   LoaderCircle,
   LogOut,
@@ -24,6 +26,7 @@ import {
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { fetchJson } from "@/lib/api";
+import { openHelpDialog, type HelpDialog } from "@/lib/help-dialogs";
 import {
   getPaletteCommands,
   subscribeToPaletteCommands,
@@ -54,6 +57,11 @@ const LIBRARY_VIEWS = [
   { view: "imports", label: "Import Center", icon: DownloadCloud },
   { view: "releases", label: "Release Queue", icon: PackageCheck },
 ] as const;
+
+const HELP_DIALOG_COMMANDS = [
+  { id: "help:report-bug", label: "Report a bug", group: "Help", icon: Bug, keywords: "issue github problem support", dialog: "report-bug" },
+  { id: "help:about", label: "About KiCAD Prism", group: "Help", icon: Info, keywords: "version build release", dialog: "about" },
+] as const satisfies ReadonlyArray<Omit<PaletteCommand, "run"> & { dialog: HelpDialog }>;
 
 /** Shortest query worth sending to the catalog. "R" would match everything. */
 const COMPONENT_SEARCH_MIN_LENGTH = 2;
@@ -241,6 +249,11 @@ export function CommandPalette({ open, onOpenChange, user, onShowShortcuts, onLo
       detail: shortcutKeys("shift+/").join(" "),
       run: run(onShowShortcuts),
     });
+
+    items.push(...HELP_DIALOG_COMMANDS.map(({ dialog, ...command }) => ({
+      ...command,
+      run: run(() => openHelpDialog(dialog)),
+    })));
 
     if (user && user.email !== "guest@local") {
       items.push({

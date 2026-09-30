@@ -1,10 +1,31 @@
+import { execFileSync } from "node:child_process"
 import path from "path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
+function git(...args: string[]): string | undefined {
+  try {
+    return execFileSync("git", args, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+// Image builds pass PRISM_* as build args. A checkout built without them (the
+// dev server, `npm run build`) asks git, so a bug report from a source build
+// still names the commit it came from.
+const prismBuild = {
+  release: process.env.PRISM_RELEASE || git("describe", "--tags", "--always", "--dirty") || "development",
+  revision: process.env.PRISM_REVISION || git("rev-parse", "HEAD") || "unknown",
+  buildDate: process.env.PRISM_BUILD_DATE || "unknown",
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __PRISM_BUILD__: JSON.stringify(prismBuild),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

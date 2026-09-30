@@ -7,16 +7,27 @@ body:
   - type: markdown
     attributes:
       value: |
+        **Tip:** in Prism, open **Help → Report a bug** (the **?** button in the header). It opens this form with *Prism version* and *Diagnostics* already filled in; nothing is sent until you submit here.
+
         Search existing issues first. Do not include credentials, private repositories, proprietary designs, database dumps, or security vulnerabilities.
 
   - type: input
     id: version
     attributes:
       label: Prism version
-      description: Release tag or full commit SHA
-      placeholder: v3.0.0-alpha.1 or abcdef123...
+      description: Filled in by Report a bug. Otherwise the release tag or full commit SHA from Help → About.
+      placeholder: v4.0.0-alpha or abcdef123...
     validations:
       required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Filled in by Report a bug. Otherwise open Help → About, click **Copy version info**, and paste it here.
+        It lists build revisions, the ECAD viewer and KiCad CLI versions, the sign-in method, your browser, and the kind of page you were on. It never includes project, user, or host names; review it anyway.
+      render: text
 
   - type: dropdown
     id: area
@@ -29,6 +40,8 @@ body:
         - Schematic, PCB, 3D, BOM, or cross-probe
         - Design Comparison
         - Comments
+        - Issue tracker publishing
+        - Release Studio
         - Workflows or Assets
         - Library Manager
         - Remote Symbol Provider
@@ -41,13 +54,12 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Host OS, CPU architecture, Docker version, browser, KiCad version, and authentication mode as relevant
+      description: What Prism cannot see from the browser. How Prism was installed, where it runs, and anything between the browser and Prism.
       placeholder: |
+        Installed with: release bundle / deploy.sh from source / dev server
         Host: Ubuntu 24.04, amd64
         Docker: 28.x / Compose v2.x
-        Browser: Firefox ...
-        KiCad: 10.0.x
-        Auth: OIDC
+        Reverse proxy: bundled Caddy / nginx / none
     validations:
       required: true
 
@@ -81,7 +93,7 @@ body:
     id: logs
     attributes:
       label: Sanitized logs or screenshots
-      description: Remove tokens, cookies, private URLs, identities, and design data
+      description: Optional, and your choice what to share. Remove tokens, cookies, private URLs, identities, and design data.
       render: shell
 
   - type: textarea

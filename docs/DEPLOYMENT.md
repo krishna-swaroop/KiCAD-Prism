@@ -517,6 +517,18 @@ docker compose up --build -d
 Record the tag, commit SHA, and rendered Compose configuration. This is also the
 development path, but it is not preferred when a release bundle exists.
 
+Images built this way report `development` / `unknown` in **Help → About** and
+in bug reports unless the build is told which commit it came from. The
+installer (`deploy.sh --start`) does this for you; for a manual build, pass the
+identity yourself:
+
+```bash
+PRISM_RELEASE="$(git describe --tags --always --dirty)" \
+PRISM_REVISION="$(git rev-parse HEAD)" \
+PRISM_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+docker compose up --build -d
+```
+
 ## Production readiness
 
 Before declaring the service ready:

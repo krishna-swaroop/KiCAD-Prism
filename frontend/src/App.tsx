@@ -14,6 +14,8 @@ import { CommandPalette } from '@/components/command-palette';
 import { KeyboardShortcutsDialog } from '@/components/keyboard-shortcuts-dialog';
 import { RoleAuthorityPopover } from '@/components/role-authority-popover';
 import { SessionExpiredBanner, SESSION_BANNER_HEIGHT } from '@/components/session-expired-banner';
+import { HelpDialogHost } from '@/features/bug-report/help-dialog-host';
+import { HelpMenu } from '@/features/bug-report/help-menu';
 import prismLogoMark from './assets/branding/kicad-prism/kicad-prism-icon.svg';
 
 const LoginPage = lazy(() =>
@@ -245,6 +247,7 @@ function App() {
                 />
             ) : null}
             <Toaster richColors position="top-right" />
+            <HelpDialogHost authConfig={authConfig} />
             <CommandPalette
                 open={paletteOpen}
                 onOpenChange={setPaletteOpen}
@@ -294,6 +297,7 @@ function App() {
                                         <Search className="h-3.5 w-3.5" />
                                         {IS_APPLE_PLATFORM ? '⌘K' : 'Ctrl K'}
                                     </Button>
+                                    <HelpMenu />
                                     {user && user.email !== 'guest@local' && (
                                         <>
                                             <span className="text-sm text-muted-foreground">

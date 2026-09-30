@@ -21,8 +21,7 @@ body:
     id: current
     attributes:
       label: Current workaround
-    validations:
-      required: true
+      description: Optional. How you get by today, if at all.
 
   - type: textarea
     id: outcome
