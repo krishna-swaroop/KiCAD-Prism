@@ -2287,5 +2287,422 @@
     }
    }
   }
+ ],
+ "poses": [
+  {
+   "name": "canonical rotation flips w < 0 and normalises",
+   "op": "canonicalRotation",
+   "input": {
+    "rotation": [
+     0.0,
+     0.0,
+     -2.0,
+     -2.0
+    ]
+   },
+   "expected": [
+    0.0,
+    0.0,
+    0.707106781,
+    0.707106781
+   ]
+  },
+  {
+   "name": "pose from input",
+   "op": "poseFrom",
+   "input": {
+    "translationMm": [
+     1.25,
+     -2.5,
+     0.0
+    ],
+    "rotation": [
+     0,
+     0,
+     1,
+     1
+    ]
+   },
+   "expected": {
+    "translationMm": [
+     1.25,
+     -2.5,
+     0.0
+    ],
+    "rotation": [
+     0.0,
+     0.0,
+     0.707106781,
+     0.707106781
+    ]
+   }
+  },
+  {
+   "name": "compose applies the child first",
+   "op": "compose",
+   "input": {
+    "parent": {
+     "translationMm": [
+      100.0,
+      -20.0,
+      5.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.7071067811865476,
+      0.7071067811865476
+     ]
+    },
+    "child": {
+     "translationMm": [
+      10.0,
+      0.0,
+      1.0
+     ],
+     "rotation": [
+      0.258819045,
+      0.0,
+      0.0,
+      0.965925826
+     ]
+    }
+   },
+   "expected": {
+    "translationMm": [
+     100.0,
+     -10.0,
+     6.0
+    ],
+    "rotation": [
+     0.183012702,
+     0.183012702,
+     0.683012702,
+     0.683012702
+    ]
+   }
+  },
+  {
+   "name": "matrix is column-major T\u00b7R",
+   "op": "matrix",
+   "input": {
+    "pose": {
+     "translationMm": [
+      100.0,
+      -20.0,
+      5.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.7071067811865476,
+      0.7071067811865476
+     ]
+    }
+   },
+   "expected": [
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    100.0,
+    -20.0,
+    5.0,
+    1.0
+   ]
+  },
+  {
+   "name": "bounds after a tilt take all eight corners",
+   "op": "transformBounds",
+   "input": {
+    "pose": {
+     "translationMm": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [
+      0.258819045,
+      0.0,
+      0.0,
+      0.965925826
+     ]
+    },
+    "bounds": {
+     "minMm": [
+      10.0,
+      -60.0,
+      -0.8
+     ],
+     "maxMm": [
+      110.0,
+      -10.0,
+      0.8
+     ]
+    }
+   },
+   "expected": {
+    "minMm": [
+     10.0,
+     -52.361524233,
+     -30.692820302
+    ],
+    "maxMm": [
+     110.0,
+     -8.260254039,
+     -4.307179673
+    ]
+   }
+  },
+  {
+   "name": "default row with an empty slot",
+   "op": "defaultRow",
+   "input": {
+    "items": [
+     [
+      "a",
+      {
+       "minMm": [
+        10.0,
+        -60.0,
+        -0.8
+       ],
+       "maxMm": [
+        110.0,
+        -10.0,
+        0.8
+       ]
+      }
+     ],
+     [
+      "b",
+      null
+     ],
+     [
+      "c",
+      {
+       "minMm": [
+        0.0,
+        0.0,
+        -0.8
+       ],
+       "maxMm": [
+        30.0,
+        20.0,
+        0.8
+       ]
+      }
+     ],
+     [
+      "d",
+      {
+       "minMm": [
+        10.0,
+        -60.0,
+        -0.8
+       ],
+       "maxMm": [
+        110.0,
+        -10.0,
+        0.8
+       ]
+      }
+     ]
+    ]
+   },
+   "expected": {
+    "a": {
+     "translationMm": [
+      -10.0,
+      60.0,
+      0.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    "b": {
+     "translationMm": [
+      120.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    "c": {
+     "translationMm": [
+      140.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    "d": {
+     "translationMm": [
+      180.0,
+      60.0,
+      0.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    }
+   }
+  },
+  {
+   "name": "a stored pose wins; the others keep their slots",
+   "op": "place",
+   "input": {
+    "items": [
+     [
+      "a",
+      {
+       "minMm": [
+        10.0,
+        -60.0,
+        -0.8
+       ],
+       "maxMm": [
+        110.0,
+        -10.0,
+        0.8
+       ]
+      }
+     ],
+     [
+      "b",
+      null
+     ],
+     [
+      "c",
+      {
+       "minMm": [
+        0.0,
+        0.0,
+        -0.8
+       ],
+       "maxMm": [
+        30.0,
+        20.0,
+        0.8
+       ]
+      }
+     ],
+     [
+      "d",
+      {
+       "minMm": [
+        10.0,
+        -60.0,
+        -0.8
+       ],
+       "maxMm": [
+        110.0,
+        -10.0,
+        0.8
+       ]
+      }
+     ]
+    ],
+    "stored": {
+     "c": {
+      "translationMm": [
+       0.0,
+       200.0,
+       12.5
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       -0.7071067811865476,
+       -0.7071067811865476
+      ],
+      "source": "manual"
+     }
+    }
+   },
+   "expected": {
+    "a": {
+     "translationMm": [
+      -10.0,
+      60.0,
+      0.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ],
+     "source": "default"
+    },
+    "b": {
+     "translationMm": [
+      120.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ],
+     "source": "default"
+    },
+    "c": {
+     "translationMm": [
+      0.0,
+      200.0,
+      12.5
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.707106781,
+      0.707106781
+     ],
+     "source": "manual"
+    },
+    "d": {
+     "translationMm": [
+      180.0,
+      60.0,
+      0.0
+     ],
+     "rotation": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ],
+     "source": "default"
+    }
+   }
+  }
  ]
 }

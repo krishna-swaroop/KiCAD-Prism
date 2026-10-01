@@ -5,8 +5,8 @@
 ``import_manifest`` recreates a system from a manifest, keeping its IDs, so a
 manifest round-trips DB → manifest → DB (and, in M7, Git → DB).
 
-P2 objects that have no tables yet (harnesses, poses) are emitted
-empty; their tickets extend both directions.
+P2 objects that have no tables yet (harness nodes, driving mates) are
+emitted empty; their tickets extend both directions.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Mapping, Optional
 
 from app.services.systems import harnesses as harnesses_module
+from app.services.systems.placement import poses as placement_poses
 from app.services.systems.manifest_schema import SCHEMA, Manifest
 from app.services.systems.store import Invalid, SystemStore
 
@@ -138,7 +139,10 @@ def build(
         "links": links,
         "harnesses": harnesses,
         "mating": mating,
-        "placement": {"poses": [], "drivingMates": []},
+        "placement": {"poses": [{"instanceId": instance_id, "translationMm": pose["translationMm"],
+                                 "rotation": pose["rotation"], "source": pose["source"]}
+                                for instance_id, pose in sorted(store.list_poses(system_id).items())],
+                      "drivingMates": []},
         "layout": {"positions": {key: {"x": float(p["x"]), "y": float(p["y"])}
                                  for key, p in sorted(layout.items())}},
     }
@@ -167,8 +171,8 @@ def import_manifest(
     unsupported = []
     if any(harness.nodes for harness in manifest.harnesses):
         unsupported.append("harness nodes")
-    if manifest.placement.poses or manifest.placement.drivingMates:
-        unsupported.append("placement")
+    if manifest.placement.drivingMates:
+        unsupported.append("driving mates")
     if unsupported:
         raise Invalid(f"manifest sections not supported yet: {', '.join(unsupported)}")
 
@@ -234,6 +238,9 @@ def import_manifest(
             store.set_mating(change, record.instanceId, record.portKey, {
                 "mode": record.mode, "axis": record.frame.axis, "quarterTurns": record.frame.quarterTurns,
                 "geometryDigest": record.geometryDigest})
+        for pose in manifest.placement.poses:
+            store.set_pose(change, pose.instanceId,
+                           {**placement_poses.pose_from(pose.translationMm, pose.rotation), "source": pose.source})
         change.audit("system_imported", {"schema": SCHEMA, "sourceVersion": manifest.meta.sourceVersion,
                                          "snapshot": manifest.meta.snapshot.id if manifest.meta.snapshot else None})
     if manifest.layout.positions:

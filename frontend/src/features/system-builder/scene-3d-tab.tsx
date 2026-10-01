@@ -43,32 +43,36 @@ export function Scene3dTab(props: SystemTabProps) {
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [labels, setLabels] = useState(true);
   const [stats, setStats] = useState(false);
+  const [reads, setReads] = useState(0);
   const elementRef = useRef<PrismSystemSceneElement | null>(null);
   const supported = webgpuAvailable();
 
-  // Read the scene on open and on every system change; re-read while bundles build.
+  // Read the scene on open and on every system change ...
   useEffect(() => {
     if (!supported) return;
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const load = async () => {
-      try {
-        const next = await getScene(systemId);
+    getScene(systemId).then(
+      (next) => {
         if (cancelled) return;
         setScene(next);
         setError(null);
-        const delay = scenePollDelay(next);
-        if (delay) timer = setTimeout(() => void load(), delay);
-      } catch (cause) {
+      },
+      (cause) => {
         if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load the 3D scene");
-      }
-    };
-    void load();
+      },
+    );
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
     };
-  }, [supported, systemId, etag]);
+  }, [supported, systemId, etag, reads]);
+
+  // ... and again while bundles build or boxes are unknown.
+  useEffect(() => {
+    const delay = scene ? scenePollDelay(scene) : null;
+    if (!delay) return;
+    const timer = setTimeout(() => setReads((count) => count + 1), delay);
+    return () => clearTimeout(timer);
+  }, [scene]);
 
   useEffect(() => {
     if (scene) elementRef.current?.setScene?.(scene);

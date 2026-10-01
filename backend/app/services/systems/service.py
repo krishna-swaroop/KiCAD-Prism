@@ -30,6 +30,7 @@ from app.services.systems import (
     scene as scene_module, visibility,
 )
 from app.services.systems.bundles import BundleSource
+from app.services.systems.placement import poses as placement_poses
 from app.services.systems.manifest_schema import digests as manifest_digests
 from app.services.systems.interface_extractor import EXTRACTOR_VERSION
 from app.services.systems.jobs import (
@@ -884,7 +885,8 @@ class SystemService:
                 return None
             return hierarchy.ChildSystem(source["systemId"], source["snapshotId"], manifest["system"]["name"],
                                          manifest["instances"], manifest.get("exports") or [],
-                                         manifest.get("links") or [], manifest.get("harnesses") or [])
+                                         manifest.get("links") or [], manifest.get("harnesses") or [],
+                                         (manifest.get("placement") or {}).get("poses") or [])
 
         return load
 
@@ -1043,6 +1045,7 @@ class SystemService:
             interfaces = {(o.project_id, o.baseline_commit): store.get_interface_extent(o.project_id, o.baseline_commit,
                                                                                         EXTRACTOR_VERSION)
                           for o in tree.boards if o.project_id and o.baseline_commit}
+            stored = store.list_poses(system_id)
         for (project_id, commit), found in interfaces.items():
             if found is None:  # not extracted yet, or by an older extractor: the bounds come with it
                 self._enqueue_quietly(project_id, commit, caller)
@@ -1055,7 +1058,7 @@ class SystemService:
             return assets[key]
 
         return scene_module.build(system_id, version, tree.occurrences, shown,
-                                  lambda o: interfaces.get((o.project_id, o.baseline_commit)), asset)
+                                  lambda o: interfaces.get((o.project_id, o.baseline_commit)), asset, stored)
 
     def _scene_asset(self, caller: Caller, project_id: str, commit: str) -> dict:
         entry = {"assetId": scene_module.asset_id(project_id, commit), "projectId": project_id, "commit": commit,
@@ -1281,6 +1284,47 @@ class SystemService:
                 store.set_mating(change, instance_id, port_key, record)
                 body = mating_module.port_state(component, store.list_mating(instance_id).get(port_key))
         return Result(body, system_id, change.version)
+
+    # ------------------------------------------------------------------
+    # Poses (CONTRACTS_P2 §14.3)
+
+    def poses(self, caller: Caller, system_id: str) -> dict:
+        """``GET …/poses``: the stored poses of this system's own instances. An instance
+        not listed takes its default pose (the scene shows where that is)."""
+        with self._tx() as store:
+            version = int(self._system(store, system_id, caller)["version"])
+            stored = store.list_poses(system_id)
+        return {"systemId": system_id, "version": version,
+                "poses": [{"instanceId": key, **value} for key, value in stored.items()]}
+
+    def set_pose(
+        self, caller: Caller, system_id: str, version: int, instance_id: str,
+        fields: Optional[Mapping[str, Any]],
+    ) -> Result:
+        """``PUT`` (``fields``: ``translationMm``, ``rotation``) or ``DELETE`` (``None``) one
+        instance's pose. Users store ``manual`` poses; the solve (M4) stores ``auto`` ones."""
+        if fields is None:
+            pose = None
+        else:
+            try:
+                pose = {**placement_poses.pose_from(fields["translationMm"], fields["rotation"]), "source": "manual"}
+            except ValueError as error:
+                raise Invalid(str(error)) from error
+        with self._tx() as store:
+            self._system(store, system_id, caller)
+            with store.mutation(system_id, expected_version=version, actor=caller.actor) as change:
+                store.set_pose(change, instance_id, pose)
+                stored = store.list_poses(system_id).get(instance_id)
+        body = {"instanceId": instance_id, **stored} if stored else {"instanceId": instance_id, "source": "default"}
+        return Result(body, system_id, change.version)
+
+    def reset_poses(self, caller: Caller, system_id: str, version: int) -> Result:
+        """``DELETE …/poses``: every manual pose goes back to its default (D-P2-14)."""
+        with self._tx() as store:
+            self._system(store, system_id, caller)
+            with store.mutation(system_id, expected_version=version, actor=caller.actor) as change:
+                reset = store.reset_poses(change)
+        return Result({"reset": reset}, system_id, change.version)
 
     # ------------------------------------------------------------------
     # Harnesses (CONTRACTS_P2 §17)

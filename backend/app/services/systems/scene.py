@@ -48,9 +48,12 @@ def build(
     shown: Mapping[str, Mapping[str, Any]],
     interface: Callable[[Occurrence], Optional[Mapping[str, Any]]],
     asset: Callable[[Occurrence], dict],
+    stored: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> dict:
     """``shown`` is ``GET …/hierarchy``'s redacted entries by path (absent = hidden inside a
-    restricted child system). ``asset(o)`` is the asset entry for a visible board."""
+    restricted child system). ``asset(o)`` is the asset entry for a visible board.
+    ``stored`` holds the root system's poses by instance ID; a child system's come
+    frozen in its snapshot (a rigid group, §14.3)."""
 
     children: dict[str, list[Occurrence]] = defaultdict(list)
     for occurrence in occurrences:
@@ -59,25 +62,31 @@ def build(
         members.sort(key=lambda o: (o.labels[-1].casefold(), o.instance_id))
 
     local: dict[str, Optional[dict]] = {}  # an occurrence's bounds in its own frame
-    placed: dict[str, dict] = {}  # an occurrence's pose in its parent's frame
+    placed: dict[str, dict] = {}  # an occurrence's pose in its parent's frame, with its source
 
-    def layout(prefix: str) -> Optional[dict]:
+    def layout(prefix: str, kept: Mapping[str, Mapping[str, Any]]) -> Optional[dict]:
         """Place the members of the system at ``prefix``; return their union in its frame."""
         members = children.get(prefix, [])
         for member in members:
-            local[member.path] = board_bounds(interface(member)) if member.kind == "board" else layout(member.path)
-        row = poses.default_row([(m.path, local[m.path]) for m in members])
+            if member.kind == "board":
+                local[member.path] = board_bounds(interface(member))
+            else:
+                frozen = {p["instanceId"]: p for p in (member.child.poses if member.child else ())}
+                local[member.path] = layout(member.path, frozen)
+        row = poses.place([(m.path, local[m.path]) for m in members],
+                          {m.path: kept[m.instance_id] for m in members if m.instance_id in kept})
         placed.update(row)
         return poses.union([poses.transform_bounds(row[m.path], local[m.path]) for m in members])
 
-    layout("")
+    layout("", stored or {})
 
     world: dict[str, dict] = {}
     assets: dict[str, dict] = {}
     out = []
     for occurrence in occurrences:  # parents come before their members
         parent = occurrence.path.rsplit("/", 1)[0]
-        world[occurrence.path] = poses.compose(world[parent] if parent else poses.IDENTITY, placed[occurrence.path])
+        pose = {key: placed[occurrence.path][key] for key in ("translationMm", "rotation")}
+        world[occurrence.path] = poses.compose(world[parent] if parent else poses.IDENTITY, pose)
         entry = shown.get(occurrence.path)
         if entry is None:
             continue
@@ -85,7 +94,7 @@ def build(
             "path": occurrence.path, "parentPath": parent or None, "displayPath": entry["displayPath"],
             "labels": entry["labels"], "instanceId": occurrence.instance_id, "kind": occurrence.kind,
             "depth": occurrence.depth, "restricted": entry["restricted"], "assetId": None,
-            "pose": {**placed[occurrence.path], "source": "default"},
+            "pose": placed[occurrence.path],
             "worldMatrix": poses.matrix(world[occurrence.path]),
             "boundsMm": local[occurrence.path],
         }

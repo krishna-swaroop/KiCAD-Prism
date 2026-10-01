@@ -45,6 +45,7 @@ from app.services.workspace_migrations import m036_system_port_mating
 from app.services.workspace_migrations import m037_system_link_types
 from app.services.workspace_migrations import m038_system_harnesses
 from app.services.workspace_migrations import m039_system_harness_part_pins
+from app.services.workspace_migrations import m040_system_poses
 from app.services.trackers import migrations as tracker_migrations
 
 
@@ -88,6 +89,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (37, "system_link_types", m037_system_link_types.migrate),
     (38, "system_harnesses", m038_system_harnesses.migrate),
     (39, "system_harness_part_pins", m039_system_harness_part_pins.migrate),
+    (40, "system_poses", m040_system_poses.migrate),
 )
 
 

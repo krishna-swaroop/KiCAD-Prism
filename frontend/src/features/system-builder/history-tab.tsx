@@ -49,6 +49,12 @@ export function eventSummary(event: AuditEvent, labels: Map<string, string>): st
       return `${board ?? ""} ${String(p.after ?? "reset")}`.trim();
     case "review_item_decided":
       return String(p.decision ?? "");
+    case "pose_updated":
+      return `${board ?? ""} ${p.after ? "moved" : "back to its default position"}`.trim();
+    case "poses_reset": {
+      const count = (p.instanceIds as unknown[] | undefined)?.length ?? 0;
+      return `${count} ${count === 1 ? "board" : "boards"} back to the default layout`;
+    }
     default:
       return board ?? "";
   }

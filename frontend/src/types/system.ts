@@ -549,6 +549,22 @@ export interface SystemSceneOccurrence {
   boundsMm: { minMm: number[]; maxMm: number[] } | null;
 }
 
+/** A stored pose (CONTRACTS_P2 §14.3); an instance without one takes its default pose. */
+export interface StoredPose {
+  instanceId: string;
+  translationMm: [number, number, number];
+  rotation: [number, number, number, number];
+  source: "manual" | "auto" | "default";
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface SystemPoses {
+  systemId: string;
+  version: number;
+  poses: StoredPose[];
+}
+
 export interface SystemScene {
   schema: "prism.system_scene.a0";
   systemId: string;

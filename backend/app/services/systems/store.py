@@ -117,6 +117,17 @@ def _port_baseline(port: Mapping[str, Any]) -> dict[str, Any]:
     return baseline
 
 
+def _iso(value: Any) -> Optional[str]:
+    return value.isoformat() if hasattr(value, "isoformat") else value
+
+
+def _pose_fact(pose: Optional[Mapping[str, Any]]) -> Optional[dict]:
+    """A pose as audited: placement only, without who and when."""
+    if pose is None:
+        return None
+    return {"translationMm": list(pose["translationMm"]), "rotation": list(pose["rotation"]), "source": pose["source"]}
+
+
 def _nets(value: Sequence[str]) -> list[str]:
     return sorted({str(item) for item in value})
 
@@ -560,6 +571,55 @@ class SystemStore:
         if before != after:
             change.audit("mating_updated", {"instanceId": instance_id, "portKey": port_key,
                                             "before": before, "after": after})
+
+    # ------------------------------------------------------------------
+    # Poses (CONTRACTS_P2 §14.3)
+
+    def list_poses(self, system_id: str) -> dict[str, dict]:
+        """``instance_id -> {translationMm, rotation, source, updatedBy, updatedAt}``; an
+        instance without a row takes its default pose."""
+        rows = self.conn.execute(
+            "SELECT instance_id, translation_mm, rotation, source, updated_by, updated_at FROM system_poses"
+            " WHERE system_id = %s ORDER BY instance_id",
+            (system_id,),
+        ).fetchall()
+        return {row["instance_id"]: {"translationMm": [float(v) for v in row["translation_mm"]],
+                                     "rotation": [float(v) for v in row["rotation"]], "source": row["source"],
+                                     "updatedBy": row["updated_by"], "updatedAt": _iso(row["updated_at"])}
+                for row in rows}
+
+    def set_pose(self, change: Mutation, instance_id: str, pose: Optional[Mapping[str, Any]]) -> None:
+        """Store an instance's pose, or clear it (``None``) back to the default."""
+        self.get_instance(change.system_id, instance_id)
+        before = _pose_fact(self.list_poses(change.system_id).get(instance_id))
+        if pose is None:
+            self.conn.execute("DELETE FROM system_poses WHERE instance_id = %s", (instance_id,))
+        else:
+            self.conn.execute(
+                """
+                INSERT INTO system_poses (instance_id, system_id, translation_mm, rotation, source, updated_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (instance_id) DO UPDATE SET
+                    translation_mm = EXCLUDED.translation_mm, rotation = EXCLUDED.rotation,
+                    source = EXCLUDED.source, updated_by = EXCLUDED.updated_by, updated_at = NOW()
+                """,
+                (instance_id, change.system_id, [float(v) for v in pose["translationMm"]],
+                 [float(v) for v in pose["rotation"]], pose["source"], change.actor),
+            )
+        after = _pose_fact(self.list_poses(change.system_id).get(instance_id))
+        if before != after:
+            change.audit("pose_updated", {"instanceId": instance_id, "before": before, "after": after})
+
+    def reset_poses(self, change: Mutation, sources: Sequence[str] = ("manual",)) -> list[str]:
+        """Delete the stored poses with these sources; return the instances reset."""
+        rows = self.conn.execute(
+            "DELETE FROM system_poses WHERE system_id = %s AND source = ANY(%s) RETURNING instance_id",
+            (change.system_id, list(sources)),
+        ).fetchall()
+        reset = sorted(row["instance_id"] for row in rows)
+        if reset:
+            change.audit("poses_reset", {"instanceIds": reset, "sources": sorted(sources)})
+        return reset
 
     def set_override(
         self, change: Mutation, instance_id: str, port_key: str, state: Optional[str]

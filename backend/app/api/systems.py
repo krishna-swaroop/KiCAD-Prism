@@ -429,6 +429,54 @@ async def clear_mating(
 
 
 # ---------------------------------------------------------------------------
+# Poses (CONTRACTS_P2 §14.3)
+
+
+class PoseRequest(BaseModel):
+    translationMm: list[float] = Field(min_length=3, max_length=3)
+    rotation: list[float] = Field(min_length=4, max_length=4, description="quaternion x, y, z, w")
+
+
+@router.get("/{system_id}/poses")
+async def get_poses(system_id: str, user: AuthenticatedUser = Depends(require_viewer)):
+    return await _run(system_id, lambda: system_service.service.poses(_caller(user), system_id))
+
+
+@router.put("/{system_id}/poses/{instance_id}", dependencies=[Depends(require_designer)])
+async def set_pose(
+    system_id: str, instance_id: str, body: PoseRequest, request: Request, response: Response,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    version = _expected_version(request, system_id)
+    fields = body.model_dump()
+    result = await _run(system_id, lambda: system_service.service.set_pose(
+        _caller(user), system_id, version, instance_id, fields,
+    ))
+    return _respond(result, response)
+
+
+@router.delete("/{system_id}/poses/{instance_id}", dependencies=[Depends(require_designer)])
+async def clear_pose(
+    system_id: str, instance_id: str, request: Request, response: Response,
+    user: AuthenticatedUser = Depends(require_viewer),
+):
+    version = _expected_version(request, system_id)
+    result = await _run(system_id, lambda: system_service.service.set_pose(
+        _caller(user), system_id, version, instance_id, None,
+    ))
+    return _respond(result, response)
+
+
+@router.delete("/{system_id}/poses", dependencies=[Depends(require_designer)])
+async def reset_poses(
+    system_id: str, request: Request, response: Response, user: AuthenticatedUser = Depends(require_viewer),
+):
+    version = _expected_version(request, system_id)
+    result = await _run(system_id, lambda: system_service.service.reset_poses(_caller(user), system_id, version))
+    return _respond(result, response)
+
+
+# ---------------------------------------------------------------------------
 # Harnesses (CONTRACTS_P2 §17.3)
 
 

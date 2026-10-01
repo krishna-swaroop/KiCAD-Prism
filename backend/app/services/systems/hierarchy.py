@@ -38,6 +38,7 @@ class ChildSystem:
     exports: Sequence[Mapping[str, Any]] = ()
     links: Sequence[Mapping[str, Any]] = ()  # manifest v1 links (with rows), for system nets
     harnesses: Sequence[Mapping[str, Any]] = ()  # manifest v1 harnesses (with wires), for system nets
+    poses: Sequence[Mapping[str, Any]] = ()  # manifest v1 placement.poses: the members' frozen poses
 
 
 # revision_id -> ChildSystem, or None when the revision or its snapshot cannot be read

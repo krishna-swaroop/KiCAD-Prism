@@ -1,4 +1,4 @@
-"""Generate ``placement_cases.json``: shared goldens for the placement library pair (SB2-12).
+"""Generate ``placement_cases.json``: shared goldens for the placement library pair (SB2-12, SB2-28).
 
 Inputs are KiCad 10.0.6 **stock** footprints, read with the extractor v6 code
 at the origin and then posed here (side, rotation, position), so each case is
@@ -22,6 +22,7 @@ from pathlib import Path
 from kicad_monkey import kicad_pcb_footprint, kicad_sexpr
 
 from app.services.systems.interface_extractor import _footprint_geometry
+from app.services.systems.placement import poses
 from app.services.systems.placement.frames import connector_frame, infer
 
 STOCK = Path("/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints")
@@ -91,9 +92,39 @@ def cases() -> list[dict]:
     return out
 
 
+def pose_cases() -> list[dict]:
+    """Pose algebra and member placement (§14.1, §14.3), computed by the Python half."""
+    s = math.sqrt(0.5)
+    turn_z = [0.0, 0.0, s, s]
+    tilt_x = poses.canonical_rotation([math.sin(math.radians(15)), 0.0, 0.0, math.cos(math.radians(15))])
+    board = {"minMm": [10.0, -60.0, -0.8], "maxMm": [110.0, -10.0, 0.8]}
+    small = {"minMm": [0.0, 0.0, -0.8], "maxMm": [30.0, 20.0, 0.8]}
+    parent = {"translationMm": [100.0, -20.0, 5.0], "rotation": turn_z}
+    child = {"translationMm": [10.0, 0.0, 1.0], "rotation": tilt_x}
+    items = [["a", board], ["b", None], ["c", small], ["d", board]]
+    stored = {"c": {"translationMm": [0.0, 200.0, 12.5], "rotation": [0.0, 0.0, -s, -s], "source": "manual"}}
+    return [
+        {"name": "canonical rotation flips w < 0 and normalises", "op": "canonicalRotation",
+         "input": {"rotation": [0.0, 0.0, -2.0, -2.0]}, "expected": poses.canonical_rotation([0.0, 0.0, -2.0, -2.0])},
+        {"name": "pose from input", "op": "poseFrom", "input": {"translationMm": [1.25, -2.5, 0.0], "rotation": [0, 0, 1, 1]},
+         "expected": poses.pose_from([1.25, -2.5, 0.0], [0, 0, 1, 1])},
+        {"name": "compose applies the child first", "op": "compose", "input": {"parent": parent, "child": child},
+         "expected": poses.compose(parent, child)},
+        {"name": "matrix is column-major T·R", "op": "matrix", "input": {"pose": parent}, "expected": poses.matrix(parent)},
+        {"name": "bounds after a tilt take all eight corners", "op": "transformBounds",
+         "input": {"pose": {"translationMm": [0.0, 0.0, 0.0], "rotation": tilt_x}, "bounds": board},
+         "expected": poses.transform_bounds({"translationMm": [0.0, 0.0, 0.0], "rotation": tilt_x}, board)},
+        {"name": "default row with an empty slot", "op": "defaultRow", "input": {"items": items},
+         "expected": poses.default_row([(k, b) for k, b in items])},
+        {"name": "a stored pose wins; the others keep their slots", "op": "place",
+         "input": {"items": items, "stored": stored}, "expected": poses.place([(k, b) for k, b in items], stored)},
+    ]
+
+
 def main() -> None:
     OUT.write_text(json.dumps({"schema": "prism.placement_cases.v1", "kicad": "10.0.6 stock footprints",
-                               "tolerance": {"mm": 1e-6, "unit": 1e-9}, "frames": cases()}, indent=1) + "\n")
+                               "tolerance": {"mm": 1e-6, "unit": 1e-9}, "frames": cases(),
+                               "poses": pose_cases()}, indent=1) + "\n")
 
 
 if __name__ == "__main__":

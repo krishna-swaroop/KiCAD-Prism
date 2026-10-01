@@ -21,6 +21,12 @@ describe("history formatting", () => {
     expect(eventSummary(event("review_applied", { kind: "import", created: 2, updated: 1 }), labels)).toBe("import review: 2 created, 1 updated");
     expect(eventSummary(event("rows_replaced", { rowCount: 4, added: ["x"], removed: [] }), labels)).toBe("4 rows (1 added, 0 removed)");
     expect(eventSummary(event("link_created", null, { redacted: true }), labels)).toBe("on a board you cannot see");
+    expect(eventSummary(event("pose_updated", { instanceId: obc.id, before: null, after: { source: "manual" } }), labels))
+      .toBe(`${obc.label} moved`);
+    expect(eventSummary(event("pose_updated", { instanceId: obc.id, before: { source: "manual" }, after: null }), labels))
+      .toBe(`${obc.label} back to its default position`);
+    expect(eventSummary(event("poses_reset", { instanceIds: ["a", "b"], sources: ["manual"] }), labels))
+      .toBe("2 boards back to the default layout");
   });
 
   it("describes only what changed in a row", () => {

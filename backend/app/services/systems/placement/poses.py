@@ -104,3 +104,45 @@ def default_row(items: Sequence[tuple[str, Optional[Bounds]]], gap_mm: float = D
         poses[key] = {"translationMm": [_clean(v) for v in translation], "rotation": [0.0, 0.0, 0.0, 1.0]}
         cursor += width + gap_mm
     return poses
+
+
+MAX_TRANSLATION_MM = 1_000_000.0  # a kilometre: anything further is a typo, not a placement
+
+
+def pose_from(translation_mm: Sequence[float], rotation: Sequence[float]) -> dict:
+    """A pose from API or manifest input, canonical (§14.1); ``ValueError`` when it is not one."""
+    if len(translation_mm) != 3 or len(rotation) != 4:
+        raise ValueError("translationMm takes 3 numbers and rotation 4 (x, y, z, w)")
+    values = [float(v) for v in (*translation_mm, *rotation)]
+    if any(not math.isfinite(v) for v in values):
+        raise ValueError("pose values must be finite")
+    if any(abs(v) > MAX_TRANSLATION_MM for v in values[:3]):
+        raise ValueError(f"translation is limited to ±{MAX_TRANSLATION_MM:g} mm")
+    if math.sqrt(sum(v * v for v in values[3:])) < 1e-6:
+        raise ValueError("rotation must be a non-zero quaternion")
+    return {"translationMm": [_clean(v) for v in values[:3]], "rotation": canonical_rotation(values[3:])}
+
+
+def place(
+    items: Sequence[tuple[str, Optional[Bounds]]],
+    stored: Mapping[str, Mapping[str, Any]],
+    gap_mm: float = DEFAULT_GAP_MM,
+) -> dict[str, dict]:
+    """Every member's pose in its system's frame, with its ``source``.
+
+    ``items`` are the members in §14.3 order (label, then instance ID) with
+    their own-frame bounds; ``stored`` the poses kept for some of them. A
+    stored pose wins; the rest take their slot in the default row, which is
+    laid out over every member so moving one board never shifts the others.
+    M4 adds the tree solve (``auto`` poses from driving mates) between the two.
+    """
+    defaults = default_row(items, gap_mm)
+    out: dict[str, dict] = {}
+    for key, _bounds in items:
+        pose = stored.get(key)
+        if pose is None:
+            out[key] = {**defaults[key], "source": "default"}
+        else:
+            out[key] = {"translationMm": [_clean(v) for v in pose["translationMm"]],
+                        "rotation": canonical_rotation(pose["rotation"]), "source": pose["source"]}
+    return out

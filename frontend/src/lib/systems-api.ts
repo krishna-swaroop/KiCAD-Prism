@@ -31,12 +31,14 @@ import type {
   SnapshotDiff,
   SnapshotMeta,
   SnapshotPublication,
+  StoredPose,
   SystemDocument,
   SystemExport,
   SystemHarness,
   SystemHierarchy,
   SystemInstance,
   SystemLink,
+  SystemPoses,
   SystemPort,
   SystemScene,
   SystemSummary,
@@ -406,6 +408,35 @@ export function setMating(
 export function clearMating(systemId: string, etag: string, instanceId: string, portKey: string) {
   return versioned<PortMating>(path(systemId, "instances", instanceId, "mating", portKey),
     { method: "DELETE", etag }, "Could not clear the mating frame");
+}
+
+// ---------------------------------------------------------------------------
+// Poses (CONTRACTS_P2 §14.3)
+
+export async function getPoses(systemId: string): Promise<SystemPoses> {
+  const { body } = await send<SystemPoses>(path(systemId, "poses"), {}, "Could not load placement");
+  return body;
+}
+
+/** Store a manual pose; the server canonicalises the rotation. */
+export function setPose(
+  systemId: string, etag: string, instanceId: string,
+  pose: { translationMm: [number, number, number]; rotation: [number, number, number, number] },
+) {
+  return versioned<StoredPose>(path(systemId, "poses", instanceId),
+    { method: "PUT", etag, body: json(pose) }, "Could not save the position");
+}
+
+/** Back to the default pose. */
+export function clearPose(systemId: string, etag: string, instanceId: string) {
+  return versioned<Pick<StoredPose, "instanceId" | "source">>(path(systemId, "poses", instanceId),
+    { method: "DELETE", etag }, "Could not reset the position");
+}
+
+/** Every manual pose back to its default (D-P2-14). */
+export function resetPoses(systemId: string, etag: string) {
+  return versioned<{ reset: string[] }>(path(systemId, "poses"), { method: "DELETE", etag },
+    "Could not reset positions");
 }
 
 // ---------------------------------------------------------------------------

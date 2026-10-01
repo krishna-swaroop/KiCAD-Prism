@@ -67,8 +67,8 @@ class ManifestTest(SnapshotCase):
             manifest_io.import_manifest(self.store, manifest, actor="user:t")
         self.conn.rollback()
         body = manifest.model_dump(mode="json", by_alias=True)
-        body["placement"]["poses"] = [{"instanceId": body["instances"][0]["id"], "translationMm": [0, 0, 0],
-                                        "rotation": [0, 0, 0, 1], "source": "manual"}]
+        body["placement"]["drivingMates"] = [{"instanceId": body["instances"][0]["id"],
+                                               "linkId": body["links"][0]["id"]}]
         with self.assertRaises(Invalid):
             manifest_io.import_manifest(self.store, Manifest.model_validate(body), actor="user:t")
 

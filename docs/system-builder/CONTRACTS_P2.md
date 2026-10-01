@@ -1,6 +1,6 @@
 # System Builder P2 — contracts
 
-**Version P2-1.24 · 2026-10-01 · tickets SB2-00 to SB2-27.** §0 choices S1–S8 were signed off by the user on 2026-09-30, with S6 revised. The M1 choices T1–T7 (§0.1) were signed off by the user on 2026-09-30.
+**Version P2-1.25 · 2026-10-01 · tickets SB2-00 to SB2-28.** §0 choices S1–S8 were signed off by the user on 2026-09-30, with S6 revised. The M1 choices T1–T7 (§0.1) were signed off by the user on 2026-09-30.
 
 This document extends [CONTRACTS.md](CONTRACTS.md) (P1, v1.12) and never overrides it
 silently. Where P2 changes a P1 rule, the P1 section is named and the change is listed in §19.
@@ -428,7 +428,7 @@ Reading rules:
 - P1 snapshots stay readable everywhere else, but cannot be published.
 - Writers emit instances, links and rows sorted by ID, so an unchanged system snapshots to identical digests.
 
-**Import.** `manifest.import_manifest` recreates a system from a manifest, **keeping every ID** (system, instances, links, rows), and audits `system_imported`. A clash with an existing ID fails the transaction. Sections without tables yet (harnesses, placement) are refused with 422 until their tickets land; mating records import as stored (SB2-12). There is no HTTP route yet; M7 adds one.
+**Import.** `manifest.import_manifest` recreates a system from a manifest, **keeping every ID** (system, instances, links, rows), and audits `system_imported`. A clash with an existing ID fails the transaction. Sections without tables yet (harness nodes, driving mates) are refused with 422 until their tickets land; mating records (SB2-12) and poses (SB2-28) import as stored. There is no HTTP route yet; M7 adds one.
 
 ### 9.5 Canvas layout (revises P1 invariant 6)
 
@@ -466,6 +466,7 @@ All routes are under `/api/systems/{id}` and follow P1 conventions (If-Match, 41
 | `GET …/nets?search=&occurrence=&limit=`, `GET …/nets/{groupId}` | §8.2 |
 | `GET …/icd.{csv,html}?depth=all` | §10 |
 | `GET …/scene` | §20: every occurrence placed, with the board bundles that draw it |
+| `GET …/poses`, `PUT …/poses/{iid}`, `DELETE …/poses/{iid}`, `DELETE …/poses` | §14.7 |
 | Catalog: `GET /api/catalog/components?kind=part\|module\|assembly` | Filter by kind. Component payloads carry `kind`, `interface` and `source_ref` |
 
 **Viewer browsing (D-P2-24, [S8]).** The dependency `require_catalog_browser` (roles `CATALOG_BROWSE_ROLES` = reader roles + `viewer`) guards exactly these 26 routes:
@@ -520,7 +521,8 @@ languages with a tolerance of 1e-6 mm and 1e-9 on quaternion components.
 
 - A system's frame is the frame its poses are expressed in. A pose `P = T(translationMm)·R(rotation)` maps an instance's own frame (board frame, or the child system's frame for an assembly) into the parent's.
 - A board occurrence's world matrix is the product of poses along its occurrence path, root first.
-- Default poses (`source: "default"`): the instances of one system, in **label order** (case-insensitive, then instance ID), along +x on the XY plane. Each is placed so its bounding box starts 20 mm after the previous one's ends (the first at x = 0), bottoms aligned at y = 0, with no rotation. A board's box is its `boardOutlineMm` (§14.6) with z = ±t/2; an assembly's is the union of its members' boxes after their own default poses. An instance without a box takes an empty slot (the next one starts 20 mm on). Stored only when the user moves an instance (SB2-28). *(P2-1.23: the plan said creation order, which snapshot manifests don't record.)*
+- Default poses (`source: "default"`): the instances of one system, in **label order** (case-insensitive, then instance ID), along +x on the XY plane. Each is placed so its bounding box starts 20 mm after the previous one's ends (the first at x = 0), bottoms aligned at y = 0, with no rotation. A board's box is its `boardOutlineMm` (§14.6) with z = ±t/2; an assembly's is the union of its members' boxes after their own default poses. An instance without a box takes an empty slot (the next one starts 20 mm on). Stored only when the user moves an instance (§14.7). *(P2-1.23: the plan said creation order, which snapshot manifests don't record.)*
+- **Placing members** (`place`): a stored pose wins; every other member takes its slot in the default row, which is laid out over **all** members, so moving one never shifts another. M4 inserts the tree solve (`auto`) between the two.
 
 ### 14.4 Connector frame `F_c`
 
@@ -565,6 +567,21 @@ B_world = A_world · F_a · T(0, 0, h) · Rx(180°) · Rz(k · 90°) · F_b⁻¹
 - Numbers are rounded to 1e-4 mm. Pads are listed in natural pad order; duplicate pad numbers keep every pad.
 - `geometry` joins the interface digest, so a moved connector produces a new artifact but **never** a drift item by itself (drift compares pins and nets only, P1 §5).
 - **v8 (SB2-22)** adds `boardOutlineMm`: `{"minMm": [x, y], "maxMm": [x, y], "source": "edge_cuts" | "items"}` in the board frame, or null without a PCB. It bounds the **board-level** Edge.Cuts graphics by their line centres (arcs by their true extent; curves by their control points). A board with none falls back to the extent of all its items (`source: "items"`, strokes included), as KiCad does. It joins the digest and never drifts, like `geometry`.
+
+### 14.7 Stored poses (SB2-28)
+
+- **Table** `system_poses` (migration 40): one row per instance of this system, `translation_mm` (3), `rotation` (4, canonical), `source`, `updated_by`, `updated_at`. Deleting the instance deletes its pose.
+- **API** (P1 conventions: If-Match, 412/428):
+
+  | Method and path | Role | Body / result |
+  |---|---|---|
+  | `GET …/poses` | reader | `{systemId, version, poses: [{instanceId, translationMm, rotation, source, updatedBy, updatedAt}]}`, stored poses only |
+  | `PUT …/poses/{iid}` | designer | `{translationMm: [x, y, z], rotation: [x, y, z, w]}` → the stored pose, `source: "manual"`. The rotation is normalised and canonicalised; a zero or non-finite quaternion, or a translation beyond ±1 000 000 mm, is 422 |
+  | `DELETE …/poses/{iid}` | designer | back to the default: `{instanceId, source: "default"}` |
+  | `DELETE …/poses` | designer | every `manual` pose back to its default: `{reset: [instanceId…]}` |
+
+- **Engineering data, not connectivity.** A pose change bumps the system version and is audited (`pose_updated` with before and after; `poses_reset` with the instances), like a mating frame. It never changes the connectivity digest, so it never opens a review, moves drift or makes a parent see a new child revision.
+- **Snapshots** freeze `placement.poses`, and a system imported from a manifest gets them back. A child system's poses are its snapshot's: inside a parent it moves only as a rigid group, by the parent's pose for the assembly instance.
 
 ## 15. Mating frames (SB2-12)
 
@@ -714,6 +731,7 @@ All take If-Match and bump the system version. Audits `harness_created`, `harnes
 
 | Version | Date | Change |
 |---|---|---|
+| P2-1.25 | 2026-10-01 | SB2-28: stored poses. Migration 40 `system_poses`; `GET/PUT/DELETE …/poses/{iid}` and `DELETE …/poses` (§14.7), version-checked and audited (`pose_updated`, `poses_reset`); manifests write `placement.poses` and import them (driving mates are still refused); the scene draws stored poses, and a child system's from its snapshot. Placement library: `pose_from`, `place` and the TypeScript twin `placement/poses.ts`, with pose goldens in `placement_cases.json`. |
 | P2-1.24 | 2026-10-01 | SB2-23…27: §20.3 System 3D tab and `<prism-system-scene>`. §20.2: the `webgpu_3d` job key names the generator build; the scene reads only the outline and thickness of each interface artifact; `last_build` reads decoded job ids (`job_id`). |
 | P2-1.23 | 2026-10-01 | SB2-22: §20 system scene (`GET …/scene`, `prism.system_scene.a0`): occurrences with default poses and world matrices, board assets per (project, commit) with `bundleToBoard`, bundle builds queued for designers, restricted boards and child systems as boxes. Extractor **v8** `boardOutlineMm` (§14.6; every board re-extracts once). §14.3 default row: label order instead of creation order, assembly boxes, empty slots. Placement library gains `poses` (Python; the TypeScript twin comes with SB2-28). |
 | P2-1.22 | 2026-10-01 | SB2-21: geometry fixtures (plan §8, M1 set): `mezz_base`, `mezz_top` F0/F1, `edge_a`, `edge_b`, `ambiguous`, built through KiCad's IPC API (not SWIG) and clean on ERC, DRC with schematic parity and library checks, netlist, STEP and GLB with 10.0.6. Goldens: DF12(3.0) mated height 3.0 mm from Hirose EDC-390687-51-77, top pose (0, 0, 4.6) mm over the base, V11 shift 1.5 mm, frames per connector. Vendor models are not redistributed. No contract rule changes. |
@@ -760,7 +778,7 @@ Open to every reader of the system, redacted as `GET …/hierarchy` (§5.4). Len
                   "boundsMm": {"minMm": [6.5, -59.11, -0.8], "maxMm": [96.65, -6.5, 0.8]}}]}
 ```
 
-- **Occurrences** are the hierarchy's, parents before members: boards and assemblies (M6 adds modules). `pose` is in the parent's frame (§14.3; only `default` until SB2-28 stores poses); `worldMatrix` is the product of poses from the root. An assembly is a rigid group: its members' poses are inside its frame. `boundsMm` is the occurrence's box in its **own** frame, or null when unknown (no PCB, no v8 interface yet, or an unresolved assembly).
+- **Occurrences** are the hierarchy's, parents before members: boards and assemblies (M6 adds modules). `pose` is in the parent's frame (§14.3) with its `source`: a stored pose (§14.7) or `default`; `worldMatrix` is the product of poses from the root. An assembly is a rigid group: its members' poses are inside its frame. `boundsMm` is the occurrence's box in its **own** frame, or null when unknown (no PCB, no v8 interface yet, or an unresolved assembly).
 - **Assets** are board bundles, one per (project, commit), however many occurrences use it: `assetId = "sba_" + sha256(project \0 commit)[:16]`. Two copies of an assembly draw from the same assets.
 - **Restricted** (§5.4): a hidden board keeps its path, labels, pose and box, with `assetId: null`; no project, commit or bundle of it appears anywhere in the response. A hidden child system is one occurrence with its box (the union of its contents); its members are left out. The box is the only thing either leaks.
 - Reading the scene queues the v8 interface extraction of any board without one, so its box arrives on a later read.
