@@ -1172,11 +1172,11 @@ function cameraLod(viewportHeight, orthographic) {
 
 // Scene numbers for the stats overlay and for measurements through the element.
 function sceneStats() {
-  const counts = renderer?.cullCounts || { full: 0, board: 0, box: 0, culled: 0 };
+  const counts = renderer?.cullCounts || { full: 0, board: 0, body: 0, box: 0, culled: 0 };
   const single = !renderer || renderer.identityOnly;
   return {
     occurrences: renderer?.occurrenceMatrices.length || 0,
-    lod: single ? { full: 1, board: 0, box: 0, culled: 0 } : { ...counts },
+    lod: single ? { full: 1, board: 0, body: 0, box: 0, culled: 0 } : { ...counts },
     triangles: renderer?.frameStats.triangles || 0,
     draws: renderer?.frameStats.draws || 0,
     gpuMemoryBytes: renderer?.gpuMemoryBytes() || 0,
@@ -1202,10 +1202,10 @@ function setStatsOverlay(visible) {
 function updateSceneStats() {
   if (!sceneStatsEl || !state.showStats) return;
   const stats = sceneStats();
-  const { full, board, box, culled } = stats.lod;
+  const { full, board, body, box, culled } = stats.lod;
   const rows = [
     ["Occurrences", `${stats.occurrences} (${full + board + box} visible)`],
-    ["Detail", `${full} full · ${board} board · ${box} box · ${culled} culled`],
+    ["Detail", `${full} full · ${board} board · ${body} body · ${box} box · ${culled} culled`],
     ["Triangles", stats.triangles.toLocaleString()],
     ["Draws", stats.draws.toLocaleString()],
     ["GPU memory", `${(stats.gpuMemoryBytes / 1048576).toFixed(1)} / ${(stats.gpuBudgetBytes / 1048576).toFixed(0)} MB`],

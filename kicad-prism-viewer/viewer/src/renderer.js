@@ -17,11 +17,13 @@ import {
   IDENTITY,
   OCCURRENCE_STRIDE,
   OCCURRENCE_WGSL,
+  LOD_CULLED,
   LOD_FULL,
   LOD_THRESHOLDS,
   decodePick,
   frustumPlanes,
   isIdentity,
+  normalizeLodThresholds,
   normalizeOccurrences,
   packBarrels,
   packOccurrences,
@@ -352,8 +354,9 @@ const MAIN_SHADER_INSTANCED = variant(MAIN_SHADER, [
   `${OCCURRENCE_WGSL}
 @vertex fn vs(input: VertexInput, @builtin(instance_index) instance: u32) -> VertexOutput {
   // Full-detail draws (components; inner copper behind an opaque board) list only
-  // occurrences at full detail (draw.material.w = 1); the rest list full or board.
-  let index = listedOccurrence(select(LIST_BOARD, LIST_FULL, draw.material.w > 0.5), instance);
+  // occurrences at full detail (draw.material.w = LIST_FULL); copper and the
+  // like list full or board, substrate and mask full, board or body.
+  let index = listedOccurrence(u32(draw.material.w + 0.5), instance);
   let occurrence = occurrences[index];
   var output: VertexOutput;
   output.world = (occurrence.model * vec4f(input.position + draw.offset.xyz, 1.0)).xyz;
@@ -379,7 +382,7 @@ const PICK_SHADER_INSTANCED = variant(PICK_SHADER, [
   output.position = globals.viewProjection * vec4f(input.position + draw.offset.xyz, 1.0);`,
   `${OCCURRENCE_WGSL}
 @vertex fn vs(input: Input, @builtin(instance_index) instance: u32) -> Output {
-  let index = listedOccurrence(select(LIST_BOARD, LIST_FULL, draw.material.w > 0.5), instance);
+  let index = listedOccurrence(u32(draw.material.w + 0.5), instance);
   let world = (occurrences[index].model * vec4f(input.position + draw.offset.xyz, 1.0)).xyz;
   var output: Output;
   output.position = globals.viewProjection * vec4f(world, 1.0);
@@ -536,13 +539,15 @@ struct Cull {
 @group(0) @binding(6) var<storage, read> classes: array<u32>;
 
 fn chooseLod(previous: u32, pixels: f32) -> u32 {
-  let fullPx = cull.lod.y;
-  let boxPx = cull.lod.z;
+  var limits = array<f32, 3>(cull.lod.y, bitcast<f32>(cull.extra.y), cull.lod.z);
   let keep = cull.lod.w;
-  var lod = 2u;
-  if (pixels >= fullPx) { lod = 0u; } else if (pixels >= boxPx) { lod = 1u; }
-  if (previous == 0u && lod > 0u && pixels >= fullPx * keep) { lod = 0u; }
-  if (previous <= 1u && lod == 2u && pixels >= boxPx * keep) { lod = 1u; }
+  var lod = 3u;
+  if (pixels >= limits[2]) { lod = 2u; }
+  if (pixels >= limits[1]) { lod = 1u; }
+  if (pixels >= limits[0]) { lod = 0u; }
+  for (var level = 0u; level < lod; level += 1u) {
+    if (previous <= level && pixels >= limits[level] * keep) { return level; }
+  }
   return lod;
 }
 
@@ -578,9 +583,10 @@ fn chooseLod(previous: u32, pixels: f32) -> u32 {
     if (i + 1u == cull.info.y) { lod = 0u; }
   }
   lods[i] = lod;
-  if (lod == 0u) { lists[atomicAdd(&counters[0], 1u) * 3u] = i; }
-  if (lod <= 1u) { lists[atomicAdd(&counters[1], 1u) * 3u + 1u] = i; }
-  if (lod == 2u) { lists[atomicAdd(&counters[2], 1u) * 3u + 2u] = i; }
+  if (lod == 0u) { lists[atomicAdd(&counters[0], 1u) * 4u] = i; }
+  if (lod <= 1u) { lists[atomicAdd(&counters[1], 1u) * 4u + 1u] = i; }
+  if (lod <= 2u) { lists[atomicAdd(&counters[2], 1u) * 4u + 2u] = i; }
+  if (lod == 3u) { lists[atomicAdd(&counters[3], 1u) * 4u + 3u] = i; }
 }
 
 @compute @workgroup_size(64) fn writeArgs(@builtin(global_invocation_id) id: vec3u) {
@@ -588,13 +594,15 @@ fn chooseLod(previous: u32, pixels: f32) -> u32 {
   if (slot >= cull.info.w) { return; }
   let full = atomicLoad(&counters[0]);
   let board = atomicLoad(&counters[1]);
-  let box = atomicLoad(&counters[2]);
+  let body = atomicLoad(&counters[2]);
+  let box = atomicLoad(&counters[3]);
   let kind = classes[slot];
   var count = 0u;
   if (kind == 0u) { count = board; }
   else if (kind == 1u) { count = full; }
   else if (kind == 2u) { count = board * cull.extra.x; }
   else if (kind == 3u) { count = box; }
+  else if (kind == 5u) { count = body; }
   args[slot * 5u + 1u] = count;
 }
 `;
@@ -693,7 +701,7 @@ export class Renderer {
     // Indirect draw arguments: a five-word slot per draw. Slot 0 is the barrels,
     // slot 1 the stand-in box, primitives take the rest. The cull pass writes
     // each slot's instance count from the list its class names (0 board level,
-    // 1 components, 2 barrels, 3 box, 4 unused).
+    // 1 components, 2 barrels, 3 box, 4 unused, 5 body level).
     this.slotCapacity = 0;
     this.slotArgs = new Uint32Array(0);
     this.slotClasses = new Uint32Array(0);
@@ -713,7 +721,7 @@ export class Renderer {
     // Inner copper is hidden by an opaque board, so it draws at full detail only;
     // exploded or see-through boards move it down to board detail.
     this.innerCopperAtFull = true;
-    this.cullCounts = { full: 0, board: 0, box: 0, culled: 0 };
+    this.cullCounts = { full: 0, board: 0, body: 0, box: 0, culled: 0 };
     this.frameStats = { triangles: 0, draws: 0 };
     this.boxColor = [0.24, 0.36, 0.28, 1]; // solder-mask green, darkened
     if (shareFrom) {
@@ -820,7 +828,7 @@ export class Renderer {
   createListBuffer(capacity) {
     return this.device.createBuffer({
       label: "visible-occurrences",
-      size: capacity * 3 * Uint32Array.BYTES_PER_ELEMENT,
+      size: capacity * 4 * Uint32Array.BYTES_PER_ELEMENT,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
   }
@@ -898,7 +906,7 @@ export class Renderer {
     }
     if (next.length) this.device.queue.writeBuffer(this.occurrenceBuffer, 0, packOccurrences(next));
     // New occurrences start without history: no hysteresis carried over.
-    if (this.cull) this.device.queue.writeBuffer(this.cull.lods, 0, new Uint32Array(this.occurrenceCapacity).fill(3));
+    if (this.cull) this.device.queue.writeBuffer(this.cull.lods, 0, new Uint32Array(this.occurrenceCapacity).fill(LOD_CULLED));
     if (this.selectedOccurrence >= next.length) this.selectedOccurrence = -1;
     this.bundleCache.clear();
     this.invalidate();
@@ -910,7 +918,7 @@ export class Renderer {
     this.innerCopperAtFull = atFull;
     for (const entry of this.entries) {
       if (!entry.innerCopper) continue;
-      entry.drawClass = atFull ? 1 : 0;
+      entry.drawClass = drawClassOf(entry, atFull);
       this.setSlot(entry.slot, entry.indexCount, entry.drawClass);
     }    this.invalidate();
   }
@@ -918,6 +926,12 @@ export class Renderer {
   /** The board's box in its own frame (runtime units), for culling and the box stand-in. */
   setBoardBounds(bounds) {
     this.boardBounds = bounds ? [...bounds] : null;
+    this.invalidate();
+  }
+
+  /** Level-of-detail thresholds in projected pixels ({ fullPx, boardPx, boxPx, keep }). */
+  setLodThresholds(thresholds) {
+    this.lodThresholds = normalizeLodThresholds({ ...this.lodThresholds, ...thresholds });
     this.invalidate();
   }
 
@@ -972,7 +986,7 @@ export class Renderer {
       readAt: 0,
       bindGroup: null,
     };
-    device.queue.writeBuffer(this.cull.lods, 0, new Uint32Array(this.occurrenceCapacity).fill(3));
+    device.queue.writeBuffer(this.cull.lods, 0, new Uint32Array(this.occurrenceCapacity).fill(LOD_CULLED));
     this.cull.bindGroup = this.makeCullBindGroup();
   }
 
@@ -1045,12 +1059,13 @@ export class Renderer {
     if (lod) f32.set([...lod.eye, lod.orthographic ? 0 : 1], 24);
     const bounds = this.boardBounds || [-1e6, -1e6, -1e6, 1e6, 1e6, 1e6];
     f32.set([bounds[0], bounds[1], bounds[2], 0, bounds[3], bounds[4], bounds[5], 0], 28);
-    const { fullPx, boxPx, keep } = this.lodThresholds;
+    const { fullPx, boardPx, boxPx, keep } = this.lodThresholds;
     f32.set([lod?.pixelScale || 0, fullPx, boxPx, keep], 36);
     // Without camera data or a board box every occurrence draws in full.
     const forced = this.lodOverride != null ? this.lodOverride + 1 : (!lod || !this.boardBounds ? LOD_FULL + 1 : 0);
     u32.set([this.occurrenceMatrices.length, this.selectedOccurrence + 1, forced, this.nextSlot], 40);
     u32[44] = this.barrels?.instanceCount || 0;
+    f32[45] = boardPx; // extra.y, read back as a float
     this.device.queue.writeBuffer(cull.uniform, 0, cull.scratch);
     encoder.clearBuffer(cull.counters);
     const pass = encoder.beginComputePass({ label: "cull" });
@@ -1074,9 +1089,9 @@ export class Renderer {
     cull.reading = true;
     const total = this.occurrenceMatrices.length;
     cull.readback.mapAsync(GPUMapMode.READ).then(() => {
-      const [full, board, box] = new Uint32Array(cull.readback.getMappedRange().slice(0));
+      const [full, board, body, box] = new Uint32Array(cull.readback.getMappedRange().slice(0));
       cull.readback.unmap();
-      this.cullCounts = { full, board: board - full, box, culled: Math.max(0, total - board - box) };
+      this.cullCounts = { full, board: board - full, body: body - board, box, culled: Math.max(0, total - body - box) };
     }).catch(() => {}).finally(() => {
       cull.reading = false;
     });
@@ -1085,7 +1100,8 @@ export class Renderer {
   // Instances a draw of this class ran with, from the last counts read back.
   countFor(drawClass) {
     if (this.identityOnly) return drawClass === 2 ? this.barrels?.instanceCount || 0 : drawClass === 3 ? 0 : 1;
-    const { full, board, box } = this.cullCounts;
+    const { full, board, body, box } = this.cullCounts;
+    if (drawClass === 5) return full + board + body;
     if (drawClass === 0) return full + board;
     if (drawClass === 1) return full;
     if (drawClass === 2) return (full + board) * (this.barrels?.instanceCount || 0);
@@ -1445,7 +1461,7 @@ export class Renderer {
     this.device.queue.writeBuffer(indexBuffer, 0, indices);
     const drawSlot = this.allocateDrawSlot();
     const bindGroup = this.makeBindGroup(this.drawSlotBuffer, drawSlot * DRAW_UNIFORM_SIZE);
-    const drawClass = metadata.kind === "component" || (metadata.innerCopper && this.innerCopperAtFull) ? 1 : 0;
+    const drawClass = drawClassOf(metadata, this.innerCopperAtFull);
     const entry = {
       ...metadata,
       drawClass,
@@ -1759,12 +1775,12 @@ export class Renderer {
     const color = entry.color || entry.material.baseColor;
     data.set(color, 0);
     // material.z: full component opacity for translucent placeholders (selected ones turn solid).
-    // material.w selects the full-detail list in the instanced shaders; the one-board ones ignore it.
+    // material.w is the occurrence list the instanced shaders read; the one-board ones ignore it.
     data.set([
       entry.material.metallic || 0,
       entry.material.roughness ?? 0.72,
       entry.opacityScale != null ? componentOpacity : 0,
-      entry.drawClass === 1 ? 1 : 0,
+      LIST_OF_CLASS[entry.drawClass] ?? 1,
     ], 4);
     const boardOverlayOffset = boardContextOffset(entry);
     data.set([
@@ -1905,6 +1921,20 @@ export class Renderer {
       readBuffer.destroy();
     }
   }
+}
+
+// The occurrence list each draw class reads (occurrences.js LIST_*).
+const LIST_OF_CLASS = Object.freeze({ 0: 1, 1: 0, 5: 2 });
+
+/**
+ * A primitive's draw class: components (and inner copper under an opaque
+ * board) at full detail, substrate and mask down to body detail, the rest
+ * (outer copper, silkscreen, paste) down to board detail.
+ */
+function drawClassOf(entry, innerCopperAtFull) {
+  if (entry.kind === "component" || (entry.innerCopper && innerCopperAtFull)) return 1;
+  if (entry.kind === "board" && (entry.boardRole === "substrate" || entry.boardRole === "soldermask")) return 5;
+  return 0;
 }
 
 /** Draw order after the opaque pass: 0 = opaque, then mask, silkscreen, translucent. */

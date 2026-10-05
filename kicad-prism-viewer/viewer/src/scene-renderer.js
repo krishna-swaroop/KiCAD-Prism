@@ -13,7 +13,7 @@
 // scaled into each occurrence's matrix, always at box detail. The host renderer
 // owns the device and targets and draws nothing itself.
 
-import { LOD_BOX } from "./occurrences.js";
+import { LOD_BOX, LOD_THRESHOLDS, normalizeLodThresholds } from "./occurrences.js";
 import { Renderer } from "./renderer.js";
 
 const UNIT_BOX = [0, 0, 0, 1, 1, 1];
@@ -32,6 +32,7 @@ export class SceneRenderer {
     this.assets = new Map();
     this.order = [];
     this.frameStats = { triangles: 0, draws: 0 };
+    this.lodThresholds = { ...LOD_THRESHOLDS };
   }
 
   /** A renderer for one asset, created on first use. */
@@ -39,6 +40,7 @@ export class SceneRenderer {
     let renderer = this.assets.get(id);
     if (!renderer) {
       renderer = new Renderer(this.canvas, this.device, { shareFrom: this.host });
+      renderer.setLodThresholds(this.lodThresholds);
       this.assets.set(id, renderer);
     }
     return renderer;
@@ -185,9 +187,16 @@ export class SceneRenderer {
     return bytes - Math.max(0, this.renderers.length - 1) * this.canvas.width * this.canvas.height * 12;
   }
 
+  /** Level-of-detail thresholds for every asset, now and later (SB2-30a). */
+  setLodThresholds(thresholds) {
+    this.lodThresholds = normalizeLodThresholds({ ...this.lodThresholds, ...thresholds });
+    for (const renderer of this.assets.values()) renderer.setLodThresholds(this.lodThresholds);
+    return { ...this.lodThresholds };
+  }
+
   /** Occurrences per level of detail, summed over the assets (stand-ins count as box). */
   cullCounts() {
-    const total = { full: 0, board: 0, box: 0, culled: 0 };
+    const total = { full: 0, board: 0, body: 0, box: 0, culled: 0 };
     for (const renderer of this.renderers) {
       if (!renderer.occurrenceCount) continue;
       for (const key of Object.keys(total)) total[key] += renderer.cullCounts[key] || 0;

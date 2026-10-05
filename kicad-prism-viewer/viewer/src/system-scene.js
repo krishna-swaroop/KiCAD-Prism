@@ -32,7 +32,9 @@ import {
   AXES, SNAP, axisAmount, canonicalPose, localAxes, moveDescriptor, moveTarget, perpendicular,
   ringRotation, rotatePoseAbout, screenAngle, snapTo, translatePose,
 } from "./move-gizmo.js";
-import { IDENTITY, LOD_THRESHOLDS, projectToViewport, transformBounds, transformPoint } from "./occurrences.js";
+import {
+  IDENTITY, LOD_THRESHOLDS, normalizeLodThresholds, projectToViewport, transformBounds, transformPoint,
+} from "./occurrences.js";
 import { SceneRenderer } from "./scene-renderer.js";
 
 const SCENE_SCHEMA = "prism.system_scene.a0";
@@ -117,9 +119,36 @@ function samePose(a, b) {
   return left.every((value, index) => Math.abs(value - right[index]) < 1e-6);
 }
 
+const LOD_STORAGE_KEY = "prism.systemScene.lodThresholds";
+const TUNING_FIELDS = Object.freeze([
+  { key: "fullPx", label: "Components", max: 600 },
+  { key: "boardPx", label: "Copper", max: 400 },
+  { key: "boxPx", label: "Box below", max: 120 },
+]);
+
+// Thresholds tuned in the panel stay with this browser; storage can be missing or throw.
+function readLodThresholds() {
+  try {
+    const saved = JSON.parse(globalThis.localStorage?.getItem(LOD_STORAGE_KEY) || "null");
+    if (saved && typeof saved === "object") return normalizeLodThresholds(saved);
+  } catch {
+    // Fall back to the defaults.
+  }
+  return { ...LOD_THRESHOLDS };
+}
+
+function writeLodThresholds(thresholds) {
+  try {
+    if (thresholds) globalThis.localStorage?.setItem(LOD_STORAGE_KEY, JSON.stringify(thresholds));
+    else globalThis.localStorage?.removeItem(LOD_STORAGE_KEY);
+  } catch {
+    // Tuning still applies for this page.
+  }
+}
+
 export class SystemScene {
   constructor({
-    canvas, labelsEl, statsEl, gizmoEl = null, helpEl = null,
+    canvas, labelsEl, statsEl, gizmoEl = null, helpEl = null, tuningEl = null,
     onSelectionChange = () => {}, onStatus = () => {}, onMove = () => {},
   }) {
     this.canvas = canvas;
@@ -127,6 +156,7 @@ export class SystemScene {
     this.statsEl = statsEl;
     this.gizmoEl = gizmoEl;
     this.helpEl = helpEl;
+    this.tuningEl = tuningEl;
     this.onSelectionChange = onSelectionChange;
     this.onStatus = onStatus;
     this.onMove = onMove;
@@ -141,6 +171,8 @@ export class SystemScene {
     this.selection = null; // { index, key, featureId }
     this.gpuBudgetBytes = DEFAULT_SCENE_GPU_BUDGET_BYTES;
     this.showStats = false;
+    // SB2-30a: level-of-detail thresholds, tunable with the stats overlay; kept per viewer.
+    this.lodThresholds = readLodThresholds();
     this.showLabels = true;
     this.disposed = false;
     this.framed = false;
@@ -151,6 +183,8 @@ export class SystemScene {
 
   async init() {
     this.scene = await SceneRenderer.create(this.canvas);
+    this.scene.setLodThresholds(this.lodThresholds);
+    this.buildTuning();
     this.camera = new CameraController([-0.1, -0.1, -0.01, 0.1, 0.1, 0.01]);
     this.bindInteractions();
     this.loop = (now) => {
@@ -1027,7 +1061,48 @@ export class SystemScene {
   setStatsOverlay(visible) {
     this.showStats = Boolean(visible);
     if (this.statsEl) this.statsEl.hidden = !this.showStats;
+    if (this.tuningEl) this.tuningEl.hidden = !this.showStats;
     if (this.showStats) this.renderStats();
+  }
+
+  /** Level-of-detail thresholds in projected pixels (SB2-30a); returns the values in force. */
+  setLodThresholds(thresholds) {
+    const next = thresholds == null ? { ...LOD_THRESHOLDS } : normalizeLodThresholds({ ...this.lodThresholds, ...thresholds });
+    this.lodThresholds = this.scene ? this.scene.setLodThresholds(next) : next;
+    writeLodThresholds(thresholds == null ? null : this.lodThresholds);
+    this.syncTuning();
+    return { ...this.lodThresholds };
+  }
+
+  // The tuning panel beside the stats: one slider per threshold, live.
+  buildTuning() {
+    const root = this.tuningEl;
+    if (!root) return;
+    const rows = TUNING_FIELDS.map(({ key, label, max }) => `
+      <label><span>${label}</span>
+        <input type="range" name="${key}" min="0" max="${max}" step="1">
+        <output name="${key}"></output></label>`).join("");
+    root.innerHTML = `<h2>Detail thresholds (projected radius, px)</h2>${rows}
+      <button type="button" data-action="reset">Defaults</button>`;
+    root.addEventListener("input", (event) => {
+      const input = event.target.closest("input[type=range]");
+      if (input) this.setLodThresholds({ [input.name]: Number(input.value) });
+    });
+    root.addEventListener("click", (event) => {
+      if (event.target.closest("[data-action=reset]")) this.setLodThresholds(null);
+    });
+    this.syncTuning();
+  }
+
+  syncTuning() {
+    const root = this.tuningEl;
+    if (!root) return;
+    for (const { key } of TUNING_FIELDS) {
+      const input = root.querySelector(`input[name="${key}"]`);
+      const output = root.querySelector(`output[name="${key}"]`);
+      if (input) input.value = String(Math.round(this.lodThresholds[key]));
+      if (output) output.textContent = `${Math.round(this.lodThresholds[key])}`;
+    }
   }
 
   setGpuBudget(bytes) {
@@ -1049,7 +1124,7 @@ export class SystemScene {
     }));
     return {
       occurrences: this.placed.length,
-      lod: this.scene ? this.scene.cullCounts() : { full: 0, board: 0, box: 0, culled: 0 },
+      lod: this.scene ? this.scene.cullCounts() : { full: 0, board: 0, body: 0, box: 0, culled: 0 },
       triangles: this.scene?.frameStats.triangles || 0,
       draws: this.scene?.frameStats.draws || 0,
       gpuMemoryBytes: this.scene?.gpuMemoryBytes() || 0,
@@ -1062,7 +1137,7 @@ export class SystemScene {
       frameCpuMs: mean(cpu),
       frameCpuP95Ms: p95(cpu),
       fps: intervals.length ? 1000 / Math.max(1e-6, mean(intervals)) : 0,
-      lodThresholds: { ...LOD_THRESHOLDS },
+      lodThresholds: { ...this.lodThresholds },
       // First frame with every ready board drawn: after the descriptor, and since the page started.
       firstFrame: this.timing.boardsDrawnAt == null ? null : {
         sinceSceneMs: this.timing.boardsDrawnAt - this.timing.descriptorAt,
@@ -1074,11 +1149,11 @@ export class SystemScene {
   renderStats() {
     if (!this.statsEl) return;
     const stats = this.stats();
-    const { full, board, box, culled } = stats.lod;
+    const { full, board, body, box, culled } = stats.lod;
     const loaded = stats.assets.filter((asset) => asset.state === "loaded").length;
     const rows = [
       ["Boards", `${stats.occurrences} placed · ${loaded}/${stats.assets.length} designs loaded`],
-      ["Detail", `${full} full · ${board} board · ${box} box · ${culled} culled`],
+      ["Detail", `${full} full · ${board} board · ${body} body · ${box} box · ${culled} culled`],
       ["Triangles", stats.triangles.toLocaleString()],
       ["Draws", stats.draws.toLocaleString()],
       ["GPU memory", `${(stats.gpuMemoryBytes / 1048576).toFixed(1)} / ${(stats.gpuBudgetBytes / 1048576).toFixed(0)} MB`],

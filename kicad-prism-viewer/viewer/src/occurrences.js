@@ -24,13 +24,15 @@ struct Occurrence {
 };
 @group(0) @binding(5) var<storage, read> occurrences: array<Occurrence>;
 // The cull pass (SB2-25) lists the occurrences to draw, interleaved by level of
-// detail: slot * 3 + list. Components draw for LIST_FULL; board, copper and
-// barrels for LIST_BOARD (full or board); the stand-in box for LIST_BOX.
+// detail: slot * 4 + list. Components draw for LIST_FULL; copper, barrels,
+// silkscreen and paste for LIST_BOARD (full or board); substrate and mask for
+// LIST_BODY (full, board or body); the stand-in box for LIST_BOX.
 @group(0) @binding(7) var<storage, read> visibleOccurrences: array<u32>;
 const LIST_FULL = 0u;
 const LIST_BOARD = 1u;
-const LIST_BOX = 2u;
-fn listedOccurrence(list: u32, instance: u32) -> u32 { return visibleOccurrences[instance * 3u + list]; }
+const LIST_BODY = 2u;
+const LIST_BOX = 3u;
+fn listedOccurrence(list: u32, instance: u32) -> u32 { return visibleOccurrences[instance * 4u + list]; }
 `;
 
 export const IDENTITY = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
@@ -204,24 +206,42 @@ export function projectToViewport(clip, point, viewport) {
   };
 }
 
-// Level of detail per occurrence (SB2-25), chosen on the GPU each frame from the
-// board's projected radius in pixels. These mirror the cull shader in renderer.js.
-export const LOD_FULL = 0; // components, board and copper
-export const LOD_BOARD = 1; // board, copper and barrels
-export const LOD_BOX = 2; // the board's bounding box
-export const LOD_CULLED = 3; // outside the view
+// Level of detail per occurrence (SB2-25, body level SB2-30a), chosen on the GPU
+// each frame from the board's projected radius in pixels. These mirror the cull
+// shader in renderer.js. Coarser levels only stop drawing parts of the board;
+// the bundle's geometry is never simplified.
+export const LOD_FULL = 0; // components, inner copper, and everything below
+export const LOD_BOARD = 1; // outer copper, barrels, silkscreen and paste, and the body
+export const LOD_BODY = 2; // the substrate and solder mask only
+export const LOD_BOX = 3; // the board's bounding box
+export const LOD_CULLED = 4; // outside the view
+export const LOD_NAMES = Object.freeze(["full", "board", "body", "box"]);
 export const LOD_THRESHOLDS = Object.freeze({
   fullPx: 140, // projected radius at or above which components draw
+  boardPx: 70, // at or above which copper, barrels, silkscreen and paste draw
   boxPx: 18, // below this the board is a box
   keep: 0.8, // hysteresis: a finer level holds until the size drops below threshold × keep
 });
 
 export function chooseLod(previous, pixels, thresholds = LOD_THRESHOLDS) {
-  const { fullPx, boxPx, keep } = thresholds;
-  let lod = pixels >= fullPx ? LOD_FULL : pixels >= boxPx ? LOD_BOARD : LOD_BOX;
-  if (previous === LOD_FULL && lod > LOD_FULL && pixels >= fullPx * keep) lod = LOD_FULL;
-  if (previous <= LOD_BOARD && lod === LOD_BOX && pixels >= boxPx * keep) lod = LOD_BOARD;
+  const { fullPx, boardPx, boxPx, keep } = thresholds;
+  const limits = [fullPx, boardPx, boxPx];
+  let lod = limits.findIndex((limit) => pixels >= limit);
+  if (lod < 0) lod = LOD_BOX;
+  for (let level = LOD_FULL; level < lod; level += 1) {
+    if (previous <= level && pixels >= limits[level] * keep) return level;
+  }
   return lod;
+}
+
+/** Thresholds made consistent: finite, full ≥ board ≥ box ≥ 0, keep in (0, 1]. */
+export function normalizeLodThresholds(value = {}) {
+  const pick = (key, fallback) => (Number.isFinite(Number(value[key])) ? Math.max(0, Number(value[key])) : fallback);
+  const boxPx = pick("boxPx", LOD_THRESHOLDS.boxPx);
+  const boardPx = Math.max(boxPx, pick("boardPx", LOD_THRESHOLDS.boardPx));
+  const fullPx = Math.max(boardPx, pick("fullPx", LOD_THRESHOLDS.fullPx));
+  const keep = Math.min(1, Math.max(0.05, pick("keep", LOD_THRESHOLDS.keep)));
+  return { fullPx, boardPx, boxPx, keep };
 }
 
 /**

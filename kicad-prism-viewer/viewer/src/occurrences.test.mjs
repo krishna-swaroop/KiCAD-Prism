@@ -83,9 +83,11 @@ test("instanced shader variants place every path by a culled occurrence", async 
     assert.match(code, /\.model \* vec4f\(/, name);
     assert.match(code, /selectedOccurrence: u32/, name);
   }
-  // Components draw only at full detail; board, copper and barrels at full or board.
-  assert.match(INSTANCED_SHADERS.main, /select\(LIST_BOARD, LIST_FULL, draw\.material\.w > 0\.5\)/);
-  assert.match(INSTANCED_SHADERS.pick, /select\(LIST_BOARD, LIST_FULL, draw\.material\.w > 0\.5\)/);
+  // Each draw reads the list its class names (material.w): components full only,
+  // copper full or board, substrate and mask down to body; barrels at full or board.
+  assert.match(INSTANCED_SHADERS.main, /listedOccurrence\(u32\(draw\.material\.w \+ 0\.5\), instance\)/);
+  assert.match(INSTANCED_SHADERS.pick, /listedOccurrence\(u32\(draw\.material\.w \+ 0\.5\), instance\)/);
+  assert.match(INSTANCED_SHADERS.main, /visibleOccurrences\[instance \* 4u \+ list\]/);
   for (const name of ["barrel", "barrelPick"]) {
     assert.match(INSTANCED_SHADERS[name], /barrels\[instance % count\]/);
     assert.match(INSTANCED_SHADERS[name], /listedOccurrence\(LIST_BOARD, instance \/ count\)/);
@@ -131,18 +133,34 @@ test("points project into the viewport, y down", async () => {
 });
 
 test("level of detail follows projected size, with hysteresis", async () => {
-  const { chooseLod, LOD_FULL, LOD_BOARD, LOD_BOX, LOD_CULLED } = await import("./occurrences.js");
-  assert.equal(chooseLod(LOD_CULLED, 200), LOD_FULL);
-  assert.equal(chooseLod(LOD_CULLED, 60), LOD_BOARD);
-  assert.equal(chooseLod(LOD_CULLED, 10), LOD_BOX);
+  const { chooseLod, LOD_FULL, LOD_BOARD, LOD_BODY, LOD_BOX, LOD_CULLED } = await import("./occurrences.js");
+  const t = { fullPx: 140, boardPx: 70, boxPx: 18, keep: 0.8 };
+  assert.equal(chooseLod(LOD_CULLED, 200, t), LOD_FULL);
+  assert.equal(chooseLod(LOD_CULLED, 100, t), LOD_BOARD);
+  assert.equal(chooseLod(LOD_CULLED, 40, t), LOD_BODY);
+  assert.equal(chooseLod(LOD_CULLED, 10, t), LOD_BOX);
   // Shrinking just below a threshold holds the finer level; well below drops it.
-  assert.equal(chooseLod(LOD_FULL, 130), LOD_FULL);
-  assert.equal(chooseLod(LOD_FULL, 100), LOD_BOARD);
-  assert.equal(chooseLod(LOD_BOARD, 16), LOD_BOARD);
-  assert.equal(chooseLod(LOD_BOARD, 12), LOD_BOX);
+  assert.equal(chooseLod(LOD_FULL, 130, t), LOD_FULL);
+  assert.equal(chooseLod(LOD_FULL, 100, t), LOD_BOARD);
+  assert.equal(chooseLod(LOD_BOARD, 60, t), LOD_BOARD);
+  assert.equal(chooseLod(LOD_BOARD, 50, t), LOD_BODY);
+  assert.equal(chooseLod(LOD_BODY, 16, t), LOD_BODY);
+  assert.equal(chooseLod(LOD_BODY, 12, t), LOD_BOX);
+  // A big drop passes through: board straight to body when it is still above the box hold.
+  assert.equal(chooseLod(LOD_BOARD, 16, t), LOD_BODY);
   // Growing needs the full threshold: no flicker back and forth around it.
-  assert.equal(chooseLod(LOD_BOARD, 130), LOD_BOARD);
-  assert.equal(chooseLod(LOD_BOX, 16), LOD_BOX);
+  assert.equal(chooseLod(LOD_BOARD, 130, t), LOD_BOARD);
+  assert.equal(chooseLod(LOD_BODY, 60, t), LOD_BODY);
+  assert.equal(chooseLod(LOD_BOX, 16, t), LOD_BOX);
+});
+
+test("level-of-detail thresholds stay ordered and finite", async () => {
+  const { normalizeLodThresholds, LOD_THRESHOLDS } = await import("./occurrences.js");
+  assert.deepEqual(normalizeLodThresholds({}), { ...LOD_THRESHOLDS });
+  assert.deepEqual(normalizeLodThresholds({ fullPx: 50, boardPx: 90, boxPx: 120, keep: 3 }),
+    { fullPx: 120, boardPx: 120, boxPx: 120, keep: 1 });
+  assert.deepEqual(normalizeLodThresholds({ fullPx: "x", boardPx: -4, boxPx: 10, keep: 0 }),
+    { fullPx: LOD_THRESHOLDS.fullPx, boardPx: 10, boxPx: 10, keep: 0.05 });
 });
 
 test("frustum planes cull boxes outside the clip volume", async () => {

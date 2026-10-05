@@ -52,6 +52,16 @@ const SHELL = `
     #gizmo .pivot { fill: #0f172a; stroke: #fff; stroke-width: 1.5; }
     #gizmo .readout { font: 600 12px system-ui, -apple-system, "Segoe UI", sans-serif; fill: #0f172a;
       paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+    #tuning { position: absolute; right: 12px; bottom: 12px; margin: 0; padding: 8px 10px; width: 230px;
+      background: rgb(15 20 28 / 0.86); color: #dbe4f0; border-radius: 6px;
+      font: 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    #tuning[hidden] { display: none; }
+    #tuning h2 { margin: 0 0 6px; font-size: 11px; font-weight: 600; }
+    #tuning label { display: grid; grid-template-columns: 74px 1fr 30px; align-items: center; gap: 6px; }
+    #tuning input { width: 100%; margin: 0; }
+    #tuning output { text-align: right; font: 11px "SFMono-Regular", Consolas, monospace; font-variant-numeric: tabular-nums; }
+    #tuning button { margin-top: 6px; font: inherit; color: inherit; background: rgb(255 255 255 / 0.12);
+      border: 0; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
     #help { position: absolute; left: 12px; bottom: 12px; margin: 0; padding: 10px 12px; max-width: 320px;
       display: grid; grid-template-columns: auto 1fr; gap: 3px 12px;
       background: rgb(15 20 28 / 0.88); color: #e2e8f0; border-radius: 8px;
@@ -80,6 +90,7 @@ const SHELL = `
     <dt><kbd>?</kbd></dt><dd>This list</dd>
   </dl>
   <dl id="stats" hidden></dl>
+  <div id="tuning" role="group" hidden aria-label="Level of detail thresholds"></div>
   <div id="fallback" hidden></div>
 `;
 
@@ -125,6 +136,7 @@ export function definePrismSystemScene() {
         statsEl: root.getElementById("stats"),
         gizmoEl: root.getElementById("gizmo"),
         helpEl: root.getElementById("help"),
+        tuningEl: root.getElementById("tuning"),
         onSelectionChange: (selection) => this.emit("selectionchange", { selection }),
         onStatus: (status) => this.emit("status", { status }),
         onMove: (state) => this.emit("move", state),
@@ -201,6 +213,11 @@ export function definePrismSystemScene() {
     setGpuBudget(bytes) {
       this.pendingBudget = bytes;
       this.controller?.setGpuBudget(bytes);
+    }
+
+    /** Level-of-detail thresholds ({ fullPx, boardPx, boxPx, keep }); null restores the defaults. */
+    setLodThresholds(thresholds) {
+      return this.controller?.setLodThresholds(thresholds) ?? null;
     }
 
     getStats() {
