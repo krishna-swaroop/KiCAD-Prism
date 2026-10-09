@@ -856,6 +856,26 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         if (activeTab === "pcb") setPcbActivated(true);
     }, [activeTab]);
 
+    // PCB insets (spike): schematic pin hovers render from the PCB viewer, so
+    // mount it in the background once the schematic has painted instead of
+    // waiting for the first PCB tab visit.
+    useEffect(() => {
+        if (pcbActivated || schematicReadyGeneration === 0) return;
+        const handle = window.setTimeout(() => setPcbActivated(true), 1500);
+        return () => window.clearTimeout(handle);
+    }, [pcbActivated, schematicReadyGeneration]);
+
+    useEffect(() => {
+        if (!schematicViewerElement || !pcbViewerElement) return;
+        if (!schematicViewerElement.setInsetPeer || !pcbViewerElement.setInsetPeer) return;
+        schematicViewerElement.setInsetPeer(pcbViewerElement);
+        pcbViewerElement.setInsetPeer(schematicViewerElement);
+        return () => {
+            schematicViewerElement.setInsetPeer?.(null);
+            pcbViewerElement.setInsetPeer?.(null);
+        };
+    }, [schematicViewerElement, pcbViewerElement]);
+
     // Re-apply an active cross-probe when SCH/PCB becomes visible so hatch/net
     // Focus paints that ran while the canvas was hidden are rebuilt. For SCH,
     // also force the hierarchical page from the probe so the correct sheet is

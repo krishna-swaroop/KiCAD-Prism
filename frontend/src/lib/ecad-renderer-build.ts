@@ -3,4 +3,4 @@
 // The renderer is a public asset rather than a Vite-processed module, so it
 // carries its own cache key. The digest is the artifact's, matching the
 // manifest, so a changed bundle always gets a new browser identity.
-export const ECAD_RENDERER_URL = "/ecad-renderer.js?v=f92bc3fb5e97c38e6888ee7d0d387eb61b7dae72a9ac22ff6ef7830816c01531";
+export const ECAD_RENDERER_URL = "/ecad-renderer.js?v=7f89b412702c5b7afc5657209f891e6e787204c202b200ca3adc204efc0d86cf";

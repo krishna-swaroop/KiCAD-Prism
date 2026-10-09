@@ -396,6 +396,9 @@ export interface ECadViewerElement extends HTMLElement {
     appendSources(update: { revisionKey: string; sources: Array<{ filename: string; content: string }> }): Promise<void>;
     setActive(active: boolean): void;
     setViewportInsets(insets: EcadViewportInsets | null): void;
+    /** PCB/schematic insets (spike): link to the element holding the other document. */
+    setInsetPeer?(peer: ECadViewerElement | null): void;
+    closeInsets?(): void;
     resize?(): void;
     /**
      * Drop the inspected object; the highlighted nets too unless
