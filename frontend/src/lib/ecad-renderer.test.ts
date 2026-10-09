@@ -3,9 +3,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assetContentUrl,
   loadAssetText,
+  symbolPreviewFields,
   symbolUnitCount,
   symbolUnitLabel,
 } from "./ecad-renderer";
+
+describe("library field coordinates in schematic previews", () => {
+  it("keeps a field above the symbol when converting upward library coordinates to downward instance coordinates", () => {
+    const symbol = {
+      properties: [{ name: "Value", at: { position: { x: 15.24, y: 15.24 }, rotation: 0 } }],
+      children: [{ name: "IC_1_1", pins: [{ at: { position: { x: 0, y: 10.16 } } }] }],
+    };
+    const preview = symbolPreviewFields(symbol) as typeof symbol;
+    expect(preview.properties[0].at.position.y).toBeLessThan(-10.16);
+    expect(preview.properties[0].at.position.x).toBe(15.24);
+    expect(symbol.properties[0].at.position.y).toBe(15.24);
+    expect(preview.children).toBe(symbol.children);
+  });
+});
 
 describe("asset content urls", () => {
   it("addresses the right API for each surface", () => {

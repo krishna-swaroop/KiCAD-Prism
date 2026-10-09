@@ -50,13 +50,14 @@ export function LibraryManagerWorkspace({ user, projects }: { user: User | null;
     });
   };
 
-  const openComponent = (id: string, tab = "overview", returnView: LibraryView = "catalog") => {
+  const openComponent = (id: string, tab = "overview", returnView: LibraryView = "catalog", agentTask = "") => {
     setSearchParams((current) => {
       const updated = new URLSearchParams(current);
       updated.set("section", "library-manager");
       updated.set("libraryView", returnView);
       updated.set("component", id);
       updated.set("componentTab", tab);
+      if (agentTask) updated.set("agentTask", agentTask); else updated.delete("agentTask");
       updated.delete("revision");
       updated.delete("compare");
       return updated;
@@ -109,7 +110,7 @@ export function LibraryManagerWorkspace({ user, projects }: { user: User | null;
       </Tabs>
       <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading library workspace…</div>}>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {view === "catalog" && <LibraryCatalogWorkspace user={user} onOpenComponent={(id) => openComponent(id, "overview", "catalog")} />}
+        {view === "catalog" && <LibraryCatalogWorkspace user={user} onOpenComponent={(id, taskId) => openComponent(id, "overview", "catalog", taskId)} />}
         {view === "bulk-edit" && <LibraryBulkEditWorkspace user={user} />}
         {view === "imports" && <LibraryImportCenter projects={projects} user={user} initialSessionId={searchParams.get("session") || undefined} />}
         {view === "releases" && <LibraryReleaseQueue onOpenComponent={(id) => openComponent(id, "review", "releases")} />}

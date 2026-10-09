@@ -5,6 +5,7 @@ import {
   assetContentUrl,
   loadAssetText,
   loadEcadRenderer,
+  symbolPreviewFields,
   symbolUnitCount,
   type AssetSource,
   type RenderController,
@@ -124,7 +125,7 @@ export function LibraryAssetRenderer({
           const symbol = symbols[0];
           if (!symbol) throw new Error("The library file has no symbol");
           onUnitsChange?.(symbolUnitCount(symbol));
-          nextHandle = await renderer.renderSymbol(symbol, {
+          nextHandle = await renderer.renderSymbol(symbolPreviewFields(symbol), {
             canvas,
             selectable: true,
             navigation,

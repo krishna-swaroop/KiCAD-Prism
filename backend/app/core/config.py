@@ -419,6 +419,10 @@ class Settings(BaseSettings):
         ),
     )
 
+    COMPONENT_AGENT_URL: str = ""
+    COMPONENT_AGENT_TOKEN: str = ""
+    COMPONENT_AGENT_TIMEOUT_SECONDS: int = Field(default=1800, ge=0)
+
     CATALOG_WORKER_CONCURRENCY: int = Field(
         default=2,
         ge=1,

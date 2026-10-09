@@ -63,6 +63,7 @@ import type {
   PaginatedComponents,
   WorkflowStage,
 } from "@/types/catalog";
+import { ComponentAgentButton } from "@/features/component-agent/component-agent-dialog";
 import { LibraryComponentQuickView } from "./library-component-quick-view";
 
 const PAGE_SIZE = 100;
@@ -213,10 +214,11 @@ function CreateComponentDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (component: CatalogComponent) => void;
+  onCreated: (component: CatalogComponent, taskId?: string) => void;
 }) {
   const [form, setForm] = useState<CreateComponentForm>(EMPTY_CREATE_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [automated, setAutomated] = useState(false);
 
   const setField = (field: keyof CreateComponentForm, value: string) => setForm((current) => ({ ...current, [field]: value }));
   const canSubmit = Boolean(form.value.trim() && form.manufacturer.trim() && form.manufacturerPartNumber.trim() && form.description.trim() && form.datasheet.trim() && form.changeSummary.trim());
@@ -241,10 +243,17 @@ function CreateComponentDialog({
           change_summary: form.changeSummary.trim(),
         }),
       });
+      let taskId: string | undefined;
+      if (automated) {
+        try {
+          const task = await fetchJson<{ job_id: string }>("/api/catalog/agent-tasks", { method: "POST", body: JSON.stringify({ manufacturer: component.manufacturer, mpn: component.mpn, component_id: component.id, expected_revision_id: component.current_revision_id, source_urls: [form.datasheet.trim()] }) });
+          taskId = task.job_id;
+        } catch (reason) { toast.warning(`Component created, but research could not start: ${reason instanceof Error ? reason.message : String(reason)}`); }
+      }
       toast.success(`${component.name} created as revision v${component.revision}.`);
       setForm(EMPTY_CREATE_FORM);
       onOpenChange(false);
-      onCreated(component);
+      onCreated(component, taskId);
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -269,6 +278,7 @@ function CreateComponentDialog({
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="catalog-create-description">Description *</Label><Textarea id="catalog-create-description" required value={form.description} onChange={(event) => setField("description", event.target.value)} placeholder="Concise engineering description and key function…" rows={3} /></div>
           <div className="space-y-2 sm:col-span-2"><Label htmlFor="catalog-create-summary">Change summary *</Label><Input id="catalog-create-summary" required value={form.changeSummary} onChange={(event) => setField("changeSummary", event.target.value)} placeholder="Why this component record is being introduced" /></div>
         </div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={automated} onChange={(event) => setAutomated(event.target.checked)} /> Research symbol and footprint candidates after creation</label>
         <DialogFooter>
           <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button disabled={submitting || !canSubmit} onClick={() => void handleSubmit()}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Create revision</Button>
@@ -284,7 +294,7 @@ export function LibraryCatalogWorkspace({
   onOpenComponent,
 }: {
   user: User | null;
-  onOpenComponent: (componentId: string) => void;
+  onOpenComponent: (componentId: string, taskId?: string) => void;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlQuery = searchParams.get("catalogQ") || "";
@@ -459,6 +469,7 @@ export function LibraryCatalogWorkspace({
             {/* Shown disabled rather than hidden: a reader who cannot find the
                 button assumes the feature is missing, where a disabled one that
                 explains itself tells them exactly what to ask for. */}
+            {canCreate ? <ComponentAgentButton /> : null}
             <PermissionHint blocked={!canCreate} action="create catalog components" allowedRoles={["designer", "admin"]}>
               <Button size="sm" disabled={!canCreate} onClick={() => setCreateOpen(true)}><Plus className="h-3.5 w-3.5" /> New component</Button>
             </PermissionHint>
@@ -577,7 +588,7 @@ export function LibraryCatalogWorkspace({
         ) : null}
       </div>
 
-      <CreateComponentDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(component) => onOpenComponent(component.id)} />
+      <CreateComponentDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(component, taskId) => onOpenComponent(component.id, taskId)} />
     </div>
   );
 }

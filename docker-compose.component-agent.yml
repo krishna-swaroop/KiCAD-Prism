@@ -1,0 +1,49 @@
+# Opt in: docker compose -f docker-compose.yml -f docker-compose.component-agent.yml up --build
+services:
+  backend:
+    environment:
+      COMPONENT_AGENT_URL: http://component-agent:4097
+      COMPONENT_AGENT_TOKEN: ${COMPONENT_AGENT_TOKEN:?Set a random component agent token of at least 32 characters}
+  catalog-worker:
+    environment:
+      COMPONENT_AGENT_URL: http://component-agent:4097
+      COMPONENT_AGENT_TOKEN: ${COMPONENT_AGENT_TOKEN:?Set a random component agent token of at least 32 characters}
+      COMPONENT_AGENT_TIMEOUT_SECONDS: ${COMPONENT_AGENT_TIMEOUT_SECONDS:-1800}
+  component-agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    restart: unless-stopped
+    init: true
+    cpus: 2
+    mem_limit: 4g
+    expose:
+      - "4097"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - prism-agent-workspaces:/agent-workspaces
+    environment:
+      COMPONENT_AGENT_TOKEN: ${COMPONENT_AGENT_TOKEN:?Set a random component agent token of at least 32 characters}
+      PRISM_AGENT_BACKEND: http://backend:8000
+      PRISM_AGENT_MODEL_URL: ${PRISM_AGENT_MODEL_URL:-http://host.docker.internal:18082/v1}
+      PRISM_AGENT_MODEL_ID: ${PRISM_AGENT_MODEL_ID:-prism-gemma4-26b-bf16}
+      PRISM_AGENT_MODEL_VISION: ${PRISM_AGENT_MODEL_VISION:-false}
+      PRISM_AGENT_CONCURRENCY: ${PRISM_AGENT_CONCURRENCY:-1}
+      PRISM_AGENT_MAX_STEPS: ${PRISM_AGENT_MAX_STEPS:-200}
+      PRISM_AGENT_MODEL_API_KEY: ${PRISM_AGENT_MODEL_API_KEY:-}
+      PRISM_AGENT_TIMEOUT_SECONDS: ${COMPONENT_AGENT_TIMEOUT_SECONDS:-1800}
+      PRISM_AGENT_RETENTION_DAYS: ${PRISM_AGENT_RETENTION_DAYS:-7}
+      # Native OpenCode websearch needs an installed provider credential.
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      PARALLEL_API_KEY: ${PARALLEL_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4097/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+volumes:
+  prism-agent-workspaces:

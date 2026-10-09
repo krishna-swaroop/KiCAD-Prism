@@ -152,6 +152,31 @@ export function symbolUnitCount(symbol: unknown): number {
   return highest;
 }
 
+/** Library coordinates point upwards; schematic instance fields point downwards.
+ * renderSymbol copies library properties into an instance without this transform.
+ * Keep parsed CAD data immutable and transform only those preview fields.
+ */
+export function symbolPreviewFields(symbol: unknown): unknown {
+  const parsed = symbol as {
+    properties?: { at?: { position?: { x: number; y: number }; rotation?: number } }[];
+  };
+  if (!parsed?.properties) return symbol;
+  return {
+    ...parsed,
+    properties: parsed.properties.map((property) => {
+      if (!property.at?.position) return property;
+      return {
+        ...property,
+        at: {
+          ...property.at,
+          position: { ...property.at.position, y: -property.at.position.y },
+          rotation: -(property.at.rotation ?? 0),
+        },
+      };
+    }),
+  };
+}
+
 /** KiCad names units by letter, matching the reference designator suffix. */
 export function symbolUnitLabel(unit: number): string {
   return `Unit ${String.fromCharCode("A".charCodeAt(0) + unit - 1)}`;

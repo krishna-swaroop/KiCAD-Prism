@@ -30,7 +30,8 @@ const renderer = vi.hoisted(() => ({
   renderFootprint: vi.fn(),
 }));
 
-vi.mock("@/lib/ecad-renderer", () => ({
+vi.mock("@/lib/ecad-renderer", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/ecad-renderer")>(),
   assetContentUrl: (_source: string, assetId: string) => `/asset/${assetId}`,
   loadAssetText: (url: string) => Promise.resolve(url),
   loadEcadRenderer: () => Promise.resolve(renderer),

@@ -27,6 +27,7 @@ from app.api.tracker_webhooks import router as tracker_webhooks_router
 from app.api.tracker_identity import admin_router as tracker_identity_admin_router
 from app.api.tracker_identity import router as tracker_identity_router
 from app.api.catalog_admin import router as catalog_admin_router
+from app.api.component_agent import router as component_agent_router
 from app.api.oauth import router as oauth_router
 from app.api.service_clients import router as service_clients_router
 from app.api.jobs import router as jobs_router
@@ -273,6 +274,7 @@ app.include_router(workspace_router, prefix="/api/workspace", tags=["workspace"]
 app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
 app.include_router(health_router)
 app.include_router(catalog_admin_router)
+app.include_router(component_agent_router)
 app.include_router(oauth_router)
 app.include_router(service_clients_router)
 app.include_router(remote_provider_router, tags=["remote-provider"])

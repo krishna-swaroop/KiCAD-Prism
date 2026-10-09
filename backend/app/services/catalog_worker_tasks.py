@@ -17,6 +17,7 @@ from app.services.job_runtime import (
     RetryableJobError,
 )
 from app.services.catalog.conflicts import CatalogConflict
+from app.services.catalog.component_agent import run_component_agent
 from app.services.project_component_import_service import run_project_import_session
 from app.services.library_folder_import_service import run_folder_import_session
 from app.services.local_artifact_store import artifact_store
@@ -217,6 +218,7 @@ def run_metadata_batch(job: dict[str, Any], progress: Progress) -> dict[str, Any
 
 
 HANDLERS: dict[str, Callable[[dict[str, Any], Progress], dict[str, Any]]] = {
+    "component_agent": run_component_agent,
     "catalog_validation": run_validation,
     "catalog_preview_generation": run_previews,
     "project_component_import": run_project_import,

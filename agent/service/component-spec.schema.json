@@ -1,0 +1,378 @@
+{
+  "type": "object",
+  "required": [
+    "schema_version",
+    "identity",
+    "sources",
+    "pins",
+    "units",
+    "package",
+    "pads",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "component-spec/v1"
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "manufacturer",
+        "mpn",
+        "package_variant"
+      ],
+      "properties": {
+        "manufacturer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mpn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package_variant": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "sha256",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "pins": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "number",
+          "name",
+          "electrical_type",
+          "evidence"
+        ],
+        "properties": {
+          "number": {
+            "type": "string",
+            "minLength": 1,
+            "description": "String identifier, e.g. \"18\", not integer 18; preserve ball names."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "electrical_type": {
+            "enum": [
+              "input",
+              "output",
+              "bidirectional",
+              "tri_state",
+              "passive",
+              "free",
+              "unspecified",
+              "power_in",
+              "power_out",
+              "open_collector",
+              "open_emitter",
+              "no_connect"
+            ]
+          },
+          "evidence": {
+            "type": "object",
+            "description": "Either cite a fetched source_id and page, or mark geometry estimated with status and method.",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "enum": [
+                  "sourced",
+                  "estimated"
+                ]
+              },
+              "method": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "units": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "pin_numbers"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pin_numbers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "required": [
+        "family"
+      ],
+      "properties": {
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "body_x_mm": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "body_y_mm": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pitch_mm": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "description": "Either cite a fetched source_id and page, or mark geometry estimated with status and method.",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "enum": [
+                  "sourced",
+                  "estimated"
+                ]
+              },
+              "method": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "pads": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Include each numbered electrical pad, even for a symbol-only draft. Use estimates for a best-attempt footprint.",
+      "items": {
+        "type": "object",
+        "required": [
+          "number",
+          "kind",
+          "evidence"
+        ],
+        "properties": {
+          "number": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "electrical",
+              "nc",
+              "mechanical"
+            ]
+          },
+          "x_mm": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "y_mm": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "size_x_mm": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "size_y_mm": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "shape": {
+            "enum": [
+              "rect",
+              "circle",
+              "roundrect"
+            ]
+          },
+          "rotation_deg": {
+            "type": "number",
+            "description": "This generator currently supports 0 degrees."
+          },
+          "evidence": {
+            "type": "object",
+            "description": "Either cite a fetched source_id and page, or mark geometry estimated with status and method.",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "enum": [
+                  "sourced",
+                  "estimated"
+                ]
+              },
+              "method": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "size_evidence": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "description": "Either cite a fetched source_id and page, or mark geometry estimated with status and method.",
+              "properties": {
+                "source_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "page": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "status": {
+                  "enum": [
+                    "sourced",
+                    "estimated"
+                  ]
+                },
+                "method": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "duplicate_number_reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Named fields, not a flat status. Use {} if no metadata is supplied.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "status",
+          "value"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "sourced",
+              "estimated",
+              "unavailable",
+              "not_applicable"
+            ]
+          },
+          "value": {},
+          "method": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "object",
+            "description": "Either cite a fetched source_id and page, or mark geometry estimated with status and method.",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "enum": [
+                  "sourced",
+                  "estimated"
+                ]
+              },
+              "method": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

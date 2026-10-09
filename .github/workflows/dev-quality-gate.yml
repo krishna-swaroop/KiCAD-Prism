@@ -166,6 +166,10 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Test component agent runtime
+        working-directory: .
+        run: node --test agent/service/*.test.mjs
+
       - name: Build application
         run: npm run build
 
@@ -328,6 +332,11 @@ jobs:
 
       - name: Validate local kicad-monkey Compose configuration
         run: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.local-kicad-monkey.yml config --quiet
+
+      - name: Validate optional component agent Compose configuration
+        env:
+          COMPONENT_AGENT_TOKEN: ci-component-agent-validation-token
+        run: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.component-agent.yml config --quiet
 
       - name: Validate pull-only release Compose configuration
         env:

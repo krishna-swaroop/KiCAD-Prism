@@ -23,6 +23,12 @@ The frontend is the normal external entry point. It proxies API, OAuth, provider
 metadata, and Remote Symbol Provider panel requests to the backend. A production
 TLS proxy should route to the frontend instead of exposing the backend directly.
 
+The optional component agent overlay adds an internal OpenCode sidecar. The
+catalog worker owns durable research jobs; the sidecar owns model/tool execution
+in task-local workspaces. Candidate generation and human attachment use Prism's
+catalog APIs. See [Component agent](COMPONENT_AGENT.md) for configuration,
+authorization and current limits.
+
 ## Persistent data
 
 The default Compose stack persists:
