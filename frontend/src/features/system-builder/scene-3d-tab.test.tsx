@@ -281,7 +281,7 @@ describe("Scene3dTab", () => {
       expect.objectContaining({ key: "trace" }),
       { key: "g_can", members: [{ occurrence: "/sin_OBC-1", net: "CAN0_N" }] },
     ]));
-    expect(screen.getByTitle("System nets").textContent).toBe("1");
+    expect(screen.getByRole("button", { name: "System nets" }).textContent).toBe("1");
   });
 
   it("asks before lighting a net over 200 pins, then lights its members", async () => {

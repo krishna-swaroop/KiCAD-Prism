@@ -20,7 +20,7 @@ describe("Export STEP (SB2-109)", () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ ...none, state: "ready", version: 7, sizeBytes: 12_300_000 })));
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     render(<StepExportButton systemId="sys_1" version={7} />);
-    await waitFor(() => expect(screen.getByRole("button").getAttribute("title")).toBe("Download STEP · v7 · 12.3 MB"));
+    await waitFor(() => expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Download STEP · v7 · 12.3 MB"));
     fireEvent.click(screen.getByRole("button"));
     expect(click).toHaveBeenCalledTimes(1);
   });
@@ -37,7 +37,7 @@ describe("Export STEP (SB2-109)", () => {
     vi.stubGlobal("fetch", fetchMock);
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     render(<StepExportButton systemId="sys_1" version={7} />);
-    await waitFor(() => expect(screen.getByRole("button").getAttribute("title")).toBe("Export STEP"));
+    await waitFor(() => expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Export STEP"));
     fireEvent.click(screen.getByRole("button"));
     await vi.advanceTimersByTimeAsync(6100);
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));

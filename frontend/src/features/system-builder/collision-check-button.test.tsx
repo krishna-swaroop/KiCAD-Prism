@@ -26,11 +26,11 @@ describe("Check collisions (SB2-108)", () => {
   it("shows the check's state and the collision count", () => {
     const { rerender } = render(<CollisionCheckButton systemId="sys_1" reload={vi.fn()}
       document={documentWith({ state: "not_checked", checkedAt: null, notEvaluated: [] })} />);
-    expect(screen.getByRole("button").getAttribute("title")).toBe("Check collisions · not checked");
+    expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Check collisions · not checked");
     rerender(<CollisionCheckButton systemId="sys_1" reload={vi.fn()} document={documentWith(
       { state: "current", checkedAt: "t1", notEvaluated: [{ occurrence: "/b", label: "B", reason: "bundle_missing" }] },
       [collision, collision])} />);
-    expect(screen.getByRole("button").getAttribute("title")).toBe("Check collisions · checked · 2 found · 1 not checked");
+    expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Check collisions · checked · 2 found · 1 not checked");
     expect(screen.getByRole("button").textContent).toBe("2");
   });
 
@@ -47,7 +47,7 @@ describe("Check collisions (SB2-108)", () => {
     render(<CollisionCheckButton systemId="sys_1" reload={reload}
       document={documentWith({ state: "stale", checkedAt: "t1", notEvaluated: [] })} />);
     fireEvent.click(screen.getByRole("button"));
-    await waitFor(() => expect(screen.getByRole("button").getAttribute("title")).toBe("Checking collisions…"));
+    await waitFor(() => expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Checking collisions…"));
     await vi.advanceTimersByTimeAsync(4100);
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls[0][0]).toContain("/sys_1/collisions");
