@@ -691,10 +691,21 @@ class TopologyCompilerTests(unittest.TestCase):
         self.assertEqual(unified["terminal_pad_links"], legacy["terminal_pad_links"])
         self.assertEqual(unified["stats"], legacy["stats"])
         self.assertEqual(unified_holes, legacy_holes)
+        topology = compile_topology(design_payload, [], unified, {})
+        self.assertEqual(topology, compile_topology(design_payload, [], legacy, {}))
+        # Terminals carry the pad's KiCad UUID: the 3D pad feature's sourceUid.
         self.assertEqual(
-            compile_topology(design_payload, [], unified, {}),
-            compile_topology(design_payload, [], legacy, {}),
+            {t["pin"]: t["pcb_pad_source_uid"] for t in topology["terminals"]},
+            {"1": "pad-r1-1", "2": "pad-r1-2"},
         )
+        pad_block_uuids = {
+            operation.get("data_uuid")
+            for record in pcb_ir.get("records", [])
+            if record.get("kind") == "footprint"
+            for operation in record.get("operations", [])
+            if operation.get("kind") == "StartBlock" and operation.get("data_ref") == "pad"
+        }
+        self.assertLessEqual({"pad-r1-1", "pad-r1-2"}, pad_block_uuids)
 
     def test_board_compilation_is_cached_across_all_consumers(self) -> None:
         calls = {"ir": 0, "payload": 0, "artifacts": 0}

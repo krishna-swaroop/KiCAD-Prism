@@ -420,6 +420,7 @@ def compile_topology(
             )
         if terminal:
             terminal.pcb_pad_id = str(link.get("object_uid") or "")
+            terminal.pcb_pad_source_uid = str(link.get("source_uid") or "")
 
     component_by_uid = {component.uid: component for component in components}
     net_by_uid = {net.uid: net for net in nets}

@@ -36,6 +36,8 @@ class Terminal:
     net_name: str
     schematic_pin_id: str = ""
     pcb_pad_id: str = ""
+    # The pad's KiCad UUID: the 3D scene feature's ``sourceUid``.
+    pcb_pad_source_uid: str = ""
     model_contact_id: str = ""
 
 

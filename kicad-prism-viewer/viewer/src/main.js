@@ -328,7 +328,8 @@ function buildNetDetails(topo) {
       designator: terminal.designator || component.designator || "",
       pin: terminal.pin || "",
       value: component.value || "",
-      pcb_pad_id: terminal.pcb_pad_id || ""
+      pcb_pad_id: terminal.pcb_pad_id || "",
+      pcb_pad_source_uid: terminal.pcb_pad_source_uid || ""
     };
     if (!details[netUid]) {
       details[netUid] = { terminals: [] };
@@ -341,13 +342,19 @@ function buildNetDetails(topo) {
   return details;
 }
 
-function findFeatureIdByPcbPadId(pcbPadId, b = board) {
-  if (!pcbPadId || !b.topology || !b.topology.physical_objects) return 0;
-  const obj = b.topology.physical_objects.find(o => o.uid === pcbPadId);
-  if (!obj || !obj.source_ids || !obj.source_ids.length) return 0;
-  const uuid = obj.source_ids[0];
+// A terminal's pad is the scene feature whose sourceUid is the pad's KiCad
+// UUID. Older bundles only carry the pad object uid, which resolves through
+// physical_objects when the board emitted pad objects.
+function findTerminalPadFeatureId(terminal, b = board) {
+  if (!terminal || !b.scene?.features) return 0;
+  let uuid = terminal.pcb_pad_source_uid || "";
+  if (!uuid && terminal.pcb_pad_id) {
+    const obj = (b.topology?.physical_objects || []).find(o => o.uid === terminal.pcb_pad_id);
+    uuid = obj?.source_ids?.[0] || "";
+  }
+  if (!uuid) return 0;
   for (const [id, feat] of b.scene.features.entries()) {
-    if (feat.sourceUid === uuid) return id;
+    if (feat.sourceUid === uuid && feat.kind === "pad") return id;
   }
   return 0;
 }
@@ -5449,7 +5456,7 @@ function updateSelectionCard() {
         const terminals = details.terminals || [];
         const terminal = terminals.find(t => t.designator === ref && t.pin === pin);
         
-        const padFeatureId = terminal ? findFeatureIdByPcbPadId(terminal.pcb_pad_id) : 0;
+        const padFeatureId = findTerminalPadFeatureId(terminal);
         if (padFeatureId) {
           selectFeature(padFeatureId, true);
         } else {

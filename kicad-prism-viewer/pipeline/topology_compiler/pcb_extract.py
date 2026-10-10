@@ -694,6 +694,7 @@ def _extract_footprints(pcb: Any, *, include_geometry: bool = True) -> tuple[lis
                         "pin": _value(getattr(pad, "number", "")),
                         "net_name": net_name,
                         "object_uid": pad_item["uid"],
+                        "source_uid": pad_uuid,
                     }
                 )
         if footprint_bbox:
@@ -818,6 +819,7 @@ def _pad_records_and_links(pcb: Any) -> tuple[list[dict[str, Any]], list[dict[st
                     "pin": number,
                     "net_name": net_name,
                     "object_uid": object_uid,
+                    "source_uid": pad_uuid,
                 }
             )
     return pads, links
@@ -1311,6 +1313,7 @@ def _unified_ir_metadata_records(
                         "obj",
                         f"pad:{footprint_uuid}:{pad_uuid or pad_number}",
                     ),
+                    "source_uid": pad_uuid,
                 }
             elif data_ref == "pad_hole":
                 owner = str(attrs.get("hole_owner") or "")
@@ -1328,6 +1331,7 @@ def _unified_ir_metadata_records(
                             "obj",
                             f"pad:{footprint_uuid}:{owner or pad_number}",
                         ),
+                        "source_uid": owner,
                     },
                 )
                 diameter = _float_or_none(attrs.get("hole_diameter_mm"))

@@ -479,6 +479,7 @@ def extract_pcb_metadata_from_mesh_pack(
                     "pin": pad_number,
                     "net_name": net_name,
                     "object_uid": pad_uid,
+                    "source_uid": source_uid,
                 }
             )
     stats = dict(payload.get("stats") or {})
@@ -668,6 +669,7 @@ def _components_and_links_from_copper(
                     "pin": pad_number,
                     "net_name": net_name,
                     "object_uid": pad_uid,
+                    "source_uid": source_uid,
                 }
             )
     return list(components_by_key.values()), terminal_pad_links, pads

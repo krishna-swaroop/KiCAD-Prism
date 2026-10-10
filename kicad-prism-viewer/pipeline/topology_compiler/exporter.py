@@ -33,6 +33,7 @@ def _compact_net_details(topology: dict[str, Any]) -> dict[str, Any]:
             "pin": str(terminal.get("pin") or ""),
             "value": str(component.get("value") or ""),
             "pcb_pad_id": str(terminal.get("pcb_pad_id") or ""),
+            "pcb_pad_source_uid": str(terminal.get("pcb_pad_source_uid") or ""),
         }
         terminals = details.setdefault(net_uid, {"terminals": []})["terminals"]
         if endpoint not in terminals:
