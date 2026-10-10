@@ -44,6 +44,7 @@ import { cameraRay, surfaceHit } from "./model-pick.js";
 import { harnessScene } from "../../../frontend/src/features/system-builder/placement/harness-tubes.ts";
 import { allReadyBoardsDrawn, assetLoadable, assetOccurrenceMatrix, boardTransition, boxRendererId, drawnOccurrences, STAND_INS, standInKind, standInMatrix } from "./system-placement.js";
 import { LOD_FULL } from "./occurrences.js";
+import { insetMatrix, mmToRuntime, projectInset, runtimeBoundsToMm } from "./inset-view.js";
 
 const COPPER_TILE_GPU_BUDGET_BYTES = 512 * 1024 * 1024;
 const COPPER_TILE_PREFETCH_MARGIN = 0.65;
@@ -526,10 +527,53 @@ export async function mountStandaloneViewer(options = {}) {
     setSeparation,
     showNetLayers,
     setNetIsolation,
+    // IN-60/IN-61: inset views through cameras of their own.
+    renderInset(target, view, key) {
+      return renderInsetView(target, view, key);
+    },
+    insetReady() {
+      return insetViewReady();
+    },
+    insetSurfaceZ(bottom) {
+      return insetSurfaceZ(Boolean(bottom));
+    },
+    releaseInset(key) {
+      insetViews.delete(String(key));
+    },
+    insetTarget(reference, pin) {
+      return insetTargetFor(reference, pin);
+    },
+    projectInset(view, width, height, pointMm) {
+      return projectInsetPoint(view, width, height, pointMm);
+    },
+    onSceneChange(listener) {
+      insetListeners.add(listener);
+      return () => insetListeners.delete(listener);
+    },
+    insetStats() {
+      return { ...insetStats, views: insetViews.size, targets: [insetGpu.width, insetGpu.height] };
+    },
+    insetSettings(settings) {
+      Object.assign(insetSettings, settings || {});
+      return { ...insetSettings };
+    },
+    /** Resolves when the GPU has finished everything submitted so far. */
+    gpuIdle() {
+      return board.renderer?.device.queue.onSubmittedWorkDone() ?? Promise.resolve();
+    },
     dispose() {
+      releaseInsets();
       disposeViewerSession(token);
     },
   };
+}
+
+function releaseInsets() {
+  insetGpu.depth?.destroy();
+  Object.assign(insetGpu, { canvas: null, context: null, depth: null, depthView: null, width: 0, height: 0 });
+  insetViews.clear();
+  insetListeners.clear();
+  lastFrameInputs = null;
 }
 
 /**
@@ -1092,7 +1136,8 @@ function neededTileIdsForView(b = board) {
   }
   const deferInner = innerCopperDeferred(b);
   // SB2-87: the view now, where the camera is heading and one step beyond, each with a margin.
-  const views = [panel.matrix, ...prefetchViews()];
+  // IN-60: and what open insets show, so their copper loads too.
+  const views = [panel.matrix, ...prefetchViews(), ...(b === board ? activeInsetViews() : [])];
   let misses = 0;
   for (const tile of b.scene.tiles.values()) {
     if (!visibleLayers.has(Number(tile.layerId))) continue;
@@ -3685,10 +3730,13 @@ function frame(now, token = activeViewerToken) {
     layerAlphas: compareAlphas,
     visibleTileIds: state.mode === "3d" ? board.visibleTileIds : null,
   };
+  lastFrameInputs = inputs;
   if (frameNeedsRender(now, inputs)) {
     board.renderer.render(inputs);
     drawGizmo();
     updateLayerLabels();
+    // IN-60: what the main view shows changed; insets showing it redraw.
+    for (const listener of insetListeners) listener();
   }
   // Tiers and the GPU budget (SB2-26) are checked whether or not this frame drew.
   manageTiers(now);
@@ -3701,6 +3749,206 @@ function frame(now, token = activeViewerToken) {
 // Highlights pulse, so they keep drawing; a slow refresh covers anything missed.
 const IDLE_REFRESH_MS = 1000;
 const lastRender = { key: "", matrix: new Float32Array(16), tiles: null, at: 0 };
+
+// --- IN-60/IN-61: inset views ------------------------------------------
+//
+// A host (the Visualizer's insets) draws small views of this board through
+// cameras of its own. They share the device, pipelines, render bundles and
+// resident geometry; each inset frame is its own submit into a grow-only
+// offscreen WebGPU canvas, copied into the host's 2D canvas in the same
+// task. The main camera, panel and frame state are never touched.
+
+/** The inputs of the last main frame; an inset draws with the same state. */
+let lastFrameInputs = null;
+/** Grow-only offscreen colour and depth targets shared by every inset. */
+const insetGpu = { canvas: null, context: null, depth: null, depthView: null, width: 0, height: 0 };
+/** Matrices of insets drawn recently, so copper they show stays resident. */
+const insetViews = new Map();
+const INSET_VIEW_TTL_MS = 3000;
+/** Hosts told when the main frame redrew (tiles arrived, highlights...). */
+const insetListeners = new Set();
+const insetStats = { frames: 0, cpuMs: 0, gpuMs: 0, lastTriangles: 0 };
+/** Switches for A/B measurements. */
+const insetSettings = { cullTiles: true };
+
+function activeInsetViews(now = performance.now()) {
+  const views = [];
+  for (const [key, entry] of insetViews) {
+    if (now - entry.at > INSET_VIEW_TTL_MS) insetViews.delete(key);
+    else views.push(entry.matrix);
+  }
+  return views;
+}
+
+function ensureInsetTargets(width, height) {
+  const renderer = board.renderer;
+  if (!insetGpu.canvas) {
+    insetGpu.canvas = document.createElement("canvas");
+    insetGpu.context = insetGpu.canvas.getContext("webgpu");
+  }
+  if (insetGpu.width >= width && insetGpu.height >= height && insetGpu.depth) return;
+  insetGpu.width = Math.max(insetGpu.width, width);
+  insetGpu.height = Math.max(insetGpu.height, height);
+  insetGpu.canvas.width = insetGpu.width;
+  insetGpu.canvas.height = insetGpu.height;
+  insetGpu.context.configure({ device: renderer.device, format: renderer.format, alphaMode: "opaque" });
+  insetGpu.depth?.destroy();
+  insetGpu.depth = renderer.device.createTexture({
+    label: "inset-depth",
+    size: [insetGpu.width, insetGpu.height],
+    format: renderer.depthFormat,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  insetGpu.depthView = insetGpu.depth.createView();
+}
+
+/** The board surface on one side, as a runtime height. */
+function insetSurfaceZ(bottom) {
+  const bounds = board.scene.runtimeBounds;
+  if (!bounds) return 0;
+  return bottom ? bounds[2] : bounds[5];
+}
+
+/**
+ * Draw an inset view into `target` (a 2D canvas, sized by CSS). `key` names
+ * the inset for tile residency. Returns false when nothing could be drawn.
+ */
+function insetViewReady() {
+  return Boolean(!system && board.renderer && lastFrameInputs && state.workspace === "pcb");
+}
+
+function renderInsetView(target, view, key = "inset") {
+  if (!insetViewReady()) return false;
+  const cssWidth = target.clientWidth;
+  const cssHeight = target.clientHeight;
+  if (!cssWidth || !cssHeight) return false;
+  const started = performance.now();
+  const ratio = Math.min(devicePixelRatio || 1, 2);
+  const width = Math.round(cssWidth * ratio);
+  const height = Math.round(cssHeight * ratio);
+  ensureInsetTargets(width, height);
+  const radius = boundsRadius(board.scene.runtimeBounds);
+  const matrix = insetMatrix(view, cssWidth, cssHeight, radius, view.focusZ ?? 0);
+  insetViews.set(key, { matrix, at: started });
+  const insetPanel = { layerId: 0, viewport: { x: 0, y: 0, width, height }, matrix, lod: lastFrameInputs.panels[0].lod };
+  // Only the copper tiles this inset sees: an inset is a small part of the
+  // board, so most tiles the main view draws are off its screen.
+  let visibleTileIds = lastFrameInputs.visibleTileIds;
+  if (visibleTileIds && insetSettings.cullTiles) {
+    const seen = new Set();
+    for (const tileId of visibleTileIds) {
+      const tile = board.scene.tiles.get(tileId);
+      if (tile && tileIntersectsView(tile, matrix, null, 0, board)) seen.add(tileId);
+    }
+    visibleTileIds = seen;
+  }
+  const counted = board.renderer.renderInto(
+    {
+      colorView: insetGpu.context.getCurrentTexture().createView(),
+      depthView: insetGpu.depthView,
+      width: insetGpu.width,
+      height: insetGpu.height,
+    },
+    insetPanel,
+    { ...lastFrameInputs, panels: [insetPanel], visibleTileIds },
+  );
+  if (target.width !== width) target.width = width;
+  if (target.height !== height) target.height = height;
+  const ctx = target.getContext("2d");
+  ctx.drawImage(insetGpu.canvas, 0, 0, width, height, 0, 0, width, height);
+  insetStats.frames += 1;
+  insetStats.cpuMs += performance.now() - started;
+  insetStats.lastTriangles = counted.triangles;
+  return true;
+}
+
+/**
+ * A component (and optionally one of its pads) as an inset target, in KiCad
+ * millimetres: the box to frame, the anchor point, and the side.
+ */
+/** sourceUid → feature, and footprint bodies by designator; built once per board. */
+let insetIndex = null;
+
+function insetIndexFor() {
+  if (insetIndex?.scene === board.scene) return insetIndex;
+  const bySource = new Map();
+  const padsByFootprintPin = new Map();
+  for (const feature of board.scene.features.values()) {
+    if (feature.sourceUid) bySource.set(String(feature.sourceUid), feature);
+    if (feature.kind !== "pad") continue;
+    // "<footprint lib:name>:pad:<index>:<number>" when the pad carries no designator.
+    const match = /^(.*):pad:\d+:(.+)$/.exec(String(feature.sourceUid || ""));
+    if (!match) continue;
+    const key = `${match[1]}\u0000${match[2]}`;
+    if (!padsByFootprintPin.has(key)) padsByFootprintPin.set(key, []);
+    padsByFootprintPin.get(key).push(feature);
+  }
+  const bodies = new Map();
+  for (const item of board.topology?.physical_objects || []) {
+    if (item.kind === "footprint_body" && item.designator && item.bbox_mm?.length === 4) bodies.set(item.designator, item);
+  }
+  const objects = new Map((board.topology?.physical_objects || []).map((item) => [item.uid, item]));
+  insetIndex = { scene: board.scene, bySource, padsByFootprintPin, bodies, objects };
+  return insetIndex;
+}
+
+/** A KiCad-mm box {x,y,w,h} from [x0,y0,x1,y1]. */
+const boxFromMm = ([x0, y0, x1, y1]) => ({ x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) });
+const boxCentre = (box) => [box.x + box.w / 2, box.y + box.h / 2];
+
+/**
+ * A component (and optionally one of its pads) as an inset target, in KiCad
+ * millimetres: the box to frame, the anchor point, and the side. Pads come
+ * from the topology (terminal → PCB pad → feature); bundles without pad ids
+ * fall back to the footprint's pad of that number nearest the part.
+ */
+function insetTargetFor(reference, pin) {
+  const ref = String(reference);
+  const component = board.scene.componentFeatures.get(ref);
+  if (!component) return null;
+  const index = insetIndexFor();
+  const feature = board.scene.features.get(Number(component.featureId));
+  const body = index.bodies.get(ref);
+  let focus = feature?.bounds ? runtimeBoundsToMm(feature.bounds).box : body ? boxFromMm(body.bbox_mm.map(Number)) : null;
+  let bottom = feature?.bounds ? runtimeBoundsToMm(feature.bounds).bottom : String(body?.layer || "").startsWith("B.");
+  let pad = null;
+  if (pin != null && pin !== "") {
+    const terminal = (board.topology?.terminals || []).find((t) => t.designator === ref && String(t.pin) === String(pin));
+    const object = terminal?.pcb_pad_id ? index.objects.get(terminal.pcb_pad_id) : null;
+    pad = object?.source_ids?.[0] ? index.bySource.get(String(object.source_ids[0])) || null : null;
+    if (!pad) {
+      const candidates = index.padsByFootprintPin.get(`${component.footprint}\u0000${pin}`) || [];
+      const near = focus ? boxCentre(focus) : null;
+      let best = Infinity;
+      for (const candidate of candidates) {
+        const c = boxCentre(runtimeBoundsToMm(candidate.bounds).box);
+        const d = near ? Math.hypot(c[0] - near[0], c[1] - near[1]) : 0;
+        if (d < best) [best, pad] = [d, candidate];
+      }
+    }
+  }
+  const padBox = pad?.bounds ? runtimeBoundsToMm(pad.bounds).box : null;
+  if (!focus && padBox) {
+    focus = padBox;
+    bottom = runtimeBoundsToMm(pad.bounds).bottom;
+  }
+  if (!focus) return null;
+  return {
+    reference: ref,
+    pin: pad ? String(pin) : null,
+    focus,
+    anchor: boxCentre(padBox || focus),
+    anchorBox: padBox,
+    bottom,
+    surfaceZ: insetSurfaceZ(bottom),
+  };
+}
+
+function projectInsetPoint(view, width, height, pointMm) {
+  const radius = boundsRadius(board.scene.runtimeBounds);
+  const matrix = insetMatrix(view, width, height, radius, view.focusZ ?? 0);
+  return projectInset(matrix, width, height, mmToRuntime(pointMm[0], pointMm[1], view.focusZ ?? 0));
+}
 
 function frameNeedsRender(now, inputs) {
   const matrix = inputs.panels[0].matrix;

@@ -1970,6 +1970,38 @@ export class Renderer {
   }
 
   /**
+   * IN-60: draw one panel into targets of the caller's (an inset), not
+   * the main canvas. Its own submit, so it never shares the globals or draw
+   * slots of the main frame's; nothing the main frame reads is touched, so
+   * the main view stays pixel-identical. One-board only: no cull pass.
+   *
+   * `target` = { colorView, depthView, width, height }; the panel's viewport
+   * is the inset's rectangle inside those targets.
+   */
+  renderInto(target, panel, options) {
+    if (!this.identityOnly) throw new Error("renderInto: one-board renderer only");
+    const encoder = this.device.createCommandEncoder({ label: "inset" });
+    const depthAttachment = { view: target.depthView, depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "store" };
+    if (this.stencil) Object.assign(depthAttachment, { stencilClearValue: 0, stencilLoadOp: "clear", stencilStoreOp: "discard" });
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: target.colorView,
+        clearValue: { r: 0.91, g: 0.93, b: 0.94, a: 1 },
+        loadOp: "clear",
+        storeOp: "store",
+      }],
+      depthStencilAttachment: depthAttachment,
+    });
+    const viewport = clampViewport(panel.viewport, target.width, target.height);
+    pass.setViewport(viewport.x, viewport.y, viewport.width, viewport.height, 0, 1);
+    pass.setScissorRect(viewport.x, viewport.y, viewport.width, viewport.height);
+    const counted = this.encodeDraws(pass, panel, options);
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
+    return counted;
+  }
+
+  /**
    * Record this renderer's draws for one panel into an open render pass, and
    * count them. `render` wraps it for one renderer; a `SceneRenderer` calls it
    * for every asset into a shared pass.

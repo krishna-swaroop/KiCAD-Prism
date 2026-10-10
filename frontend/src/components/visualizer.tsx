@@ -7,6 +7,7 @@ import { EngineeringBomTable } from "./engineering-bom-table";
 import { SelectionInspector, type HighlightedNetEntry } from "./selection-inspector";
 import { filterLabelInstances, type LabelInstanceRef } from "@/lib/label-instances";
 import { WebGpu3dTab } from "./webgpu-3d-tab";
+import { PrismInsetScene3D } from "@/lib/inset-scene-3d";
 import { EcadViewerControls } from "./ecad-viewer-controls";
 import { CommentForm, type CommentFormSubmitPayload } from "./comment-form";
 import { CommentCard } from "./comment-card";
@@ -877,6 +878,16 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         element.addEventListener("ecad-viewer:inset-mode", activate);
         return () => element.removeEventListener("ecad-viewer:inset-mode", activate);
     }, [schematicViewerElement]);
+
+    // IN-61: T on a PCB inset shows the 3D tab's board, mounting the tab in
+    // the background the first time.
+    const [insetScene3d] = useState(() => new PrismInsetScene3D(() => setThreeDActivated(true)));
+    useEffect(() => () => insetScene3d.dispose(), [insetScene3d]);
+    useEffect(() => {
+        if (!pcbViewerElement?.setInset3D) return;
+        pcbViewerElement.setInset3D(insetScene3d);
+        return () => pcbViewerElement.setInset3D?.(null);
+    }, [insetScene3d, pcbViewerElement]);
 
     useEffect(() => {
         if (!schematicViewerElement?.setInsetPeer || !pcbViewerElement?.setInsetPeer) return;
@@ -1806,6 +1817,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 ambiguousComponents={dnpPlan.ambiguous}
                                 showDnp={showDnp}
                                 onShowDnpChange={setShowDnp}
+                                insetScene={insetScene3d}
                             />
                         </div>
                     )}

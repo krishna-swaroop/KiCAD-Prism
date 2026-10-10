@@ -120,6 +120,21 @@ export interface PrismSemanticContextMenuDetail {
 
 export type PrismSemanticLayerPreset = "all" | "none" | "outer" | "inner";
 
+/** An inset camera in KiCad millimetres (IN-61). */
+export interface PrismInsetView {
+    center: [number, number];
+    /** CSS pixels per mm. */
+    zoom: number;
+    /** Radians, clockwise on screen. */
+    rotation: number;
+    /** Seen from below. */
+    mirror: boolean;
+    /** Radians leaned back from straight down. */
+    tilt: number;
+    /** Runtime height the view pivots about (`insetSurfaceZ`). */
+    focusZ: number;
+}
+
 export interface PrismSemanticViewerElement extends HTMLElement {
     setSelection: (selection: PrismRendererSelection | null) => void;
     /**
@@ -156,6 +171,18 @@ export interface PrismSemanticViewerElement extends HTMLElement {
     setGpuBudget?: (bytes: number) => void;
     /** Every component reference on the board; empty until the viewer is ready. */
     getComponentReferences?: () => string[];
+    /**
+     * IN-61: draw the board into a 2D `canvas` through an inset camera (KiCad
+     * mm). `key` names the inset; false when nothing was drawn.
+     */
+    renderInset?: (canvas: HTMLCanvasElement, view: PrismInsetView, key: string) => boolean;
+    /** True once `renderInset` can draw (one-board PCB workspace, first frame done). */
+    insetReady?: () => boolean;
+    /** The board surface on one side, as `PrismInsetView.focusZ`. */
+    insetSurfaceZ?: (bottom: boolean) => number;
+    releaseInset?: (key: string) => void;
+    /** Called when the main view redrew or the viewer reloaded; returns an unsubscribe. */
+    onSceneChange?: (listener: () => void) => () => void;
     resize: () => void;
     /** Null until the viewer is ready. Changes arrive as `prism-semantic-viewer:viewstatechange`. */
     getViewState?: () => PrismSemanticViewState | null;

@@ -167,6 +167,27 @@ export interface EcadNetStatisticsRef {
     netCode?: number;
 }
 
+/** ecad-viewer's InsetCamera, as a 3D scene receives it. */
+export interface EcadInsetCamera {
+    center: { x: number; y: number };
+    zoom: number;
+    rotation: number;
+    mirror: boolean;
+    view3d?: boolean;
+    tilt?: number;
+}
+
+export type EcadInset3DState = "ready" | "loading" | "unavailable";
+
+/** ecad-viewer's InsetScene3D: a host's 3D board drawing PCB insets. */
+export interface EcadInsetScene3D {
+    state(): EcadInset3DState;
+    load(): void;
+    render(camera: EcadInsetCamera, canvas: HTMLCanvasElement, bottom: boolean, key: string): boolean;
+    release?(key: string): void;
+    subscribe(listener: () => void): () => void;
+}
+
 export interface EcadViewportInsets {
     left?: number;
     right?: number;
@@ -408,6 +429,8 @@ export interface ECadViewerElement extends HTMLElement {
     /** Close the inset preview, else all insets; true if anything closed. */
     escapeInsets?(): boolean;
     closeInsets?(): boolean;
+    /** IN-61: the host's 3D board for this element's PCB insets (T). */
+    setInset3D?(scene: EcadInsetScene3D | null): void;
     resize?(): void;
     /**
      * Drop the inspected object; the highlighted nets too unless

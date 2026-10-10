@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>3D insets spike</title>
+<style>
+  body { margin: 0; font: 12px system-ui; background: #f1f5f9; }
+  #main { position: absolute; left: 0; top: 0; width: 960px; height: 720px; }
+  .inset { position: absolute; width: 300px; height: 220px; border: 1.5px solid #8b5cf6; border-radius: 8px; overflow: hidden; background: #fff; }
+  .inset canvas { width: 100%; height: 100%; display: block; }
+  .inset b { position: absolute; left: 6px; top: 4px; background: #fffc; padding: 1px 5px; border-radius: 4px; }
+  .ring { position: absolute; width: 14px; height: 14px; margin: -9px 0 0 -9px; border: 2px solid #8b5cf6; border-radius: 50%; pointer-events: none; }
+</style>
+<script type="module" src="./prism-semantic-viewer.js"></script>
+</head>
+<body>
+<prism-semantic-viewer id="main" workspace="pcb" hide-panel="true"></prism-semantic-viewer>
+<div class="inset" style="left: 980px; top: 10px"><canvas id="top"></canvas><b>top</b><span class="ring" id="ring-top"></span></div>
+<div class="inset" style="left: 980px; top: 250px"><canvas id="tilt"></canvas><b>tilt 50°</b><span class="ring" id="ring-tilt"></span></div>
+<div class="inset" style="left: 980px; top: 490px"><canvas id="bottom"></canvas><b>bottom part</b><span class="ring" id="ring-bottom"></span></div>
+<script type="module">
+const el = document.getElementById("main");
+const params = new URLSearchParams(location.search);
+el.setAttribute("bundle-url", `./${params.get("bundle") || "cynthion"}/bundle.json`);
+window.readyFlag = false;
+el.addEventListener("prism-semantic-viewer:ready", () => { window.readyFlag = true; });
+el.addEventListener("prism-semantic-viewer:error", (e) => { window.viewerError = String(e.detail?.message || e.detail); });
+
+function fitView(target, canvas, extra = {}) {
+  const span = Math.max(target.focus.w, target.focus.h, 4) * 1.6;
+  const zoom = Math.min(canvas.clientWidth, canvas.clientHeight) / span;
+  return { center: target.anchor, zoom, rotation: 0, mirror: target.bottom, tilt: 0, focusZ: target.surfaceZ, ...extra };
+}
+
+function placeRing(id, canvas, view, point) {
+  const p = el.projectInset(view, canvas.clientWidth, canvas.clientHeight, point);
+  const ring = document.getElementById(id);
+  if (!p) { ring.style.display = "none"; return null; }
+  ring.style.display = "";
+  ring.style.left = `${p[0]}px`;
+  ring.style.top = `${p[1]}px`;
+  return p;
+}
+
+window.views = {};
+window.drawInsets = (ref = params.get("ref") || "IC1", pin = params.get("pin") || "A1", bottomRef = params.get("bottom") || null) => {
+  const out = {};
+  const target = el.insetTarget(ref, pin);
+  out.target = target;
+  if (!target) return out;
+  const top = document.getElementById("top");
+  const tilt = document.getElementById("tilt");
+  views.top = fitView(target, top);
+  views.tilt = fitView(target, tilt, { tilt: (50 * Math.PI) / 180, rotation: Math.PI / 8 });
+  out.top = el.renderInset(top, views.top, "top");
+  out.tilt = el.renderInset(tilt, views.tilt, "tilt");
+  out.ringTop = placeRing("ring-top", top, views.top, target.anchor);
+  out.ringTilt = placeRing("ring-tilt", tilt, views.tilt, target.anchor);
+  const refs = el.getComponentReferences();
+  const bottomTarget = bottomRef ? el.insetTarget(bottomRef, "1")
+    : refs.map((r) => el.insetTarget(r, "1")).find((t) => t && t.bottom && t.focus.w > 3);
+  out.bottomTarget = bottomTarget;
+  if (bottomTarget) {
+    const bottom = document.getElementById("bottom");
+    views.bottom = fitView(bottomTarget, bottom);
+    out.bottom = el.renderInset(bottom, views.bottom, "bottom");
+    out.ringBottom = placeRing("ring-bottom", bottom, views.bottom, bottomTarget.anchor);
+  }
+  return out;
+};
+
+// In-frame hash of the main canvas, taken right after a main redraw (before
+// present), like the SB2-23 pixel-diff method.
+window.mainHashes = [];
+async function hashCanvas(source) {
+  const c = document.createElement("canvas");
+  c.width = source.width; c.height = source.height;
+  c.getContext("2d").drawImage(source, 0, 0);
+  const data = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < data.length; i += 1) { h ^= data[i]; h = Math.imul(h, 16777619) >>> 0; }
+  return { hash: h.toString(16), w: c.width, h: c.height };
+}
+window.watchMain = () => {
+  const main = el.shadowRoot.querySelector("#viewport");
+  el.onSceneChange(() => {
+    // Synchronous copy in the same task, before present.
+    const c = document.createElement("canvas");
+    c.width = main.width; c.height = main.height;
+    c.getContext("2d").drawImage(main, 0, 0);
+    window.mainHashes.push(c);
+  });
+  return true;
+};
+window.hashOf = async (i) => hashCanvas(window.mainHashes[i]);
+
+// GPU time of inset frames: submit, then wait for the queue to drain.
+window.benchInsets = async (n = 30, cull = true) => {
+  el.insetSettings({ cullTiles: cull });
+  const top = document.getElementById("top");
+  const tilt = document.getElementById("tilt");
+  const cpu = [], gpu = [];
+  await el.gpuIdle();
+  for (let i = 0; i < n; i += 1) {
+    await new Promise((r) => requestAnimationFrame(r));
+    await el.gpuIdle();
+    views.tilt.rotation += 0.02;
+    const t0 = performance.now();
+    el.renderInset(top, views.top, "top");
+    el.renderInset(tilt, views.tilt, "tilt");
+    const t1 = performance.now();
+    await el.gpuIdle();
+    cpu.push(t1 - t0);
+    gpu.push(performance.now() - t0);
+  }
+  const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  const max = (a) => Math.max(...a);
+  return { cull, frames: n, cpu_median_ms: med(cpu), cpu_max_ms: max(cpu), submit_to_idle_median_ms: med(gpu), submit_to_idle_max_ms: max(gpu), triangles_last_inset: el.insetStats().lastTriangles };
+};
+// The same wait with no inset work: the baseline of the measurement.
+window.benchIdle = async (n = 30) => {
+  const t = [];
+  for (let i = 0; i < n; i += 1) {
+    await new Promise((r) => requestAnimationFrame(r));
+    await el.gpuIdle();
+    const t0 = performance.now();
+    await el.gpuIdle();
+    t.push(performance.now() - t0);
+  }
+  return t.sort((a, b) => a - b)[Math.floor(n / 2)];
+};
+</script>
+</body>
+</html>
