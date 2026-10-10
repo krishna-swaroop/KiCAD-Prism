@@ -520,9 +520,18 @@ export async function mountStandaloneViewer(options = {}) {
     setSeparation,
     showNetLayers,
     setNetIsolation,
-    // IN-60 spike: inset views through cameras of their own.
+    // IN-60/IN-61: inset views through cameras of their own.
     renderInset(target, view, key) {
       return renderInsetView(target, view, key);
+    },
+    insetReady() {
+      return insetViewReady();
+    },
+    insetSurfaceZ(bottom) {
+      return insetSurfaceZ(Boolean(bottom));
+    },
+    releaseInset(key) {
+      insetViews.delete(String(key));
     },
     insetTarget(reference, pin) {
       return insetTargetFor(reference, pin);
@@ -3734,7 +3743,7 @@ function frame(now, token = activeViewerToken) {
 const IDLE_REFRESH_MS = 1000;
 const lastRender = { key: "", matrix: new Float32Array(16), tiles: null, at: 0 };
 
-// --- IN-60 spike: inset views -------------------------------------------
+// --- IN-60/IN-61: inset views ------------------------------------------
 //
 // A host (the Visualizer's insets) draws small views of this board through
 // cameras of its own. They share the device, pipelines, render bundles and
@@ -3752,7 +3761,7 @@ const INSET_VIEW_TTL_MS = 3000;
 /** Hosts told when the main frame redrew (tiles arrived, highlights...). */
 const insetListeners = new Set();
 const insetStats = { frames: 0, cpuMs: 0, gpuMs: 0, lastTriangles: 0 };
-/** Spike switches, for A/B measurements. */
+/** Switches for A/B measurements. */
 const insetSettings = { cullTiles: true };
 
 function activeInsetViews(now = performance.now()) {
@@ -3797,8 +3806,12 @@ function insetSurfaceZ(bottom) {
  * Draw an inset view into `target` (a 2D canvas, sized by CSS). `key` names
  * the inset for tile residency. Returns false when nothing could be drawn.
  */
+function insetViewReady() {
+  return Boolean(!system && board.renderer && lastFrameInputs && state.workspace === "pcb");
+}
+
 function renderInsetView(target, view, key = "inset") {
-  if (system || !board.renderer || !lastFrameInputs || state.workspace !== "pcb") return false;
+  if (!insetViewReady()) return false;
   const cssWidth = target.clientWidth;
   const cssHeight = target.clientHeight;
   if (!cssWidth || !cssHeight) return false;

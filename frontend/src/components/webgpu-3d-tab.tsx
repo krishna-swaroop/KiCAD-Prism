@@ -25,6 +25,7 @@ import { Semantic3dControls } from "./semantic-3d-controls";
 import type { User } from "@/types/auth";
 import type { PrismSelection } from "@/types/prism-selection";
 import type { HighlightedNet } from "@/lib/net-highlights";
+import type { PrismInsetScene3D } from "@/lib/inset-scene-3d";
 import type {
     PrismRendererSelection,
     PrismSemanticContextMenuDetail,
@@ -107,6 +108,8 @@ interface WebGpu3dTabProps {
     /** Local Show DNP override; never changes the variant. */
     showDnp?: boolean;
     onShowDnpChange?: (showDnp: boolean) => void;
+    /** IN-61: the 3D view of PCB insets, fed this tab's board. */
+    insetScene?: PrismInsetScene3D;
 }
 
 const selectionForRenderer = (selection: PrismSelection | null): PrismRendererSelection | null => {
@@ -146,6 +149,7 @@ export function WebGpu3dTab({
     ambiguousComponents = NO_COMPONENTS,
     showDnp = false,
     onShowDnpChange,
+    insetScene,
 }: WebGpu3dTabProps) {
     const viewerRef = useRef<PrismSemanticViewerElement | null>(null);
     const selectionRef = useCommittedRef(selection);
@@ -415,6 +419,17 @@ export function WebGpu3dTab({
     const bundleUrl = resolvedBundleUrl
         ? `${resolvedBundleUrl}${resolvedBundleUrl.includes("?") ? "&" : "?"}viewer=${encodeURIComponent(readiness?.revision || status?.generated_at || status?.sourceRevisionKey || "staged")}`
         : undefined;
+
+    // IN-61: no bundle (or no WebGPU) is final for insets; a building bundle
+    // without a viewer yet is too, until the next T after it is ready.
+    const viewerFailed = Boolean(error) && !viewerReady;
+    const insetUnavailable = !loading && (!canShowViewer || viewerFailed);
+    useEffect(() => {
+        if (!insetScene) return;
+        if (insetUnavailable) insetScene.update({ kind: "unavailable" });
+        else if (viewerElement) insetScene.update({ kind: "viewer", element: viewerElement });
+        else insetScene.update({ kind: "loading" });
+    }, [insetScene, insetUnavailable, viewerElement]);
 
     if (loading && !status) {
         return (

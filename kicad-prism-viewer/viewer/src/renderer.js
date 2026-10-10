@@ -1970,7 +1970,7 @@ export class Renderer {
   }
 
   /**
-   * IN-60 spike: draw one panel into targets of the caller's (an inset), not
+   * IN-60: draw one panel into targets of the caller's (an inset), not
    * the main canvas. Its own submit, so it never shares the globals or draw
    * slots of the main frame's; nothing the main frame reads is touched, so
    * the main view stays pixel-identical. One-board only: no cull pass.

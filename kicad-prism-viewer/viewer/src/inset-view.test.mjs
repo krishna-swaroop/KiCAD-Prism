@@ -4,7 +4,8 @@ import test from "node:test";
 import { insetMatrix, mmToRuntime, projectInset, runtimeBoundsToMm } from "./inset-view.js";
 
 // The 2D inset camera from ecad-viewer (insets/camera.ts): translate to the
-// canvas centre, rotate clockwise, mirror x, scale, translate by -centre.
+// canvas centre, lean (screen y × cos tilt), rotate clockwise, mirror x,
+// scale, translate by -centre.
 function inset2d(view, w, h, [x, y]) {
   let dx = (x - view.center[0]) * view.zoom * (view.mirror ? -1 : 1);
   let dy = (y - view.center[1]) * view.zoom;
@@ -12,7 +13,7 @@ function inset2d(view, w, h, [x, y]) {
   const s = Math.sin(view.rotation);
   // Clockwise on a y-down screen.
   [dx, dy] = [c * dx - s * dy, s * dx + c * dy];
-  return [w / 2 + dx, h / 2 + dy];
+  return [w / 2 + dx, h / 2 + dy * Math.cos(view.tilt || 0)];
 }
 
 const views = [
@@ -46,6 +47,24 @@ test("tilting keeps the centre fixed and leans the board away", () => {
   // Height now shows: a component top 2 mm up moves up the screen.
   const raised = projectInset(m, 320, 220, mmToRuntime(10, 20, 0.002));
   assert.ok(raised[1] < 110 - 1);
+});
+
+test("on the pivot surface a tilted view is ecad-viewer's 2D lean (IN-61)", () => {
+  // Leaders, outlines and hover in the inset use the 2D camera: it must put
+  // surface points where the 3D view draws them, at any rotation and side.
+  for (const base of views) {
+    for (const tilt of [0.3, (40 * Math.PI) / 180, 1.2]) {
+      const view = { ...base, tilt };
+      const surface = view.mirror ? -0.0008 : 0.0008;
+      const m = insetMatrix(view, 320, 220, 0.2, surface);
+      for (const p of [[14, 18], [-3, 9], [25, -4]]) {
+        const got = projectInset(m, 320, 220, mmToRuntime(p[0], p[1], surface));
+        const want = inset2d(view, 320, 220, p);
+        assert.ok(Math.abs(got[0] - want[0]) < 1e-3, `${JSON.stringify(view)} x ${got} vs ${want}`);
+        assert.ok(Math.abs(got[1] - want[1]) < 1e-3, `${JSON.stringify(view)} y ${got} vs ${want}`);
+      }
+    }
+  }
 });
 
 test("runtime bounds convert back to KiCad millimetres and a side", () => {

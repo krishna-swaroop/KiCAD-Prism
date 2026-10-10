@@ -1,5 +1,5 @@
 /*
-    Inset views (IN-60 spike): a small view of the loaded board through a
+    Inset views (IN-60, IN-61): a small view of the loaded board through a
     camera of its own, for the Visualizer's PCB/schematic insets.
 
     The camera is the 2D inset camera from ecad-viewer, in KiCad board

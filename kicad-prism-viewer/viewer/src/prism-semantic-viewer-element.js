@@ -220,6 +220,9 @@ export class PrismSemanticViewerElement extends HTMLElement {
     this.pendingHiddenComponents = null;
     this.reloadQueued = false;
     this.reloadSource = null;
+    /** IN-61: hosts told when what insets show changed; outlive reloads. */
+    this.sceneListeners = new Set();
+    this.unhookScene = null;
   }
 
   connectedCallback() {
@@ -228,6 +231,8 @@ export class PrismSemanticViewerElement extends HTMLElement {
 
   disconnectedCallback() {
     this.reloadOwner.cancel();
+    this.unhookScene?.();
+    this.unhookScene = null;
     this.controller?.dispose?.();
     this.controller = null;
     this.reloadSource = null;
@@ -525,6 +530,9 @@ export class PrismSemanticViewerElement extends HTMLElement {
 
   publishController(controller) {
     this.controller = controller;
+    this.unhookScene?.();
+    this.unhookScene = controller?.onSceneChange?.(() => this.notifyScene()) ?? null;
+    this.notifyScene();
     this.controller?.setWorkspace?.(this.workspace);
     // The hidden set is view state that must outlive a reload: a controller
     // that was created after the last setHiddenComponents call replays it.
@@ -661,16 +669,31 @@ export class PrismSemanticViewerElement extends HTMLElement {
     return this.controller?.getComponentReferences?.() ?? [];
   }
 
-  // --- IN-60 spike: inset views (one-board mode only) ---
+  // --- Inset views (IN-60/IN-61; one-board PCB workspace only) ---
 
   /**
    * Draw the board into `canvas` (a 2D canvas sized by CSS) through an inset
    * camera `{ center: [x, y] mm, zoom: px/mm, rotation, mirror, tilt, focusZ }`.
    * `key` names the inset so the copper it shows stays loaded. False when
-   * nothing could be drawn (not ready, system mode, hidden canvas).
+   * nothing could be drawn (not ready, system mode, another workspace).
    */
   renderInset(canvas, view, key) {
     return Boolean(this.controller?.renderInset?.(canvas, view, key));
+  }
+
+  /** True once `renderInset` can draw. */
+  insetReady() {
+    return Boolean(this.controller?.insetReady?.());
+  }
+
+  /** The board surface on one side, as the runtime height `focusZ` takes. */
+  insetSurfaceZ(bottom) {
+    return this.controller?.insetSurfaceZ?.(bottom) ?? 0;
+  }
+
+  /** The inset `key` closed: its copper need not stay loaded. */
+  releaseInset(key) {
+    this.controller?.releaseInset?.(key);
   }
 
   /** `{ focus, anchor, anchorBox, bottom, surfaceZ }` in KiCad mm for a part (and pad), or null. */
@@ -683,9 +706,17 @@ export class PrismSemanticViewerElement extends HTMLElement {
     return this.controller?.projectInset?.(view, width, height, pointMm) ?? null;
   }
 
-  /** Call `listener` whenever the main view redrew; returns an unsubscribe. */
+  /**
+   * Call `listener` whenever the main view redrew or the viewer reloaded;
+   * returns an unsubscribe. Survives reloads.
+   */
   onSceneChange(listener) {
-    return this.controller?.onSceneChange?.(listener) ?? (() => {});
+    this.sceneListeners.add(listener);
+    return () => this.sceneListeners.delete(listener);
+  }
+
+  notifyScene() {
+    for (const listener of this.sceneListeners) listener();
   }
 
   insetStats() {
