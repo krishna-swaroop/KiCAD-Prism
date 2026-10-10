@@ -661,6 +661,45 @@ export class PrismSemanticViewerElement extends HTMLElement {
     return this.controller?.getComponentReferences?.() ?? [];
   }
 
+  // --- IN-60 spike: inset views (one-board mode only) ---
+
+  /**
+   * Draw the board into `canvas` (a 2D canvas sized by CSS) through an inset
+   * camera `{ center: [x, y] mm, zoom: px/mm, rotation, mirror, tilt, focusZ }`.
+   * `key` names the inset so the copper it shows stays loaded. False when
+   * nothing could be drawn (not ready, system mode, hidden canvas).
+   */
+  renderInset(canvas, view, key) {
+    return Boolean(this.controller?.renderInset?.(canvas, view, key));
+  }
+
+  /** `{ focus, anchor, anchorBox, bottom, surfaceZ }` in KiCad mm for a part (and pad), or null. */
+  insetTarget(reference, pin) {
+    return this.controller?.insetTarget?.(reference, pin) ?? null;
+  }
+
+  /** Inset CSS pixels of a KiCad-mm point on the inset's surface, or null. */
+  projectInset(view, width, height, pointMm) {
+    return this.controller?.projectInset?.(view, width, height, pointMm) ?? null;
+  }
+
+  /** Call `listener` whenever the main view redrew; returns an unsubscribe. */
+  onSceneChange(listener) {
+    return this.controller?.onSceneChange?.(listener) ?? (() => {});
+  }
+
+  insetStats() {
+    return this.controller?.insetStats?.() ?? null;
+  }
+
+  insetSettings(settings) {
+    return this.controller?.insetSettings?.(settings) ?? null;
+  }
+
+  gpuIdle() {
+    return this.controller?.gpuIdle?.() ?? Promise.resolve();
+  }
+
   resize() {
     this.controller?.resize?.();
   }
