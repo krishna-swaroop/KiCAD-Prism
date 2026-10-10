@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.roles import Role, role_matches_allowed_role
 from app.services.postgres_database import database
 from app.services.workspace_schema_migrations import apply_workspace_migrations
+from app.services.manufacturing_schema import MANUFACTURING_SCHEMA_SQL
 from app.services.systems.store import SystemStore
 from app.services.systems.visibility import visible_systems
 
@@ -233,7 +234,8 @@ class WorkspaceService:
                 updated_at TIMESTAMPTZ NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_ws_jobs_kind_status ON ws_jobs(kind, status);
-        """, prepare=False)
+
+        """ + MANUFACTURING_SCHEMA_SQL, prepare=False)
 
     # ------------------------------------------------------------------
     # Helpers

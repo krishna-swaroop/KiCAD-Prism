@@ -34,6 +34,7 @@ import type {
     StudioView,
     VendorProfile,
 } from "./types";
+import { RUN_STAGES } from "./flow";
 
 type Props = {
     projectId: string;
@@ -73,6 +74,19 @@ function resolveCommitSelection(value: string, commits: ProjectCommit[]): string
     return commits.find((commit) => commit.full_hash === revision || commit.hash === revision)?.full_hash ?? revision;
 }
 
+/**
+ * `?build=<id>&stage=<stage>` opens that run at that stage in the main view, as a
+ * link from elsewhere in Prism does (a production run opens its package at
+ * Outputs). `?build=` alone keeps opening the run from the history list.
+ */
+function linkedStage(): RunStage | null {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const stage = params.get("stage");
+    if (!params.get("build") || !stage) return null;
+    return RUN_STAGES.find((item) => item.id === stage)?.id ?? null;
+}
+
 // react-doctor-disable-next-line no-giant-component - build lifecycle orchestration: polling, stages, uploads, and logs share one state machine
 export function ReleaseStudioPanel({
     projectId,
@@ -82,10 +96,11 @@ export function ReleaseStudioPanel({
 // react-doctor-disable-next-line prefer-useReducer - the states belong to separate concerns: build lifecycle, detail cache, upload fields
 }: Props) {
     const [view, setView] = useState<StudioView>(() => {
+        if (linkedStage()) return "current";
         if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("build")) return "history";
         return "current";
     });
-    const [stage, setStage] = useState<RunStage>("source");
+    const [stage, setStage] = useState<RunStage>(() => linkedStage() ?? "source");
     // Set when the user opens a specific run, so a newer build does not pull
     // the view out from under someone reading an older release's evidence.
     const pinnedRef = useRef(

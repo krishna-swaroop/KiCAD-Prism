@@ -1,4 +1,4 @@
-export type WorkspaceSection = "projects" | "library-manager";
+export type WorkspaceSection = "projects" | "library-manager" | "manufacturing";
 export type ViewMode = "gallery" | "list";
 
 // Full-width gallery uses breakpoint columns so cards stay large. When the
