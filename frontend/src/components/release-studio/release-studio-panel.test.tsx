@@ -297,6 +297,26 @@ describe("ReleaseStudioPanel", () => {
         expect(screen.getAllByText("USBPD-100").length).toBeGreaterThan(0);
     });
 
+    it("opens a linked run straight at its outputs, outside the history list", async () => {
+        window.history.replaceState({}, "", "/?build=build-1&stage=outputs");
+        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        await waitFor(() => expect(api.getBuild).toHaveBeenCalledWith("p1", "build-1"));
+        const rail = await screen.findByRole("navigation", { name: /run stages/i });
+        await waitFor(() =>
+            expect(within(rail).getByRole("button", { name: /Outputs/i }).getAttribute("aria-current")).toBe("step"),
+        );
+        expect(screen.queryByRole("complementary", { name: "Run history" })).toBeNull();
+    });
+
+    it("still opens a run linked without a stage from the history list", async () => {
+        window.history.replaceState({}, "", "/?build=build-1&stage=nonsense");
+        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        await waitFor(() => expect(api.getBuild).toHaveBeenCalledWith("p1", "build-1"));
+        const rail = await screen.findByRole("navigation", { name: /run stages/i });
+        expect(within(rail).getByRole("button", { name: /Outputs/i }).getAttribute("aria-current")).toBeNull();
+        expect(screen.getByRole("complementary", { name: "Run history" })).toBeTruthy();
+    });
+
     it("keeps completed ticks when inspecting a finished run", async () => {
         render(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();

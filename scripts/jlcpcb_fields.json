@@ -1,0 +1,896 @@
+{
+  "standard": {
+    "Base Material": [
+      "FR-4",
+      "Flex"
+    ],
+    "Layers": [
+      "1",
+      "2",
+      "4",
+      "6",
+      "8",
+      "10",
+      "12",
+      "14",
+      "16"
+    ],
+    "PCB Qty": [
+      "5",
+      "10",
+      "15",
+      "20",
+      "25",
+      "30",
+      "50",
+      "75",
+      "100",
+      "125",
+      "150",
+      "200",
+      "250",
+      "300",
+      "350",
+      "400",
+      "450",
+      "500",
+      "600",
+      "700",
+      "750",
+      "800",
+      "900",
+      "1000",
+      "1200",
+      "1250",
+      "1400",
+      "1500",
+      "1600",
+      "1750",
+      "1800",
+      "2000",
+      "2400",
+      "2500",
+      "2800",
+      "3000",
+      "3500",
+      "4000",
+      "4500",
+      "5000",
+      "5500",
+      "6000",
+      "6500",
+      "7000",
+      "7500",
+      "8000",
+      "8500",
+      "9000",
+      "9500",
+      "10000",
+      "11000",
+      "12000",
+      "13000",
+      "14000",
+      "15000",
+      "16000",
+      "17000",
+      "18000",
+      "19000",
+      "25000",
+      "30000",
+      "40000",
+      "50000",
+      "60000",
+      "70000"
+    ],
+    "Product Type": [
+      "Industrial/Consumer electronics",
+      "Aerospace",
+      "Medical"
+    ],
+    "Different Design": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "Delivery Format": [
+      "Single PCB",
+      "Panel by Customer",
+      "Panel by JLCPCB"
+    ],
+    "PCB Thickness": [
+      "0.4mm",
+      "0.6mm",
+      "0.8mm",
+      "1.0mm",
+      "1.2mm",
+      "1.6mm",
+      "2.0mm"
+    ],
+    "PCB Color": [
+      "Green",
+      "Purple",
+      "Red",
+      "Yellow",
+      "Blue",
+      "White",
+      "Black"
+    ],
+    "Silkscreen": [
+      "White"
+    ],
+    "Material Type": [
+      "FR4 TG135",
+      "KB6164 - TG135",
+      "Nan Ya NP-140F",
+      "S1141 TG140",
+      "S1000H TG155"
+    ],
+    "Surface Finish": [
+      "OSP",
+      "HASL(with lead)",
+      "LeadFree HASL",
+      "ENIG"
+    ],
+    "Outer Copper Weight": [
+      "1 oz",
+      "2 oz",
+      "3.5 oz",
+      "4.5 oz"
+    ],
+    "Coverlay Thickness": [
+      "PI:12.5um/AD:15um",
+      "PI:25um/AD:25um"
+    ],
+    "Gold Fingers": [
+      "No",
+      "Yes"
+    ],
+    "EDA Software": [
+      "EasyEDA Pro",
+      "Other"
+    ],
+    "Stiffener": [
+      "Without",
+      "Polyimide",
+      "FR4",
+      "Stainless Steel",
+      "3M Tape"
+    ],
+    "EMI Shielding Film": [
+      "Without",
+      "Both sides ( Black ,18um )",
+      "Single side ( Black ,18um )"
+    ],
+    "Cutting Method": [
+      "Laser Cutting",
+      "Punching"
+    ],
+    "Via Covering": [
+      "Tented",
+      "Untented",
+      "Plugged",
+      "Epoxy Filled & Capped",
+      "Copper paste Filled & Capped"
+    ],
+    "Via Plating Method": [
+      "Not Specified",
+      "Conductive Adhesive",
+      "Horizontal Electroless Copper Plating"
+    ],
+    "Min via hole size/diameter": [
+      "0.3mm/(0.4/0.45mm)",
+      "0.25mm/(0.35/0.4mm)",
+      "0.2mm/(0.3/0.35mm)",
+      "0.15mm/(0.25/0.3mm)"
+    ],
+    "Board Outline Tolerance": [
+      "±0.2mm(Regular)",
+      "±0.1mm(Precision)"
+    ],
+    "Confirm Production file": [
+      "No",
+      "Yes"
+    ],
+    "Mark on PCB": [
+      "Remove Mark",
+      "2D barcode (Serial Number)"
+    ],
+    "Electrical Test": [
+      "Flying Probe Fully Test"
+    ],
+    "Castellated Holes": [
+      "No",
+      "Yes"
+    ],
+    "Edge Plating": [
+      "No",
+      "Yes"
+    ],
+    "Blind Slots": [
+      "No",
+      "Yes"
+    ],
+    "UL Marking": [
+      "No",
+      "Yes (Any Position)",
+      "Yes (Specify Position)"
+    ],
+    "Humidity Indicator Card": [
+      "No",
+      "Yes"
+    ],
+    "4-Wire Kelvin Test": [
+      "No",
+      "Yes"
+    ],
+    "Paper between PCBs": [
+      "No",
+      "Yes"
+    ],
+    "Appearance Quality": [
+      "IPC Class 2 Standard",
+      "Superb Quality"
+    ],
+    "Silkscreen Technology": [
+      "Ink-jet Printing Silkscreen",
+      "High-precision Printing Silkscreen",
+      "EasyEDA multi-color silkscreen",
+      "High-definition Exposure Silkscreen"
+    ],
+    "Package Box": [
+      "With JLCPCB logo",
+      "Blank box"
+    ],
+    "Inspection Report": [
+      "No",
+      "Final Inspection Report",
+      "Electrical Test Report",
+      "ROHS Test Report"
+    ],
+    "Framework": [
+      "No",
+      "Yes"
+    ],
+    "Step Stencil": [
+      "No",
+      "Yes"
+    ],
+    "Nano-Coating": [
+      "No",
+      "Yes"
+    ],
+    "Stencil Side": [
+      "Top only",
+      "Bottom only",
+      "Top + Bottom(On Single Stencil)",
+      "Top + Bottom(On Separate Stencils)"
+    ],
+    "Dimensions": [
+      "Standard Size",
+      "Custom Size"
+    ],
+    "Thickness": [
+      "Select by JLCPCB",
+      "Select by Customer"
+    ],
+    "Stencil Process Type": [
+      "Solder paste stencil",
+      "Red glue stencil"
+    ],
+    "Polishing Process": [
+      "Sanding",
+      "Etching",
+      "Electropolishing"
+    ],
+    "Fiducials": [
+      "No Fiducial",
+      "Etched Through",
+      "Etched Half into board"
+    ],
+    "Engrave Text": [
+      "No",
+      "Yes"
+    ]
+  },
+  "assembly": {
+    "Base Material": [
+      "FR-4",
+      "Flex",
+      "Copper Core"
+    ],
+    "Layers": [
+      "1",
+      "2",
+      "4",
+      "6",
+      "8",
+      "10",
+      "12",
+      "14",
+      "16"
+    ],
+    "PCB Qty": [
+      "5",
+      "10",
+      "15",
+      "20",
+      "25",
+      "30",
+      "50",
+      "75",
+      "100",
+      "125",
+      "150",
+      "200",
+      "250",
+      "300",
+      "350",
+      "400",
+      "450",
+      "500",
+      "600",
+      "700",
+      "750",
+      "800",
+      "900",
+      "1000",
+      "1200",
+      "1250",
+      "1400",
+      "1500",
+      "1600",
+      "1750",
+      "1800",
+      "2000",
+      "2400",
+      "2500",
+      "2800",
+      "3000",
+      "3500",
+      "4000",
+      "4500",
+      "5000",
+      "5500",
+      "6000",
+      "6500",
+      "7000",
+      "7500",
+      "8000",
+      "8500",
+      "9000",
+      "9500",
+      "10000",
+      "11000",
+      "12000",
+      "13000",
+      "14000",
+      "15000",
+      "16000",
+      "17000",
+      "18000",
+      "19000",
+      "25000",
+      "30000",
+      "40000",
+      "50000",
+      "60000",
+      "70000"
+    ],
+    "Product Type": [
+      "Industrial/Consumer electronics",
+      "Aerospace",
+      "Medical"
+    ],
+    "Different Design": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "Delivery Format": [
+      "Single PCB",
+      "Panel by Customer",
+      "Panel by JLCPCB"
+    ],
+    "PCB Thickness": [
+      "0.4mm",
+      "0.6mm",
+      "0.8mm",
+      "1.0mm",
+      "1.2mm",
+      "1.6mm",
+      "2.0mm"
+    ],
+    "PCB Color": [
+      "Green",
+      "Purple",
+      "Red",
+      "Yellow",
+      "Blue",
+      "White",
+      "Black"
+    ],
+    "Silkscreen": [
+      "White"
+    ],
+    "Material Type": [
+      "FR4 TG135",
+      "KB6164 - TG135",
+      "Nan Ya NP-140F",
+      "S1141 TG140",
+      "S1000H TG155"
+    ],
+    "Surface Finish": [
+      "OSP",
+      "HASL(with lead)",
+      "LeadFree HASL",
+      "ENIG"
+    ],
+    "Outer Copper Weight": [
+      "1 oz",
+      "2 oz",
+      "3.5 oz",
+      "4.5 oz"
+    ],
+    "Coverlay Thickness": [
+      "PI:12.5um/AD:15um",
+      "PI:25um/AD:25um"
+    ],
+    "Gold Fingers": [
+      "No",
+      "Yes"
+    ],
+    "EDA Software": [
+      "EasyEDA Pro",
+      "Other"
+    ],
+    "Stiffener": [
+      "Without",
+      "Polyimide",
+      "FR4",
+      "Stainless Steel",
+      "3M Tape"
+    ],
+    "EMI Shielding Film": [
+      "Without",
+      "Both sides ( Black ,18um )",
+      "Single side ( Black ,18um )"
+    ],
+    "Cutting Method": [
+      "Laser Cutting",
+      "Punching"
+    ],
+    "Via Covering": [
+      "Tented",
+      "Untented",
+      "Plugged",
+      "Epoxy Filled & Capped",
+      "Copper paste Filled & Capped"
+    ],
+    "Via Plating Method": [
+      "Not Specified",
+      "Conductive Adhesive",
+      "Horizontal Electroless Copper Plating"
+    ],
+    "Min via hole size/diameter": [
+      "0.3mm/(0.4/0.45mm)",
+      "0.25mm/(0.35/0.4mm)",
+      "0.2mm/(0.3/0.35mm)",
+      "0.15mm/(0.25/0.3mm)"
+    ],
+    "Board Outline Tolerance": [
+      "±0.2mm(Regular)",
+      "±0.1mm(Precision)"
+    ],
+    "Confirm Production file": [
+      "No",
+      "Yes"
+    ],
+    "Mark on PCB": [
+      "Remove Mark",
+      "2D barcode (Serial Number)"
+    ],
+    "Electrical Test": [
+      "Flying Probe Fully Test"
+    ],
+    "Castellated Holes": [
+      "No",
+      "Yes"
+    ],
+    "Edge Plating": [
+      "No",
+      "Yes"
+    ],
+    "Blind Slots": [
+      "No",
+      "Yes"
+    ],
+    "UL Marking": [
+      "No",
+      "Yes (Any Position)",
+      "Yes (Specify Position)"
+    ],
+    "Humidity Indicator Card": [
+      "No",
+      "Yes"
+    ],
+    "4-Wire Kelvin Test": [
+      "No",
+      "Yes"
+    ],
+    "Paper between PCBs": [
+      "No",
+      "Yes"
+    ],
+    "Appearance Quality": [
+      "IPC Class 2 Standard",
+      "Superb Quality"
+    ],
+    "Silkscreen Technology": [
+      "Ink-jet Printing Silkscreen",
+      "High-precision Printing Silkscreen",
+      "EasyEDA multi-color silkscreen",
+      "High-definition Exposure Silkscreen"
+    ],
+    "Package Box": [
+      "With JLCPCB logo",
+      "Blank box"
+    ],
+    "Inspection Report": [
+      "No",
+      "Final Inspection Report",
+      "Electrical Test Report",
+      "ROHS Test Report"
+    ],
+    "PCBA Type": [
+      "Economic",
+      "Standard"
+    ],
+    "Assembly Side": [
+      "Top Side",
+      "Bottom Side",
+      "Both Sides"
+    ],
+    "PCBA Qty": [
+      "5"
+    ],
+    "Edge Rails/Fiducials": [
+      "Added by JLCPCB",
+      "Added by Customer"
+    ],
+    "Confirm Parts Placement": [
+      "No",
+      "Yes"
+    ],
+    "Stencil Storage": [
+      "No",
+      "Yes"
+    ],
+    "Fixture Storage": [
+      "No",
+      "Yes"
+    ],
+    "Parts Selection": [
+      "By Customer (Self-Service)",
+      "By JLCPCB (Manual Match)"
+    ]
+  },
+  "advanced": {
+    "Base Material": [
+      "FR-4",
+      "Flex",
+      "Copper Core"
+    ],
+    "Layers": [
+      "1",
+      "2",
+      "4",
+      "6",
+      "8",
+      "10",
+      "12",
+      "14",
+      "16"
+    ],
+    "PCB Qty": [
+      "5",
+      "10",
+      "15",
+      "20",
+      "25",
+      "30",
+      "40",
+      "50",
+      "60",
+      "70",
+      "75",
+      "80",
+      "90",
+      "100",
+      "110",
+      "120",
+      "125",
+      "140",
+      "150",
+      "160",
+      "175",
+      "180",
+      "200",
+      "220",
+      "240",
+      "250",
+      "270",
+      "280",
+      "300",
+      "320",
+      "350",
+      "360",
+      "400",
+      "450",
+      "500",
+      "550",
+      "600",
+      "650",
+      "700",
+      "750",
+      "800",
+      "900",
+      "1000",
+      "1200",
+      "1250",
+      "1400",
+      "1500",
+      "1600",
+      "1750",
+      "1800",
+      "2000",
+      "2400",
+      "2500",
+      "2800",
+      "3000",
+      "3500",
+      "4000",
+      "4500",
+      "5000",
+      "5500",
+      "6000",
+      "6500",
+      "7000",
+      "7500",
+      "8000",
+      "8500",
+      "9000",
+      "9500",
+      "10000",
+      "11000",
+      "12000",
+      "13000",
+      "14000",
+      "15000",
+      "16000",
+      "17000",
+      "18000",
+      "19000",
+      "25000",
+      "30000",
+      "40000",
+      "50000",
+      "60000",
+      "70000"
+    ],
+    "Product Type": [
+      "Industrial/Consumer electronics",
+      "Aerospace",
+      "Medical"
+    ],
+    "Different Design": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "Delivery Format": [
+      "Single PCB",
+      "Panel by Customer",
+      "Panel by JLCPCB"
+    ],
+    "PCB Thickness": [
+      "0.4mm",
+      "0.6mm",
+      "0.8mm",
+      "1.0mm",
+      "1.2mm",
+      "1.6mm",
+      "2.0mm"
+    ],
+    "PCB Color": [
+      "Green",
+      "Purple",
+      "Red",
+      "Yellow",
+      "Blue",
+      "White",
+      "Black"
+    ],
+    "Silkscreen": [
+      "White"
+    ],
+    "Material Type": [
+      "FR4 TG135",
+      "FR4 TG155",
+      "Nan Ya NP-140F",
+      "Nan Ya NP-155F",
+      "KB-6165 - TG155",
+      "S1000H TG155",
+      "Shengyi S1000-2M - TG170"
+    ],
+    "Surface Finish": [
+      "OSP",
+      "ENIG",
+      "HASL(with lead)",
+      "LeadFree HASL"
+    ],
+    "Outer Copper Weight": [
+      "1 oz",
+      "2 oz"
+    ],
+    "Inner Copper Weight": [
+      "0.5 oz",
+      "1 oz",
+      "2 oz"
+    ],
+    "Specify Layer Sequence": [
+      "No",
+      "Yes"
+    ],
+    "Specify Stackup": [
+      "No",
+      "Yes"
+    ],
+    "Coverlay Thickness": [
+      "PI:12.5um/AD:15um",
+      "PI:25um/AD:25um"
+    ],
+    "Gold Fingers": [
+      "No",
+      "Yes"
+    ],
+    "EDA Software": [
+      "EasyEDA Pro",
+      "Other"
+    ],
+    "Stiffener": [
+      "Without",
+      "Polyimide",
+      "FR4",
+      "Stainless Steel",
+      "3M Tape"
+    ],
+    "EMI Shielding Film": [
+      "Without",
+      "Both sides ( Black ,18um )",
+      "Single side ( Black ,18um )"
+    ],
+    "Cutting Method": [
+      "Laser Cutting",
+      "Punching"
+    ],
+    "Via Covering": [
+      "Tented",
+      "Epoxy Filled & Untented",
+      "Plugged",
+      "Epoxy Filled & Capped",
+      "Copper paste Filled & Capped"
+    ],
+    "Min via hole size/diameter": [
+      "0.3mm/(0.4/0.45mm)",
+      "0.25mm/(0.35/0.4mm)",
+      "0.2mm/(0.3/0.35mm)",
+      "0.15mm/(0.25/0.3mm)"
+    ],
+    "Board Outline Tolerance": [
+      "±0.2mm(Regular)",
+      "±0.1mm(Precision)"
+    ],
+    "Confirm Production file": [
+      "No",
+      "Yes"
+    ],
+    "Mark on PCB": [
+      "Remove Mark",
+      "2D barcode (Serial Number)"
+    ],
+    "Electrical Test": [
+      "Flying Probe Fully Test"
+    ],
+    "Castellated Holes": [
+      "No",
+      "Yes"
+    ],
+    "Press-Fit Hole": [
+      "No",
+      "Yes (Tolerance +/-0.05mm)"
+    ],
+    "Edge Plating": [
+      "No",
+      "Yes"
+    ],
+    "Blind Slots": [
+      "No",
+      "Yes"
+    ],
+    "UL Marking": [
+      "No",
+      "Yes (Any Position)",
+      "Yes (Specify Position)"
+    ],
+    "Backdrill": [
+      "No",
+      "Yes"
+    ],
+    "Humidity Indicator Card": [
+      "No",
+      "Yes"
+    ],
+    "4-Wire Kelvin Test": [
+      "No",
+      "Yes"
+    ],
+    "Paper between PCBs": [
+      "No",
+      "Yes"
+    ],
+    "Appearance Quality": [
+      "IPC Class 2 Standard",
+      "Superb Quality"
+    ],
+    "Silkscreen Technology": [
+      "Ink-jet Printing Silkscreen",
+      "High-precision Printing Silkscreen",
+      "High-definition Exposure Silkscreen"
+    ],
+    "Package Box": [
+      "With JLCPCB logo",
+      "Blank box"
+    ],
+    "Inspection Report": [
+      "No",
+      "Final Inspection Report",
+      "Electrical Test Report",
+      "ROHS Test Report"
+    ],
+    "PCBA Type": [
+      "Economic",
+      "Standard"
+    ],
+    "Assembly Side": [
+      "Top Side",
+      "Bottom Side",
+      "Both Sides"
+    ],
+    "PCBA Qty": [
+      "5"
+    ],
+    "Edge Rails/Fiducials": [
+      "Added by JLCPCB",
+      "Added by Customer"
+    ],
+    "Confirm Parts Placement": [
+      "No",
+      "Yes"
+    ],
+    "Stencil Storage": [
+      "No",
+      "Yes"
+    ],
+    "Fixture Storage": [
+      "No",
+      "Yes"
+    ],
+    "Parts Selection": [
+      "By Customer (Self-Service)",
+      "By JLCPCB (Manual Match)"
+    ]
+  }
+}

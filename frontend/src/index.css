@@ -40,6 +40,8 @@
   --success-foreground: 355.7 100% 97.3%;
   --warning: 32.1 94.6% 43.7%;
   --warning-foreground: 20.5 90.2% 4.3%;
+  --progress: 262 70% 50%;
+  --progress-foreground: 0 0% 100%;
   --border: 214.3 31.8% 91.4%;
   --input: 214.3 31.8% 91.4%;
   --ring: 221.2 83.2% 53.3%;
@@ -75,6 +77,8 @@
   --success-foreground: 144.9 80.4% 10%;
   --warning: 37.7 92.1% 50.2%;
   --warning-foreground: 20.5 90.2% 4.3%;
+  --progress: 258 90% 72%;
+  --progress-foreground: 255 60% 12%;
   --border: 217.2 32.6% 17.5%;
   --input: 217.2 32.6% 17.5%;
   --ring: 224.3 76.3% 48%;

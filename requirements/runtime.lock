@@ -23,7 +23,9 @@ cffi==2.1.1
     #   cairocffi
     #   cryptography
 charset-normalizer==3.5.1
-    # via requests
+    # via
+    #   reportlab
+    #   requests
 click==8.5.0
     # via uvicorn
 colorama==0.4.6
@@ -98,6 +100,7 @@ pillow==12.3.0
     #   -r requirements/runtime.in
     #   cairosvg
     #   pikepdf
+    #   reportlab
 platformdirs==4.11.11
     # via textual
 psycopg==3.3.6
@@ -134,6 +137,8 @@ python-fcl==0.7.0.11
 python-multipart==0.0.32
     # via -r requirements/runtime.in
 pyyaml==6.0.3
+    # via -r requirements/runtime.in
+reportlab==4.5.1
     # via -r requirements/runtime.in
 requests==2.34.2
     # via -r requirements/runtime.in
