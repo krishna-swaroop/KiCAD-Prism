@@ -339,20 +339,60 @@ export function composeFieldRasters(tiles) {
 export const BARREL_FLOATS = 8;
 export const BARREL_WORDS = 8;
 const NO_BACKDRILL = 0xffffffff;
-const UNPLATED = 2;
-const BARREL_INSTANCE_FLOATS = 12;
+/** Barrel flags (the pack's barrel words, kicad_monkey's `FLAG_*`). */
+export const BARREL_FLAGS = Object.freeze({
+  unplated: 1 << 1,
+  tentedFront: 1 << 2,
+  tentedBack: 1 << 3,
+  coveredFront: 1 << 4,
+  coveredBack: 1 << 5,
+  pluggedFront: 1 << 6,
+  pluggedBack: 1 << 7,
+  filled: 1 << 8,
+  capped: 1 << 9,
+  castellated: 1 << 10,
+});
+const BARREL_INSTANCE_FLOATS = 16;
+
+/**
+ * The board edge a castellated hole is cut by, as a half-plane in world
+ * metres (y up): the board lies where dot(p, normal) <= offset. From the
+ * dielectric outline edges (board mm, y down, material on the left) the
+ * one nearest the hole's centre within its reach; null when none is.
+ */
+export function castellationEdge(edges, centre, reach) {
+  let best = null;
+  for (let i = 0; edges && i + 3 < edges.length; i += 4) {
+    const a = [edges[i], edges[i + 1]];
+    const b = [edges[i + 2], edges[i + 3]];
+    const along = [b[0] - a[0], b[1] - a[1]];
+    const length2 = along[0] * along[0] + along[1] * along[1];
+    if (length2 <= 0) continue;
+    const t = Math.max(0, Math.min(1, ((centre[0] - a[0]) * along[0] + (centre[1] - a[1]) * along[1]) / length2));
+    const distance = Math.hypot(centre[0] - a[0] - t * along[0], centre[1] - a[1] - t * along[1]);
+    if (distance > reach || (best && distance >= best.distance)) continue;
+    // Outward, in the world (y up): the board's y is the world's -y.
+    const length = Math.sqrt(length2);
+    const normal = [along[1] / length, along[0] / length];
+    best = { distance, normal, offset: (normal[0] * a[0] - normal[1] * a[1]) / 1000 };
+  }
+  return best && { normal: best.normal, offset: best.offset };
+}
 
 /**
  * Barrel instances for the analytic renderer from a pack's barrels and the
  * drawn copper slices (`{ key, layerId, z, bottom }`, z the face the slice
  * shows): world metres, y up, each `shape (x, y, half length, angle)`,
  * `size (radius, plating, top z, bottom z)`, `ids (operation, top layer,
- * bottom layer, 0)`. A barrel spans its conductors less any a backdrill bores
+ * bottom layer, flags)` (`BARREL_FLAGS`) and `edge (normal x, normal y,
+ * offset, 0)`: a castellated hole keeps only the board's side of its edge
+ * (`castellationEdge`, from `outline`: the dielectric outline edges, board
+ * mm), any other the whole plane. A barrel spans its conductors less any a backdrill bores
  * (from its side through its until-slice, inclusive), from the top face of
  * the first to the bottom face of the last. Barrels whose span has no drawn
  * slice are skipped.
  */
-export function planBarrels(header, barrels, slices) {
+export function planBarrels(header, barrels, slices, outline = null) {
   const conductors = (header.stack?.slices || [])
     .filter((slice) => slice.role === "conductor")
     .sort((a, b) => a.order - b.order);
@@ -387,8 +427,9 @@ export function planBarrels(header, barrels, slices) {
     }
     const at = placed * BARREL_INSTANCE_FLOATS;
     floats.set([f[0] / 1000, -f[1] / 1000, f[2] / 1000, -f[3], f[4] / 1000, f[5] / 1000, top.top, bottom.bottom], at);
-    // ids.w: 1 for an unplated hole (a bare drill wall).
-    words.set([w[0], top.layerId, bottom.layerId, (w[5] & UNPLATED) ? 1 : 0], at + 8);
+    words.set([w[0], top.layerId, bottom.layerId, w[5]], at + 8);
+    const edge = (w[5] & BARREL_FLAGS.castellated) ? castellationEdge(outline, [f[0], f[1]], f[4] + f[2]) : null;
+    floats.set(edge ? [edge.normal[0], edge.normal[1], edge.offset, 0] : [0, 0, 1, 0], at + 12);
     placed += 1;
   }
   return { data: data.slice(0, placed * BARREL_INSTANCE_FLOATS * 4), count: placed, skipped };

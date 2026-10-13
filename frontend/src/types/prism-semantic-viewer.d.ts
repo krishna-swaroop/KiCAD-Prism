@@ -39,11 +39,26 @@ export interface PrismSemanticLayerState {
     visible: boolean;
 }
 
+export type PrismSemanticBoardLayerRole = "soldermask" | "silkscreen" | "paste";
+export type PrismSemanticBoardSide = "front" | "back";
+
+/** One side's solder mask, silkscreen or paste, by its KiCad name ("F.Mask", ...). */
+export interface PrismSemanticBoardLayerState {
+    role: PrismSemanticBoardLayerRole;
+    side: PrismSemanticBoardSide;
+    name: string;
+    /** CSS colour. */
+    color: string;
+    visible: boolean;
+}
+
 /** PCB 3D controls the host renders when it sets `hide-panel`. */
 export interface PrismSemanticViewState {
     /** "layer" is the stacked flat layer view. */
     mode: "3d" | "layer";
     layers: PrismSemanticLayerState[];
+    /** Each side's solder mask, silkscreen and paste the stackup lists. */
+    boardLayers?: PrismSemanticBoardLayerState[];
     showBoard: boolean;
     showComponents: boolean;
     /** Boxes standing in for footprints without a 3D model. */
@@ -114,6 +129,8 @@ export interface PrismSemanticViewerCommon {
     setShowComponents(visible: boolean): void;
     setShowPlaceholders(visible: boolean): void;
     setRealisticColors(enabled: boolean): void;
+    /** Show or hide one side's solder mask, silkscreen or paste (every placed board in a system scene). */
+    setBoardLayerVisible(role: PrismSemanticBoardLayerRole, side: PrismSemanticBoardSide, visible: boolean): void;
     /** In a system scene, `placement` names one placed board (every placement of the selected board when omitted). */
     setSeparation(value: number, placement?: string | null): void;
     showNetLayers(): void;

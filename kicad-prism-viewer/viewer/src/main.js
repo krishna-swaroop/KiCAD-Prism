@@ -2,6 +2,7 @@ import { CameraController } from "./camera.js";
 import { BomViewer } from "./bom-viewer.js";
 import {
   boardRole,
+  boardSide,
   copperLayerColor,
   FINISH_COLORS,
   finishColorFor,
@@ -132,6 +133,19 @@ function resolveDom(root = document) {
   appEl.classList.add("workspace-pcb");
 }
 
+/** Board roles drawn per side, each of which can be hidden on its own. */
+const SIDED_BOARD_ROLES = ["soldermask", "silkscreen", "paste"];
+/** Each side's solder mask, silkscreen and paste, by their KiCad layer names. */
+const BOARD_LAYERS = Object.freeze([
+  { role: "soldermask", side: "front", name: "F.Mask" },
+  { role: "soldermask", side: "back", name: "B.Mask" },
+  { role: "silkscreen", side: "front", name: "F.SilkS" },
+  { role: "silkscreen", side: "back", name: "B.SilkS" },
+  { role: "paste", side: "front", name: "F.Paste" },
+  { role: "paste", side: "back", name: "B.Paste" },
+]);
+const BOARD_LAYER_COLORS = { soldermask: "#1f6b45", silkscreen: "#f2f2f2", paste: "#a0a3a8" };
+
 function initialState() {
   return {
     workspace: "pcb",
@@ -145,6 +159,8 @@ function initialState() {
     showComponents: true,
     showPlaceholders: true,
     realisticColors: true,
+    // "role:side" keys of the solder mask, silkscreen and paste layers hidden.
+    hiddenBoardLayers: [],
     isolateNet: false,
     /** User/view prefs restored after Esc; not overwritten by net-probe toggles. */
     savedShowBoard: true,
@@ -605,6 +621,7 @@ function sharedPortMembers() {
     setShowComponents,
     setShowPlaceholders,
     setRealisticColors,
+    setBoardLayerVisible,
     setSeparation,
     showNetLayers,
   };
@@ -641,6 +658,7 @@ function pcbViewState() {
       color: rgbCss(layerColor(layer)),
       visible: selected.has(Number(layer.id)),
     })),
+    boardLayers: boardLayerViews(),
     showBoard: state.showBoard,
     showComponents: state.showComponents,
     showPlaceholders: state.showPlaceholders,
@@ -1386,14 +1404,18 @@ async function loadBoard(token = activeViewerToken, b = board) {
     ...(mask?.primitives || []),
   ];
   for (const primitive of mergePrimitivesByMaterial(contextPrimitives, boardRole)) {
+    const sided = SIDED_BOARD_ROLES.includes(primitive.groupKey);
     b.renderer.addPrimitive(primitive, {
       kind: "board",
       boardRole: primitive.groupKey,
+      // A side's mask, silkscreen and paste can each be hidden (setBoardLayerVisible).
+      ...(sided ? { side: boardSide(primitive) } : {}),
       layerId: primitive.groupKey === "paste" ? pasteLayerId(primitive, b) : 0,
       material: primitive.material,
       color: primitive.material.baseColor,
     });
   }
+  b.renderer.setHiddenBoardLayers(state.hiddenBoardLayers);
   return mergeBounds(contextPrimitives.map((primitive) => primitive.bounds));
 }
 
@@ -4708,6 +4730,35 @@ function setShowComponents(visible) {
 function setShowPlaceholders(visible) {
   state.showPlaceholders = Boolean(visible);
   for (const b of system ? systemBoards() : [board]) b.renderer?.setPlaceholdersVisible(state.showPlaceholders);
+  notifyViewStateChange();
+}
+
+/**
+ * Each side's solder mask, silkscreen and paste, as KiCad names them, for
+ * the host's layer list: `{ role, side, name, color, visible }`. A layer
+ * the board's stackup does not list is left out.
+ */
+function boardLayerViews() {
+  const stackup = new Set((board.scene?.layers || []).map((layer) => String(layer.name)));
+  const hidden = new Set(state.hiddenBoardLayers);
+  const colorOf = (role) => {
+    const entry = (board.renderer?.entries || []).find((item) => item.kind === "board" && item.boardRole === role);
+    const color = entry?.color || entry?.material?.baseColor;
+    return color ? rgbCss(color) : BOARD_LAYER_COLORS[role];
+  };
+  return BOARD_LAYERS
+    .filter((layer) => !stackup.size || stackup.has(layer.name))
+    .map((layer) => ({ ...layer, color: colorOf(layer.role), visible: !hidden.has(`${layer.role}:${layer.side}`) }));
+}
+
+/** Show or hide one side's solder mask, silkscreen or paste (`role` as `boardRole` names it). */
+function setBoardLayerVisible(role, side, visible) {
+  const key = `${role}:${side}`;
+  const hidden = new Set(state.hiddenBoardLayers);
+  if (visible) hidden.delete(key);
+  else hidden.add(key);
+  state.hiddenBoardLayers = [...hidden];
+  for (const b of system ? systemBoards() : [board]) b.renderer?.setHiddenBoardLayers(state.hiddenBoardLayers);
   notifyViewStateChange();
 }
 

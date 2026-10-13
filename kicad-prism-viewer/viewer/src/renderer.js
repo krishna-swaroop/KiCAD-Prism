@@ -962,6 +962,8 @@ export class Renderer {
     // id. It always exists so every bind group is valid before any hide call.
     this.hiddenFeatureIds = new Set();
     this.showPlaceholders = true;
+    // "role:side" keys of the board layers hidden (`setHiddenBoardLayers`).
+    this.hiddenBoardLayers = new Set();
     this.featureMaskCapacity = MIN_FEATURE_MASK_CAPACITY;
     this.featureMaskBuffer = this.createFeatureMaskBuffer(
       this.featureMaskCapacity,
@@ -2174,7 +2176,8 @@ export class Renderer {
     const hidePaste = !showPaste || Boolean(activeNetId || this.netHighlightActive);
     const visibleEntries = this.entries.filter((entry) =>
       this.visible(entry, panel.layerId, visibleLayers, showBoard, showComponents, componentOpacity, compareMode, visibleTileIds)
-      && !(hidePaste && entry.boardRole === "paste"));
+      && !(hidePaste && entry.boardRole === "paste")
+      && !(entry.side && this.hiddenBoardLayers?.has(`${entry.boardRole}:${entry.side}`)));
     // Blended entries (mask, silkscreen, placeholders) draw after the opaque
     // ones, the barrels and the stand-in boxes, so the copper under the mask
     // shows through it. Marking copper goes last among the opaque ones, which
@@ -2207,7 +2210,7 @@ export class Renderer {
     draws += visibleEntries.length;
     // Analytic slices (VT analytic spike) draw with the opaque geometry, before the barrels and the mask.
     if (this.analytic && !compareMode) {
-      analyticContext = { matrix: panel.matrix, showBoard, boardOpacity, hidePaste, isolateNet, panelLayer: panel.layerId, assemblyOpacity: showPaste ? 1 : componentOpacity };
+      analyticContext = { matrix: panel.matrix, showBoard, boardOpacity, hidePaste, isolateNet, panelLayer: panel.layerId, assemblyOpacity: showPaste ? 1 : componentOpacity, hiddenBoardLayers: this.hiddenBoardLayers };
       draws += this.analytic.encodeInto(pass, layerOffsets, panel.layerId ? new Set([panel.layerId]) : visibleLayers, false, analyticContext);
       // The pack's barrels, exact, in place of the mesh barrels.
       draws += this.analytic.encodeBarrels(pass, layerOffsets, panel.matrix);
@@ -2294,6 +2297,16 @@ export class Renderer {
   /** Show or hide the boxes standing in for footprints without a 3D model. */
   setPlaceholdersVisible(visible) {
     this.showPlaceholders = Boolean(visible);
+    this.invalidate();
+  }
+
+  /**
+   * Hide each side's solder mask, silkscreen or paste named in `keys`
+   * ("soldermask:front", "paste:back", ...; see `boardLayerKey`), mesh and
+   * analytic alike.
+   */
+  setHiddenBoardLayers(keys) {
+    this.hiddenBoardLayers = new Set(keys || []);
     this.invalidate();
   }
 

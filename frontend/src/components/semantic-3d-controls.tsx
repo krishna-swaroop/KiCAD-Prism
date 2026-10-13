@@ -19,10 +19,40 @@ import {
 } from "./ecad-viewer-controls";
 import { BoardLayerSections, LAYER_PRESETS } from "./semantic-3d-board-layers";
 import type {
+    PrismSemanticBoardLayerState,
     PrismSemanticLayerPreset,
     PrismSemanticViewerElement,
     PrismSemanticViewState,
 } from "@/types/prism-semantic-viewer";
+
+/**
+ * Each side's solder mask, paste and silkscreen, shown and hidden like the
+ * copper layers. In a system scene they apply to every placed board.
+ */
+function TechnicalLayerList({
+    viewer,
+    layers,
+}: {
+    viewer: PrismSemanticViewerElement | null;
+    layers: readonly PrismSemanticBoardLayerState[];
+}) {
+    const byName = useMemo(() => new Map(layers.map((layer) => [layer.name, layer])), [layers]);
+    if (!layers.length) return null;
+    return (
+        <div className="border-t p-2" aria-label="Technical layers">
+            <p className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Technical layers
+            </p>
+            <PcbLayerList
+                layers={layers.map((layer) => ({ name: layer.name, color: layer.color, visible: layer.visible, highlighted: false }))}
+                onToggleVisibility={(name, visible) => {
+                    const layer = byName.get(name);
+                    if (layer) viewer?.setBoardLayerVisible?.(layer.role, layer.side, visible);
+                }}
+            />
+        </div>
+    );
+}
 
 /**
  * The PCB 3D side menu. Same frame and parts as the Schematic/PCB menu; the
@@ -60,6 +90,7 @@ export function Semantic3dControls({
         [viewState],
     );
     const boards = viewState?.boards;
+    const boardLayers = viewState?.mode === "layer" ? [] : viewState?.boardLayers ?? [];
 
     return (
         <ViewerSideRail
@@ -135,6 +166,7 @@ export function Semantic3dControls({
                                 boards={boards}
                                 selectedBoard={viewState?.selectedBoard ?? null}
                             />
+                            <TechnicalLayerList viewer={viewer} layers={boardLayers} />
                         </ScrollArea>
                     ) : <>
                     <div className="border-b p-3">
@@ -164,6 +196,7 @@ export function Semantic3dControls({
                                 <p className="px-2 py-8 text-center text-xs text-muted-foreground">Layers are loading…</p>
                             )}
                         </div>
+                        <TechnicalLayerList viewer={viewer} layers={boardLayers} />
                     </ScrollArea>
                     </>}
                 </>

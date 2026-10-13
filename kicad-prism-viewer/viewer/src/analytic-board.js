@@ -71,7 +71,10 @@ export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wa
   const analytic = new AnalyticRenderer(renderer);
   analytic.setSlices(slices);
   // Barrels and drill walls from the pack's holes replace the bundle's mesh barrels.
-  analytic.setBarrels(planBarrels(pack.header, pack.barrels(), slices));
+  // Castellated holes are cut by the board's outline (any dielectric's).
+  const outline = slices.find((slice) => slice.role === "dielectric" && slice.lowered?.contourEdges?.length)?.lowered.contourEdges;
+  analytic.setBarrels(planBarrels(pack.header, pack.barrels(), slices, outline));
+  analytic.edgePlated = Boolean(pack.header.stack?.edge_plating);
   analytic.setWalls(planWalls(slices, lowered, layers, zOffset));
   // Net glow and isolation read each operation's viewer net.
   const netIds = operationNetIds(pack, nets);

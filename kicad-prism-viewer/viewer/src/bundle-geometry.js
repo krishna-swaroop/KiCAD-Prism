@@ -11,6 +11,19 @@ export function boardRole(primitive) {
   return "substrate";
 }
 
+/**
+ * The side a merged solder mask, silkscreen or paste primitive lies on:
+ * "back" for a `*_bottom` material, "front" for `*_top`, else by which side
+ * of the centred stackup its bounds sit (`[min x, y, z, max x, y, z]`).
+ */
+export function boardSide(primitive) {
+  const name = String(primitive.material?.name || "").toLowerCase();
+  if (name.endsWith("_bottom")) return "back";
+  if (name.endsWith("_top")) return "front";
+  const bounds = primitive.bounds;
+  return bounds && (bounds[2] + bounds[5]) / 2 < 0 ? "back" : "front";
+}
+
 export function mergePrimitivesByMaterial(primitives, classifier = () => "") {
   const groups = new Map();
   for (const primitive of primitives) {

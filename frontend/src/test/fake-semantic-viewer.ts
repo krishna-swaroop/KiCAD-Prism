@@ -54,6 +54,7 @@ export class FakeSemanticViewer extends HTMLElement implements PrismSemanticView
     readonly setShowComponents = vi.fn();
     readonly setShowPlaceholders = vi.fn();
     readonly setRealisticColors = vi.fn();
+    readonly setBoardLayerVisible = vi.fn();
     readonly setSeparation = vi.fn();
     readonly showNetLayers = vi.fn();
     readonly pickAt = vi.fn(async (): Promise<PrismViewerPick | null> => null);

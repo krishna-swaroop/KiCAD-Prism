@@ -31,7 +31,7 @@
  * @property {(bytes: number) => void} setGpuBudget A normalised budget (`gpuBudgetBytes`).
  * The remaining members are the view controls both modes share (see COMMON_MEMBERS):
  * resize, getViewState, setLayerVisible, applyLayerPreset, setShowBoard, setShowComponents,
- * setShowPlaceholders, setRealisticColors, setSeparation, showNetLayers, setStatsOverlay,
+ * setShowPlaceholders, setRealisticColors, setBoardLayerVisible, setSeparation, showNetLayers, setStatsOverlay,
  * stats, setLodOverride, pickAt, projectComponent, projectPoint.
  *
  * @typedef {ScenePort & object} BoardScenePort One board (mountStandaloneViewer).
@@ -145,7 +145,7 @@ export function createSharedState() {
 /** Members both modes have; the element sends them to the mounted mode. */
 export const COMMON_MEMBERS = Object.freeze([
   "setSelection", "resize", "getViewState", "setLayerVisible", "applyLayerPreset", "setShowBoard",
-  "setShowComponents", "setShowPlaceholders", "setRealisticColors", "setSeparation", "showNetLayers",
+  "setShowComponents", "setShowPlaceholders", "setRealisticColors", "setBoardLayerVisible", "setSeparation", "showNetLayers",
   "setNetIsolation", "setStatsOverlay", "getStats", "setLodOverride", "setGpuBudget", "pickAt",
   "projectComponent", "projectPoint",
 ]);
@@ -225,6 +225,10 @@ class ModeController {
 
   setRealisticColors(enabled) {
     this.#port?.setRealisticColors(enabled);
+  }
+
+  setBoardLayerVisible(role, side, visible) {
+    this.#port?.setBoardLayerVisible(role, side, visible);
   }
 
   setSeparation(value, placement = null) {

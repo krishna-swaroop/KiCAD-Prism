@@ -18,7 +18,7 @@ import {
   valueRange,
 } from "./analytic-pack.js";
 import { analyticFeatureId, copperPlane, copperZOffset } from "./analytic-board.js";
-import { BARREL_FLOATS, BARREL_WORDS, operationNetIds, planBarrels } from "./analytic-pack.js";
+import { BARREL_FLAGS, BARREL_FLOATS, BARREL_WORDS, castellationEdge, operationNetIds, planBarrels } from "./analytic-pack.js";
 import { BATCH_WORDS, COVER_WORDS, SHAPE_WORDS } from "./analytic-shaders.js";
 
 const vendor = new URL("../vendor/kicad-monkey-analytic/", import.meta.url);
@@ -149,8 +149,37 @@ test("barrels span their drawn conductors, less what a backdrill bores", () => {
   // World metres, y up, the angle turned with it; top face of F.Cu to underside of B.Cu.
   assert.ok([0.01, -0.02, 0.0004, -Math.PI / 2, 0.0003, 0.000025, 0.0015, 0].every((value, i) => near(f[i], Math.fround(value))));
   assert.deepEqual([...w.slice(8, 12)], [9, 4, 14, 0]);
-  assert.ok(near(f[12 + 6], 0.0015) && near(f[12 + 7], Math.fround(0.0015 - 0.000035)));
-  assert.deepEqual([...w.slice(20, 24)], [11, 4, 4, 0]);
+  // Not castellated: the whole plane (0 <= 1 everywhere).
+  assert.deepEqual([...f.slice(12, 16)], [0, 0, 1, 0]);
+  assert.ok(near(f[16 + 6], 0.0015) && near(f[16 + 7], Math.fround(0.0015 - 0.000035)));
+  assert.deepEqual([...w.slice(24, 28)], [11, 4, 4, 0]);
+});
+
+test("a castellated hole keeps the board's side of its nearest outline edge", () => {
+  // A 10 mm square board (board mm, y down), each edge with the board on its
+  // left normal (-y, x), as the lowering writes them: the right edge runs
+  // from (10, 0) to (10, 10).
+  const square = [0, 0, 10, 0, 10, 0, 10, 10, 10, 10, 0, 10, 0, 10, 0, 0];
+  const edge = castellationEdge(square, [10, 5], 0.5);
+  // Outward is +x in the world; the board is where x <= 10 mm.
+  assert.ok(Math.abs(edge.normal[0] - 1) < 1e-12 && Math.abs(edge.normal[1]) < 1e-12);
+  assert.ok(Math.abs(edge.offset - 0.01) < 1e-12);
+  // The bottom edge (board y = 10, world y = -0.01): outward is the world's -y.
+  const bottom = castellationEdge(square, [5, 10], 0.5);
+  assert.ok(Math.abs(bottom.normal[1] + 1) < 1e-12 && Math.abs(bottom.offset - 0.01) < 1e-12);
+  assert.equal(castellationEdge(square, [5, 5], 0.5), null);
+  // Planned: the flag rides through, the half-plane with it.
+  const header = { stack: { slices: [{ key: "copper.front", role: "conductor", order: 0 }, { key: "copper.back", role: "conductor", order: 2 }] } };
+  const slices = [
+    { key: "copper.front", role: "copper", layerId: 1, zTop: 0.0008, zBottom: 0.00077 },
+    { key: "copper.back", role: "copper", layerId: 2, zTop: -0.00077, zBottom: -0.0008 },
+  ];
+  const floats = new Float32Array([10, 5, 0, 0, 0.4, 0.025, 0, 0]);
+  const words = new Uint32Array([3, 0, 2, 0xffffffff, 0xffffffff, BARREL_FLAGS.castellated | BARREL_FLAGS.filled, 0, 0]);
+  const planned = planBarrels(header, { floats, words }, slices, square);
+  const f = new Float32Array(planned.data);
+  assert.equal(new Uint32Array(planned.data)[11], BARREL_FLAGS.castellated | BARREL_FLAGS.filled);
+  assert.ok(Math.abs(f[12] - 1) < 1e-6 && Math.abs(f[14] - 0.01) < 1e-6);
 });
 
 test("operations carry the viewer's net ids, and name the feature a click selects", async () => {

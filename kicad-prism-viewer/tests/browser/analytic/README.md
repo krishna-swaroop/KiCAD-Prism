@@ -34,7 +34,11 @@ records the operation, binding, and value under each.
 
 Every mesh/analytic pair reports the pixels that differ and the share that
 differ visibly (beyond 8 levels), so shading drift shows apart from the edge
-pixels exact shapes move. The run fails on page errors, on an overlay that
+pixels exact shapes move. The analytic board draws its laminate in the
+stackup's dielectric colour (FR4 natural unless the stackup names another),
+where the mesh body takes a darkened mask colour: through the translucent
+mask the laminate's areas then differ visibly by design (about 9% of the top
+and bottom views on openswitch-10x10g-carrier). The run fails on page errors, on an overlay that
 does not change the picture, on analytic layers that draw nothing, on picks
 that name no operation, and on a device without the depth-stencil feature
 (subtracts and regions need it).

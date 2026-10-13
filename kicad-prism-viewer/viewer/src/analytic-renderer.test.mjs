@@ -277,7 +277,7 @@ test("a conformal mask rises over copper, lies low on laminate, steps between, a
   const coat = names.indexOf("coat");
   assert.ok(coat > names.indexOf("tintHigh") && coat < names.indexOf("tintLow"));
   assert.equal(names.filter((name) => name === "coat").length, 2);
-  for (const [pixel, value] of stencil) assert.equal(value & 0xe2, 0, `${pixel}: bits 1, 5, 6 and 7 clear`);
+  for (const [pixel, value] of stencil) assert.equal(value & 0xe6, 0, `${pixel}: bits 1, 2, 5, 6 and 7 clear`);
 });
 
 test("silkscreen on a trace survives the mask over laminate hidden beneath it", () => {
@@ -300,5 +300,33 @@ test("silkscreen on a trace survives the mask over laminate hidden beneath it", 
   const hidden = (step, call) => step === "coverLay" && call.group === "low";
   const { stencil, colouredBy } = replay(pass.calls, ["trace"], () => 1, {}, hidden);
   assert.equal(colouredBy.get("trace"), "coverOnFoot");
-  assert.equal(stencil.get("trace") & 0xe2, 0);
+  assert.equal(stencil.get("trace") & 0xe6, 0);
+});
+
+test("silkscreen never prints in a mask opening", () => {
+  const renderer = Object.create(AnalyticRenderer.prototype);
+  renderer.pipelines = { color: { ...Object.fromEntries(Object.keys(STENCIL_STEPS).map((name) => [name, name])), step: "coat", regionStep: "coat" } };
+  renderer.writeSlice = () => {};
+  renderer.wallPixels = () => 10;
+  const batches = [{ subtract: false, firstVertex: 0, vertexCount: 3, firstCover: 0, coverCount: 1 }];
+  const slice = (key) => ({ shapeCount: 0, subtractShapes: 0, fans: {}, batches, bindGroup: key, key });
+  const mask = { ...slice("mask"), role: "mask" };
+  const low = { ...slice("low"), role: "mask" };
+  const foot = { ...slice("foot"), regionEdges: 0, skirtEdges: 0, zTop: 1, zBottom: 0 };
+  const silk = { ...slice("silk"), role: "silk" };
+  renderer.twins = new Map([[silk, { low: slice("silkLow") }]]);
+  const pass = recordingPass();
+  renderer.encodeConformal(pass, mask, { low, foot }, [silk], null, () => null);
+  // A pad in an opening (on the footprint, the mask's fan twice: a hole),
+  // and bare laminate in an opening (off it); silk crosses both.
+  const cover = (step, call, pixel) => {
+    if (step !== "fan") return 1;
+    if (call.group === "mask" || call.group === "low") return 2;
+    if (call.group === "foot") return pixel === "pad" ? 1 : 0;
+    return 1;
+  };
+  const { stencil, colouredBy } = replay(pass.calls, ["pad", "laminate"], cover);
+  assert.equal(colouredBy.get("pad"), undefined);
+  assert.equal(colouredBy.get("laminate"), undefined);
+  for (const [pixel, value] of stencil) assert.equal(value & 0xe6, 0, `${pixel} clean: ${value.toString(16)}`);
 });

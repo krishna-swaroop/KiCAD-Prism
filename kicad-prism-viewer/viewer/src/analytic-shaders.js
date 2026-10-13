@@ -837,23 +837,24 @@ export const STENCIL_STEPS = Object.freeze({
   // covers set it where their fan left bit 6 (then cleared by coverClear).
   footShape: { face: { compare: "always", passOp: "replace" }, read: 0, write: 0x02, reference: 0x02, color: false, depth: false },
   footCover: { face: { compare: "equal", passOp: "replace", failOp: "keep" }, read: 0x40, write: 0x02, reference: 0x42, color: false, depth: false },
-  // The mask over copper: laid (bit 5) and on the footprint.
-  tintHigh: { face: { compare: "equal", passOp: "keep" }, read: 0x22, write: 0x00, reference: 0x22, color: true, depth: true },
+  // The mask over copper: laid (bit 5) and on the footprint. Where the
+  // mask shows, bit 2 marks it, so silkscreen prints only on mask.
+  tintHigh: { face: { compare: "equal", passOp: "replace" }, read: 0x22, write: 0x04, reference: 0x26, color: true, depth: true },
 
   // The mask over laminate: laid again at its lower face, off the footprint.
-  tintLow: { face: { compare: "equal", passOp: "keep" }, read: 0x22, write: 0x00, reference: 0x20, color: true, depth: true },
+  tintLow: { face: { compare: "equal", passOp: "replace" }, read: 0x22, write: 0x04, reference: 0x24, color: true, depth: true },
   // Clear the lay (bits 5, 6 and 7), keeping the footprint. Bit 6 too: a
   // cover hidden by depth (the mask over laminate, under the mask on a
   // trace) keeps its fan's bit, which would flip the next fan's parity.
   clearLay: { face: { compare: "always", passOp: "zero" }, read: 0, write: 0xe0, reference: 0, color: false, depth: false },
-  // Silkscreen on the mask: on the footprint, then off it (first writer
-  // wins, as shapeBlend and coverBlend).
-  shapeOnFoot: { face: { compare: "equal", passOp: "invert" }, read: 0xa2, write: 0x20, reference: 0x02, color: true, depth: true },
-  shapeOffFoot: { face: { compare: "equal", passOp: "invert" }, read: 0xa2, write: 0x20, reference: 0x00, color: true, depth: true },
-  coverOnFoot: { face: { compare: "equal", passOp: "invert", failOp: "keep", depthFailOp: "keep" }, read: 0xe2, write: 0x60, reference: 0x42, color: true, depth: true },
-  coverOffFoot: { face: { compare: "equal", passOp: "invert", failOp: "keep", depthFailOp: "keep" }, read: 0xe2, write: 0x60, reference: 0x40, color: true, depth: true },
-  // Clear the footprint when the side is done.
-  clearFoot: { face: { compare: "always", passOp: "zero" }, read: 0, write: 0x02, reference: 0, color: false, depth: false },
+  // Silkscreen on the mask (bit 2), never in its openings: on the
+  // footprint, then off it (first writer wins, as shapeBlend and coverBlend).
+  shapeOnFoot: { face: { compare: "equal", passOp: "invert" }, read: 0xa6, write: 0x20, reference: 0x06, color: true, depth: true },
+  shapeOffFoot: { face: { compare: "equal", passOp: "invert" }, read: 0xa6, write: 0x20, reference: 0x04, color: true, depth: true },
+  coverOnFoot: { face: { compare: "equal", passOp: "invert", failOp: "keep", depthFailOp: "keep" }, read: 0xe6, write: 0x60, reference: 0x46, color: true, depth: true },
+  coverOffFoot: { face: { compare: "equal", passOp: "invert", failOp: "keep", depthFailOp: "keep" }, read: 0xe6, write: 0x60, reference: 0x44, color: true, depth: true },
+  // Clear the footprint and the mask's mark when the side is done.
+  clearFoot: { face: { compare: "always", passOp: "zero" }, read: 0, write: 0x06, reference: 0, color: false, depth: false },
   // The mask's step (a coat seen edge on): solid, and only off the footprint,
   // so where it reaches past the mask's face it fills the samples that face
   // leaves open and never shows through it (a track's end inside the next).
@@ -866,8 +867,8 @@ export const STENCIL_STEPS = Object.freeze({
 export const STENCIL_KEEP = keep;
 
 /** Floats and bytes per barrel instance (`struct Barrel` below). */
-export const BARREL_INSTANCE_BYTES = 48;
-export const BARREL_VIEW_BYTES = 80;
+export const BARREL_INSTANCE_BYTES = 64;
+export const BARREL_VIEW_BYTES = 112;
 export const WALL_INSTANCE_BYTES = 48;
 
 /**
@@ -907,11 +908,18 @@ struct View {
   padding2: u32,
   range: vec2f,
   padding3: vec2f,
+  // The board's side walls (laminate, or plating on a plated edge).
+  edgeColor: vec4f,
+  // What covers or plugs a via from one side: the solder mask's colour.
+  coverColor: vec4f,
 };
 struct Barrel {
   shape: vec4f,
   size: vec4f,
+  // Operation, top layer, bottom layer, flags (BARREL_FLAGS).
   ids: vec4u,
+  // A castellated hole's board edge: the board is where dot(xy, edge.xy) <= edge.z.
+  edge: vec4f,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<uniform> view: View;
@@ -1022,6 +1030,11 @@ fn prism(o: vec2f, d: vec2f, half: f32, r: f32) -> vec2f {
   return vec2f(lo, hi);
 }
 
+// A point of the tube's frame (xy) in the world.
+fn toWorld(b: Barrel, p: vec2f) -> vec2f {
+  return b.shape.xy + turn(p, b.shape.w);
+}
+
 fn segmentDistance(p: vec2f, half: f32) -> f32 {
   return length(vec2f(p.x - clamp(p.x, -half, half), p.y));
 }
@@ -1029,10 +1042,33 @@ fn outward(p: vec2f, half: f32) -> vec2f {
   return normalize(vec2f(p.x - clamp(p.x, -half, half), p.y) + vec2f(0.0, 1e-30));
 }
 
+const UNPLATED = 2u;
+const COVERED_FRONT = 16u;
+const COVERED_BACK = 32u;
+const PLUGGED_FRONT = 64u;
+const PLUGGED_BACK = 128u;
+const FILLED = 256u;
+const CAPPED = 512u;
+// How far into the bore a plug's face lies, as a share of the barrel.
+const PLUG_RECESS = 0.2;
+// Via fill and plug resin: a cured epoxy's warm grey.
+const RESIN = vec3f(0.46, 0.43, 0.36);
+
+// What a ray meets: the plating, a cap's copper, resin, or a cover.
+const MEETS_PLATING = 0u;
+const MEETS_RESIN = 1u;
+const MEETS_COVER = 2u;
+
 struct Surface {
   t: f32,
   normal: vec3f,
+  meets: u32,
 };
+
+// Whether a world point lies on the board's side of a castellated hole's edge.
+fn onBoard(b: Barrel, world: vec2f) -> bool {
+  return dot(world, b.edge.xy) <= b.edge.z;
+}
 
 // The nearest tube surface along the fragment's view ray, or t = FAR.
 fn surface(input: BarrelOut) -> Surface {
@@ -1055,25 +1091,51 @@ fn surface(input: BarrelOut) -> Surface {
   let half = b.shape.z;
   let outer = b.size.x;
   let inner = max(outer - b.size.y, outer * 0.5);
-  var best = Surface(FAR, vec3f(0.0, 0.0, 1.0));
+  var best = Surface(FAR, vec3f(0.0, 0.0, 1.0), MEETS_PLATING);
+  let flags = b.ids.w;
+  // A castellated hole is cut by the board's edge: only its board side stands.
   let walls = array<vec2f, 2>(prism(o.xy, d.xy, half, outer), prism(o.xy, d.xy, half, inner));
   // The outer wall where the ray enters it; the plating's inner wall where it leaves the bore.
   for (var wall = 0u; wall < 2u; wall += 1u) {
     let t = select(walls[0].x, walls[1].y, wall == 1u);
     let p = o + d * t;
-    if (abs(t) < FAR && t > near && t < best.t && p.z <= top && p.z >= bottom) {
+    if (abs(t) < FAR && t > near && t < best.t && p.z <= top && p.z >= bottom && onBoard(b, toWorld(b, p.xy))) {
       let n = outward(p.xy, half) * select(1.0, -1.0, wall == 1u);
-      best = Surface(t, vec3f(n, 0.0));
+      best = Surface(t, vec3f(n, 0.0), MEETS_PLATING);
     }
   }
-  // The caps: the ring between the bore and the drill at each end.
   if (abs(d.z) > 1e-24) {
+    // The caps: the ring between the bore and the drill at each end.
     for (var end = 0u; end < 2u; end += 1u) {
       let plane = select(bottom, top, end == 1u);
       let t = (plane - o.z) / d.z;
-      let reach = segmentDistance((o + d * t).xy, half);
-      if (t > near && t < best.t && reach <= outer && reach >= inner) {
-        best = Surface(t, vec3f(0.0, 0.0, select(-1.0, 1.0, end == 1u)));
+      let p = o + d * t;
+      let reach = segmentDistance(p.xy, half);
+      if (t > near && t < best.t && reach <= outer && reach >= inner && onBoard(b, toWorld(b, p.xy))) {
+        best = Surface(t, vec3f(0.0, 0.0, select(-1.0, 1.0, end == 1u)), MEETS_PLATING);
+      }
+    }
+    // Across the bore (IPC-4761): a copper cap over a filled via, else
+    // resin flush with each end when filled, or recessed from a plugged
+    // side; a cover over the end of a covered side.
+    let recess = (top - bottom) * PLUG_RECESS;
+    for (var end = 0u; end < 2u; end += 1u) {
+      let front = end == 1u;
+      let covered = (flags & select(COVERED_BACK, COVERED_FRONT, front)) != 0u;
+      let plugged = (flags & select(PLUGGED_BACK, PLUGGED_FRONT, front)) != 0u;
+      let filled = (flags & FILLED) != 0u;
+      let capped = (flags & CAPPED) != 0u;
+      if (!(covered || plugged || filled || capped)) { continue; }
+      let face = select(bottom, top, front);
+      var plane = face;
+      var meets = MEETS_RESIN;
+      if (capped) { meets = MEETS_PLATING; }
+      else if (covered) { meets = MEETS_COVER; }
+      else if (!filled) { plane = face + select(recess, -recess, front); }
+      let t = (plane - o.z) / d.z;
+      let p = o + d * t;
+      if (t > near && t < best.t && segmentDistance(p.xy, half) < inner && onBoard(b, toWorld(b, p.xy))) {
+        best = Surface(t, vec3f(0.0, 0.0, select(-1.0, 1.0, front)), meets);
       }
     }
   }
@@ -1108,7 +1170,7 @@ struct PickOut {
   out.depth = hitDepth(input, hit.t);
   let value = values[b.ids.x];
   // An unplated hole is a bare drill wall in the substrate's colour, shown with the board.
-  if (b.ids.w == 1u) {
+  if ((b.ids.w & UNPLATED) != 0u) {
     if (view.board == 0u) { discard; }
     let light = normalize(globals.lightDirection.xyz);
     out.color = vec4f(view.wallColor.rgb * (0.62 + max(dot(hit.normal, light), 0.0) * 0.72), 1.0);
@@ -1121,13 +1183,19 @@ struct PickOut {
     out.color = vec4f(viridis(normalized(value)), 1.0);
     return out;
   }
+  let light = normalize(globals.lightDirection.xyz);
+  // Resin and covers are not the net's copper: they keep their own colour.
+  if (hit.meets != MEETS_PLATING) {
+    let surfaceColor = select(RESIN, view.coverColor.rgb, hit.meets == MEETS_COVER);
+    out.color = vec4f(surfaceColor * (0.62 + max(dot(hit.normal, light), 0.0) * 0.72), 1.0);
+    return out;
+  }
   var base = view.color.rgb;
   if (lit) {
     base = vec3f(0.1, 1.0, 0.22) * (0.88 + 0.12 * sin(globals.time * 3.2));
   } else if (globals.hasHighlight > 0.5) {
     base = mix(base, vec3f(0.12, 0.14, 0.17), 0.58);
   }
-  let light = normalize(globals.lightDirection.xyz);
   out.color = vec4f(base * (0.38 + max(dot(hit.normal, light), 0.0) * 0.72), 1.0);
   return out;
 }
@@ -1135,7 +1203,7 @@ struct PickOut {
 @fragment fn fs_barrel_pick(input: BarrelOut) -> PickOut {
   let hit = surface(input);
   let b = barrels[input.barrel];
-  if (hit.t >= FAR || (view.isolate == 1u && !netLit(b.ids.x)) || (b.ids.w == 1u && view.board == 0u)) { discard; }
+  if (hit.t >= FAR || (view.isolate == 1u && !netLit(b.ids.x)) || ((b.ids.w & UNPLATED) != 0u && view.board == 0u)) { discard; }
   var out: PickOut;
   out.depth = hitDepth(input, hit.t);
   out.pick = vec4u(PICK_TAG, b.ids.x + 1u, 0u, 0u);
@@ -1175,6 +1243,8 @@ struct View {
   solid: u32,
   range: vec2f,
   padding3: vec2f,
+  edgeColor: vec4f,
+  coverColor: vec4f,
 };
 struct Wall {
   ends: vec4f,
@@ -1220,7 +1290,7 @@ fn aces(color: vec3f) -> vec3f {
   let light = normalize(globals.lightDirection.xyz);
   // Lit and tone mapped as the slabs' faces are (lightNormal's ambient), so
   // an edge turned from the light still reads as laminate, not black.
-  let base = view.wallColor.rgb * (0.62 + max(dot(normal, light), 0.0) * 0.72);
+  let base = view.edgeColor.rgb * (0.62 + max(dot(normal, light), 0.0) * 0.72);
   return vec4f(aces(base), view.wallColor.a);
 }
 `;

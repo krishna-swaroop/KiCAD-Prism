@@ -60,6 +60,23 @@ export function recordBounds(words, index) {
 /** How far (mm) a conformal mask's step stands off its copper, clearing the copper's wall. */
 export const STEP_CLEARANCE_MM = 0.0005;
 
+/** The viewer's board-layer role of an analytic slice role. */
+const BOARD_ROLE = { mask: "soldermask", silk: "silkscreen", paste: "paste" };
+
+/**
+ * Whether `hidden` (a set of "role:side" keys, as `boardLayerKey` makes)
+ * hides `slice`: a side's solder mask, silkscreen or paste.
+ */
+export function hiddenBoardLayer(hidden, slice) {
+  const role = BOARD_ROLE[slice.role];
+  return Boolean(hidden?.size && role) && hidden.has(boardLayerKey(role, slice.faceDown ? "back" : "front"));
+}
+
+/** The key a side's board layer is hidden by: "soldermask:front", "paste:back", ... */
+export function boardLayerKey(role, side) {
+  return `${role}:${side}`;
+}
+
 /** Below this many pixels tall, a slab's shape walls are not drawn. */
 export const WALL_MIN_PIXELS = 0.3;
 
@@ -209,6 +226,9 @@ export class AnalyticRenderer {
     // Solid: shown, opaque, and not separated (the viewer then hides inner copper).
     words[15] = this.boardShown(context) && (context.boardOpacity ?? 1) >= 0.999 && this.renderer.innerCopperMode !== "all" ? 1 : 0;
     floats.set(this.overlay.range, 16);
+    // A plated edge (the stackup's edge_plating) is copper, as the barrels are.
+    floats.set(this.edgePlated ? [...(this.renderer.barrelColor || [0.55, 0.35, 0.16]).slice(0, 3), wallOpacity] : [...laminate.slice(0, 3), wallOpacity], 20);
+    floats.set([...(this.boardLooks().soldermask?.color || [0.06, 0.16, 0.11]).slice(0, 3), 1], 24);
     this.device.queue.writeBuffer(this.barrelView, 0, this.viewScratch);
   }
 
@@ -800,23 +820,25 @@ export class AnalyticRenderer {
     for (const slice of this.slices) if (fading && slice.role === "dielectric") draw(slice, "blend");
     if (fading) drawn += this.encodeWalls(pass, true);
     const assembled = boardShown && (context.assemblyOpacity ?? 1) > 0.01;
-    // Each side's mask coats its copper, its silkscreen printed on it.
+    // Each side's mask coats its copper, its silkscreen printed on it; the
+    // viewer hides any side's mask, silkscreen or paste on its own.
+    const shown = (slice) => !hiddenBoardLayer(context.hiddenBoardLayers, slice);
     const printed = new Set();
     for (const mask of this.slices) {
-      if (mask.role !== "mask" || !assembled || this.behindBoard(mask, context)) continue;
+      if (mask.role !== "mask" || !assembled || !shown(mask) || this.behindBoard(mask, context)) continue;
       const twins = this.twins.get(mask);
       if (!twins?.foot) {
         draw(mask, "mask");
         continue;
       }
-      const silks = this.slices.filter((slice) => slice.role === "silk" && slice.faceDown === mask.faceDown && !this.behindBoard(slice, context));
+      const silks = this.slices.filter((slice) => slice.role === "silk" && slice.faceDown === mask.faceDown && shown(slice) && !this.behindBoard(slice, context));
       for (const silk of silks) printed.add(silk);
       drawn += this.encodeConformal(pass, mask, twins, silks, layerOffsets, (slice) => this.lookFor(slice, copper, board, context));
     }
     for (const slice of this.slices) {
-      if (slice.role === "paste" && !context.hidePaste && !context.panelLayer && (!visibleLayers || visibleLayers.has(slice.offsetLayers?.[0]))) draw(slice, "blend");
+      if (slice.role === "paste" && shown(slice) && !context.hidePaste && !context.panelLayer && (!visibleLayers || visibleLayers.has(slice.offsetLayers?.[0]))) draw(slice, "blend");
     }
-    for (const slice of this.slices) if (slice.role === "silk" && assembled && !printed.has(slice)) draw(slice, "blend");
+    for (const slice of this.slices) if (slice.role === "silk" && assembled && shown(slice) && !printed.has(slice)) draw(slice, "blend");
     pass.setStencilReference(1);
     return drawn;
   }
