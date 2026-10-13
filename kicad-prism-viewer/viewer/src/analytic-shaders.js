@@ -52,7 +52,9 @@ struct Slice {
   z: f32,
   overlay: u32,
   fieldOn: u32,
-  padding0: f32,
+  // 1: copper off the lit nets is not drawn (net isolation, or inner copper
+  // shown only where lit); 2: the layer is copper (it glows with its nets).
+  netMode: u32,
   fieldOrigin: vec2f,
   fieldPitch: f32,
   padding1: f32,
@@ -71,6 +73,8 @@ struct Slice {
 @group(0) @binding(3) var<storage, read> covers: array<u32>;
 @group(0) @binding(4) var<storage, read> values: array<f32>;
 @group(0) @binding(5) var field: texture_2d<f32>;
+@group(0) @binding(6) var<storage, read> nets: array<u32>;
+@group(0) @binding(7) var<storage, read> netMask: array<u32>;
 
 const SHAPE_WORDS = ${SHAPE_WORDS}u;
 const COVER_WORDS = ${COVER_WORDS}u;
@@ -221,7 +225,26 @@ fn aces(color: vec3f) -> vec3f {
   return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), vec3f(0.0), vec3f(1.0));
 }
 
+fn netOf(operation: u32) -> u32 {
+  return select(0u, nets[operation], operation < arrayLength(&nets));
+}
+// A net is lit when it is the active one or emphasised (the mesh's rule).
+fn netLit(net: u32) -> bool {
+  let emphasised = net != 0u && net < arrayLength(&netMask) && netMask[net] != 0u;
+  return emphasised || (globals.activeNet != 0u && net == globals.activeNet);
+}
+fn copperSlice() -> bool { return (slice.netMode & 2u) != 0u; }
+// Whether this operation's copper is hidden because its net is not lit.
+fn netHidden(operation: u32) -> bool {
+  return copperSlice() && (slice.netMode & 1u) != 0u && !netLit(netOf(operation));
+}
+
 fn shade(operation: u32, board: vec2f) -> vec4f {
+  if (copperSlice() && netLit(netOf(operation))) {
+    // A lit net glows, pulsing, as the mesh copper does.
+    let pulse = 0.88 + 0.12 * sin(globals.time * 3.2);
+    return vec4f(aces(litGlow(vec3f(0.08, 1.0, 0.2) * pulse)), 1.0);
+  }
   if (slice.overlay == 1u) {
     let value = values[operation];
     if (present(value)) { return vec4f(viridis(normalized(value)), 1.0); }
@@ -232,9 +255,21 @@ fn shade(operation: u32, board: vec2f) -> vec4f {
   return vec4f(aces(lit(slice.color.rgb)), slice.color.a);
 }
 
+// A lit net's colour under the copper lighting, never dimmed.
+fn litGlow(base: vec3f) -> vec3f {
+  return lightFace(base);
+}
+
 // The base copper lighting (renderer.js) for a flat face of normal (0, 0, z),
 // so analytic copper reads exactly as the mesh copper it replaces.
 fn lit(base: vec3f) -> vec3f {
+  var tinted = base;
+  // Copper (material.w = 1) dims while a net is lit, as the mesh copper does.
+  if (globals.hasHighlight > 0.5 && slice.material.w > 0.5) { tinted = mix(base, vec3f(0.12, 0.14, 0.17), 0.58); }
+  return lightFace(tinted);
+}
+
+fn lightFace(tinted: vec3f) -> vec3f {
   let up = slice.material.z;
   let normal = vec3f(0.0, 0.0, up);
   let side = vec3f(1.0, 1.0, up);
@@ -244,9 +279,6 @@ fn lit(base: vec3f) -> vec3f {
   let roughness = clamp(slice.material.y, 0.05, 1.0);
   let metallic = clamp(slice.material.x, 0.0, 1.0);
   let specular = pow(max(dot(normal, normalize(light + vec3f(0.3, -0.4, 0.85) * side)), 0.0), mix(96.0, 6.0, roughness));
-  var tinted = base;
-  // Copper (material.w = 1) dims while a net is lit, as the mesh copper does.
-  if (globals.hasHighlight > 0.5 && slice.material.w > 0.5) { tinted = mix(base, vec3f(0.12, 0.14, 0.17), 0.58); }
   return tinted * (hemi + diffuse * 0.72) + mix(vec3f(0.04), tinted, metallic) * specular * 0.5;
 }
 
@@ -272,12 +304,12 @@ struct ShapeOut {
 }
 
 @fragment fn fs_shape(input: ShapeOut) -> @location(0) vec4f {
-  if (shapeDistance(input.record, input.local) > 0.0) { discard; }
+  if (shapeDistance(input.record, input.local) > 0.0 || netHidden(word(input.record, 1u))) { discard; }
   return shade(word(input.record, 1u), input.board);
 }
 
 @fragment fn fs_shape_pick(input: ShapeOut) -> @location(0) vec4u {
-  if (shapeDistance(input.record, input.local) > 0.0) { discard; }
+  if (shapeDistance(input.record, input.local) > 0.0 || netHidden(word(input.record, 1u))) { discard; }
   return vec4u(PICK_TAG, word(input.record, 1u) + 1u, 0u, 0u);
 }
 
@@ -338,10 +370,12 @@ struct CoverOut {
 }
 
 @fragment fn fs_cover(input: CoverOut) -> @location(0) vec4f {
+  if (netHidden(input.operation)) { discard; }
   return shade(input.operation, input.board);
 }
 
 @fragment fn fs_cover_pick(input: CoverOut) -> @location(0) vec4u {
+  if (netHidden(input.operation)) { discard; }
   return vec4u(PICK_TAG, input.operation + 1u, 0u, 0u);
 }
 `;
@@ -424,8 +458,9 @@ struct View {
   color: vec4f,
   wallColor: vec4f,
   overlay: u32,
-  padding0: u32,
-  padding1: u32,
+  isolate: u32,
+  // 1 while the board (substrate) is shown: bare drill walls belong to it.
+  board: u32,
   padding2: u32,
   range: vec2f,
   padding3: vec2f,
@@ -440,9 +475,16 @@ struct Barrel {
 @group(0) @binding(2) var<storage, read> barrels: array<Barrel>;
 @group(0) @binding(3) var<storage, read> values: array<f32>;
 @group(0) @binding(4) var<storage, read> layerOffsets: array<f32>;
+@group(0) @binding(5) var<storage, read> nets: array<u32>;
+@group(0) @binding(6) var<storage, read> netMask: array<u32>;
 
 const PICK_TAG = ${ANALYTIC_PICK_TAG}u;
 const FAR = 1e30;
+fn netLit(operation: u32) -> bool {
+  let net = select(0u, nets[operation], operation < arrayLength(&nets));
+  let emphasised = net != 0u && net < arrayLength(&netMask) && netMask[net] != 0u;
+  return emphasised || (globals.activeNet != 0u && net == globals.activeNet);
+}
 fn present(value: f32) -> bool { return value < 1e38; }
 ${VIRIDIS_WGSL}
 fn normalized(value: f32) -> f32 {
@@ -620,18 +662,26 @@ struct PickOut {
   var out: ColorOut;
   out.depth = hitDepth(input, hit.t);
   let value = values[b.ids.x];
-  // An unplated hole is a bare drill wall in the substrate's colour.
+  // An unplated hole is a bare drill wall in the substrate's colour, shown with the board.
   if (b.ids.w == 1u) {
+    if (view.board == 0u) { discard; }
     let light = normalize(globals.lightDirection.xyz);
     out.color = vec4f(view.wallColor.rgb * (0.38 + max(dot(hit.normal, light), 0.0) * 0.72), 1.0);
     return out;
   }
-  if (view.overlay == 1u && present(value)) {
+  let lit = netLit(b.ids.x);
+  // Net isolation draws only the lit nets' barrels.
+  if (view.isolate == 1u && !lit) { discard; }
+  if (view.overlay == 1u && present(value) && !lit) {
     out.color = vec4f(viridis(normalized(value)), 1.0);
     return out;
   }
   var base = view.color.rgb;
-  if (globals.hasHighlight > 0.5) { base = mix(base, vec3f(0.12, 0.14, 0.17), 0.58); }
+  if (lit) {
+    base = vec3f(0.1, 1.0, 0.22) * (0.88 + 0.12 * sin(globals.time * 3.2));
+  } else if (globals.hasHighlight > 0.5) {
+    base = mix(base, vec3f(0.12, 0.14, 0.17), 0.58);
+  }
   let light = normalize(globals.lightDirection.xyz);
   out.color = vec4f(base * (0.38 + max(dot(hit.normal, light), 0.0) * 0.72), 1.0);
   return out;
@@ -639,10 +689,11 @@ struct PickOut {
 
 @fragment fn fs_barrel_pick(input: BarrelOut) -> PickOut {
   let hit = surface(input);
-  if (hit.t >= FAR) { discard; }
+  let b = barrels[input.barrel];
+  if (hit.t >= FAR || (view.isolate == 1u && !netLit(b.ids.x)) || (b.ids.w == 1u && view.board == 0u)) { discard; }
   var out: PickOut;
   out.depth = hitDepth(input, hit.t);
-  out.pick = vec4u(PICK_TAG, barrels[input.barrel].ids.x + 1u, 0u, 0u);
+  out.pick = vec4u(PICK_TAG, b.ids.x + 1u, 0u, 0u);
   return out;
 }
 `;
@@ -672,8 +723,9 @@ struct View {
   color: vec4f,
   wallColor: vec4f,
   overlay: u32,
-  padding0: u32,
-  padding1: u32,
+  isolate: u32,
+  // 1 while the board (substrate) is shown: bare drill walls belong to it.
+  board: u32,
   padding2: u32,
   range: vec2f,
   padding3: vec2f,

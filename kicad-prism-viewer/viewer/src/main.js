@@ -47,7 +47,7 @@ import { allReadyBoardsDrawn, assetLoadable, assetOccurrenceMatrix, boardTransit
 import { LOD_FULL } from "./occurrences.js";
 import { InsetViews, insetMatrix } from "./inset-view.js";
 import { DEFAULT_GPU_BUDGET_BYTES } from "./viewer-controllers.js";
-import { applyAnalyticOverlay, attachAnalyticPack, describeAnalyticHit } from "./analytic-board.js";
+import { analyticFeatureId, applyAnalyticOverlay, attachAnalyticPack, describeAnalyticHit } from "./analytic-board.js";
 import { barrelsAtCopperFaces } from "./barrel-records.js";
 
 const COPPER_TILE_GPU_BUDGET_BYTES = 512 * 1024 * 1024;
@@ -493,6 +493,8 @@ export async function mountStandaloneViewer(options = {}) {
         bytes,
         wasm: options.wasm,
         toleranceNm: options.toleranceNm,
+        nets: board.scene.manifest?.nets,
+        features: board.scene.manifest?.objectFeatures,
       });
       return analyticStats();
     },
@@ -5689,8 +5691,16 @@ function pickHitAtEvent(event) {
 }
 
 // Pick at canvas pixel (x, y): { kind, occurrenceIndex, occurrenceKey, featureId }.
-function pickHit(x, y) {
+// Analytic copper and barrels name the feature their operation came from, so
+// a click selects them as it selects the mesh copper.
+async function pickHit(x, y) {
   if (system) return pickSystem(x, y);
+  const hit = await pickBoardHit(x, y);
+  if (hit?.kind === "analytic" && board.analytic) return { ...hit, featureId: analyticFeatureId(board.analytic, hit.operationIndex) || null };
+  return hit;
+}
+
+function pickBoardHit(x, y) {
   return board.renderer.pick(panel, x, y, {
     activeNetId: state.activeNetId,
     selectedFeatureId: state.selectedFeatureId,

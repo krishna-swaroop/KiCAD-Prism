@@ -2188,7 +2188,7 @@ export class Renderer {
     draws += visibleEntries.length;
     // Analytic slices (VT analytic spike) draw with the opaque geometry, before the barrels and the mask.
     if (this.analytic && !compareMode) {
-      analyticContext = { matrix: panel.matrix, showBoard, boardOpacity, hidePaste, panelLayer: panel.layerId, assemblyOpacity: showPaste ? 1 : componentOpacity };
+      analyticContext = { matrix: panel.matrix, showBoard, boardOpacity, hidePaste, isolateNet, panelLayer: panel.layerId, assemblyOpacity: showPaste ? 1 : componentOpacity };
       draws += this.analytic.encodeInto(pass, layerOffsets, panel.layerId ? new Set([panel.layerId]) : visibleLayers, false, analyticContext);
       // The pack's barrels, exact, in place of the mesh barrels.
       draws += this.analytic.encodeBarrels(pass, layerOffsets, panel.matrix);
@@ -2440,7 +2440,7 @@ export class Renderer {
     if (indirect && !options.compareMode) this.drawBox(pass, pipelines.boxPick);
     if (this.analytic && !options.compareMode) {
       const layers = panel.layerId ? new Set([panel.layerId]) : options.visibleLayers;
-      this.analytic.encodeInto(pass, options.layerOffsets, layers, true, { matrix: panel.matrix, panelLayer: panel.layerId });
+      this.analytic.encodeInto(pass, options.layerOffsets, layers, true, { matrix: panel.matrix, panelLayer: panel.layerId, isolateNet: options.isolateNet, showBoard: options.showBoard });
       this.analytic.encodeBarrels(pass, options.layerOffsets, panel.matrix, true);
     }
   }

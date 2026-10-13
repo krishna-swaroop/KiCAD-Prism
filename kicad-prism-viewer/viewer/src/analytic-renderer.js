@@ -54,6 +54,8 @@ export class AnalyticRenderer {
         { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
+        { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+        { binding: 7, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
       ],
     });
     this.module = this.device.createShaderModule({ label: "analytic", code: ANALYTIC_SHADER });
@@ -65,6 +67,8 @@ export class AnalyticRenderer {
     this.valuesBuffer = this.emptyValues;
     this.emptyField = this.fieldTexture(1, 1, new Float32Array([ABSENT_VALUE]));
     this.uniformScratch = new ArrayBuffer(SLICE_UNIFORM_BYTES);
+    // Each operation's viewer net id (0 for none), for net glow and isolation.
+    this.netsBuffer = this.buffer(new Uint32Array(1), GPUBufferUsage.STORAGE, "analytic-nets");
     this.makeBarrelPipelines();
   }
 
@@ -78,6 +82,8 @@ export class AnalyticRenderer {
         { binding: 2, visibility: all, buffer: { type: "read-only-storage" } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
         { binding: 4, visibility: all, buffer: { type: "read-only-storage" } },
+        { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+        { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
       ],
     });
     const module = this.device.createShaderModule({ label: "analytic-barrels", code: ANALYTIC_BARREL_SHADER });
@@ -127,6 +133,8 @@ export class AnalyticRenderer {
         { binding: 2, resource: { buffer: this.walls.buffer } },
         { binding: 3, resource: { buffer: this.valuesBuffer } },
         { binding: 4, resource: { buffer: this.layerOffsets } },
+        { binding: 5, resource: { buffer: this.netsBuffer } },
+        { binding: 6, resource: { buffer: this.renderer.netMaskBuffer } },
       ],
     });
   }
@@ -156,6 +164,8 @@ export class AnalyticRenderer {
     const wallOpacity = (context.boardOpacity ?? 1) * (0.15 + 0.85 * (context.assemblyOpacity ?? 1));
     floats.set([...(substrate?.color || [0.3, 0.32, 0.25, 1]).slice(0, 3), wallOpacity], 8);
     words[12] = this.overlay.mode === OVERLAY_VALUES ? 1 : 0;
+    words[13] = context.isolateNet ? 1 : 0;
+    words[14] = this.boardShown(context) ? 1 : 0;
     floats.set(this.overlay.range, 16);
     this.device.queue.writeBuffer(this.barrelView, 0, this.viewScratch);
   }
@@ -186,6 +196,8 @@ export class AnalyticRenderer {
         { binding: 2, resource: { buffer: this.barrels.buffer } },
         { binding: 3, resource: { buffer: this.valuesBuffer } },
         { binding: 4, resource: { buffer: this.layerOffsets } },
+        { binding: 5, resource: { buffer: this.netsBuffer } },
+        { binding: 6, resource: { buffer: this.renderer.netMaskBuffer } },
       ],
     });
   }
@@ -320,6 +332,8 @@ export class AnalyticRenderer {
         { binding: 3, resource: { buffer: slice.covers } },
         { binding: 4, resource: { buffer: this.valuesBuffer } },
         { binding: 5, resource: (slice.field?.texture || this.emptyField).createView() },
+        { binding: 6, resource: { buffer: this.netsBuffer } },
+        { binding: 7, resource: { buffer: this.renderer.netMaskBuffer } },
       ],
     });
   }
@@ -373,9 +387,18 @@ export class AnalyticRenderer {
     this.rebind();
   }
 
+  /** Each operation's viewer net id (0 where it has none), for net glow and isolation. */
+  setOperationNets(netIds) {
+    this.netsBuffer.destroy();
+    this.netsBuffer = this.buffer(netIds.length ? netIds : new Uint32Array(1), GPUBufferUsage.STORAGE, "analytic-nets");
+    this.rebind();
+  }
+
   rebind() {
+    this.boundNetMask = this.renderer.netMaskBuffer;
     for (const slice of this.slices) slice.bindGroup = this.bindGroup(slice);
     if (this.barrels) this.barrels.bindGroup = this.barrelBindGroup();
+    if (this.walls) this.walls.bindGroup = this.wallBindGroup();
     this.renderer.invalidate?.();
   }
 
@@ -388,6 +411,11 @@ export class AnalyticRenderer {
     floats[4] = slice.z + 0.5 * ((layerOffsets?.[a] || 0) + (layerOffsets?.[b] || 0));
     const copper = slice.role === undefined || slice.role === "copper";
     words[5] = copper ? this.overlay.mode : 0;
+    // Copper glows with its nets; it hides off the lit nets under net isolation,
+    // or on inner layers the renderer shows only where lit.
+    const context = this.context || {};
+    const isolate = context.isolateNet || (!slice.outer && this.renderer.innerCopperMode === "lit");
+    words[7] = copper ? 2 | (isolate ? 1 : 0) : 0;
     const field = copper ? slice.field : null;
     words[6] = field ? 1 : 0;
     if (field) {
@@ -462,6 +490,8 @@ export class AnalyticRenderer {
   /** Draw every slice into an open pass; `pick` selects the pick variants. */
   encodeInto(pass, layerOffsets, visibleLayers, pick = false, context = {}) {
     this.context = context;
+    // The renderer replaces its emphasis mask buffer when it grows.
+    if (this.renderer.netMaskBuffer !== this.boundNetMask) this.rebind();
     if (context.matrix) this.writeView(context.matrix, layerOffsets, context);
     const pipelines = pick ? this.pipelines.pick : this.pipelines.color;
     const copper = this.copperLooks();
@@ -472,6 +502,7 @@ export class AnalyticRenderer {
     for (const slice of this.slices) {
       const isCopper = slice.role === undefined || slice.role === "copper";
       if (isCopper ? visibleLayers && !visibleLayers.has(slice.layerId) : pick || slice.role !== "dielectric" || !solid) continue;
+      if (isCopper && !slice.outer && slice.role !== undefined && this.renderer.innerCopperMode === "none") continue;
       this.encodeSlice(pass, pipelines, slice, "opaque", layerOffsets, this.lookFor(slice, copper, board, context));
       drawn += 1;
     }
@@ -492,6 +523,7 @@ export class AnalyticRenderer {
    */
   encodeBlended(pass, layerOffsets, visibleLayers, context = {}) {
     if (!this.stencil) return 0;
+    this.context = context;
     const copper = this.copperLooks();
     const board = this.boardLooks();
     const boardShown = this.boardShown(context);
@@ -629,6 +661,7 @@ export class AnalyticRenderer {
     this.releaseSlices();
     this.barrels?.buffer.destroy();
     this.walls?.buffer.destroy();
+    this.netsBuffer.destroy();
     this.barrelView.destroy();
     this.layerOffsets.destroy();
     if (this.valuesBuffer !== this.emptyValues) this.valuesBuffer.destroy();

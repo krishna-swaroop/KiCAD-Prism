@@ -355,3 +355,25 @@ export function planWalls(slices, lowered, layers, zOffset = 0) {
   });
   return { data, count: walls.length };
 }
+
+/**
+ * Each operation's viewer net id (0 for none): the binding's net key, through
+ * the pack's nets, matched to the viewer's `nets` (`{ id, name }`) by name.
+ */
+export function operationNetIds(pack, nets) {
+  // The pack names a hierarchical net by any of its labels ("/S1.TXN" for
+  // "/SFPs/S1.TXN"): match aliases too, a net's own name first.
+  const byName = new Map();
+  for (const net of nets || []) {
+    for (const alias of net?.aliases || []) if (!byName.has(String(alias))) byName.set(String(alias), Number(net.id));
+  }
+  for (const net of nets || []) if (net?.name) byName.set(String(net.name), Number(net.id));
+  const names = new Map((pack.header.nets || []).map((net) => [net.key, net.name]));
+  const count = operationCount(pack.header);
+  const ids = new Uint32Array(count);
+  for (let index = 0; index < count; index += 1) {
+    const key = pack.binding(index)?.net_key;
+    if (key) ids[index] = byName.get(names.get(key) ?? key) || 0;
+  }
+  return ids;
+}

@@ -3,6 +3,7 @@ import {
   denseOperationValues,
   openAnalyticPack,
   operationCount,
+  operationNetIds,
   planBarrels,
   planBoardSlices,
   planWalls,
@@ -51,7 +52,7 @@ export function copperPlane(entries, layerId, bottom = false) {
  * walls, solder mask, paste and silkscreen, in place of the mesh layers they
  * replace. `colorFor(layer)` gives each copper layer's linear RGBA.
  */
-export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wasm, toleranceNm }) {
+export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wasm, toleranceNm, nets = [], features = [] }) {
   const pack = await openAnalyticPack(bytes, { wasm });
   const zOffset = copperZOffset(renderer.entries, layers);
   const { planned, unmatched } = planBoardSlices(pack.header, layers, zOffset);
@@ -72,8 +73,29 @@ export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wa
   // Barrels and drill walls from the pack's holes replace the bundle's mesh barrels.
   analytic.setBarrels(planBarrels(pack.header, pack.barrels(), slices));
   analytic.setWalls(planWalls(slices, lowered, layers, zOffset));
+  // Net glow and isolation read each operation's viewer net.
+  const netIds = operationNetIds(pack, nets);
+  analytic.setOperationNets(netIds);
   renderer.setAnalytic(analytic);
-  return { pack, analytic, unmatched, lowerMs, zOffset, operations: operationCount(pack.header), overlay: null };
+  const featuresBySource = new Map();
+  for (const feature of features || []) {
+    if (!feature?.sourceUid) continue;
+    if (!featuresBySource.has(feature.sourceUid)) featuresBySource.set(feature.sourceUid, []);
+    featuresBySource.get(feature.sourceUid).push(feature);
+  }
+  return { pack, analytic, unmatched, lowerMs, zOffset, operations: operationCount(pack.header), overlay: null, netIds, featuresBySource };
+}
+
+/**
+ * The viewer feature an operation came from (by its binding's source uid,
+ * preferring one on the operation's net), or 0: what a click on it selects.
+ */
+export function analyticFeatureId(state, operationIndex) {
+  const source = state.pack.binding(operationIndex)?.source_uid;
+  const candidates = source ? state.featuresBySource?.get(source) || [] : [];
+  const net = state.netIds?.[operationIndex] || 0;
+  const feature = candidates.find((item) => Number(item.netId) === net) || candidates[0];
+  return feature ? Number(feature.id) : 0;
 }
 
 /**
@@ -112,6 +134,7 @@ export function describeAnalyticHit(state, operationIndex) {
   const value = overlay?.kind === "operation_values" ? overlay.values[operationIndex] : undefined;
   return {
     operationIndex,
+    featureId: analyticFeatureId(state, operationIndex) || null,
     binding: state.pack.binding(operationIndex),
     ...(Number.isFinite(value) ? { value, quantity: overlay.quantity, units: overlay.units } : {}),
   };

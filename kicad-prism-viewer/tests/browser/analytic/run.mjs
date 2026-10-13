@@ -133,9 +133,12 @@ async function runBoard(chrome, server, synthetic) {
     await page.goto(`${server.origin}/harness/harness.html?build=candidate`);
     await waitFor(page, "window.__vtElementLoaded === true", 30000, "element module");
     await page.evaluate(`window.__vtProbe.mount("/bundle/bundle.json", ${JSON.stringify({ width, height })})`);
-    const capture = async (name, view) => {
+    // `animated`: a lit net pulses, so its frames never repeat; take the
+    // frame after the network idles and a fixed wait instead.
+    const capture = async (name, view, { animated = false } = {}) => {
       await page.evaluate(`window.__vtProbe.applyView(${JSON.stringify(view)})`);
-      await settle(page, name);
+      if (animated) await settleAnimated(page, name);
+      else await settle(page, name);
       const frame = await page.evaluate("window.__vtProbe.capture()");
       if (!frame) throw new Error(`${name}: no rendered frame`);
       const image = { width: frame.width, height: frame.height, data: new Uint8Array(Buffer.from(frame.rgba, "base64")) };
@@ -185,8 +188,44 @@ async function runBoard(chrome, server, synthetic) {
       await window.__vtProbe.element.loadAnalyticPack(bytes, { wasm: "/builds/kicad-monkey-analytic.wasm" });
     })()`);
     await capture("analytic-close", "default");
+    // Net glow, at the close-up's camera: GND emphasised through the host API
+    // (analytic, then mesh), then a double-click on analytic copper, which
+    // selects its feature as a click on mesh copper does (and frames it).
+    await page.evaluate(`window.__vtProbe.element.setHighlightedNets([{ netName: "GND" }])`);
+    await capture("glow-emphasis", "default", { animated: true });
+    await page.evaluate("window.__vtProbe.element.unloadAnalyticPack()");
+    await capture("glow-emphasis-mesh", "default", { animated: true });
+    await page.evaluate(`window.__vtProbe.element.setHighlightedNets([])`);
+    await page.evaluate(`(async () => {
+      const bytes = await (await fetch("/pack/board.kmpack")).arrayBuffer();
+      await window.__vtProbe.element.loadAnalyticPack(bytes, { wasm: "/builds/kicad-monkey-analytic.wasm" });
+    })()`);
+    const glowAt = await page.evaluate(`(async () => {
+      const element = window.__vtProbe.element;
+      const canvas = element.shadowRoot.getElementById("viewport");
+      const rect = canvas.getBoundingClientRect();
+      for (const [fx, fy] of [[0.5, 0.5], [0.45, 0.55], [0.55, 0.45], [0.4, 0.6], [0.6, 0.4], [0.3, 0.3], [0.7, 0.7]]) {
+        const x = rect.left + rect.width * fx;
+        const y = rect.top + rect.height * fy;
+        const hit = await element.analyticAt(x, y);
+        if (hit?.featureId && hit.binding?.net_key) {
+          canvas.dispatchEvent(new MouseEvent("dblclick", { clientX: x, clientY: y, bubbles: true }));
+          return JSON.stringify({ x: fx, y: fy, featureId: hit.featureId, net: hit.binding.net_key });
+        }
+      }
+      return "null";
+    })()`);
+    summary.glow = { click: JSON.parse(glowAt) };
+    log(`glow click: ${glowAt}`);
+    await capture("glow-click", "default", { animated: true });
+    summary.glow.hasNet = await page.evaluate("Boolean(window.__vtProbe.element.getViewState()?.hasNet)");
+    await page.evaluate("window.__vtProbe.element.setSelection(null)");
     compare(captures, "mesh-exploded", "analytic-exploded");
     compare(captures, "mesh-top", "analytic-top");
+    compare(captures, "analytic-close", "glow-emphasis");
+    compare(captures, "glow-emphasis-mesh", "glow-emphasis");
+    check(summary.glow?.click, "a double-click on analytic copper finds a feature to select");
+    check(summary.glow?.hasNet, "the double-click lit the copper's net");
     compare(captures, "mesh-bottom", "analytic-bottom");
     compare(captures, "mesh-close", "analytic-close");
     compare(captures, "analytic-exploded", "overlay-operations-exploded");
@@ -227,7 +266,7 @@ function compare(captures, a, b) {
   });
   if (result.comparable && result.pixels) writeFileSync(join(outDir, `diff-${a}-vs-${b}.png`), encodePng(result.image));
   // Overlays must change the picture; the analytic copper must draw something.
-  if (b.startsWith("overlay") || b.startsWith("analytic")) check(result.pixels > 0, `${b} differs from ${a}`);
+  if (b.startsWith("overlay") || b.startsWith("glow") || b.startsWith("analytic")) check(result.pixels > 0, `${b} differs from ${a}`);
 }
 
 function check(condition, message) {
@@ -242,6 +281,15 @@ async function settle(page, label) {
     if (Date.now() - started > 240000) throw new Error(`${label}: did not settle`);
     await new Promise((done) => setTimeout(done, 250));
   }
+}
+
+async function settleAnimated(page, label) {
+  const started = Date.now();
+  while (!page.networkIdle(1000)) {
+    if (Date.now() - started > 240000) throw new Error(`${label}: did not settle`);
+    await new Promise((done) => setTimeout(done, 250));
+  }
+  await new Promise((done) => setTimeout(done, 1500));
 }
 
 async function waitFor(page, expression, timeoutMs, label) {

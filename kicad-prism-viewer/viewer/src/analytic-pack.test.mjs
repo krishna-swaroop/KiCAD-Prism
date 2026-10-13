@@ -12,8 +12,8 @@ import {
   sliceBoundsMm,
   valueRange,
 } from "./analytic-pack.js";
-import { copperPlane, copperZOffset } from "./analytic-board.js";
-import { BARREL_FLOATS, BARREL_WORDS, planBarrels } from "./analytic-pack.js";
+import { analyticFeatureId, copperPlane, copperZOffset } from "./analytic-board.js";
+import { BARREL_FLOATS, BARREL_WORDS, operationNetIds, planBarrels } from "./analytic-pack.js";
 import { BATCH_WORDS, COVER_WORDS, SHAPE_WORDS } from "./analytic-shaders.js";
 
 const vendor = new URL("../vendor/kicad-monkey-analytic/", import.meta.url);
@@ -146,4 +146,25 @@ test("barrels span their drawn conductors, less what a backdrill bores", () => {
   assert.deepEqual([...w.slice(8, 12)], [9, 4, 14, 0]);
   assert.ok(near(f[12 + 6], 0.0015) && near(f[12 + 7], Math.fround(0.0015 - 0.000035)));
   assert.deepEqual([...w.slice(20, 24)], [11, 4, 4, 0]);
+});
+
+test("operations carry the viewer's net ids, and name the feature a click selects", async () => {
+  const pack = await openAnalyticPack(fixture);
+  const netIds = operationNetIds(pack, [{ id: 0, name: "" }, { id: 7, name: "GND" }]);
+  // The track (1) and a via land (3) are on GND; the profile (0) and an unnetted graphic (11) on none.
+  assert.deepEqual([netIds[0], netIds[1], netIds[3], netIds[11]], [0, 7, 7, 0]);
+  // A hierarchical net's pack name may be any of the viewer net's aliases; a net's own name wins.
+  const aliased = operationNetIds(pack, [{ id: 9, name: "/Power/GND", aliases: ["GND"] }]);
+  assert.deepEqual([aliased[1], aliased[3]], [9, 9]);
+  const named = operationNetIds(pack, [{ id: 9, name: "/Power/GND", aliases: ["GND"] }, { id: 7, name: "GND" }]);
+  assert.equal(named[1], 7);
+  const features = [{ id: 40, sourceUid: "v1", netId: 0 }, { id: 41, sourceUid: "v1", netId: 7 }, { id: 42, sourceUid: "t1", netId: 7 }];
+  const featuresBySource = new Map();
+  for (const feature of features) featuresBySource.set(feature.sourceUid, [...(featuresBySource.get(feature.sourceUid) || []), feature]);
+  const state = { pack, netIds, featuresBySource };
+  assert.equal(analyticFeatureId(state, 1), 42);
+  // Of a source's features, the one on the operation's net.
+  assert.equal(analyticFeatureId(state, 3), 41);
+  assert.equal(analyticFeatureId(state, 0), 0);
+  pack.free();
 });
