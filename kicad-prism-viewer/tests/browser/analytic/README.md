@@ -51,11 +51,12 @@ high-density display. On openswitch-10x10g-carrier at scale 2 (2560x1600,
 
 | Case | Mesh | Analytic | Analytic before the perf pass |
 |---|---|---|---|
-| Loaded view | 2.8 ms | 4.3 ms | 7.8 ms |
-| Zoomed in | 6.6 ms | 6.75 ms | 8.5 ms |
+| Loaded view | 2.8 ms | 5.0–5.5 ms | 7.8 ms |
+| Zoomed in | 6.6–7.5 ms | 9.3–10.1 ms | 8.5 ms |
 
-The analytic figures include copper as slabs with side walls (3.65 and
-4.3 ms without them).
+The analytic figures include copper as slabs with side walls and the
+conformal solder mask (3.65 and 4.3 ms without either; 4.3 and 6.75 ms with
+the slabs alone). Ranges are runs a few minutes apart.
 
 The perf pass: a solid, unseparated board skips the slices it hides (inner
 dielectric faces, and every face turned from the eye), barrels draw only the

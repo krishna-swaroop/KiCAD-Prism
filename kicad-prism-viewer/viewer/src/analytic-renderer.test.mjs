@@ -225,3 +225,47 @@ test("shape walls are drawn only where a slab's walls can span a third of a pixe
   const near = mat4Multiply(perspective(Math.PI / 4, 1.6, 0.0001, 2), lookAt([0.05, -0.052, 0.002], [0.05, -0.05, 0], [0, 0, 1]));
   assert.ok(pixels(near, viewEye(near)) > 10);
 });
+
+test("a conformal mask rises over copper, lies low on laminate, steps between, and cleans up", () => {
+  const renderer = Object.create(AnalyticRenderer.prototype);
+  // The step pipelines run the solid plan.
+  renderer.pipelines = { color: { ...Object.fromEntries(Object.keys(STENCIL_STEPS).map((name) => [name, name])), step: "solid", regionStep: "solid" } };
+  renderer.writeSlice = () => {};
+  renderer.wallPixels = () => 10;
+  // The mask: one region (its fan leaves "opening", a hole, twice covered).
+  const region = { shapeCount: 0, subtractShapes: 0, fans: {}, batches: [{ subtract: false, firstVertex: 0, vertexCount: 3, firstCover: 0, coverCount: 1 }] };
+  const mask = { ...region, role: "mask", key: "mask" };
+  const low = { ...region, role: "mask", key: "low" };
+  // The footprint: one trace; its walls (a region edge and a skirt).
+  const foot = { shapeCount: 1, subtractShapes: 0, batches: [], regionEdges: 1, skirtEdges: 1, zTop: 1, zBottom: 0 };
+  const silk = { shapeCount: 1, subtractShapes: 0, batches: [], role: "silk", key: "silk" };
+  const silkLow = { ...silk, key: "silkLow" };
+  renderer.twins = new Map([[silk, { low: silkLow }]]);
+  const pass = recordingPass();
+  renderer.encodeConformal(pass, mask, { low, foot }, [silk], null, () => null);
+  // Calls are recorded per pipeline; bind groups are not, so step names
+  // stand in for which slice draws (shape steps are the trace or the silk).
+  const pixels = ["copper", "laminate", "opening", "wall", "silkOnCopper", "silkOnLaminate"];
+  const inMask = ["copper", "laminate", "wall", "silkOnCopper", "silkOnLaminate"];
+  const cover = (step, call, pixel) => {
+    if (step === "fan") return pixel === "opening" ? 2 : inMask.includes(pixel) ? 1 : 0;
+    if (step === "footShape") return ["copper", "silkOnCopper"].includes(pixel) ? 1 : 0;
+    if (step === "shapeOnFoot" || step === "shapeOffFoot") return pixel.startsWith("silk") ? 1 : 0;
+    if (step === "solid") return pixel === "wall" ? 1 : 0;
+    return 1;
+  };
+  const { stencil } = replay(pass.calls, pixels, cover);
+  // The last colour step to pass at each pixel.
+  const coloured = (pixel) => replay(pass.calls, [pixel], cover).colouredBy.get(pixel);
+  assert.equal(coloured("copper"), "tintHigh");
+  assert.equal(coloured("laminate"), "tintLow");
+  assert.equal(coloured("opening"), undefined);
+  assert.equal(coloured("silkOnCopper"), "shapeOnFoot");
+  assert.equal(coloured("silkOnLaminate"), "shapeOffFoot");
+  // Both kinds of step draw, between the mask over copper and the mask over laminate.
+  const names = pass.calls.filter((call) => call.op === "pipeline").map((call) => call.name);
+  const solid = names.indexOf("solid");
+  assert.ok(solid > names.indexOf("tintHigh") && solid < names.indexOf("tintLow"));
+  assert.equal(names.filter((name) => name === "solid").length, 2);
+  for (const [pixel, value] of stencil) assert.equal(value & 0xe2, 0, `${pixel}: bits 1, 5, 6 and 7 clear`);
+});

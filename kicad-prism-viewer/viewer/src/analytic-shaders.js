@@ -82,7 +82,8 @@ struct Slice {
   slab: vec2f,
   // How many of the slice's shapes subtract (they come first).
   subtracts: u32,
-  padding4: u32,
+  // Millimetres the shapes grow by (a conformal coat's footprint), else 0.
+  dilate: f32,
   // The camera in homogeneous world coordinates: a point (w = 1) for a
   // perspective view, the view direction (w = 0) for an orthographic one.
   eye: vec4f,
@@ -345,14 +346,14 @@ override SAMPLES: u32 = 1u;
 fn coverage(record: u32, local: vec2f) -> u32 {
   let dx = dpdx(local);
   let dy = dpdy(local);
-  let centre = shapeDistance(record, local);
+  let centre = shapeDistance(record, local) - slice.dilate;
   if (SAMPLES == 1u) { return select(1u, 0u, centre > 0.0); }
   let all = (1u << SAMPLES) - 1u;
   if (abs(centre) > length(dx) + length(dy)) { return select(all, 0u, centre > 0.0); }
   var offsets = array<vec2f, 4>(vec2f(-0.125, -0.375), vec2f(0.375, -0.125), vec2f(-0.375, 0.125), vec2f(0.125, 0.375));
   var mask = 0u;
   for (var i = 0u; i < 4u; i += 1u) {
-    if (shapeDistance(record, local + dx * offsets[i].x + dy * offsets[i].y) <= 0.0) { mask |= 1u << i; }
+    if (shapeDistance(record, local + dx * offsets[i].x + dy * offsets[i].y) - slice.dilate <= 0.0) { mask |= 1u << i; }
   }
   return mask;
 }
@@ -482,6 +483,12 @@ struct WallRay {
 };
 
 fn wallRay(record: u32, world: vec3f) -> WallRay {
+  return wallRayFrom(record, world, false);
+}
+
+// As \`wallRay\`, or when \`whole\` over the ray's whole run through the slab
+// (a mask's step: the point is only where the ray met the step's trigger).
+fn wallRayFrom(record: u32, world: vec3f, whole: bool) -> WallRay {
   var ray: WallRay;
   ray.ok = false;
   let linear = shapeLinear(record);
@@ -493,8 +500,13 @@ fn wallRay(record: u32, world: vec3f) -> WallRay {
   // Walls stop a hair inside the slab, so where one meets a face (a track's
   // wall inside a pour) the face always wins the depth test.
   let inset = (slice.slab.y - slice.slab.x) * 1000.0 * WALL_INSET;
-  let zb = slice.slab.x * 1000.0 + inset;
-  let zt = slice.slab.y * 1000.0 - inset;
+  var zb = slice.slab.x * 1000.0 + inset;
+  var zt = slice.slab.y * 1000.0 - inset;
+  // A step reaches a hair past the mask's outer face instead, so no seam
+  // opens between it and the mask over copper.
+  if (whole) {
+    if (slice.material.z < 0.0) { zb -= 2.0 * inset; } else { zt += 2.0 * inset; }
+  }
   ray.s0 = -1e9;
   ray.s1 = 1e9;
   if (abs(ray.dir.z) > 1e-9) {
@@ -506,7 +518,7 @@ fn wallRay(record: u32, world: vec3f) -> WallRay {
     return ray;
   }
   let reach = length(vec2f(fword(record, 12u), fword(record, 13u)) - vec2f(fword(record, 10u), fword(record, 11u))) + 1.0;
-  ray.s0 = max(ray.s0, 0.0);
+  ray.s0 = max(ray.s0, select(0.0, -reach * 4.0, whole));
   ray.s1 = min(ray.s1, reach * 4.0);
   ray.local0 = inverse * (ray.at.xy - vec2f(fword(record, 8u), fword(record, 9u)));
   ray.localDir = inverse * ray.dir.xy;
@@ -522,13 +534,14 @@ fn marchWall(record: u32, ray: WallRay) -> WallHit {
   result.hit = false;
   if (!ray.ok || ray.speed < 1e-7) { return result; }
   var s = ray.s0;
-  var distance = shapeDistance(record, ray.local0 + ray.localDir * s);
+  // A dilated shape (a mask step) is its outline grown by \`slice.dilate\`.
+  var distance = shapeDistance(record, ray.local0 + ray.localDir * s) - slice.dilate;
   // Starting inside the shape: the ray came through a face, not a wall.
   if (distance <= 0.0) { return result; }
   for (var i = 0u; i < 48u; i += 1u) {
     s += distance / ray.speed;
     if (s > ray.s1) { return result; }
-    distance = shapeDistance(record, ray.local0 + ray.localDir * s);
+    distance = shapeDistance(record, ray.local0 + ray.localDir * s) - slice.dilate;
     if (distance < 1e-4) { break; }
   }
   if (distance >= 1e-4) { return result; }
@@ -696,6 +709,80 @@ fn skirtCorner(vertex: u32, edge: u32) -> vec3f {
   return out;
 }
 
+// The conformal mask's step: where the mask rises from laminate onto copper,
+// a face just off the copper's outline (by slice.dilate), from the laminate
+// to the mask's outer face (the foot twin's slab), opaque (a coat seen edge
+// on), and only outside the mask's openings (the foot twin's cuts list
+// those). A shape's step is found by marching its distance less the
+// clearance over the ray's run through the slab, triggered by its skirt and
+// by a ring on the inner face reaching out past the step; a region's step
+// is its edges pushed out.
+fn coatColor(normal: vec3f) -> vec4f {
+  let base = min(slice.color.rgb * 1.6 + vec3f(0.03, 0.05, 0.02), vec3f(1.0));
+  return vec4f(aces(litNormal(base, normal)), 1.0);
+}
+
+// The face the mask lies on over laminate: the slab's inner one.
+fn innerFace() -> f32 {
+  let inset = (slice.slab.y - slice.slab.x) * WALL_INSET;
+  return select(slice.slab.x + inset, slice.slab.y - inset, slice.material.z < 0.0);
+}
+
+fn stepCorner(vertex: u32, edge: u32) -> vec3f {
+  if (vertex < 6u) { return wallCorner(vertex, edge); }
+  let c = corner(vertex - 6u);
+  let a = edgeEnd(edge, 0u);
+  let b = edgeEnd(edge, 1u);
+  let along = normalize(b - a);
+  // Out from the material (on the edge's left), past the step.
+  let outward = vec2f(along.y, -along.x) * (slice.dilate + RING_MM) * c.y;
+  return boardToWorld(mix(a, b, c.x) + outward, innerFace());
+}
+
+// A step's quads reach a hair past the mask's outer face (see wallRayFrom).
+fn stepReach(world: vec3f) -> vec3f {
+  let inset = (slice.slab.y - slice.slab.x) * WALL_INSET;
+  let outer = select(slice.slab.y - inset, slice.slab.x + inset, slice.material.z < 0.0);
+  let past = select(slice.slab.y + inset, slice.slab.x - inset, slice.material.z < 0.0);
+  return select(world, vec3f(world.xy, past), abs(world.z - outer) < inset * 0.5);
+}
+
+@vertex fn vs_step(@builtin(vertex_index) vertex: u32, @builtin(instance_index) edge: u32) -> SkirtOut {
+  let world = stepReach(stepCorner(vertex, edge));
+  var out: SkirtOut;
+  out.position = select(CULLED, globals.viewProjection * vec4f(world, 1.0), facesEye(edge));
+  out.world = world;
+  out.record = slice.subtracts + (edges[edge * EDGE_WORDS + 4u] & ~EDGE_SKIRT);
+  return out;
+}
+
+@fragment fn fs_step(input: SkirtOut) -> WallColor {
+  let hit = marchWall(input.record, wallRayFrom(input.record, input.world, true));
+  if (!hit.hit) { discard; }
+  var out: WallColor;
+  out.color = coatColor(hit.normal);
+  out.depth = worldDepth(boardToWorld(hit.board, hit.z));
+  return out;
+}
+
+@vertex fn vs_region_step(@builtin(vertex_index) vertex: u32, @builtin(instance_index) edge: u32) -> EdgeOut {
+  var world = stepReach(wallCorner(vertex, edge));
+  let along = normalize(edgeEnd(edge, 1u) - edgeEnd(edge, 0u));
+  // Out from the material by the step's clearance (board y down is the
+  // world's -y), as a shape's step is by its distance.
+  world += vec3f(along.y, along.x, 0.0) * slice.dilate * 0.001;
+  var out: EdgeOut;
+  out.position = select(CULLED, globals.viewProjection * vec4f(world, 1.0), facesEye(edge));
+  out.world = world;
+  out.edge = edge;
+  return out;
+}
+
+@fragment fn fs_region_step(input: EdgeOut) -> @location(0) vec4f {
+  if (edgeCut(input.edge, input.world)) { discard; }
+  return coatColor(edgeOutward(input.edge));
+}
+
 @fragment fn fs_skirt_pick(input: SkirtOut) -> WallPick {
   let operation = word(input.record, 1u);
   if (netHidden(operation)) { discard; }
@@ -745,6 +832,26 @@ export const STENCIL_STEPS = Object.freeze({
   // The mask's colour: where it lies (bit 5) over outer copper (bit 0), and elsewhere.
   tintCovered: { face: { compare: "equal", passOp: "keep" }, read: 0x21, write: 0x00, reference: 0x21, color: true, depth: true },
   tintPlain: { face: { compare: "equal", passOp: "keep" }, read: 0x21, write: 0x00, reference: 0x20, color: true, depth: true },
+  // The conformal mask (bit 1: the outer copper's footprint at the mask's
+  // face, its shapes grown by the step's clearance). Footprint shapes set bit 1; region
+  // covers set it where their fan left bit 6 (then cleared by coverClear).
+  footShape: { face: { compare: "always", passOp: "replace" }, read: 0, write: 0x02, reference: 0x02, color: false, depth: false },
+  footCover: { face: { compare: "equal", passOp: "replace", failOp: "keep" }, read: 0x40, write: 0x02, reference: 0x42, color: false, depth: false },
+  // The mask over copper: laid (bit 5) and on the footprint.
+  tintHigh: { face: { compare: "equal", passOp: "keep" }, read: 0x22, write: 0x00, reference: 0x22, color: true, depth: true },
+
+  // The mask over laminate: laid again at its lower face, off the footprint.
+  tintLow: { face: { compare: "equal", passOp: "keep" }, read: 0x22, write: 0x00, reference: 0x20, color: true, depth: true },
+  // Clear the lay (bits 5 and 7), keeping the footprint.
+  clearLay: { face: { compare: "always", passOp: "zero" }, read: 0, write: 0xa0, reference: 0, color: false, depth: false },
+  // Silkscreen on the mask: on the footprint, then off it (first writer
+  // wins, as shapeBlend and coverBlend).
+  shapeOnFoot: { face: { compare: "equal", passOp: "invert" }, read: 0xa2, write: 0x20, reference: 0x02, color: true, depth: true },
+  shapeOffFoot: { face: { compare: "equal", passOp: "invert" }, read: 0xa2, write: 0x20, reference: 0x00, color: true, depth: true },
+  coverOnFoot: { face: { compare: "equal", passOp: "invert", failOp: "keep", depthFailOp: "keep" }, read: 0xe2, write: 0x60, reference: 0x42, color: true, depth: true },
+  coverOffFoot: { face: { compare: "equal", passOp: "invert", failOp: "keep", depthFailOp: "keep" }, read: 0xe2, write: 0x60, reference: 0x40, color: true, depth: true },
+  // Clear the footprint when the side is done.
+  clearFoot: { face: { compare: "always", passOp: "zero" }, read: 0, write: 0x02, reference: 0, color: false, depth: false },
   // Solid geometry (a slab's side walls): depth only, the stencil untouched.
   solid: { face: keep, read: 0, write: 0, reference: 0, color: true, depth: true },
   // Clear bits 5, 6 and 7 over the slice.

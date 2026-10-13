@@ -41,6 +41,25 @@ export function withSentinels(values) {
  * `bounds` the slice's board-millimetre extent. Without the stencil feature
  * only add shapes draw (no subtracts, no regions); `stats().degraded` says so.
  */
+/** A shape record's bounds on the board (millimetres): its local bounds through its affine. */
+export function recordBounds(words, index) {
+  const f = new Float32Array(words.buffer, words.byteOffset + index * SHAPE_WORDS * 4, SHAPE_WORDS);
+  const [m11, m12, m21, m22, tx, ty] = [f[4], f[5], f[6], f[7], f[8], f[9]];
+  const box = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of [[f[10], f[11]], [f[12], f[11]], [f[10], f[13]], [f[12], f[13]]]) {
+    const bx = m11 * x + m12 * y + tx;
+    const by = m21 * x + m22 * y + ty;
+    box[0] = Math.min(box[0], bx);
+    box[1] = Math.min(box[1], by);
+    box[2] = Math.max(box[2], bx);
+    box[3] = Math.max(box[3], by);
+  }
+  return box;
+}
+
+/** How far (mm) a conformal mask's step stands off its copper, clearing the copper's wall. */
+export const STEP_CLEARANCE_MM = 0.0005;
+
 /** Below this many pixels tall, a slab's shape walls are not drawn. */
 export const WALL_MIN_PIXELS = 0.3;
 
@@ -308,6 +327,19 @@ export class AnalyticRenderer {
         coverBlend: make("cover-blend", "vs_cover", "fs_cover", "coverBlend", [], true),
         tintCovered: make("tint-covered", "vs_clear", "fs_tint_covered", "tintCovered", [], true),
         tintPlain: make("tint-plain", "vs_clear", "fs_tint_plain", "tintPlain", [], true),
+        // The conformal mask (see `encodeConformal`).
+        footShape: make("foot-shape", "vs_shape", "fs_shape_mask", "footShape"),
+        footCover: make("foot-cover", "vs_cover", "fs_plain_mask", "footCover"),
+        tintHigh: make("tint-high", "vs_clear", "fs_tint_covered", "tintHigh", [], true),
+        tintLow: make("tint-low", "vs_clear", "fs_tint_plain", "tintLow", [], true),
+        regionStep: make("region-step", "vs_region_step", "fs_region_step", "solid"),
+        step: make("step", "vs_step", "fs_step", "solid"),
+        clearLay: make("clear-lay", "vs_clear", "fs_plain_mask", "clearLay"),
+        clearFoot: make("clear-foot", "vs_clear", "fs_plain_mask", "clearFoot"),
+        shapeOnFoot: make("shape-on-foot", "vs_shape", "fs_shape", "shapeOnFoot", [], true),
+        shapeOffFoot: make("shape-off-foot", "vs_shape", "fs_shape", "shapeOffFoot", [], true),
+        coverOnFoot: make("cover-on-foot", "vs_cover", "fs_cover", "coverOnFoot", [], true),
+        coverOffFoot: make("cover-off-foot", "vs_cover", "fs_cover", "coverOffFoot", [], true),
       }),
     };
   }
@@ -317,8 +349,9 @@ export class AnalyticRenderer {
     this.releaseSlices();
     const shared = new Map();
     this.slices = slices.map((slice) => this.uploadSlice(slice, shared));
+    this.makeTwins();
     // The board's extent in the world (before exploded offsets), for how big
-    // a slab's walls can look (see \`wallPixels\`).
+    // a slab's walls can look (see `wallPixels`).
     const zs = slices.map((slice) => slice.z);
     const xs = slices.flatMap((slice) => [slice.bounds[0], slice.bounds[2]]);
     const ys = slices.flatMap((slice) => [slice.bounds[1], slice.bounds[3]]);
@@ -330,6 +363,106 @@ export class AnalyticRenderer {
       ? { top: Math.max(...skins.map((slice) => slice.z)), bottom: Math.min(...skins.map((slice) => slice.z)) }
       : null;
     this.renderer.invalidate?.();
+  }
+
+  /**
+   * The conformal mask's extra drawings of uploaded slices, each sharing
+   * its slice's buffers with a uniform of its own: per mask, its face over
+   * laminate (`low`) and its side's outer copper at the mask's face, grown
+   * by the coat (`foot`, the footprint the mask rises over); per silkscreen,
+   * its face over laminate.
+   */
+  makeTwins() {
+    this.twinBuffers?.forEach((buffer) => buffer.destroy());
+    this.twinBuffers = [];
+    const twin = (slice, changes) => {
+      const gpu = {
+        ...slice,
+        ...changes,
+        uniform: this.device.createBuffer({ label: `analytic-twin-${slice.key}`, size: SLICE_UNIFORM_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+        field: null,
+      };
+      gpu.bindGroup = this.bindGroup(gpu);
+      return gpu;
+    };
+    this.twins = new Map();
+    for (const slice of this.slices) {
+      if (slice.zLow === undefined || (slice.role !== "mask" && slice.role !== "silk")) continue;
+      const entry = { low: twin(slice, { z: slice.zLow }) };
+      const copper = slice.role === "mask" && this.slices.find((other) => other.role === "copper" && other.mark && other.faceDown === slice.faceDown);
+      if (copper) {
+        // Its slab runs from the laminate to the mask's outer face, so its step
+        // covers the copper's whole coated wall; its cuts are the mask's
+        // openings. It stands a hair off the copper (STEP_CLEARANCE_MM), not a
+        // coat's width: the raised mask then lies exactly over the copper,
+        // with no translucent band to see the bare wall through.
+        const openings = this.uploadOpenings(copper, slice);
+        const laminate = slice.faceDown ? copper.zTop : copper.zBottom;
+        entry.foot = twin(copper, {
+          role: "footprint", z: slice.z, dilate: STEP_CLEARANCE_MM, mark: false, walls: false,
+          zTop: Math.max(slice.z, laminate), zBottom: Math.min(slice.z, laminate), ...openings,
+        });
+      }
+      this.twins.set(slice, entry);
+    }
+  }
+
+  /**
+   * For a mask's step around `copper`: the copper's shapes with the mask's
+   * opening shapes after them, and the edges and cuts that list, per copper
+   * shape and region edge, the openings that reach it (by bounds).
+   */
+  uploadOpenings(copper, mask) {
+    const { lowered } = copper;
+    const openings = mask.lowered.shapes.subarray(0, mask.lowered.subtractShapes * SHAPE_WORDS);
+    const base = lowered.shapes.length / SHAPE_WORDS;
+    const shapes = new Uint32Array(lowered.shapes.length + openings.length);
+    shapes.set(lowered.shapes);
+    shapes.set(openings, lowered.shapes.length);
+    const cells = new Map();
+    const cell = (x, y) => `${Math.floor(x)},${Math.floor(y)}`;
+    const boxes = [];
+    for (let i = 0; i < openings.length / SHAPE_WORDS; i += 1) {
+      const box = recordBounds(openings, i);
+      boxes.push(box);
+      for (let x = Math.floor(box[0]); x <= Math.floor(box[2]); x += 1) {
+        for (let y = Math.floor(box[1]); y <= Math.floor(box[3]); y += 1) {
+          const key = cell(x, y);
+          if (!cells.has(key)) cells.set(key, []);
+          cells.get(key).push(i);
+        }
+      }
+    }
+    const indices = [];
+    const ranges = [];
+    const reach = (box) => {
+      const found = new Set();
+      for (let x = Math.floor(box[0]); x <= Math.floor(box[2]); x += 1) {
+        for (let y = Math.floor(box[1]); y <= Math.floor(box[3]); y += 1) {
+          for (const i of cells.get(cell(x, y)) || []) {
+            const b = boxes[i];
+            if (b[0] <= box[2] && box[0] <= b[2] && b[1] <= box[3] && box[1] <= b[3]) found.add(i);
+          }
+        }
+      }
+      ranges.push(indices.length, found.size);
+      for (const i of found) indices.push(base + i);
+    };
+    // Grown by the coat and a margin: the step lies that far out.
+    const grow = (box) => [box[0] - 0.05, box[1] - 0.05, box[2] + 0.05, box[3] + 0.05];
+    for (let i = lowered.subtractShapes; i < base; i += 1) reach(grow(recordBounds(lowered.shapes, i)));
+    const shapeCount = base - lowered.subtractShapes;
+    const edges = lowered.contourEdges || new Float32Array(0);
+    for (let e = 0; e + 3 < edges.length; e += 4) reach(grow([Math.min(edges[e], edges[e + 2]), Math.min(edges[e + 1], edges[e + 3]), Math.max(edges[e], edges[e + 2]), Math.max(edges[e + 1], edges[e + 3])]));
+    const cuts = {
+      shapeCuts: new Uint32Array(ranges.slice(0, shapeCount * 2)),
+      edgeCuts: new Uint32Array(ranges.slice(shapeCount * 2)),
+      cutIndices: new Uint32Array(indices),
+    };
+    const uploaded = this.uploadEdges({ ...lowered, ...cuts }, `${copper.key}-step`);
+    const shapeBuffer = this.buffer(shapes, GPUBufferUsage.STORAGE, `analytic-step-shapes-${copper.key}`);
+    this.twinBuffers.push(shapeBuffer, uploaded.edges, uploaded.cuts);
+    return { ...uploaded, shapes: shapeBuffer };
   }
 
   uploadSlice(slice, shared = new Map()) {
@@ -488,6 +621,7 @@ export class AnalyticRenderer {
   rebind() {
     this.boundNetMask = this.renderer.netMaskBuffer;
     for (const slice of this.slices) slice.bindGroup = this.bindGroup(slice);
+    for (const entry of this.twins?.values() || []) for (const twin of Object.values(entry)) twin.bindGroup = this.bindGroup(twin);
     if (this.barrels) this.barrels.bindGroup = this.barrelBindGroup();
     if (this.walls) this.walls.bindGroup = this.wallBindGroup();
     this.renderer.invalidate?.();
@@ -523,6 +657,7 @@ export class AnalyticRenderer {
       floats.set([slice.zBottom + lift, slice.zTop + lift], 28);
     }
     words[30] = slice.subtractShapes || 0;
+    floats[31] = slice.dilate || 0;
     if (this.eye) floats.set(this.eye, 32);
     this.device.queue.writeBuffer(slice.uniform, 0, this.uniformScratch);
   }
@@ -654,11 +789,23 @@ export class AnalyticRenderer {
     for (const slice of this.slices) if (fading && slice.role === "dielectric") draw(slice, "blend");
     if (fading) drawn += this.encodeWalls(pass, true);
     const assembled = boardShown && (context.assemblyOpacity ?? 1) > 0.01;
-    for (const slice of this.slices) {
-      if (slice.role === "mask" && assembled) draw(slice, "mask");
-      else if (slice.role === "paste" && !context.hidePaste && !context.panelLayer && (!visibleLayers || visibleLayers.has(slice.offsetLayers?.[0]))) draw(slice, "blend");
+    // Each side's mask coats its copper, its silkscreen printed on it.
+    const printed = new Set();
+    for (const mask of this.slices) {
+      if (mask.role !== "mask" || !assembled || this.behindBoard(mask, context)) continue;
+      const twins = this.twins.get(mask);
+      if (!twins?.foot) {
+        draw(mask, "mask");
+        continue;
+      }
+      const silks = this.slices.filter((slice) => slice.role === "silk" && slice.faceDown === mask.faceDown && !this.behindBoard(slice, context));
+      for (const silk of silks) printed.add(silk);
+      drawn += this.encodeConformal(pass, mask, twins, silks, layerOffsets, (slice) => this.lookFor(slice, copper, board, context));
     }
-    for (const slice of this.slices) if (slice.role === "silk" && assembled) draw(slice, "blend");
+    for (const slice of this.slices) {
+      if (slice.role === "paste" && !context.hidePaste && !context.panelLayer && (!visibleLayers || visibleLayers.has(slice.offsetLayers?.[0]))) draw(slice, "blend");
+    }
+    for (const slice of this.slices) if (slice.role === "silk" && assembled && !printed.has(slice)) draw(slice, "blend");
     pass.setStencilReference(1);
     return drawn;
   }
@@ -672,7 +819,7 @@ export class AnalyticRenderer {
   }
 
   /**
-   * The most pixels a wall of \`height\` metres spans anywhere on the board
+   * The most pixels a wall of `height` metres spans anywhere on the board
    * in the current view: a vertical segment that tall, projected at the
    * board's corners and at its nearest point to the eye.
    */
@@ -734,19 +881,7 @@ export class AnalyticRenderer {
       pass.setPipeline(pipelines[name]);
       pass.setStencilReference(reference);
     };
-    if (slice.subtractShapes) {
-      step("shapeMask");
-      pass.draw(6, slice.subtractShapes, 0, 0);
-    }
-    this.encodeBatches(pass, slice, true, step, mode);
-    const adds = slice.shapeCount - slice.subtractShapes;
-    if (adds) {
-      // Outer copper marks bit 0, as the mesh copper does for the mask.
-      if (mode === "opaque") step("shapeAdd", slice.mark ? 0x21 : 0x20);
-      else step(mode === "mask" ? "shapeLay" : "shapeBlend");
-      pass.draw(6, adds, 0, slice.subtractShapes);
-    }
-    this.encodeBatches(pass, slice, false, step, mode);
+    this.encodeFill(pass, slice, step, mode);
     if (mode === "mask") {
       step("tintCovered");
       pass.draw(6);
@@ -755,6 +890,96 @@ export class AnalyticRenderer {
     }
     step("clear");
     pass.draw(6);
+  }
+
+  /**
+   * A slice's shapes and regions through the stencil plan, by `mode`:
+   * "opaque", "blend", "mask" (laid down uncoloured), "footprint" (bit 1,
+   * no subtracts), "onFoot" and "offFoot" (blended, on or off bit 1).
+   */
+  encodeFill(pass, slice, step, mode) {
+    const footprint = mode === "footprint";
+    if (slice.subtractShapes && !footprint) {
+      step("shapeMask");
+      pass.draw(6, slice.subtractShapes, 0, 0);
+    }
+    if (!footprint) this.encodeBatches(pass, slice, true, step, mode);
+    const adds = slice.shapeCount - slice.subtractShapes;
+    if (adds) {
+      // Outer copper marks bit 0, as the mesh copper does for the mask.
+      if (mode === "opaque") step("shapeAdd", slice.mark ? 0x21 : 0x20);
+      else step({ mask: "shapeLay", blend: "shapeBlend", footprint: "footShape", onFoot: "shapeOnFoot", offFoot: "shapeOffFoot" }[mode]);
+      pass.draw(6, adds, 0, slice.subtractShapes);
+    }
+    this.encodeBatches(pass, slice, false, step, mode);
+  }
+
+  /**
+   * One side's solder mask, conformal: over its copper at the face the
+   * stackup gives it, over bare laminate one copper thickness lower, and
+   * coating the copper's walls; then that side's silkscreen on it. Bit 1
+   * holds the copper's footprint at the mask's face.
+   */
+  encodeConformal(pass, mask, { low, foot }, silks, layerOffsets, lookOf) {
+    const pipelines = this.pipelines.color;
+    // The steps' pipelines run the solid plan.
+    const plan = (name) => STENCIL_STEPS[name === "step" || name === "regionStep" ? "solid" : name];
+    const step = (name, reference = plan(name).reference) => {
+      pass.setPipeline(pipelines[name]);
+      pass.setStencilReference(reference);
+    };
+    const use = (slice, look) => {
+      this.writeSlice(slice, layerOffsets, look);
+      pass.setBindGroup(0, slice.bindGroup);
+    };
+    const maskLook = lookOf(mask);
+    // The footprint (its colour the mask's, for the walls' coat).
+    use(foot, maskLook);
+    this.encodeFill(pass, foot, step, "footprint");
+    // The mask over copper.
+    use(mask, maskLook);
+    this.encodeFill(pass, mask, step, "mask");
+    step("tintHigh");
+    pass.draw(6);
+    // Its step down from copper to laminate, outside its openings.
+    pass.setBindGroup(0, foot.bindGroup);
+    if (foot.regionEdges) {
+      step("regionStep");
+      pass.draw(6, foot.regionEdges, 0, 0);
+    }
+    if (foot.skirtEdges && this.wallPixels(foot.zTop - foot.zBottom) >= WALL_MIN_PIXELS) {
+      step("step");
+      pass.draw(12, foot.skirtEdges, 0, foot.regionEdges);
+    }
+    pass.setBindGroup(0, mask.bindGroup);
+    step("clearLay");
+    pass.draw(6);
+    // The mask over laminate.
+    use(low, maskLook);
+    this.encodeFill(pass, low, step, "mask");
+    step("tintLow");
+    pass.draw(6);
+    step("clearLay");
+    pass.draw(6);
+    // Silkscreen on the mask: on the copper, then off it.
+    for (const silk of silks) {
+      const look = lookOf(silk);
+      use(silk, look);
+      this.encodeFill(pass, silk, step, "onFoot");
+      step("clear");
+      pass.draw(6);
+      const flat = this.twins.get(silk)?.low;
+      if (!flat) continue;
+      use(flat, look);
+      this.encodeFill(pass, flat, step, "offFoot");
+      step("clear");
+      pass.draw(6);
+    }
+    pass.setBindGroup(0, mask.bindGroup);
+    step("clearFoot");
+    pass.draw(6);
+    pass.setStencilReference(1);
+    return 1 + silks.length;
   }
 
   encodeBatches(pass, slice, subtract, step, mode = "opaque") {
@@ -769,11 +994,12 @@ export class AnalyticRenderer {
         step("coverMark", slice.mark ? 0x41 : 0x40);
         pass.draw(6, batch.coverCount, 0, batch.firstCover);
       }
-      const cover = { opaque: "coverAdd", blend: "coverBlend", mask: "coverLay" }[mode];
+      const cover = { opaque: "coverAdd", blend: "coverBlend", mask: "coverLay", footprint: "footCover", onFoot: "coverOnFoot", offFoot: "coverOffFoot" }[mode];
       step(subtract ? "coverSubtract" : cover);
       pass.draw(6, batch.coverCount, 0, batch.firstCover);
-      // The slice's closing clear clears bit 6 after the last batch.
-      if (!subtract && batch !== last) {
+      // The slice's closing clear clears bit 6 after the last batch (a
+      // footprint has none: it clears its own).
+      if (!subtract && (batch !== last || mode === "footprint")) {
         step("coverClear");
         pass.draw(6, batch.coverCount, 0, batch.firstCover);
       }
@@ -818,6 +1044,10 @@ export class AnalyticRenderer {
   }
 
   releaseSlices() {
+    for (const entry of this.twins?.values() || []) for (const twin of Object.values(entry)) twin.uniform.destroy();
+    this.twinBuffers?.forEach((buffer) => buffer.destroy());
+    this.twinBuffers = [];
+    this.twins = new Map();
     const buffers = new Set();
     for (const slice of this.slices) {
       for (const buffer of [slice.shapes, slice.covers, slice.fans, slice.uniform, slice.edges, slice.cuts]) if (buffer) buffers.add(buffer);

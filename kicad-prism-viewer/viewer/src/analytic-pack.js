@@ -192,10 +192,12 @@ export function planBoardSlices(header, layers, zOffset = 0) {
         z: backSide ? centre - half - lift : centre + half + lift,
         faceDown: backSide,
         outer: false,
+        thickness: half * 2,
         offsetLayers: [outerLayer, outerLayer],
       });
     }
   }
+  conformOuterLayers(planned);
   // The board's outside: the top face of the highest dielectric and the
   // bottom face of the lowest. A solid board hides every other face.
   const faces = planned.filter((slice) => slice.role === "dielectric");
@@ -205,6 +207,36 @@ export function planBoardSlices(header, layers, zOffset = 0) {
   const rank = { dielectric: 0, copper: 1, mask: 2, paste: 3, silk: 4 };
   planned.sort((a, b) => rank[a.role] - rank[b.role]);
   return { planned, unmatched };
+}
+
+/**
+ * The solder mask coats its side's laminate and copper alike, one
+ * thickness deep: over copper its face is where the stackup puts it (the
+ * copper's outer face plus the mask), over bare laminate one copper
+ * thickness lower. A mask gets `coat` (its thickness) and `zLow`, its face
+ * over laminate; silkscreen, printed on the mask, gets its `zLow` too; paste
+ * lies on its pads' copper.
+ */
+function conformOuterLayers(planned) {
+  for (const slice of planned) {
+    if (slice.role !== "mask" && slice.role !== "silk" && slice.role !== "paste") continue;
+    const copper = planned.find((other) => other.role === "copper" && other.mark && other.faceDown === slice.faceDown);
+    if (!copper) continue;
+    const sign = slice.faceDown ? -1 : 1;
+    // The laminate under this side's copper, and the copper's outer face.
+    const laminate = slice.faceDown ? copper.zTop : copper.zBottom;
+    const face = slice.faceDown ? copper.zBottom : copper.zTop;
+    const mask = planned.find((other) => other.role === "mask" && other.faceDown === slice.faceDown);
+    const coat = mask?.thickness || 0;
+    if (slice.role === "mask") {
+      slice.coat = coat;
+      slice.zLow = laminate + sign * coat;
+    } else if (slice.role === "silk") {
+      slice.zLow = laminate + sign * (coat + SILK_LIFT);
+    } else {
+      slice.z = face + sign * PASTE_LIFT;
+    }
+  }
 }
 
 /** Dense per-operation values (NaN where absent) from an array or a map. */
