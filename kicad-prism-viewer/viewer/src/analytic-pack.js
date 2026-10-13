@@ -336,39 +336,47 @@ export function planBarrels(header, barrels, slices) {
 
 const WALL_FLOATS = 12;
 
+/** A wall's kind (its ids.z): a dielectric slab's own, or a band at a copper level. */
+export const WALL_SLAB = 0;
+export const WALL_BAND = 1;
+
 /**
- * Side walls of the dielectric slabs from their contour edges (board mm, y
- * down): world metres, y up. A slab's wall closes the gap to its neighbours:
- * it runs to the middle of the copper layer above and below, and the outer
- * slabs to the mask's outer face. Returns `{ data, count }`, `WALL_FLOATS` per
- * wall (see ANALYTIC_WALL_SHADER).
+ * The board's side walls from the dielectrics' contour edges (board mm, y
+ * down): world metres, y up. Each dielectric slab has its own walls,
+ * exactly its height, moving with it when the stack separates. Each copper
+ * level has a band on the same outline in the board's colour, which only a
+ * solid, unseparated board shows: the resin around inner copper, and at
+ * the outer levels up to the mask's outer face. Returns `{ data, count }`,
+ * `WALL_FLOATS` per wall (see ANALYTIC_WALL_SHADER).
  */
 export function planWalls(slices, lowered, layers, zOffset = 0) {
-  const byId = new Map((layers || []).map((layer) => [Number(layer.id), layer]));
-  const centre = (id) => Number(byId.get(Number(id))?.z_mm || 0) / 1000 + zOffset;
   const masks = (layers || []).filter((layer) => layer.role === "soldermask").map((layer) => Number(layer.z_mm) / 1000 + zOffset + Math.sign(Number(layer.z_mm)) * Number(layer.thickness_mm || 0) / 2000);
-  const top = masks.length ? Math.max(...masks) : null;
-  const bottom = masks.length ? Math.min(...masks) : null;
-  const tops = slices.filter((slice) => slice.role === "dielectric" && slice.face === "top");
+  const maskTop = masks.length ? Math.max(...masks) : null;
+  const maskBottom = masks.length ? Math.min(...masks) : null;
+  const dielectrics = slices.filter((slice) => slice.role === "dielectric" && slice.face === "top" && lowered.get(slice.key)?.contourEdges?.length);
   const walls = [];
-  const conductorTops = [...new Set(slices.filter((slice) => slice.role === "copper").map((slice) => slice.layerId))];
-  const outerFront = conductorTops[0];
-  const outerBack = conductorTops[conductorTops.length - 1];
-  for (const slice of tops) {
-    const edges = lowered.get(slice.key)?.contourEdges;
-    if (!edges?.length) continue;
-    const bottomFace = slices.find((other) => other.key === slice.key && other.face === "bottom");
-    const [above, below] = slice.offsetLayers;
-    const zTop = above === outerFront && top != null ? top : Math.max(slice.z, centre(above));
-    const zBottom = below === outerBack && bottom != null ? bottom : Math.min(bottomFace.z, centre(below));
-    for (let i = 0; i + 3 < edges.length; i += 4) walls.push([edges[i], edges[i + 1], edges[i + 2], edges[i + 3], zTop, zBottom, above, below]);
+  const along = (slice, zTop, zBottom, above, below, kind) => {
+    const edges = lowered.get(slice.key).contourEdges;
+    for (let i = 0; i + 3 < edges.length; i += 4) walls.push([edges[i], edges[i + 1], edges[i + 2], edges[i + 3], zTop, zBottom, above, below, kind]);
+  };
+  for (const slice of dielectrics) along(slice, slice.zTop, slice.zBottom, slice.offsetLayers[0], slice.offsetLayers[1], WALL_SLAB);
+  // One band per copper level, on its nearest dielectric's outline.
+  for (const copper of slices.filter((slice) => slice.role === "copper" && slice.face === "top")) {
+    const gap = (slice) => Math.min(Math.abs(slice.zBottom - copper.zTop), Math.abs(slice.zTop - copper.zBottom));
+    const outline = [...dielectrics].sort((a, b) => gap(a) - gap(b))[0];
+    if (!outline) continue;
+    const front = copper.outer && !copper.bottom;
+    const back = copper.outer && copper.bottom;
+    const zTop = front && maskTop != null ? Math.max(maskTop, copper.zTop) : copper.zTop;
+    const zBottom = back && maskBottom != null ? Math.min(maskBottom, copper.zBottom) : copper.zBottom;
+    along(outline, zTop, zBottom, copper.layerId, copper.layerId, WALL_BAND);
   }
   const data = new ArrayBuffer(walls.length * WALL_FLOATS * 4);
   const floats = new Float32Array(data);
   const words = new Uint32Array(data);
-  walls.forEach(([x0, y0, x1, y1, zTop, zBottom, a, b], index) => {
+  walls.forEach(([x0, y0, x1, y1, zTop, zBottom, a, b, kind], index) => {
     floats.set([x0 / 1000, -y0 / 1000, x1 / 1000, -y1 / 1000, zTop, zBottom, 0, 0], index * WALL_FLOATS);
-    words.set([a, b, 0, 0], index * WALL_FLOATS + 8);
+    words.set([a, b, kind, 0], index * WALL_FLOATS + 8);
   });
   return { data, count: walls.length };
 }

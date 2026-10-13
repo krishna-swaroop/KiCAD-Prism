@@ -186,6 +186,8 @@ export class AnalyticRenderer {
     words[12] = this.overlay.mode === OVERLAY_VALUES ? 1 : 0;
     words[13] = context.isolateNet ? 1 : 0;
     words[14] = this.boardShown(context) ? 1 : 0;
+    // Solid: shown, opaque, and not separated (the viewer then hides inner copper).
+    words[15] = this.boardShown(context) && (context.boardOpacity ?? 1) >= 0.999 && this.renderer.innerCopperMode !== "all" ? 1 : 0;
     floats.set(this.overlay.range, 16);
     this.device.queue.writeBuffer(this.barrelView, 0, this.viewScratch);
   }

@@ -10,6 +10,9 @@ import {
   operationCount,
   planBoardSlices,
   planCopperSlices,
+  planWalls,
+  WALL_BAND,
+  WALL_SLAB,
   sliceBoundsMm,
   valueRange,
 } from "./analytic-pack.js";
@@ -186,4 +189,37 @@ test("a board's outside faces are the top of its highest dielectric and the bott
   const skins = faces.filter((slice) => slice.skin).map((slice) => [slice.key, slice.face]);
   assert.deepEqual(skins.sort(), [["s1", "top"], ["s3", "bottom"]]);
   assert.ok(planned.filter((slice) => slice.role !== "dielectric").every((slice) => slice.skin === undefined));
+});
+
+test("each dielectric has walls of its own height; copper levels have bands on a solid board", () => {
+  const bounds = { min_x_nm: 0, min_y_nm: 0, max_x_nm: 1e7, max_y_nm: 1e7 };
+  const names = ["F.Mask", "F.Cu", "core1", "In1.Cu", "core2", "B.Cu", "B.Mask"];
+  const roles = ["solder_mask", "conductor", "dielectric", "conductor", "dielectric", "conductor", "solder_mask"];
+  const header = {
+    stack: { slices: names.map((name, order) => ({ key: `s${order}`, order, role: roles[order], kicad_layer: name, side: order < 3 ? "front" : "back" })) },
+    chunks: names.map((_, order) => ({ slice_key: `s${order}`, bounds })),
+  };
+  // Millimetres: copper 0.035 (outer) and 0.015, cores 0.7, masks 0.01, stacked flush.
+  const z = [0.7875, 0.765, 0.3975, 0, -0.3575, -0.725, -0.7475];
+  const thickness = [0.01, 0.035, 0.7, 0.015, 0.7, 0.035, 0.01];
+  const layerRole = { solder_mask: "soldermask", conductor: "copper", dielectric: "dielectric" };
+  const layers = names.map((name, index) => ({ id: index + 1, name, role: layerRole[roles[index]], z_mm: z[index], thickness_mm: thickness[index] }));
+  const { planned } = planBoardSlices(header, layers);
+  const square = new Float32Array([0, 0, 10, 0, 10, 0, 10, 10, 10, 10, 0, 10, 0, 10, 0, 0]);
+  const lowered = new Map(planned.map((slice) => [slice.key, { contourEdges: slice.role === "dielectric" ? square : new Float32Array(0) }]));
+  const { data, count } = planWalls(planned, lowered, layers);
+  const floats = new Float32Array(data);
+  const words = new Uint32Array(data);
+  const walls = Array.from({ length: count }, (_, i) => ({ top: floats[i * 12 + 4], bottom: floats[i * 12 + 5], layers: [words[i * 12 + 8], words[i * 12 + 9]], kind: words[i * 12 + 10] }));
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  // Two cores, four edges each, exactly their slabs.
+  assert.equal(walls.filter((wall) => wall.kind === WALL_SLAB).length, 8);
+  const slabs = walls.filter((wall) => wall.kind === WALL_SLAB);
+  assert.ok(slabs.every((wall) => (near(wall.top, 0.0007475) && near(wall.bottom, 0.0000475)) || (near(wall.top, -0.0000075) && near(wall.bottom, -0.0007075))));
+  // Bands: F.Cu up to the mask's outer face, In1 its own, B.Cu down to the back mask's.
+  assert.equal(walls.filter((wall) => wall.kind === WALL_BAND).length, 12);
+  const bands = walls.filter((wall) => wall.kind === WALL_BAND);
+  assert.ok(bands.some((wall) => near(wall.top, 0.0007925) && near(wall.bottom, 0.0007475) && wall.layers[0] === 2));
+  assert.ok(bands.some((wall) => near(wall.top, 0.0000075) && near(wall.bottom, -0.0000075) && wall.layers[0] === 4));
+  assert.ok(bands.some((wall) => near(wall.top, -0.0007075) && near(wall.bottom, -0.0007525) && wall.layers[0] === 6));
 });

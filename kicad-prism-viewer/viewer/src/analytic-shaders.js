@@ -1058,7 +1058,8 @@ struct View {
   isolate: u32,
   // 1 while the board (substrate) is shown: bare drill walls belong to it.
   board: u32,
-  padding2: u32,
+  // 1 while the board is solid and unseparated: the copper levels' bands show.
+  solid: u32,
   range: vec2f,
   padding3: vec2f,
 };
@@ -1084,10 +1085,12 @@ struct WallOut {
     vec2f(0.0, 0.0), vec2f(1.0, 1.0), vec2f(0.0, 1.0));
   let corner = corners[vertex];
   let offset = 0.5 * (layerOffsets[wall.ids.x] + layerOffsets[wall.ids.y]);
+  // A copper level's band (ids.z 1) shows only on a solid board.
+  let shown = wall.ids.z == 0u || view.solid == 1u;
   let world = vec3f(mix(wall.ends.xy, wall.ends.zw, corner.x), mix(wall.span.y, wall.span.x, corner.y) + offset);
   let along = wall.ends.zw - wall.ends.xy;
   var out: WallOut;
-  out.position = globals.viewProjection * vec4f(world, 1.0);
+  out.position = select(vec4f(0.0, 0.0, 2.0, 1.0), globals.viewProjection * vec4f(world, 1.0), shown);
   out.world = world;
   out.normal = vec3f(normalize(vec2f(along.y, -along.x) + vec2f(1e-30, 0.0)), 0.0);
   return out;
