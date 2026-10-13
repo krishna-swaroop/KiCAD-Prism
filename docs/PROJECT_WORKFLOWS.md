@@ -113,6 +113,21 @@ The PCB inspector also shows per-net routing statistics. Treat these as review
 measurements from the parsed board, not a replacement for KiCad DRC or routing
 sign-off.
 
+## PCB 3D layers
+
+The **Layers** section of the PCB 3D side menu lists the board's copper layers
+with a preset (all, none, outer, inner) and the stackup separation slider.
+Below the copper, **Technical layers** lists each side's solder mask, paste and
+silkscreen under their KiCad names (`F.Mask`, `B.Mask`, `F.Paste`, `B.Paste`,
+`F.SilkS`, `B.SilkS`) for the layers the board's stackup declares. Each can be
+shown or hidden on its own: hiding `F.Mask` shows the front copper and
+laminate bare, with the silkscreen still printed. In a system scene the
+technical layers apply to every placed board. The flat 2D layer view lists
+copper only.
+
+**Board substrate**, **Components**, **Model placeholders** and **Realistic
+colours** remain under **Settings**.
+
 ## Insets
 
 An inset shows a live view of the other document without leaving the one you are reading:

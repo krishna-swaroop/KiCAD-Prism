@@ -64,6 +64,9 @@ testers of unreleased behavior work from `dev`.
 - [Dependency identity](DEPENDENCIES.md) covers Python, JavaScript, and native pins.
 - [Experimental Rust PCB geometry](PCB_RUST_GEOMETRY.md) covers explicit
   opt-in, limitations, verification, and rollback.
+- [Analytic 3D board view](ANALYTIC_3D_VIEW.md) covers the experimental
+  exact-geometry board renderer: what it draws, its element API, and pending
+  work.
 - [Design comparison](design-comparison/README.md) maps comparison contracts.
 
 ## Participate

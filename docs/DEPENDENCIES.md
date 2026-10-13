@@ -99,8 +99,10 @@ Linux provider, or copy an unverified local binary into Docker. See
 `kicad-prism-viewer/viewer/vendor/kicad-monkey-analytic/` holds the
 `wasm-bindgen` output of `kicad-monkey-wasm` (feature `materialization`):
 it opens `kicad_monkey.materialization.a0` packs in the browser and lowers
-their slices for the analytic renderer. `provenance.json` pins the exact
-`kicad_monkey` Git revision, the Rust and `wasm-bindgen` versions, the
+their slices for the analytic renderer (see
+[Analytic 3D board view](ANALYTIC_3D_VIEW.md)). The materializer is not yet in
+an upstream release, so the source is the `krishna-swaroop/kicad_monkey` fork.
+`provenance.json` pins its exact Git revision, the Rust and `wasm-bindgen` versions, the
 features, and the SHA-256 of each file; `npm run test:viewer` rejects a
 binary that does not match it. The build remaps local paths, so it is
 reproducible from the pinned revision:
