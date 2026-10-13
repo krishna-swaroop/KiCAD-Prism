@@ -241,7 +241,7 @@ dependencies = [
 [[package]]
 name = "kicad-monkey-contracts"
 version = "2026.9.7"
-source = "git+https://github.com/wavenumber-eng/kicad_monkey?rev=bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d#bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d"
+source = "git+https://github.com/krishna-swaroop/kicad_monkey?rev=b6316117901b344114385242b0ad13be45dfefae#b6316117901b344114385242b0ad13be45dfefae"
 dependencies = [
  "serde",
  "serde_json",
@@ -251,7 +251,7 @@ dependencies = [
 [[package]]
 name = "kicad-monkey-core"
 version = "2026.9.7"
-source = "git+https://github.com/wavenumber-eng/kicad_monkey?rev=bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d#bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d"
+source = "git+https://github.com/krishna-swaroop/kicad_monkey?rev=b6316117901b344114385242b0ad13be45dfefae#b6316117901b344114385242b0ad13be45dfefae"
 dependencies = [
  "harfrust",
  "kicad-monkey-contracts",
@@ -263,6 +263,16 @@ dependencies = [
  "ttf-parser",
  "unicode-casefold",
  "zstd",
+]
+
+[[package]]
+name = "kicad-monkey-materialization-pack"
+version = "2026.9.7"
+source = "git+https://github.com/krishna-swaroop/kicad_monkey?rev=b6316117901b344114385242b0ad13be45dfefae#b6316117901b344114385242b0ad13be45dfefae"
+dependencies = [
+ "kicad-monkey-contracts",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -305,6 +315,7 @@ dependencies = [
  "anyhow",
  "earcutr",
  "kicad-monkey-core",
+ "kicad-monkey-materialization-pack",
  "rayon",
  "serde",
  "serde_json",

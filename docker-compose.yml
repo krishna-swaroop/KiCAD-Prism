@@ -153,6 +153,7 @@ services:
       - PRISM_DESIGN_COMPARE_CACHE=${PRISM_DESIGN_COMPARE_CACHE:-/app/projects/.kicad-prism/design-compare/revision-cache}
       - PRISM_SEMANTIC_VIEWER_CACHE=${PRISM_SEMANTIC_VIEWER_CACHE:-/app/projects/.kicad-prism/semantic-cache}
       - PRISM_PCB_GEOMETRY_BACKEND=${PRISM_PCB_GEOMETRY_BACKEND:-legacy}
+      - PRISM_ANALYTIC_PCB_ENABLED=${PRISM_ANALYTIC_PCB_ENABLED:-false}
     command: >
       sh -c '/app/venv/bin/python -m uvicorn app.main:app
       --host 0.0.0.0
@@ -305,6 +306,7 @@ services:
       - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY:-}
       - TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID=${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID:-}
       - PRISM_PCB_GEOMETRY_BACKEND=${PRISM_PCB_GEOMETRY_BACKEND:-legacy}
+      - PRISM_ANALYTIC_PCB_ENABLED=${PRISM_ANALYTIC_PCB_ENABLED:-false}
     command:
       - /app/venv/bin/python
       - -m

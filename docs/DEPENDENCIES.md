@@ -86,8 +86,9 @@ or legacy `references/` directories automatically.
 
 The optional Rust PCB backend is a separate, source-built runtime identity.
 `kicad-prism-viewer/native/prism-kicad-native/rust-toolchain.toml` pins Rust,
-`Cargo.toml` pins the exact `kicad_monkey` Git revision, and `Cargo.lock` pins
-the complete Rust graph. Docker builds it with `cargo build --release --locked`
+`Cargo.toml` pins the exact `kicad_monkey` Git revision (the
+`krishna-swaroop/kicad_monkey` fork, at the same revision as the analytic WASM
+below; bump both together), and `Cargo.lock` pins the complete Rust graph. Docker builds it with `cargo build --release --locked`
 and copies only the helper binary into the final worker image.
 
 Do not replace the Git revision with a branch, depend on an unpromoted packaged
@@ -113,5 +114,7 @@ node scripts/build-analytic-wasm.mjs --monkey /path/to/kicad_monkey
 ```
 
 `npm run build` copies the WASM to `frontend/public/kicad-monkey-analytic.wasm`
-beside the element; it loads only when a host calls `loadAnalyticPack`. Do not
+beside the element; it loads only when a host calls `loadAnalyticPack`. The
+worker writes packs with the native helper's `emit-pack` from the same
+revision. Do not
 replace it with an unpinned or locally modified build.

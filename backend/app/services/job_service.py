@@ -1203,6 +1203,7 @@ class JobService:
             "status",
             "available",
             "bundle_url",
+            "analytic_pack_url",
             "readiness",
             "generated_at",
             "capabilities",

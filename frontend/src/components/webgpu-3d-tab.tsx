@@ -21,6 +21,7 @@ import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { isAbortError, watchPrismJob, type PrismJobStatus } from "@/lib/jobs";
 import { canManageProjects } from "@/lib/roles";
 import { cn } from "@/lib/utils";
+import { useAnalyticPack } from "@/hooks/use-analytic-pack";
 import { useCommittedRef } from "@/hooks/use-committed-ref";
 import { dnpVisibilityNotice } from "./design-variants/dnp-visibility";
 import { Semantic3dControls } from "./semantic-3d-controls";
@@ -49,6 +50,8 @@ interface WebGpu3dStatus {
     source_fingerprint: string;
     build_fingerprint: string;
     bundle_url?: string;
+    /** Set when the backend wrote an analytic board pack (PRISM_ANALYTIC_PCB_ENABLED). */
+    analytic_pack_url?: string | null;
     generated_at?: string;
     commit?: string;
     message?: string;
@@ -397,6 +400,8 @@ export function WebGpu3dTab({
         return () => { cancelled = true; };
     }, [hiddenComponents, isStackup, isolated, userHidden, viewerElement, viewerReady]);
 
+    const analyticPack = useAnalyticPack(viewerElement, viewerReady, status?.analytic_pack_url);
+
     const ambiguityNotice = dnpVisibilityNotice({
         hidden: [],
         ambiguous: [...ambiguousComponents],
@@ -608,6 +613,24 @@ export function WebGpu3dTab({
                     <Badge variant="secondary" className="pointer-events-auto gap-1 shadow-sm">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         {stageLabel}
+                    </Badge>
+                )}
+                {analyticPack.phase === "ready" && (
+                    <Badge
+                        variant="secondary"
+                        className="pointer-events-auto shadow-sm"
+                        title="The board is drawn from exact geometry (analytic pack)"
+                    >
+                        Analytic board
+                    </Badge>
+                )}
+                {analyticPack.phase === "failed" && (
+                    <Badge
+                        variant="secondary"
+                        className="pointer-events-auto shadow-sm"
+                        title={analyticPack.error}
+                    >
+                        Mesh board (analytic pack failed)
                     </Badge>
                 )}
                 {!isStackup && onShowDnpChange && (

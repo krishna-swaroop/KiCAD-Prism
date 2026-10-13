@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from app.core.config import settings
-from app.services import path_config_service, project_revision
+from app.services import analytic_pack_service, path_config_service, project_revision
 from app.services.job_service import jobs
 from app.services.semantic_viewer_runtime import find_viewer_repo_root, generator_inputs, pythonpath as semantic_viewer_pythonpath, update_native_geometry_fingerprint
 
@@ -31,6 +31,7 @@ def _compute_build_fingerprint() -> str:
         hasher = hashlib.sha256()
         hasher.update(base.encode("utf-8"))
         update_native_geometry_fingerprint(hasher)
+        analytic_pack_service.update_fingerprint(hasher)
         hasher.update(settings.PRISM_KICAD_MONKEY_SOURCE.encode("utf-8"))
         for path in generator_inputs(viewer_root):
             hasher.update(path.relative_to(viewer_root).as_posix().encode("utf-8"))
@@ -240,7 +241,13 @@ def bundle_path(project_id: str, source_hash: str, build_hash: str = BUILD_FINGE
 
 
 def bundle_url(project_id: str, source_hash: str, build_hash: str = BUILD_FINGERPRINT) -> str:
-    return f"/api/projects/{project_id}/webgpu-3d/assets/{source_hash}/{build_hash}/bundle.json"
+    return _asset_url(project_id, source_hash, "bundle.json", build_hash)
+
+
+def _asset_url(
+    project_id: str, source_hash: str, asset: str, build_hash: str = BUILD_FINGERPRINT
+) -> str:
+    return f"/api/projects/{project_id}/webgpu-3d/assets/{source_hash}/{build_hash}/{asset}"
 
 
 def _build_lock(project_id: str, source_hash: str) -> threading.Lock:
@@ -404,6 +411,10 @@ def get_status_for_source(
             payload["generated_at"] = bundle.get("generated_at")
             payload["capabilities"] = bundle.get("capabilities", {})
             _validate_bundle_assets(current_bundle.parent, bundle)
+            if bundle.get("analytic_pack"):
+                payload["analytic_pack_url"] = _asset_url(
+                    project.id, source_hash, analytic_pack_service.PACK_FILE
+                )
         except Exception as exc:
             payload["status"] = "invalid"
             payload["available"] = False
@@ -441,6 +452,7 @@ def get_status_for_commit(project: Any, commit: str, project_rel: str | None = N
 
 
 def _validate_bundle_assets(root: Path, bundle: Dict[str, Any]) -> None:
+    analytic_pack_service.validate_entry(root, bundle.get("analytic_pack"))
     semantic_geometry_path = root / str(bundle.get("semantic_geometry") or "semantic_geometry.json")
     if not semantic_geometry_path.is_file():
         raise RuntimeError(f"Missing semantic geometry asset: {semantic_geometry_path.name}")
@@ -862,7 +874,12 @@ def sync_staged_webgpu_status(
     jobs.upsert_webgpu_ready_status(job_id=job_id, fence=fence, details=details)
 
 
-def _write_bundle(project: Any, output_dir: Path, source_hash: str) -> None:
+def _write_bundle(
+    project: Any,
+    output_dir: Path,
+    source_hash: str,
+    analytic_pack: Dict[str, Any] | None = None,
+) -> None:
     topology = output_dir / "topology.json"
     semantic_geometry = output_dir / "semantic_geometry.json"
     if not topology.exists() or not semantic_geometry.exists():
@@ -872,6 +889,8 @@ def _write_bundle(project: Any, output_dir: Path, source_hash: str) -> None:
         ["board", "components", "semantic-geometry", "topology"],
     )
     bundle = _bundle_document(project, source_hash, readiness)
+    if analytic_pack:
+        bundle["analytic_pack"] = analytic_pack
     (output_dir / "bundle.json").write_text(json.dumps(bundle, indent=2), encoding="utf-8")
     _validate_bundle_assets(output_dir, bundle)
 
@@ -1116,8 +1135,14 @@ def _build_visualizer_bundle_locked(
         if return_code != 0:
             raise RuntimeError(f"semantic visualizer compiler exited with code {return_code}")
 
+        analytic_pack = None
+        if analytic_pack_service.enabled():
+            job["stage"] = "analytic-pack"
+            pack_started = time.perf_counter()
+            analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"])
+            _record_perf(job, persist, "analytic_pack", pack_started, written=analytic_pack is not None)
         bundle_started = time.perf_counter()
-        _write_bundle(project, output, source_hash)
+        _write_bundle(project, output, source_hash, analytic_pack)
         _record_perf(job, persist, "bundle.write_and_validate", bundle_started)
         job["stage"] = "publish-assets"
         job["message"] = "Publishing semantic viewer assets..."

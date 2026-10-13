@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 pub const SCHEMA: &str = "prism.pcb_geometry.v1";
-pub const KICAD_MONKEY_REVISION: &str = "bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d";
+pub const KICAD_MONKEY_REVISION: &str = "b6316117901b344114385242b0ad13be45dfefae";
 
 pub type NmPoint = [i64; 2];
 pub type NmRing = Vec<NmPoint>;

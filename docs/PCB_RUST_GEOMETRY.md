@@ -8,10 +8,13 @@ reports an error diagnostic.
 
 ## Upstream boundary
 
-The dependency is pinned to `wavenumber-eng/kicad_monkey` revision
-`bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d`, engine version `2026.9.7`, with
-Rust `1.95.0`. At that revision the analytic copper materializer discussed in
-upstream issue 20 is not a public stable API. Prism therefore uses the public
+The dependency is pinned to revision
+`b6316117901b344114385242b0ad13be45dfefae` of the `krishna-swaroop/kicad_monkey`
+fork (engine version `2026.9.7`, Rust `1.95.0`): upstream
+`bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d` plus the analytic materializer
+proposed in upstream issue 93. The same revision builds the analytic WASM, so
+the worker's packs and the browser's reader agree. Until upstream accepts the
+materializer it is not a public stable API. Prism therefore uses the public
 source-backed `PcbView`, selected PCB families, resolved net references, and
 `resolve_pad_copper_layer`. Conditional remove-unused-layer policy is the only
 narrow exception: the public board plot document is used as a layer-presence

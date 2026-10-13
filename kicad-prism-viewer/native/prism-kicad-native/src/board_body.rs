@@ -742,6 +742,7 @@ fn append_plotter_paths(
                 knockout: false,
                 render_cache_polygons: Vec::new(),
                 render_cache: None,
+                kicad: None,
             };
             append_text_paths(&operation, placement, tolerance, output)?;
         }

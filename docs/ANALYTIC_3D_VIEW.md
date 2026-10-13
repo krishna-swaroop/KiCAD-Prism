@@ -7,16 +7,19 @@ describes (disks, capsules, rounded rectangles, swept paths, polygons with
 holes), so edges stay exact at any zoom and nothing is tessellated ahead of
 time.
 
-**Status: opt-in and not yet used by the 3D tab.** The 3D tab still renders
-the mesh scene. A host turns the analytic board on by handing the viewer a
-pack (see [Element API](#element-api)); nothing in the Prism worker produces
-packs yet. Read [Pending work](#pending-work) before relying on it.
+**Status: experimental and opt-in.** With `PRISM_ANALYTIC_PCB_ENABLED=true`
+the 3D job also writes `board.kmpack` beside the mesh bundle, the status
+response carries its `analytic_pack_url`, and the PCB 3D tab draws the board
+from it (an "Analytic board" badge shows it is in use). Without the flag, or
+when the pack fails, the tab renders the mesh scene as before. Read
+[Pending work](#pending-work) before relying on it.
 
 ## Pipeline
 
 ```text
 .kicad_pcb (+ .kicad_pro)
-    │  kicad_monkey analytic materializer (Rust)
+    │  kicad_monkey analytic materializer (Rust),
+    │  run by the worker as `prism-kicad-native emit-pack`
     ▼
 kicad_monkey.materialization.a0 pack (.kmpack)
     │  vendored kicad-monkey-analytic WASM: open, validate, lower slices
@@ -104,9 +107,10 @@ describes how to measure it.
 
 ## Pending work
 
-- **No producer in Prism.** The worker does not materialize packs and the 3D
-  tab does not load them. Until both exist the analytic board is reachable only
-  through the element API and the browser harness.
+- **Opt-in producer.** Packs are written only with
+  `PRISM_ANALYTIC_PCB_ENABLED=true`, from the saved zone fills, as part of the
+  3D job. A failed pack is logged and the mesh board is shown. The flag changes
+  the bundle's build fingerprint, so switching it rebuilds cached bundles.
 - **One-board view only.** System scenes and the flat 2D layer view keep the
   mesh scene.
 - **Components stay meshes.** Component bodies come from the KiCad 3D models as
@@ -142,5 +146,5 @@ The browser harness captures the mesh and analytic boards from the same
 cameras, compares them, exercises overlays, glow and picking, and fails on
 page errors or on analytic layers that draw nothing. `--live` serves an
 interactive page and `--perf` measures GPU time. Packs are written with
-`cargo run --release -p kicad-monkey-core --example materialization_pack --
-<board.kicad_pcb> <out.kmpack>` in the pinned `kicad_monkey` checkout.
+`prism-kicad-native emit-pack --pcb <board.kicad_pcb> --output <out.kmpack>`
+(or the fork's `materialization_pack` example at the pinned revision).

@@ -1,4 +1,5 @@
 pub mod analytic_contract;
+pub mod analytic_pack;
 mod board_body;
 mod contract;
 mod geometer_ffi;
@@ -25,6 +26,9 @@ fn run() -> Result<()> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
     if arguments.first().map(String::as_str) == Some("compile-semantic") {
         return compile_semantic_command(&arguments[1..]);
+    }
+    if arguments.first().map(String::as_str) == Some("emit-pack") {
+        return emit_pack_command(&arguments[1..]);
     }
     if arguments.first().map(String::as_str) == Some("compile-board-body") {
         return compile_board_body_command(&arguments[1..]);
@@ -77,6 +81,38 @@ fn run() -> Result<()> {
     } else {
         serde_json::to_writer(std::io::stdout().lock(), &document)?;
     }
+    println!();
+    Ok(())
+}
+
+fn emit_pack_command(arguments: &[String]) -> Result<()> {
+    const USAGE: &str =
+        "usage: prism-kicad-native emit-pack --pcb BOARD --output BOARD.kmpack [--tile-mm 10]";
+    let mut pcb = None;
+    let mut output = None;
+    let mut tile_mm = analytic_pack::DEFAULT_TILE_MM;
+    let mut index = 0usize;
+    while index < arguments.len() {
+        let option = arguments[index].as_str();
+        let value = arguments
+            .get(index + 1)
+            .cloned()
+            .with_context(|| format!("{option} requires a value"));
+        match option {
+            "--pcb" => pcb = Some(PathBuf::from(value?)),
+            "--output" => output = Some(PathBuf::from(value?)),
+            "--tile-mm" => tile_mm = value?.parse().context("parse --tile-mm")?,
+            value => bail!("unknown emit-pack option {value}\n{USAGE}"),
+        }
+        index += 2;
+    }
+    let pcb = pcb.context(USAGE)?;
+    let output = output.context(USAGE)?;
+    if !(tile_mm.is_finite() && tile_mm > 0.0) {
+        bail!("--tile-mm must be a positive number");
+    }
+    let metrics = analytic_pack::emit_pack(&pcb, &output, tile_mm)?;
+    serde_json::to_writer(std::io::stdout().lock(), &metrics)?;
     println!();
     Ok(())
 }

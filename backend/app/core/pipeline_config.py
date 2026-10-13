@@ -75,6 +75,10 @@ class PipelineSettings(BaseSettings):
         default="legacy",
         description="PCB copper geometry backend: legacy, or the experimental rust / python-copper.",
     )
+    PRISM_ANALYTIC_PCB_ENABLED: bool = Field(
+        default=False,
+        description="Experimental: also write the analytic board pack the 3D tab and Simulation Studio read.",
+    )
     PRISM_KICAD_MONKEY_SOURCE: str = Field(
         default="",
         description="Label of the installed kicad_monkey build, mixed into the viewer build fingerprint.",

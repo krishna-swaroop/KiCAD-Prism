@@ -517,6 +517,7 @@ class JobServicePostgresTests(unittest.TestCase):
             "sourceRevisionKey": "source-a",
             "build_fingerprint": "build-a",
             "bundle_url": "/bundle.json",
+            "analytic_pack_url": "/board.kmpack",
             "status": "ready",
             "available": True,
             "commit": "a" * 40,
@@ -545,6 +546,7 @@ class JobServicePostgresTests(unittest.TestCase):
         ready = self.service.get_webgpu_ready(project_id, selector, "build-a")
         self.assertIsNotNone(ready)
         self.assertTrue(ready["available"])
+        self.assertEqual(ready["analytic_pack_url"], "/board.kmpack")
         prefixed = self.service.find_webgpu_ready_by_commit_prefix(
             project_id,
             "build-a",

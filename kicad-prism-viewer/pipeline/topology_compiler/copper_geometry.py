@@ -33,7 +33,7 @@ from .pcb_geometry import NM_TO_MM
 COPPER_GEOMETRY_SCHEMA = "kicad.copper_geometry.a0"
 PRISM_PCB_GEOMETRY_SCHEMA = "prism.pcb_geometry.v1"
 PRISM_SEMANTIC_MESH_PACK_SCHEMA = "prism.semantic_mesh_pack.v1"
-KICAD_MONKEY_RUST_REVISION = "bc6796c1b8ce55bfbcb8b1771f3ecbc70658d34d"
+KICAD_MONKEY_RUST_REVISION = "b6316117901b344114385242b0ad13be45dfefae"
 DEFAULT_PLATING_THICKNESS_MM = 0.025
 DEFAULT_NATIVE_HELPER = "/usr/local/bin/prism-kicad-native"
 
