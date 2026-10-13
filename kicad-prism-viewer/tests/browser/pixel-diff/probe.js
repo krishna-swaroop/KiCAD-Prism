@@ -71,6 +71,8 @@
     const nativeSubmit = GPUQueue.prototype.submit;
     GPUQueue.prototype.submit = function submit(buffers) {
       const result = nativeSubmit.call(this, buffers);
+      state.queue = this;
+      if (state.timing && state.timestamps) void collectTimestamps(buffers);
       if (state.timing) {
         const started = performance.now();
         this.onSubmittedWorkDone().then(() => state.gpuMs.push(performance.now() - started));
@@ -78,6 +80,64 @@
       return result;
     };
   }
+
+  // GPU execution time per submission from timestamp queries, while timing,
+  // where the adapter offers them: every render and compute pass gets a
+  // begin and end timestamp, and a submission's time is the sum of its passes.
+  if (window.GPUAdapter) {
+    const nativeRequest = GPUAdapter.prototype.requestDevice;
+    GPUAdapter.prototype.requestDevice = async function requestDevice(descriptor = {}) {
+      const wanted = this.features.has("timestamp-query") ? ["timestamp-query"] : [];
+      const device = await nativeRequest.call(this, { ...descriptor, requiredFeatures: [...(descriptor.requiredFeatures || []), ...wanted] });
+      if (wanted.length) state.timestamps = { device, pool: [] };
+      return device;
+    };
+    const nativeEncoder = GPUDevice.prototype.createCommandEncoder;
+    GPUDevice.prototype.createCommandEncoder = function createCommandEncoder(descriptor) {
+      const encoder = nativeEncoder.call(this, descriptor);
+      if (state.timing && state.timestamps?.device === this) encoder.__vtPasses = [];
+      return encoder;
+    };
+    const timed = (native) => function begin(descriptor = {}) {
+      if (!this.__vtPasses || descriptor.timestampWrites) return native.call(this, descriptor);
+      const { device, pool } = state.timestamps;
+      const querySet = pool.pop() || device.createQuerySet({ type: "timestamp", count: 2 });
+      this.__vtPasses.push(querySet);
+      return native.call(this, { ...descriptor, timestampWrites: { querySet, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 } });
+    };
+    GPUCommandEncoder.prototype.beginRenderPass = timed(GPUCommandEncoder.prototype.beginRenderPass);
+    GPUCommandEncoder.prototype.beginComputePass = timed(GPUCommandEncoder.prototype.beginComputePass);
+    const nativeFinish = GPUCommandEncoder.prototype.finish;
+    GPUCommandEncoder.prototype.finish = function finish(descriptor) {
+      const passes = this.__vtPasses;
+      if (passes?.length) {
+        const { device } = state.timestamps;
+        const resolve = device.createBuffer({ size: passes.length * 16, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
+        const read = device.createBuffer({ size: passes.length * 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        passes.forEach((querySet, index) => this.resolveQuerySet(querySet, 0, 2, resolve, index * 16));
+        this.copyBufferToBuffer(resolve, 0, read, 0, passes.length * 16);
+        const buffer = nativeFinish.call(this, descriptor);
+        buffer.__vtTiming = { passes, resolve, read };
+        return buffer;
+      }
+      return nativeFinish.call(this, descriptor);
+    };
+  }
+
+  const collectTimestamps = async (buffers) => {
+    for (const buffer of buffers) {
+      const timing = buffer?.__vtTiming;
+      if (!timing) continue;
+      await timing.read.mapAsync(GPUMapMode.READ);
+      const values = new BigUint64Array(timing.read.getMappedRange().slice(0));
+      timing.read.destroy();
+      timing.resolve.destroy();
+      let total = 0;
+      for (let i = 0; i < values.length; i += 2) if (values[i + 1] > values[i]) total += Number(values[i + 1] - values[i]) / 1e6;
+      state.gpuPassMs.push(total);
+      state.timestamps.pool.push(...timing.passes);
+    }
+  };
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const nextFrame = () => new Promise((resolve) => nativeRaf(resolve));
@@ -169,7 +229,9 @@
 
     // Orbit with synthetic drags for `orbitMs`, then report rAF intervals,
     // the viewer's own CPU frame time, and submit-to-done GPU latency.
-    async orbit({ orbitMs = 4000, stepPx = 3 } = {}) {
+    // `drain` waits for each frame's GPU work before the next, so with the
+    // frame-rate cap lifted an interval is one frame's whole cost.
+    async orbit({ orbitMs = 4000, stepPx = 3, drain = false } = {}) {
       const canvas = viewport();
       const rect = canvas.getBoundingClientRect();
       let x = rect.left + rect.width / 2;
@@ -179,6 +241,7 @@
       }));
       state.armed = false;
       state.gpuMs = [];
+      state.gpuPassMs = [];
       state.timing = true;
       fire("pointerdown");
       const intervals = [];
@@ -187,7 +250,11 @@
       while (last - started < orbitMs) {
         x += stepPx;
         fire("pointermove");
-        const now = await nextFrame();
+        let now = await nextFrame();
+        if (drain && state.queue) {
+          await state.queue.onSubmittedWorkDone();
+          now = performance.now();
+        }
         intervals.push(now - last);
         last = now;
       }
@@ -205,6 +272,9 @@
         gpuSubmitP50Ms: percentile(state.gpuMs, 0.5),
         gpuSubmitP95Ms: percentile(state.gpuMs, 0.95),
         gpuSubmits: state.gpuMs.length,
+        // GPU execution per submission (timestamp queries), when available.
+        gpuPassP50Ms: percentile(state.gpuPassMs || [], 0.5),
+        gpuPassP95Ms: percentile(state.gpuPassMs || [], 0.95),
         triangles: stats.triangles ?? null,
         draws: stats.draws ?? null,
         gpuMemoryMB: stats.gpuMemoryBytes == null ? null : +(stats.gpuMemoryBytes / 1048576).toFixed(1),

@@ -146,8 +146,31 @@ test("barrels find the camera from the view matrix, perspective or orthographic"
   [0.1, -0.2, 0.3].forEach((value, axis) => assert.ok(Math.abs(eye[axis] - value) < 1e-5, `eye ${axis}: ${eye[axis]}`));
   const flat = viewEye(mat4Multiply(orthographic(0.2, 0.1, -3, 3), lookAt([0, 0, 1], [0, 0, 0], [0, 1, 0])));
   assert.equal(flat[3], 0);
-  // Looking down: the view direction is -z (into the scene), whichever way depth runs.
-  assert.ok(Math.abs(Math.abs(flat[2]) - 1) < 1e-6 && Math.abs(flat[0]) < 1e-6 && Math.abs(flat[1]) < 1e-6);
+  // Looking down: the view direction is -z (into the scene).
+  assert.ok(Math.abs(flat[2] + 1) < 1e-6 && Math.abs(flat[0]) < 1e-6 && Math.abs(flat[1]) < 1e-6);
+});
+
+test("a solid board hides the slices facing away from the eye, and nothing else", () => {
+  const behind = (eye, slice, { mode = "none", context = {} } = {}) => AnalyticRenderer.prototype.behindBoard.call({
+    skin: { top: 0.0008, bottom: -0.0008 },
+    eye,
+    renderer: { innerCopperMode: mode },
+    boardShown: AnalyticRenderer.prototype.boardShown,
+  }, slice, context);
+  const up = { faceDown: false };
+  const down = { faceDown: true };
+  const above = [0.01, 0.02, 0.05, 1];
+  const below = [0.01, 0.02, -0.05, 1];
+  const edgeOn = [0.01, 0.02, 0, 1];
+  assert.deepEqual([behind(above, down), behind(above, up)], [true, false]);
+  assert.deepEqual([behind(below, up), behind(below, down)], [true, false]);
+  assert.deepEqual([behind(edgeOn, up), behind(edgeOn, down)], [false, false]);
+  // Orthographic eyes are view directions.
+  assert.deepEqual([behind([0, 0, -1, 0], down), behind([0, 0, 1, 0], up)], [true, true]);
+  // Separated (all inner copper shows), hidden, or fading: everything draws.
+  assert.equal(behind(above, down, { mode: "all" }), false);
+  assert.equal(behind(above, down, { context: { showBoard: false } }), false);
+  assert.equal(behind(above, down, { context: { boardOpacity: 0.5 } }), false);
 });
 
 test("a mask slice lays itself down, then tints over outer copper and elsewhere", () => {

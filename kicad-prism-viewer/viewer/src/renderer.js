@@ -2126,7 +2126,7 @@ export class Renderer {
   renderInto(target, panel, options) {
     if (!this.identityOnly) throw new Error("renderInto: one-board renderer only");
     const encoder = this.device.createCommandEncoder({ label: "inset" });
-    const depthAttachment = { view: target.depthView, depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "store" };
+    const depthAttachment = { view: target.depthView, depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "discard" };
     if (this.stencil) Object.assign(depthAttachment, { stencilClearValue: 0, stencilLoadOp: "clear", stencilStoreOp: "discard" });
     // `target.depthView` has `sampleCount` samples; the colour resolves through an inset-sized frame.
     const pass = encoder.beginRenderPass({
@@ -2249,9 +2249,13 @@ export class Renderer {
     return this.insetColor.view;
   }
 
-  /** The depth attachment of a frame, or of a pick (one sample). */
+  /**
+   * The depth attachment of a frame, or of a pick (one sample). Every pass
+   * clears it and nothing reads it after, so it is never stored: a tiled GPU
+   * then keeps it on chip.
+   */
   depthAttachment(pick = false) {
-    const attachment = { view: (pick ? this.pickDepth : this.depth).createView(), depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "store" };
+    const attachment = { view: (pick ? this.pickDepth : this.depth).createView(), depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "discard" };
     if (this.stencil) Object.assign(attachment, { stencilClearValue: 0, stencilLoadOp: "clear", stencilStoreOp: "discard" });
     return attachment;
   }

@@ -29,6 +29,7 @@ records the operation, binding, and value under each.
 | `--zoom fx,fy`, `--zoom-steps n` | Where (canvas fractions) and how far the close-up zooms (default 0.5,0.42 and 8). |
 | `--close-view v` | `default`, `top` or `bottom`: the view the close-up zooms from. |
 | `--live [port]` | Serve an interactive page instead (default port 5199): toolbar for mesh, analytic and the two overlays, and the app's substrate, components, realistic-colour and separation controls. |
+| `--perf`, `--orbit-ms n` | Measure instead of capturing: orbit the mesh and the analytic board for `n` ms (default 4000) from the loaded view and zoomed in, each on a fresh load. |
 | `--out dir`, `--headed` | Output directory; show the Chrome window. |
 
 Every mesh/analytic pair reports the pixels that differ and the share that
@@ -40,3 +41,20 @@ that name no operation, and on a device without the depth-stencil feature
 
 The default mesh path is the pixel-diff runner's job: with no pack loaded, the
 viewer must match `origin/dev` but for the records in `../pixel-diff/README.md`.
+
+`--perf` lifts Chrome's frame-rate cap so the GPU runs flat out at a steady
+clock, and times each frame's GPU work with timestamp queries (every render
+and compute pass, summed per submission; the probe adds them, the viewer is
+unchanged). It reports GPU p50/p95 per case. Run at `--scale 2` for a
+high-density display. On openswitch-10x10g-carrier at scale 2 (2560x1600,
+4x MSAA), three runs agree within 0.15 ms:
+
+| Case | Mesh | Analytic | Analytic before the perf pass |
+|---|---|---|---|
+| Loaded view | 2.8 ms | 3.65 ms | 7.8 ms |
+| Zoomed in | 6.6 ms | 4.3 ms | 8.5 ms |
+
+The perf pass: a solid, unseparated board skips the slices it hides (inner
+dielectric faces, and every face turned from the eye), barrels draw only the
+far side of their box, the last batch of a slice leaves its bit-6 clear to
+the slice's closing clear, and depth is never stored after a pass.

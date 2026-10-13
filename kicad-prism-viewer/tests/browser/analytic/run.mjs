@@ -42,9 +42,12 @@ try {
     await new Promise(() => {});
   }
   const server = await serve(buildDir);
-  const chrome = await launchChrome({ headless: !options.headed });
+  // Perf lifts the frame-rate cap: the GPU then runs flat out at a steady
+  // clock, and the timestamp queries still time each frame's own work.
+  const chrome = await launchChrome({ headless: !options.headed, unthrottled: options.perf });
   try {
-    await runBoard(chrome, server, synthetic);
+    if (options.perf) await perfBoard(chrome, server);
+    else await runBoard(chrome, server, synthetic);
   } finally {
     await chrome.close();
     server.close();
@@ -238,6 +241,42 @@ async function runBoard(chrome, server, synthetic) {
   }
 }
 
+/**
+ * Frame times, mesh against analytic, each orbiting from the same camera:
+ * the loaded view, then zoomed in (`--zoom`, `--zoom-steps`). Every case
+ * gets a fresh load, so the orbits start alike.
+ */
+async function perfBoard(chrome, server) {
+  const { width, height, scale } = options;
+  summary.perf = [];
+  for (const close of [false, true]) {
+    for (const analytic of [false, true]) {
+      const page = await chrome.newPage({ width, height, deviceScaleFactor: scale });
+      try {
+        await page.goto(`${server.origin}/harness/harness.html?build=candidate`);
+        await waitFor(page, "window.__vtElementLoaded === true", 30000, "element module");
+        await page.evaluate(`window.__vtProbe.mount("/bundle/bundle.json", ${JSON.stringify({ width, height })})`);
+        await settle(page, "load");
+        let loaded = null;
+        if (analytic) {
+          loaded = JSON.parse(await page.evaluate(`(async () => {
+            const bytes = await (await fetch("/pack/board.kmpack")).arrayBuffer();
+            return JSON.stringify(await window.__vtProbe.element.loadAnalyticPack(bytes, { wasm: "/builds/kicad-monkey-analytic.wasm" }));
+          })()`));
+        }
+        if (close) await zoomIn(page, options.zoom, options.zoomSteps);
+        await settle(page, "view");
+        const perf = await page.evaluate(`window.__vtProbe.orbit(${JSON.stringify({ orbitMs: options.orbitMs, })})`);
+        const name = `${analytic ? "analytic" : "mesh"}${close ? "-close" : ""}`;
+        summary.perf.push({ name, ...perf, lowerMs: loaded?.lowerMs, analyticGpuMB: loaded ? +(loaded.gpuMemoryBytes / 1048576).toFixed(1) : undefined });
+        log(`${name}: gpu p50 ${perf.gpuPassP50Ms} / p95 ${perf.gpuPassP95Ms} ms over ${perf.gpuSubmits} submits, interval p50 ${perf.intervalP50Ms} ms, cpu p95 ${perf.cpuP95Ms} ms`);
+      } finally {
+        await page.close();
+      }
+    }
+  }
+}
+
 /** Wheel-zoom towards a point given as fractions of the canvas. */
 async function zoomIn(page, [fx, fy], steps) {
   await page.evaluate(`(async () => {
@@ -422,7 +461,7 @@ function serve(builds, port = 0) {
 }
 
 function parseArgs(argv) {
-  const parsed = { board: null, pack: null, out: null, headed: false, width: 1280, height: 800, scale: 1, zoom: [0.5, 0.42], zoomSteps: 8, closeView: "default" };
+  const parsed = { board: null, pack: null, out: null, headed: false, width: 1280, height: 800, scale: 1, zoom: [0.5, 0.42], zoomSteps: 8, closeView: "default", perf: false, orbitMs: 4000 };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     if (flag === "--board") {
@@ -438,6 +477,8 @@ function parseArgs(argv) {
     else if (flag === "--zoom-steps") parsed.zoomSteps = Number(argv[++i]);
     else if (flag === "--close-view") parsed.closeView = argv[++i];
     else if (flag === "--headed") parsed.headed = true;
+    else if (flag === "--perf") parsed.perf = true;
+    else if (flag === "--orbit-ms") parsed.orbitMs = Number(argv[++i]);
     else if (flag === "--live") parsed.live = /^\d+$/.test(argv[i + 1] || "") ? Number(argv[++i]) : 5199;
     else throw new Error(`unknown option ${flag}`);
   }

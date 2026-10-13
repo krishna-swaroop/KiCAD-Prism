@@ -46,6 +46,9 @@ export class AnalyticRenderer {
     // The host's colour samples; picking draws one.
     this.samples = renderer.sampleCount || 1;
     this.slices = [];
+    // The board's outside faces' heights, and the last view's eye (see `behindBoard`).
+    this.skin = null;
+    this.eye = null;
     this.overlay = { mode: OVERLAY_NONE, range: [0, 1] };
     this.layout = this.device.createBindGroupLayout({
       label: "analytic",
@@ -95,7 +98,10 @@ export class AnalyticRenderer {
       layout,
       vertex: { module, entryPoint: "vs_barrel" },
       fragment: { module, entryPoint: pick ? "fs_barrel_pick" : "fs_barrel", targets: [{ format }] },
-      primitive: { topology: "triangle-list", cullMode: "none" },
+      // The box's triangles face inward: only its far side draws, once per
+      // pixel of its silhouette, also with the eye inside it. The fragment
+      // writes the tube's own depth.
+      primitive: { topology: "triangle-list", cullMode: "back" },
       depthStencil: { format: this.renderer.depthFormat, depthWriteEnabled: true, depthCompare: "greater" },
       multisample: { count: pick ? 1 : this.samples },
     });
@@ -160,7 +166,8 @@ export class AnalyticRenderer {
     const floats = new Float32Array(this.viewScratch);
     const words = new Uint32Array(this.viewScratch);
     floats.fill(0);
-    floats.set(viewEye(matrix), 0);
+    this.eye = viewEye(matrix);
+    floats.set(this.eye, 0);
     floats.set(this.renderer.barrelColor || [0.55, 0.35, 0.16, 1], 4);
     const substrate = this.boardLooks().substrate;
     const wallOpacity = (context.boardOpacity ?? 1) * (0.15 + 0.85 * (context.assemblyOpacity ?? 1));
@@ -294,6 +301,10 @@ export class AnalyticRenderer {
     this.releaseSlices();
     const shared = new Map();
     this.slices = slices.map((slice) => this.uploadSlice(slice, shared));
+    const skins = slices.filter((slice) => slice.skin);
+    this.skin = skins.length === 2
+      ? { top: Math.max(...skins.map((slice) => slice.z)), bottom: Math.min(...skins.map((slice) => slice.z)) }
+      : null;
     this.renderer.invalidate?.();
   }
 
@@ -506,6 +517,10 @@ export class AnalyticRenderer {
       const isCopper = slice.role === undefined || slice.role === "copper";
       if (isCopper ? visibleLayers && !visibleLayers.has(slice.layerId) : pick || slice.role !== "dielectric" || !solid) continue;
       if (isCopper && !slice.outer && slice.role !== undefined && this.renderer.innerCopperMode === "none") continue;
+      // A solid board that is not separated shows only its outside faces
+      // (the viewer then draws inner copper only when lit, if at all).
+      if (slice.role === "dielectric" && !slice.skin && this.renderer.innerCopperMode !== "all") continue;
+      if (this.behindBoard(slice, context)) continue;
       this.encodeSlice(pass, pipelines, slice, "opaque", layerOffsets, this.lookFor(slice, copper, board, context));
       drawn += 1;
     }
@@ -517,6 +532,22 @@ export class AnalyticRenderer {
 
   boardShown(context) {
     return (context.showBoard ?? true) && !context.panelLayer;
+  }
+
+  /**
+   * Whether a solid board that is not separated hides the slice from the
+   * eye: from above its top face, everything facing down lies behind the
+   * board, and from below its bottom face everything facing up. Such slices
+   * are not drawn at all (their stencil passes would cost the same).
+   */
+  behindBoard(slice, context) {
+    if (!this.skin || !this.eye || this.renderer.innerCopperMode === "all") return false;
+    if (!this.boardShown(context) || (context.boardOpacity ?? 1) < 0.999) return false;
+    const [, , z, w] = this.eye;
+    // A perspective eye is a point; an orthographic one the view direction.
+    const above = w ? z > this.skin.top : z < 0;
+    const below = w ? z < this.skin.bottom : z > 0;
+    return slice.faceDown ? above : below;
   }
 
   /**
@@ -533,6 +564,7 @@ export class AnalyticRenderer {
     const fading = boardShown && (context.boardOpacity ?? 1) < 0.999;
     let drawn = 0;
     const draw = (slice, mode) => {
+      if (this.behindBoard(slice, context)) return;
       this.encodeSlice(pass, this.pipelines.color, slice, mode, layerOffsets, this.lookFor(slice, copper, board, context));
       drawn += 1;
     };
@@ -596,6 +628,7 @@ export class AnalyticRenderer {
   }
 
   encodeBatches(pass, slice, subtract, step, mode = "opaque") {
+    const last = slice.batches.findLast((batch) => !batch.subtract);
     for (const batch of slice.batches) {
       if (batch.subtract !== subtract || !slice.fans) continue;
       step("fan");
@@ -609,7 +642,8 @@ export class AnalyticRenderer {
       const cover = { opaque: "coverAdd", blend: "coverBlend", mask: "coverLay" }[mode];
       step(subtract ? "coverSubtract" : cover);
       pass.draw(6, batch.coverCount, 0, batch.firstCover);
-      if (!subtract) {
+      // The slice's closing clear clears bit 6 after the last batch.
+      if (!subtract && batch !== last) {
         step("coverClear");
         pass.draw(6, batch.coverCount, 0, batch.firstCover);
       }

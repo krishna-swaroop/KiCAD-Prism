@@ -186,6 +186,12 @@ export function planBoardSlices(header, layers, zOffset = 0) {
       });
     }
   }
+  // The board's outside: the top face of the highest dielectric and the
+  // bottom face of the lowest. A solid board hides every other face.
+  const faces = planned.filter((slice) => slice.role === "dielectric");
+  const top = faces.filter((slice) => !slice.faceDown).sort((a, b) => b.z - a.z)[0];
+  const under = faces.filter((slice) => slice.faceDown).sort((a, b) => a.z - b.z)[0];
+  for (const slice of faces) slice.skin = slice === top || slice === under;
   const rank = { dielectric: 0, copper: 1, mask: 2, paste: 3, silk: 4 };
   planned.sort((a, b) => rank[a.role] - rank[b.role]);
   return { planned, unmatched };

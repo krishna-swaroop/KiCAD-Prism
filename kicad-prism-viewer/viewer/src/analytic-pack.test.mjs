@@ -8,6 +8,7 @@ import {
   loadAnalyticWasm,
   openAnalyticPack,
   operationCount,
+  planBoardSlices,
   planCopperSlices,
   sliceBoundsMm,
   valueRange,
@@ -167,4 +168,22 @@ test("operations carry the viewer's net ids, and name the feature a click select
   assert.equal(analyticFeatureId(state, 3), 41);
   assert.equal(analyticFeatureId(state, 0), 0);
   pack.free();
+});
+
+test("a board's outside faces are the top of its highest dielectric and the bottom of its lowest", () => {
+  const bounds = { min_x_nm: 0, min_y_nm: 0, max_x_nm: 1e7, max_y_nm: 1e7 };
+  const names = ["F.Cu", "core1", "In1.Cu", "core2", "B.Cu"];
+  const roles = ["conductor", "dielectric", "conductor", "dielectric", "conductor"];
+  const header = {
+    stack: { slices: names.map((name, order) => ({ key: `s${order}`, order, role: roles[order], kicad_layer: name })) },
+    chunks: names.map((_, order) => ({ slice_key: `s${order}`, bounds })),
+  };
+  const z = [0.8, 0.4, 0, -0.4, -0.8];
+  const layers = names.map((name, index) => ({ id: index + 1, name, z_mm: z[index], thickness_mm: roles[index] === "dielectric" ? 0.7 : 0.035 }));
+  const { planned } = planBoardSlices(header, layers);
+  const faces = planned.filter((slice) => slice.role === "dielectric");
+  assert.equal(faces.length, 4);
+  const skins = faces.filter((slice) => slice.skin).map((slice) => [slice.key, slice.face]);
+  assert.deepEqual(skins.sort(), [["s1", "top"], ["s3", "bottom"]]);
+  assert.ok(planned.filter((slice) => slice.role !== "dielectric").every((slice) => slice.skin === undefined));
 });
