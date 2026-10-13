@@ -50,6 +50,11 @@
  * @property {() => object} insetStats
  * @property {(settings?: object) => object} insetSettings
  * @property {() => Promise<void>} gpuIdle
+ * @property {(bytes: Uint8Array, options?: object) => Promise<object | null>} loadAnalyticPack
+ * @property {(overlay: object | null) => unknown} setAnalyticOverlay
+ * @property {(clientX: number, clientY: number) => Promise<object | null>} analyticAt
+ * @property {() => object | null} analyticStats
+ * @property {() => void} unloadAnalyticPack
  *
  * @typedef {ScenePort & object} SystemScenePort Several boards (mountSystemViewer).
  * @property {(occurrence: string | undefined) => "board" | "stand-in" | null} focusPlacement
@@ -265,6 +270,7 @@ export const BOARD_MEMBERS = Object.freeze([
   "setHighlightedNets", "setHiddenComponents", "getComponentReferences", "setViewMode",
   "renderInset", "insetReady", "insetSurfaceZ", "releaseInset", "insetTarget", "projectInset",
   "onSceneChange", "insetStats", "insetSettings", "gpuIdle",
+  "loadAnalyticPack", "setAnalyticOverlay", "analyticAt", "analyticStats", "unloadAnalyticPack",
 ]);
 
 /**
@@ -278,6 +284,8 @@ export class BoardModeController extends ModeController {
   #workspace = "pcb";
   #sceneListeners = new Set();
   #unhookScene = null;
+  // The analytic pack and overlay outlive reloads, like the other view state.
+  #analytic = null;
 
   attach(port, { workspace = "pcb" } = {}) {
     this.#workspace = workspace;
@@ -294,6 +302,12 @@ export class BoardModeController extends ModeController {
     // A fresh viewer is already unselected: no redundant clear while it sets up its first frame.
     if (this.shared.selection) port.quietly(() => this.applySelection(port, this.shared.selection));
     if (this.#highlightedNets.length) this.#applyHighlightedNets(port, this.#highlightedNets);
+    if (this.#analytic) void this.#replayAnalytic(port, this.#analytic);
+  }
+
+  async #replayAnalytic(port, analytic) {
+    await port.loadAnalyticPack(analytic.bytes, analytic.options);
+    if (analytic.overlay) port.setAnalyticOverlay(analytic.overlay);
   }
 
   release() {
@@ -398,6 +412,30 @@ export class BoardModeController extends ModeController {
 
   gpuIdle() {
     return this.port?.gpuIdle() ?? Promise.resolve();
+  }
+
+  async loadAnalyticPack(bytes, options = {}) {
+    const copy = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    this.#analytic = { bytes: copy, options, overlay: null };
+    return this.port ? this.port.loadAnalyticPack(copy, options) : null;
+  }
+
+  setAnalyticOverlay(overlay) {
+    if (this.#analytic) this.#analytic.overlay = overlay;
+    return this.port?.setAnalyticOverlay(overlay) ?? null;
+  }
+
+  analyticAt(clientX, clientY) {
+    return this.port?.analyticAt(clientX, clientY) ?? Promise.resolve(null);
+  }
+
+  analyticStats() {
+    return this.port?.analyticStats() ?? null;
+  }
+
+  unloadAnalyticPack() {
+    this.#analytic = null;
+    this.port?.unloadAnalyticPack();
   }
 }
 

@@ -9,6 +9,7 @@ import {
   BARREL_RECORD_STRIDE,
   BARREL_STORAGE_WGSL,
   barrelRuntime,
+  barrelsAtCopperFaces,
   packBarrelInstances,
   packBarrels,
 } from "./barrel-records.js";
@@ -18,33 +19,55 @@ const RECORDS = [
   { centerMm: [-3, 0.1], drillWidthMm: 1.1, drillHeightMm: 1.1, outerWidthMm: 1.7, outerHeightMm: 1.7, startZMm: 0.3, endZMm: 0.1, startLayerId: 2, endLayerId: 3 },
 ];
 
-// The bytes the renderer (40-byte) and occurrences.js (48-byte) packers wrote
-// for RECORDS before AC-30 moved both here.
-const LEGACY_INSTANCES = "cdcc4c3c6891edbb52491d3952499d397f4d563a7f4d56ba070000002a0000000100000004000000"
-  + "a69b44bb17b7d1b8e02d103a89d25e3a52499d3917b7d13800000000000000000200000003000000";
-const LEGACY_STORAGE = "cdcc4c3c6891edbb52491d3952499d397f4d563a7f4d56ba0000000000000000070000002a0000000100000004000000"
-  + "a69b44bb17b7d1b8e02d103a89d25e3a52499d3917b7d138000000000000000000000000000000000200000003000000";
-
 const close = (actual, expected) => actual.forEach((value, index) =>
   assert.ok(Math.abs(value - expected[index]) < 1e-12, `${index}: ${value} ≠ ${expected[index]}`));
 const hex = (buffer) => Buffer.from(buffer).toString("hex");
 
-test("both layouts pack the bytes the renderer and occurrence packers wrote", () => {
-  assert.equal(hex(packBarrelInstances(RECORDS)), LEGACY_INSTANCES);
-  assert.equal(hex(packBarrels(RECORDS)), LEGACY_STORAGE);
+test("both layouts pack one 48-byte record: dimensions, span, shape, ids", () => {
+  const f32 = new Float32Array(packBarrelInstances(RECORDS.slice(0, 1)));
+  const u32 = new Uint32Array(f32.buffer);
+  assert.equal(f32.length, 12);
+  close([...f32.slice(0, 8)], [0.0125, -0.00725, 0.00015, 0.00025, 0.0008175, -0.0008175, 0.00005, -Math.PI / 2].map(Math.fround));
+  assert.deepEqual([...u32.slice(8, 12)], [7, 42, 1, 4]);
+  assert.equal(Buffer.from(packBarrels(RECORDS)).toString("hex"), Buffer.from(packBarrelInstances(RECORDS)).toString("hex"));
 });
 
 test("barrels convert from KiCad mm (y down) to runtime metres (y up) once", () => {
   const barrel = barrelRuntime(RECORDS[0]);
   assert.equal(barrel.x, 0.0125);
   assert.equal(barrel.y, -0.00725);
+  // The narrow side's half width, and that plus the plating (outer less drill, halved).
   assert.equal(barrel.drillRadius, 0.15 / 1000);
-  assert.equal(barrel.outerRadius, 0.3 / 1000);
+  assert.ok(Math.abs(barrel.outerRadius - 0.25 / 1000) < 1e-15);
+  // 0.3 × 0.4: a 0.1 mm straight run along y (the height), a quarter turn from x, y flipped.
+  assert.ok(Math.abs(barrel.halfLength - 0.05 / 1000) < 1e-15);
+  assert.equal(barrel.angle, -Math.PI / 2);
   assert.equal(barrel.startZ, 0.8175 / 1000);
   assert.equal(barrel.endZ, -0.8175 / 1000);
   assert.deepEqual([barrel.netId, barrel.objectId, barrel.startLayerId, barrel.endLayerId], [7, 42, 1, 4]);
   const bare = barrelRuntime(RECORDS[1]);
   assert.deepEqual([bare.netId, bare.objectId], [0, 0]);
+  // A round drill is a stadium of length 0.
+  assert.deepEqual([bare.halfLength, bare.angle], [0, 0]);
+});
+
+test("a slot keeps its rotation; the record's plating wins over outer less drill", () => {
+  const slot = barrelRuntime({
+    centerMm: [0, 0], drillWidthMm: 1.7, drillHeightMm: 0.6, outerWidthMm: 1.75, outerHeightMm: 0.65,
+    platingThicknessMm: 0.02, rotationDeg: 30, startZMm: 1, endZMm: 0,
+  });
+  assert.ok(Math.abs(slot.halfLength - 0.00055) < 1e-15);
+  assert.ok(Math.abs(slot.angle + Math.PI / 6) < 1e-15, "30° in KiCad's y-down frame turns the other way in y-up");
+  assert.ok(Math.abs(slot.outerRadius - 0.00032) < 1e-15);
+});
+
+test("barrels reach their outer copper faces, less 1 µm", () => {
+  const layers = [{ id: 4, thickness_mm: 0.035 }, { id: 14, thickness_mm: 0.035 }];
+  const [moved] = barrelsAtCopperFaces([{ startLayerId: 4, endLayerId: 14, startZMm: 1.5019, endZMm: -0.0175 }], layers);
+  assert.ok(Math.abs(moved.startZMm - 1.5184) < 1e-12);
+  assert.ok(Math.abs(moved.endZMm + 0.0340) < 1e-12);
+  const [unknown] = barrelsAtCopperFaces([{ startLayerId: 9, endLayerId: 9, startZMm: 1, endZMm: 0 }], layers);
+  assert.deepEqual([unknown.startZMm, unknown.endZMm], [1, 0]);
 });
 
 test("the two layouts agree field by field", () => {
@@ -82,8 +105,8 @@ test("the vertex layout matches the WGSL vertex input", () => {
 });
 
 test("the storage stride is the WGSL size of struct Barrel", () => {
-  // vec4f (16) + vec2f (8, then 8 padding to the vec4u's 16-byte alignment) + vec4u (16).
-  assert.match(BARREL_STORAGE_WGSL, /dimensions: vec4f,\n  span: vec2f,\n  ids: vec4u,/);
+  // vec4f (16) + vec2f (8) + vec2f (8) + vec4u (16, aligned to 16 at byte 32).
+  assert.match(BARREL_STORAGE_WGSL, /dimensions: vec4f,\n  span: vec2f,\n  shape: vec2f,\n  ids: vec4u,/);
   assert.match(BARREL_STORAGE_WGSL, /@binding\(6\) var<storage, read> barrels: array<Barrel>;/);
   assert.equal(BARREL_RECORD_STRIDE, 16 + 16 + 16);
 });
@@ -96,8 +119,8 @@ test("barrel records pack into the storage layout (ids at byte 32)", () => {
   assert.equal(data.byteLength, BARREL_RECORD_STRIDE);
   const f32 = new Float32Array(data);
   const u32 = new Uint32Array(data);
-  close([f32[0], f32[1], f32[2], f32[3], f32[4], f32[5]].map((v) => Math.fround(v)),
-    [0.01, -0.02, 0.0002, 0.0004, -0.0008, 0.0008].map((v) => Math.fround(v)));
+  close([...f32.slice(0, 8)].map((v) => Math.fround(v)),
+    [0.01, -0.02, 0.0002, 0.00035, -0.0008, 0.0008, 0.0001, -Math.PI / 2].map((v) => Math.fround(v)));
   assert.deepEqual([...u32.slice(8, 12)], [7, 9, 1, 4]);
 });
 

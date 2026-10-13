@@ -154,6 +154,56 @@ export interface PrismSemanticBoardMode {
     releaseInset(key: string): void;
     /** Called when the main view redrew or the viewer reloaded; returns an unsubscribe. Survives reloads. */
     onSceneChange(listener: () => void): () => void;
+    /**
+     * Analytic spike: draw the board's copper from a kicad_monkey
+     * materialization pack instead of the mesh tiles. Survives reloads.
+     */
+    loadAnalyticPack(bytes: ArrayBuffer | Uint8Array, options?: PrismAnalyticPackOptions): Promise<PrismAnalyticStats | null>;
+    /** Colour the analytic copper from a result; null clears it. Survives reloads. */
+    setAnalyticOverlay(overlay: PrismAnalyticOverlay | null): void;
+    /** The operation under a client point, its binding and overlay value; null off the analytic copper. */
+    analyticAt(clientX: number, clientY: number): Promise<PrismAnalyticHit | null>;
+    analyticStats(): PrismAnalyticStats | null;
+    /** Back to mesh copper. */
+    unloadAnalyticPack(): void;
+}
+
+export interface PrismAnalyticPackOptions {
+    /** URL or bytes of the analytic WASM; defaults to the one served beside the element. */
+    wasm?: string | URL | ArrayBuffer;
+    /** Flattening tolerance for regions and cubic segments, nm (default 1000). */
+    toleranceNm?: number;
+}
+
+export type PrismAnalyticOverlay =
+    | { kind: "operation_values"; quantity: string; units: string; values: ArrayLike<number> | Record<number, number>; range?: [number, number] }
+    | { kind: "field_tiles"; quantity: string; units: string; tiles: PrismAnalyticFieldTile[]; range?: [number, number] };
+
+export interface PrismAnalyticFieldTile {
+    slice_key: string;
+    origin_nm: [number, number];
+    pitch_nm: number;
+    width: number;
+    height: number;
+    values: Float32Array | number[];
+}
+
+export interface PrismAnalyticHit {
+    operationIndex: number;
+    binding: Record<string, unknown> | null;
+    value?: number;
+    quantity?: string;
+    units?: string;
+}
+
+export interface PrismAnalyticStats {
+    operations: number;
+    lowerMs: number;
+    unmatched: string[];
+    slices: { key: string; layerId: number; shapes: number; subtractShapes: number; regionBatches: number }[];
+    overlay: number;
+    gpuMemoryBytes: number;
+    degraded: boolean;
 }
 
 /**

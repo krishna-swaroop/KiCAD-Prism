@@ -10,15 +10,17 @@ import { buildVariant, checkHooks, featureKey, hook, stripHooks } from "./shader
 // change, even an identity one in the position path, can reorder the depth
 // test between copper, mask and silkscreen 18 µm apart. Change a hash only
 // with a pixel-diff record (tests/browser/pixel-diff) that shows the new picture is intended.
+// The four barrel hashes changed for the stadium barrels (VT analytic spike):
+// inward plating, end caps and slots; see their pixel-diff record.
 const BASE_SHADER_SHA256 = {
   main: "edc1cc57115d1290ce767820b80bc8faaf12ff474e702f295ca5db5b08d3c40f",
   pick: "145be347c4265b85327be80db6d73257ef19dc6bf10cadb9922f157643b93a44",
-  barrel: "dd1d14e3586eb26406a4a5f708865c2489ef063bb0e7862b53f17f688a2687a9",
-  barrelPick: "154e117e4836c7c487f34d6593c6345985bc04ff56745e317b143dc9824e32d0",
+  barrel: "e8657d0dd7d996c3c4f1d2a82dbcbde30a7c8864fa54f912868db9071bf94ce8",
+  barrelPick: "f4aa4ef33489840a8a8e5ad4a7cb96a7a2e8b1dd6e88299ae220982ed16ddb2c",
   mainInstanced: "d8f31b049633ee76cd43ace316e8354851dc86d6ee2f5499b12b259d59278dae",
   pickInstanced: "a7a11f1df1349fbcdda92b92a891c4057c125a6a1a078ec5e4a167ed60adac05",
-  barrelInstanced: "f426b08f7d5727b0c8201f6739940648cc34e14f427977416d6f3f24dc993621",
-  barrelPickInstanced: "2b2d66a68bf299952849f9c782bb421be1c2bbcf3ccc41ba9a836e86211db064",
+  barrelInstanced: "9d4af70e9ca825faed76e9469e67f6e160be2e051a1f528f5b790ab138ab861e",
+  barrelPickInstanced: "2fb52e86d6df1c750fbdd54bdd06d4fcecb07c7d089560d7f8f20eb55952d810",
   component: "7692cd665938503eb7acc0cf1a7c2f33cdf8869b4f318103b1246ebf5c1b5139",
   componentInstanced: "ce6f954921f8b3ff0eea9fc1879f2c3c3a88b8979502c9d9d2fb8d0ba38086c6",
   componentPick: "368a92460b1e34d5fc245c954a56bb6a7ffcbd9df00afffeff78c8a27ea4e81c",
@@ -151,7 +153,7 @@ function fakeGpu() {
       return module;
     },
     createRenderPipeline(descriptor) {
-      const pipeline = { label: descriptor.vertex.module.label.replace(/^pcb-/, ""), code: descriptor.vertex.module.code, constants: descriptor.fragment?.constants };
+      const pipeline = { label: descriptor.vertex.module.label.replace(/^pcb-/, ""), code: descriptor.vertex.module.code, constants: descriptor.fragment?.constants, depthStencil: descriptor.depthStencil };
       pipelines.push(pipeline);
       return pipeline;
     },
@@ -183,8 +185,21 @@ test("one-board pipelines with no features are the original shaders and labels",
   assert.equal(pipelines.barrel.code, BASE_SHADERS.barrel);
   assert.equal(pipelines.barrelPick.code, BASE_SHADERS.barrelPick);
   assert.deepEqual(device.pipelines.map((p) => p.label).sort(),
-    ["barrel", "barrel-pick", "main", "main-blend", "main-mark", "mask", "mask-covered", "pick"]);
+    ["barrel", "barrel-pick", "main", "main-blend", "main-mark", "main-translucent", "mask", "mask-covered", "pick"]);
   assert.equal(pipelines.maskCovered.constants.COVERED, 1);
+  // Placeholder boxes blend without writing depth, so overlapping ones never z-fight.
+  assert.equal(pipelines.translucent.depthStencil.depthWriteEnabled, false);
+  assert.equal(pipelines.blend.depthStencil.depthWriteEnabled, true);
+});
+
+test("barrels are capped stadium tubes: two walls and two caps of 32 segments", () => {
+  const { renderer } = fakeRenderer();
+  renderer.setBarrels([{
+    centerMm: [1, 2], drillWidthMm: 0.6, drillHeightMm: 1.3, outerWidthMm: 0.65, outerHeightMm: 1.35,
+    startZMm: 1.5, endZMm: 0, startLayerId: 4, endLayerId: 14, netId: 1, objectFeatureId: 2,
+  }]);
+  // Each band is 32 quads of two triangles.
+  assert.equal(renderer.barrels.indexCount, 4 * 32 * 6);
 });
 
 test("a feature set compiles its own pipelines once, and an empty list returns to the originals", () => {
@@ -202,7 +217,7 @@ test("a feature set compiles its own pipelines once, and an empty list returns t
   assert.equal(featured.main.code, shaderVariant("main", false, [PROBE]));
   assert.equal(featured.barrelPick.code, shaderVariant("barrelPick", false, [PROBE]));
   const compiled = device.pipelines.length - before;
-  assert.equal(compiled, 8);
+  assert.equal(compiled, 9);
   assert.equal(renderer.drawSet().pipelines, featured, "cached");
   assert.equal(device.pipelines.length - before, compiled);
   // Components follow the set they are drawn with.

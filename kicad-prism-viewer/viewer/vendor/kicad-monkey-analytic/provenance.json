@@ -1,0 +1,24 @@
+{
+  "schema": "prism.vendored_wasm.a0",
+  "purpose": "Reads kicad_monkey.materialization.a0 packs in the browser and lowers their slices for the analytic renderer.",
+  "source": {
+    "repository": "https://github.com/krishna-swaroop/kicad_monkey.git",
+    "revision": "b40c1c78481e981ac7d575f171d567930c7e434d",
+    "crate": "kicad-monkey-wasm",
+    "license": "MIT"
+  },
+  "build": {
+    "target": "wasm32-unknown-unknown",
+    "profile": "release",
+    "features": [
+      "materialization"
+    ],
+    "wasm_bindgen": "0.2.126",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "command": "node scripts/build-analytic-wasm.mjs --monkey <kicad_monkey checkout at revision>"
+  },
+  "files": {
+    "kicad_monkey_analytic.js": "273fe6182ce5f939dc933ef6ccee12bb05246de410e5bda88aaeb48f07d99c91",
+    "kicad_monkey_analytic_bg.wasm": "4e346b821311138e982cb11d80165ea430491ba0307893ce55bd4f1f10bdeb2a"
+  }
+}

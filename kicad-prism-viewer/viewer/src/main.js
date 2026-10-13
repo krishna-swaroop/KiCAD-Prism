@@ -47,6 +47,8 @@ import { allReadyBoardsDrawn, assetLoadable, assetOccurrenceMatrix, boardTransit
 import { LOD_FULL } from "./occurrences.js";
 import { InsetViews, insetMatrix } from "./inset-view.js";
 import { DEFAULT_GPU_BUDGET_BYTES } from "./viewer-controllers.js";
+import { applyAnalyticOverlay, attachAnalyticPack, describeAnalyticHit } from "./analytic-board.js";
+import { barrelsAtCopperFaces } from "./barrel-records.js";
 
 const COPPER_TILE_GPU_BUDGET_BYTES = 512 * 1024 * 1024;
 const COPPER_TILE_PREFETCH_MARGIN = 0.65;
@@ -380,6 +382,7 @@ function disposeRuntimeResources() {
     system.scene.dispose();
     system = null;
   } else {
+    releaseAnalytic();
     board.renderer?.dispose?.();
   }
   board.renderer = null;
@@ -476,6 +479,36 @@ export async function mountStandaloneViewer(options = {}) {
     getComponentReferences() {
       return [...board.scene.componentFeatures.keys()];
     },
+    // Analytic spike: copper from a kicad_monkey materialization pack (analytic-board.js).
+    async loadAnalyticPack(bytes, options = {}) {
+      if (!board.renderer) return null;
+      releaseAnalytic();
+      board.analytic = await attachAnalyticPack({
+        renderer: board.renderer,
+        layers: board.scene.layers,
+        colorFor: (layer) => {
+          const color = copperColor(layer, board);
+          return color.length >= 4 ? color.slice(0, 4) : [...color, 1];
+        },
+        bytes,
+        wasm: options.wasm,
+        toleranceNm: options.toleranceNm,
+      });
+      return analyticStats();
+    },
+    setAnalyticOverlay(overlay) {
+      if (!board.analytic) return null;
+      return applyAnalyticOverlay(board.analytic, overlay);
+    },
+    async analyticAt(clientX, clientY) {
+      if (!board.analytic) return null;
+      const hit = await pickHitAt(clientX, clientY);
+      return hit?.kind === "analytic" ? describeAnalyticHit(board.analytic, hit.operationIndex) : null;
+    },
+    analyticStats,
+    unloadAnalyticPack() {
+      releaseAnalytic();
+    },
     // Force a level of detail on every occurrence (0 full, 1 board, 2 body, 3 box), or null for automatic.
     setLodOverride(lod) {
       board.renderer?.setLodOverride(lod);
@@ -516,6 +549,19 @@ export async function mountStandaloneViewer(options = {}) {
       disposeViewerSession(token);
     },
   };
+}
+
+/** The analytic pack drawn on the board, as `analyticStats()` reports it; null without one. */
+function analyticStats() {
+  const analytic = board.analytic;
+  if (!analytic) return null;
+  return { operations: analytic.operations, lowerMs: analytic.lowerMs, zOffset: analytic.zOffset, unmatched: analytic.unmatched, ...analytic.analytic.stats() };
+}
+
+function releaseAnalytic() {
+  board.renderer?.setAnalytic(null);
+  board.analytic?.pack.free();
+  board.analytic = null;
 }
 
 /** Port members both mounts share: selection, lit nets and the view controls. */
@@ -783,7 +829,7 @@ async function boot(token, performanceTimings = {}, onPerformanceEvent = null) {
     board.renderer = null;
     return;
   }
-  board.renderer.setBarrels(board.scene.manifest.barrels || []);
+  board.renderer.setBarrels(barrelsAtCopperFaces(board.scene.manifest.barrels, board.scene.manifest.layers));
   applyCopperColors();
   started = performance.now();
   const boardBounds = await loadBoard(token);
@@ -1770,7 +1816,7 @@ async function loadSystemBoard(b, token) {
     b.assetCache = loaded.assetCache || null;
     if (!(await indexBoardScene(b, token)) || !current()) return;
     b.renderer = system.scene.asset(b.key);
-    b.renderer.setBarrels(b.scene.manifest.barrels || []);
+    b.renderer.setBarrels(barrelsAtCopperFaces(b.scene.manifest.barrels, b.scene.manifest.layers));
     applyCopperColors(b);
     const bounds = await loadBoard(token, b);
     if (!current()) return;

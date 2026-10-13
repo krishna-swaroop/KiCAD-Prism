@@ -1314,6 +1314,56 @@ class TopologyCompilerTests(unittest.TestCase):
         self.assertTrue(all(item["objectFeatureId"] == feature_id for item in builder.objects))
         self.assertEqual(barrel["layerMask"], 0b111)
         self.assertEqual(barrel["kind"], "plated_pad")
+        self.assertEqual(barrel["rotationDeg"], 0.0)
+
+    def test_slotted_pad_barrel_and_hole_follow_the_drill_segment(self) -> None:
+        """A slot's barrel takes its centre, length and rotation from the drill
+        segment (footprint-local, turned by the placement), and the pad's hole
+        is the slot's capsule, not a circle of its width."""
+        builder = SemanticGltfBuilder(self.semantic_topology())
+        builder.add_pcb_ir(
+            {
+                "records": [
+                    {
+                        "kind": "footprint",
+                        "placement": {"x_nm": 10_000_000, "y_nm": 20_000_000, "angle_deg": 90},
+                        "operations": [
+                            {"kind": "StartBlock", "data_ref": "pad", "data_uuid": "pad-1", "extra_attrs": {"net": "VBUS"}},
+                            {"kind": "FlashPadCircle", "x": 0, "y": 0, "diameter_nm": 2_000_000, "layers": ["*.Cu"]},
+                            {"kind": "EndBlock"},
+                            {"kind": "StartBlock", "data_ref": "pad_hole", "extra_attrs": {"hole_owner": "pad-1"}},
+                            {
+                                "kind": "ThickSegment",
+                                "role": "pad_drill",
+                                "start_x": -400_000,
+                                "start_y": 100_000,
+                                "end_x": 400_000,
+                                "end_y": 100_000,
+                                "width_nm": 600_000,
+                            },
+                            {"kind": "EndBlock"},
+                        ],
+                    }
+                ]
+            },
+            pad_holes={"pad-1": {"drill_mm": 0.6, "drill_width_mm": 1.4, "drill_height_mm": 0.6, "plated": True}},
+        )
+        barrel = builder.barrels[0]
+        # Footprint-local (0, 0.1) turned by the placement's -90° lands at (0.1, 0) from the origin.
+        self.assertAlmostEqual(barrel["centerMm"][0], 10.1, places=9)
+        self.assertAlmostEqual(barrel["centerMm"][1], 20.0, places=9)
+        self.assertAlmostEqual(barrel["drillWidthMm"], 1.4, places=9)
+        self.assertAlmostEqual(barrel["drillHeightMm"], 0.6, places=9)
+        self.assertAlmostEqual(abs(barrel["rotationDeg"]), 90.0, places=9)
+        # Bounds follow the turned slot: 0.6 wide in x, 1.4 tall in y, plus the plating.
+        x0, y0, _, x1, y1, _ = barrel["boundsMm"]
+        self.assertAlmostEqual(x1 - x0, 0.65, places=9)
+        self.assertAlmostEqual(y1 - y0, 1.45, places=9)
+        hole = builder.objects[0]["polygons"][0]["holes"][0]
+        xs = [point[0] for point in hole]
+        ys = [point[1] for point in hole]
+        self.assertAlmostEqual(max(xs) - min(xs), 0.6, places=6)
+        self.assertAlmostEqual(max(ys) - min(ys), 1.4, places=6)
 
     def test_ir_pad_turns_with_the_footprint_that_carries_it(self) -> None:
         """A pad that is unrotated in the library still turns with its placement.

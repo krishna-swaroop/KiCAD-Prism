@@ -93,3 +93,23 @@ and copies only the helper binary into the final worker image.
 Do not replace the Git revision with a branch, depend on an unpromoted packaged
 Linux provider, or copy an unverified local binary into Docker. See
 `docs/PCB_RUST_GEOMETRY.md` for the contract and rollback policy.
+
+## Analytic-pack WASM (viewer spike)
+
+`kicad-prism-viewer/viewer/vendor/kicad-monkey-analytic/` holds the
+`wasm-bindgen` output of `kicad-monkey-wasm` (feature `materialization`):
+it opens `kicad_monkey.materialization.a0` packs in the browser and lowers
+their slices for the analytic renderer. `provenance.json` pins the exact
+`kicad_monkey` Git revision, the Rust and `wasm-bindgen` versions, the
+features, and the SHA-256 of each file; `npm run test:viewer` rejects a
+binary that does not match it. The build remaps local paths, so it is
+reproducible from the pinned revision:
+
+```bash
+cd kicad-prism-viewer
+node scripts/build-analytic-wasm.mjs --monkey /path/to/kicad_monkey
+```
+
+`npm run build` copies the WASM to `frontend/public/kicad-monkey-analytic.wasm`
+beside the element; it loads only when a host calls `loadAnalyticPack`. Do not
+replace it with an unpinned or locally modified build.

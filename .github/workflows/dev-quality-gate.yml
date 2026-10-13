@@ -473,6 +473,8 @@ jobs:
         run: npm run test:gltf
 
       - name: Test viewer
+        # Includes the analytic spike: the vendored WASM's provenance hashes,
+        # pack lowering in Node, and the stencil plan.
         run: npm run test:viewer
 
       - name: Test pixel-diff harness helpers
@@ -489,6 +491,7 @@ jobs:
         run: >-
           git diff --exit-code --
           frontend/public/prism-semantic-viewer.js
+          frontend/public/kicad-monkey-analytic.wasm
           frontend/index.html
 
   native-crate:

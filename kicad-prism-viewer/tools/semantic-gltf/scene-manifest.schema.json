@@ -103,6 +103,7 @@
         "drillHeightMm": { "type": "number", "minimum": 0 },
         "outerWidthMm": { "type": "number", "minimum": 0 },
         "outerHeightMm": { "type": "number", "minimum": 0 },
+        "rotationDeg": { "type": "number", "description": "Rotation of the drill's width axis from the board's +x, in degrees, in KiCad's board frame (y down) as the pipeline's transform applies it; 0 when absent. A slot's long axis is its width." },
         "startLayerId": { "type": "integer", "minimum": 1 },
         "endLayerId": { "type": "integer", "minimum": 1 },
         "layerIds": { "type": "array", "minItems": 1, "items": { "type": "integer" } },

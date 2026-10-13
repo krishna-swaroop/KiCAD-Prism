@@ -76,3 +76,17 @@ npm run test:harness
 The PNG encoder and the diff are covered there. The browser half has no unit
 tests. It was checked by planting a one-count copper colour change in the main
 shader: `exploded` caught it (84,698 px) and the run failed (VT-00 record).
+
+## Records
+
+- **Stadium barrels and placeholder boxes (VT analytic spike).** Barrels used to span the drill
+  radius outward by the plating, so their visible inner wall sat on the substrate's drill wall
+  and z-fought it in vertical stripes (gone once the stackup separates); slots were drawn as
+  round tubes of their narrow width. Barrels are now capped stadium tubes (32 segments): the
+  plating grows inward as the finished hole does, slots keep their length and rotation, and the
+  ends reach the outer copper faces. Placeholder boxes blend one layer deep (back faces culled,
+  no depth write), so overlapping footprints' boxes no longer z-fight. On
+  openswitch-10x10g-carrier, `origin/dev` against the worktree: `default` 5,849 px, `exploded`
+  7,428 px, `top` 4,582 px (barrels); `bottom` 21,721 px (barrels, and placeholder boxes seen from
+  below, which dev blended two faces deep). The four barrel shader hashes in
+  `shader-variants.test.mjs` changed with it.

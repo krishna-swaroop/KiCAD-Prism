@@ -219,3 +219,39 @@ def rounded_rect(
             for index in range(segments + 1)
         )
     return points
+
+
+def pad_drill_ops(operations: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Each pad hole's drill op in a footprint record, by its hole owner (the
+    pad's uuid), in footprint-local nanometres.
+
+    A round drill is a ``Circle`` (``drill_center_nm``); an oval one a
+    ``ThickSegment`` whose ends and width give the slot at any rotation
+    (``slot_nm``: start x, start y, end x, end y, width).
+    """
+    shapes: dict[str, dict[str, Any]] = {}
+    owner = ""
+    for operation in operations or []:
+        kind = str(operation.get("kind") or "")
+        if kind == "StartBlock":
+            attrs = operation.get("extra_attrs") or {}
+            owner = str(attrs.get("hole_owner") or "") if operation.get("data_ref") == "pad_hole" else ""
+            continue
+        if kind == "EndBlock":
+            owner = ""
+            continue
+        if not owner or owner in shapes or operation.get("role") not in {"pad_drill", "npth_hole"}:
+            continue
+        if kind == "Circle":
+            shapes[owner] = {"drill_center_nm": [operation.get("cx"), operation.get("cy")]}
+        elif kind == "ThickSegment":
+            shapes[owner] = {
+                "slot_nm": [
+                    operation.get("start_x"),
+                    operation.get("start_y"),
+                    operation.get("end_x"),
+                    operation.get("end_y"),
+                    operation.get("width_nm"),
+                ]
+            }
+    return shapes

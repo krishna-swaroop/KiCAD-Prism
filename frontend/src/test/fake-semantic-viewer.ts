@@ -1,6 +1,8 @@
 import { vi } from "vitest";
 
 import type {
+    PrismAnalyticHit,
+    PrismAnalyticStats,
     PrismSemanticViewerElement,
     PrismSemanticViewState,
     PrismSystemSceneHarnessState,
@@ -63,6 +65,11 @@ export class FakeSemanticViewer extends HTMLElement implements PrismSemanticView
     readonly insetSurfaceZ = vi.fn(() => 0);
     readonly releaseInset = vi.fn();
     readonly onSceneChange = vi.fn(() => () => {});
+    readonly loadAnalyticPack = vi.fn(async (): Promise<PrismAnalyticStats | null> => null);
+    readonly setAnalyticOverlay = vi.fn();
+    readonly analyticAt = vi.fn(async (): Promise<PrismAnalyticHit | null> => null);
+    readonly analyticStats = vi.fn((): PrismAnalyticStats | null => null);
+    readonly unloadAnalyticPack = vi.fn();
 
     /** A click in the view. */
     pick(selection: PrismSystemViewerSelection | null): void {

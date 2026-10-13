@@ -24,11 +24,56 @@ from .pcb_geometry import (
     capsule,
     circle,
     clean_ring,
+    pad_drill_ops,
     pad_rings,
     point_nm,
     sample_arc_op,
     transform,
 )
+
+
+def _pad_drill(
+    hole_info: dict[str, Any],
+    pad_center: tuple[float, float],
+    origin: tuple[float, float],
+    angle: float,
+) -> dict[str, Any]:
+    """A pad's drill in board millimetres: its centre, outline ring, and the
+    width (along its axis), height and rotation a barrel record carries.
+
+    A slot comes from its drill segment, so it keeps its true rotation and any
+    drill offset; a round drill from its circle op; older pad-hole records with
+    neither fall back to the pad centre and the width/height sizes.
+    """
+    drill = float(hole_info.get("drill_mm") or 0.0)
+    slot = hole_info.get("slot_nm")
+    if slot and all(value is not None for value in slot):
+        start = transform(point_nm(slot[0], slot[1]), origin, angle)
+        end = transform(point_nm(slot[2], slot[3]), origin, angle)
+        width = float(slot[4]) * NM_TO_MM
+        length = math.dist(start, end)
+        if length > 1e-9 and width > 0:
+            return {
+                "center": ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0),
+                "ring": capsule(start, end, width / 2.0, segments=16),
+                "width": length + width,
+                "height": width,
+                "rotation_deg": math.degrees(math.atan2(end[1] - start[1], end[0] - start[0])),
+            }
+        drill = width or drill
+    center = pad_center
+    drill_center = hole_info.get("drill_center_nm")
+    if drill_center and all(value is not None for value in drill_center):
+        center = transform(point_nm(drill_center[0], drill_center[1]), origin, angle)
+    width = float(hole_info.get("drill_width_mm") or drill)
+    height = float(hole_info.get("drill_height_mm") or drill)
+    return {
+        "center": center,
+        "ring": circle(center, drill / 2.0),
+        "width": width,
+        "height": height,
+        "rotation_deg": 0.0,
+    }
 
 
 SCHEMA = "prism.semantic_gltf_a0"
@@ -349,7 +394,7 @@ class SemanticGltfBuilder:
     ) -> None:
         payload = pcb_ir.to_dict() if hasattr(pcb_ir, "to_dict") else pcb_ir
         pad_holes = pad_holes or {}
-        self._drills: list[tuple[tuple[float, float], float, frozenset[str] | None]] = []
+        self._drills: list[tuple[tuple[float, float], list[tuple[float, float]], frozenset[str] | None]] = []
         first_object = len(self.objects)
         # A board makes millions of small point lists and no reference cycles;
         # the cyclic collector would rescan them all over and over.
@@ -450,8 +495,8 @@ class SemanticGltfBuilder:
         objects = self.objects[first_object:]
         if not objects:
             return
-        # The same 32-gon each pad and via cuts for its own hole.
-        disc_rings = [[[x, y] for x, y in circle(center, radius)] for center, radius, _ in self._drills]
+        # The same ring (a 32-gon, or a slot's capsule) each pad and via cuts for its own hole.
+        disc_rings = [[[x, y] for x, y in ring] for _, ring, _ in self._drills]
         discs = shapely.polygons(np.array(disc_rings, dtype=float))
         tree = shapely.STRtree(discs)
         boxes = np.array(self._object_boxes[first_object:], dtype=float)
@@ -602,7 +647,7 @@ class SemanticGltfBuilder:
         outer = circle(center, radius)
         holes = [circle(center, drill / 2.0)] if drill > 0 else []
         if drill > 0:
-            self._record_drill(center, drill / 2.0, self._via_span(layers))
+            self._record_drill(center, holes[0], self._via_span(layers))
         net_id = self._net_id(str(record.get("net_name") or ""))
         layer_ids = [int(self.layer_by_name[layer]["id"]) for layer in layers]
         feature_id = self._source_feature_id(
@@ -642,6 +687,7 @@ class SemanticGltfBuilder:
         placement = record.get("placement") or {}
         origin = point_nm(placement.get("x_nm"), placement.get("y_nm"))
         angle = -float(placement.get("angle_deg") or 0.0)
+        drill_ops = pad_drill_ops(record.get("operations", []) or [])
         block: dict[str, Any] | None = None
         for op in record.get("operations", []) or []:
             if op.get("kind") == "StartBlock" and op.get("data_ref") == "pad":
@@ -663,11 +709,12 @@ class SemanticGltfBuilder:
             hole_info = pad_holes.get(source_uid) or {}
             drill = float(hole_info.get("drill_mm") or 0.0)
             center = transform(point_nm(op.get("x"), op.get("y")), origin, angle)
-            holes = [circle(center, drill / 2.0)] if drill > 0 else []
+            drill_shape = _pad_drill({**hole_info, **drill_ops.get(source_uid, {})}, center, origin, angle)
+            holes = [drill_shape["ring"]] if drill > 0 else []
             self._own_drill = -1
             if drill > 0:
                 # A pad's hole goes through the board, whatever layers its copper is on.
-                self._record_drill(center, drill / 2.0, None)
+                self._record_drill(drill_shape["center"], drill_shape["ring"], None)
             net_id = self._net_id(net_name)
             layer_ids = [int(self.layer_by_name[layer]["id"]) for layer in layers]
             is_plated = drill > 0 and bool(hole_info.get("plated", True))
@@ -693,18 +740,24 @@ class SemanticGltfBuilder:
                     feature_id=int(feature_id),
                     net_id=net_id,
                     kind="plated_pad",
-                    center=center,
-                    drill_width=float(hole_info.get("drill_width_mm") or drill),
-                    drill_height=float(hole_info.get("drill_height_mm") or drill),
+                    center=drill_shape["center"],
+                    drill_width=drill_shape["width"],
+                    drill_height=drill_shape["height"],
+                    rotation_deg=drill_shape["rotation_deg"],
                     layer_names=layers,
                     plating_thickness=0.025,
                 )
 
-    def _record_drill(self, center: tuple[float, float], radius: float, layers: frozenset[str] | None) -> None:
+    def _record_drill(
+        self,
+        center: tuple[float, float],
+        ring: list[tuple[float, float]],
+        layers: frozenset[str] | None,
+    ) -> None:
         drills = getattr(self, "_drills", None)
         if drills is not None:
             self._own_drill = len(drills)
-            drills.append((center, radius, layers))
+            drills.append((center, ring, layers))
 
     def _via_span(self, layers: list[str]) -> frozenset[str] | None:
         """Copper layers a via's drill passes through: from its first to its last layer in stackup order."""
@@ -726,6 +779,7 @@ class SemanticGltfBuilder:
         drill_height: float,
         layer_names: list[str],
         plating_thickness: float,
+        rotation_deg: float = 0.0,
     ) -> None:
         layers = [self.layer_by_name[name] for name in layer_names if name in self.layer_by_name]
         if not layers:
@@ -735,12 +789,16 @@ class SemanticGltfBuilder:
             for layer in layers
         ]
         start_z, end_z = z_values[0], z_values[-1]
+        # The drill's width axis turned by rotation_deg: its board-axis half extents.
+        turn = math.radians(rotation_deg)
+        half_x = abs(math.cos(turn)) * drill_width / 2.0 + abs(math.sin(turn)) * drill_height / 2.0
+        half_y = abs(math.sin(turn)) * drill_width / 2.0 + abs(math.cos(turn)) * drill_height / 2.0
         bounds = [
-            center[0] - drill_width / 2.0 - plating_thickness,
-            center[1] - drill_height / 2.0 - plating_thickness,
+            center[0] - half_x - plating_thickness,
+            center[1] - half_y - plating_thickness,
             min(start_z, end_z),
-            center[0] + drill_width / 2.0 + plating_thickness,
-            center[1] + drill_height / 2.0 + plating_thickness,
+            center[0] + half_x + plating_thickness,
+            center[1] + half_y + plating_thickness,
             max(start_z, end_z),
         ]
         record = {
@@ -755,6 +813,7 @@ class SemanticGltfBuilder:
             "outerHeightMm": drill_height + plating_thickness * 2.0,
             "platingThicknessMm": plating_thickness,
             "platingThicknessSource": "default",
+            "rotationDeg": rotation_deg,
             "startLayerId": int(layers[0]["id"]),
             "endLayerId": int(layers[-1]["id"]),
             "layerIds": [int(layer["id"]) for layer in layers],
