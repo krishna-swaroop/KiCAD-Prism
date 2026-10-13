@@ -3,7 +3,7 @@
   "purpose": "Reads kicad_monkey.materialization.a0 packs in the browser and lowers their slices for the analytic renderer.",
   "source": {
     "repository": "https://github.com/krishna-swaroop/kicad_monkey.git",
-    "revision": "0fc3afaf44522e0c1f0dc55f3b92290c09fe8345",
+    "revision": "16b8f67ed0ddaf889dd063074d76d1b95263360a",
     "crate": "kicad-monkey-wasm",
     "license": "MIT"
   },
@@ -18,7 +18,7 @@
     "command": "node scripts/build-analytic-wasm.mjs --monkey <kicad_monkey checkout at revision>"
   },
   "files": {
-    "kicad_monkey_analytic.js": "273fe6182ce5f939dc933ef6ccee12bb05246de410e5bda88aaeb48f07d99c91",
-    "kicad_monkey_analytic_bg.wasm": "806427a3ede75c49ddf4526089c52dacc9461fe2ac14c04839da6fb1fcc010a1"
+    "kicad_monkey_analytic.js": "f4093245af543a7a87cf6ce6aa3d7ce4feb82d17912a35c4171c59b8104dfb9d",
+    "kicad_monkey_analytic_bg.wasm": "6c33e75d6fac8f73c70ee5154809d87603f999850247cee690a973ef71826368"
   }
 }

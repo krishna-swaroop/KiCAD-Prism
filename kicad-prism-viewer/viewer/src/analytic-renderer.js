@@ -8,6 +8,9 @@ import {
   WALL_INSTANCE_BYTES,
   BATCH_WORDS,
   COVER_WORDS,
+  EDGE_SKIRT,
+  EDGE_SUBTRACT,
+  EDGE_WORDS,
   OVERLAY_FIELD,
   OVERLAY_NONE,
   OVERLAY_VALUES,
@@ -38,6 +41,9 @@ export function withSentinels(values) {
  * `bounds` the slice's board-millimetre extent. Without the stencil feature
  * only add shapes draw (no subtracts, no regions); `stats().degraded` says so.
  */
+/** Below this many pixels tall, a slab's shape walls are not drawn. */
+export const WALL_MIN_PIXELS = 0.3;
+
 export class AnalyticRenderer {
   constructor(renderer) {
     this.renderer = renderer;
@@ -49,6 +55,8 @@ export class AnalyticRenderer {
     // The board's outside faces' heights, and the last view's eye (see `behindBoard`).
     this.skin = null;
     this.eye = null;
+    this.viewMatrix = null;
+    this.extent = null;
     this.overlay = { mode: OVERLAY_NONE, range: [0, 1] };
     this.layout = this.device.createBindGroupLayout({
       label: "analytic",
@@ -61,6 +69,8 @@ export class AnalyticRenderer {
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
         { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
         { binding: 7, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+        { binding: 8, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+        { binding: 9, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
       ],
     });
     this.module = this.device.createShaderModule({ label: "analytic", code: ANALYTIC_SHADER });
@@ -167,6 +177,7 @@ export class AnalyticRenderer {
     const words = new Uint32Array(this.viewScratch);
     floats.fill(0);
     this.eye = viewEye(matrix);
+    this.viewMatrix = matrix;
     floats.set(this.eye, 0);
     floats.set(this.renderer.barrelColor || [0.55, 0.35, 0.16, 1], 4);
     const substrate = this.boardLooks().substrate;
@@ -244,7 +255,7 @@ export class AnalyticRenderer {
 
   makePipelines(format, pick) {
     const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.layout] });
-    const make = (name, vertex, fragment, step, buffers = [], blended = false) => {
+    const make = (name, vertex, fragment, step, buffers = [], blended = false, cullMode = "none") => {
       const plan = STENCIL_STEPS[step];
       const depthStencil = {
         format: this.renderer.depthFormat,
@@ -269,7 +280,7 @@ export class AnalyticRenderer {
           ...(pick ? {} : { constants: { SAMPLES: this.samples } }),
           targets: [{ format, writeMask: plan.color ? GPUColorWrite.ALL : 0, ...(blended && !pick ? { blend: BLEND } : {}) }],
         },
-        primitive: { topology: "triangle-list", cullMode: "none" },
+        primitive: { topology: "triangle-list", cullMode },
         depthStencil,
         multisample: { count: pick ? 1 : this.samples },
       });
@@ -284,6 +295,9 @@ export class AnalyticRenderer {
       coverAdd: make("cover", "vs_cover", "fs_cover", "coverAdd"),
       coverClear: make("cover-clear", "vs_cover", "fs_plain_mask", "coverClear"),
       clear: make("clear", "vs_clear", "fs_plain_mask", "clear"),
+      // A slab's side walls: its regions' edges, and its shapes' outline skirts.
+      regionWall: make("region-wall", "vs_region_wall", "fs_region_wall", "solid"),
+      skirt: make("skirt", "vs_skirt", "fs_skirt", "solid"),
       // Board layers other than copper are never picked.
       ...(pick ? {} : {
         shapeLay: make("shape-lay", "vs_shape", "fs_shape_mask", "shapeLay"),
@@ -301,6 +315,14 @@ export class AnalyticRenderer {
     this.releaseSlices();
     const shared = new Map();
     this.slices = slices.map((slice) => this.uploadSlice(slice, shared));
+    // The board's extent in the world (before exploded offsets), for how big
+    // a slab's walls can look (see \`wallPixels\`).
+    const zs = slices.map((slice) => slice.z);
+    const xs = slices.flatMap((slice) => [slice.bounds[0], slice.bounds[2]]);
+    const ys = slices.flatMap((slice) => [slice.bounds[1], slice.bounds[3]]);
+    this.extent = slices.length
+      ? [[Math.min(...xs) / 1000, -Math.max(...ys) / 1000, Math.min(...zs)], [Math.max(...xs) / 1000, -Math.min(...ys) / 1000, Math.max(...zs)]]
+      : null;
     const skins = slices.filter((slice) => slice.skin);
     this.skin = skins.length === 2
       ? { top: Math.max(...skins.map((slice) => slice.z)), bottom: Math.min(...skins.map((slice) => slice.z)) }
@@ -317,6 +339,7 @@ export class AnalyticRenderer {
         shapes: this.buffer(lowered.shapes, usage, `analytic-shapes-${slice.key}`),
         covers: this.buffer(lowered.covers, usage, `analytic-covers-${slice.key}`),
         fans: lowered.fanVertices.length ? this.buffer(lowered.fanVertices, GPUBufferUsage.VERTEX, `analytic-fans-${slice.key}`) : null,
+        ...this.uploadEdges(lowered, slice.key),
       });
     }
     const gpu = {
@@ -336,6 +359,56 @@ export class AnalyticRenderer {
     return gpu;
   }
 
+  /**
+   * What a slab's walls need. The region edges they rise from,
+   * `EDGE_WORDS` words each: the adding regions' contour edges (a
+   * subtracting region's edges bound nothing drawn), each with its holes'
+   * range. And the cuts: each add shape's holes' range, then the hole
+   * records the ranges name.
+   */
+  uploadEdges(lowered, key) {
+    const edges = lowered.contourEdges || new Float32Array(0);
+    const operations = lowered.contourEdgeOperations || new Uint32Array(0);
+    const shapeCuts = lowered.shapeCuts || new Uint32Array(0);
+    const edgeCuts = lowered.edgeCuts || new Uint32Array(0);
+    const indices = lowered.cutIndices || new Uint32Array(0);
+    // Ranges point past the shapes' ranges, into the records that follow them.
+    const base = shapeCuts.length;
+    const cuts = new Uint32Array(Math.max(1, base + indices.length));
+    for (let i = 0; i < base; i += 2) cuts.set([shapeCuts[i] + base, shapeCuts[i + 1]], i);
+    cuts.set(indices, base);
+    const outlines = lowered.outlineEdges || new Float32Array(0);
+    const shapes = lowered.outlineShapes || new Uint32Array(0);
+    const count = Math.min(edges.length / 4, operations.length);
+    const words = new Uint32Array(Math.max(1, count + shapes.length) * EDGE_WORDS);
+    const bits = new Uint32Array(edges.buffer, edges.byteOffset, edges.length);
+    let kept = 0;
+    for (let edge = 0; edge < count; edge += 1) {
+      if (operations[edge] & EDGE_SUBTRACT) continue;
+      const at = kept * EDGE_WORDS;
+      words.set(bits.subarray(edge * 4, edge * 4 + 4), at);
+      words[at + 4] = operations[edge];
+      words[at + 5] = (edgeCuts[edge * 2] ?? 0) + base;
+      words[at + 6] = edgeCuts[edge * 2 + 1] ?? 0;
+      kept += 1;
+    }
+    const regionEdges = kept;
+    // Then each add shape's outline skirt, tagged with the shape.
+    const outlineBits = new Uint32Array(outlines.buffer, outlines.byteOffset, outlines.length);
+    for (let edge = 0; edge < shapes.length; edge += 1) {
+      const at = kept * EDGE_WORDS;
+      words.set(outlineBits.subarray(edge * 4, edge * 4 + 4), at);
+      words[at + 4] = (EDGE_SKIRT | shapes[edge]) >>> 0;
+      kept += 1;
+    }
+    return {
+      edges: this.buffer(words, GPUBufferUsage.STORAGE, `analytic-edges-${key}`),
+      regionEdges,
+      skirtEdges: kept - regionEdges,
+      cuts: this.buffer(cuts, GPUBufferUsage.STORAGE, `analytic-cuts-${key}`),
+    };
+  }
+
   bindGroup(slice) {
     return this.device.createBindGroup({
       layout: this.layout,
@@ -348,6 +421,8 @@ export class AnalyticRenderer {
         { binding: 5, resource: (slice.field?.texture || this.emptyField).createView() },
         { binding: 6, resource: { buffer: this.netsBuffer } },
         { binding: 7, resource: { buffer: this.renderer.netMaskBuffer } },
+        { binding: 8, resource: { buffer: slice.edges } },
+        { binding: 9, resource: { buffer: slice.cuts } },
       ],
     });
   }
@@ -441,6 +516,12 @@ export class AnalyticRenderer {
     floats.set(this.overlay.range, 16);
     floats.set(slice.bounds, 20);
     floats.set([look?.metallic ?? 0, look?.roughness ?? 0.72, slice.faceDown ?? slice.bottom ? -1 : 1, copper ? 1 : 0], 24);
+    if (slice.zTop !== undefined) {
+      const lift = floats[4] - slice.z;
+      floats.set([slice.zBottom + lift, slice.zTop + lift], 28);
+    }
+    words[30] = slice.subtractShapes || 0;
+    if (this.eye) floats.set(this.eye, 32);
     this.device.queue.writeBuffer(slice.uniform, 0, this.uniformScratch);
   }
 
@@ -585,6 +666,53 @@ export class AnalyticRenderer {
     pass.setBindGroup(0, slice.bindGroup);
     if (this.stencil) this.encodeStencilled(pass, pipelines, slice, mode);
     else this.encodeAddsOnly(pass, pipelines, slice);
+    if (mode === "opaque" && slice.walls) this.encodeSlabWalls(pass, pipelines, slice);
+  }
+
+  /**
+   * The most pixels a wall of \`height\` metres spans anywhere on the board
+   * in the current view: a vertical segment that tall, projected at the
+   * board's corners and at its nearest point to the eye.
+   */
+  wallPixels(height) {
+    const matrix = this.viewMatrix;
+    const canvas = this.renderer.canvas;
+    if (!matrix || !this.extent || !canvas) return Infinity;
+    const [lo, hi] = this.extent;
+    const points = [];
+    for (const x of [lo[0], hi[0]]) for (const y of [lo[1], hi[1]]) for (const z of [lo[2], hi[2]]) points.push([x, y, z]);
+    if (this.eye?.[3]) points.push(this.eye.slice(0, 3).map((value, axis) => Math.min(hi[axis], Math.max(lo[axis], value / this.eye[3]))));
+    const project = ([x, y, z]) => {
+      const clip = [0, 1, 2, 3].map((row) => matrix[row] * x + matrix[4 + row] * y + matrix[8 + row] * z + matrix[12 + row]);
+      return clip[3] > 1e-9 ? [clip[0] / clip[3], clip[1] / clip[3]] : null;
+    };
+    let most = 0;
+    for (const point of points) {
+      const a = project(point);
+      const b = project([point[0], point[1], point[2] + height]);
+      if (!a || !b) return Infinity;
+      most = Math.max(most, Math.hypot((b[0] - a[0]) * canvas.width / 2, (b[1] - a[1]) * canvas.height / 2));
+    }
+    return most;
+  }
+
+  /**
+   * A copper slab's side walls: its regions' edges and its shapes' exact
+   * walls. The shapes' walls are left out while no wall of the slab can
+   * span a third of a pixel (an overview), where they would only shade
+   * edges by a hair; the regions' walls cost next to nothing.
+   */
+  encodeSlabWalls(pass, pipelines, slice) {
+    if (this.stencil) pass.setStencilReference(0);
+    if (slice.regionEdges) {
+      pass.setPipeline(pipelines.regionWall);
+      pass.draw(6, slice.regionEdges, 0, 0);
+    }
+    if (slice.skirtEdges && this.wallPixels(slice.zTop - slice.zBottom) >= WALL_MIN_PIXELS) {
+      pass.setPipeline(pipelines.skirt);
+      // Each skirt edge: its skirt quad and its ring (see the shader).
+      pass.draw(12, slice.skirtEdges, 0, slice.regionEdges);
+    }
   }
 
   encodeAddsOnly(pass, pipelines, slice) {
@@ -612,7 +740,7 @@ export class AnalyticRenderer {
     const adds = slice.shapeCount - slice.subtractShapes;
     if (adds) {
       // Outer copper marks bit 0, as the mesh copper does for the mask.
-      if (mode === "opaque") step("shapeAdd", slice.outer ? 0x21 : 0x20);
+      if (mode === "opaque") step("shapeAdd", slice.mark ? 0x21 : 0x20);
       else step(mode === "mask" ? "shapeLay" : "shapeBlend");
       pass.draw(6, adds, 0, slice.subtractShapes);
     }
@@ -634,9 +762,9 @@ export class AnalyticRenderer {
       step("fan");
       pass.setVertexBuffer(0, slice.fans);
       pass.draw(batch.vertexCount, 1, batch.firstVertex, 0);
-      if (!subtract && mode === "opaque" && (slice.outer || slice.role === "dielectric")) {
+      if (!subtract && mode === "opaque" && (slice.mark || slice.role === "dielectric")) {
         // Outer copper marks bit 0 for the mask; a dielectric face nearer than any copper clears it.
-        step("coverMark", slice.outer ? 0x41 : 0x40);
+        step("coverMark", slice.mark ? 0x41 : 0x40);
         pass.draw(6, batch.coverCount, 0, batch.firstCover);
       }
       const cover = { opaque: "coverAdd", blend: "coverBlend", mask: "coverLay" }[mode];
@@ -654,10 +782,13 @@ export class AnalyticRenderer {
     let bytes = this.valuesBuffer === this.emptyValues ? 0 : this.valuesBuffer.size;
     if (this.barrels) bytes += this.barrels.count * BARREL_INSTANCE_BYTES;
     if (this.walls) bytes += this.walls.count * WALL_INSTANCE_BYTES;
+    // A slab's faces share their buffers: each counts once.
+    const buffers = new Set();
     for (const slice of this.slices) {
-      bytes += slice.shapes.size + slice.covers.size + (slice.fans?.size || 0) + slice.uniform.size;
+      for (const buffer of [slice.shapes, slice.covers, slice.fans, slice.uniform, slice.edges, slice.cuts]) if (buffer) buffers.add(buffer);
       if (slice.field) bytes += slice.field.width * slice.field.height * 4;
     }
+    for (const buffer of buffers) bytes += buffer.size;
     return bytes;
   }
 
@@ -687,7 +818,7 @@ export class AnalyticRenderer {
   releaseSlices() {
     const buffers = new Set();
     for (const slice of this.slices) {
-      for (const buffer of [slice.shapes, slice.covers, slice.fans, slice.uniform]) if (buffer) buffers.add(buffer);
+      for (const buffer of [slice.shapes, slice.covers, slice.fans, slice.uniform, slice.edges, slice.cuts]) if (buffer) buffers.add(buffer);
       slice.field?.texture.destroy();
     }
     for (const buffer of buffers) buffer.destroy();

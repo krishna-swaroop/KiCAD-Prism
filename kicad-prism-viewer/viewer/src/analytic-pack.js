@@ -49,6 +49,12 @@ export async function openAnalyticPack(bytes, { wasm } = {}) {
           covers: new Uint32Array(records.covers()),
           batches: new Uint32Array(records.batches()),
           contourEdges: new Float32Array(records.contourEdges()),
+          contourEdgeOperations: new Uint32Array(records.contourEdgeOperations()),
+          shapeCuts: new Uint32Array(records.shapeCuts()),
+          edgeCuts: new Uint32Array(records.edgeCuts()),
+          cutIndices: new Uint32Array(records.cutIndices()),
+          outlineEdges: new Float32Array(records.outlineEdges()),
+          outlineShapes: new Uint32Array(records.outlineShapes()),
           stats: JSON.parse(records.statsJson()),
         };
       } finally {
@@ -113,7 +119,7 @@ export function planCopperSlices(header, layers) {
     }
     const outer = position === 0 || position === conductors.length - 1;
     const bottom = position === conductors.length - 1 && conductors.length > 1;
-    planned.push({ key: slice.key, layerId: Number(layer.id), z: Number(layer.z_mm || 0) / 1000, outer, bottom, bounds });
+    planned.push({ key: slice.key, layerId: Number(layer.id), z: Number(layer.z_mm || 0) / 1000, outer, mark: outer, bottom, bounds });
   });
   return { planned, unmatched };
 }
@@ -122,6 +128,10 @@ const ROLE_OF = { conductor: "copper", solder_mask: "mask", silkscreen: "silk", 
 // Over the mask's outer face: paste, then silkscreen (which may cross paste).
 const PASTE_LIFT = 0.000001;
 const SILK_LIFT = 0.000002;
+// A dielectric's faces sit this far (metres) inside its slab: the copper
+// and mask laid on it share its planes exactly, and a camera inside the
+// board would otherwise see the two fight by depth rounding.
+const DIELECTRIC_INSET = 0.0000001;
 
 /**
  * Every slice of `header` the viewer can draw, matched to its layer in
@@ -160,19 +170,19 @@ export function planBoardSlices(header, layers, zOffset = 0) {
       const above = [...conductors].reverse().find((c) => c.order < slice.order);
       const below = conductors.find((c) => c.order > slice.order);
       const offsetLayers = [copperLayer(above) || copperLayer(below), copperLayer(below) || copperLayer(above)];
-      planned.push({ ...base, face: "top", z: centre + half, faceDown: false, outer: false, offsetLayers });
-      planned.push({ ...base, face: "bottom", z: centre - half, faceDown: true, outer: false, offsetLayers });
+      const slab = { zTop: centre + half, zBottom: centre - half };
+      planned.push({ ...base, ...slab, face: "top", z: centre + half - DIELECTRIC_INSET, faceDown: false, outer: false, offsetLayers });
+      planned.push({ ...base, ...slab, face: "bottom", z: centre - half + DIELECTRIC_INSET, faceDown: true, outer: false, offsetLayers });
     } else if (role === "copper") {
+      // A slab of its stackup thickness: both faces, and side walls drawn
+      // with the face that looks out (the top one inside the board).
       const position = conductors.indexOf(slice);
       const bottom = position === conductors.length - 1 && conductors.length > 1;
-      planned.push({
-        ...base,
-        z: bottom ? centre - half : centre + half,
-        faceDown: bottom,
-        bottom,
-        outer: position === 0 || bottom,
-        offsetLayers: [Number(layer.id), Number(layer.id)],
-      });
+      const outer = position === 0 || bottom;
+      const slab = { ...base, bottom, outer, zTop: centre + half, zBottom: centre - half, offsetLayers: [Number(layer.id), Number(layer.id)] };
+      // Only the outward face of an outer layer marks copper for the mask's tint.
+      planned.push({ ...slab, face: "top", z: centre + half, faceDown: false, mark: outer && !bottom, walls: !bottom });
+      planned.push({ ...slab, face: "bottom", z: centre - half, faceDown: true, mark: bottom, walls: bottom });
     } else {
       // Mask, paste and silkscreen face out from their side, and move with its outer copper.
       const lift = role === "silk" ? SILK_LIFT : role === "paste" ? PASTE_LIFT : 0;
@@ -290,6 +300,7 @@ export function planBarrels(header, barrels, slices) {
   const faces = (conductor) => {
     const slice = drawn.get(conductor.key);
     if (!slice) return null;
+    if (slice.zTop !== undefined) return { top: slice.zTop, bottom: slice.zBottom, layerId: slice.layerId };
     const thickness = Number(conductor.thickness_nm || 0) / 1e9;
     return slice.bottom
       ? { top: slice.z + thickness, bottom: slice.z, layerId: slice.layerId }

@@ -178,6 +178,17 @@ export class LoweredSliceRecords {
         return v1;
     }
     /**
+     * Per contour edge, its region's operation index (`lower::EDGE_SUBTRACT`
+     * set for a subtracting region).
+     * @returns {Uint32Array}
+     */
+    contourEdgeOperations() {
+        const ret = wasm.loweredslicerecords_contourEdgeOperations(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * Region contour edges, (x0, y0, x1, y1) board millimetres each.
      * @returns {Float32Array}
      */
@@ -198,12 +209,62 @@ export class LoweredSliceRecords {
         return v1;
     }
     /**
+     * The hole shape records the ranges name.
+     * @returns {Uint32Array}
+     */
+    cutIndices() {
+        const ret = wasm.loweredslicerecords_cutIndices(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Per contour edge, a (first, count) range into `cutIndices`.
+     * @returns {Uint32Array}
+     */
+    edgeCuts() {
+        const ret = wasm.loweredslicerecords_edgeCuts(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * Fan triangle vertices (x, y board millimetres).
      * @returns {Float32Array}
      */
     fanVertices() {
         const ret = wasm.loweredslicerecords_fanVertices(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * The add shapes' outline edges, (x0, y0, x1, y1) board millimetres each.
+     * @returns {Float32Array}
+     */
+    outlineEdges() {
+        const ret = wasm.loweredslicerecords_outlineEdges(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Per outline edge, its add shape's index among the adds.
+     * @returns {Uint32Array}
+     */
+    outlineShapes() {
+        const ret = wasm.loweredslicerecords_outlineShapes(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Per add shape, a (first, count) range into `cutIndices`.
+     * @returns {Uint32Array}
+     */
+    shapeCuts() {
+        const ret = wasm.loweredslicerecords_shapeCuts(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
     }

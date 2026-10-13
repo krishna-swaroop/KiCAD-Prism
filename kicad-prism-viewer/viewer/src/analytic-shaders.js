@@ -8,6 +8,18 @@
 export const SHAPE_WORDS = 20;
 export const COVER_WORDS = 6;
 export const BATCH_WORDS = 5;
+/**
+ * Words per region wall edge: x0, y0, x1, y1 (f32 bits, board mm), the
+ * operation, and its holes' range in the cuts buffer (first, count).
+ */
+export const EDGE_WORDS = 7;
+/** A contour edge's operation word flag: the edge bounds a subtracting region. */
+export const EDGE_SUBTRACT = 0x80000000;
+/**
+ * A wall edge's word 4 flag: the edge is of an add shape's outline skirt,
+ * the rest of the word its index among the slice's adds.
+ */
+export const EDGE_SKIRT = 0x40000000;
 export const SLICE_UNIFORM_BYTES = 256;
 /** R channel of an analytic pick: tags the G channel as operation index + 1. */
 export const ANALYTIC_PICK_TAG = 0x80000000;
@@ -66,6 +78,14 @@ struct Slice {
   // The layer's material: metallic, roughness, the face normal's z, and 1
   // for copper (which dims while a net is lit).
   material: vec4f,
+  // The slab's bottom and top heights (world metres, exploded offset in).
+  slab: vec2f,
+  // How many of the slice's shapes subtract (they come first).
+  subtracts: u32,
+  padding4: u32,
+  // The camera in homogeneous world coordinates: a point (w = 1) for a
+  // perspective view, the view direction (w = 0) for an orthographic one.
+  eye: vec4f,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<uniform> slice: Slice;
@@ -75,9 +95,14 @@ struct Slice {
 @group(0) @binding(5) var field: texture_2d<f32>;
 @group(0) @binding(6) var<storage, read> nets: array<u32>;
 @group(0) @binding(7) var<storage, read> netMask: array<u32>;
+@group(0) @binding(8) var<storage, read> edges: array<u32>;
+// Per add shape a (first, count) range of hole records, then the records.
+@group(0) @binding(9) var<storage, read> cuts: array<u32>;
 
 const SHAPE_WORDS = ${SHAPE_WORDS}u;
 const COVER_WORDS = ${COVER_WORDS}u;
+const EDGE_WORDS = ${EDGE_WORDS}u;
+const EDGE_SKIRT = ${0x40000000}u;
 const PICK_TAG = ${ANALYTIC_PICK_TAG}u;
 const TAU = 6.283185307179586;
 
@@ -239,11 +264,18 @@ fn netHidden(operation: u32) -> bool {
   return copperSlice() && (slice.netMode & 1u) != 0u && !netLit(netOf(operation));
 }
 
+fn faceNormal() -> vec3f { return vec3f(0.0, 0.0, slice.material.z); }
+
 fn shade(operation: u32, board: vec2f) -> vec4f {
+  return shadeNormal(operation, board, faceNormal());
+}
+
+// As \`shade\`, for a surface of world normal \`normal\` (a slab's side wall).
+fn shadeNormal(operation: u32, board: vec2f, normal: vec3f) -> vec4f {
   if (copperSlice() && netLit(netOf(operation))) {
     // A lit net glows, pulsing, as the mesh copper does.
     let pulse = 0.88 + 0.12 * sin(globals.time * 3.2);
-    return vec4f(aces(litGlow(vec3f(0.08, 1.0, 0.2) * pulse)), 1.0);
+    return vec4f(aces(lightNormal(vec3f(0.08, 1.0, 0.2) * pulse, normal)), 1.0);
   }
   if (slice.overlay == 1u) {
     let value = values[operation];
@@ -252,26 +284,26 @@ fn shade(operation: u32, board: vec2f) -> vec4f {
     let value = sampleField(board);
     if (present(value)) { return vec4f(viridis(normalized(value)), 1.0); }
   }
-  return vec4f(aces(lit(slice.color.rgb)), slice.color.a);
-}
-
-// A lit net's colour under the copper lighting, never dimmed.
-fn litGlow(base: vec3f) -> vec3f {
-  return lightFace(base);
+  return vec4f(aces(litNormal(slice.color.rgb, normal)), slice.color.a);
 }
 
 // The base copper lighting (renderer.js) for a flat face of normal (0, 0, z),
 // so analytic copper reads exactly as the mesh copper it replaces.
 fn lit(base: vec3f) -> vec3f {
+  return litNormal(base, faceNormal());
+}
+
+fn litNormal(base: vec3f, normal: vec3f) -> vec3f {
   var tinted = base;
   // Copper (material.w = 1) dims while a net is lit, as the mesh copper does.
   if (globals.hasHighlight > 0.5 && slice.material.w > 0.5) { tinted = mix(base, vec3f(0.12, 0.14, 0.17), 0.58); }
-  return lightFace(tinted);
+  return lightNormal(tinted, normal);
 }
 
-fn lightFace(tinted: vec3f) -> vec3f {
+// The copper lighting for world normal \`normal\`. A layer facing down (its
+// material.z -1) is lit from below, as the mesh lights its bottom faces.
+fn lightNormal(tinted: vec3f, normal: vec3f) -> vec3f {
   let up = slice.material.z;
-  let normal = vec3f(0.0, 0.0, up);
   let side = vec3f(1.0, 1.0, up);
   let light = normalize(globals.lightDirection.xyz * side);
   let diffuse = max(dot(normal, light), 0.0);
@@ -407,6 +439,273 @@ struct CoverOut {
   if (netHidden(input.operation)) { discard; }
   return vec4u(PICK_TAG, input.operation + 1u, 0u, 0u);
 }
+
+// Side walls of a slab (copper of its stackup thickness), from wall edges
+// extruded through it. A region's walls are its contour edges. A shape's
+// wall is exact: its edges are a skirt just outside its outline (the
+// lowering's outline polygon), and each sample's view ray, entering the
+// skirt, marches on to the shape's true outline by its distance, keeping
+// that hit with its depth. Only the thin band along outlines is shaded.
+
+fn shapeLinear(record: u32) -> mat2x2f {
+  return mat2x2f(fword(record, 4u), fword(record, 6u), fword(record, 5u), fword(record, 7u));
+}
+
+fn boardToWorld(board: vec2f, z: f32) -> vec3f { return vec3f(board.x * 0.001, -board.y * 0.001, z); }
+
+// The unit view ray through a world point, from the eye.
+fn viewDirection(world: vec3f) -> vec3f {
+  var direction = slice.eye.xyz;
+  if (abs(slice.eye.w) > 1e-12) { direction = world - slice.eye.xyz / slice.eye.w; }
+  return normalize(direction);
+}
+
+struct WallHit {
+  hit: bool,
+  board: vec2f,
+  z: f32,
+  normal: vec3f,
+};
+
+// The view ray through \`world\` (a point on the shape's skirt, where the ray
+// enters it) within the slab, in the shape's local frame: board millimetres,
+// s millimetres along the ray from \`world\` on to where it leaves the slab.
+struct WallRay {
+  ok: bool,
+  at: vec3f,
+  dir: vec3f,
+  local0: vec2f,
+  localDir: vec2f,
+  speed: f32,
+  s0: f32,
+  s1: f32,
+};
+
+fn wallRay(record: u32, world: vec3f) -> WallRay {
+  var ray: WallRay;
+  ray.ok = false;
+  let linear = shapeLinear(record);
+  let inverse = mat2x2f(linear[1][1], -linear[0][1], -linear[1][0], linear[0][0]) * (1.0 / determinant(linear));
+  let d3 = viewDirection(world);
+  // Millimetres throughout: board (y down) in xy, height in z.
+  ray.dir = vec3f(d3.x, -d3.y, d3.z);
+  ray.at = vec3f(world.x * 1000.0, -world.y * 1000.0, world.z * 1000.0);
+  // Walls stop a hair inside the slab, so where one meets a face (a track's
+  // wall inside a pour) the face always wins the depth test.
+  let inset = (slice.slab.y - slice.slab.x) * 1000.0 * WALL_INSET;
+  let zb = slice.slab.x * 1000.0 + inset;
+  let zt = slice.slab.y * 1000.0 - inset;
+  ray.s0 = -1e9;
+  ray.s1 = 1e9;
+  if (abs(ray.dir.z) > 1e-9) {
+    let a = (zb - ray.at.z) / ray.dir.z;
+    let b = (zt - ray.at.z) / ray.dir.z;
+    ray.s0 = min(a, b);
+    ray.s1 = max(a, b);
+  } else if (ray.at.z < zb || ray.at.z > zt) {
+    return ray;
+  }
+  let reach = length(vec2f(fword(record, 12u), fword(record, 13u)) - vec2f(fword(record, 10u), fword(record, 11u))) + 1.0;
+  ray.s0 = max(ray.s0, 0.0);
+  ray.s1 = min(ray.s1, reach * 4.0);
+  ray.local0 = inverse * (ray.at.xy - vec2f(fword(record, 8u), fword(record, 9u)));
+  ray.localDir = inverse * ray.dir.xy;
+  ray.speed = length(ray.localDir);
+  ray.ok = ray.s0 < ray.s1;
+  return ray;
+}
+
+// The ray against the shape's side walls, marched by the shape's distance
+// (a bound on how far the ray can go without meeting its outline).
+fn marchWall(record: u32, ray: WallRay) -> WallHit {
+  var result: WallHit;
+  result.hit = false;
+  if (!ray.ok || ray.speed < 1e-7) { return result; }
+  var s = ray.s0;
+  var distance = shapeDistance(record, ray.local0 + ray.localDir * s);
+  // Starting inside the shape: the ray came through a face, not a wall.
+  if (distance <= 0.0) { return result; }
+  for (var i = 0u; i < 48u; i += 1u) {
+    s += distance / ray.speed;
+    if (s > ray.s1) { return result; }
+    distance = shapeDistance(record, ray.local0 + ray.localDir * s);
+    if (distance < 1e-4) { break; }
+  }
+  if (distance >= 1e-4) { return result; }
+  let local = ray.local0 + ray.localDir * s;
+  let board = ray.at.xy + ray.dir.xy * s;
+  let add = (record - slice.subtracts) * 2u;
+  if (inHole(cuts[add], cuts[add + 1u], board)) { return result; }
+  let e = 1e-3;
+  let gradient = vec2f(
+    shapeDistance(record, local + vec2f(e, 0.0)) - shapeDistance(record, local - vec2f(e, 0.0)),
+    shapeDistance(record, local + vec2f(0.0, e)) - shapeDistance(record, local - vec2f(0.0, e)));
+  let normalBoard = normalize(shapeLinear(record) * gradient);
+  result.hit = true;
+  result.board = board;
+  result.z = (ray.at.z + ray.dir.z * s) * 0.001;
+  result.normal = vec3f(normalBoard.x, -normalBoard.y, 0.0);
+  return result;
+}
+
+const WALL_INSET = 0.02;
+
+// Whether a board point lies in one of the holes \`cuts[first..first + count]\`
+// names: there the slab is drilled away, its walls with it.
+fn inHole(first: u32, count: u32, board: vec2f) -> bool {
+  for (var i = 0u; i < count; i += 1u) {
+    let hole = cuts[first + i];
+    let linear = shapeLinear(hole);
+    let inverse = mat2x2f(linear[1][1], -linear[0][1], -linear[1][0], linear[0][0]) * (1.0 / determinant(linear));
+    if (shapeDistance(hole, inverse * (board - vec2f(fword(hole, 8u), fword(hole, 9u)))) < 0.0) { return true; }
+  }
+  return false;
+}
+
+fn worldDepth(world: vec3f) -> f32 {
+  let clipped = globals.viewProjection * vec4f(world, 1.0);
+  return clipped.z / clipped.w;
+}
+
+struct WallColor {
+  @location(0) color: vec4f,
+  @builtin(frag_depth) depth: f32,
+};
+struct WallPick {
+  @location(0) pick: vec4u,
+  @builtin(frag_depth) depth: f32,
+};
+
+fn edgeEnd(edge: u32, end: u32) -> vec2f {
+  let base = edge * EDGE_WORDS + end * 2u;
+  return vec2f(bitcast<f32>(edges[base]), bitcast<f32>(edges[base + 1u]));
+}
+
+// An edge's outward normal in the world: edges run with their material on
+// the left (as the lowering writes them), and board y is the world's -y.
+fn edgeOutward(edge: u32) -> vec3f {
+  let along = edgeEnd(edge, 1u) - edgeEnd(edge, 0u);
+  return normalize(vec3f(along.y, along.x, 0.0));
+}
+
+// An edge's wall quad, inset a hair from the slab's faces; or nothing when
+// the wall faces away from the eye (only its outward side shows: the
+// material, or for a skirt the rest of the shape's wall, lies behind it).
+fn wallCorner(vertex: u32, edge: u32) -> vec3f {
+  let c = corner(vertex);
+  let board = mix(edgeEnd(edge, 0u), edgeEnd(edge, 1u), c.x);
+  let inset = (slice.slab.y - slice.slab.x) * WALL_INSET;
+  return boardToWorld(board, mix(slice.slab.x + inset, slice.slab.y - inset, c.y));
+}
+
+fn facesEye(edge: u32) -> bool {
+  let middle = boardToWorld(0.5 * (edgeEnd(edge, 0u) + edgeEnd(edge, 1u)), 0.5 * (slice.slab.x + slice.slab.y));
+  return dot(edgeOutward(edge), viewDirection(middle)) < 0.0;
+}
+
+// Off the clip volume: a culled wall's quad draws nothing.
+const CULLED = vec4f(0.0, 0.0, 2.0, 1.0);
+
+struct EdgeOut {
+  @builtin(position) position: vec4f,
+  @location(0) world: vec3f,
+  @location(1) @interpolate(flat) edge: u32,
+};
+
+@vertex fn vs_region_wall(@builtin(vertex_index) vertex: u32, @builtin(instance_index) edge: u32) -> EdgeOut {
+  let world = wallCorner(vertex, edge);
+  var out: EdgeOut;
+  out.position = select(CULLED, globals.viewProjection * vec4f(world, 1.0), facesEye(edge));
+  out.world = world;
+  out.edge = edge;
+  return out;
+}
+
+fn edgeCut(edge: u32, world: vec3f) -> bool {
+  let base = edge * EDGE_WORDS;
+  return inHole(edges[base + 5u], edges[base + 6u], vec2f(world.x * 1000.0, -world.y * 1000.0));
+}
+
+// A region's wall is its edge's own quad: shaded once per pixel, at its
+// own depth.
+@fragment fn fs_region_wall(input: EdgeOut) -> @location(0) vec4f {
+  let operation = edges[input.edge * EDGE_WORDS + 4u];
+  if (netHidden(operation) || edgeCut(input.edge, input.world)) { discard; }
+  let board = vec2f(input.world.x * 1000.0, -input.world.y * 1000.0);
+  return shadeNormal(operation, board, edgeOutward(input.edge));
+}
+
+@fragment fn fs_region_wall_pick(input: EdgeOut) -> @location(0) vec4u {
+  let operation = edges[input.edge * EDGE_WORDS + 4u];
+  if (netHidden(operation) || edgeCut(input.edge, input.world)) { discard; }
+  return vec4u(PICK_TAG, operation + 1u, 0u, 0u);
+}
+
+struct SkirtOut {
+  @builtin(position) position: vec4f,
+  // Shaded once per pixel: the skirt spans the wall's height, so its own
+  // coverage anti-aliases the wall's top and bottom edges, and the inset
+  // keeps the face in front where the two meet.
+  @location(0) world: vec3f,
+  @location(1) @interpolate(flat) record: u32,
+};
+
+// How far in from its skirt a shape's ring reaches, millimetres: past the
+// outline's least tolerance (kicad_monkey's OUTLINE_TOLERANCE_MM, 4 um).
+const RING_MM = 0.01;
+
+// A skirt edge draws two quads (twelve vertices): the skirt itself, and a
+// ring on the slab face toward the eye, reaching in over the gap between
+// skirt and outline. A ray through that gap meets the wall without crossing
+// the skirt (steep views), so the ring starts its march instead.
+fn skirtCorner(vertex: u32, edge: u32) -> vec3f {
+  if (vertex < 6u) { return wallCorner(vertex, edge); }
+  let c = corner(vertex - 6u);
+  let a = edgeEnd(edge, 0u);
+  let b = edgeEnd(edge, 1u);
+  let along = normalize(b - a);
+  // The material lies on the edge's left.
+  let inward = vec2f(-along.y, along.x) * RING_MM * c.y;
+  let board = mix(a, b, c.x) + inward;
+  let inset = (slice.slab.y - slice.slab.x) * WALL_INSET;
+  let middle = 0.5 * (slice.slab.x + slice.slab.y);
+  // A perspective eye is a point; an orthographic one the view direction.
+  var above = (slice.eye.z < 0.0);
+  if (abs(slice.eye.w) > 1e-12) { above = (slice.eye.z / slice.eye.w > middle); }
+  return boardToWorld(board, select(slice.slab.x + inset, slice.slab.y - inset, above));
+}
+
+@vertex fn vs_skirt(@builtin(vertex_index) vertex: u32, @builtin(instance_index) edge: u32) -> SkirtOut {
+  let world = skirtCorner(vertex, edge);
+  var out: SkirtOut;
+  out.position = select(CULLED, globals.viewProjection * vec4f(world, 1.0), facesEye(edge));
+  out.world = world;
+  out.record = slice.subtracts + (edges[edge * EDGE_WORDS + 4u] & ~EDGE_SKIRT);
+  return out;
+}
+
+// A shape's wall: the ray entering its skirt marches on to its outline.
+@fragment fn fs_skirt(input: SkirtOut) -> WallColor {
+  let operation = word(input.record, 1u);
+  if (netHidden(operation)) { discard; }
+  let hit = marchWall(input.record, wallRay(input.record, input.world));
+  if (!hit.hit) { discard; }
+  var out: WallColor;
+  out.color = shadeNormal(operation, hit.board, hit.normal);
+  out.depth = worldDepth(boardToWorld(hit.board, hit.z));
+  return out;
+}
+
+@fragment fn fs_skirt_pick(input: SkirtOut) -> WallPick {
+  let operation = word(input.record, 1u);
+  if (netHidden(operation)) { discard; }
+  let hit = marchWall(input.record, wallRay(input.record, input.world));
+  if (!hit.hit) { discard; }
+  var out: WallPick;
+  out.pick = vec4u(PICK_TAG, operation + 1u, 0u, 0u);
+  out.depth = worldDepth(boardToWorld(hit.board, hit.z));
+  return out;
+}
 `;
 
 // Stencil plan (the base pipelines use bit 0 only, to mark outer copper):
@@ -446,6 +745,8 @@ export const STENCIL_STEPS = Object.freeze({
   // The mask's colour: where it lies (bit 5) over outer copper (bit 0), and elsewhere.
   tintCovered: { face: { compare: "equal", passOp: "keep" }, read: 0x21, write: 0x00, reference: 0x21, color: true, depth: true },
   tintPlain: { face: { compare: "equal", passOp: "keep" }, read: 0x21, write: 0x00, reference: 0x20, color: true, depth: true },
+  // Solid geometry (a slab's side walls): depth only, the stencil untouched.
+  solid: { face: keep, read: 0, write: 0, reference: 0, color: true, depth: true },
   // Clear bits 5, 6 and 7 over the slice.
   clear: { face: { compare: "always", passOp: "zero" }, read: 0xff, write: 0xe0, reference: 0, color: false, depth: false },
 });

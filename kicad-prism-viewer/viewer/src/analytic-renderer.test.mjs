@@ -81,8 +81,10 @@ test("the stencil plan removes subtracts, keeps region holes, and cleans up", ()
   // Instance 0 is a hole; 1 a pad; 2 a track. Batch 0 subtracts a region,
   // batch 1 adds a zone with a hole (its fan covers the hole twice). The pad
   // and track overlap at "joint"; the zone also covers the pad at "padZone".
+  // The outward face of an outer copper slab: it marks bit 0.
   const slice = {
     outer: true,
+    mark: true,
     shapeCount: 3,
     subtractShapes: 1,
     fans: {},
@@ -205,4 +207,21 @@ test("a mask slice lays itself down, then tints over outer copper and elsewhere"
   assert.equal(colouredBy.get("overBoard"), "tintPlain");
   // The copper mark survives for the mesh's own blended layers; the slice's bits are cleared.
   assert.deepEqual([stencil.get("overCopper"), stencil.get("overBoard"), stencil.get("opening")], [1, 0, 1]);
+});
+
+test("shape walls are drawn only where a slab's walls can span a third of a pixel", () => {
+  const extent = [[0, -0.1, -0.0008], [0.1, 0, 0.0008]];
+  const pixels = (matrix, eye) => AnalyticRenderer.prototype.wallPixels.call({
+    viewMatrix: matrix, extent, eye, renderer: { canvas: { width: 2560, height: 1600 } },
+  }, 0.000035);
+  // Straight down, orthographic: a wall projects to nothing.
+  const down = mat4Multiply(orthographic(0.06, 0.06, -3, 3), lookAt([0.05, -0.05, 1], [0.05, -0.05, 0], [0, 1, 0]));
+  assert.ok(pixels(down, viewEye(down)) < 1e-6);
+  // The whole board, obliquely: a 35 um wall is under half a pixel.
+  const far = mat4Multiply(perspective(Math.PI / 4, 1.6, 0.01, 2), lookAt([0.05, -0.25, 0.15], [0.05, -0.05, 0], [0, 0, 1]));
+  const overview = pixels(far, viewEye(far));
+  assert.ok(overview > 0 && overview < 0.5, `${overview}`);
+  // Close in: many pixels.
+  const near = mat4Multiply(perspective(Math.PI / 4, 1.6, 0.0001, 2), lookAt([0.05, -0.052, 0.002], [0.05, -0.05, 0], [0, 0, 1]));
+  assert.ok(pixels(near, viewEye(near)) > 10);
 });
