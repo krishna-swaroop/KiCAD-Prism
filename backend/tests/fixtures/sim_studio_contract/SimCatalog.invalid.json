@@ -1,0 +1,18 @@
+{
+  "schema": "prism.sim.catalog",
+  "version": "a0",
+  "entries": [
+    {
+      "kind": "dc-drop",
+      "display_name": "DC IR drop",
+      "summary": "Voltage drop and current density across power nets.",
+      "status": "available"
+    },
+    {
+      "kind": "ac-pdn",
+      "display_name": "PDN impedance",
+      "summary": "Impedance of each rail seen from its loads, against a target.",
+      "status": "soon"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "prism.sim.setup-report",
+  "version": "a0",
+  "stage": "preflight",
+  "setup_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "ok": false,
+  "issues": [
+    {
+      "severity": "fatal",
+      "code": "terminal-not-on-rail",
+      "path": "/terminals/2/positive/1",
+      "message": "main:U1.30 is on net GND, not +3V3.",
+      "refs": [
+        "main:U1.30",
+        "main:+3V3"
+      ]
+    },
+    {
+      "severity": "warning",
+      "code": "unreached-copper",
+      "path": "/rails/0",
+      "message": "2 copper islands on +3V3 connect to no terminal and will be dropped."
+    }
+  ]
+}

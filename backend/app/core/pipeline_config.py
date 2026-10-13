@@ -79,6 +79,10 @@ class PipelineSettings(BaseSettings):
         default=False,
         description="Experimental: also write the analytic board pack the 3D tab and Simulation Studio read.",
     )
+    PRISM_SIM_STUDIO_ENABLED: bool = Field(
+        default=False,
+        description="Experimental: the Simulation Studio tab and its /api/.../sim/a0 routes.",
+    )
     PRISM_KICAD_MONKEY_SOURCE: str = Field(
         default="",
         description="Label of the installed kicad_monkey build, mixed into the viewer build fingerprint.",

@@ -2,8 +2,10 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Suspense, lazy, useEffect, useMemo, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/button";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
+import { SimStudioPanel } from "@/components/sim-studio/SimStudioPanel";
+import { useSimStudioAvailable } from "@/components/sim-studio/use-sim-studio-available";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2 } from "lucide-react";
+import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical } from "lucide-react";
 import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
@@ -99,6 +101,7 @@ function sectionFromSearchParams(searchParams: URLSearchParams): ProjectSection 
         || section === "documentation"
         || section === "workflows"
         || section === "release-studio"
+        || section === "simulation-studio"
     ) {
         return section;
     }
@@ -115,6 +118,10 @@ const NAV_ITEMS = [
     { id: "assets" as ProjectSection, label: "Assets Portal", icon: FolderOpen },
     { id: "documentation" as ProjectSection, label: "Documentation", icon: FileText },
 ];
+
+// Shown only when the backend serves Simulation Studio (PRISM_SIM_STUDIO_ENABLED).
+const SIM_NAV_ITEM = { id: "simulation-studio" as ProjectSection, label: "Simulation Studio", icon: FlaskConical };
+const NAV_ITEMS_WITH_SIM = NAV_ITEMS.flatMap((item) => (item.id === "release-studio" ? [item, SIM_NAV_ITEM] : [item]));
 
 // Closes over nothing in the component.
 const getDisplayName = (project: Project) => {
@@ -154,6 +161,8 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const branchesLoading = branchesRead.loading;
     const branchError = branchesRead.error?.message ?? null;
     const canMutateProject = canManageProjects(user?.role);
+    const simStudioAvailable = useSimStudioAvailable();
+    const navItems = simStudioAvailable ? NAV_ITEMS_WITH_SIM : NAV_ITEMS;
     const canComment = canCommentOnProjects(user?.role);
 
     // Helper function to get display name
@@ -419,7 +428,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         <div className="py-4">
                             <h2 className="px-4 text-lg font-semibold tracking-tight mb-2">Project Navigation</h2>
                             <nav className="space-y-1 p-2">
-                                {NAV_ITEMS.map((item) => {
+                                {navItems.map((item) => {
                                     const Icon = item.icon;
                                     return (
                                         <button
@@ -658,7 +667,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     </div>
 
                     <nav className="space-y-1 mt-8">
-                        {NAV_ITEMS.map((item) => {
+                        {navItems.map((item) => {
                             const Icon = item.icon;
                             const isExpanded = !sidebarCollapsed || sidebarHovered;
                             return (
@@ -791,6 +800,18 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                     </Suspense>
                                 </ErrorBoundary>
                             )}
+                        </ProjectSectionPanel>
+                    )}
+
+                    {simStudioAvailable && visitedSections.has("simulation-studio") && (
+                        <ProjectSectionPanel
+                            key={`${projectId}:simulation-studio`}
+                            active={activeSection === "simulation-studio"}
+                            fill
+                        >
+                            <ErrorBoundary label="the simulation studio panel" resetKeys={[projectId]}>
+                                <SimStudioPanel projectId={projectId!} canMutate={canMutateProject} />
+                            </ErrorBoundary>
                         </ProjectSectionPanel>
                     )}
 

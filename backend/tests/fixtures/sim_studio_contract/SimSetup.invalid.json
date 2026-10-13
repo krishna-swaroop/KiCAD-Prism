@@ -1,0 +1,149 @@
+{
+  "schema": "prism.sim.setup",
+  "version": "a0",
+  "name": "Max load, 3V3 only",
+  "bundle": {
+    "board_id": "main",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "materials": {
+    "slices": {
+      "main:copper.f": {
+        "conductor": {
+          "conductivity_s_per_m": 58000000.0,
+          "reference_temperature_c": 20,
+          "temperature_coefficient_per_k": 0.00393,
+          "source": "assumed"
+        }
+      }
+    }
+  },
+  "components": {
+    "main:R12": {
+      "source": "component-db",
+      "model": {
+        "kind": "shunt",
+        "revision_id": "rev-81",
+        "dc": {
+          "resistance_ohm": 0.01
+        }
+      }
+    },
+    "main:C4": {
+      "source": "ignored"
+    }
+  },
+  "rails": [
+    {
+      "id": "3v3",
+      "net": "main:+3V3",
+      "voltage_v": 3.3,
+      "tolerance_pct": 3
+    },
+    {
+      "id": "12v",
+      "net": "main:+12V",
+      "voltage_v": 12
+    }
+  ],
+  "terminals": [
+    {
+      "id": "vrm-out",
+      "positive": [
+        "U5.2"
+      ],
+      "reference": [
+        "main:U5.3"
+      ]
+    },
+    {
+      "id": "vrm-in",
+      "positive": [
+        "main:U5.1"
+      ],
+      "reference": [
+        "main:U5.3"
+      ]
+    },
+    {
+      "id": "mcu-vdd",
+      "positive": [
+        "main:U1.12",
+        "main:U1.30"
+      ],
+      "reference": [
+        "main:U1.13"
+      ]
+    },
+    {
+      "id": "tp3",
+      "positive": [
+        "main:TP3.1"
+      ],
+      "reference": []
+    }
+  ],
+  "sources": [
+    {
+      "id": "vrm",
+      "rail": "3v3",
+      "terminal": "vrm-out",
+      "component": "main:U5"
+    },
+    {
+      "id": "vin",
+      "rail": "12v",
+      "terminal": "vrm-in"
+    }
+  ],
+  "loads": [
+    {
+      "id": "mcu",
+      "rail": "3v3",
+      "terminal": "mcu-vdd",
+      "current_a": -1,
+      "distribution": "uniform",
+      "component": "main:U1"
+    }
+  ],
+  "converters": [],
+  "probes": [
+    {
+      "id": "tp3",
+      "terminal": "tp3"
+    }
+  ],
+  "analyses": [
+    {
+      "id": "dc",
+      "kind": "dc-drop",
+      "rails": [
+        "3v3"
+      ],
+      "settings": {
+        "mesh": {
+          "max_element_um": 250,
+          "refine_near_vias": true
+        },
+        "vias": {
+          "plating_um": 25
+        },
+        "linear_solver": {
+          "method": "direct"
+        },
+        "outputs": {
+          "fields": [
+            "voltage",
+            "current-density"
+          ],
+          "via_currents": true
+        },
+        "engine_options": {
+          "dc-drop-ref": {
+            "debug_mesh": true
+          }
+        }
+      }
+    }
+  ]
+}

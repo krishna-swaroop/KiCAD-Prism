@@ -14,7 +14,8 @@ export type ProjectSection =
     | "assets"
     | "documentation"
     | "workflows"
-    | "release-studio";
+    | "release-studio"
+    | "simulation-studio";
 
 type VisitedSectionState = {
     projectId: string | undefined;

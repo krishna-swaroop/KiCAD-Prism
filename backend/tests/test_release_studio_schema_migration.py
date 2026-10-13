@@ -1733,6 +1733,7 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 (53, "system_step_exports"),
                 (54, "system_harness_outputs"),
                 (55, "project_path_settings"),
+                (56, "sim_studio_setups"),
             ],
         )
 
