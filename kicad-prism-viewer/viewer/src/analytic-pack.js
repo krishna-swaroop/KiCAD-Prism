@@ -134,6 +134,33 @@ const SILK_LIFT = 0.000002;
 const DIELECTRIC_INSET = 0.0000001;
 
 /**
+ * KiCad's predefined stackup colours for dielectric layers (sRGB 0-255), by
+ * the name a board's `(stackup (layer "dielectric 1" (color ...)))` gives.
+ */
+const KICAD_DIELECTRIC_COLORS = {
+  "fr4 natural": [109, 116, 75],
+  "ptfe natural": [252, 252, 250],
+  polyimide: [205, 130, 0],
+  "phenolic natural": [92, 17, 6],
+  aluminum: [213, 213, 213],
+};
+
+/**
+ * A dielectric's RGBA from its stackup colour: a KiCad name, or a
+ * user-defined `#RRGGBB[AA]`. Laminate that names none (or "Not specified")
+ * is FR4 natural, as bare board edges are. Opaque: a board edge is solid.
+ * Display values, as the viewer's other colours are.
+ */
+export function dielectricColor(name) {
+  const text = String(name || "").trim();
+  const hex = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(text);
+  const srgb = hex
+    ? [0, 2, 4].map((at) => parseInt(hex[1].slice(at, at + 2), 16))
+    : KICAD_DIELECTRIC_COLORS[text.toLowerCase()] || KICAD_DIELECTRIC_COLORS["fr4 natural"];
+  return [...srgb.map((channel) => channel / 255), 1];
+}
+
+/**
  * Every slice of `header` the viewer can draw, matched to its layer in
  * `layers` (the manifest's, by KiCad layer name; heights are the layer centres
  * in the stackup frame) and placed in the mesh frame by `zOffset` (metres).
@@ -166,6 +193,7 @@ export function planBoardSlices(header, layers, zOffset = 0) {
     const backSide = slice.side === "back" || (role !== "dielectric" && role !== "copper" && centre < zOffset);
     const base = { key: slice.key, role, layerId: Number(layer.id), side: slice.side || null, bounds };
     if (role === "dielectric") {
+      base.color = dielectricColor(layer.color);
       // Between two copper layers: it moves by the mean of their offsets.
       const above = [...conductors].reverse().find((c) => c.order < slice.order);
       const below = conductors.find((c) => c.order > slice.order);

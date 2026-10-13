@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   composeFieldRasters,
   denseOperationValues,
+  dielectricColor,
   loadAnalyticWasm,
   openAnalyticPack,
   operationCount,
@@ -222,4 +223,15 @@ test("each dielectric has walls of its own height; copper levels have bands on a
   assert.ok(bands.some((wall) => near(wall.top, 0.0007925) && near(wall.bottom, 0.0007475) && wall.layers[0] === 2));
   assert.ok(bands.some((wall) => near(wall.top, 0.0000075) && near(wall.bottom, -0.0000075) && wall.layers[0] === 4));
   assert.ok(bands.some((wall) => near(wall.top, -0.0007075) && near(wall.bottom, -0.0007525) && wall.layers[0] === 6));
+});
+
+test("a dielectric takes its stackup colour: a KiCad name, a hex colour, else FR4 natural", () => {
+  const close = (actual, expected) => actual.forEach((value, i) => assert.ok(Math.abs(value - expected[i]) < 1e-3, `${actual} ~ ${expected}`));
+  // FR4 natural is sRGB (109, 116, 75).
+  close(dielectricColor("FR4 natural"), [109 / 255, 116 / 255, 75 / 255, 1]);
+  close(dielectricColor(" fr4 NATURAL "), dielectricColor("FR4 natural"));
+  close(dielectricColor("Polyimide"), [205 / 255, 130 / 255, 0, 1]);
+  close(dielectricColor("#FFFFFF80"), [1, 1, 1, 1]);
+  close(dielectricColor("Not specified"), dielectricColor("FR4 natural"));
+  close(dielectricColor(undefined), dielectricColor("FR4 natural"));
 });

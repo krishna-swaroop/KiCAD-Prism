@@ -33,7 +33,7 @@ function stencilOp(op = "keep", stored, reference) {
  * pixel more than once). Returns the final stencil values and the pixels
  * colour reached.
  */
-function replay(calls, pixels, cover, initial = {}) {
+function replay(calls, pixels, cover, initial = {}, hidden = () => false) {
   const stencil = new Map(pixels.map((pixel) => [pixel, initial[pixel] || 0]));
   const coloured = new Set();
   const writes = new Map();
@@ -49,9 +49,12 @@ function replay(calls, pixels, cover, initial = {}) {
         for (let n = 0; n < cover(step, call, pixel); n += 1) {
           const stored = stencil.get(pixel);
           const passed = stencilTest(plan.face, reference, stored, plan.read);
-          const result = stencilOp(passed ? plan.face.passOp : plan.face.failOp, stored, reference);
+          // A depth-tested draw behind a nearer surface takes its depth-fail op.
+          const occluded = passed && Boolean(plan.depth || plan.depthTest) && hidden(step, call, pixel);
+          const op = !passed ? plan.face.failOp : occluded ? plan.face.depthFailOp : plan.face.passOp;
+          const result = stencilOp(op, stored, reference);
           stencil.set(pixel, (stored & ~plan.write) | (result & plan.write));
-          if (passed && plan.color) {
+          if (passed && !occluded && plan.color) {
             coloured.add(pixel);
             writes.set(pixel, (writes.get(pixel) || 0) + 1);
             colouredBy.set(pixel, step);
@@ -70,8 +73,8 @@ function recordingPass() {
     setPipeline: (name) => calls.push({ op: "pipeline", name }),
     setStencilReference: (value) => calls.push({ op: "reference", value }),
     setVertexBuffer: () => {},
-    setBindGroup: () => {},
-    draw: (count, instances = 1, first = 0, firstInstance = 0) => calls.push({ op: "draw", count, instances, first, firstInstance }),
+    setBindGroup: (index, group) => { calls.group = group; },
+    draw: (count, instances = 1, first = 0, firstInstance = 0) => calls.push({ op: "draw", count, instances, first, firstInstance, ...(calls.group ? { group: calls.group } : {}) }),
   };
 }
 
@@ -228,8 +231,8 @@ test("shape walls are drawn only where a slab's walls can span a third of a pixe
 
 test("a conformal mask rises over copper, lies low on laminate, steps between, and cleans up", () => {
   const renderer = Object.create(AnalyticRenderer.prototype);
-  // The step pipelines run the solid plan.
-  renderer.pipelines = { color: { ...Object.fromEntries(Object.keys(STENCIL_STEPS).map((name) => [name, name])), step: "solid", regionStep: "solid" } };
+  // The step pipelines run the coat plan.
+  renderer.pipelines = { color: { ...Object.fromEntries(Object.keys(STENCIL_STEPS).map((name) => [name, name])), step: "coat", regionStep: "coat" } };
   renderer.writeSlice = () => {};
   renderer.wallPixels = () => 10;
   // The mask: one region (its fan leaves "opening", a hole, twice covered).
@@ -245,13 +248,15 @@ test("a conformal mask rises over copper, lies low on laminate, steps between, a
   renderer.encodeConformal(pass, mask, { low, foot }, [silk], null, () => null);
   // Calls are recorded per pipeline; bind groups are not, so step names
   // stand in for which slice draws (shape steps are the trace or the silk).
-  const pixels = ["copper", "laminate", "opening", "wall", "silkOnCopper", "silkOnLaminate"];
-  const inMask = ["copper", "laminate", "wall", "silkOnCopper", "silkOnLaminate"];
+  // "joint": a step that lies inside other copper (a track's end inside the
+  // next segment), reaching past the mask's face there.
+  const pixels = ["copper", "laminate", "opening", "wall", "joint", "silkOnCopper", "silkOnLaminate"];
+  const inMask = ["copper", "laminate", "wall", "joint", "silkOnCopper", "silkOnLaminate"];
   const cover = (step, call, pixel) => {
     if (step === "fan") return pixel === "opening" ? 2 : inMask.includes(pixel) ? 1 : 0;
-    if (step === "footShape") return ["copper", "silkOnCopper"].includes(pixel) ? 1 : 0;
+    if (step === "footShape") return ["copper", "joint", "silkOnCopper"].includes(pixel) ? 1 : 0;
     if (step === "shapeOnFoot" || step === "shapeOffFoot") return pixel.startsWith("silk") ? 1 : 0;
-    if (step === "solid") return pixel === "wall" ? 1 : 0;
+    if (step === "coat") return pixel === "wall" || pixel === "joint" ? 1 : 0;
     return 1;
   };
   const { stencil } = replay(pass.calls, pixels, cover);
@@ -260,12 +265,40 @@ test("a conformal mask rises over copper, lies low on laminate, steps between, a
   assert.equal(coloured("copper"), "tintHigh");
   assert.equal(coloured("laminate"), "tintLow");
   assert.equal(coloured("opening"), undefined);
+  // The step shows off the footprint only, never over the mask on copper
+  // (depth aside: the mask over laminate lies behind a step's face).
+  const unlaid = (step, call, pixel) => (step === "tintLow" ? 0 : cover(step, call, pixel));
+  assert.equal(replay(pass.calls, ["wall"], unlaid).colouredBy.get("wall"), "coat");
+  assert.equal(replay(pass.calls, ["joint"], unlaid).colouredBy.get("joint"), "tintHigh");
   assert.equal(coloured("silkOnCopper"), "shapeOnFoot");
   assert.equal(coloured("silkOnLaminate"), "shapeOffFoot");
   // Both kinds of step draw, between the mask over copper and the mask over laminate.
   const names = pass.calls.filter((call) => call.op === "pipeline").map((call) => call.name);
-  const solid = names.indexOf("solid");
-  assert.ok(solid > names.indexOf("tintHigh") && solid < names.indexOf("tintLow"));
-  assert.equal(names.filter((name) => name === "solid").length, 2);
+  const coat = names.indexOf("coat");
+  assert.ok(coat > names.indexOf("tintHigh") && coat < names.indexOf("tintLow"));
+  assert.equal(names.filter((name) => name === "coat").length, 2);
   for (const [pixel, value] of stencil) assert.equal(value & 0xe2, 0, `${pixel}: bits 1, 5, 6 and 7 clear`);
+});
+
+test("silkscreen on a trace survives the mask over laminate hidden beneath it", () => {
+  const renderer = Object.create(AnalyticRenderer.prototype);
+  renderer.pipelines = { color: { ...Object.fromEntries(Object.keys(STENCIL_STEPS).map((name) => [name, name])), step: "coat", regionStep: "coat" } };
+  renderer.writeSlice = () => {};
+  renderer.wallPixels = () => 10;
+  const batches = [{ subtract: false, firstVertex: 0, vertexCount: 3, firstCover: 0, coverCount: 1 }];
+  // Every layer here is one region over the pixel: a trace's footprint, the
+  // mask (high and low) and a silkscreen box (high, and its low twin).
+  const slice = (key) => ({ shapeCount: 0, subtractShapes: 0, fans: {}, batches, bindGroup: key, key });
+  const mask = { ...slice("mask"), role: "mask" };
+  const low = { ...slice("low"), role: "mask" };
+  const foot = { ...slice("foot"), regionEdges: 0, skirtEdges: 0, zTop: 1, zBottom: 0 };
+  const silk = { ...slice("silk"), role: "silk" };
+  renderer.twins = new Map([[silk, { low: slice("silkLow") }]]);
+  const pass = recordingPass();
+  renderer.encodeConformal(pass, mask, { low, foot }, [silk], null, () => null);
+  // On the trace, the low mask lies under the high one: its cover fails depth.
+  const hidden = (step, call) => step === "coverLay" && call.group === "low";
+  const { stencil, colouredBy } = replay(pass.calls, ["trace"], () => 1, {}, hidden);
+  assert.equal(colouredBy.get("trace"), "coverOnFoot");
+  assert.equal(stencil.get("trace") & 0xe2, 0);
 });

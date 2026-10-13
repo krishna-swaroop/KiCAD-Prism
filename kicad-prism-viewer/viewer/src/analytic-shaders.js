@@ -842,8 +842,10 @@ export const STENCIL_STEPS = Object.freeze({
 
   // The mask over laminate: laid again at its lower face, off the footprint.
   tintLow: { face: { compare: "equal", passOp: "keep" }, read: 0x22, write: 0x00, reference: 0x20, color: true, depth: true },
-  // Clear the lay (bits 5 and 7), keeping the footprint.
-  clearLay: { face: { compare: "always", passOp: "zero" }, read: 0, write: 0xa0, reference: 0, color: false, depth: false },
+  // Clear the lay (bits 5, 6 and 7), keeping the footprint. Bit 6 too: a
+  // cover hidden by depth (the mask over laminate, under the mask on a
+  // trace) keeps its fan's bit, which would flip the next fan's parity.
+  clearLay: { face: { compare: "always", passOp: "zero" }, read: 0, write: 0xe0, reference: 0, color: false, depth: false },
   // Silkscreen on the mask: on the footprint, then off it (first writer
   // wins, as shapeBlend and coverBlend).
   shapeOnFoot: { face: { compare: "equal", passOp: "invert" }, read: 0xa2, write: 0x20, reference: 0x02, color: true, depth: true },
@@ -852,6 +854,10 @@ export const STENCIL_STEPS = Object.freeze({
   coverOffFoot: { face: { compare: "equal", passOp: "invert", failOp: "keep", depthFailOp: "keep" }, read: 0xe2, write: 0x60, reference: 0x40, color: true, depth: true },
   // Clear the footprint when the side is done.
   clearFoot: { face: { compare: "always", passOp: "zero" }, read: 0, write: 0x02, reference: 0, color: false, depth: false },
+  // The mask's step (a coat seen edge on): solid, and only off the footprint,
+  // so where it reaches past the mask's face it fills the samples that face
+  // leaves open and never shows through it (a track's end inside the next).
+  coat: { face: { compare: "equal", passOp: "keep", failOp: "keep", depthFailOp: "keep" }, read: 0x02, write: 0, reference: 0, color: true, depth: true },
   // Solid geometry (a slab's side walls): depth only, the stencil untouched.
   solid: { face: keep, read: 0, write: 0, reference: 0, color: true, depth: true },
   // Clear bits 5, 6 and 7 over the slice.
@@ -1105,7 +1111,7 @@ struct PickOut {
   if (b.ids.w == 1u) {
     if (view.board == 0u) { discard; }
     let light = normalize(globals.lightDirection.xyz);
-    out.color = vec4f(view.wallColor.rgb * (0.38 + max(dot(hit.normal, light), 0.0) * 0.72), 1.0);
+    out.color = vec4f(view.wallColor.rgb * (0.62 + max(dot(hit.normal, light), 0.0) * 0.72), 1.0);
     return out;
   }
   let lit = netLit(b.ids.x);
@@ -1203,12 +1209,18 @@ struct WallOut {
   return out;
 }
 
+fn aces(color: vec3f) -> vec3f {
+  return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), vec3f(0.0), vec3f(1.0));
+}
+
 @fragment fn fs_wall(input: WallOut) -> @location(0) vec4f {
   var toward = -view.eye.xyz;
   if (abs(view.eye.w) > 1e-12) { toward = view.eye.xyz / view.eye.w - input.world; }
   let normal = select(-input.normal, input.normal, dot(input.normal, toward) >= 0.0);
   let light = normalize(globals.lightDirection.xyz);
-  let base = view.wallColor.rgb * (0.38 + max(dot(normal, light), 0.0) * 0.72);
-  return vec4f(base, view.wallColor.a);
+  // Lit and tone mapped as the slabs' faces are (lightNormal's ambient), so
+  // an edge turned from the light still reads as laminate, not black.
+  let base = view.wallColor.rgb * (0.62 + max(dot(normal, light), 0.0) * 0.72);
+  return vec4f(aces(base), view.wallColor.a);
 }
 `;

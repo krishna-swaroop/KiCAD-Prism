@@ -64,7 +64,7 @@ export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wa
   }
   const slices = planned.map((slice) => ({
     ...slice,
-    color: slice.role === "copper" ? colorFor(byId.get(slice.layerId)) : [1, 1, 1, 1],
+    color: slice.role === "copper" ? colorFor(byId.get(slice.layerId)) : slice.color || [1, 1, 1, 1],
     lowered: lowered.get(slice.key),
   }));
   const lowerMs = performance.now() - started;

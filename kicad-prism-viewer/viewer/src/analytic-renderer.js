@@ -199,9 +199,10 @@ export class AnalyticRenderer {
     this.viewMatrix = matrix;
     floats.set(this.eye, 0);
     floats.set(this.renderer.barrelColor || [0.55, 0.35, 0.16, 1], 4);
-    const substrate = this.boardLooks().substrate;
+    // The board's edge in its laminate's stackup colour.
+    const laminate = this.laminateColor() || this.boardLooks().substrate?.color || [0.3, 0.32, 0.25, 1];
     const wallOpacity = (context.boardOpacity ?? 1) * (0.15 + 0.85 * (context.assemblyOpacity ?? 1));
-    floats.set([...(substrate?.color || [0.3, 0.32, 0.25, 1]).slice(0, 3), wallOpacity], 8);
+    floats.set([...laminate.slice(0, 3), wallOpacity], 8);
     words[12] = this.overlay.mode === OVERLAY_VALUES ? 1 : 0;
     words[13] = context.isolateNet ? 1 : 0;
     words[14] = this.boardShown(context) ? 1 : 0;
@@ -332,8 +333,8 @@ export class AnalyticRenderer {
         footCover: make("foot-cover", "vs_cover", "fs_plain_mask", "footCover"),
         tintHigh: make("tint-high", "vs_clear", "fs_tint_covered", "tintHigh", [], true),
         tintLow: make("tint-low", "vs_clear", "fs_tint_plain", "tintLow", [], true),
-        regionStep: make("region-step", "vs_region_step", "fs_region_step", "solid"),
-        step: make("step", "vs_step", "fs_step", "solid"),
+        regionStep: make("region-step", "vs_region_step", "fs_region_step", "coat"),
+        step: make("step", "vs_step", "fs_step", "coat"),
         clearLay: make("clear-lay", "vs_clear", "fs_plain_mask", "clearLay"),
         clearFoot: make("clear-foot", "vs_clear", "fs_plain_mask", "clearFoot"),
         shapeOnFoot: make("shape-on-foot", "vs_shape", "fs_shape", "shapeOnFoot", [], true),
@@ -699,6 +700,11 @@ export class AnalyticRenderer {
     return looks;
   }
 
+  /** The laminate's colour from the stackup (its first dielectric's), if any. */
+  laminateColor() {
+    return this.slices.find((slice) => slice.role === "dielectric" && slice.color)?.color || null;
+  }
+
   /** A slice's look for this frame: the copper's, or its board layer's with the opacity rules of the mesh. */
   lookFor(slice, copper, board, context) {
     if (slice.role === undefined || slice.role === "copper") return copper.get(slice.layerId);
@@ -710,7 +716,12 @@ export class AnalyticRenderer {
       return { ...look, color: [color[0], color[1], color[2], alpha(Number.isFinite(color[3]) ? color[3] : 1)] };
     };
     // An opened stackup keeps its dielectrics as faint slabs, so the spread copper reads clearly.
-    if (slice.role === "dielectric") return of("substrate", () => opacity * (0.15 + 0.85 * (context.assemblyOpacity ?? 1)));
+    if (slice.role === "dielectric") {
+      const alpha = opacity * (0.15 + 0.85 * (context.assemblyOpacity ?? 1));
+      // In its stackup colour, lit as the mesh substrate.
+      if (slice.color) return { ...(board.substrate || { metallic: 0, roughness: 0.72 }), color: [...slice.color.slice(0, 3), alpha] };
+      return of("substrate", () => alpha);
+    }
     // Mask and silkscreen belong to the assembled board: they fade out as the
     // stackup opens (`assemblyOpacity`), so they never cover the spread copper.
     const assembled = context.assemblyOpacity ?? 1;
@@ -922,8 +933,8 @@ export class AnalyticRenderer {
    */
   encodeConformal(pass, mask, { low, foot }, silks, layerOffsets, lookOf) {
     const pipelines = this.pipelines.color;
-    // The steps' pipelines run the solid plan.
-    const plan = (name) => STENCIL_STEPS[name === "step" || name === "regionStep" ? "solid" : name];
+    // The steps' pipelines run the coat plan.
+    const plan = (name) => STENCIL_STEPS[name === "step" || name === "regionStep" ? "coat" : name];
     const step = (name, reference = plan(name).reference) => {
       pass.setPipeline(pipelines[name]);
       pass.setStencilReference(reference);
