@@ -172,7 +172,7 @@ export class TubeRenderer {
       fragment: { module: drawModule, entryPoint: "fs", targets: [{ format: host.format }] },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: host.depthStencilState(),
-      multisample: { count: 1 },
+      multisample: { count: host.sampleCount },
     });
     this.globals = device.createBuffer({ label: "harness-tubes-globals", size: GLOBAL_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.countBuffer = device.createBuffer({ label: "harness-tubes-counts", size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });

@@ -43,6 +43,8 @@ export class AnalyticRenderer {
     this.renderer = renderer;
     this.device = renderer.device;
     this.stencil = renderer.stencil;
+    // The host's colour samples; picking draws one.
+    this.samples = renderer.sampleCount || 1;
     this.slices = [];
     this.overlay = { mode: OVERLAY_NONE, range: [0, 1] };
     this.layout = this.device.createBindGroupLayout({
@@ -95,7 +97,7 @@ export class AnalyticRenderer {
       fragment: { module, entryPoint: pick ? "fs_barrel_pick" : "fs_barrel", targets: [{ format }] },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: this.renderer.depthFormat, depthWriteEnabled: true, depthCompare: "greater" },
-      multisample: { count: 1 },
+      multisample: { count: pick ? 1 : this.samples },
     });
     this.barrelPipelines = { color: make(this.renderer.format, false), pick: make("rg32uint", true) };
     this.barrelView = this.device.createBuffer({ label: "analytic-barrel-view", size: BARREL_VIEW_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -110,7 +112,7 @@ export class AnalyticRenderer {
       fragment: { module: wallModule, entryPoint: "fs_wall", targets: [{ format: this.renderer.format, ...(blended ? { blend: BLEND } : {}) }] },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: this.renderer.depthFormat, depthWriteEnabled: true, depthCompare: "greater" },
-      multisample: { count: 1 },
+      multisample: { count: this.samples },
     });
     this.wallPipelines = { opaque: wall(false), blend: wall(true) };
     this.walls = null;
@@ -257,11 +259,12 @@ export class AnalyticRenderer {
         fragment: {
           module: this.module,
           entryPoint: pick ? `${fragment}_pick` : fragment,
+          ...(pick ? {} : { constants: { SAMPLES: this.samples } }),
           targets: [{ format, writeMask: plan.color ? GPUColorWrite.ALL : 0, ...(blended && !pick ? { blend: BLEND } : {}) }],
         },
         primitive: { topology: "triangle-list", cullMode: "none" },
         depthStencil,
-        multisample: { count: 1 },
+        multisample: { count: pick ? 1 : this.samples },
       });
     };
     const fanBuffers = [{ arrayStride: 8, attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }] }];

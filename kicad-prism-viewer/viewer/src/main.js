@@ -3761,6 +3761,7 @@ function ensureInsetTargets(width, height) {
     label: "inset-depth",
     size: [insetGpu.width, insetGpu.height],
     format: renderer.depthFormat,
+    sampleCount: renderer.sampleCount,
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
   });
   insetGpu.depthView = insetGpu.depth.createView();

@@ -148,12 +148,7 @@ export class SceneRenderer {
     const reads = live.filter((renderer) => renderer.encodeCull(encoder, panel));
     this.tubes?.encodeCompute(encoder);
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: host.context.getCurrentTexture().createView(),
-        clearValue: { r: 0.91, g: 0.93, b: 0.94, a: 1 },
-        loadOp: "clear",
-        storeOp: "store",
-      }],
+      colorAttachments: [host.colorAttachment(host.context.getCurrentTexture().createView())],
       depthStencilAttachment: host.depthAttachment(),
     });
     setViewport(pass, panel.viewport, this.canvas);
@@ -189,7 +184,7 @@ export class SceneRenderer {
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
       colorAttachments: [{ view: host.pickTexture.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "store" }],
-      depthStencilAttachment: host.depthAttachment(),
+      depthStencilAttachment: host.depthAttachment(true),
     });
     setViewport(pass, panel.viewport, this.canvas);
     for (const renderer of this.renderers) {

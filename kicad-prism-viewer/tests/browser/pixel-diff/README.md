@@ -90,3 +90,9 @@ shader: `exploded` caught it (84,698 px) and the run failed (VT-00 record).
   7,428 px, `top` 4,582 px (barrels); `bottom` 21,721 px (barrels, and placeholder boxes seen from
   below, which dev blended two faces deep). The four barrel shader hashes in
   `shader-variants.test.mjs` changed with it.
+- **4x multisampling (VT analytic spike).** The colour passes draw four samples per pixel and
+  resolve into the canvas (and insets); picking stays one sample, on its own depth. Every edge
+  changes. On openswitch-10x10g-carrier, `origin/dev` against the worktree (stadium barrels
+  above included): `default` 57,738 px, `exploded` 58,729 px, `top` 65,593 px, `bottom` 64,952
+  px. GPU submit p95 on `top`, the worktree at one sample against four: 3.8 → 7.2 ms at scale 1,
+  7.5 → 9.7 ms at scale 2; frames stay at 16.7 ms.

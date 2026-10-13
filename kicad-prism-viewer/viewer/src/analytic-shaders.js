@@ -303,9 +303,37 @@ struct ShapeOut {
   return out;
 }
 
-@fragment fn fs_shape(input: ShapeOut) -> @location(0) vec4f {
-  if (shapeDistance(input.record, input.local) > 0.0 || netHidden(word(input.record, 1u))) { discard; }
-  return shade(word(input.record, 1u), input.board);
+// Samples per pixel of the colour pass (1 or 4).
+override SAMPLES: u32 = 1u;
+
+// The samples of this pixel inside the shape: the shape at each of WebGPU's
+// standard 4x sample positions (offsets from the pixel's centre), so its
+// edges anti-alias with exact coverage. Stencil and depth follow the same
+// samples. A pixel clear of the edge is all in or all out.
+fn coverage(record: u32, local: vec2f) -> u32 {
+  let dx = dpdx(local);
+  let dy = dpdy(local);
+  let centre = shapeDistance(record, local);
+  if (SAMPLES == 1u) { return select(1u, 0u, centre > 0.0); }
+  let all = (1u << SAMPLES) - 1u;
+  if (abs(centre) > length(dx) + length(dy)) { return select(all, 0u, centre > 0.0); }
+  var offsets = array<vec2f, 4>(vec2f(-0.125, -0.375), vec2f(0.375, -0.125), vec2f(-0.375, 0.125), vec2f(0.125, 0.375));
+  var mask = 0u;
+  for (var i = 0u; i < 4u; i += 1u) {
+    if (shapeDistance(record, local + dx * offsets[i].x + dy * offsets[i].y) <= 0.0) { mask |= 1u << i; }
+  }
+  return mask;
+}
+
+struct Covered {
+  @location(0) color: vec4f,
+  @builtin(sample_mask) mask: u32,
+};
+
+@fragment fn fs_shape(input: ShapeOut) -> Covered {
+  let mask = coverage(input.record, input.local);
+  if (mask == 0u || netHidden(word(input.record, 1u))) { discard; }
+  return Covered(shade(word(input.record, 1u), input.board), mask);
 }
 
 @fragment fn fs_shape_pick(input: ShapeOut) -> @location(0) vec4u {
@@ -313,9 +341,10 @@ struct ShapeOut {
   return vec4u(PICK_TAG, word(input.record, 1u) + 1u, 0u, 0u);
 }
 
-@fragment fn fs_shape_mask(input: ShapeOut) -> @location(0) vec4f {
-  if (shapeDistance(input.record, input.local) > 0.0) { discard; }
-  return vec4f(0.0);
+@fragment fn fs_shape_mask(input: ShapeOut) -> Covered {
+  let mask = coverage(input.record, input.local);
+  if (mask == 0u) { discard; }
+  return Covered(vec4f(0.0), mask);
 }
 
 @fragment fn fs_shape_mask_pick(input: ShapeOut) -> @location(0) vec4u {
@@ -512,7 +541,9 @@ fn cubeCorner(vertex: u32) -> vec3f {
 
 struct BarrelOut {
   @builtin(position) position: vec4f,
-  @location(0) world: vec3f,
+  // Per sample: each sample casts its own ray, so the tube's silhouette and
+  // depth anti-alias exactly.
+  @location(0) @interpolate(perspective, sample) world: vec3f,
   @location(1) @interpolate(flat) barrel: u32,
 };
 

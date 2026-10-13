@@ -825,7 +825,7 @@ export const BASE_SHADERS = Object.freeze({
 });
 
 export class Renderer {
-  static async create(canvas) {
+  static async create(canvas, { sampleCount = 4 } = {}) {
     if (!navigator.gpu) throw new Error("WebGPU is unavailable in this browser");
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
     if (!adapter) throw new Error("No WebGPU adapter is available");
@@ -833,7 +833,7 @@ export class Renderer {
     // the mask draws one shade everywhere.
     const stencil = adapter.features.has("depth32float-stencil8");
     const device = await adapter.requestDevice(stencil ? { requiredFeatures: ["depth32float-stencil8"] } : undefined);
-    return new Renderer(canvas, device, { stencil });
+    return new Renderer(canvas, device, { stencil, sampleCount });
   }
 
   /**
@@ -843,11 +843,14 @@ export class Renderer {
    * always draws through the instanced pipelines. A `SceneRenderer` encodes the
    * passes for all of them.
    */
-  constructor(canvas, device, { shareFrom = null, stencil = false } = {}) {
+  constructor(canvas, device, { shareFrom = null, stencil = false, sampleCount = 1 } = {}) {
     this.canvas = canvas;
     this.device = device;
     this.shareFrom = shareFrom;
     this.stencil = shareFrom ? shareFrom.stencil : Boolean(stencil);
+    // Samples per pixel of the colour passes (4 anti-aliases; WebGPU allows 1
+    // or 4). Picking always draws one sample, into its own depth.
+    this.sampleCount = shareFrom ? shareFrom.sampleCount : (sampleCount === 4 ? 4 : 1);
     // Reversed depth (see math.js): cleared to 0, nearer fragments are greater.
     this.depthFormat = this.stencil ? "depth32float-stencil8" : "depth32float";
     // Bumped by every change that alters the picture outside the per-frame inputs.
@@ -944,7 +947,10 @@ export class Renderer {
       this.createSinglePipelines();
     }
     this.depth = null;
+    this.colorTarget = null;
+    this.pickDepth = null;
     this.pickTexture = null;
+    this.insetColor = null;
     this.pickSerial = Promise.resolve();
     this.bundleCache = new Map();
     this.globalScratch = new ArrayBuffer(GLOBAL_UNIFORM_SIZE);
@@ -1733,7 +1739,7 @@ export class Renderer {
       },
       primitive: { topology: "triangle-list", cullMode: variant.cullMode ?? "none" },
       depthStencil: this.depthStencilState(variant.stencil, variant.depthWrite ?? true),
-      multisample: { count: 1 },
+      multisample: { count: this.samplesFor(format) },
     });
   }
 
@@ -1770,7 +1776,13 @@ export class Renderer {
       },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: this.depthStencilState(),
+      multisample: { count: this.samplesFor(format) },
     });
+  }
+
+  /** Samples a pipeline drawing to `format` takes: one when it picks. */
+  samplesFor(format) {
+    return format === PICK_FORMAT ? 1 : this.sampleCount;
   }
 
   createShaderModule(code, label) {
@@ -1799,8 +1811,18 @@ export class Renderer {
     this.canvas.width = width;
     this.canvas.height = height;
     this.depth?.destroy();
+    this.colorTarget?.destroy();
+    this.pickDepth?.destroy();
     this.pickTexture?.destroy();
-    this.depth = this.device.createTexture({ size: [width, height], format: this.depthFormat, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+    const samples = this.sampleCount;
+    this.depth = this.device.createTexture({ label: "depth", size: [width, height], format: this.depthFormat, sampleCount: samples, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+    // The multisampled frame, resolved into the canvas.
+    this.colorTarget = samples > 1
+      ? this.device.createTexture({ label: "color-msaa", size: [width, height], format: this.format, sampleCount: samples, usage: GPUTextureUsage.RENDER_ATTACHMENT })
+      : null;
+    this.pickDepth = samples > 1
+      ? this.device.createTexture({ label: "pick-depth", size: [width, height], format: this.depthFormat, usage: GPUTextureUsage.RENDER_ATTACHMENT })
+      : this.depth;
     this.pickTexture = this.device.createTexture({ size: [width, height], format: PICK_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
   }
 
@@ -1986,6 +2008,9 @@ export class Renderer {
       this.barrels = null;
     }
     this.depth?.destroy();
+    this.colorTarget?.destroy();
+    if (this.pickDepth !== this.depth) this.pickDepth?.destroy();
+    this.insetColor?.texture.destroy();
     this.pickTexture?.destroy();
     this.featureMaskBuffer?.destroy?.();
     this.occurrenceBuffer?.destroy?.();
@@ -1999,6 +2024,9 @@ export class Renderer {
     this.cull = null;
     this.drawSlotBuffer?.destroy?.();
     this.depth = null;
+    this.colorTarget = null;
+    this.pickDepth = null;
+    this.insetColor = null;
     this.pickTexture = null;
     this.featureMaskBuffer = null;
     this.bundleCache.clear();
@@ -2070,12 +2098,7 @@ export class Renderer {
       const encoder = this.device.createCommandEncoder();
       const readCounts = !this.identityOnly && this.encodeCull(encoder, panel);
       const pass = encoder.beginRenderPass({
-        colorAttachments: [{
-          view: targetView,
-          clearValue: { r: 0.91, g: 0.93, b: 0.94, a: 1 },
-          loadOp: panelIndex === 0 ? "clear" : "load",
-          storeOp: "store",
-        }],
+        colorAttachments: [this.colorAttachment(targetView, panelIndex === 0, panelIndex === panels.length - 1)],
         depthStencilAttachment: this.depthAttachment(),
       });
       const viewport = clampViewport(panel.viewport, this.canvas.width, this.canvas.height);
@@ -2105,13 +2128,9 @@ export class Renderer {
     const encoder = this.device.createCommandEncoder({ label: "inset" });
     const depthAttachment = { view: target.depthView, depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "store" };
     if (this.stencil) Object.assign(depthAttachment, { stencilClearValue: 0, stencilLoadOp: "clear", stencilStoreOp: "discard" });
+    // `target.depthView` has `sampleCount` samples; the colour resolves through an inset-sized frame.
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: target.colorView,
-        clearValue: { r: 0.91, g: 0.93, b: 0.94, a: 1 },
-        loadOp: "clear",
-        storeOp: "store",
-      }],
+      colorAttachments: [this.colorAttachment(target.colorView, true, true, this.insetColorView(target.width, target.height))],
       depthStencilAttachment: depthAttachment,
     });
     const viewport = clampViewport(panel.viewport, target.width, target.height);
@@ -2209,8 +2228,30 @@ export class Renderer {
     return { triangles, draws };
   }
 
-  depthAttachment() {
-    const attachment = { view: this.depth.createView(), depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "store" };
+  /**
+   * The colour attachment for a frame into `view`: drawn multisampled and
+   * resolved into it when anti-aliased. `first` clears; a frame that is not
+   * `last` keeps its samples for the next panel.
+   */
+  colorAttachment(view, first = true, last = true, samples = this.colorTarget?.createView()) {
+    const attachment = { view, clearValue: { r: 0.91, g: 0.93, b: 0.94, a: 1 }, loadOp: first ? "clear" : "load", storeOp: "store" };
+    if (this.sampleCount === 1) return attachment;
+    return { ...attachment, view: samples, resolveTarget: view, storeOp: last ? "discard" : "store" };
+  }
+
+  insetColorView(width, height) {
+    if (this.sampleCount === 1) return undefined;
+    if (this.insetColor?.width !== width || this.insetColor?.height !== height) {
+      this.insetColor?.texture.destroy();
+      const texture = this.device.createTexture({ label: "inset-msaa", size: [width, height], format: this.format, sampleCount: this.sampleCount, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+      this.insetColor = { texture, view: texture.createView(), width, height };
+    }
+    return this.insetColor.view;
+  }
+
+  /** The depth attachment of a frame, or of a pick (one sample). */
+  depthAttachment(pick = false) {
+    const attachment = { view: (pick ? this.pickDepth : this.depth).createView(), depthClearValue: 0, depthLoadOp: "clear", depthStoreOp: "store" };
     if (this.stencil) Object.assign(attachment, { stencilClearValue: 0, stencilLoadOp: "clear", stencilStoreOp: "discard" });
     return attachment;
   }
@@ -2356,6 +2397,7 @@ export class Renderer {
     const encoder = this.device.createRenderBundleEncoder({
       colorFormats: [this.format],
       depthStencilFormat: this.depthFormat,
+      sampleCount: this.sampleCount,
     });
     this.drawEntries(encoder, entries, pipelines, indirect);
     const bundle = encoder.finish();
@@ -2378,7 +2420,7 @@ export class Renderer {
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
       colorAttachments: [{ view: this.pickTexture.createView(), clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "store" }],
-      depthStencilAttachment: this.depthAttachment(),
+      depthStencilAttachment: this.depthAttachment(true),
     });
     const viewport = clampViewport(panel.viewport, this.canvas.width, this.canvas.height);
     pass.setViewport(viewport.x, viewport.y, viewport.width, viewport.height, 0, 1);
