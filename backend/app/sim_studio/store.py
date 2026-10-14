@@ -130,3 +130,29 @@ class SetupStore:
                 raise StaleSetup(setup_id, int(row["revision"]))
             conn.execute("DELETE FROM ws_sim_setups WHERE setup_id = %s", (setup_id,))
             conn.commit()
+
+
+class LayoutStore:
+    """``ws_sim_setup_layouts``: canvas positions, last write wins, no revision."""
+
+    def __init__(self, connect: Callable[[], ContextManager[Any]] = workspace_connection) -> None:
+        self._connect = connect
+
+    def read(self, setup_id: str) -> dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT layout FROM ws_sim_setup_layouts WHERE setup_id = %s", (setup_id,),
+            ).fetchone()
+        return dict(row["layout"]) if row else {}
+
+    def write(self, setup_id: str, layout: dict[str, Any]) -> dict[str, Any]:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO ws_sim_setup_layouts (setup_id, layout) VALUES (%s, %s)
+                ON CONFLICT (setup_id) DO UPDATE SET layout = EXCLUDED.layout, updated_at = now()
+                """,
+                (setup_id, Jsonb(layout)),
+            )
+            conn.commit()
+        return layout

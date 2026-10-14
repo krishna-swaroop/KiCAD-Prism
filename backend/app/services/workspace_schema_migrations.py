@@ -66,6 +66,7 @@ from app.services.workspace_migrations import m054_system_harness_outputs
 from app.services.workspace_migrations import m055_project_path_settings
 from app.services.workspace_migrations import m056_sim_studio_setups
 from app.services.workspace_migrations import m057_sim_studio_runs
+from app.services.workspace_migrations import m058_sim_studio_layouts
 
 
 Migration = Callable[[Any], None]
@@ -125,6 +126,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (55, "project_path_settings", m055_project_path_settings.migrate),
     (56, "sim_studio_setups", m056_sim_studio_setups.migrate),
     (57, "sim_studio_runs", m057_sim_studio_runs.migrate),
+    (58, "sim_studio_layouts", m058_sim_studio_layouts.migrate),
 )
 
 # Migrations that a long-lived branch database recorded under an earlier number.

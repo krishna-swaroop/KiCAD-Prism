@@ -14,13 +14,14 @@ from app.core.config import settings
 from app.core.errors import install_error_handlers
 from app.services.workspace_schema_migrations import WORKSPACE_LEDGER
 from app.sim_studio.service import SimStudioService
-from app.sim_studio.store import SetupStore
+from app.sim_studio.store import LayoutStore, SetupStore
 from support.postgres import requires_scratch_postgres, scratch_schema, seed_project, seed_repository
 from test_sim_studio_setup import facts
 from test_system_api import _request
 
 PROJECT = SimpleNamespace(id="prj_sim", name="board", project_file="board.kicad_pro")
-SETUPS = "/api/projects/prj_sim/sim/a0/setups"
+PROJECT_PATH = "/api/projects/prj_sim"
+SETUPS = PROJECT_PATH + "/sim/a0/setups"
 
 
 def _app() -> FastAPI:
@@ -69,7 +70,10 @@ class SetupApiTest(unittest.TestCase):
         seed_repository(scratch.conn, "repo_sim")
         seed_project(scratch.conn, PROJECT.id, "repo_sim")
         scratch.conn.commit()
-        service = SimStudioService(SetupStore(scratch.connection), facts=lambda project, commit: facts())
+        service = SimStudioService(
+            SetupStore(scratch.connection), facts=lambda project, commit: facts(),
+            layouts=LayoutStore(scratch.connection),
+        )
         for patcher in (
             mock.patch.object(settings, "PRISM_SIM_STUDIO_ENABLED", True),
             mock.patch.object(sim_api, "sim_studio", service),
@@ -150,6 +154,21 @@ class SetupApiTest(unittest.TestCase):
         report = self.call("POST", f"{SETUPS}/{record['setup_id']}/validate").json
         self.assertEqual(report["ok"], False)
         self.assertEqual([issue["code"] for issue in report["issues"]], ["analysis-without-rails"])
+
+    def test_power_tree_and_layout(self) -> None:
+        tree = self.call("GET", PROJECT_PATH + "/sim/a0/power-tree", user="viewer")
+        self.assertEqual(tree.status, 200, tree.text)
+        self.assertEqual(set(tree.json), {"rails", "terminals", "sources", "loads", "converters", "analysis_rails", "notes"})
+        self.assertEqual(self.call("GET", PROJECT_PATH + "/sim/a0/power-tree?commit=nope", user="viewer").status, 422)
+        record = self.draft()
+        path = f"{SETUPS}/{record['setup_id']}/layout"
+        self.assertEqual(self.call("GET", path, user="viewer").json, {})
+        layout = {"nodes": {"rail:3v3": {"x": 10, "y": 20}}}
+        self.assertEqual(self.call("PUT", path, body=layout, user="viewer").status, 403)
+        self.assertEqual(self.call("PUT", path, body=layout).json, layout)
+        self.assertEqual(self.call("GET", path, user="viewer").json, layout)
+        self.assertEqual(self.call("GET", f"{SETUPS}/{record['setup_id']}", user="viewer").json["revision"], 1)
+        self.assertEqual(self.call("GET", f"{SETUPS}/nope/layout", user="viewer").status, 404)
 
     def test_unavailable_kind_is_refused(self) -> None:
         response = self.call("POST", SETUPS, body={"kind": "ac-pdn", "name": "x"})

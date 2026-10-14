@@ -9,12 +9,12 @@ from typing import Any, Callable, Optional
 from pydantic import ValidationError
 
 from app.core import errors, preconditions
-from app.sim_studio import drafting, validation
+from app.sim_studio import drafting, power_tree, validation
 from app.sim_studio.board_facts import BoardFacts, from_semantic_index
 from app.sim_studio.json_patch import PatchError, apply_patch
 from app.sim_studio.models import DraftSetupRequest, SimSetup
 from app.sim_studio.run_store import RunStore, public as public_run
-from app.sim_studio.store import ETAG_KIND, SetupStore
+from app.sim_studio.store import ETAG_KIND, LayoutStore, SetupStore
 
 
 class InvalidSetup(errors.Invalid):
@@ -84,10 +84,11 @@ def summary(row: dict[str, Any]) -> dict[str, Any]:
 class SimStudioService:
     def __init__(
         self, store: SetupStore | None = None, facts: FactsLoader = semantic_index_facts,
-        runs: RunStore | None = None,
+        runs: RunStore | None = None, layouts: LayoutStore | None = None,
     ) -> None:
         self.store = store or SetupStore()
         self.runs = runs or RunStore()
+        self.layouts = layouts or LayoutStore()
         self._facts = facts
 
     def catalog(self) -> dict[str, Any]:
@@ -128,6 +129,19 @@ class SimStudioService:
             return parse_setup(patched).document()
 
         return record(self.store.update(project_id, setup_id, expected_revision=expected_revision, change=change))
+
+    def power_tree(self, project: Any, commit: Optional[str]) -> dict[str, Any]:
+        """The power tree Prism infers from the netlist, as setup fragments plus notes."""
+
+        return power_tree.infer(self._facts(project, commit)).document()
+
+    def read_layout(self, project_id: str, setup_id: str) -> dict[str, Any]:
+        self.store.read(project_id, setup_id)
+        return self.layouts.read(setup_id)
+
+    def write_layout(self, project_id: str, setup_id: str, layout: dict[str, Any]) -> dict[str, Any]:
+        self.store.read(project_id, setup_id)
+        return self.layouts.write(setup_id, layout)
 
     def delete(self, project_id: str, setup_id: str, expected_revision: Optional[int]) -> None:
         self.store.delete(project_id, setup_id, expected_revision=expected_revision)

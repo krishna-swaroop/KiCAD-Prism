@@ -882,6 +882,7 @@ def build_semantic_index(
             "reference": reference,
             "value": _string(raw.get("value")),
             "footprint": _string(raw.get("footprint")),
+            "libraryRef": _string(raw.get("library_ref")),
             "fields": _canonical_fields(raw),
             "schematicRefs": [
                 {
@@ -987,6 +988,8 @@ def build_semantic_index(
                 "componentUid": component_by_reference.get(reference, {}).get("componentUid", _stable_uid("cmp", reference)),
                 "reference": reference,
                 "pin": pin_number,
+                "pinName": _string(raw_terminal.get("pin_name")),
+                "pinType": _string(raw_terminal.get("pin_type")),
                 "netUid": net_entry["netUid"],
                 "netName": name,
                 "schematicPinUuid": pin_uuid,

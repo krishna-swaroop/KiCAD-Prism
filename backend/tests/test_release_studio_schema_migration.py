@@ -1735,6 +1735,7 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 (55, "project_path_settings"),
                 (56, "sim_studio_setups"),
                 (57, "sim_studio_runs"),
+                (58, "sim_studio_layouts"),
             ],
         )
 

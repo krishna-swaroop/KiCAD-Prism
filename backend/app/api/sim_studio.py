@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable, TypeVar
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 
 from app.api._helpers import get_project_for_role_or_404
@@ -80,6 +80,37 @@ async def draft_setup(
     with errors.caller_errors((ValueError, 400), (RuntimeError, 503)):
         record = await _run(lambda: sim_studio.draft(project, _project_path(project), body, user.email))
     return _with_etag(record, response, 201)
+
+
+@router.get("/projects/{project_id}/sim/a0/power-tree")
+async def infer_power_tree(
+    project_id: str, commit: str | None = Query(default=None, pattern=r"^[0-9a-f]{40}$"),
+    user: AuthenticatedUser = Depends(require_viewer),
+) -> dict[str, Any]:
+    """Rails, sources, converters and loads proposed from the netlist, for the setup canvas."""
+
+    project = get_project_for_role_or_404(project_id, user.role)
+    with errors.caller_errors((ValueError, 400), (RuntimeError, 503)):
+        return await _run(lambda: sim_studio.power_tree(project, commit))
+
+
+@router.get(SETUP + "/layout")
+async def read_layout(
+    project_id: str, setup_id: str, user: AuthenticatedUser = Depends(require_viewer),
+) -> dict[str, Any]:
+    get_project_for_role_or_404(project_id, user.role)
+    return await _run(lambda: sim_studio.read_layout(project_id, setup_id))
+
+
+@router.put(SETUP + "/layout")
+async def write_layout(
+    project_id: str, setup_id: str, layout: dict[str, Any] = Body(...),
+    user: AuthenticatedUser = Depends(require_designer),
+) -> dict[str, Any]:
+    get_project_for_role_or_404(project_id, user.role)
+    if len(str(layout)) > 1_000_000:
+        raise errors.Invalid("The layout is too large.", code="sim_layout_too_large")
+    return await _run(lambda: sim_studio.write_layout(project_id, setup_id, layout))
 
 
 @router.get(SETUP)
