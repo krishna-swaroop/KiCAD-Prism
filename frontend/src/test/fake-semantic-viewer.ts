@@ -3,6 +3,7 @@ import { vi } from "vitest";
 import type {
     PrismAnalyticHit,
     PrismAnalyticReading,
+    PrismAnalyticRelief,
     PrismAnalyticStats,
     PrismSemanticViewerElement,
     PrismSemanticViewState,
@@ -75,6 +76,7 @@ export class FakeSemanticViewer extends HTMLElement implements PrismSemanticView
     readonly analyticAt = vi.fn(async (): Promise<PrismAnalyticHit | null> => null);
     readonly analyticProbe = vi.fn((): PrismAnalyticReading | null => null);
     readonly setClickSelect = vi.fn();
+    readonly setAnalyticRelief = vi.fn((): PrismAnalyticRelief | null => null);
     readonly projectPoint = vi.fn((): { x: number; y: number } | null => null);
     readonly analyticStats = vi.fn((): PrismAnalyticStats | null => null);
     readonly unloadAnalyticPack = vi.fn();

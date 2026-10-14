@@ -13,15 +13,6 @@ echarts.use([
     MarkAreaComponent, DataZoomComponent, VisualMapComponent, CanvasRenderer,
 ]);
 
-/** The 3D surface (Mountain view) loads only when first shown. */
-let gl: Promise<void> | null = null;
-export function loadGl(): Promise<void> {
-    gl ??= Promise.all([import("echarts-gl/charts"), import("echarts-gl/components")]).then(([charts, components]) => {
-        echarts.use([charts.SurfaceChart, components.Grid3DComponent] as Parameters<typeof echarts.use>[0]);
-    });
-    return gl;
-}
-
 /** Prism's shadcn tokens as colours a canvas understands. */
 export interface ChartTheme {
     foreground: string;
@@ -86,12 +77,10 @@ type Props = {
     option: (theme: ChartTheme) => echarts.EChartsCoreOption;
     className?: string;
     onClick?: (params: { name?: string; dataIndex?: number; data?: unknown; seriesName?: string }) => void;
-    /** Load the 3D extension first. */
-    gl?: boolean;
 };
 
 /** One ECharts instance that resizes with its box and is themed from Prism's tokens. */
-export function EChart({ option, className, onClick, gl: needsGl = false }: Props) {
+export function EChart({ option, className, onClick }: Props) {
     const host = useRef<HTMLDivElement>(null);
     const chart = useRef<echarts.ECharts | null>(null);
     const click = useRef(onClick);
@@ -100,25 +89,19 @@ export function EChart({ option, className, onClick, gl: needsGl = false }: Prop
     useEffect(() => {
         const element = host.current;
         if (!element) return;
-        let disposed = false;
-        let observer: ResizeObserver | null = null;
-        void (needsGl ? loadGl() : Promise.resolve()).then(() => {
-            if (disposed) return;
-            const instance = echarts.init(element, undefined, { renderer: "canvas" });
-            chart.current = instance;
-            instance.on("click", (params) => click.current?.(params as Parameters<NonNullable<Props["onClick"]>>[0]));
-            observer = new ResizeObserver(() => instance.resize());
-            observer.observe(element);
-            instance.setOption(option(chartTheme(element)), true);
-        });
+        const instance = echarts.init(element, undefined, { renderer: "canvas" });
+        chart.current = instance;
+        instance.on("click", (params) => click.current?.(params as Parameters<NonNullable<Props["onClick"]>>[0]));
+        const observer = new ResizeObserver(() => instance.resize());
+        observer.observe(element);
+        instance.setOption(option(chartTheme(element)), true);
         return () => {
-            disposed = true;
-            observer?.disconnect();
-            chart.current?.dispose();
+            observer.disconnect();
+            instance.dispose();
             chart.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps -- created once; options update below
-    }, [needsGl]);
+    }, []);
 
     useEffect(() => {
         const element = host.current;

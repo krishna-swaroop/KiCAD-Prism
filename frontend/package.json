@@ -35,7 +35,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "echarts": "^6.1.0",
-    "echarts-gl": "^2.1.0",
     "fuse.js": "^7.5.0",
     "github-markdown-css": "^5.9.0",
     "lucide-react": "^0.562.0",

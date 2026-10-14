@@ -55,6 +55,7 @@
  * @property {(vectors: object | null) => unknown} setAnalyticVectors
  * @property {(style: object) => unknown} setAnalyticStyle
  * @property {() => object} analyticColormaps
+ * @property {(options: object | null) => object | null} setAnalyticRelief
  * @property {(enabled: boolean) => void} setClickSelect
  * @property {(clientX: number, clientY: number) => object | null} analyticProbe
  * @property {(clientX: number, clientY: number) => Promise<object | null>} analyticAt
@@ -279,7 +280,7 @@ export const BOARD_MEMBERS = Object.freeze([
   "setHighlightedNets", "setHiddenComponents", "getComponentReferences", "setViewMode",
   "renderInset", "insetReady", "insetSurfaceZ", "releaseInset", "insetTarget", "projectInset",
   "onSceneChange", "insetStats", "insetSettings", "gpuIdle",
-  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "setClickSelect", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack",
+  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "setAnalyticRelief", "setClickSelect", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack",
 ]);
 
 /**
@@ -296,6 +297,7 @@ export class BoardModeController extends ModeController {
   // The analytic pack and overlay outlive reloads, like the other view state.
   #analytic = null;
   #clickSelect = true;
+  #relief = null;
 
   attach(port, { workspace = "pcb" } = {}) {
     this.#workspace = workspace;
@@ -319,6 +321,7 @@ export class BoardModeController extends ModeController {
   async #replayAnalytic(port, analytic) {
     await port.loadAnalyticPack(analytic.bytes, analytic.options);
     if (analytic.overlay) port.setAnalyticOverlay(analytic.overlay);
+    if (this.#relief) port.setAnalyticRelief(this.#relief);
     if (analytic.style) port.setAnalyticStyle(analytic.style);
     if (analytic.vectors) port.setAnalyticVectors(analytic.vectors);
   }
@@ -450,6 +453,11 @@ export class BoardModeController extends ModeController {
 
   analyticColormaps() {
     return this.port?.analyticColormaps() ?? null;
+  }
+
+  setAnalyticRelief(options) {
+    this.#relief = options || null;
+    return this.port?.setAnalyticRelief(this.#relief) ?? null;
   }
 
   setClickSelect(enabled) {

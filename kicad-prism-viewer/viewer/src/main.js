@@ -49,7 +49,8 @@ import { LOD_FULL } from "./occurrences.js";
 import { InsetViews, insetMatrix } from "./inset-view.js";
 import { DEFAULT_GPU_BUDGET_BYTES } from "./viewer-controllers.js";
 import { COLORMAPS, DEFAULT_ANALYTIC_STYLE } from "./analytic-colormaps.js";
-import { analyticFeatureId, applyAnalyticOverlay, applyAnalyticStyle, applyAnalyticVectors, attachAnalyticPack, describeAnalyticHit, fieldAlongRay, operationSliceKey } from "./analytic-board.js";
+import { analyticFeatureId, applyAnalyticOverlay, applyAnalyticStyle, applyAnalyticVectors, attachAnalyticPack, describeAnalyticHit, fieldAlongRay, netIdByName, operationSliceKey, reliefSlices } from "./analytic-board.js";
+import { FieldRelief } from "./field-relief.js";
 import { barrelsAtCopperFaces } from "./barrel-records.js";
 
 const COPPER_TILE_GPU_BUDGET_BYTES = 512 * 1024 * 1024;
@@ -520,7 +521,16 @@ export async function mountStandaloneViewer(options = {}) {
     },
     setAnalyticOverlay(overlay) {
       if (!board.analytic) return null;
-      return applyAnalyticOverlay(board.analytic, overlay);
+      const applied = applyAnalyticOverlay(board.analytic, overlay);
+      // A relief shows the overlay: raise the new one.
+      if (board.reliefOptions) applyRelief(false);
+      return applied;
+    },
+    // The overlay as a relief over one copper layer ({ sliceKey?, heightShare? }), in place of the
+    // board; null returns to the board. Returns { sliceKey, slices } (the layers it can raise) or null.
+    setAnalyticRelief(options) {
+      board.reliefOptions = options || null;
+      return applyRelief(true);
     },
     // Arrows of a vector result on the copper: { quantity, units, x, y } field grids, or null.
     setAnalyticVectors(vectors) {
@@ -619,7 +629,43 @@ function analyticStats() {
   return { operations: analytic.operations, lowerMs: analytic.lowerMs, zOffset: analytic.zOffset, unmatched: analytic.unmatched, ...analytic.analytic.stats() };
 }
 
+/**
+ * Raise the overlay's field over the chosen layer (board.reliefOptions), or
+ * put the board back. The layer defaults to the one with the most copper.
+ */
+function applyRelief(frame) {
+  const renderer = board.renderer;
+  if (!renderer) return null;
+  const options = board.reliefOptions;
+  const overlay = board.analytic?.overlay;
+  if (!options || !overlay || overlay.kind === "operation_values") {
+    const shown = renderer.relief?.ready;
+    renderer.relief?.release();
+    if (shown && frame) camera.frame(sceneRuntimeBounds());
+    renderer.invalidate?.();
+    return null;
+  }
+  const slices = reliefSlices(board.analytic).sort((a, b) => b.cells - a.cells);
+  const chosen = slices.find((item) => item.key === options.sliceKey) || slices[0];
+  if (!chosen) {
+    renderer.relief?.release();
+    renderer.invalidate?.();
+    return { sliceKey: null, slices: [] };
+  }
+  renderer.relief ??= new FieldRelief(board.analytic.analytic);
+  renderer.relief.build(chosen.slice, {
+    range: overlay.range,
+    netId: netIdByName(board.scene.manifest?.nets, overlay.net),
+    heightShare: options.heightShare,
+  });
+  if (frame) camera.frame(renderer.relief.worldBounds());
+  renderer.invalidate?.();
+  return { sliceKey: chosen.key, slices: slices.map((item) => ({ key: item.key, layerId: item.layerId, cells: item.cells })) };
+}
+
 function releaseAnalytic() {
+  board.renderer?.relief?.destroy();
+  if (board.renderer) board.renderer.relief = null;
   board.renderer?.setAnalytic(null);
   board.analytic?.pack.free();
   board.analytic = null;

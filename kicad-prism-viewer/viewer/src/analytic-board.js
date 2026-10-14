@@ -142,7 +142,7 @@ export function applyAnalyticOverlay(state, overlay) {
     const range = overlay.range || valueRange([...rasters.values()].flatMap((raster) => [...valueRange(raster.values)]));
     const values = overlay.values ? denseOperationValues(overlay.values, state.operations) : null;
     state.analytic.setFieldRasters(rasters, range, values);
-    state.overlay = { kind: overlay.kind, quantity: overlay.quantity, units: overlay.units, range, slices: [...rasters.keys()], barrels: values };
+    state.overlay = { kind: overlay.kind, quantity: overlay.quantity, units: overlay.units, range, slices: [...rasters.keys()], barrels: values, net: overlay.grid?.net ?? null };
   } else {
     throw new TypeError(`unknown analytic overlay kind ${overlay.kind}`);
   }
@@ -184,6 +184,32 @@ export function nearestFieldValue(field, boardMm, reach) {
     }
   }
   return best;
+}
+
+/**
+ * The copper slices a field relief can raise: those with a raster, one per
+ * layer (its top face), with how many raster cells hold a value.
+ */
+export function reliefSlices(state) {
+  const byLayer = new Map();
+  for (const slice of state.analytic.slices) {
+    if (!slice.field || !(slice.role === undefined || slice.role === "copper")) continue;
+    const held = byLayer.get(slice.layerId);
+    if (!held || slice.z > held.z) byLayer.set(slice.layerId, slice);
+  }
+  return [...byLayer.values()].map((slice) => ({
+    slice,
+    key: slice.key,
+    layerId: slice.layerId,
+    cells: slice.field.values.reduce((count, value) => count + (Number.isFinite(value) ? 1 : 0), 0),
+  }));
+}
+
+/** A viewer net id by name or alias, as `operationNetIds` matches them; 0 when unknown. */
+export function netIdByName(nets, name) {
+  if (!name) return 0;
+  const net = (nets || []).find((item) => item?.name === name) || (nets || []).find((item) => (item?.aliases || []).includes(name));
+  return net ? Number(net.id) || 0 : 0;
 }
 
 /** Bytes per arrow (see ANALYTIC_ARROW_SHADER). */

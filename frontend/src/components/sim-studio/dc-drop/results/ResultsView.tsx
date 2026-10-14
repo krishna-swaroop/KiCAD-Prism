@@ -51,7 +51,7 @@ export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
     }, [projectId, run.run_id]);
     const model = useMemo(() => (data ? buildResultsModel(data.result, data.setup, run.analysis_id) : null), [data, run.analysis_id]);
 
-    const [board, setBoard] = useState<BoardState>({ quantity: "voltage_v", net: null, arrows: false, mode: "flat" });
+    const [board, setBoard] = useState<BoardState>({ quantity: "voltage_v", net: null, arrows: false });
     const changeBoard = useCallback((change: Partial<BoardState>) => setBoard((current) => ({ ...current, ...change })), []);
     const [profiling, setProfiling] = useState(false);
     const [points, setPoints] = useState<[ProfilePoint, ProfilePoint] | null>(null);
@@ -65,12 +65,9 @@ export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
 
     const focus = useCallback((target: Focus) => {
         const fieldNets = overlay.phase === "ready" ? overlay.fieldNets : [];
-        if (target.net && fieldNets.includes(target.net)) changeBoard({ net: target.net, mode: "flat" });
+        if (target.net && fieldNets.includes(target.net)) changeBoard({ net: target.net });
         else if (target.net) viewer.current?.setSelection?.({ netName: target.net });
-        if (target.component) {
-            changeBoard({ mode: "flat" });
-            viewer.current?.setSelection?.({ reference: target.component });
-        }
+        if (target.component) viewer.current?.setSelection?.({ reference: target.component });
     }, [changeBoard, overlay]);
 
     const [height, setHeight] = useState(storedHeight);

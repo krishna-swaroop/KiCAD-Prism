@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ArrowUpRight, Layers, Loader2, Mountain, Ruler } from "lucide-react";
+import { ArrowUpRight, Loader2, Ruler } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,6 @@ import type { SimRun } from "../../types";
 
 import { CursorProbe } from "./cursor-probe";
 import { displayUnit, formatValue } from "./format";
-import { MountainView } from "./mountain";
 import { ProfileTool } from "./profile-tool";
 
 interface WebGpuStatus {
@@ -27,8 +26,6 @@ interface WebGpuStatus {
     bundle_url?: string;
     generated_at?: string;
 }
-
-export type BoardMode = "flat" | "mountain";
 
 /** Toolbar labels; the full names are the buttons' titles. */
 const SHORT_QUANTITY: Partial<Record<FieldQuantity, string>> = {
@@ -46,7 +43,6 @@ export interface BoardState {
     quantity: FieldQuantity;
     net: string | null;
     arrows: boolean;
-    mode: BoardMode;
 }
 
 type Props = {
@@ -65,8 +61,7 @@ type Props = {
 
 /**
  * The run on the board: Prism's WebGPU viewer with the result over the
- * copper (Flat), or the shown field as a 3D surface (Mountain), under one
- * docked toolbar of the view's controls.
+ * copper, under one docked toolbar of the view's controls.
  */
 export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling, onProfiling, onProfile, onViewer, onOverlay }: Props) {
     const [status, setStatus] = useState<WebGpuStatus | null>(null);
@@ -133,12 +128,6 @@ export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling
                             {overlay.fields.scalars.map((name) => <TabsTrigger key={name} value={name} title={FIELD_QUANTITIES[name]} className="text-xs">{SHORT_QUANTITY[name] ?? FIELD_QUANTITIES[name]}</TabsTrigger>)}
                         </TabsList>
                     </Tabs>
-                    <Tabs value={board.mode} onValueChange={(value) => onBoard({ mode: value as BoardMode })}>
-                        <TabsList className="h-7">
-                            <TabsTrigger value="flat" title="The result on the copper" className="text-xs"><Layers aria-hidden className="size-3.5" /> Flat</TabsTrigger>
-                            <TabsTrigger value="mountain" title="The field as height, one layer at a time" className="text-xs"><Mountain aria-hidden className="size-3.5" /> Mountain</TabsTrigger>
-                        </TabsList>
-                    </Tabs>
                     {overlay.fieldNets.length > 1 && (
                         <Select value={overlay.net ?? ""} onValueChange={(value) => onBoard({ net: value })}>
                             <SelectTrigger size="sm" aria-label="Net" className="h-7 min-w-24 font-mono text-xs"><SelectValue /></SelectTrigger>
@@ -147,19 +136,15 @@ export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling
                             </SelectContent>
                         </Select>
                     )}
-                    {board.mode === "flat" && (
-                        <>
-                            <Separator orientation="vertical" className="h-5" />
-                            {overlay.fields.vectors && (
-                                <Toggle on={board.arrows} title="Current arrows" onClick={() => onBoard({ arrows: !board.arrows })}>
-                                    <ArrowUpRight aria-hidden /> Arrows
-                                </Toggle>
-                            )}
-                            <Toggle on={profiling} title="Draw a line on the copper and plot the field along it" onClick={() => onProfiling(!profiling)}>
-                                <Ruler aria-hidden /> Profile
-                            </Toggle>
-                        </>
+                    <Separator orientation="vertical" className="h-5" />
+                    {overlay.fields.vectors && (
+                        <Toggle on={board.arrows} title="Current arrows" onClick={() => onBoard({ arrows: !board.arrows })}>
+                            <ArrowUpRight aria-hidden /> Arrows
+                        </Toggle>
                     )}
+                    <Toggle on={profiling} title="Draw a line on the copper and plot the field along it" onClick={() => onProfiling(!profiling)}>
+                        <Ruler aria-hidden /> Profile
+                    </Toggle>
                     <div className="ml-auto"><LookPanel look={look} catalog={catalog} /></div>
                 </div>
             )}
@@ -172,18 +157,13 @@ export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling
                         workspace="pcb"
                         active="true"
                         hide-panel="true"
-                        className={cn("block h-full w-full", board.mode === "mountain" && "invisible")}
+                        className="block h-full w-full"
                     />
                 ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
                         {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
                         <p>{pending ? "Building the 3D view of this revision…" : "This revision has no 3D view yet."}</p>
                         {!pending && canMutate && <Button size="sm" onClick={() => void build()}>Build 3D view</Button>}
-                    </div>
-                )}
-                {board.mode === "mountain" && live && (
-                    <div className="absolute inset-0 z-[5] bg-background">
-                        <MountainView projectId={projectId} run={run} overlay={overlay} quantity={board.quantity} stops={look.fieldStops} />
                     </div>
                 )}
                 {(pack.phase === "loading" || overlay.phase === "loading") && (
@@ -196,11 +176,11 @@ export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling
                         {pack.phase === "failed" ? pack.error : overlay.phase === "failed" ? overlay.error : ""}
                     </Badge>
                 )}
-                <CursorProbe viewer={viewer} host={host} active={live && board.mode === "flat" && !profiling} />
-                <ProfileTool viewer={viewer} host={host} active={live && board.mode === "flat" && profiling} units={live ? overlay.units : undefined}
+                <CursorProbe viewer={viewer} host={host} active={live && !profiling} />
+                <ProfileTool viewer={viewer} host={host} active={live && profiling} units={live ? overlay.units : undefined}
                     onLine={(line) => onProfile(line && [{ mm: line[0].mm, sliceKey: line[0].sliceKey }, { mm: line[1].mm, sliceKey: line[1].sliceKey }])} />
                 {/* Bottom right: the viewer keeps its axis gizmo in the bottom-left corner. */}
-                {live && board.mode === "flat" && (
+                {live && (
                     <div className="absolute bottom-3 right-3 z-10 rounded-md border bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
                         <div className="mb-1 font-medium">{FIELD_QUANTITIES[overlay.quantity as FieldQuantity] ?? overlay.quantity} ({unit.unit})</div>
                         <div className="h-2 w-48 rounded-sm" style={{ background: gradientOf(look.fieldStops) }} />

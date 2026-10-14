@@ -191,6 +191,12 @@ export interface PrismSemanticBoardMode {
      * pick, so cheap per pointer move. No operation or binding; use `analyticAt` for those (and barrels).
      */
     analyticProbe(clientX: number, clientY: number): PrismAnalyticReading | null;
+    /**
+     * The field overlay as a relief over one copper layer, in place of the board: heights and colours
+     * from the field, the outline from the exact copper of the overlay's net. Null returns to the board.
+     * Survives reloads and overlay changes; returns the layer shown and those it can show.
+     */
+    setAnalyticRelief(options: { sliceKey?: string; heightShare?: number } | null): PrismAnalyticRelief | null;
     /** Whether a click on the board selects what is under it (default on); off while a host tool owns clicks. */
     setClickSelect(enabled: boolean): void;
     /** The operation under a client point, its binding and overlay value; null off the analytic copper. */
@@ -255,6 +261,12 @@ export interface PrismAnalyticFieldTile {
 export interface PrismAnalyticHit extends PrismAnalyticReading {
     operationIndex: number;
     binding: Record<string, unknown> | null;
+}
+
+/** A relief's layer and the layers a relief can raise (those with a field raster), with their copper cells. */
+export interface PrismAnalyticRelief {
+    sliceKey: string | null;
+    slices: { key: string; layerId: number; cells: number }[];
 }
 
 /** An overlay value read on the copper (what `analyticProbe` returns). */

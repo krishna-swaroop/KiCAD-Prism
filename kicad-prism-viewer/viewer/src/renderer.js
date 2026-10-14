@@ -2171,6 +2171,8 @@ export class Renderer {
     let analyticContext = null;
     if (this.stencil) pass.setStencilReference(1);
     this.writeGlobals(panel.matrix, activeNetId, panel.layerId, time, selectedFeatureId);
+    // A field relief (the "mountain" view) replaces the board while it is shown.
+    if (this.relief?.ready && !compareMode) return { triangles: this.relief.vertexCount / 3, draws: this.relief.encode(pass, panel.matrix) };
     const { pipelines, indirect, barrelInstances } = this.drawSet();
     // Paste would sit over highlighted pads; it steps aside while a net is lit.
     const hidePaste = !showPaste || Boolean(activeNetId || this.netHighlightActive);
@@ -2451,6 +2453,8 @@ export class Renderer {
 
   /** Record this renderer's pick draws into an open pass (see `encodeDraws`). */
   encodePick(pass, panel, options) {
+    // Nothing on a field relief is picked.
+    if (this.relief?.ready && !options.compareMode) return;
     this.writeGlobals(
       panel.matrix,
       options.activeNetId,

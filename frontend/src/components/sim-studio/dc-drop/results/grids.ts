@@ -80,25 +80,3 @@ export function histogram(grid: LoadedGrid["grid"], bins = 40, scale = 1) {
         max: top,
     };
 }
-
-/** A slice reduced to at most `side` cells a side (each output cell takes the mean of its block). */
-export function downsample(slice: Slice, side: number) {
-    const step = Math.max(1, Math.ceil(Math.max(slice.nx, slice.ny) / side));
-    const nx = Math.ceil(slice.nx / step);
-    const ny = Math.ceil(slice.ny / step);
-    const values = new Float64Array(nx * ny).fill(NaN);
-    for (let j = 0; j < ny; j += 1) {
-        for (let i = 0; i < nx; i += 1) {
-            let sum = 0;
-            let count = 0;
-            for (let y = j * step; y < Math.min(slice.ny, (j + 1) * step); y += 1) {
-                for (let x = i * step; x < Math.min(slice.nx, (i + 1) * step); x += 1) {
-                    const v = slice.values[y * slice.nx + x];
-                    if (Number.isFinite(v)) { sum += v; count += 1; }
-                }
-            }
-            if (count) values[j * nx + i] = sum / count;
-        }
-    }
-    return { nx, ny, step, values };
-}
