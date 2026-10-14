@@ -2214,6 +2214,8 @@ export class Renderer {
       draws += this.analytic.encodeInto(pass, layerOffsets, panel.layerId ? new Set([panel.layerId]) : visibleLayers, false, analyticContext);
       // The pack's barrels, exact, in place of the mesh barrels.
       draws += this.analytic.encodeBarrels(pass, layerOffsets, panel.matrix);
+      // Result arrows lie on the copper just drawn.
+      draws += this.analytic.encodeArrows(pass);
     }
     if (!compareMode && this.barrels && !this.analytic?.hasBarrels() && (panel.layerId === 0 || visibleLayers.has(panel.layerId))) {
       this.writeBarrelDraw(isolateNet);

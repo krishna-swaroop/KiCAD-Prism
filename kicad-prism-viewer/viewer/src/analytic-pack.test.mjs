@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   composeFieldRasters,
+  gridFieldRasters,
   denseOperationValues,
   dielectricColor,
   loadAnalyticWasm,
@@ -263,4 +264,16 @@ test("a dielectric takes its stackup colour: a KiCad name, a hex colour, else FR
   close(dielectricColor("#FFFFFF80"), [1, 1, 1, 1]);
   close(dielectricColor("Not specified"), dielectricColor("FR4 natural"));
   close(dielectricColor(undefined), dielectricColor("FR4 natural"));
+});
+
+test("grid fields place each slice's block on the shared grid with per-axis pitch", () => {
+  const rasters = gridFieldRasters({
+    origin_x_m: 0.1, origin_y_m: 0.05, dx_m: 2e-4, dy_m: 1e-4,
+    slices: [{ slice_key: "copper.front", ix0: 3, iy0: 2, nx: 2, ny: 1, values: Float32Array.from([1, Number.NaN]) }],
+  });
+  const raster = rasters.get("copper.front");
+  assert.deepEqual(raster.originMm.map((v) => Number(v.toFixed(9))), [100.6, 50.2]);
+  assert.deepEqual(raster.pitchMm.map((v) => Number(v.toFixed(9))), [0.2, 0.1]);
+  assert.deepEqual([raster.width, raster.height], [2, 1]);
+  assert.throws(() => gridFieldRasters({ origin_x_m: 0, origin_y_m: 0, dx_m: 1, dy_m: 1, slices: [{ slice_key: "x", ix0: 0, iy0: 0, nx: 2, ny: 2, values: [1] }] }));
 });

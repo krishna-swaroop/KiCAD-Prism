@@ -41,14 +41,15 @@ import { harnessKey, harnessSegments, hubPoint, litEnds, litHarnessWires, segmen
 import { AUTO, bendNode, levelMatrix, nodeHandles, toLevel, toWorld, withNodePreview } from "./harness-edit.js";
 import { pickTube } from "./tube-pick.js";
 import { dragInViewPlane, isDrag } from "./route-drag.js";
-import { cameraRay, surfaceHit } from "./model-pick.js";
+import { cameraRay, invert4, surfaceHit } from "./model-pick.js";
 // SB2-44: the placement library is shared with the app (one implementation, CONTRACTS_P2 §17).
 import { harnessScene } from "../../../frontend/src/features/system-builder/placement/harness-tubes.ts";
 import { allReadyBoardsDrawn, assetLoadable, assetOccurrenceMatrix, boardTransition, boxRendererId, drawnOccurrences, STAND_INS, standInKind, standInMatrix } from "./system-placement.js";
 import { LOD_FULL } from "./occurrences.js";
 import { InsetViews, insetMatrix } from "./inset-view.js";
 import { DEFAULT_GPU_BUDGET_BYTES } from "./viewer-controllers.js";
-import { analyticFeatureId, applyAnalyticOverlay, attachAnalyticPack, describeAnalyticHit } from "./analytic-board.js";
+import { COLORMAPS, DEFAULT_ANALYTIC_STYLE } from "./analytic-colormaps.js";
+import { analyticFeatureId, applyAnalyticOverlay, applyAnalyticStyle, applyAnalyticVectors, attachAnalyticPack, describeAnalyticHit, fieldAlongRay, operationSliceKey } from "./analytic-board.js";
 import { barrelsAtCopperFaces } from "./barrel-records.js";
 
 const COPPER_TILE_GPU_BUDGET_BYTES = 512 * 1024 * 1024;
@@ -518,10 +519,32 @@ export async function mountStandaloneViewer(options = {}) {
       if (!board.analytic) return null;
       return applyAnalyticOverlay(board.analytic, overlay);
     },
+    // Arrows of a vector result on the copper: { quantity, units, x, y } field grids, or null.
+    setAnalyticVectors(vectors) {
+      if (!board.analytic) return null;
+      return applyAnalyticVectors(board.analytic, vectors);
+    },
+    // How result overlays look: colormaps and arrows (see DEFAULT_ANALYTIC_STYLE).
+    setAnalyticStyle(style) {
+      if (!board.analytic) return null;
+      return applyAnalyticStyle(board.analytic, style);
+    },
+    // The named colormaps' hex stops and the default style, for hosts' legends and pickers.
+    analyticColormaps() {
+      return { colormaps: COLORMAPS, defaults: DEFAULT_ANALYTIC_STYLE };
+    },
     async analyticAt(clientX, clientY) {
       if (!board.analytic) return null;
       const hit = await pickHitAt(clientX, clientY);
-      return hit?.kind === "analytic" ? describeAnalyticHit(board.analytic, hit.operationIndex) : null;
+      if (hit?.kind !== "analytic") return null;
+      const ray = worldRayAt(clientX, clientY);
+      if (!ray || board.analytic.overlay?.kind === "operation_values") return describeAnalyticHit(board.analytic, hit.operationIndex);
+      // The slice the pick hit, so copper in front is read, not a plane behind it.
+      const offsets = stackupOffsets();
+      const picked = operationSliceKey(board.analytic.pack.header, hit.operationIndex);
+      const field = (picked && fieldAlongRay(board.analytic, ray, offsets, picked)) || fieldAlongRay(board.analytic, ray, offsets);
+      const described = describeAnalyticHit(board.analytic, hit.operationIndex, field);
+      return field ? { ...described, marker: surfaceMarker(field.world) } : described;
     },
     analyticStats,
     unloadAnalyticPack() {
@@ -5661,6 +5684,51 @@ function bindSchematicInteractions() {
     event.preventDefault();
     schematicRenderer.zoom(event.deltaY, event.clientX, event.clientY);
   }, { passive: false });
+}
+
+/**
+ * A ring lying on the copper face at `world` (metres), about `pixels` across
+ * on screen, as client points: drawn tilted with the face it marks.
+ */
+function surfaceMarker(world, pixels = 11, sides = 32) {
+  const centre = projectBoardPoint(world, IDENTITY);
+  const step = projectBoardPoint([world[0] + 1e-4, world[1], world[2]], IDENTITY);
+  const stepY = projectBoardPoint([world[0], world[1] + 1e-4, world[2]], IDENTITY);
+  if (!centre || !step || !stepY) return null;
+  const perMetre = Math.max(Math.hypot(step.x - centre.x, step.y - centre.y), Math.hypot(stepY.x - centre.x, stepY.y - centre.y)) / 1e-4;
+  if (!(perMetre > 0)) return null;
+  const radius = pixels / perMetre;
+  const ring = [];
+  for (let k = 0; k < sides; k++) {
+    const angle = (2 * Math.PI * k) / sides;
+    const point = projectBoardPoint([world[0] + radius * Math.cos(angle), world[1] + radius * Math.sin(angle), world[2]], IDENTITY);
+    if (!point) return null;
+    ring.push(point);
+  }
+  return { centre, ring };
+}
+
+/**
+ * The world ray under a client point, by inverting the frame's own
+ * view-projection: right for the perspective and the orthographic views.
+ */
+function worldRayAt(clientX, clientY) {
+  if (!panel || !canvas) return null;
+  const inverse = invert4(panel.matrix);
+  if (!inverse) return null;
+  const rect = canvas.getBoundingClientRect();
+  const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const y = 1 - ((clientY - rect.top) / rect.height) * 2;
+  const unproject = (depth) => {
+    const p = [x, y, depth, 1];
+    const out = [0, 1, 2, 3].map((row) => inverse[row] * p[0] + inverse[4 + row] * p[1] + inverse[8 + row] * p[2] + inverse[12 + row] * p[3]);
+    return out.slice(0, 3).map((value) => value / out[3]);
+  };
+  const near = unproject(0);
+  const far = unproject(1);
+  const direction = far.map((value, k) => value - near[k]);
+  const length = Math.hypot(...direction);
+  return length > 0 ? { origin: near, direction: direction.map((value) => value / length) } : null;
 }
 
 // Picks resolve out of order (the GPU read is async): only the latest click selects.

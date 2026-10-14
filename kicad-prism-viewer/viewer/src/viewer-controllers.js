@@ -52,6 +52,9 @@
  * @property {() => Promise<void>} gpuIdle
  * @property {(bytes: Uint8Array, options?: object) => Promise<object | null>} loadAnalyticPack
  * @property {(overlay: object | null) => unknown} setAnalyticOverlay
+ * @property {(vectors: object | null) => unknown} setAnalyticVectors
+ * @property {(style: object) => unknown} setAnalyticStyle
+ * @property {() => object} analyticColormaps
  * @property {(clientX: number, clientY: number) => Promise<object | null>} analyticAt
  * @property {() => object | null} analyticStats
  * @property {() => void} unloadAnalyticPack
@@ -274,7 +277,7 @@ export const BOARD_MEMBERS = Object.freeze([
   "setHighlightedNets", "setHiddenComponents", "getComponentReferences", "setViewMode",
   "renderInset", "insetReady", "insetSurfaceZ", "releaseInset", "insetTarget", "projectInset",
   "onSceneChange", "insetStats", "insetSettings", "gpuIdle",
-  "loadAnalyticPack", "setAnalyticOverlay", "analyticAt", "analyticStats", "unloadAnalyticPack",
+  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "analyticAt", "analyticStats", "unloadAnalyticPack",
 ]);
 
 /**
@@ -312,6 +315,8 @@ export class BoardModeController extends ModeController {
   async #replayAnalytic(port, analytic) {
     await port.loadAnalyticPack(analytic.bytes, analytic.options);
     if (analytic.overlay) port.setAnalyticOverlay(analytic.overlay);
+    if (analytic.style) port.setAnalyticStyle(analytic.style);
+    if (analytic.vectors) port.setAnalyticVectors(analytic.vectors);
   }
 
   release() {
@@ -420,13 +425,27 @@ export class BoardModeController extends ModeController {
 
   async loadAnalyticPack(bytes, options = {}) {
     const copy = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    this.#analytic = { bytes: copy, options, overlay: null };
+    this.#analytic = { bytes: copy, options, overlay: null, vectors: null, style: this.#analytic?.style ?? null };
     return this.port ? this.port.loadAnalyticPack(copy, options) : null;
   }
 
   setAnalyticOverlay(overlay) {
     if (this.#analytic) this.#analytic.overlay = overlay;
     return this.port?.setAnalyticOverlay(overlay) ?? null;
+  }
+
+  setAnalyticVectors(vectors) {
+    if (this.#analytic) this.#analytic.vectors = vectors;
+    return this.port?.setAnalyticVectors(vectors) ?? null;
+  }
+
+  setAnalyticStyle(style) {
+    if (this.#analytic) this.#analytic.style = { ...(this.#analytic.style || {}), ...style };
+    return this.port?.setAnalyticStyle(style) ?? null;
+  }
+
+  analyticColormaps() {
+    return this.port?.analyticColormaps() ?? null;
   }
 
   analyticAt(clientX, clientY) {

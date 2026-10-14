@@ -33,16 +33,26 @@ export const OVERLAY_FIELD = 2;
  */
 export const ABSENT_VALUE = 3e38;
 
-const VIRIDIS_WGSL = `fn viridis(t: f32) -> vec3f {
-  let c0 = vec3f(0.2777273272234177, 0.005407344544966578, 0.3340998053353061);
-  let c1 = vec3f(0.1050930431085774, 1.404613529898575, 1.384590162594685);
-  let c2 = vec3f(-0.3308618287255563, 0.214847559468213, 0.09509516302823659);
-  let c3 = vec3f(-4.634230498983486, -5.799100973351585, -19.33244095627987);
-  let c4 = vec3f(6.228269936347081, 14.17993336680509, 56.69055260068105);
-  let c5 = vec3f(4.776384997670288, -13.74514537774601, -65.35303263337234);
-  let c6 = vec3f(-5.435455855934631, 4.645852612178535, 26.3124352495832);
-  let x = clamp(t, 0.0, 1.0);
-  return c0 + x * (c1 + x * (c2 + x * (c3 + x * (c4 + x * (c5 + x * c6)))));
+/**
+ * The overlay palette (see analytic-colormaps.js): RAMP_SIZE entries of the
+ * copper field's ramp, then RAMP_SIZE of the arrows', then the arrows'
+ * outline colour. A uniform, so it costs no storage-buffer slot.
+ */
+export const PALETTE_BYTES = (2 * 256 + 1) * 16;
+const PALETTE_WGSL = (binding) => `
+struct Palette {
+  ramps: array<vec4f, 512>,
+  outline: vec4f,
+};
+@group(0) @binding(${binding}) var<uniform> palette: Palette;
+fn ramp(t: f32, which: u32) -> vec3f {
+  let x = clamp(t, 0.0, 1.0) * 255.0;
+  let i = u32(floor(x));
+  let j = min(i + 1u, 255u);
+  return mix(palette.ramps[which * 256u + i].rgb, palette.ramps[which * 256u + j].rgb, x - floor(x));
+}
+fn fieldColor(t: f32) -> vec3f {
+  return ramp(t, 0u);
 }
 `;
 
@@ -68,8 +78,8 @@ struct Slice {
   // shown only where lit); 2: the layer is copper (it glows with its nets).
   netMode: u32,
   fieldOrigin: vec2f,
-  fieldPitch: f32,
-  padding1: f32,
+  // Cell pitch along board X and Y (mm); a grid's two pitches may differ.
+  fieldPitch: vec2f,
   fieldSize: vec2u,
   padding2: vec2u,
   range: vec2f,
@@ -220,7 +230,7 @@ fn shapeDistance(r: u32, p: vec2f) -> f32 {
   return distance - fword(r, 3u);
 }
 
-${VIRIDIS_WGSL}
+${PALETTE_WGSL(10)}
 fn normalized(value: f32) -> f32 {
   let span = slice.range.y - slice.range.x;
   return select(0.5, (value - slice.range.x) / span, abs(span) > 1e-30);
@@ -276,10 +286,10 @@ fn shadeNormal(operation: u32, board: vec2f, normal: vec3f) -> vec4f {
   // A result overlay outranks the lit-net glow: an isolated net shows its values.
   if (slice.overlay == 1u) {
     let value = values[operation];
-    if (present(value)) { return vec4f(viridis(normalized(value)), 1.0); }
+    if (present(value)) { return vec4f(fieldColor(normalized(value)), 1.0); }
   } else if (slice.overlay == 2u && slice.fieldOn == 1u) {
     let value = sampleField(board);
-    if (present(value)) { return vec4f(viridis(normalized(value)), 1.0); }
+    if (present(value)) { return vec4f(fieldColor(normalized(value)), 1.0); }
   }
   if (copperSlice() && netLit(netOf(operation))) {
     // A lit net glows, pulsing, as the mesh copper does.
@@ -938,7 +948,7 @@ fn netLit(operation: u32) -> bool {
   return emphasised || (globals.activeNet != 0u && net == globals.activeNet);
 }
 fn present(value: f32) -> bool { return value < 1e38; }
-${VIRIDIS_WGSL}
+${PALETTE_WGSL(7)}
 fn normalized(value: f32) -> f32 {
   let span = view.range.y - view.range.x;
   return select(0.5, (value - view.range.x) / span, abs(span) > 1e-30);
@@ -1181,7 +1191,7 @@ struct PickOut {
   // Net isolation draws only the lit nets' barrels.
   if (view.isolate == 1u && !lit) { discard; }
   if (view.overlay == 1u && present(value)) {
-    out.color = vec4f(viridis(normalized(value)), 1.0);
+    out.color = vec4f(fieldColor(normalized(value)), 1.0);
     return out;
   }
   let light = normalize(globals.lightDirection.xyz);
@@ -1293,5 +1303,81 @@ fn aces(color: vec3f) -> vec3f {
   // an edge turned from the light still reads as laminate, not black.
   let base = view.edgeColor.rgb * (0.62 + max(dot(normal, light), 0.0) * 0.72);
   return vec4f(aces(base), view.wallColor.a);
+}
+`;
+
+/** Bytes per arrow: base (x, y, z, half width), dir (x, y, length, -), ids. */
+export const ARROW_INSTANCE_BYTES = 48;
+
+/**
+ * Flat arrows lying on copper faces: the current density's direction and
+ * size (see `planArrows`). Each draws twice: a dark outline (the first
+ * `count` instances), then the light arrow over it.
+ */
+export const ANALYTIC_ARROW_SHADER = /* wgsl */ `
+struct Globals {
+  viewProjection: mat4x4f,
+  activeNet: u32,
+  selectedLayer: u32,
+  time: f32,
+  hasHighlight: f32,
+  selectedFeature: u32,
+  padding0: u32,
+  padding1: u32,
+  padding2: u32,
+  lightDirection: vec4f,
+};
+struct Arrow {
+  base: vec4f,
+  dir: vec4f,
+  ids: vec4u,
+};
+@group(0) @binding(0) var<uniform> globals: Globals;
+@group(0) @binding(1) var<storage, read> arrows: array<Arrow>;
+@group(0) @binding(2) var<storage, read> layerOffsets: array<f32>;
+// 1 for each layer whose copper this frame drew: arrows show only on it.
+@group(0) @binding(4) var<storage, read> drawnLayers: array<u32>;
+${PALETTE_WGSL(3)}
+
+struct ArrowOut {
+  @builtin(position) position: vec4f,
+  @location(0) @interpolate(flat) outline: u32,
+  @location(1) @interpolate(flat) share: f32,
+};
+
+
+@vertex fn vs_arrow(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> ArrowOut {
+  let count = arrayLength(&arrows);
+  let outline = instance < count;
+  let arrow = arrows[instance % count];
+  let length = arrow.dir.z;
+  let half = arrow.base.w;
+  let head = min(0.45 * length, 4.0 * half);
+  let neck = length - head;
+  // Shaft quad, then head triangle; x along the arrow from its tail, y across.
+  var shape = array<vec2f, 9>(
+    vec2f(0.0, -half), vec2f(neck, -half), vec2f(neck, half),
+    vec2f(0.0, -half), vec2f(neck, half), vec2f(0.0, half),
+    vec2f(neck, -2.4 * half), vec2f(length, 0.0), vec2f(neck, 2.4 * half));
+  var local = shape[vertex] - vec2f(0.5 * length, 0.0);
+  if (outline) {
+    // Grown about the arrow's centre by a fixed rim.
+    let rim = 0.9 * half;
+    local = local * vec2f((length + 2.0 * rim) / max(length, 1e-12), (half + rim) / max(half, 1e-12));
+  }
+  let along = arrow.dir.xy;
+  let across = vec2f(-along.y, along.x);
+  let offset = 0.5 * (layerOffsets[arrow.ids.x] + layerOffsets[arrow.ids.y]);
+  let point = arrow.base.xy + along * local.x + across * local.y;
+  var out: ArrowOut;
+  out.position = globals.viewProjection * vec4f(point, arrow.base.z + offset, 1.0);
+  if (drawnLayers[arrow.ids.x] == 0u) { out.position = vec4f(0.0, 0.0, 2.0, 1.0); }
+  out.outline = select(0u, 1u, outline);
+  out.share = clamp(arrow.dir.w, 0.0, 1.0);
+  return out;
+}
+
+@fragment fn fs_arrow(input: ArrowOut) -> @location(0) vec4f {
+  return select(vec4f(ramp(input.share, 1u), 1.0), palette.outline, input.outline == 1u);
 }
 `;

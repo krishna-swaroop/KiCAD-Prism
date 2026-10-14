@@ -1,5 +1,6 @@
 import {
   ABSENT_VALUE,
+  ANALYTIC_ARROW_SHADER,
   ANALYTIC_BARREL_SHADER,
   ANALYTIC_SHADER,
   ANALYTIC_WALL_SHADER,
@@ -14,10 +15,12 @@ import {
   OVERLAY_FIELD,
   OVERLAY_NONE,
   OVERLAY_VALUES,
+  PALETTE_BYTES,
   SHAPE_WORDS,
   SLICE_UNIFORM_BYTES,
   STENCIL_STEPS,
 } from "./analytic-shaders.js";
+import { DEFAULT_ANALYTIC_STYLE, RAMP_SIZE, resolveStyle, sampleColormap } from "./analytic-colormaps.js";
 
 const BLEND = {
   color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" },
@@ -107,8 +110,13 @@ export class AnalyticRenderer {
         { binding: 7, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
         { binding: 8, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
         { binding: 9, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+        { binding: 10, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
       ],
     });
+    // The overlay's colours (see analytic-colormaps.js), before any pipeline binds them.
+    this.palette = this.device.createBuffer({ label: "analytic-palette", size: PALETTE_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.style = resolveStyle(DEFAULT_ANALYTIC_STYLE);
+    this.writePalette();
     this.module = this.device.createShaderModule({ label: "analytic", code: ANALYTIC_SHADER });
     this.pipelines = {
       color: this.makePipelines(renderer.format, false),
@@ -121,6 +129,84 @@ export class AnalyticRenderer {
     // Each operation's viewer net id (0 for none), for net glow and isolation.
     this.netsBuffer = this.buffer(new Uint32Array(1), GPUBufferUsage.STORAGE, "analytic-nets");
     this.makeBarrelPipelines();
+    this.makeArrowPipeline();
+  }
+
+  makeArrowPipeline() {
+    this.arrowLayout = this.device.createBindGroupLayout({
+      label: "analytic-arrows",
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+        { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+        { binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
+      ],
+    });
+    // Per layer, 1 while this frame drew its copper (see encodeInto).
+    this.drawnLayers = new Uint32Array(256);
+    this.drawnLayersBuffer = this.buffer(this.drawnLayers, GPUBufferUsage.STORAGE, "analytic-drawn-layers");
+    const module = this.device.createShaderModule({ label: "analytic-arrows", code: ANALYTIC_ARROW_SHADER });
+    this.arrowPipeline = this.device.createRenderPipeline({
+      label: "analytic-arrow",
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [this.arrowLayout] }),
+      vertex: { module, entryPoint: "vs_arrow" },
+      fragment: { module, entryPoint: "fs_arrow", targets: [{ format: this.renderer.format, blend: BLEND }] },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      // Over the copper they lie on, never hiding each other: drawn in order.
+      depthStencil: { format: this.renderer.depthFormat, depthWriteEnabled: false, depthCompare: "greater-equal" },
+      multisample: { count: this.samples },
+    });
+    this.arrows = null;
+  }
+
+  /** The palette's ramps and outline from `this.style`. */
+  writePalette() {
+    const data = new Float32Array(PALETTE_BYTES / 4);
+    data.set(sampleColormap(this.style.fieldColormap, RAMP_SIZE), 0);
+    data.set(sampleColormap(this.style.arrowColormap, RAMP_SIZE), RAMP_SIZE * 4);
+    data.set(this.style.arrowOutline, 2 * RAMP_SIZE * 4);
+    this.device.queue.writeBuffer(this.palette, 0, data);
+    this.renderer.invalidate?.();
+  }
+
+  /** Change how overlays look (see DEFAULT_ANALYTIC_STYLE); returns the style in force. */
+  setStyle(style) {
+    this.style = resolveStyle(style, this.style);
+    this.writePalette();
+    return this.style;
+  }
+
+  /** Current arrows `{ data, count }` (see `planArrows`), or null to clear. */
+  setArrows(arrows) {
+    this.arrows?.buffer.destroy();
+    this.arrows = arrows?.count
+      ? { buffer: this.buffer(new Uint8Array(arrows.data), GPUBufferUsage.STORAGE, "analytic-arrows"), count: arrows.count }
+      : null;
+    if (this.arrows) {
+      this.arrows.bindGroup = this.device.createBindGroup({
+        layout: this.arrowLayout,
+        entries: [
+          { binding: 0, resource: { buffer: this.renderer.globalBuffer } },
+          { binding: 1, resource: { buffer: this.arrows.buffer } },
+          { binding: 2, resource: { buffer: this.layerOffsets } },
+          { binding: 3, resource: { buffer: this.palette } },
+          { binding: 4, resource: { buffer: this.drawnLayersBuffer } },
+        ],
+      });
+    }
+    this.renderer.invalidate?.();
+  }
+
+  /** The arrows into an open colour pass: outlines, then the arrows. */
+  encodeArrows(pass) {
+    if (!this.arrows) return 0;
+    // Only on copper this frame drew: none float over hidden layers.
+    this.device.queue.writeBuffer(this.drawnLayersBuffer, 0, this.drawnLayers);
+    pass.setPipeline(this.arrowPipeline);
+    pass.setBindGroup(0, this.arrows.bindGroup);
+    pass.draw(9, 2 * this.arrows.count);
+    return 1;
   }
 
   makeBarrelPipelines() {
@@ -135,6 +221,7 @@ export class AnalyticRenderer {
         { binding: 4, visibility: all, buffer: { type: "read-only-storage" } },
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
         { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
+        { binding: 7, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
       ],
     });
     const module = this.device.createShaderModule({ label: "analytic-barrels", code: ANALYTIC_BARREL_SHADER });
@@ -189,6 +276,7 @@ export class AnalyticRenderer {
         { binding: 4, resource: { buffer: this.layerOffsets } },
         { binding: 5, resource: { buffer: this.netsBuffer } },
         { binding: 6, resource: { buffer: this.renderer.netMaskBuffer } },
+        { binding: 7, resource: { buffer: this.palette } },
       ],
     });
   }
@@ -220,7 +308,9 @@ export class AnalyticRenderer {
     const laminate = this.laminateColor() || this.boardLooks().substrate?.color || [0.3, 0.32, 0.25, 1];
     const wallOpacity = (context.boardOpacity ?? 1) * (0.15 + 0.85 * (context.assemblyOpacity ?? 1));
     floats.set([...laminate.slice(0, 3), wallOpacity], 8);
-    words[12] = this.overlay.mode === OVERLAY_VALUES ? 1 : 0;
+    const barrelValues = this.overlay.mode === OVERLAY_VALUES
+      || (this.overlay.mode === OVERLAY_FIELD && this.valuesBuffer !== this.emptyValues);
+    words[12] = barrelValues ? 1 : 0;
     words[13] = context.isolateNet ? 1 : 0;
     words[14] = this.boardShown(context) ? 1 : 0;
     // Solid: shown, opaque, and not separated (the viewer then hides inner copper).
@@ -260,6 +350,7 @@ export class AnalyticRenderer {
         { binding: 4, resource: { buffer: this.layerOffsets } },
         { binding: 5, resource: { buffer: this.netsBuffer } },
         { binding: 6, resource: { buffer: this.renderer.netMaskBuffer } },
+        { binding: 7, resource: { buffer: this.palette } },
       ],
     });
   }
@@ -579,6 +670,7 @@ export class AnalyticRenderer {
         { binding: 7, resource: { buffer: this.renderer.netMaskBuffer } },
         { binding: 8, resource: { buffer: slice.edges } },
         { binding: 9, resource: { buffer: slice.cuts } },
+        { binding: 10, resource: { buffer: this.palette } },
       ],
     });
   }
@@ -608,10 +700,14 @@ export class AnalyticRenderer {
   /**
    * Colour slices from field rasters: `rasters` maps a slice key to
    * `{ originMm: [x, y], pitchMm, width, height, values }` (row-major from
+   * the origin; `pitchMm` is one pitch or `[x, y]` pitches,
+   * and optional per-operation `values` colour the barrels,
    * the origin, +x then +y in KiCad's frame, NaN where absent).
    */
-  setFieldRasters(rasters, range) {
+  setFieldRasters(rasters, range, values = null) {
     this.clearOverlay();
+    // Per-operation values still colour what the rasters cannot: the barrels.
+    if (values) this.valuesBuffer = this.buffer(withSentinels(values), GPUBufferUsage.STORAGE, "analytic-values");
     for (const slice of this.slices) {
       const raster = rasters.get(slice.key);
       if (!raster) continue;
@@ -666,7 +762,9 @@ export class AnalyticRenderer {
     words[6] = field ? 1 : 0;
     if (field) {
       floats.set(field.originMm, 8);
-      floats[10] = field.pitchMm;
+      const [pitchX, pitchY] = Array.isArray(field.pitchMm) ? field.pitchMm : [field.pitchMm, field.pitchMm];
+      floats[10] = pitchX;
+      floats[11] = pitchY;
       words[12] = field.width;
       words[13] = field.height;
     }
@@ -762,6 +860,7 @@ export class AnalyticRenderer {
     const boardShown = this.boardShown(context);
     const solid = boardShown && (context.boardOpacity ?? 1) >= 0.999;
     let drawn = 0;
+    if (!pick) this.drawnLayers.fill(0);
     for (const slice of this.slices) {
       const isCopper = slice.role === undefined || slice.role === "copper";
       if (isCopper ? visibleLayers && !visibleLayers.has(slice.layerId) : pick || slice.role !== "dielectric" || !solid) continue;
@@ -771,6 +870,8 @@ export class AnalyticRenderer {
       if (slice.role === "dielectric" && !slice.skin && this.renderer.innerCopperMode !== "all") continue;
       if (this.behindBoard(slice, context)) continue;
       this.encodeSlice(pass, pipelines, slice, "opaque", layerOffsets, this.lookFor(slice, copper, board, context));
+      // The face arrows lie on: the top one, the underside on the bottom layer.
+      if (!pick && isCopper && slice.face === (slice.bottom ? "bottom" : "top")) this.drawnLayers[slice.layerId] = 1;
       drawn += 1;
     }
     if (solid && !pick) drawn += this.encodeWalls(pass, false);
@@ -1094,6 +1195,9 @@ export class AnalyticRenderer {
     this.releaseSlices();
     this.barrels?.buffer.destroy();
     this.walls?.buffer.destroy();
+    this.arrows?.buffer.destroy();
+    this.drawnLayersBuffer.destroy();
+    this.palette.destroy();
     this.netsBuffer.destroy();
     this.barrelView.destroy();
     this.layerOffsets.destroy();

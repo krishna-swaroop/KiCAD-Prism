@@ -299,6 +299,29 @@ export function valueRange(values) {
  * materialization's tile grid; tiles of one slice must share their pitch and
  * align to it. Cells no tile covers hold NaN.
  */
+/**
+ * Rasters of a `prism.sim.field` grid document (sim-adr-0018): `slices` are
+ * `{ slice_key, ix0, iy0, nx, ny, values }` with float32 `values`, on the
+ * grid `origin_x_m`, `origin_y_m`, `dx_m`, `dy_m`.
+ */
+export function gridFieldRasters(grid) {
+  const rasters = new Map();
+  const mm = 1e3;
+  for (const slice of grid.slices || []) {
+    if (!(slice.nx > 0 && slice.ny > 0) || slice.values.length !== slice.nx * slice.ny) {
+      throw new Error(`grid field slice ${slice.slice_key} has ${slice.values.length} values for ${slice.nx} x ${slice.ny} cells`);
+    }
+    rasters.set(slice.slice_key, {
+      originMm: [(grid.origin_x_m + slice.ix0 * grid.dx_m) * mm, (grid.origin_y_m + slice.iy0 * grid.dy_m) * mm],
+      pitchMm: [grid.dx_m * mm, grid.dy_m * mm],
+      width: slice.nx,
+      height: slice.ny,
+      values: slice.values,
+    });
+  }
+  return rasters;
+}
+
 export function composeFieldRasters(tiles) {
   const bySlice = new Map();
   for (const tile of tiles || []) {
