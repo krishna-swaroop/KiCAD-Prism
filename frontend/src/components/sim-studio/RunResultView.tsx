@@ -80,7 +80,8 @@ export function RunResultView({ projectId, run, canMutate }: Props) {
     const pack = useAnalyticPack(viewer, ready, runPackUrl(projectId, run.run_id));
     const [quantity, setQuantity] = useState<FieldQuantity>("voltage_v");
     const [arrows, setArrows] = useState(false);
-    const overlay = useRunOverlay(viewer, pack.phase === "ready", projectId, run, quantity, arrows);
+    const [net, setNet] = useState<string | null>(null);
+    const overlay = useRunOverlay(viewer, pack.phase === "ready", projectId, run, quantity, arrows, net);
     const probe = useCursorProbe(viewer, overlay.phase === "ready");
     const look = useResultLook(viewer, overlay.phase === "ready");
     const catalog = viewer?.analyticColormaps?.()?.colormaps ?? null;
@@ -96,9 +97,19 @@ export function RunResultView({ projectId, run, canMutate }: Props) {
                     <>
                         <Badge variant="outline">{overlay.result.engine.id} {overlay.result.engine.engine_version}</Badge>
                         <Badge variant="outline">{overlay.nets.join(", ")}</Badge>
+                        {overlay.fieldNets.length > 1 && (
+                            <select
+                                aria-label="Net"
+                                className="ml-auto h-7 rounded-md border bg-background px-2 text-xs"
+                                value={overlay.net ?? ""}
+                                onChange={(event) => setNet(event.target.value)}
+                            >
+                                {overlay.fieldNets.map((name) => <option key={name} value={name}>{name}</option>)}
+                            </select>
+                        )}
                         <select
                             aria-label="Field"
-                            className="ml-auto h-7 rounded-md border bg-background px-2 text-xs"
+                            className={`${overlay.fieldNets.length > 1 ? "" : "ml-auto "}h-7 rounded-md border bg-background px-2 text-xs`}
                             value={quantity}
                             onChange={(event) => setQuantity(event.target.value as FieldQuantity)}
                         >
@@ -308,27 +319,62 @@ function MeshLine({ realization }: { realization: import("./run-overlay").RunRea
 }
 
 function Summary({ summary }: { summary: NonNullable<import("./run-overlay").RunResult["summary"]> }) {
+    const mv = (v?: number) => (v === undefined ? "–" : `${(v * 1000).toFixed(2)} mV`);
+    const split = summary.loads.some((load) => load.return_drop_v !== undefined);
+    const converterLoss = (summary.converters ?? []).reduce((sum, c) => sum + c.loss_w, 0);
     return (
-        <table className="w-full text-xs">
-            <thead className="text-left text-muted-foreground">
-                <tr><th className="py-1">Load</th><th>Min V</th><th>Max V</th><th>Max drop</th></tr>
-            </thead>
-            <tbody className="font-mono">
-                {summary.loads.map((load) => (
-                    <tr key={load.load}>
-                        <td className="py-0.5">{load.load}</td>
-                        <td>{load.min_voltage_v.toFixed(4)}</td>
-                        <td>{load.max_voltage_v.toFixed(4)}</td>
-                        <td>{(load.max_drop_v * 1000).toFixed(1)} mV</td>
+        <div className="space-y-3">
+            {(summary.converters?.length || summary.copper_loss_w !== undefined) && (
+                <p className="text-xs text-muted-foreground">
+                    {summary.converters?.length ? `Converter losses ${converterLoss.toFixed(3)} W · ` : ""}
+                    {summary.copper_loss_w !== undefined ? `copper loss ${(summary.copper_loss_w * 1000).toFixed(1)} mW` : ""}
+                </p>
+            )}
+            <table className="w-full text-xs">
+                <thead className="text-left text-muted-foreground">
+                    <tr>
+                        <th className="py-1">Load</th><th>Rail</th><th>Min V</th><th>Max V</th><th>Drop</th>
+                        {split && <><th>Supply side</th><th>Return side</th></>}
                     </tr>
-                ))}
-                {summary.sources.map((source) => (
-                    <tr key={source.source} className="text-muted-foreground">
-                        <td className="py-0.5">{source.source} (source)</td>
-                        <td colSpan={3}>{source.current_a.toFixed(3)} A</td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
+                </thead>
+                <tbody className="font-mono">
+                    {summary.loads.map((load) => (
+                        <tr key={load.load}>
+                            <td className="py-0.5">{load.load}</td>
+                            <td>{load.rail ?? ""}</td>
+                            <td>{load.min_voltage_v.toFixed(4)}</td>
+                            <td>{load.max_voltage_v.toFixed(4)}</td>
+                            <td>{mv(load.max_drop_v)}</td>
+                            {split && <><td>{mv(load.supply_drop_v)}</td><td>{mv(load.return_drop_v)}</td></>}
+                        </tr>
+                    ))}
+                    {summary.sources.map((source) => (
+                        <tr key={source.source} className="text-muted-foreground">
+                            <td className="py-0.5">{source.source} (source)</td>
+                            <td colSpan={split ? 6 : 4}>{source.current_a.toFixed(4)} A</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            {summary.converters && summary.converters.length > 0 && (
+                <table className="w-full text-xs">
+                    <thead className="text-left text-muted-foreground">
+                        <tr><th className="py-1">Converter</th><th>In</th><th>Out</th><th>Efficiency</th><th>Loss</th><th>Solves</th></tr>
+                    </thead>
+                    <tbody className="font-mono">
+                        {summary.converters.map((c) => (
+                            <tr key={c.converter}>
+                                <td className="py-0.5">{c.converter}</td>
+                                <td>{c.input_voltage_v.toFixed(4)} V · {c.input_current_a.toFixed(4)} A · {c.input_power_w.toFixed(3)} W</td>
+                                <td>{c.output_voltage_v.toFixed(4)} V · {c.output_current_a.toFixed(4)} A · {c.output_power_w.toFixed(3)} W</td>
+                                <td>{((c.output_power_w / c.input_power_w) * 100).toFixed(1)} %</td>
+                                <td>{c.loss_w.toFixed(3)} W</td>
+                                <td>{c.iterations}{c.converged ? "" : " (not settled)"}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </div>
     );
 }

@@ -311,6 +311,10 @@ function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleR
             <Definitions title="Terminals" items={setup.terminals.map((t) => `${t.id}: ${t.positive.join(", ")}${t.reference.length ? ` / ref ${t.reference.join(", ")}` : ""}`)} />
             <Definitions title="Sources" items={setup.sources.map((s) => `${s.id}: rail ${s.rail} at ${s.terminal}`)} />
             <Definitions title="Loads" items={setup.loads.map((l) => `${l.id}: ${l.current_a} A from rail ${l.rail} at ${l.terminal}`)} />
+            <Definitions
+                title="Converters"
+                items={setup.converters.map((c) => `${c.id}: ${c.input_rail} → ${setup.sources.find((s) => s.id === c.output_source)?.rail ?? c.output_source}, ${c.kind === "linear" ? "linear" : `${Math.round((c.efficiency ?? 0) * 100)} %`}`)}
+            />
             <Definitions title="Probes" items={setup.probes.map((p) => `${p.id}: ${p.terminal}`)} />
             <details>
                 <summary className="cursor-pointer text-sm font-semibold">Setup document</summary>

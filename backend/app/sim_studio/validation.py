@@ -149,6 +149,9 @@ def validate(setup: SimSetup, facts: BoardFacts) -> list[SetupIssue]:
                          f"Source {source.id!r} senses at {source.sense_terminal!r}, which is not defined.")
     source_ids = {source.id for source in setup.sources}
     for position, converter in enumerate(setup.converters):
+        if (converter.kind or "switching") == "switching" and converter.efficiency is None:
+            issues.error("missing-efficiency", f"/converters/{position}/efficiency",
+                         f"Switching converter {converter.id!r} needs its efficiency.")
         if converter.output_source not in source_ids:
             issues.error("unknown-source", f"/converters/{position}/output_source",
                          f"Converter {converter.id!r} outputs through {converter.output_source!r}, which is not a source.")
@@ -193,7 +196,10 @@ def _power_tree(setup: SimSetup, analysis_id: str, rails: Iterable[str], path: s
     solved = set(rails)
     for rail in sorted(solved):
         sources = [source for source in setup.sources if source.rail == rail]
-        loads = [load for load in setup.loads if load.rail == rail]
+        # A converter fed from the rail draws from it like a load.
+        loads = [load for load in setup.loads if load.rail == rail] + [
+            converter for converter in setup.converters if converter.input_rail == rail
+        ]
         if not sources:
             issues.error("rail-without-source", path, f"{analysis_id}: rail {rail!r} has no source.")
         if not loads:

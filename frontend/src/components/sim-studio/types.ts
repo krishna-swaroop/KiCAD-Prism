@@ -53,7 +53,12 @@ export interface Converter {
     input_rail: string;
     input_terminal: string;
     output_source: string;
-    efficiency: number;
+    /** Absent means switching. */
+    kind?: "switching" | "linear";
+    /** Switching converters only. */
+    efficiency?: number;
+    /** Linear converters: the regulator's own input current. */
+    quiescent_current_a?: number;
 }
 
 export interface Probe {

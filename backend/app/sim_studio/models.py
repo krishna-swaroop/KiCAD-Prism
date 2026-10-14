@@ -118,7 +118,10 @@ class Converter(_Strict):
     input_rail: Slug
     input_terminal: Slug
     output_source: Slug
-    efficiency: Annotated[float, Field(gt=0, le=1)]
+    # Absent means switching; a linear regulator passes its output current.
+    kind: Optional[Literal["switching", "linear"]] = None
+    efficiency: Optional[Annotated[float, Field(gt=0, le=1)]] = None
+    quiescent_current_a: Optional[Annotated[float, Field(ge=0)]] = None
 
 
 class Probe(_Strict):
