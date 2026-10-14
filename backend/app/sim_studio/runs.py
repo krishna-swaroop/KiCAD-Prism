@@ -30,7 +30,6 @@ from app.sim_studio.run_store import TERMINAL, RunStore, public
 from app.sim_studio.service import canonical_sha256, parse_setup
 from app.sim_studio.store import SetupStore
 
-ENGINE_ID = "dc-drop-synthetic"
 MATERIALIZATION_MEMBER = "materialization/board.kmpack"
 
 
@@ -161,7 +160,7 @@ def _stage(run: Mapping[str, Any], workspace: Path, log: list[str]) -> dict[str,
     (inputs / "setup.json").write_bytes(setup_bytes)
     job = {
         "schema": "prism.sim.job", "version": "a0", "job_id": str(run["job_id"]),
-        "engine": {"id": ENGINE_ID},
+        "engine": {"id": settings.PRISM_SIM_ENGINE},
         "bundle": {"path": "input/board.prism", "sha256": bundle_sha},
         "setup": {"path": "input/setup.json", "sha256": hashlib.sha256(setup_bytes).hexdigest()},
         "analysis_id": str(run["analysis_id"]),

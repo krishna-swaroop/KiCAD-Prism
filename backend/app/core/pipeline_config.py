@@ -89,6 +89,7 @@ class PipelineSettings(BaseSettings):
     )
     PRISM_SIM_CONCURRENCY: int = Field(default=1, description="Simulation runs one worker executes at once.")
     PRISM_SIM_TIMEOUT_SECONDS: int = Field(default=3600, description="Longest a simulation engine may run.")
+    PRISM_SIM_ENGINE: str = Field(default="dc-drop-grid", description="sim-worker engine id that runs every analysis (dc-drop-grid, or dc-drop-synthetic for pipeline tests).")
     PRISM_KICAD_MONKEY_SOURCE: str = Field(
         default="",
         description="Label of the installed kicad_monkey build, mixed into the viewer build fingerprint.",

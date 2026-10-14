@@ -68,6 +68,9 @@ export class FakeSemanticViewer extends HTMLElement implements PrismSemanticView
     readonly onSceneChange = vi.fn(() => () => {});
     readonly loadAnalyticPack = vi.fn(async (): Promise<PrismAnalyticStats | null> => null);
     readonly setAnalyticOverlay = vi.fn();
+    readonly setAnalyticVectors = vi.fn(() => null);
+    readonly setAnalyticStyle = vi.fn(() => null);
+    readonly analyticColormaps = vi.fn(() => null);
     readonly analyticAt = vi.fn(async (): Promise<PrismAnalyticHit | null> => null);
     readonly analyticStats = vi.fn((): PrismAnalyticStats | null => null);
     readonly unloadAnalyticPack = vi.fn();

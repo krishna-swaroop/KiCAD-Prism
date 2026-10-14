@@ -178,11 +178,39 @@ export interface PrismSemanticBoardMode {
     loadAnalyticPack(bytes: ArrayBuffer | Uint8Array, options?: PrismAnalyticPackOptions): Promise<PrismAnalyticStats | null>;
     /** Colour the analytic copper from a result; null clears it. Survives reloads. */
     setAnalyticOverlay(overlay: PrismAnalyticOverlay | null): void;
+    /** How result overlays look; returns the style in force. */
+    setAnalyticStyle(style: Partial<PrismAnalyticStyle>): PrismAnalyticStyle | null;
+    /** The named colormaps' hex stops and the default style. */
+    analyticColormaps(): { colormaps: Record<string, string[]>; defaults: PrismAnalyticStyle } | null;
+    /** Arrows of a vector result on the copper: its components as field grids; null clears them. */
+    setAnalyticVectors(vectors: PrismAnalyticVectors | null): { count: number; max: number; reference: number; spacingMm: number } | null;
     /** The operation under a client point, its binding and overlay value; null off the analytic copper. */
     analyticAt(clientX: number, clientY: number): Promise<PrismAnalyticHit | null>;
     analyticStats(): PrismAnalyticStats | null;
     /** Back to mesh copper. */
     unloadAnalyticPack(): void;
+}
+
+export interface PrismAnalyticStyle {
+    /** A colormap name, or two or more #rrggbb stops. */
+    fieldColormap: string | string[];
+    arrowColormap: string | string[];
+    /** Arrows across the board's longer side. */
+    arrowDensity: number;
+    /** Arrow half width, as a share of the spacing. */
+    arrowWidth: number;
+    /** The shortest arrow, as a share of the longest. */
+    arrowMinLength: number;
+    /** Outline colour and opacity, 0..1. */
+    arrowOutline: [number, number, number, number];
+}
+
+export interface PrismAnalyticVectors {
+    quantity: string;
+    units: string;
+    /** `prism.sim.field` grids of the board-frame x and y components. */
+    x: PrismAnalyticFieldGrid;
+    y: PrismAnalyticFieldGrid;
 }
 
 export interface PrismAnalyticPackOptions {
@@ -194,7 +222,17 @@ export interface PrismAnalyticPackOptions {
 
 export type PrismAnalyticOverlay =
     | { kind: "operation_values"; quantity: string; units: string; values: ArrayLike<number> | Record<number, number>; range?: [number, number] }
-    | { kind: "field_tiles"; quantity: string; units: string; tiles: PrismAnalyticFieldTile[]; range?: [number, number] };
+    | { kind: "field_tiles"; quantity: string; units: string; tiles: PrismAnalyticFieldTile[]; range?: [number, number] }
+    | { kind: "field_grid"; quantity: string; units: string; grid: PrismAnalyticFieldGrid; values?: Record<number, number>; range?: [number, number] };
+
+/** A prism.sim.field grid document with each slice's values loaded (sim-adr-0018). */
+export interface PrismAnalyticFieldGrid {
+    origin_x_m: number;
+    origin_y_m: number;
+    dx_m: number;
+    dy_m: number;
+    slices: { slice_key: string; ix0: number; iy0: number; nx: number; ny: number; values: Float32Array }[];
+}
 
 export interface PrismAnalyticFieldTile {
     slice_key: string;
@@ -211,6 +249,13 @@ export interface PrismAnalyticHit {
     value?: number;
     quantity?: string;
     units?: string;
+    /** Raster overlays: the copper slice and board point (mm) the value was read at. */
+    sliceKey?: string;
+    boardMm?: [number, number];
+    /** World point (m) on the slice's face. */
+    world?: [number, number, number];
+    /** A ring lying on that face, in client px: shows which surface is read. */
+    marker?: { centre: { x: number; y: number }; ring: { x: number; y: number }[] } | null;
 }
 
 export interface PrismAnalyticStats {

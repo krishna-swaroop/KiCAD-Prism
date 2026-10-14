@@ -141,6 +141,23 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
         }
     };
 
+    /** Merges `mesh` into the first analysis's mesh settings. */
+    /** Merge `values` into one section of the analysis settings (`mesh`, `terminals`, ...). */
+    const setSettings = async (section: string, values: Record<string, unknown>) => {
+        if (!record) return;
+        const settings = (record.setup.analyses[0]?.settings ?? {}) as Record<string, unknown>;
+        const current = (settings[section] ?? {}) as Record<string, unknown>;
+        try {
+            setRecord(await api.patchSetup(projectId, record.setup_id, record.etag, [
+                { op: "add", path: "/analyses/0/settings", value: { ...settings, [section]: { ...current, ...values } } },
+            ]));
+            setReport(null);
+        } catch (error) {
+            toast.error(message(error));
+            setReloadKey((key) => key + 1);
+        }
+    };
+
     const visible = setups.filter((item) => item.kind === kind);
 
     return (
@@ -211,6 +228,7 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
                         canMutate={canMutate}
                         onCheck={check}
                         onToggleRail={toggleRail}
+                        onSetSettings={setSettings}
                         onSubmit={submit}
                     />
                 )}
@@ -227,13 +245,14 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
     );
 }
 
-function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleRail, onSubmit }: {
+function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleRail, onSetSettings, onSubmit }: {
     record: SetupRecord;
     report: SetupReport | null;
     checking: boolean;
     canMutate: boolean;
     onCheck: (stage: "validate" | "preflight") => void;
     onToggleRail: (railId: string) => void;
+    onSetSettings: (section: string, values: Record<string, unknown>) => void;
     onSubmit: () => void;
 }) {
     const { setup } = record;
@@ -279,6 +298,16 @@ function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleR
                     </label>
                 ))}
             </section>
+            <MeshSettings
+                mesh={(setup.analyses[0]?.settings?.mesh ?? {}) as Record<string, unknown>}
+                canMutate={canMutate}
+                onChange={(values) => onSetSettings("mesh", values)}
+            />
+            <TerminalSettings
+                terminals={(setup.analyses[0]?.settings?.terminals ?? {}) as Record<string, unknown>}
+                canMutate={canMutate}
+                onChange={(values) => onSetSettings("terminals", values)}
+            />
             <Definitions title="Terminals" items={setup.terminals.map((t) => `${t.id}: ${t.positive.join(", ")}${t.reference.length ? ` / ref ${t.reference.join(", ")}` : ""}`)} />
             <Definitions title="Sources" items={setup.sources.map((s) => `${s.id}: rail ${s.rail} at ${s.terminal}`)} />
             <Definitions title="Loads" items={setup.loads.map((l) => `${l.id}: ${l.current_a} A from rail ${l.rail} at ${l.terminal}`)} />
@@ -288,6 +317,90 @@ function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleR
                 <pre className="mt-2 max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(setup, null, 2)}</pre>
             </details>
         </>
+    );
+}
+
+/** Mesh choices of a DC drop analysis; the engine records what it used. */
+function MeshSettings({ mesh, canMutate, onChange }: {
+    mesh: Record<string, unknown>;
+    canMutate: boolean;
+    onChange: (mesh: Record<string, unknown>) => void;
+}) {
+    const adaptive = mesh.adaptive === true;
+    const passes = typeof mesh.max_adaptive_passes === "number" ? mesh.max_adaptive_passes : 12;
+    return (
+        <section aria-label="Mesh" className="space-y-1">
+            <h3 className="text-sm font-semibold">Mesh</h3>
+            <label className="flex items-center gap-2 text-sm">
+                <input
+                    type="checkbox"
+                    checked={adaptive}
+                    disabled={!canMutate}
+                    onChange={() => onChange({ adaptive: !adaptive })}
+                />
+                <span>Adaptive refinement</span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+                {adaptive
+                    ? "Starts from a coarse grid and refines where the estimated error is largest, and around every via and pad."
+                    : "One uniform grid at the budget the accuracy level sets."}
+            </p>
+            {adaptive && (
+                <label className="flex items-center gap-2 text-sm">
+                    <span>Passes</span>
+                    <Input
+                        aria-label="Adaptive passes"
+                        type="number"
+                        min={1}
+                        max={60}
+                        className="h-7 w-20"
+                        disabled={!canMutate}
+                        defaultValue={passes}
+                        onBlur={(event) => {
+                            const value = Number.parseInt(event.target.value, 10);
+                            if (Number.isFinite(value) && value >= 1 && value !== passes) {
+                                onChange({ max_adaptive_passes: value });
+                            }
+                        }}
+                    />
+                </label>
+            )}
+        </section>
+    );
+}
+
+const PAD_CONTACTS = {
+    "ideal-pad": {
+        label: "Equipotential pad (recommended)",
+        help: "Each pad is one node: a soldered pin conducts far better than the copper under it, so current crowds to the pad's edge as it does on the board.",
+    },
+    distributed: {
+        label: "Uniform flux over the pad",
+        help: "Each pad's current enters evenly over its copper (a pure Neumann condition). Reads slightly more drop at the pad; suits loads with no real pin, such as a heater area.",
+    },
+} as const;
+
+/** How terminals take their current; the engine records what it used. */
+function TerminalSettings({ terminals, canMutate, onChange }: {
+    terminals: Record<string, unknown>;
+    canMutate: boolean;
+    onChange: (terminals: Record<string, unknown>) => void;
+}) {
+    const contact = terminals.contact === "distributed" ? "distributed" : "ideal-pad";
+    return (
+        <section aria-label="Pad contact" className="space-y-1">
+            <h3 className="text-sm font-semibold">Pad contact</h3>
+            <select
+                aria-label="Pad contact"
+                className="h-8 rounded-md border bg-background px-2 text-sm"
+                value={contact}
+                disabled={!canMutate}
+                onChange={(event) => onChange({ contact: event.target.value })}
+            >
+                {Object.entries(PAD_CONTACTS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
+            </select>
+            <p className="text-xs text-muted-foreground">{PAD_CONTACTS[contact].help}</p>
+        </section>
     );
 }
 

@@ -147,6 +147,9 @@ class OutputSettings(_Strict):
 
 
 class DcMeshSettings(_Strict):
+    accuracy_level: Optional[Annotated[int, Field(ge=0, le=16)]] = None
+    budget_mode: Optional[Literal["single", "trial"]] = None
+    representative_point: Optional[Literal["fragment-centroid", "cell-blend"]] = None
     max_element_um: Optional[PositiveFloat] = None
     min_element_um: Optional[PositiveFloat] = None
     min_angle_deg: Optional[Annotated[float, Field(gt=0, lt=60)]] = None
@@ -162,14 +165,41 @@ class DcCopperCleanupSettings(_Strict):
     min_neck_um: Optional[NonNegativeFloat] = None
 
 
+class DcViaMatch(_Strict):
+    sources: Optional[list[Literal["via", "pad"]]] = None
+    spans: Optional[list[Literal["through", "blind", "buried"]]] = None
+    min_layers: Optional[Annotated[int, Field(ge=2)]] = None
+    max_layers: Optional[Annotated[int, Field(ge=2)]] = None
+    min_drill_um: Optional[PositiveFloat] = None
+    max_drill_um: Optional[PositiveFloat] = None
+    nets: Optional[list[str]] = None
+    filled: Optional[bool] = None
+
+
+class DcViaFill(_Strict):
+    kind: Literal["none", "non-conductive", "conductive"]
+    conductivity_s_per_m: Optional[PositiveFloat] = None
+
+
+class DcViaClass(_Strict):
+    id: Annotated[str, Field(min_length=1)]
+    match: Optional[DcViaMatch] = None
+    plating_um: Optional[PositiveFloat] = None
+    plating_conductivity_s_per_m: Optional[PositiveFloat] = None
+    fill: Optional[DcViaFill] = None
+
+
 class DcViaSettings(_Strict):
     plating_um: Optional[PositiveFloat] = None
     pad_to_barrel: Optional[Literal["annular-ring", "ideal"]] = None
     merge_arrays: Optional[bool] = None
+    classes: Optional[list[DcViaClass]] = None
 
 
 class DcTerminalSettings(_Strict):
     contact: Optional[Literal["ideal-pad", "distributed"]] = None
+    source_pin_resistance_ohm: Optional[PositiveFloat] = None
+    pad_association: Optional[Literal["touch", "majority"]] = None
 
 
 class DcTemperatureSettings(_Strict):

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAnalyticPack } from "@/hooks/use-analytic-pack";
 import { fetchApi, fetchJson } from "@/lib/api";
-import type { PrismSemanticViewerElement } from "@/types/prism-semantic-viewer";
+import type { PrismAnalyticHit, PrismSemanticViewerElement } from "@/types/prism-semantic-viewer";
 
-import { runPackUrl, useRunOverlay } from "./run-overlay";
+import { LookPanel, gradientOf, useResultLook } from "./result-look";
+import { FIELD_QUANTITIES, type FieldQuantity, runPackUrl, useRunOverlay } from "./run-overlay";
 import type { SimRun } from "./types";
 
 interface WebGpuStatus {
@@ -24,7 +25,6 @@ type Props = {
     canMutate: boolean;
 };
 
-const VIRIDIS = "linear-gradient(to right, #440154, #3b528b, #21918c, #5ec962, #fde725)";
 
 /**
  * A run's result, inside Simulation Studio: the regular semantic viewer on
@@ -78,7 +78,12 @@ export function RunResultView({ projectId, run, canMutate }: Props) {
     }, [viewer]);
 
     const pack = useAnalyticPack(viewer, ready, runPackUrl(projectId, run.run_id));
-    const overlay = useRunOverlay(viewer, pack.phase === "ready", projectId, run);
+    const [quantity, setQuantity] = useState<FieldQuantity>("voltage_v");
+    const [arrows, setArrows] = useState(false);
+    const overlay = useRunOverlay(viewer, pack.phase === "ready", projectId, run, quantity, arrows);
+    const probe = useCursorProbe(viewer, overlay.phase === "ready");
+    const look = useResultLook(viewer, overlay.phase === "ready");
+    const catalog = viewer?.analyticColormaps?.()?.colormaps ?? null;
     const bundleUrl = status?.available && status.bundle_url
         ? `${status.bundle_url}${status.bundle_url.includes("?") ? "&" : "?"}viewer=${encodeURIComponent(status.generated_at || "ready")}`
         : null;
@@ -91,10 +96,29 @@ export function RunResultView({ projectId, run, canMutate }: Props) {
                     <>
                         <Badge variant="outline">{overlay.result.engine.id} {overlay.result.engine.engine_version}</Badge>
                         <Badge variant="outline">{overlay.nets.join(", ")}</Badge>
+                        <select
+                            aria-label="Field"
+                            className="ml-auto h-7 rounded-md border bg-background px-2 text-xs"
+                            value={quantity}
+                            onChange={(event) => setQuantity(event.target.value as FieldQuantity)}
+                        >
+                            {overlay.fields.scalars.map((name) => <option key={name} value={name}>{FIELD_QUANTITIES[name]}</option>)}
+                        </select>
+                        {overlay.fields.vectors && (
+                            <label className="flex items-center gap-1 text-xs">
+                                <input type="checkbox" checked={arrows} onChange={() => setArrows(!arrows)} />
+                                Current arrows
+                            </label>
+                        )}
+                        <LookPanel look={look} catalog={catalog} />
                     </>
                 )}
             </header>
-            <div className="relative h-[460px] overflow-hidden rounded-md border bg-muted">
+            <div
+                className="relative h-[460px] overflow-hidden rounded-md border bg-muted"
+                onPointerMove={probe.move}
+                onPointerLeave={probe.leave}
+            >
                 {bundleUrl ? (
                     <prism-semantic-viewer
                         key={bundleUrl}
@@ -122,19 +146,164 @@ export function RunResultView({ projectId, run, canMutate }: Props) {
                         {pack.phase === "failed" ? pack.error : overlay.phase === "failed" ? overlay.error : ""}
                     </Badge>
                 )}
+                {probe.reading && <ProbeMarker reading={probe.reading} />}
+                {probe.reading && <ProbeLabel reading={probe.reading} />}
                 {overlay.phase === "ready" && (
                     <div className="absolute bottom-3 left-3 rounded-md bg-background/90 px-3 py-2 text-xs shadow-sm">
-                        <div className="mb-1 font-medium">{overlay.quantity} ({overlay.units})</div>
-                        <div className="h-2 w-48 rounded" style={{ background: VIRIDIS }} />
+                        <div className="mb-1 font-medium">{FIELD_QUANTITIES[overlay.quantity as FieldQuantity] ?? overlay.quantity} ({displayUnit(overlay.units).unit})</div>
+                        <div className="h-2 w-48 rounded" style={{ background: gradientOf(look.fieldStops) }} />
                         <div className="mt-1 flex justify-between font-mono">
-                            <span>{overlay.range[0].toFixed(3)}</span>
-                            <span>{overlay.range[1].toFixed(3)}</span>
+                            <span>{formatValue(overlay.range[0], overlay.units, false)}</span>
+                            <span>{overlay.quantity === "voltage_v" ? "" : "≥ "}{formatValue(overlay.range[1], overlay.units, false)}</span>
                         </div>
+                        {overlay.arrows && (
+                            <>
+                                <div className="mb-1 mt-2 font-medium">Arrows: current flow, |J| ({displayUnit("A/m^2").unit})</div>
+                                <div className="h-2 w-48 rounded" style={{ background: gradientOf(look.arrowStops) }} />
+                                <div className="mt-1 flex justify-between font-mono">
+                                    <span>0</span>
+                                    <span>≥ {formatValue(overlay.arrows.reference, "A/m^2", false)}</span>
+                                </div>
+                                <div className="mt-1 text-muted-foreground">
+                                    Longer and further along the ramp with more current; peak {formatValue(overlay.arrows.max, "A/m^2")}
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
             </div>
+            {overlay.phase === "ready" && overlay.result.realization && <MeshLine realization={overlay.result.realization} />}
             {overlay.phase === "ready" && overlay.result.summary && <Summary summary={overlay.result.summary} />}
         </section>
+    );
+}
+
+type ProbeReading = { hit: PrismAnalyticHit; x: number; y: number; left: number; top: number };
+
+/**
+ * The overlay value under the cursor: one viewer pick per animation frame
+ * at most, none while a button is held (the camera is being dragged), and
+ * a stale pick never replaces a newer one.
+ */
+function useCursorProbe(viewer: PrismSemanticViewerElement | null, active: boolean) {
+    const [reading, setReading] = useState<ProbeReading | null>(null);
+    const pending = useRef<{ clientX: number; clientY: number; x: number; y: number; left: number; top: number } | null>(null);
+    const busy = useRef(false);
+    const sequence = useRef(0);
+
+    const flush = useCallback(async () => {
+        if (busy.current || !viewer || !pending.current) return;
+        busy.current = true;
+        const point = pending.current;
+        pending.current = null;
+        const ticket = ++sequence.current;
+        try {
+            const hit = await viewer.analyticAt(point.clientX, point.clientY);
+            if (ticket === sequence.current) {
+                setReading(hit && Number.isFinite(hit.value) ? { hit, x: point.x, y: point.y, left: point.left, top: point.top } : null);
+            }
+        } catch {
+            setReading(null);
+        } finally {
+            busy.current = false;
+            if (pending.current) window.requestAnimationFrame(() => void flush());
+        }
+    }, [viewer]);
+
+    const move = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (!active || event.buttons !== 0) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        pending.current = { clientX: event.clientX, clientY: event.clientY, x: event.clientX - rect.left, y: event.clientY - rect.top, left: rect.left, top: rect.top };
+        window.requestAnimationFrame(() => void flush());
+    }, [active, flush]);
+
+    const leave = useCallback(() => {
+        pending.current = null;
+        sequence.current += 1;
+        setReading(null);
+    }, []);
+
+    useEffect(() => { if (!active) setReading(null); }, [active]);
+    return { reading, move, leave };
+}
+
+/** Engineering units a board designer reads: A/mm^2 and W/mm^3 rather than SI per metre. */
+function displayUnit(units?: string): { scale: number; unit: string } {
+    if (units === "A/m^2") return { scale: 1e-6, unit: "A/mm²" };
+    if (units === "W/m^3") return { scale: 1e-9, unit: "W/mm³" };
+    return { scale: 1, unit: units ?? "" };
+}
+
+function formatValue(value: number, units?: string, withUnit = true): string {
+    if (units === "V") return withUnit ? `${value.toFixed(5)} V` : value.toFixed(4);
+    const { scale, unit } = displayUnit(units);
+    const shown = value * scale;
+    const magnitude = Math.abs(shown);
+    const text = magnitude !== 0 && (magnitude < 1e-2 || magnitude >= 1e4) ? shown.toExponential(3) : shown.toPrecision(4);
+    return withUnit && unit ? `${text} ${unit}` : text;
+}
+
+/** A ring on the copper face being read, drawn with that face's tilt. */
+function ProbeMarker({ reading }: { reading: ProbeReading }) {
+    const marker = reading.hit.marker;
+    if (!marker) return null;
+    const at = (p: { x: number; y: number }) => `${p.x - reading.left},${p.y - reading.top}`;
+    const centre = { x: marker.centre.x - reading.left, y: marker.centre.y - reading.top };
+    return (
+        <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible">
+            <polygon points={marker.ring.map(at).join(" ")} fill="rgba(255,255,255,0.18)" stroke="black" strokeWidth={3} strokeOpacity={0.55} />
+            <polygon points={marker.ring.map(at).join(" ")} fill="none" stroke="white" strokeWidth={1.5} />
+            <circle cx={centre.x} cy={centre.y} r={1.8} fill="white" stroke="black" strokeWidth={0.8} />
+        </svg>
+    );
+}
+
+/** A small label next to the cursor: the value, and where it was read. */
+function ProbeLabel({ reading }: { reading: ProbeReading }) {
+    const { hit, x, y } = reading;
+    const where = [
+        hit.sliceKey?.replace(/^copper\./, ""),
+        hit.boardMm ? `${hit.boardMm[0].toFixed(2)}, ${hit.boardMm[1].toFixed(2)} mm` : null,
+    ].filter(Boolean).join(" · ");
+    return (
+        <div
+            className="pointer-events-none absolute z-10 rounded-md bg-background/95 px-2 py-1 text-xs shadow-md ring-1 ring-border"
+            style={{ left: x + 14, top: y + 14 }}
+        >
+            <div className="font-mono font-medium">{formatValue(hit.value as number, hit.units)}</div>
+            {where && <div className="text-muted-foreground">{where}</div>}
+        </div>
+    );
+}
+
+const STOP_REASONS: Record<string, string> = {
+    "unknown-budget": "reached the unknown budget",
+    "max-passes": "reached the pass limit",
+    "target-error": "reached the target error",
+    "nothing-to-refine": "nothing left to refine",
+};
+
+/** How the result was discretized: the uniform pitch, or the adaptive passes. */
+function MeshLine({ realization }: { realization: import("./run-overlay").RunRealization }) {
+    const mesh = realization.mesh;
+    const grid = realization.grids?.[0];
+    if (!mesh || !grid) return null;
+    const um = (m: number) => `${(m * 1e6).toFixed(m < 1e-5 ? 1 : 0)} µm`;
+    const adaptive = mesh.adaptive;
+    if (!adaptive) {
+        return (
+            <p className="text-xs text-muted-foreground">
+                Uniform mesh · {mesh.unknowns.toLocaleString()} unknowns · {um(grid.dx_m)} cells
+            </p>
+        );
+    }
+    const last = adaptive.passes[adaptive.passes.length - 1];
+    const finest = grid.dx_m / 2 ** (last?.max_level ?? 0);
+    return (
+        <p className="text-xs text-muted-foreground">
+            Adaptive mesh · {adaptive.passes.length} passes · {mesh.unknowns.toLocaleString()} unknowns · cells
+            {" "}{um(grid.dx_m)} down to {um(finest)} · {STOP_REASONS[adaptive.stop] ?? adaptive.stop}
+        </p>
     );
 }
 
