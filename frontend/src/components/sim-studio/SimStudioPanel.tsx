@@ -331,7 +331,7 @@ function MeshSettings({ mesh, canMutate, onChange }: {
     onChange: (mesh: Record<string, unknown>) => void;
 }) {
     const adaptive = mesh.adaptive === true;
-    const passes = typeof mesh.max_adaptive_passes === "number" ? mesh.max_adaptive_passes : 12;
+    const passes = typeof mesh.max_adaptive_passes === "number" ? mesh.max_adaptive_passes : 40;
     return (
         <section aria-label="Mesh" className="space-y-1">
             <h3 className="text-sm font-semibold">Mesh</h3>
