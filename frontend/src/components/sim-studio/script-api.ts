@@ -55,7 +55,7 @@ export interface SimStudioScriptApi {
     /** Freeze the setup's current revision and queue one analysis (default `dc`). */
     submit(setupId: string, analysisId?: string): Promise<SimRun>;
     runs(): Promise<SimRun[]>;
-    /** Open the PCB 3D tab on a finished run's result. */
+    /** Show a finished run's result in the Studio. */
     view(runId: string): void;
 }
 

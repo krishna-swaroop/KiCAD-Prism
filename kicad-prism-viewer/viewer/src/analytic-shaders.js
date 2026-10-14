@@ -273,17 +273,18 @@ fn shade(operation: u32, board: vec2f) -> vec4f {
 
 // As \`shade\`, for a surface of world normal \`normal\` (a slab's side wall).
 fn shadeNormal(operation: u32, board: vec2f, normal: vec3f) -> vec4f {
-  if (copperSlice() && netLit(netOf(operation))) {
-    // A lit net glows, pulsing, as the mesh copper does.
-    let pulse = 0.88 + 0.12 * sin(globals.time * 3.2);
-    return vec4f(aces(lightNormal(vec3f(0.08, 1.0, 0.2) * pulse, normal)), 1.0);
-  }
+  // A result overlay outranks the lit-net glow: an isolated net shows its values.
   if (slice.overlay == 1u) {
     let value = values[operation];
     if (present(value)) { return vec4f(viridis(normalized(value)), 1.0); }
   } else if (slice.overlay == 2u && slice.fieldOn == 1u) {
     let value = sampleField(board);
     if (present(value)) { return vec4f(viridis(normalized(value)), 1.0); }
+  }
+  if (copperSlice() && netLit(netOf(operation))) {
+    // A lit net glows, pulsing, as the mesh copper does.
+    let pulse = 0.88 + 0.12 * sin(globals.time * 3.2);
+    return vec4f(aces(lightNormal(vec3f(0.08, 1.0, 0.2) * pulse, normal)), 1.0);
   }
   return vec4f(aces(litNormal(slice.color.rgb, normal)), slice.color.a);
 }
@@ -1179,7 +1180,7 @@ struct PickOut {
   let lit = netLit(b.ids.x);
   // Net isolation draws only the lit nets' barrels.
   if (view.isolate == 1u && !lit) { discard; }
-  if (view.overlay == 1u && present(value) && !lit) {
+  if (view.overlay == 1u && present(value)) {
     out.color = vec4f(viridis(normalized(value)), 1.0);
     return out;
   }

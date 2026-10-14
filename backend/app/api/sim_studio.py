@@ -172,6 +172,15 @@ async def read_run(project_id: str, run_id: str, user: AuthenticatedUser = Depen
     return await _run(lambda: sim_studio.read_run(project_id, run_id))
 
 
+@router.get(RUN + "/setup")
+async def read_run_setup(project_id: str, run_id: str, user: AuthenticatedUser = Depends(require_viewer)) -> dict[str, Any]:
+    """The setup exactly as the run froze it."""
+
+    get_project_for_role_or_404(project_id, user.role)
+    row = await _run(lambda: sim_studio.run_row(project_id, run_id))
+    return row["setup_document"]
+
+
 @router.get(RUN + "/result")
 async def read_result(project_id: str, run_id: str, user: AuthenticatedUser = Depends(require_viewer)) -> dict[str, Any]:
     get_project_for_role_or_404(project_id, user.role)

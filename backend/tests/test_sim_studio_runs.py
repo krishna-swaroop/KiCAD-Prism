@@ -139,6 +139,8 @@ class RunPipelineTest(unittest.TestCase):
 
         base = f"/api/projects/{PROJECT.id}/sim/a0/runs/{run_id}"
         self.assertEqual(_request(_app(), "GET", base, user="viewer").json["status"], "succeeded")
+        frozen = _request(_app(), "GET", base + "/setup", user="viewer").json
+        self.assertEqual(frozen["name"], "3V3 single load")
         result = _request(_app(), "GET", base + "/result", user="viewer").json
         self.assertEqual(result["status"], "succeeded")
         values = _request(_app(), "GET", base + "/files/out/voltage_v.operation-values.json", user="viewer")

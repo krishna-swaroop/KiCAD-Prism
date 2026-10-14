@@ -7,7 +7,6 @@ import { EngineeringBomTable } from "./engineering-bom-table";
 import { SelectionInspector, type HighlightedNetEntry } from "./selection-inspector";
 import { filterLabelInstances, type LabelInstanceRef } from "@/lib/label-instances";
 import { WebGpu3dTab } from "./webgpu-3d-tab";
-import { SIM_RUN_PARAM } from "@/hooks/use-sim-run-overlay";
 import { PrismInsetScene3D } from "@/lib/inset-scene-3d";
 import { EcadViewerPair, useEcadViewer, type EcadSource, type EcadViewer } from "@/lib/ecad-viewer";
 import { MeasureReadout } from "./pcb-measure";
@@ -1389,7 +1388,6 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 user={user}
                                 active={viewerActive && (activeTab === "3d" || activeTab === "stackup")}
                                 workspace={activeTab === "stackup" ? "stackup" : "pcb"}
-                                simRunId={searchParams.get(SIM_RUN_PARAM)}
                                 selection={globalSelection}
                                 highlightedNets={highlightedNets}
                                 onSelection={crossProbeGlobal}

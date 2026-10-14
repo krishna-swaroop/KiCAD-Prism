@@ -142,6 +142,7 @@ export interface SimRun {
     setup_revision: number;
     setup_sha256: string;
     analysis_id: string;
+    commit?: string;
     status: RunStatus;
     created_at: string;
 }

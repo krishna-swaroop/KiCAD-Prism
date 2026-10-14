@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { Activity, CheckCircle2, Eye, Loader2, Play, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
@@ -10,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 import * as api from "./api";
 import { installSimStudioScriptApi } from "./script-api";
-import { SIM_RUN_PARAM } from "@/hooks/use-sim-run-overlay";
+import { RunResultView } from "./RunResultView";
 import type { CatalogEntry, SetupRecord, SetupRecordSummary, SetupReport, SimRun } from "./types";
 
 type Props = {
@@ -37,11 +36,9 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
     const [draftName, setDraftName] = useState("");
     const [reloadKey, setReloadKey] = useState(0);
     const [runs, setRuns] = useState<SimRun[]>([]);
-    const [, setSearchParams] = useSearchParams();
-
-    const viewRun = useCallback((runId: string) => {
-        setSearchParams({ section: "visualizers", tab: "3d", [SIM_RUN_PARAM]: runId });
-    }, [setSearchParams]);
+    const [viewedRun, setViewedRun] = useState<string | null>(null);
+    const viewRun = useCallback((runId: string) => setViewedRun(runId), []);
+    const shownRun = runs.find((run) => run.run_id === viewedRun) ?? null;
 
     const active = runs.some((run) => run.status === "queued" || run.status === "running");
     useEffect(() => {
@@ -217,7 +214,14 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
                         onSubmit={submit}
                     />
                 )}
-                <RunList runs={runs.filter((run) => !record || run.setup_id === record.setup_id)} onView={viewRun} />
+                <RunList
+                    runs={runs.filter((run) => !record || run.setup_id === record.setup_id)}
+                    viewed={viewedRun}
+                    onView={viewRun}
+                />
+                {shownRun?.status === "succeeded" && (
+                    <RunResultView key={shownRun.run_id} projectId={projectId} run={shownRun} canMutate={canMutate} />
+                )}
             </main>
         </div>
     );
@@ -321,7 +325,7 @@ function ReportView({ report }: { report: SetupReport }) {
     );
 }
 
-function RunList({ runs, onView }: { runs: SimRun[]; onView: (runId: string) => void }) {
+function RunList({ runs, viewed, onView }: { runs: SimRun[]; viewed: string | null; onView: (runId: string) => void }) {
     if (runs.length === 0) return null;
     return (
         <section aria-label="Runs" className="space-y-1">
@@ -336,8 +340,12 @@ function RunList({ runs, onView }: { runs: SimRun[]; onView: (runId: string) => 
                         </span>
                         {(run.status === "queued" || run.status === "running") && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                         {run.status === "succeeded" && (
-                            <Button size="sm" variant="ghost" onClick={() => onView(run.run_id)}>
-                                <Eye className="mr-1 h-3.5 w-3.5" /> View on board
+                            <Button
+                                size="sm"
+                                variant={viewed === run.run_id ? "secondary" : "ghost"}
+                                onClick={() => onView(run.run_id)}
+                            >
+                                <Eye className="mr-1 h-3.5 w-3.5" /> View result
                             </Button>
                         )}
                     </li>

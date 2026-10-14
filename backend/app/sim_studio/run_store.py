@@ -100,7 +100,7 @@ class RunStore:
 def public(row: dict[str, Any]) -> dict[str, Any]:
     """A run as ``prism.sim.run`` a0."""
 
-    return {
+    run = {
         "schema": "prism.sim.run",
         "version": "a0",
         "run_id": row["run_id"],
@@ -112,3 +112,6 @@ def public(row: dict[str, Any]) -> dict[str, Any]:
         "status": row["status"],
         "created_at": row["created_at"].isoformat(),
     }
+    if row.get("source_commit"):
+        run["commit"] = row["source_commit"]
+    return run
