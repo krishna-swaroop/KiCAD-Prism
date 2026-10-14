@@ -12,7 +12,7 @@ import type { SimRun } from "../../types";
 import type { ProfilePoint } from "./board-pane";
 import { EChart, baseOption, type ChartTheme } from "./echart";
 import { fieldArtifact, gridOf, histogram, profile } from "./grids";
-import { amps, density, percent, volts, watts, type ResultsModel } from "./results-model";
+import { amps, density, percent, volts, watts, type LoadRow, type ResultsModel } from "./results-model";
 import type { Focus } from "./side-panel";
 
 export type DrawerTab = "loads" | "rails" | "converters" | "vias" | "profile" | "distribution" | "convergence";
@@ -65,11 +65,11 @@ export function Drawer({ projectId, run, result, model, tab, onTab, net, quantit
     );
 }
 
-function Table({ head, children }: { head: string[]; children: ReactNode }) {
+function Table({ head, children }: { head: ReactNode[]; children: ReactNode }) {
     return (
         <table className="w-full text-xs">
             <thead className="sticky top-0 bg-background text-left text-muted-foreground">
-                <tr>{head.map((label, index) => <th key={label} className={cn("border-b px-3 py-1.5 font-medium", index > 0 && "text-right")}>{label}</th>)}</tr>
+                <tr>{head.map((label, index) => <th key={index} className={cn("whitespace-nowrap border-b px-3 py-1.5 font-medium", index > 0 && "text-right")}>{label}</th>)}</tr>
             </thead>
             <tbody className="tabular-nums">{children}</tbody>
         </table>
@@ -84,51 +84,62 @@ function Row({ cells, onClick, tone }: { cells: ReactNode[]; onClick?: () => voi
     );
 }
 
+/** Supply drop, then return drop, as shares of the load's budget, on the tab's common scale. */
+function UsageBar({ load, scale, split }: { load: LoadRow; scale: number; split: boolean }) {
+    const share = (v?: number) => (v !== undefined && load.budgetV ? v / load.budgetV : 0);
+    const supply = split ? share(load.supplyV) : share(load.dropV);
+    const back = split ? share(load.returnV) : 0;
+    const width = (v: number) => `${Math.min(100, (100 * v) / scale)}%`;
+    const over = (load.share ?? 0) > 1;
+    return (
+        <div className="relative h-2.5 w-full min-w-24 rounded-sm bg-muted">
+            <div className="absolute inset-y-0 left-0 flex overflow-hidden rounded-sm" style={{ width: width(supply + back) }}>
+                <div className={cn("h-full", over ? "bg-destructive" : "bg-primary")} style={{ width: `${(100 * supply) / Math.max(supply + back, 1e-12)}%` }} />
+                <div className={cn("h-full", over ? "bg-destructive/60" : "bg-muted-foreground/60")} style={{ width: `${(100 * back) / Math.max(supply + back, 1e-12)}%` }} />
+            </div>
+            {scale >= 1 && <div className="absolute -inset-y-0.5 w-px bg-destructive" style={{ left: width(1) }} title="Budget" />}
+        </div>
+    );
+}
+
+/**
+ * Every load, worst share of its budget first, with its drop as a bar. The
+ * bars share one scale, fitted to the worst load rather than to the budget,
+ * so small drops still read; the budget is marked once the scale reaches it.
+ */
 function LoadsTab({ model, onFocus }: { model: ResultsModel; onFocus: (focus: Focus) => void }) {
     const loads = model.loads;
     const split = loads.some((load) => load.returnV !== undefined);
-    const option = useCallback((theme: ChartTheme) => {
-        const share = (v?: number, budget?: number) => (v !== undefined && budget ? v / budget : 0);
-        return {
-            ...baseOption(theme),
-            grid: { left: 96, right: 24, top: 24, bottom: 24 },
-            legend: split ? { top: 0, right: 0, textStyle: { color: theme.muted, fontSize: 11 }, itemWidth: 10, itemHeight: 10 } : undefined,
-            xAxis: { ...(baseOption(theme).xAxis as object), type: "value", max: (v: { max: number }) => Math.max(1, v.max), axisLabel: { color: theme.muted, fontSize: 11, formatter: (v: number) => `${Math.round(v * 100)}%` } },
-            yAxis: { ...(baseOption(theme).yAxis as object), type: "category", inverse: true, data: loads.map((load) => `${load.component ?? load.id} · ${load.railNet ?? ""}`) },
-            tooltip: {
-                ...(baseOption(theme).tooltip as object), trigger: "axis", axisPointer: { type: "shadow" },
-                formatter: (params: { dataIndex: number }[]) => {
-                    const load = loads[params[0].dataIndex];
-                    return `${load.component ?? load.id} on ${load.railNet}<br/>Drop <b>${volts(load.dropV)}</b> of ${volts(load.budgetV)} (${percent(load.share)})`
-                        + (split ? `<br/>Supply ${volts(load.supplyV)} · return ${volts(load.returnV)}` : "");
-                },
-            },
-            series: split ? [
-                { name: "Supply side", type: "bar", stack: "drop", barWidth: 10, data: loads.map((l) => share(l.supplyV, l.budgetV)), itemStyle: { color: theme.series[0] },
-                    markLine: { silent: true, symbol: "none", data: [{ xAxis: 1 }], lineStyle: { color: theme.destructive, type: "dashed" }, label: { color: theme.destructive, formatter: "budget" } } },
-                { name: "Return side", type: "bar", stack: "drop", barWidth: 10, data: loads.map((l) => share(l.returnV, l.budgetV)), itemStyle: { color: theme.series[4] } },
-            ] : [
-                { name: "Drop", type: "bar", barWidth: 10, data: loads.map((l) => share(l.dropV, l.budgetV)), itemStyle: { color: theme.series[0] },
-                    markLine: { silent: true, symbol: "none", data: [{ xAxis: 1 }], lineStyle: { color: theme.destructive, type: "dashed" }, label: { color: theme.destructive, formatter: "budget" } } },
-            ],
-        };
-    }, [loads, split]);
-    return (
-        <div className="grid min-h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-            <div style={{ height: Math.max(180, loads.length * 20 + 56) }}>
-                <EChart option={option} onClick={(params) => params.dataIndex !== undefined && onFocus({ component: loads[params.dataIndex]?.component })} />
-            </div>
-            <div className="border-l">
-                <Table head={["Load", "Rail", "Current", "Drop", "Supply", "Return", "Budget", "Used"]}>
-                    {loads.map((load) => (
-                        <Row key={load.id} tone={(load.share ?? 0) > 1 ? "bad" : undefined} onClick={() => onFocus({ component: load.component })}
-                            cells={[load.component ?? load.id, <span className="font-mono">{load.railNet}</span>, amps(load.currentA), volts(load.dropV),
-                                volts(load.supplyV), volts(load.returnV), volts(load.budgetV), percent(load.share)]} />
-                    ))}
-                </Table>
-            </div>
-        </div>
+    const worst = loads.reduce((max, load) => Math.max(max, load.share ?? 0), 0);
+    const scale = niceScale(Math.max(worst, 0.01) * 1.1);
+    const scaleLabel = (
+        <span className="inline-flex items-center gap-2">
+            {split && (
+                <span className="inline-flex items-center gap-1 font-normal">
+                    <span className="size-2 rounded-sm bg-primary" />supply
+                    <span className="ml-1 size-2 rounded-sm bg-muted-foreground/60" />return
+                </span>
+            )}
+            <span>of budget, 0–{Math.round(scale * 100)} %</span>
+        </span>
     );
+    return (
+        <Table head={["Load", "Rail", "Current", "Drop", ...(split ? ["Supply", "Return"] : []), "Budget", "Used", scaleLabel]}>
+            {loads.map((load) => (
+                <Row key={load.id} tone={(load.share ?? 0) > 1 ? "bad" : undefined} onClick={() => onFocus({ component: load.component })}
+                    cells={[load.component ?? load.id, <span className="font-mono">{load.railNet}</span>, amps(load.currentA), volts(load.dropV),
+                        ...(split ? [volts(load.supplyV), volts(load.returnV)] : []), volts(load.budgetV), percent(load.share),
+                        <UsageBar load={load} scale={scale} split={split} />]} />
+            ))}
+        </Table>
+    );
+}
+
+/** The next 1, 2 or 5 step at or above `v` (a share: 0.12 gives 0.2). */
+function niceScale(v: number): number {
+    const decade = 10 ** Math.floor(Math.log10(v));
+    for (const step of [1, 2, 2.5, 5, 10]) if (step * decade >= v) return step * decade;
+    return 10 * decade;
 }
 
 function RailsTab({ model, onFocus }: { model: ResultsModel; onFocus: (focus: Focus) => void }) {

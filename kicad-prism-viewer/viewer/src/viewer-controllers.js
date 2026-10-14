@@ -55,6 +55,7 @@
  * @property {(vectors: object | null) => unknown} setAnalyticVectors
  * @property {(style: object) => unknown} setAnalyticStyle
  * @property {() => object} analyticColormaps
+ * @property {(clientX: number, clientY: number) => object | null} analyticProbe
  * @property {(clientX: number, clientY: number) => Promise<object | null>} analyticAt
  * @property {() => object | null} analyticStats
  * @property {() => void} unloadAnalyticPack
@@ -277,7 +278,7 @@ export const BOARD_MEMBERS = Object.freeze([
   "setHighlightedNets", "setHiddenComponents", "getComponentReferences", "setViewMode",
   "renderInset", "insetReady", "insetSurfaceZ", "releaseInset", "insetTarget", "projectInset",
   "onSceneChange", "insetStats", "insetSettings", "gpuIdle",
-  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "analyticAt", "analyticStats", "unloadAnalyticPack",
+  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack",
 ]);
 
 /**
@@ -446,6 +447,10 @@ export class BoardModeController extends ModeController {
 
   analyticColormaps() {
     return this.port?.analyticColormaps() ?? null;
+  }
+
+  analyticProbe(clientX, clientY) {
+    return this.port?.analyticProbe(clientX, clientY) ?? null;
   }
 
   analyticAt(clientX, clientY) {

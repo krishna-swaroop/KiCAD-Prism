@@ -48,86 +48,137 @@ export function SidePanel({ model, onFocus }: Props) {
     );
 }
 
-const LOADS_PER_RAIL = 3;
-/** Nodes carrying less than this share of the input are drawn but not labelled. */
-const LABEL_SHARE = 0.015;
+/** Loads shown on their own: at most this many, each drawing at least this share of the input. */
+const MAX_LOADS = 8;
+const SMALL_SHARE = 0.02;
 
+interface FlowNode {
+    name: string;
+    /** What the node shows; names stay unique, titles stay short. */
+    title: string;
+    detail: string;
+    itemStyle: { color: string };
+    focus: Focus;
+}
+
+/**
+ * Sources, rails, converters and loads as a left-to-right flow. Labels are
+ * short (a rail's net, a part's reference) so the columns don't collide,
+ * small loads fold together, and the losses sit at the bottom of the last
+ * column. Nodes keep the order they are added in, so the layout is stable.
+ */
 function PowerFlow({ model, onFocus }: Props) {
     const option = useCallback((theme: ChartTheme) => {
         const [board, subsystem, module, harness] = theme.series;
-        const nodes = new Map<string, { name: string; itemStyle: { color: string }; focus: Focus }>();
+        const total = Math.max(model.inputW, 1e-12);
+        const nodes = new Map<string, FlowNode>();
         const links: { source: string; target: string; value: number }[] = [];
-        const node = (name: string, color: string, focus: Focus) => {
-            if (!nodes.has(name)) nodes.set(name, { name, itemStyle: { color }, focus });
+        const node = (name: string, title: string, detail: string, color: string, focus: Focus) => {
+            if (!nodes.has(name)) nodes.set(name, { name, title, detail, itemStyle: { color }, focus });
             return name;
         };
         const railName = (id?: string) => {
             const rail = model.rails.find((item) => item.id === id);
-            return rail ? node(rail.net, harness, { net: rail.net }) : null;
+            return rail ? node(`rail:${rail.id}`, rail.net, `${rail.net} · ${rail.voltageV} V`, harness, { net: rail.net }) : null;
         };
         const link = (source: string | null, target: string | null, value: number) => {
             if (source && target && value > 1e-9) links.push({ source, target, value });
         };
-        for (const input of model.inputs) link(node(`${input.component ?? input.source} in`, subsystem, { component: input.component }), railName(input.rail), input.powerW);
-        const converterLoss = node("Converter loss", theme.destructive, {});
+
+        for (const input of model.inputs) {
+            const label = input.component ?? input.source;
+            link(node(`in:${input.source}`, label, `${label} (source)`, subsystem, { component: input.component }), railName(input.rail), input.powerW);
+        }
         for (const converter of model.converters) {
-            const out = model.rails.find((rail) => rail.id === converter.outRail);
-            const name = node(`${converter.component ?? converter.id} → ${out?.net ?? "?"}`, board, { component: converter.component });
+            const label = converter.component ?? converter.id;
+            const inNet = model.rails.find((rail) => rail.id === converter.inRail)?.net ?? "?";
+            const outNet = model.rails.find((rail) => rail.id === converter.outRail)?.net ?? "?";
+            const name = node(`conv:${converter.id}`, label, `${label} · ${inNet} → ${outNet} · ${percent(converter.efficiency)} efficient`, board, { component: converter.component });
             link(railName(converter.inRail), name, converter.inW);
             link(name, railName(converter.outRail), converter.outW);
-            link(name, converterLoss, converter.lossW);
         }
-        const copper = node("Copper loss", theme.warning, {});
+
+        // Last column: the biggest loads, then the rest folded together, then the losses.
+        const drawn = model.rails.flatMap((rail) => rail.loads.map((load) => ({
+            rail, load, power: (load.currentA ?? 0) * (load.nominalV ?? rail.voltageV),
+        }))).filter((item) => item.power > 1e-9);
+        const shown = new Set([...drawn].sort((a, b) => b.power - a.power)
+            .filter((item) => item.power >= SMALL_SHARE * total).slice(0, MAX_LOADS));
+        const tail: { source: string; target: string; value: number }[] = [];
+        const rest = new Map<string, number>();
         for (const rail of model.rails) {
-            const source = railName(rail.id);
-            const loads = rail.loads
-                .map((load) => ({ load, power: (load.currentA ?? 0) * (load.nominalV ?? rail.voltageV) }))
-                .sort((a, b) => b.power - a.power);
-            for (const { load, power } of loads.slice(0, LOADS_PER_RAIL)) {
-                link(source, node(`${load.component ?? load.id} · ${rail.net}`, module, { component: load.component }), power);
+            const source = railName(rail.id)!;
+            for (const item of drawn.filter((entry) => entry.rail === rail).sort((a, b) => b.power - a.power)) {
+                const label = item.load.component ?? item.load.id;
+                if (shown.has(item)) {
+                    link(source, node(`load:${rail.id}:${item.load.id}`, `${label} · ${rail.net}`, `${label} on ${rail.net}`, module, { component: item.load.component }), item.power);
+                } else {
+                    rest.set(source, (rest.get(source) ?? 0) + item.power);
+                }
             }
-            const rest = loads.slice(LOADS_PER_RAIL).reduce((sum, item) => sum + item.power, 0);
-            link(source, rest > 0 ? node(`${loads.length - LOADS_PER_RAIL} more on ${rail.net}`, module, { net: rail.net }) : null, rest);
-            link(source, copper, rail.copperLossW ?? 0);
+            if ((rail.copperLossW ?? 0) > 1e-9) tail.push({ source, target: "loss:copper", value: rail.copperLossW! });
         }
+        if (rest.size) {
+            const count = drawn.length - shown.size;
+            node("other", `${count} other loads`, `${count} smaller loads`, module, {});
+            for (const [source, value] of rest) link(source, "other", value);
+        }
+        if (model.converters.some((converter) => converter.lossW > 1e-9)) {
+            node("loss:converter", "Converter loss", `Lost in the converters`, theme.destructive, {});
+            for (const converter of model.converters) link(`conv:${converter.id}`, "loss:converter", converter.lossW);
+        }
+        if (tail.length) {
+            node("loss:copper", "Copper loss", "Lost in the copper", theme.warning, {});
+            links.push(...tail);
+        }
+
         const used = new Set(links.flatMap((item) => [item.source, item.target]));
-        const through = new Map<string, number>();
+        const inflow = new Map<string, number>();
+        const outflow = new Map<string, number>();
         for (const item of links) {
-            through.set(item.source, (through.get(item.source) ?? 0) + item.value);
-            through.set(item.target, Math.max(through.get(item.target) ?? 0, 0) + item.value);
+            outflow.set(item.source, (outflow.get(item.source) ?? 0) + item.value);
+            inflow.set(item.target, (inflow.get(item.target) ?? 0) + item.value);
         }
-        const total = Math.max(model.inputW, 1e-12);
+        const flowOf = (name: string) => Math.max(inflow.get(name) ?? 0, outflow.get(name) ?? 0);
         return {
             ...baseOption(theme),
             tooltip: {
                 ...(baseOption(theme).tooltip as object),
-                formatter: (params: { dataType: string; data: { source?: string; target?: string; value?: number; name?: string }; value?: number }) =>
-                    params.dataType === "edge"
-                        ? `${params.data.source} → ${params.data.target}<br/><b>${watts(params.data.value)}</b>`
-                        : `${params.data.name}<br/><b>${watts(params.value)}</b>`,
+                formatter: (params: { dataType: string; data: { source?: string; target?: string; value?: number; detail?: string } }) => {
+                    if (params.dataType === "edge") {
+                        const from = nodes.get(params.data.source ?? "")?.title;
+                        const to = nodes.get(params.data.target ?? "")?.title;
+                        return `${from} → ${to}<br/><b>${watts(params.data.value)}</b>`;
+                    }
+                    const name = (params.data as { name?: string }).name ?? "";
+                    return `${params.data.detail}<br/><b>${watts(flowOf(name))}</b> · ${percent(flowOf(name) / total)} of the input`;
+                },
             },
             series: [{
                 type: "sankey",
-                left: 4, right: 96, top: 8, bottom: 8,
-                nodeWidth: 8, nodeGap: 10, layoutIterations: 64,
+                left: 4, right: 104, top: 8, bottom: 8,
+                nodeWidth: 10, nodeGap: 8, nodeAlign: "right",
+                // Keep the order above: big loads first, losses last.
+                layoutIterations: 0,
+                draggable: false,
                 emphasis: { focus: "adjacency" },
                 data: [...nodes.values()].filter((item) => used.has(item.name)).map((item) => ({
                     ...item,
-                    label: { show: (through.get(item.name) ?? 0) / 2 >= LABEL_SHARE * total || item.name.endsWith("loss") },
+                    label: { show: flowOf(item.name) >= SMALL_SHARE * total || item.name.startsWith("loss:") || item.name === "other" },
                 })),
                 links,
-                label: { color: theme.foreground, fontSize: 10, overflow: "truncate", width: 90 },
+                label: {
+                    color: theme.foreground, fontSize: 10, overflow: "truncate", width: 96,
+                    formatter: (params: { data: FlowNode }) => params.data.title,
+                },
                 lineStyle: { color: "gradient", opacity: 0.22, curveness: 0.5 },
             }],
         };
     }, [model]);
-    const focusOf = (name?: string): Focus => {
-        const rail = model.rails.find((item) => item.net === name);
-        if (rail) return { net: rail.net };
-        const component = name?.split(/ [·→]| in$/)[0]?.trim();
-        return component && !/loss$/.test(name ?? "") ? { component } : {};
-    };
-    return <EChart option={option} onClick={(params) => { if (params.name) onFocus(focusOf(params.name)); }} />;
+    return <EChart option={option} onClick={(params) => {
+        const focus = (params.data as Partial<FlowNode> | undefined)?.focus;
+        if (focus) onFocus(focus);
+    }} />;
 }
 
 function RailBars({ model, onFocus }: Props) {

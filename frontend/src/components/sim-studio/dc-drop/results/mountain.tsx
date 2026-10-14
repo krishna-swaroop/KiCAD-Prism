@@ -73,7 +73,9 @@ export function MountainView({ projectId, run, overlay, quantity, stops }: {
             for (let i = 0; i < reduced.nx; i += 1) {
                 const v = reduced.values[j * reduced.nx + i] * scale;
                 if (Number.isFinite(v)) { min = Math.min(min, v); max = Math.max(max, v); }
-                data.push([x0 + (i + 0.5) * pitch, y0 + (j + 0.5) * pitch, Number.isFinite(v) ? v : "-"]);
+                // Board y points down the board; the 3D axis points away from the viewer. Negate it so
+                // the board's front edge is nearest, as in the Flat view, instead of a mirror image.
+                data.push([x0 + (i + 0.5) * pitch, -(y0 + (j + 0.5) * pitch), Number.isFinite(v) ? v : "-"]);
             }
         }
         const axis = {
@@ -95,7 +97,10 @@ export function MountainView({ projectId, run, overlay, quantity, stops }: {
                 textStyle: { color: theme.muted, fontSize: 11 },
             },
             xAxis3D: { type: "value", name: "x (mm)", min: x0, max: x0 + width, ...axis },
-            yAxis3D: { type: "value", name: "y (mm)", inverse: true, min: y0, max: y0 + depth, ...axis },
+            yAxis3D: {
+                type: "value", name: "y (mm)", min: -(y0 + depth), max: -y0, ...axis,
+                axisLabel: { ...axis.axisLabel, formatter: (v: number) => `${+(-v).toPrecision(4)}` },
+            },
             zAxis3D: { type: "value", name: unit, min, max, ...axis },
             grid3D: {
                 boxWidth: 100, boxDepth: (100 * depth) / width, boxHeight: 28,

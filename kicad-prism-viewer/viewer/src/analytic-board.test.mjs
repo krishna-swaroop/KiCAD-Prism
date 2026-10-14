@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fieldAlongRay, operationSliceKey, planArrows, sampleFieldRaster } from "./analytic-board.js";
+import { describeAnalyticHit, fieldAlongRay, operationSliceKey, planArrows, sampleFieldRaster } from "./analytic-board.js";
 
 // A 4 x 2 raster of v = x (mm) on a 1 mm pitch, origin at (0, 0); one hole.
 const field = {
@@ -63,6 +63,46 @@ test("the picked slice is read even with another slice nearer the ray's origin",
   const picked = fieldAlongRay(state, ray, null, "copper.front");
   assert.equal(picked.sliceKey, "copper.front");
   assert.deepEqual(picked.world.map((v) => Math.round(v * 1e9) / 1e9), [0.001, -0.0005, 0.001]);
+});
+
+test("hidden layers are skipped along the ray", () => {
+  const state = { analytic: { slices: [
+    { key: "copper.front", z: 0.0016, layerId: 1, field: { ...field } },
+    { key: "copper.in4", z: 0.0008, layerId: 4, field: { ...field } },
+  ] } };
+  const ray = { origin: [0.001, -0.0005, 0.01], direction: [0, 0, -1] };
+  assert.equal(fieldAlongRay(state, ray, null, null, new Set([4])).sliceKey, "copper.in4");
+  assert.equal(fieldAlongRay(state, ray, null, null, new Set([2])), null);
+});
+
+test("with reach, copper smaller than a texel still stops the ray", () => {
+  // Front has one texel of copper at (1, 0); the ray lands just outside its reach-0 sample.
+  const pad = { ...field, values: new Float32Array([NaN, 9, NaN, NaN, NaN, NaN, NaN, NaN]) };
+  const state = { analytic: { slices: [
+    { key: "copper.front", z: 0.0016, layerId: 1, field: pad },
+    { key: "copper.back", z: 0, layerId: 2, field: { ...field } },
+  ] } };
+  const ray = { origin: [0.0021, -0.0004, 0.01], direction: [0, 0, -1] };
+  assert.equal(fieldAlongRay(state, ray, null).sliceKey, "copper.back");
+  const reached = fieldAlongRay(state, ray, null, null, null, 1);
+  assert.equal(reached.sliceKey, "copper.front");
+  assert.equal(reached.value, 9);
+});
+
+test("plane copper with a per-operation value reads the raster, not a via barrel", () => {
+  // The run's per-operation values cover planes as well as barrels; only the pack's barrels are barrels.
+  const state = {
+    overlay: { kind: "field_grid", quantity: "voltage_v", units: "V", barrels: [0.9, 0.8] },
+    barrelOperations: new Set([1]),
+    pack: { binding: () => null },
+  };
+  const field = { value: 0.85, sliceKey: "copper.in4", boardMm: [1, 2], world: [0.001, -0.002, 0] };
+  const plane = describeAnalyticHit(state, 0, field);
+  assert.equal(plane.sliceKey, "copper.in4");
+  assert.equal(plane.value, 0.85);
+  const barrel = describeAnalyticHit(state, 1, field);
+  assert.equal(barrel.sliceKey, "via barrel");
+  assert.equal(barrel.value, 0.8);
 });
 
 test("arrows follow the field on each copper face, sized against a high quantile", () => {

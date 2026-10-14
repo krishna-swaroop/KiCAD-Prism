@@ -534,6 +534,19 @@ export async function mountStandaloneViewer(options = {}) {
     analyticColormaps() {
       return { colormaps: COLORMAPS, defaults: DEFAULT_ANALYTIC_STYLE };
     },
+    // The field under a client point without a GPU pick: the first visible copper slice along the
+    // view ray with a value there. Cheap enough for every pointer move; it can't tell a via barrel
+    // from the copper around it, which `analyticAt` (exact, but a GPU round trip) can.
+    analyticProbe(clientX, clientY) {
+      if (!board.analytic?.overlay || board.analytic.overlay.kind === "operation_values") return null;
+      const ray = worldRayAt(clientX, clientY);
+      if (!ray) return null;
+      const layers = state.mode === "3d" ? board.visible3dLayers : null;
+      const field = fieldAlongRay(board.analytic, ray, stackupOffsets(), null, layers, 1);
+      if (!field) return null;
+      const { quantity, units } = board.analytic.overlay;
+      return { value: field.value, quantity, units, sliceKey: field.sliceKey, boardMm: field.boardMm, world: field.world, marker: surfaceMarker(field.world) };
+    },
     async analyticAt(clientX, clientY) {
       if (!board.analytic) return null;
       const hit = await pickHitAt(clientX, clientY);

@@ -184,6 +184,11 @@ export interface PrismSemanticBoardMode {
     analyticColormaps(): { colormaps: Record<string, string[]>; defaults: PrismAnalyticStyle } | null;
     /** Arrows of a vector result on the copper: its components as field grids; null clears them. */
     setAnalyticVectors(vectors: PrismAnalyticVectors | null): { count: number; max: number; reference: number; spacingMm: number } | null;
+    /**
+     * The field overlay's value under a client point from a CPU ray against the copper slices: no GPU
+     * pick, so cheap per pointer move. No operation or binding; use `analyticAt` for those (and barrels).
+     */
+    analyticProbe?(clientX: number, clientY: number): PrismAnalyticReading | null;
     /** The operation under a client point, its binding and overlay value; null off the analytic copper. */
     analyticAt(clientX: number, clientY: number): Promise<PrismAnalyticHit | null>;
     analyticStats(): PrismAnalyticStats | null;
@@ -243,9 +248,13 @@ export interface PrismAnalyticFieldTile {
     values: Float32Array | number[];
 }
 
-export interface PrismAnalyticHit {
+export interface PrismAnalyticHit extends PrismAnalyticReading {
     operationIndex: number;
     binding: Record<string, unknown> | null;
+}
+
+/** An overlay value read on the copper (what `analyticProbe` returns). */
+export interface PrismAnalyticReading {
     value?: number;
     quantity?: string;
     units?: string;

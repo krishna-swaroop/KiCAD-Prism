@@ -1,4 +1,5 @@
 import {
+  BARREL_WORDS,
   composeFieldRasters,
   gridFieldRasters,
   denseOperationValues,
@@ -76,7 +77,11 @@ export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wa
   // Barrels and drill walls from the pack's holes replace the bundle's mesh barrels.
   // Castellated holes are cut by the board's outline (any dielectric's).
   const outline = slices.find((slice) => slice.role === "dielectric" && slice.lowered?.contourEdges?.length)?.lowered.contourEdges;
-  analytic.setBarrels(planBarrels(pack.header, pack.barrels(), slices, outline));
+  const barrels = pack.barrels();
+  analytic.setBarrels(planBarrels(pack.header, barrels, slices, outline));
+  // A hit is a barrel only if the pack has one for that operation; overlays also carry plane values.
+  const barrelOperations = new Set();
+  for (let index = 0; index < barrels.words.length; index += BARREL_WORDS) barrelOperations.add(barrels.words[index]);
   analytic.edgePlated = Boolean(pack.header.stack?.edge_plating);
   analytic.setWalls(planWalls(slices, lowered, layers, zOffset));
   // Net glow and isolation read each operation's viewer net.
@@ -89,7 +94,7 @@ export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wa
     if (!featuresBySource.has(feature.sourceUid)) featuresBySource.set(feature.sourceUid, []);
     featuresBySource.get(feature.sourceUid).push(feature);
   }
-  return { pack, analytic, unmatched, lowerMs, zOffset, operations: operationCount(pack.header), overlay: null, netIds, featuresBySource };
+  return { pack, analytic, unmatched, lowerMs, zOffset, operations: operationCount(pack.header), overlay: null, netIds, featuresBySource, barrelOperations };
 }
 
 /**
@@ -161,6 +166,24 @@ export function sampleFieldRaster(field, boardMm, strict = false) {
     return (s00 * (1 - fx) + s10 * fx) * (1 - fy) + (s01 * (1 - fx) + s11 * fx) * fy;
   }
   return strict ? NaN : at(Math.floor(u + 0.5), Math.floor(v + 0.5));
+}
+
+/** The value of the texel nearest a board point (mm) within `reach` texels, or NaN. */
+export function nearestFieldValue(field, boardMm, reach) {
+  const [pitchX, pitchY] = Array.isArray(field.pitchMm) ? field.pitchMm : [field.pitchMm, field.pitchMm];
+  const u = (boardMm[0] - field.originMm[0]) / pitchX - 0.5;
+  const v = (boardMm[1] - field.originMm[1]) / pitchY - 0.5;
+  let best = NaN;
+  let bestDistance = Infinity;
+  for (let j = Math.floor(v) - reach + 1; j <= Math.floor(v) + reach; j += 1) {
+    for (let i = Math.floor(u) - reach + 1; i <= Math.floor(u) + reach; i += 1) {
+      if (i < 0 || j < 0 || i >= field.width || j >= field.height) continue;
+      const value = field.values[j * field.width + i];
+      const distance = (i - u) ** 2 + (j - v) ** 2;
+      if (Number.isFinite(value) && distance < bestDistance) [best, bestDistance] = [value, distance];
+    }
+  }
+  return best;
 }
 
 /** Bytes per arrow (see ANALYTIC_ARROW_SHADER). */
@@ -278,20 +301,26 @@ export function operationSliceKey(header, operationIndex) {
  * value there: `{ value, sliceKey, boardMm, world }`, or null. World units
  * are metres with board Y flipped, as the analytic shaders place copper.
  * Given `sliceKey` (the slice the GPU pick hit), only that slice is read, at
- * its face nearest the eye; otherwise the first slice along the ray.
+ * its face nearest the eye; otherwise the first slice along the ray. Given
+ * `layers` (a set of layer ids), slices on other layers are skipped. With
+ * `reach` (texels), a slice with no value at the point takes its nearest
+ * value within that many texels: copper smaller than a texel (a BGA pad)
+ * still stops the ray.
  */
-export function fieldAlongRay(state, ray, layerOffsets, sliceKey = null) {
+export function fieldAlongRay(state, ray, layerOffsets, sliceKey = null, layers = null, reach = 0) {
   let best = null;
   for (const slice of state.analytic.slices) {
     if (!slice.field || Math.abs(ray.direction[2]) < 1e-12) continue;
     if (sliceKey && slice.key !== sliceKey) continue;
+    if (layers && !layers.has(Number(slice.layerId))) continue;
     const [a, b] = slice.offsetLayers || [slice.layerId, slice.layerId];
     const z = slice.z + 0.5 * ((layerOffsets?.[a] || 0) + (layerOffsets?.[b] || 0));
     const t = (z - ray.origin[2]) / ray.direction[2];
     if ((!sliceKey && !(t > 0)) || (best && t >= best.t)) continue;
     const world = [ray.origin[0] + t * ray.direction[0], ray.origin[1] + t * ray.direction[1], z];
     const boardMm = [world[0] * 1000, -world[1] * 1000];
-    const value = sampleFieldRaster(slice.field, boardMm);
+    let value = sampleFieldRaster(slice.field, boardMm);
+    if (!Number.isFinite(value) && reach > 0) value = nearestFieldValue(slice.field, boardMm, reach);
     if (Number.isFinite(value)) best = { t, value, sliceKey: slice.key, boardMm, world };
   }
   return best && { value: best.value, sliceKey: best.sliceKey, boardMm: best.boardMm, world: best.world };
@@ -306,7 +335,8 @@ export function describeAnalyticHit(state, operationIndex, field = null) {
   const overlay = state.overlay;
   // A via barrel has its own value; the copper reads the raster.
   const own = overlay?.kind === "operation_values" ? overlay.values[operationIndex] : overlay?.barrels?.[operationIndex];
-  const barrel = !(overlay?.kind === "operation_values") && Number.isFinite(own);
+  const barrel = !(overlay?.kind === "operation_values") && Number.isFinite(own)
+    && (!state.barrelOperations || state.barrelOperations.has(operationIndex));
   const value = overlay?.kind === "operation_values" || barrel ? own : field?.value;
   if (barrel) field = { ...field, sliceKey: "via barrel" };
   return {
