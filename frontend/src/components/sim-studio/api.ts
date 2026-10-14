@@ -1,6 +1,7 @@
 import { fetchChecked, fetchJson } from "@/lib/api";
 import type { PrismSemanticIndex } from "@/types/prism-selection";
 
+import type { Candidates } from "./dc-drop/candidates";
 import type { CanvasLayout, InferredTree } from "./dc-drop/power-tree-model";
 
 import type {
@@ -71,8 +72,8 @@ export function checkSetup(projectId: string, setupId: string, stage: "validate"
 const project = (projectId: string) => `/api/projects/${encodeURIComponent(projectId)}`;
 const commitQuery = (commit?: string) => (commit ? `?commit=${encodeURIComponent(commit)}` : "");
 
-/** The power tree inferred from the netlist (rails, sources, converters, loads, notes). */
-export function readPowerTree(projectId: string, commit?: string): Promise<InferredTree> {
+/** The power tree inferred from the netlist (rails, sources, converters, loads, notes), and per kind what to offer (`candidates`). */
+export function readPowerTree(projectId: string, commit?: string): Promise<InferredTree & { candidates?: Candidates }> {
     return fetchJson(`${project(projectId)}/sim/a0/power-tree${commitQuery(commit)}`, undefined, "Could not infer the power tree");
 }
 

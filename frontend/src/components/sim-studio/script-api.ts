@@ -2,10 +2,11 @@ import { fetchJson } from "@/lib/api";
 
 import * as api from "./api";
 import {
-    addElement, autoArrange, connect, mergeInferred, removeElement, setSolved, treeOf, updateElement,
-    type ElementKind, type ElementPatch, type InferredTree, type Point, type TreeEdge, type TreeElement, type TreeState,
+    addElement, addPicked, autoArrange, connect, mergeInferred, removeElement, setSolved, treeOf, updateElement,
+    type ElementKind, type ElementPatch, type InferredTree, type PlacedPick, type Point, type TreeEdge, type TreeElement, type TreeState,
 } from "./dc-drop/power-tree-model";
-import { boardIndex, createSetup, loadTree, saveTree, type StudioTab } from "./dc-drop/power-tree-session";
+import type { Candidates } from "./dc-drop/candidates";
+import { boardIndex, candidatesFor, createSetup, loadTree, saveTree, type StudioTab } from "./dc-drop/power-tree-session";
 import { withSetting } from "./dc-drop/settings";
 import type { BoardIndex } from "./dc-drop/board-index";
 import type {
@@ -75,6 +76,10 @@ export interface SimStudioScriptApi {
     tree(setupId: string): Promise<{ elements: TreeElement[]; edges: TreeEdge[] }>;
     /** Adds an element; incomplete ones wait on the canvas until assigned and connected. Returns its node id. */
     addElement(setupId: string, kind: ElementKind, fields?: ElementPatch, position?: Point): Promise<string>;
+    /** Per element kind, the parts and nets the canvas offers, best first, with why (rails, converters, sources, loads). */
+    candidates(commit?: string): Promise<Candidates>;
+    /** Adds an element filled in from a candidate's `pick` (rails by net, added when missing). Returns its node id. */
+    addPicked(setupId: string, pick: PlacedPick, position?: Point): Promise<string>;
     /** Part, net, rails or values of an element. Returns its (possibly new) node id. */
     updateElement(setupId: string, node: string, patch: ElementPatch): Promise<string>;
     /** source→rail, rail→converter, converter→rail or rail→load. */
@@ -212,6 +217,9 @@ export function createSimStudioScriptApi(projectId: string, hooks: Hooks): SimSt
         },
         addElement: async (setupId, kind, fields = {}, position) =>
             (await editTree(setupId, (state, board) => addElement(state, board, kind, fields, position))).node!,
+        candidates: (commit) => candidatesFor(projectId, commit ?? hooks.commit),
+        addPicked: async (setupId, pick, position) =>
+            (await editTree(setupId, (state, board) => addPicked(state, board, pick, position))).node!,
         updateElement: async (setupId, node, patch) =>
             (await editTree(setupId, (state, board) => updateElement(state, board, node, patch))).node!,
         connect: async (setupId, from, to) =>

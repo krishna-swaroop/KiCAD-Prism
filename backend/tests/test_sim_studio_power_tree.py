@@ -18,6 +18,7 @@ _PARTS = {
     "R7": ("Device:R", "0R"),
     "R8": ("Device:R", "10k"),
     "TP3": ("Connector:TestPoint", "TP"),
+    "X1": ("Oscillator:ASE-xxxMHz", "25MHz"),
 }
 _PINS = (
     ("J1", "1", "1", "PASSIVE", "+12V"), ("J1", "2", "2", "PASSIVE", "GND"),
@@ -32,6 +33,7 @@ _PINS = (
     ("R8", "1", "1", "PASSIVE", "+3V3"), ("R8", "2", "2", "PASSIVE", "SDA"),
     ("U3", "1", "VCC", "POWER_IN", "VDD_IO_1V8"), ("U3", "2", "GND", "POWER_IN", "GND"),
     ("TP3", "1", "1", "PASSIVE", "+3V3"),
+    ("X1", "1", "VDD", "POWER_IN", "+3V3"), ("X1", "2", "OUT", "OUTPUT", "CLK25"), ("X1", "3", "GND", "POWER_IN", "GND"),
 )
 
 
@@ -74,7 +76,7 @@ class PowerTreeTest(unittest.TestCase):
 
     def test_loads_skip_regulators_passives_and_test_points(self) -> None:
         loads = {(l["rail"], l["component"]) for l in self.tree.loads}
-        self.assertEqual(loads, {("3v3", "main:U1"), ("3v3", "main:FB1"), ("1v8", "main:R7")})
+        self.assertEqual(loads, {("3v3", "main:U1"), ("3v3", "main:X1"), ("3v3", "main:FB1"), ("1v8", "main:R7")})
         self.assertTrue(all(l["current_a"] == 0 for l in self.tree.loads))
 
     def test_filtered_and_linked_branches_fold_into_the_parent(self) -> None:
@@ -85,3 +87,36 @@ class PowerTreeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CandidatesTest(unittest.TestCase):
+    """What the canvas offers per element kind, from the same rules as ``infer``."""
+
+    def setUp(self) -> None:
+        from app.sim_studio.power_tree import candidates
+
+        self.found = candidates(board())
+
+    def test_rails_are_power_nets_only(self) -> None:
+        nets = [rail["net"] for rail in self.found["rails"]]
+        # Named rails by voltage, then the ferrite-fed supply; no ground, switch node, FB or signal.
+        self.assertEqual(nets, ["+12V", "+3V3", "+1V8", "VDD_IO_1V8", "VDDA"])
+        vdda = self.found["rails"][-1]
+        self.assertIsNone(vdda["voltage_v"])
+        self.assertIn("through FB1", vdda["reason"])
+        self.assertEqual(self.found["rails"][1]["fed_by"], ["U5"])
+
+    def test_converters_carry_their_rails(self) -> None:
+        rows = {row["component"]: row for row in self.found["converters"]}
+        # Not the oscillator, whose clock pin is named OUT.
+        self.assertEqual(set(rows), {"U2", "U5"})
+        self.assertEqual((rows["U5"]["input_net"], rows["U5"]["output_net"], rows["U5"]["kind"]), ("+12V", "+3V3", "switching"))
+        self.assertEqual((rows["U2"]["input_net"], rows["U2"]["output_net"], rows["U2"]["kind"]), ("+3V3", "+1V8", "linear"))
+
+    def test_sources_are_connectors_on_rails_not_test_points(self) -> None:
+        self.assertEqual([(row["component"], row["net"], row["fed"]) for row in self.found["sources"]], [("J1", "+12V", False)])
+
+    def test_loads_are_part_and_rail_pairs_without_converter_inputs_or_sources(self) -> None:
+        pairs = [(row["component"], row["net"]) for row in self.found["loads"]]
+        self.assertEqual(pairs, [("U1", "+3V3"), ("U1", "VDDA"), ("U3", "VDD_IO_1V8"), ("X1", "+3V3")])
+        self.assertEqual(self.found["loads"][0]["power_in"], 2)

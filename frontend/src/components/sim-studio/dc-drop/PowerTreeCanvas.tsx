@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     Background, MarkerType, Panel, ReactFlow, ReactFlowProvider, useReactFlow,
-    type Edge, type Node, type NodeChange,
+    type Edge, type FinalConnectionState, type Node, type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Info, LayoutGrid, Loader2, Plus, Sparkles } from "lucide-react";
@@ -19,9 +19,11 @@ import { cn } from "@/lib/utils";
 
 import type { BoardIndex } from "./board-index";
 import { netLeaf } from "./board-index";
+import type { Candidates, Pick, PickContext } from "./candidates";
 import { ElementInspector } from "./ElementInspector";
+import { ElementPalette } from "./element-palette";
 import {
-    addElement, autoArrange, connect, removeElement, setSolved, treeOf, updateElement,
+    addPicked, autoArrange, connect, parseNode, removeElement, setSolved, treeOf, updateElement,
     type ElementKind, type Point, type TreeState,
 } from "./power-tree-model";
 import { EDGE_STROKE, ELEMENT_STYLE, NODE_TYPES, type ElementNodeData } from "./power-tree-nodes";
@@ -31,6 +33,8 @@ export type TreeEdit = (state: TreeState, board: BoardIndex) => TreeState | { st
 type Props = {
     state: TreeState;
     board: BoardIndex | null;
+    /** What to offer per element kind (the power-tree candidates). */
+    candidates: Candidates;
     canEdit: boolean;
     active: boolean;
     selected: string | null;
@@ -58,7 +62,16 @@ export function PowerTreeCanvas(props: Props) {
     );
 }
 
-function Canvas({ state, board, canEdit, active, selected, onSelect, onEdit, onInfer, inferring, focus }: Props) {
+/** An open palette: what it offers, where it sits (px in the canvas), where the pick goes (flow), and what to wire it to. */
+interface PaletteState {
+    kinds: ElementKind[];
+    context?: PickContext;
+    screen: { left: number; top: number };
+    at?: Point;
+    from?: string;
+}
+
+function Canvas({ state, board, candidates, canEdit, active, selected, onSelect, onEdit, onInfer, inferring, focus }: Props) {
     const flow = useReactFlow();
     const wrapper = useRef<HTMLDivElement>(null);
     const { elements, edges } = useMemo(() => treeOf(state), [state]);
@@ -104,10 +117,51 @@ function Canvas({ state, board, canEdit, active, selected, onSelect, onEdit, onI
         const point = flow.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
         return { x: Math.round(point.x - 110 + (Math.random() - 0.5) * 40), y: Math.round(point.y - 30 + (Math.random() - 0.5) * 40) };
     };
+    const [palette, setPalette] = useState<PaletteState | null>(null);
+    // The toolbar's palette opens under the toolbar; a pick lands mid-view.
     const add = (kind: ElementKind) => {
         if (!canEdit) return;
-        const at = centre();
-        void onEdit((current, b) => addElement(current, b, kind, {}, at)).catch(() => undefined);
+        setPalette({ kinds: [kind], screen: { left: 12, top: 52 } });
+    };
+    const place = (pick: Pick) => {
+        const open = palette;
+        setPalette(null);
+        if (!open) return;
+        const at = open.at ?? centre();
+        void onEdit((current, b) => {
+            const placed = addPicked(current, b, pick, at);
+            if (!open.from) return placed;
+            // Dragged off an output: wire the new rail to it, when the rail could be committed.
+            try {
+                return connect(placed.state, b, open.from, placed.node);
+            } catch {
+                return placed;
+            }
+        }).catch(() => undefined);
+    };
+    // A connection dropped on empty canvas: offer what that end can feed or draw from.
+    const onConnectEnd = (event: MouseEvent | TouchEvent, connection: FinalConnectionState) => {
+        if (!canEdit || connection.isValid || !connection.fromNode || !wrapper.current) return;
+        const point = "changedTouches" in event ? event.changedTouches[0] : event;
+        const box = wrapper.current.getBoundingClientRect();
+        const at = flow.screenToFlowPosition({ x: point.clientX, y: point.clientY });
+        const from = parseNode(connection.fromNode.id);
+        const screen = {
+            left: Math.max(8, Math.min(point.clientX - box.left, box.width - 392)),
+            top: Math.max(8, Math.min(point.clientY - box.top, box.height - 420)),
+        };
+        if (from.kind === "rail" && connection.fromHandle?.type === "source") {
+            const rail = state.setup.rails.find((item) => item.id === from.id);
+            const net = rail ? rail.net.slice(rail.net.indexOf(":") + 1) : undefined;
+            setPalette({ kinds: ["load", "converter"], context: net ? { rail: net } : undefined, screen, at: { x: Math.round(at.x), y: Math.round(at.y - 30) } });
+        } else if (from.kind !== "rail") {
+            const element = elements.find((item) => item.node === connection.fromNode?.id);
+            const output = connection.fromHandle?.type === "source";
+            setPalette({
+                kinds: ["rail"], screen, at: { x: Math.round(at.x), y: Math.round(at.y - 30) }, from: connection.fromNode.id,
+                context: output && (from.kind === "source" || from.kind === "converter") ? { from: { kind: from.kind, component: element?.component } } : undefined,
+            });
+        }
     };
     const arrange = () => {
         if (!canEdit) return;
@@ -166,12 +220,13 @@ function Canvas({ state, board, canEdit, active, selected, onSelect, onEdit, onI
                 elementsSelectable
                 onNodesChange={onNodesChange}
                 onNodeDragStop={onNodeDragStop}
+                onConnectEnd={onConnectEnd}
                 onConnect={(connection) => {
                     if (!connection.source || !connection.target) return;
                     void onEdit((current, b) => connect(current, b, connection.source, connection.target)).catch(() => undefined);
                 }}
                 onNodeClick={(_event, node) => onSelect(node.id)}
-                onPaneClick={() => onSelect(null)}
+                onPaneClick={() => { onSelect(null); setPalette(null); }}
                 deleteKeyCode={null}
                 fitView
                 fitViewOptions={{ padding: 0.15 }}
@@ -208,6 +263,7 @@ function Canvas({ state, board, canEdit, active, selected, onSelect, onEdit, onI
                             element={element}
                             setup={state.setup}
                             board={board}
+                            candidates={candidates}
                             canEdit={canEdit}
                             onPatch={(patch) => void onEdit((current, b) => updateElement(current, b, element.node, patch))
                                 .catch(() => undefined)}
@@ -218,7 +274,21 @@ function Canvas({ state, board, canEdit, active, selected, onSelect, onEdit, onI
                     </Panel>
                 )}
             </ReactFlow>
-            {elements.length === 0 && (
+            {palette && (
+                <ElementPalette
+                    key={`${palette.kinds.join("+")}@${palette.screen.left},${palette.screen.top}`}
+                    kinds={palette.kinds}
+                    candidates={candidates}
+                    board={board}
+                    setup={state.setup}
+                    context={palette.context}
+                    className="absolute"
+                    style={{ left: palette.screen.left, top: palette.screen.top }}
+                    onPick={place}
+                    onClose={() => setPalette(null)}
+                />
+            )}
+            {elements.length === 0 && !palette && (
                 <EmptyState canEdit={canEdit} inferring={inferring} onInfer={() => onInfer("replace")} onAdd={add} />
             )}
         </div>

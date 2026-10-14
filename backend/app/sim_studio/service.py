@@ -131,9 +131,11 @@ class SimStudioService:
         return record(self.store.update(project_id, setup_id, expected_revision=expected_revision, change=change))
 
     def power_tree(self, project: Any, commit: Optional[str]) -> dict[str, Any]:
-        """The power tree Prism infers from the netlist, as setup fragments plus notes."""
+        """The power tree Prism infers from the netlist, as setup fragments plus notes,
+        and per element kind the parts and nets the canvas offers (``candidates``)."""
 
-        return power_tree.infer(self._facts(project, commit)).document()
+        facts = self._facts(project, commit)
+        return {**power_tree.infer(facts).document(), "candidates": power_tree.candidates(facts)}
 
     def read_layout(self, project_id: str, setup_id: str) -> dict[str, Any]:
         self.store.read(project_id, setup_id)

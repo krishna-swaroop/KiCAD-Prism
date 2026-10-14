@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -7,13 +7,16 @@ import { Input } from "@/components/ui/input";
 
 import type { SimSetup } from "../types";
 
-import { type BoardIndex, isGround, netLeaf, railVoltage } from "./board-index";
+import { type BoardIndex, netLeaf } from "./board-index";
+import { partItems, pickItems, type Candidates, type PickItem } from "./candidates";
+import { filterItems, PickList, useListKeys } from "./pick-list";
 import { NEED_LABELS, type ElementPatch, type TreeElement } from "./power-tree-model";
 
 type Props = {
     element: TreeElement;
     setup: SimSetup;
     board: BoardIndex | null;
+    candidates: Candidates;
     canEdit: boolean;
     onPatch: (patch: ElementPatch) => void;
     onSolved: (solved: boolean) => void;
@@ -24,15 +27,25 @@ type Props = {
 const TITLES = { source: "Source", rail: "Rail", converter: "Converter", load: "Load" } as const;
 
 /** The selected element's part, net, rails and values. Floats over the canvas. */
-export function ElementInspector({ element, setup, board, canEdit, onPatch, onSolved, onRemove, onClose }: Props) {
+export function ElementInspector({ element, setup, board, candidates, canEdit, onPatch, onSolved, onRemove, onClose }: Props) {
     const rails = setup.rails.map((rail) => ({ id: rail.id, label: `${netLeaf(rail.net.slice(rail.net.indexOf(":") + 1))} · ${rail.voltage_v} V` }));
-    const railNet = (id?: string) => {
-        const rail = setup.rails.find((item) => item.id === id);
-        return rail ? rail.net.slice(rail.net.indexOf(":") + 1) : undefined;
+    // The kind's candidates, those on the element's rail first, then every part or net.
+    const partRows = useMemo(() => partItems(element.kind, candidates, board, setup, element), [element, candidates, board, setup]);
+    const netRows = useMemo(() => pickItems("rail", candidates, board, setup), [candidates, board, setup]);
+    const railIdOf = (net?: string) => (net ? setup.rails.find((rail) => rail.net.slice(rail.net.indexOf(":") + 1) === net)?.id : undefined);
+    // A picked part brings the rails it was offered with, where the element has none and the canvas has them.
+    const pickPart = (item: PickItem) => {
+        const { pick } = item;
+        const patch: ElementPatch = { component: pick.component };
+        if (element.kind === "converter") {
+            if (!element.input_rail && railIdOf(pick.input_net)) patch.input_rail = railIdOf(pick.input_net);
+            if (!element.output_rail && railIdOf(pick.output_net)) patch.output_rail = railIdOf(pick.output_net);
+            if (pick.converter_kind) patch.values = { converter_kind: pick.converter_kind };
+        } else if (!element.rail && railIdOf(pick.rail_net)) {
+            patch.rail = railIdOf(pick.rail_net);
+        }
+        onPatch(patch);
     };
-    // Parts on the element's rail come first in the picker.
-    const near = element.kind === "converter" ? railNet(element.input_rail) ?? railNet(element.output_rail) : railNet(element.rail);
-    const parts = board ? [...new Set([...(near ? board.partsOn(near) : []), ...board.parts.keys()])] : [];
 
     return (
         <div className="pointer-events-auto w-80 rounded-lg border bg-card/95 text-card-foreground shadow-md backdrop-blur" aria-label={`${TITLES[element.kind]} inspector`}>
@@ -57,8 +70,9 @@ export function ElementInspector({ element, setup, board, canEdit, onPatch, onSo
                 )}
                 {element.kind === "rail" ? (
                     <>
-                        <TextField label="Net" value={element.net} options={board?.nets.filter((net) => !isGround(net)) ?? []} disabled={!canEdit}
-                            hint={(net) => (railVoltage(net) ? `${railVoltage(net)} V` : "")} onCommit={(net) => onPatch({ net })} />
+                        <PickField label="Net" value={element.net} items={netRows} disabled={!canEdit}
+                            onText={(net) => onPatch({ net })}
+                            onPick={(item) => onPatch({ net: item.pick.net, ...(item.pick.voltage_v && element.values.voltage_v === undefined ? { values: { voltage_v: item.pick.voltage_v } } : {}) })} />
                         <NumberField label="Voltage" unit="V" value={element.values.voltage_v} min={0} disabled={!canEdit}
                             onCommit={(voltage_v) => onPatch({ values: { voltage_v } })} />
                         <NumberField label="Tolerance" unit="%" value={element.values.tolerance_pct} min={0} disabled={!canEdit} optional
@@ -73,8 +87,8 @@ export function ElementInspector({ element, setup, board, canEdit, onPatch, onSo
                     </>
                 ) : (
                     <>
-                        <TextField label="Part" value={element.component} options={parts} disabled={!canEdit}
-                            hint={(ref) => board?.parts.get(ref)?.value ?? ""} onCommit={(component) => onPatch({ component })} />
+                        <PickField label="Part" value={element.component} items={partRows} disabled={!canEdit}
+                            onText={(component) => onPatch({ component })} onPick={pickPart} />
                         {element.kind === "converter" ? (
                             <>
                                 <RailField label="Input rail" value={element.input_rail} rails={rails} disabled={!canEdit} onCommit={(input_rail) => onPatch({ input_rail })} />
@@ -124,27 +138,56 @@ function Row({ label, htmlFor, children }: { label: string; htmlFor?: string; ch
     );
 }
 
-function TextField({ label, value, options, disabled, hint, onCommit }: {
+/**
+ * A part or net field with the board's candidates under it (`PickList`):
+ * typing filters them, arrows and Enter or a click pick one, and a value
+ * typed by hand still commits on Enter or blur.
+ */
+function PickField({ label, value, items, disabled, onText, onPick }: {
     label: string;
     value?: string;
-    options: string[];
+    items: PickItem[];
     disabled: boolean;
-    hint: (option: string) => string;
-    onCommit: (value: string) => void;
+    onText: (value: string) => void;
+    onPick: (item: PickItem) => void;
 }) {
     const id = useId();
+    const [text, setText] = useState(value ?? "");
+    const [open, setOpen] = useState(false);
+    useEffect(() => { setText(value ?? ""); }, [value]);
+    // Unfiltered while the field still shows its value.
+    const shown = useMemo(() => filterItems(items, text.trim() === (value ?? "") ? "" : text), [items, text, value]);
+    const commitText = () => {
+        const next = text.trim();
+        setOpen(false);
+        if (next && next !== value) onText(next);
+        else setText(value ?? "");
+    };
+    const pick = (item: PickItem) => {
+        setOpen(false);
+        setText(item.title);
+        onPick(item);
+    };
+    const keys = useListKeys(shown.length, (index) => pick(shown[index]), () => { setOpen(false); setText(value ?? ""); });
     return (
         <Row label={label} htmlFor={id}>
-            <Input id={id} key={value} list={`${id}-list`} className="h-7 font-mono text-xs" defaultValue={value ?? ""} disabled={disabled}
-                placeholder={`Pick a ${label.toLowerCase()}`}
-                onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-                onBlur={(event) => {
-                    const next = event.target.value.trim();
-                    if (next && next !== value) onCommit(next);
-                }} />
-            <datalist id={`${id}-list`}>
-                {options.slice(0, 400).map((option) => <option key={option} value={option}>{hint(option)}</option>)}
-            </datalist>
+            <div className="relative">
+                <Input id={id} role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list"
+                    className="h-7 font-mono text-xs" value={text} disabled={disabled} autoComplete="off"
+                    placeholder={`Pick a ${label.toLowerCase()}`}
+                    onFocus={() => setOpen(true)}
+                    onChange={(event) => { setText(event.target.value); setOpen(true); }}
+                    onKeyDown={(event) => {
+                        if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) { setOpen(true); return; }
+                        if (event.key === "Enter" && (!open || !shown.length)) { event.preventDefault(); commitText(); return; }
+                        if (open) keys.onKeyDown(event);
+                    }}
+                    onBlur={() => { if (open) commitText(); }} />
+                {open && (
+                    <PickList id={`${id}-list`} items={shown} active={keys.active} onActive={keys.setActive} onPick={pick}
+                        className="absolute right-0 top-full z-50 mt-1 w-72" />
+                )}
+            </div>
         </Row>
     );
 }

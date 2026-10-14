@@ -248,6 +248,59 @@ export function addElement(
     return settle(next, board, nodeId(kind, id));
 }
 
+/** What a pick list puts on the canvas (see `candidates.ts`): a kind, its part or net, and its rails by net. */
+export interface PlacedPick {
+    kind: ElementKind;
+    component?: string;
+    net?: string;
+    voltage_v?: number;
+    rail_net?: string;
+    input_net?: string;
+    output_net?: string;
+    converter_kind?: "switching" | "linear";
+}
+
+/**
+ * Place a picked element filled in: its rails by net become the canvas's
+ * rails, added first when missing (a rail whose voltage cannot be read waits
+ * pending, and the element with it). `at` places the element; a rail it adds
+ * goes beside it.
+ */
+export function addPicked(state: TreeState, board: BoardIndex, pick: PlacedPick, at?: Point): { state: TreeState; node: string } {
+    let current = state;
+    const railFor = (net: string | undefined, beside: Point | undefined): string | undefined => {
+        if (!net) return undefined;
+        const existing = current.setup.rails.find((rail) => netOf(rail.net) === net);
+        if (existing) return existing.id;
+        const added = addElement(current, board, "rail", { net }, beside);
+        current = added.state;
+        const { id } = parseNode(added.node);
+        return current.setup.rails.some((rail) => rail.id === id) ? id : undefined;
+    };
+    const offset = (dx: number) => (at ? { x: at.x + dx, y: at.y } : undefined);
+    if (pick.kind === "rail") {
+        if (!pick.net) return addElement(current, board, "rail", {}, at);
+        const existing = current.setup.rails.find((rail) => netOf(rail.net) === pick.net);
+        if (existing) return { state: current, node: nodeId("rail", existing.id) };
+        return addElement(current, board, "rail", { net: pick.net, values: pick.voltage_v ? { voltage_v: pick.voltage_v } : {} }, at);
+    }
+    if (pick.kind === "converter") {
+        const input_rail = railFor(pick.input_net, offset(-300));
+        const output_rail = railFor(pick.output_net, offset(300));
+        return addElement(current, board, "converter", {
+            ...(pick.component ? { component: pick.component } : {}),
+            ...(input_rail ? { input_rail } : {}),
+            ...(output_rail ? { output_rail } : {}),
+            values: pick.converter_kind ? { converter_kind: pick.converter_kind } : {},
+        }, at);
+    }
+    const rail = railFor(pick.rail_net, offset(pick.kind === "source" ? 300 : -300));
+    return addElement(current, board, pick.kind, {
+        ...(pick.component ? { component: pick.component } : {}),
+        ...(rail ? { rail } : {}),
+    }, at);
+}
+
 /** Change an element's part, net, rails or values; the result may move it into the setup. */
 export function updateElement(state: TreeState, board: BoardIndex, node: string, patch: ElementPatch): { state: TreeState; node: string } {
     const next = clone(state);

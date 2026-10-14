@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from app.sim_studio.board_facts import BoardFacts
-from app.sim_studio.drafting import _GROUND, _slug, rail_voltage
+from app.sim_studio.drafting import _CONTROL, _GROUND, _slug, rail_voltage
 
 _PREFIX = re.compile(r"^[A-Za-z]+")
 _PASSIVE = frozenset({"R", "C", "L", "FB", "D", "LED", "TP", "H", "MH", "FID", "JP", "F", "Y", "NT", "SW", "RN", "RV"})
@@ -32,6 +32,7 @@ _OUTPUT_PIN = re.compile(r"^(?:P?SW\d*|LX\d*|PH\d*|V?OUT[_\d]*|VO|REG_?OUT|.*_SW
 _INPUT_PIN = re.compile(r"^(?:P?VIN\w*|AVIN|IN[_\d]*|\w*_IN|VCC_?IN|VSUP\w*|VBAT|VS)$", re.IGNORECASE)
 _ZERO_OHM = re.compile(r"^0(?:R|E|Ω|\s*ohms?)?(?:$|[_\s@])", re.IGNORECASE)
 _REGULATOR = re.compile(r"regulator|buck|boost|step[- ]?(?:down|up)|ldo|dc[- ]?dc|converter|pmic", re.IGNORECASE)
+_BATTERY = frozenset({"BT", "BAT"})
 
 
 @dataclass
@@ -302,3 +303,127 @@ def _input_rail(pins: Iterable[_Pin], out_net: str, named: dict[str, float], gro
 
 def _note(code: str, message: str, refs: list[str]) -> dict[str, Any]:
     return {"severity": "warning", "code": code, "message": message, "refs": refs}
+
+
+def candidates(facts: BoardFacts) -> dict[str, list[dict[str, Any]]]:
+    """What the canvas offers for each kind of element, best first, with why.
+
+    The same rules ``infer`` uses, kept as lists for a person to pick from:
+
+    - rails: power nets: a voltage in the name, a ``power_in``/``power_out``
+      pin on them, or fed through a ferrite, inductor or 0 ohm from a rail.
+      Ground, control nets (SW, FB, EN...) and switch nodes are left out.
+    - converters: parts whose output reaches a rail (as ``infer`` finds
+      them), then regulator-like parts whose rails could not be told.
+    - sources: connectors and batteries on a rail, those on rails no
+      converter feeds first.
+    - loads: a (part, rail) pair per rail a non-passive part has power pads
+      on, ``power_in`` pads first; a converter's own output is not a load.
+
+    References and nets are plain (``U3``, ``+3V3``), as the board index has them.
+    """
+
+    board = _Board(facts)
+    named = {
+        net: volts for net in facts.nets
+        if (volts := rail_voltage(net)) is not None and len(facts.net_pads.get(net, ())) >= 2
+    }
+    found = _converters(board, named, Draft())
+    switch_nodes = {
+        pin.net
+        for conv in found if conv["kind"] == "switching"
+        for pin in board.pins.get(conv["ref"], ()) if pin.type == "POWER_OUT" or _OUTPUT_PIN.match(pin.name)
+    } - set(named)
+    fed_by: dict[str, list[str]] = {}
+    for conv in found:
+        fed_by.setdefault(conv["output_net"], []).append(conv["ref"])
+
+    def usable(net: str) -> bool:
+        leaf = net.rsplit("/", 1)[-1]
+        return bool(net) and net not in board.grounds and not _CONTROL.search(leaf) and net not in switch_nodes
+
+    rails: dict[str, dict[str, Any]] = {}
+    for net in named:
+        rails[net] = {"net": net, "voltage_v": named[net], "reason": "Voltage in the net name"}
+    for ref, pins in board.pins.items():
+        if _is_passive(ref):
+            continue
+        for pin in pins:
+            if usable(pin.net) and pin.net not in rails and pin.type in ("POWER_IN", "POWER_OUT"):
+                kind = "power output" if pin.type == "POWER_OUT" else "power input"
+                rails[pin.net] = {"net": pin.net, "voltage_v": None, "reason": f"{ref}.{pin.name or pin.pad} is a {kind}"}
+    for net in list(named):
+        for ref, _, beyond in board.series_across(net, links=True):
+            if usable(beyond) and beyond not in rails and beyond not in board.grounds:
+                rails[beyond] = {"net": beyond, "voltage_v": None, "reason": f"Fed from {_leaf(net)} through {ref}"}
+    for net, rail in rails.items():
+        rail["pads"] = len(facts.net_pads.get(net, ()))
+        rail["fed_by"] = fed_by.get(net, [])
+        if rail["fed_by"]:
+            rail["reason"] = f"{rail['reason']}; fed by {', '.join(rail['fed_by'])}"
+        links = [f"{_leaf(other)} through {ref}" for ref, _, other in board.series_across(net, links=True) if other in rails]
+        if links and not rail["reason"].startswith("Fed from"):
+            rail["reason"] = f"{rail['reason']}; linked to {', '.join(links)}"
+    rail_list = sorted(rails.values(), key=lambda r: (r["voltage_v"] is None, -(r["voltage_v"] or 0), -r["pads"], r["net"]))
+
+    def part_row(ref: str) -> dict[str, Any]:
+        part = facts.parts.get(ref, {})
+        return {"component": ref, "value": part.get("value", ""), "library_ref": part.get("library_ref", "")}
+
+    converters = [
+        {**part_row(conv["ref"]), "input_net": conv["input_net"], "output_net": conv["output_net"], "kind": conv["kind"],
+         "reason": f"{'Through an inductor to' if conv['kind'] == 'switching' else 'Output pin on'} {_leaf(conv['output_net'])}"}
+        for conv in found
+    ]
+    known = {conv["ref"] for conv in found}
+    for ref in sorted(board.pins):
+        part = facts.parts.get(ref, {})
+        if ref in known or _is_passive(ref) or _is_connector(ref, part):
+            continue
+        outputs = [p for p in board.pins[ref] if p.net not in board.grounds and (p.type == "POWER_OUT" or _OUTPUT_PIN.match(p.name))]
+        # A pin named OUT alone is an oscillator's or a driver's: only a power output on a rail counts.
+        if not (_regulator(part) or any(p.type == "POWER_OUT" and p.net in rails for p in outputs)):
+            continue
+        ins = sorted({p.net for p in board.pins[ref] if p.net in rails and _INPUT_PIN.match(p.name)})
+        outs = sorted({p.net for p in outputs if p.net in rails})
+        converters.append({**part_row(ref), "input_net": ins[0] if len(ins) == 1 else None,
+                           "output_net": outs[0] if len(outs) == 1 else None, "kind": None,
+                           "reason": "Regulator in its symbol" if _regulator(part) else "Has a power output pin"})
+
+    sources = []
+    for ref in sorted(board.pins):
+        part = facts.parts.get(ref, {})
+        if not (_is_connector(ref, part) or _prefix(ref) in _BATTERY):
+            continue
+        for net in sorted({p.net for p in board.pins[ref] if p.net in rails}):
+            fed = bool(fed_by.get(net))
+            sources.append({**part_row(ref), "net": net, "pads": len(board.on(ref, net)), "fed": fed,
+                            "reason": f"On {_leaf(net)}, fed by {', '.join(fed_by[net])}" if fed else f"Feeds {_leaf(net)}; no converter does"})
+    sources.sort(key=lambda s: (s["fed"], -s["pads"], s["component"]))
+
+    # A converter's input is the converter's own draw, and a source's rail is fed, not drawn from.
+    drawn_by_converter = {(conv["ref"], conv["input_net"]) for conv in found}
+    supplied = {(row["component"], row["net"]) for row in sources if not row["fed"]}
+    loads = []
+    for net in rails:
+        for ref in board.components_on(net):
+            part = facts.parts.get(ref, {})
+            if _is_passive(ref) or (ref, net) in drawn_by_converter or (ref, net) in supplied:
+                continue
+            pins = [p for p in board.pins.get(ref, ()) if p.net == net]
+            if ref in fed_by.get(net, []):
+                # A converter's own output: only its separate supply pins draw from it.
+                pins = [p for p in pins if p.type == "POWER_IN" and not _OUTPUT_PIN.match(p.name)]
+            if not pins:
+                continue
+            powered = sum(1 for p in pins if p.type == "POWER_IN")
+            connector = _is_connector(ref, part)
+            loads.append({**part_row(ref), "net": net, "pads": len(pins), "power_in": powered, "connector": connector,
+                          "reason": f"{powered} power-input pad{'s' if powered != 1 else ''} on {_leaf(net)}" if powered
+                          else f"{len(pins)} pad{'s' if len(pins) != 1 else ''} on {_leaf(net)}"})
+    loads.sort(key=lambda l: (l["connector"], -l["power_in"], -l["pads"], l["component"], l["net"]))
+    return {"rails": rail_list, "converters": converters, "sources": sources, "loads": loads}
+
+
+def _leaf(net: str) -> str:
+    return net.rsplit("/", 1)[-1]

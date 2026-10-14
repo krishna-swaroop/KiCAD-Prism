@@ -4,8 +4,9 @@ import type { SimSetup } from "../types";
 import type { PrismSemanticIndex } from "@/types/prism-selection";
 
 import { BoardIndex, railVoltage } from "./board-index";
+import { pickItems, type Candidates } from "./candidates";
 import {
-    addElement, autoArrange, connect, emptyLayout, mergeInferred, removeElement, treeOf, updateElement,
+    addElement, addPicked, autoArrange, connect, emptyLayout, mergeInferred, removeElement, treeOf, updateElement,
     type InferredTree, type TreeState,
 } from "./power-tree-model";
 
@@ -121,5 +122,48 @@ describe("power-tree model", () => {
         const replaced = mergeInferred(state, tree, "replace").setup;
         expect(replaced.loads[0].current_a).toBe(0);
         expect(replaced.analyses[0].rails).toEqual(["12v", "3v3"]);
+    });
+
+    it("places a picked element filled in, adding the rails it needs", () => {
+        const b = board();
+        let { state, node } = addPicked(blank(), b, { kind: "converter", component: "U5", input_net: "+12V", output_net: "+3V3", converter_kind: "switching" }, { x: 0, y: 0 });
+        expect(node).toBe("converter:u5-3v3");
+        expect(state.setup.rails.map((rail) => rail.id)).toEqual(["12v", "3v3"]);
+        expect(state.layout.positions["rail:12v"]).toEqual({ x: -300, y: 0 });
+        ({ state, node } = addPicked(state, b, { kind: "load", component: "U1", rail_net: "+3V3" }));
+        expect(node).toBe("load:u1-3v3");
+        expect(state.setup.rails).toHaveLength(2);
+        // A rail already on the canvas is not added again; picking it selects it.
+        expect(addPicked(state, b, { kind: "rail", net: "+3V3" }).node).toBe("rail:3v3");
+    });
+});
+
+const CANDIDATES: Candidates = {
+    rails: [
+        { net: "+12V", voltage_v: 12, pads: 3, fed_by: [], reason: "Voltage in the net name" },
+        { net: "+3V3", voltage_v: 3.3, pads: 3, fed_by: ["U5"], reason: "Voltage in the net name; fed by U5" },
+    ],
+    converters: [{ component: "U5", value: "TPS54338", library_ref: "", input_net: "+12V", output_net: "+3V3", kind: "switching", reason: "Through an inductor to +3V3" }],
+    sources: [{ component: "J1", value: "CONN", library_ref: "", net: "+12V", pads: 1, fed: false, reason: "Feeds +12V; no converter does" }],
+    loads: [{ component: "U1", value: "MCU", library_ref: "", net: "+3V3", pads: 2, power_in: 2, connector: false, reason: "2 power-input pads on +3V3" }],
+};
+
+describe("pick lists", () => {
+    it("offer each kind's candidates first, then every part, marking what the canvas has", () => {
+        const b = board();
+        const loads = pickItems("load", CANDIDATES, b, blank().setup);
+        expect(loads.map((item) => [item.title, item.group])).toEqual([
+            ["U1", "Loads"], ["J1", "All parts"], ["U5", "All parts"], ["L1", "All parts"],
+        ]);
+        expect(loads[0].pick).toEqual({ kind: "load", component: "U1", rail_net: "+3V3" });
+
+        const { state } = addPicked(blank(), b, { kind: "load", component: "U1", rail_net: "+3V3" });
+        expect(pickItems("load", CANDIDATES, b, state.setup)[0].inTree).toBe(true);
+        expect(pickItems("rail", CANDIDATES, b, state.setup, {}, false).map((item) => [item.title, item.inTree])).toEqual([["+12V", false], ["+3V3", true]]);
+    });
+
+    it("from a converter's output, the rails it feeds lead", () => {
+        const rails = pickItems("rail", CANDIDATES, board(), blank().setup, { from: { kind: "converter", component: "U5" } }, false);
+        expect(rails.map((item) => [item.title, item.group])).toEqual([["+3V3", "Fed by U5"], ["+12V", "Power nets"]]);
     });
 });

@@ -24,7 +24,8 @@ import type { SetupIssue, SetupRecordSummary, SetupReport, SimRun, SimSetup } fr
 import { BoardIndex } from "./board-index";
 import { PowerTreeCanvas, type TreeEdit } from "./PowerTreeCanvas";
 import { autoArrange, mergeInferred, nodeId, treeOf, type TreeState } from "./power-tree-model";
-import { boardIndex, createSetup, loadTree, saveTree, type StudioTab, type TreeRecord } from "./power-tree-session";
+import { NO_CANDIDATES, type Candidates } from "./candidates";
+import { boardIndex, candidatesFor, createSetup, loadTree, saveTree, type StudioTab, type TreeRecord } from "./power-tree-session";
 import { ResultsView } from "./results/ResultsView";
 import { SetupSettingsPane } from "./SetupSettingsPane";
 
@@ -69,6 +70,7 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     const treeRef = useRef<TreeRecord | null>(null);
     const queue = useRef<Promise<unknown>>(Promise.resolve());
     const [board, setBoard] = useState<BoardIndex | null>(null);
+    const [candidates, setCandidates] = useState<Candidates>(NO_CANDIDATES);
     const [semanticIndex, setSemanticIndex] = useState<PrismSemanticIndex | null>(null);
     const [selected, setSelected] = useState<string | null>(null);
     const [focus, setFocus] = useState<{ nodes: string[]; seq: number } | null>(null);
@@ -124,6 +126,10 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
         boardIndex(projectId, commit)
             .then((value) => { if (!cancelled) setBoard(value); })
             .catch((error) => toast.error(message(error)));
+        // Suggestions only: the canvas works without them.
+        candidatesFor(projectId, commit)
+            .then((value) => { if (!cancelled) setCandidates(value); })
+            .catch(() => undefined);
         api.readSemanticIndex(projectId, commit)
             .then((value) => { if (!cancelled) setSemanticIndex(value); })
             .catch(() => undefined);
@@ -344,6 +350,7 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
                         <PowerTreeCanvas
                             state={state}
                             board={board}
+                            candidates={candidates}
                             canEdit={canMutate}
                             active={active && tab === "setup" && !creating}
                             selected={selected}

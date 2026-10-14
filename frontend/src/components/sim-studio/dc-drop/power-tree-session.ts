@@ -2,6 +2,7 @@ import * as api from "../api";
 import type { SetupRecord, SimSetup } from "../types";
 
 import { BoardIndex } from "./board-index";
+import { NO_CANDIDATES, type Candidates } from "./candidates";
 import { asLayout, autoArrange, emptyLayout, mergeInferred, type CanvasLayout, type TreeState } from "./power-tree-model";
 import { withSetting } from "./settings";
 
@@ -46,6 +47,20 @@ export function boardIndex(projectId: string, commit?: string): Promise<BoardInd
         boards.set(key, board);
     }
     return board;
+}
+
+const offers = new Map<string, Promise<Candidates>>();
+
+/** What the canvas offers per element kind for a revision (the power-tree candidates), fetched once a page. */
+export function candidatesFor(projectId: string, commit?: string): Promise<Candidates> {
+    const key = `${projectId}@${commit ?? ""}`;
+    let found = offers.get(key);
+    if (!found) {
+        found = api.readPowerTree(projectId, commit).then((tree) => tree.candidates ?? NO_CANDIDATES);
+        found.catch(() => offers.delete(key));
+        offers.set(key, found);
+    }
+    return found;
 }
 
 /** A new setup as the canvas expects one: adaptive mesh on, and blank or the inferred tree. */

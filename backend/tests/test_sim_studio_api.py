@@ -158,7 +158,8 @@ class SetupApiTest(unittest.TestCase):
     def test_power_tree_and_layout(self) -> None:
         tree = self.call("GET", PROJECT_PATH + "/sim/a0/power-tree", user="viewer")
         self.assertEqual(tree.status, 200, tree.text)
-        self.assertEqual(set(tree.json), {"rails", "terminals", "sources", "loads", "converters", "analysis_rails", "notes"})
+        self.assertEqual(set(tree.json), {"rails", "terminals", "sources", "loads", "converters", "analysis_rails", "notes", "candidates"})
+        self.assertEqual(set(tree.json["candidates"]), {"rails", "converters", "sources", "loads"})
         self.assertEqual(self.call("GET", PROJECT_PATH + "/sim/a0/power-tree?commit=nope", user="viewer").status, 422)
         record = self.draft()
         path = f"{SETUPS}/{record['setup_id']}/layout"
