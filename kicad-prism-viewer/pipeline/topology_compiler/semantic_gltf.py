@@ -496,8 +496,9 @@ class SemanticGltfBuilder:
         if not objects:
             return
         # The same ring (a 32-gon, or a slot's capsule) each pad and via cuts for its own hole.
+        # Rings differ in length (circles and capsules), so each becomes its own polygon.
         disc_rings = [[[x, y] for x, y in ring] for _, ring, _ in self._drills]
-        discs = shapely.polygons(np.array(disc_rings, dtype=float))
+        discs = np.array([shapely.Polygon(ring) for ring in disc_rings], dtype=object)
         tree = shapely.STRtree(discs)
         boxes = np.array(self._object_boxes[first_object:], dtype=float)
         box_index, disc_index = tree.query(shapely.box(*boxes.T), predicate="intersects")

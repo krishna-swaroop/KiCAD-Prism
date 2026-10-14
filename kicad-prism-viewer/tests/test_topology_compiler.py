@@ -1316,6 +1316,47 @@ class TopologyCompilerTests(unittest.TestCase):
         self.assertEqual(barrel["kind"], "plated_pad")
         self.assertEqual(barrel["rotationDeg"], 0.0)
 
+    def test_round_and_slotted_drills_both_drill_a_pour(self) -> None:
+        # Drill rings differ in length (a via's 32-gon, a slot's capsule); a
+        # board with both used to fail building them as one array.
+        square = [[0, 0], [20_000_000, 0], [20_000_000, 20_000_000], [0, 20_000_000]]
+        builder = SemanticGltfBuilder(self.semantic_topology())
+        builder.add_pcb_ir(
+            {"records": [
+                {"uuid": "zone-top", "kind": "zone_fill", "net_name": "VBUS", "layers": ["F.Cu"],
+                 "operations": [{"kind": "PlotPoly", "points": square}]},
+                {"uuid": "via-through", "kind": "via", "net_name": "VBUS", "layers": ["F.Cu", "B.Cu"], "drill": 0.4,
+                 "operations": [{"kind": "FlashPadCircle", "x": 5_000_000, "y": 5_000_000, "diameter_nm": 800_000}]},
+                {
+                    "kind": "footprint",
+                    "placement": {"x_nm": 10_000_000, "y_nm": 15_000_000, "angle_deg": 0},
+                    "operations": [
+                        {"kind": "StartBlock", "data_ref": "pad", "data_uuid": "pad-1", "extra_attrs": {"net": "VBUS"}},
+                        {"kind": "FlashPadCircle", "x": 0, "y": 0, "diameter_nm": 2_000_000, "layers": ["*.Cu"]},
+                        {"kind": "EndBlock"},
+                        {"kind": "StartBlock", "data_ref": "pad_hole", "extra_attrs": {"hole_owner": "pad-1"}},
+                        {"kind": "ThickSegment", "role": "pad_drill", "start_x": -400_000, "start_y": 0,
+                         "end_x": 400_000, "end_y": 0, "width_nm": 600_000},
+                        {"kind": "EndBlock"},
+                    ],
+                },
+            ]},
+            pad_holes={"pad-1": {"drill_mm": 0.6, "drill_width_mm": 1.4, "drill_height_mm": 0.6, "plated": True}},
+        )
+        zone = next(item for item in builder.objects if item["kindId"] == KIND_IDS["zone"])
+        holes = [hole for polygon in zone["polygons"] for hole in polygon["holes"]]
+
+        def spans(hole):
+            xs = [x for x, _ in hole]
+            ys = [y for _, y in hole]
+            return (min(xs), max(xs), min(ys), max(ys))
+
+        boxes = [spans(hole) for hole in holes]
+        self.assertTrue(any(x0 < 5.0 < x1 and y0 < 5.0 < y1 for x0, x1, y0, y1 in boxes))
+        slot = [box for box in boxes if box[0] < 10.0 < box[1] and box[2] < 15.0 < box[3]]
+        self.assertEqual(len(slot), 1)
+        self.assertAlmostEqual(slot[0][1] - slot[0][0], 1.4, places=3)
+
     def test_slotted_pad_barrel_and_hole_follow_the_drill_segment(self) -> None:
         """A slot's barrel takes its centre, length and rotation from the drill
         segment (footprint-local, turned by the placement), and the pad's hole
