@@ -810,7 +810,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                             fill
                         >
                             <ErrorBoundary label="the simulation studio panel" resetKeys={[projectId]}>
-                                <SimStudioPanel projectId={projectId!} canMutate={canMutateProject} />
+                                <SimStudioPanel projectId={projectId!} canMutate={canMutateProject} active={activeSection === "simulation-studio"} />
                             </ErrorBoundary>
                         </ProjectSectionPanel>
                     )}

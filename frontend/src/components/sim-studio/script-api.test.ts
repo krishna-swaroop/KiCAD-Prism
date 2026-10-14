@@ -65,6 +65,31 @@ describe("window.prismSimStudio", () => {
         expect(fetchJson.mock.calls[0][0]).toBe(`/api/projects/prj%201/semantic-index/identity?commit=${"f".repeat(40)}`);
     });
 
+    it("edits the power tree through the same model as the canvas", async () => {
+        const setup = {
+            schema: "prism.sim.setup", version: "a0", name: "t", bundle: { board_id: "main" }, materials: { slices: {} }, components: {},
+            rails: [{ id: "3v3", net: "main:+3V3", voltage_v: 3.3 }],
+            terminals: [{ id: "u1-t", positive: ["main:U1.1"], reference: [] }],
+            sources: [], converters: [], probes: [],
+            loads: [{ id: "u1-3v3", rail: "3v3", terminal: "u1-t", current_a: 0, distribution: "uniform", component: "main:U1" }],
+            analyses: [{ id: "dc", kind: "dc-drop", rails: ["3v3"] }],
+        };
+        const current = { ...record(7), source: { project_path: "b.kicad_pro" }, setup };
+        fetchJson
+            .mockResolvedValueOnce(current)
+            .mockResolvedValueOnce({ version: 1, positions: { "load:u1-3v3": { x: 1, y: 2 } }, pending: [] })
+            .mockResolvedValueOnce({ components: [], terminals: [] })
+            .mockResolvedValueOnce({ ...current, revision: 8 });
+        const node = await createSimStudioScriptApi("prj 2", hooks).updateElement("sup_1", "load:u1-3v3", { values: { current_a: 1.5 } });
+        expect(node).toBe("load:u1-3v3");
+        expect(fetchJson).toHaveBeenCalledTimes(4);
+        const [url, init] = fetchJson.mock.calls[3] as [string, RequestInit];
+        expect(url).toBe("/api/projects/prj%202/sim/a0/setups/sup_1");
+        expect(init).toMatchObject({ method: "PUT", headers: expect.objectContaining({ "If-Match": '"simsetup:sup_1:7"' }) });
+        expect(JSON.parse(String(init.body)).loads[0].current_a).toBe(1.5);
+        expect(hooks.onChange).toHaveBeenCalledWith("sup_1");
+    });
+
     it("installs on window and removes only itself", () => {
         const remove = installSimStudioScriptApi("prj 1", hooks);
         expect(window.prismSimStudio?.projectId).toBe("prj 1");

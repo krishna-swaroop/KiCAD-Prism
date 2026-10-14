@@ -1,4 +1,7 @@
 import { fetchChecked, fetchJson } from "@/lib/api";
+import type { PrismSemanticIndex } from "@/types/prism-selection";
+
+import type { CanvasLayout, InferredTree } from "./dc-drop/power-tree-model";
 
 import type {
     JsonPatchOperation,
@@ -63,4 +66,24 @@ export function listRuns(projectId: string): Promise<SimRun[]> {
 
 export function checkSetup(projectId: string, setupId: string, stage: "validate" | "preflight"): Promise<SetupReport> {
     return fetchJson(`${setup(projectId, setupId)}/${stage}`, { method: "POST" }, `Could not ${stage} the setup`);
+}
+
+const project = (projectId: string) => `/api/projects/${encodeURIComponent(projectId)}`;
+const commitQuery = (commit?: string) => (commit ? `?commit=${encodeURIComponent(commit)}` : "");
+
+/** The power tree inferred from the netlist (rails, sources, converters, loads, notes). */
+export function readPowerTree(projectId: string, commit?: string): Promise<InferredTree> {
+    return fetchJson(`${project(projectId)}/sim/a0/power-tree${commitQuery(commit)}`, undefined, "Could not infer the power tree");
+}
+
+export function readLayout(projectId: string, setupId: string): Promise<unknown> {
+    return fetchJson(`${setup(projectId, setupId)}/layout`, undefined, "Could not load the canvas layout");
+}
+
+export function writeLayout(projectId: string, setupId: string, layout: CanvasLayout): Promise<unknown> {
+    return fetchJson(`${setup(projectId, setupId)}/layout`, json("PUT", layout), "Could not save the canvas layout");
+}
+
+export function readSemanticIndex(projectId: string, commit?: string, signal?: AbortSignal): Promise<PrismSemanticIndex> {
+    return fetchJson(`${project(projectId)}/semantic-index/identity${commitQuery(commit)}`, { signal }, "Could not load the board's design index");
 }

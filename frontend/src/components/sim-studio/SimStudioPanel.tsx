@@ -1,55 +1,63 @@
-import { useCallback, useEffect, useState } from "react";
-import { Activity, CheckCircle2, Eye, Loader2, Play, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { Activity, Loader2, Thermometer, Waves, Zap } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 
 import * as api from "./api";
+import { DcDropStudio, type StudioControls } from "./dc-drop/DcDropStudio";
+import type { StudioTab } from "./dc-drop/power-tree-session";
 import { installSimStudioScriptApi } from "./script-api";
-import { RunResultView } from "./RunResultView";
-import type { CatalogEntry, SetupRecord, SetupRecordSummary, SetupReport, SimRun } from "./types";
+import type { CatalogEntry } from "./types";
 
 type Props = {
     projectId: string;
     canMutate: boolean;
+    /** The Studio section is on screen (keyboard shortcuts only fire then). */
+    active?: boolean;
+};
+
+const ICONS: Record<string, ComponentType<{ className?: string }>> = {
+    "dc-drop": Zap,
+    "ac-pdn": Waves,
+    decoupling: Activity,
+    thermal: Thermometer,
 };
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
- * Simulation Studio (sim-adr-0017): pick a simulation, then set it up. Each
- * kind gets its own setup flow; until the DC flow is designed this shows the
- * setup's definitions, its validation and the raw document. The setup can be
- * built through `window.prismSimStudio` (see ./script-api.ts).
+ * Simulation Studio (sim-adr-0017): a card per simulation; opening one gives
+ * that simulation its own full view, with nothing of the others in it. The
+ * open simulation, setup and tab live in the URL (`sim`, `setup`, `view`).
+ * `window.prismSimStudio` (./script-api.ts) drives the same views.
  */
-export function SimStudioPanel({ projectId, canMutate }: Props) {
+export function SimStudioPanel({ projectId, canMutate, active = true }: Props) {
+    const [params, setParams] = useSearchParams();
     const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
-    const [kind, setKind] = useState("dc-drop");
-    const [setups, setSetups] = useState<SetupRecordSummary[]>([]);
-    const [selected, setSelected] = useState<string | null>(null);
-    const [record, setRecord] = useState<SetupRecord | null>(null);
-    const [report, setReport] = useState<SetupReport | null>(null);
-    const [checking, setChecking] = useState(false);
-    const [draftName, setDraftName] = useState("");
-    const [reloadKey, setReloadKey] = useState(0);
-    const [runs, setRuns] = useState<SimRun[]>([]);
-    const [viewedRun, setViewedRun] = useState<string | null>(null);
-    const viewRun = useCallback((runId: string) => setViewedRun(runId), []);
-    const shownRun = runs.find((run) => run.run_id === viewedRun) ?? null;
+    const studio = useRef<StudioControls | null>(null);
+    const kind = params.get("sim");
+    const setupId = params.get("setup");
+    const tab: StudioTab = params.get("view") === "results" ? "results" : "setup";
 
-    const active = runs.some((run) => run.status === "queued" || run.status === "running");
-    useEffect(() => {
-        let cancelled = false;
-        const load = () => api.listRuns(projectId)
-            .then((value) => { if (!cancelled) setRuns(value); })
-            .catch(() => undefined);
-        void load();
-        const timer = active ? window.setInterval(load, 2500) : undefined;
-        return () => { cancelled = true; if (timer) window.clearInterval(timer); };
-    }, [projectId, reloadKey, active]);
+    // react-router does not queue functional updates: two in one tick would
+    // each start from the same URL. Build on the last URL we asked for.
+    const latest = useRef(params);
+    useEffect(() => { latest.current = params; }, [params]);
+    const update = useCallback((values: Record<string, string | null>) => {
+        const next = new URLSearchParams(latest.current);
+        for (const [key, value] of Object.entries(values)) {
+            if (value === null) next.delete(key);
+            else next.set(key, value);
+        }
+        latest.current = next;
+        setParams(next);
+    }, [setParams]);
+    const openSimulation = useCallback((value: string | null) => update({ sim: value, setup: null, view: null }), [update]);
+    const openSetup = useCallback((value: string | null) => update({ setup: value }), [update]);
+    const setTab = useCallback((value: StudioTab) => update({ view: value === "results" ? "results" : null }), [update]);
+    const setControls = useCallback((controls: StudioControls | null) => { studio.current = controls; }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -59,415 +67,65 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
         return () => { cancelled = true; };
     }, []);
 
-    useEffect(() => {
-        let cancelled = false;
-        api.listSetups(projectId)
-            .then((value) => { if (!cancelled) setSetups(value); })
-            .catch((error) => toast.error(message(error)));
-        return () => { cancelled = true; };
-    }, [projectId, reloadKey]);
-
-    useEffect(() => {
-        setReport(null);
-        if (!selected) {
-            setRecord(null);
-            return;
-        }
-        let cancelled = false;
-        api.readSetup(projectId, selected)
-            .then((value) => { if (!cancelled) setRecord(value); })
-            .catch((error) => toast.error(message(error)));
-        return () => { cancelled = true; };
-    }, [projectId, selected, reloadKey]);
-
     useEffect(() => installSimStudioScriptApi(projectId, {
-        onChange: (setupId) => {
-            if (setupId) setSelected(setupId);
-            setReloadKey((key) => key + 1);
+        onChange: (changed) => {
+            if (changed && changed === studio.current?.setupId) studio.current.reload();
         },
-        onOpen: (setupId) => setSelected(setupId),
-        onView: viewRun,
-    }), [projectId, viewRun]);
+        onOpen: (value) => update({ sim: "dc-drop", setup: value }),
+        onView: (runId) => {
+            update({ sim: "dc-drop", view: "results" });
+            window.setTimeout(() => studio.current?.view(runId), 0);
+        },
+        onSimulation: openSimulation,
+        onTab: setTab,
+        onSelect: (node) => studio.current?.select(node),
+    }), [projectId, update, openSimulation, setTab]);
 
-    const check = useCallback(async (stage: "validate" | "preflight") => {
-        if (!selected) return;
-        setChecking(true);
-        try {
-            setReport(await api.checkSetup(projectId, selected, stage));
-        } catch (error) {
-            toast.error(message(error));
-        } finally {
-            setChecking(false);
-        }
-    }, [projectId, selected]);
-
-    const draft = async () => {
-        const name = draftName.trim();
-        if (!name) return;
-        try {
-            const created = await api.draftSetup(projectId, kind, name);
-            setDraftName("");
-            setSelected(created.setup_id);
-            setReloadKey((key) => key + 1);
-        } catch (error) {
-            toast.error(message(error));
-        }
-    };
-
-    const submit = async () => {
-        if (!record) return;
-        try {
-            await api.submitSetup(projectId, record.setup_id, record.etag, record.setup.analyses[0]?.id ?? "dc");
-            setReloadKey((key) => key + 1);
-        } catch (error) {
-            toast.error(message(error));
-        }
-    };
-
-    const toggleRail = async (railId: string) => {
-        if (!record) return;
-        const analysis = record.setup.analyses[0];
-        const rails = analysis.rails.includes(railId)
-            ? analysis.rails.filter((rail) => rail !== railId)
-            : [...analysis.rails, railId];
-        try {
-            setRecord(await api.patchSetup(projectId, record.setup_id, record.etag, [
-                { op: "replace", path: "/analyses/0/rails", value: rails },
-            ]));
-            setReport(null);
-        } catch (error) {
-            toast.error(message(error));
-            setReloadKey((key) => key + 1);
-        }
-    };
-
-    /** Merges `mesh` into the first analysis's mesh settings. */
-    /** Merge `values` into one section of the analysis settings (`mesh`, `terminals`, ...). */
-    const setSettings = async (section: string, values: Record<string, unknown>) => {
-        if (!record) return;
-        const settings = (record.setup.analyses[0]?.settings ?? {}) as Record<string, unknown>;
-        const current = (settings[section] ?? {}) as Record<string, unknown>;
-        try {
-            setRecord(await api.patchSetup(projectId, record.setup_id, record.etag, [
-                { op: "add", path: "/analyses/0/settings", value: { ...settings, [section]: { ...current, ...values } } },
-            ]));
-            setReport(null);
-        } catch (error) {
-            toast.error(message(error));
-            setReloadKey((key) => key + 1);
-        }
-    };
-
-    const visible = setups.filter((item) => item.kind === kind);
-
-    return (
-        <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto p-4 md:flex-row">
-            <aside className="flex w-full shrink-0 flex-col gap-4 md:w-72">
-                <section aria-label="Simulations" className="space-y-2">
-                    <h2 className="text-sm font-semibold">Simulations</h2>
-                    {catalog === null && <Loader2 className="h-4 w-4 animate-spin" />}
-                    {catalog?.map((entry) => (
-                        <button
-                            key={entry.kind}
-                            type="button"
-                            disabled={entry.status !== "available"}
-                            onClick={() => { setKind(entry.kind); setSelected(null); }}
-                            className={cn(
-                                "w-full rounded-md border p-3 text-left text-sm transition-colors",
-                                entry.kind === kind ? "border-primary bg-primary/5" : "hover:bg-muted",
-                                entry.status !== "available" && "cursor-not-allowed opacity-60",
-                            )}
-                        >
-                            <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">{entry.display_name}</span>
-                                {entry.status === "planned" && <Badge variant="outline">Planned</Badge>}
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">{entry.summary}</p>
-                        </button>
-                    ))}
-                </section>
-                <section aria-label="Setups" className="space-y-2">
-                    <h2 className="text-sm font-semibold">Setups</h2>
-                    {canMutate && (
-                        <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void draft(); }}>
-                            <Input
-                                aria-label="New setup name"
-                                placeholder="New setup name"
-                                value={draftName}
-                                onChange={(event) => setDraftName(event.target.value)}
-                            />
-                            <Button type="submit" size="icon" aria-label="Draft setup" disabled={!draftName.trim()}>
-                                <Plus className="h-4 w-4" />
-                            </Button>
-                        </form>
-                    )}
-                    {visible.length === 0 && <p className="text-xs text-muted-foreground">No setups yet.</p>}
-                    {visible.map((item) => (
-                        <button
-                            key={item.setup_id}
-                            type="button"
-                            onClick={() => setSelected(item.setup_id)}
-                            className={cn(
-                                "w-full rounded-md px-3 py-2 text-left text-sm",
-                                item.setup_id === selected ? "bg-primary text-primary-foreground" : "hover:bg-muted",
-                            )}
-                        >
-                            {item.name}
-                            <span className="block text-xs opacity-70">rev {item.revision}</span>
-                        </button>
-                    ))}
-                </section>
-            </aside>
-            <main className="min-w-0 flex-1 space-y-4">
-                {!record && <p className="text-sm text-muted-foreground">Select or draft a setup.</p>}
-                {record && (
-                    <SetupOverview
-                        record={record}
-                        report={report}
-                        checking={checking}
-                        canMutate={canMutate}
-                        onCheck={check}
-                        onToggleRail={toggleRail}
-                        onSetSettings={setSettings}
-                        onSubmit={submit}
-                    />
-                )}
-                <RunList
-                    runs={runs.filter((run) => !record || run.setup_id === record.setup_id)}
-                    viewed={viewedRun}
-                    onView={viewRun}
-                />
-                {shownRun?.status === "succeeded" && (
-                    <RunResultView key={shownRun.run_id} projectId={projectId} run={shownRun} canMutate={canMutate} />
-                )}
-            </main>
-        </div>
-    );
-}
-
-function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleRail, onSetSettings, onSubmit }: {
-    record: SetupRecord;
-    report: SetupReport | null;
-    checking: boolean;
-    canMutate: boolean;
-    onCheck: (stage: "validate" | "preflight") => void;
-    onToggleRail: (railId: string) => void;
-    onSetSettings: (section: string, values: Record<string, unknown>) => void;
-    onSubmit: () => void;
-}) {
-    const { setup } = record;
-    const solved = new Set(setup.analyses[0]?.rails ?? []);
-    return (
-        <>
-            <header className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                    <h2 className="text-lg font-semibold">{setup.name}</h2>
-                    <p className="text-xs text-muted-foreground">
-                        Revision {record.revision} · {record.source.commit ? record.source.commit.slice(0, 8) : "working copy"}
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="outline" size="sm" disabled={checking} onClick={() => onCheck("validate")}>Validate</Button>
-                    <Button size="sm" disabled={checking} onClick={() => onCheck("preflight")}>
-                        {checking ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Activity className="mr-2 h-3.5 w-3.5" />}
-                        Preflight
-                    </Button>
-                    {canMutate && (
-                        <Button size="sm" variant="secondary" disabled={checking} onClick={onSubmit}>
-                            <Play className="mr-2 h-3.5 w-3.5" />
-                            Run
-                        </Button>
-                    )}
-                </div>
-            </header>
-            {report && <ReportView report={report} />}
-            <section aria-label="Rails" className="space-y-1">
-                <h3 className="text-sm font-semibold">Rails</h3>
-                {setup.rails.length === 0 && <p className="text-xs text-muted-foreground">No rails.</p>}
-                {setup.rails.map((rail) => (
-                    <label key={rail.id} className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
-                            checked={solved.has(rail.id)}
-                            disabled={!canMutate}
-                            onChange={() => onToggleRail(rail.id)}
-                        />
-                        <span className="font-mono">{rail.net.split(":").slice(1).join(":")}</span>
-                        <span>{rail.voltage_v} V</span>
-                        {rail.inferred && <Badge variant="outline" title="Proposed from the net name; edit it if it is wrong">assumed</Badge>}
-                    </label>
-                ))}
-            </section>
-            <MeshSettings
-                mesh={(setup.analyses[0]?.settings?.mesh ?? {}) as Record<string, unknown>}
+    if (kind === "dc-drop") {
+        return (
+            <DcDropStudio
+                projectId={projectId}
                 canMutate={canMutate}
-                onChange={(values) => onSetSettings("mesh", values)}
+                active={active}
+                setupId={setupId}
+                tab={tab}
+                onSetupChange={openSetup}
+                onTabChange={setTab}
+                onBack={() => openSimulation(null)}
+                controls={setControls}
             />
-            <TerminalSettings
-                terminals={(setup.analyses[0]?.settings?.terminals ?? {}) as Record<string, unknown>}
-                canMutate={canMutate}
-                onChange={(values) => onSetSettings("terminals", values)}
-            />
-            <Definitions title="Terminals" items={setup.terminals.map((t) => `${t.id}: ${t.positive.join(", ")}${t.reference.length ? ` / ref ${t.reference.join(", ")}` : ""}`)} />
-            <Definitions title="Sources" items={setup.sources.map((s) => `${s.id}: rail ${s.rail} at ${s.terminal}`)} />
-            <Definitions title="Loads" items={setup.loads.map((l) => `${l.id}: ${l.current_a} A from rail ${l.rail} at ${l.terminal}`)} />
-            <Definitions
-                title="Converters"
-                items={setup.converters.map((c) => `${c.id}: ${c.input_rail} → ${setup.sources.find((s) => s.id === c.output_source)?.rail ?? c.output_source}, ${c.kind === "linear" ? "linear" : `${Math.round((c.efficiency ?? 0) * 100)} %`}`)}
-            />
-            <Definitions title="Probes" items={setup.probes.map((p) => `${p.id}: ${p.terminal}`)} />
-            <details>
-                <summary className="cursor-pointer text-sm font-semibold">Setup document</summary>
-                <pre className="mt-2 max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(setup, null, 2)}</pre>
-            </details>
-        </>
-    );
-}
+        );
+    }
 
-/** Mesh choices of a DC drop analysis; the engine records what it used. */
-function MeshSettings({ mesh, canMutate, onChange }: {
-    mesh: Record<string, unknown>;
-    canMutate: boolean;
-    onChange: (mesh: Record<string, unknown>) => void;
-}) {
-    const adaptive = mesh.adaptive === true;
-    const passes = typeof mesh.max_adaptive_passes === "number" ? mesh.max_adaptive_passes : 40;
     return (
-        <section aria-label="Mesh" className="space-y-1">
-            <h3 className="text-sm font-semibold">Mesh</h3>
-            <label className="flex items-center gap-2 text-sm">
-                <input
-                    type="checkbox"
-                    checked={adaptive}
-                    disabled={!canMutate}
-                    onChange={() => onChange({ adaptive: !adaptive })}
-                />
-                <span>Adaptive refinement</span>
-            </label>
-            <p className="text-xs text-muted-foreground">
-                {adaptive
-                    ? "Starts from a coarse grid and refines where the estimated error is largest, and around every via and pad."
-                    : "One uniform grid at the budget the accuracy level sets."}
-            </p>
-            {adaptive && (
-                <label className="flex items-center gap-2 text-sm">
-                    <span>Passes</span>
-                    <Input
-                        aria-label="Adaptive passes"
-                        type="number"
-                        min={1}
-                        max={60}
-                        className="h-7 w-20"
-                        disabled={!canMutate}
-                        defaultValue={passes}
-                        onBlur={(event) => {
-                            const value = Number.parseInt(event.target.value, 10);
-                            if (Number.isFinite(value) && value >= 1 && value !== passes) {
-                                onChange({ max_adaptive_passes: value });
-                            }
-                        }}
-                    />
-                </label>
-            )}
-        </section>
-    );
-}
-
-const PAD_CONTACTS = {
-    "ideal-pad": {
-        label: "Equipotential pad (recommended)",
-        help: "Each pad is one node: a soldered pin conducts far better than the copper under it, so current crowds to the pad's edge as it does on the board.",
-    },
-    distributed: {
-        label: "Uniform flux over the pad",
-        help: "Each pad's current enters evenly over its copper (a pure Neumann condition). Reads slightly more drop at the pad; suits loads with no real pin, such as a heater area.",
-    },
-} as const;
-
-/** How terminals take their current; the engine records what it used. */
-function TerminalSettings({ terminals, canMutate, onChange }: {
-    terminals: Record<string, unknown>;
-    canMutate: boolean;
-    onChange: (terminals: Record<string, unknown>) => void;
-}) {
-    const contact = terminals.contact === "distributed" ? "distributed" : "ideal-pad";
-    return (
-        <section aria-label="Pad contact" className="space-y-1">
-            <h3 className="text-sm font-semibold">Pad contact</h3>
-            <select
-                aria-label="Pad contact"
-                className="h-8 rounded-md border bg-background px-2 text-sm"
-                value={contact}
-                disabled={!canMutate}
-                onChange={(event) => onChange({ contact: event.target.value })}
-            >
-                {Object.entries(PAD_CONTACTS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
-            </select>
-            <p className="text-xs text-muted-foreground">{PAD_CONTACTS[contact].help}</p>
-        </section>
-    );
-}
-
-function Definitions({ title, items }: { title: string; items: string[] }) {
-    return (
-        <section aria-label={title} className="space-y-1">
-            <h3 className="text-sm font-semibold">{title}</h3>
-            {items.length === 0
-                ? <p className="text-xs text-muted-foreground">None yet.</p>
-                : <ul className="space-y-0.5 font-mono text-xs">{items.map((item) => <li key={item}>{item}</li>)}</ul>}
-        </section>
-    );
-}
-
-function ReportView({ report }: { report: SetupReport }) {
-    return (
-        <section aria-label="Setup report" className="space-y-1 rounded-md border p-3">
-            <p className="flex items-center gap-2 text-sm font-medium">
-                {report.ok
-                    ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    : <ShieldAlert className="h-4 w-4 text-destructive" />}
-                {report.stage === "preflight" ? "Preflight" : "Validation"}: {report.ok ? "ready" : "needs changes"}
-            </p>
-            <ul className="space-y-1 text-xs">
-                {report.issues.map((issue, index) => (
-                    <li key={`${issue.code}-${index}`} className="flex gap-2">
-                        {issue.severity === "error"
-                            ? <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-                            : <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />}
-                        <span>{issue.message} <span className="font-mono text-muted-foreground">{issue.path}</span></span>
-                    </li>
-                ))}
-            </ul>
-        </section>
-    );
-}
-
-function RunList({ runs, viewed, onView }: { runs: SimRun[]; viewed: string | null; onView: (runId: string) => void }) {
-    if (runs.length === 0) return null;
-    return (
-        <section aria-label="Runs" className="space-y-1">
-            <h3 className="text-sm font-semibold">Runs</h3>
-            <ul className="space-y-1 text-sm">
-                {runs.map((run) => (
-                    <li key={run.run_id} className="flex items-center gap-2">
-                        <Badge variant={run.status === "failed" ? "destructive" : "outline"}>{run.status}</Badge>
-                        <span className="font-mono text-xs">{run.run_id}</span>
-                        <span className="text-xs text-muted-foreground">
-                            rev {run.setup_revision} · {new Date(run.created_at).toLocaleString()}
-                        </span>
-                        {(run.status === "queued" || run.status === "running") && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                        {run.status === "succeeded" && (
-                            <Button
-                                size="sm"
-                                variant={viewed === run.run_id ? "secondary" : "ghost"}
-                                onClick={() => onView(run.run_id)}
+        <div className="h-full overflow-auto p-6">
+            <div className="mx-auto max-w-5xl">
+                <h2 className="text-lg font-semibold">Simulation Studio</h2>
+                <p className="mb-6 text-sm text-muted-foreground">Pick a simulation. Each has its own setup, runs and results.</p>
+                {catalog === null && <Loader2 className="size-5 animate-spin text-muted-foreground" />}
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                    {catalog?.map((entry) => {
+                        const Icon = ICONS[entry.kind] ?? Activity;
+                        const available = entry.status === "available";
+                        return (
+                            <button
+                                key={entry.kind}
+                                type="button"
+                                disabled={!available}
+                                onClick={() => openSimulation(entry.kind)}
+                                className="flex flex-col items-start rounded-lg border bg-card p-6 text-left text-card-foreground shadow-sm transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                <Eye className="mr-1 h-3.5 w-3.5" /> View result
-                            </Button>
-                        )}
-                    </li>
-                ))}
-            </ul>
-        </section>
+                                <div className="mb-4 flex w-full items-start justify-between">
+                                    <div className="rounded-md bg-primary/10 p-2 text-primary"><Icon className="h-6 w-6" /></div>
+                                    {!available && <Badge variant="outline">Planned</Badge>}
+                                </div>
+                                <h3 className="mb-1 font-semibold">{entry.display_name}</h3>
+                                <p className="text-sm text-muted-foreground">{entry.summary}</p>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
     );
 }

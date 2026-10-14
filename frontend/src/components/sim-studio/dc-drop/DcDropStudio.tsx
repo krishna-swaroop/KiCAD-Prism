@@ -1,0 +1,547 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    ArrowLeft, CheckCircle2, ChevronDown, Eye, Loader2, Play, Plus, ShieldAlert, ShieldCheck, Sparkles, SquareDashed, TriangleAlert, Zap,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { DesignSearchField } from "@/components/design-search-field";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ResizablePanel } from "@/components/ui/resizable-panel";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { DesignSearchHit } from "@/lib/design-search";
+import { cn } from "@/lib/utils";
+import type { PrismSemanticIndex } from "@/types/prism-selection";
+
+import * as api from "../api";
+import { RunResultView } from "../RunResultView";
+import type { SetupIssue, SetupRecordSummary, SetupReport, SimRun, SimSetup } from "../types";
+
+import { BoardIndex } from "./board-index";
+import { PowerTreeCanvas, type TreeEdit } from "./PowerTreeCanvas";
+import { autoArrange, mergeInferred, nodeId, treeOf, type TreeState } from "./power-tree-model";
+import { boardIndex, createSetup, loadTree, saveTree, type StudioTab, type TreeRecord } from "./power-tree-session";
+import { SetupSettingsPane } from "./SetupSettingsPane";
+
+export type { StudioTab } from "./power-tree-session";
+
+export interface StudioControls {
+    setupId: string | null;
+    open: (setupId: string) => void;
+    reload: () => void;
+    select: (node: string | null) => void;
+    setTab: (tab: StudioTab) => void;
+    view: (runId: string) => void;
+}
+
+type Props = {
+    projectId: string;
+    canMutate: boolean;
+    active: boolean;
+    setupId: string | null;
+    tab: StudioTab;
+    onSetupChange: (setupId: string | null) => void;
+    onTabChange: (tab: StudioTab) => void;
+    onBack: () => void;
+    /** Lets the page's script API drive this view. */
+    controls?: (controls: StudioControls | null) => void;
+};
+
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const EMPTY_BOARD = new BoardIndex(null);
+
+type Checked = { report: SetupReport; revision: number };
+
+/**
+ * The DC IR drop simulation: one setup at a time, with its power tree on the
+ * left, the mesher and solver settings on the right (Setup), and its runs
+ * (Results). Validate, Pre-flight and Run unlock in that order for the
+ * setup's current revision.
+ */
+export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSetupChange, onTabChange, onBack, controls }: Props) {
+    const [setups, setSetups] = useState<SetupRecordSummary[] | null>(null);
+    const [tree, setTree] = useState<TreeRecord | null>(null);
+    const treeRef = useRef<TreeRecord | null>(null);
+    const queue = useRef<Promise<unknown>>(Promise.resolve());
+    const [board, setBoard] = useState<BoardIndex | null>(null);
+    const [semanticIndex, setSemanticIndex] = useState<PrismSemanticIndex | null>(null);
+    const [selected, setSelected] = useState<string | null>(null);
+    const [focus, setFocus] = useState<{ nodes: string[]; seq: number } | null>(null);
+    const [checks, setChecks] = useState<{ validate?: Checked; preflight?: Checked }>({});
+    const [checking, setChecking] = useState<"validate" | "preflight" | "run" | null>(null);
+    const [inferring, setInferring] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [reloadKey, setReloadKey] = useState(0);
+    const [runs, setRuns] = useState<SimRun[]>([]);
+    const [viewedRun, setViewedRun] = useState<string | null>(null);
+
+    const commit = tree?.record.source.commit;
+    const setTreeState = (value: TreeRecord | null) => {
+        treeRef.current = value;
+        setTree(value);
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+        api.listSetups(projectId)
+            .then((list) => { if (!cancelled) setSetups(list.filter((item) => item.kind === "dc-drop")); })
+            .catch((error) => toast.error(message(error)));
+        return () => { cancelled = true; };
+    }, [projectId, reloadKey]);
+
+    // Open the most recent setup when none is chosen.
+    useEffect(() => {
+        if (!setupId && setups?.length) onSetupChange(setups[0].setup_id);
+    }, [setupId, setups, onSetupChange]);
+
+    // Checks are kept per revision, so a reload of the same setup keeps them.
+    useEffect(() => {
+        setChecks({});
+        setSelected(null);
+    }, [setupId]);
+
+    useEffect(() => {
+        if (!setupId) {
+            setTreeState(null);
+            return;
+        }
+        let cancelled = false;
+        loadTree(projectId, setupId)
+            .then((value) => { if (!cancelled) setTreeState(value); })
+            .catch((error) => toast.error(message(error)));
+        return () => { cancelled = true; };
+    }, [projectId, setupId, reloadKey]);
+
+    useEffect(() => {
+        if (!tree) return;
+        let cancelled = false;
+        boardIndex(projectId, commit)
+            .then((value) => { if (!cancelled) setBoard(value); })
+            .catch((error) => toast.error(message(error)));
+        api.readSemanticIndex(projectId, commit)
+            .then((value) => { if (!cancelled) setSemanticIndex(value); })
+            .catch(() => undefined);
+        return () => { cancelled = true; };
+    }, [projectId, commit, tree === null]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const running = runs.some((run) => run.status === "queued" || run.status === "running");
+    useEffect(() => {
+        let cancelled = false;
+        const load = () => api.listRuns(projectId)
+            .then((value) => { if (!cancelled) setRuns(value); })
+            .catch(() => undefined);
+        void load();
+        const timer = running ? window.setInterval(load, 2500) : undefined;
+        return () => { cancelled = true; if (timer) window.clearInterval(timer); };
+    }, [projectId, reloadKey, running]);
+
+    const setupRuns = useMemo(() => runs.filter((run) => run.setup_id === setupId), [runs, setupId]);
+    useEffect(() => {
+        if (viewedRun && setupRuns.some((run) => run.run_id === viewedRun)) return;
+        setViewedRun(setupRuns.find((run) => run.status === "succeeded")?.run_id ?? null);
+    }, [setupRuns, viewedRun]);
+
+    /** Apply an edit to the latest tree and save it; edits run one at a time. */
+    const edit = useCallback((change: TreeEdit): Promise<void> => {
+        const run = async () => {
+            const current = treeRef.current;
+            if (!current) throw new Error("No setup is open.");
+            let result: ReturnType<TreeEdit>;
+            try {
+                result = change({ setup: current.record.setup, layout: current.layout }, board ?? EMPTY_BOARD);
+            } catch (error) {
+                toast.error(message(error));
+                throw error;
+            }
+            const next = "state" in result ? result.state : result;
+            setTreeState({ record: { ...current.record, setup: next.setup }, layout: next.layout });
+            if ("node" in result) setSelected(result.node);
+            try {
+                setTreeState(await saveTree(projectId, current, next));
+            } catch (error) {
+                toast.error(message(error));
+                setReloadKey((key) => key + 1);
+                throw error;
+            }
+        };
+        const task = queue.current.then(run, run);
+        queue.current = task.catch(() => undefined);
+        return task;
+    }, [board, projectId]);
+
+    const infer = useCallback(async (mode: "replace" | "add") => {
+        setInferring(true);
+        try {
+            const inferred = await api.readPowerTree(projectId, commit);
+            await edit((state) => {
+                const merged = mergeInferred(state, inferred, mode);
+                return mode === "replace" ? autoArrange(merged) : merged;
+            });
+            toast.success(mode === "replace" ? "Power tree inferred from the netlist." : "Added what the netlist adds.");
+        } catch (error) {
+            toast.error(message(error));
+        } finally {
+            setInferring(false);
+        }
+    }, [commit, edit, projectId]);
+
+    const record = tree?.record;
+    const fresh = (checked?: Checked) => (checked && record && checked.revision === record.revision ? checked.report : null);
+    const validated = fresh(checks.validate);
+    const preflighted = fresh(checks.preflight);
+    const latestReport = preflighted ?? validated;
+
+    const check = async (stage: "validate" | "preflight") => {
+        if (!record) return;
+        setChecking(stage);
+        try {
+            await queue.current;
+            const current = treeRef.current!.record;
+            const report = await api.checkSetup(projectId, current.setup_id, stage);
+            setChecks((value) => ({ ...value, [stage]: { report, revision: current.revision } }));
+            if (!report.ok) toast.error(`${stage === "validate" ? "Validation" : "Pre-flight"} found ${report.issues.filter((i) => i.severity === "error").length} problem(s).`);
+        } catch (error) {
+            toast.error(message(error));
+        } finally {
+            setChecking(null);
+        }
+    };
+
+    const submit = async () => {
+        if (!record) return;
+        setChecking("run");
+        try {
+            await queue.current;
+            const current = treeRef.current!.record;
+            const run = await api.submitSetup(projectId, current.setup_id, current.etag, current.setup.analyses[0]?.id ?? "dc");
+            setViewedRun(run.run_id);
+            setReloadKey((key) => key + 1);
+            onTabChange("results");
+        } catch (error) {
+            toast.error(message(error));
+        } finally {
+            setChecking(null);
+        }
+    };
+
+    const selectNodes = useCallback((nodes: string[]) => {
+        if (!nodes.length) return;
+        setSelected(nodes[0]);
+        setFocus((current) => ({ nodes, seq: (current?.seq ?? 0) + 1 }));
+    }, []);
+
+    const pickSearch = (hit: DesignSearchHit) => {
+        if (!tree) return;
+        const { elements } = treeOf({ setup: tree.record.setup, layout: tree.layout });
+        const matches = hit.kind === "component"
+            ? elements.filter((element) => element.component === hit.component?.reference)
+            : elements.filter((element) => element.kind === "rail" && element.net === hit.net?.name);
+        if (matches.length) {
+            onTabChange("setup");
+            selectNodes(matches.map((element) => element.node));
+        } else {
+            toast.info(`${hit.title} is not in the power tree. Add it from the canvas toolbar.`);
+        }
+    };
+
+    const selectIssue = (issue: SetupIssue) => {
+        if (!tree) return;
+        const [, collection, index] = issue.path.split("/");
+        const setup = tree.record.setup;
+        const at = Number(index);
+        let node: string | null = null;
+        if (collection === "rails" && setup.rails[at]) node = nodeId("rail", setup.rails[at].id);
+        if (collection === "loads" && setup.loads[at]) node = nodeId("load", setup.loads[at].id);
+        if (collection === "converters" && setup.converters[at]) node = nodeId("converter", setup.converters[at].id);
+        if (collection === "sources" && setup.sources[at]) {
+            const source = setup.sources[at];
+            const converter = setup.converters.find((item) => item.output_source === source.id);
+            node = converter ? nodeId("converter", converter.id) : nodeId("source", source.id);
+        }
+        if (node) {
+            onTabChange("setup");
+            selectNodes([node]);
+        }
+    };
+
+    const reload = useCallback(() => setReloadKey((key) => key + 1), []);
+    useEffect(() => {
+        controls?.({
+            setupId,
+            open: onSetupChange,
+            reload,
+            select: (node) => (node ? selectNodes([node]) : setSelected(null)),
+            setTab: onTabChange,
+            view: (runId) => { setViewedRun(runId); onTabChange("results"); },
+        });
+    }, [controls, setupId, onSetupChange, reload, selectNodes, onTabChange]);
+    useEffect(() => () => controls?.(null), [controls]);
+
+    const state: TreeState | null = tree ? { setup: tree.record.setup, layout: tree.layout } : null;
+    const shownRun = setupRuns.find((run) => run.run_id === viewedRun) ?? null;
+
+    return (
+        <div className="flex h-full min-h-0 flex-col">
+            <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+                <Button variant="ghost" size="sm" onClick={onBack} aria-label="All simulations">
+                    <ArrowLeft className="mr-1 size-4" aria-hidden /> Simulations
+                </Button>
+                <span className="text-muted-foreground">/</span>
+                <span className="flex items-center gap-1.5 text-sm font-semibold"><Zap className="size-4 text-primary" aria-hidden /> DC IR Drop</span>
+                <span className="text-muted-foreground">/</span>
+                <SetupSwitcher setups={setups} current={record ?? null} canMutate={canMutate}
+                    onPick={onSetupChange} onNew={() => setCreating(true)} />
+                <Tabs value={tab} onValueChange={(value) => onTabChange(value as StudioTab)} className="ml-2">
+                    <TabsList>
+                        <TabsTrigger value="setup">Setup</TabsTrigger>
+                        <TabsTrigger value="results">
+                            Results
+                            {setupRuns.some((run) => run.status === "queued" || run.status === "running") && <Loader2 className="size-3 animate-spin" aria-hidden />}
+                        </TabsTrigger>
+                    </TabsList>
+                </Tabs>
+                <div className="min-w-[14rem] flex-1">
+                    <DesignSearchField inline semanticIndex={semanticIndex} active={active} onPick={pickSearch} loading={!semanticIndex && !!tree} />
+                </div>
+                {latestReport && <IssuesButton report={latestReport} onSelect={selectIssue} />}
+                <Button variant="outline" size="sm" disabled={!record || checking !== null} onClick={() => void check("validate")}
+                    title="Check the setup against the contract and the board">
+                    {checking === "validate" ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <StageIcon report={validated} />}
+                    Validate
+                </Button>
+                <Button variant="outline" size="sm" disabled={!validated?.ok || checking !== null} onClick={() => void check("preflight")}
+                    title={validated?.ok ? "Check that the engine can run it: terminals on copper, rails connected" : "Validate first"}>
+                    {checking === "preflight" ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <StageIcon report={preflighted} />}
+                    Pre-flight
+                </Button>
+                <Button size="sm" disabled={!canMutate || !preflighted?.ok || checking !== null} onClick={() => void submit()}
+                    title={preflighted?.ok ? "Freeze this revision and queue the run" : "Pre-flight first"}>
+                    {checking === "run" ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Play className="mr-1.5 size-3.5" aria-hidden />}
+                    Run
+                </Button>
+            </header>
+
+            {setups !== null && setups.length === 0 && !setupId ? (
+                <NoSetups canMutate={canMutate} onNew={() => setCreating(true)} />
+            ) : !state ? (
+                <div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
+            ) : tab === "setup" ? (
+                <div className="flex min-h-0 flex-1">
+                    <div className="min-w-0 flex-1">
+                        <PowerTreeCanvas
+                            state={state}
+                            board={board}
+                            canEdit={canMutate}
+                            active={active && tab === "setup" && !creating}
+                            selected={selected}
+                            onSelect={setSelected}
+                            onEdit={edit}
+                            onInfer={(mode) => void infer(mode)}
+                            inferring={inferring}
+                            focus={focus}
+                        />
+                    </div>
+                    <ResizablePanel side="left" storageKey="prism.sim.dc.settings-width" defaultWidth={380} minWidth={300} maxWidth={640}
+                        aria-label="Simulation settings" className="overflow-y-auto border-l">
+                        <SetupSettingsPane setup={state.setup} canEdit={canMutate}
+                            onChange={(setup) => void edit((current) => ({ ...current, setup })).catch(() => undefined)} />
+                    </ResizablePanel>
+                </div>
+            ) : (
+                <ResultsTab projectId={projectId} canMutate={canMutate} runs={setupRuns} viewed={shownRun} onView={setViewedRun} />
+            )}
+
+            <NewSetupDialog
+                open={creating}
+                onOpenChange={setCreating}
+                onCreate={async (name, seed) => {
+                    const created = await createSetup(projectId, name, seed, commit ?? undefined);
+                    setReloadKey((key) => key + 1);
+                    onSetupChange(created.record.setup_id);
+                    onTabChange("setup");
+                }}
+            />
+        </div>
+    );
+}
+
+function StageIcon({ report }: { report: SetupReport | null }) {
+    if (!report) return <ShieldCheck className="mr-1.5 size-3.5 text-muted-foreground" aria-hidden />;
+    return report.ok
+        ? <CheckCircle2 className="mr-1.5 size-3.5 text-emerald-500" aria-label="passed" />
+        : <ShieldAlert className="mr-1.5 size-3.5 text-destructive" aria-label="failed" />;
+}
+
+function IssuesButton({ report, onSelect }: { report: SetupReport; onSelect: (issue: SetupIssue) => void }) {
+    const errors = report.issues.filter((issue) => issue.severity === "error").length;
+    const warnings = report.issues.length - errors;
+    if (!report.issues.length) return null;
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1.5">
+                    {errors > 0 && <Badge variant="destructive">{errors}</Badge>}
+                    {warnings > 0 && <Badge variant="outline" className="border-amber-500 text-amber-600">{warnings}</Badge>}
+                    Issues
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="max-h-96 w-[28rem] overflow-auto p-2">
+                <ul className="space-y-1 text-xs">
+                    {report.issues.map((issue, index) => (
+                        <li key={`${issue.code}-${index}`}>
+                            <button type="button" onClick={() => onSelect(issue)} className="flex w-full gap-2 rounded px-2 py-1.5 text-left hover:bg-muted">
+                                {issue.severity === "error"
+                                    ? <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" aria-hidden />
+                                    : <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" aria-hidden />}
+                                <span>{issue.message} <span className="font-mono text-muted-foreground">{issue.path}</span></span>
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
+function SetupSwitcher({ setups, current, canMutate, onPick, onNew }: {
+    setups: SetupRecordSummary[] | null;
+    current: { setup_id: string; setup: SimSetup; revision: number } | null;
+    canMutate: boolean;
+    onPick: (setupId: string) => void;
+    onNew: () => void;
+}) {
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="max-w-[16rem] gap-1">
+                    <span className="truncate">{current?.setup.name ?? "No setup"}</span>
+                    {current && <span className="text-xs text-muted-foreground">rev {current.revision}</span>}
+                    <ChevronDown className="size-3.5" aria-hidden />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-72">
+                {(setups ?? []).map((item) => (
+                    <DropdownMenuItem key={item.setup_id} onSelect={() => onPick(item.setup_id)}
+                        className={cn(item.setup_id === current?.setup_id && "bg-accent")}>
+                        <div className="min-w-0">
+                            <p className="truncate text-sm">{item.name}</p>
+                            <p className="text-xs text-muted-foreground">rev {item.revision} · {new Date(item.updated_at).toLocaleString()}</p>
+                        </div>
+                    </DropdownMenuItem>
+                ))}
+                {canMutate && (
+                    <>
+                        {(setups ?? []).length > 0 && <DropdownMenuSeparator />}
+                        <DropdownMenuItem onSelect={onNew}><Plus className="mr-2 size-4" aria-hidden /> New setup…</DropdownMenuItem>
+                    </>
+                )}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
+
+function NoSetups({ canMutate, onNew }: { canMutate: boolean; onNew: () => void }) {
+    return (
+        <div className="flex flex-1 items-center justify-center p-6">
+            <div className="max-w-sm text-center">
+                <p className="font-semibold">No DC IR drop setups yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">A setup holds the power tree, its loads and the solver settings.</p>
+                {canMutate && <Button className="mt-4" onClick={onNew}><Plus className="mr-1.5 size-4" aria-hidden /> New setup</Button>}
+            </div>
+        </div>
+    );
+}
+
+function NewSetupDialog({ open, onOpenChange, onCreate }: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onCreate: (name: string, seed: "inferred" | "blank") => Promise<void>;
+}) {
+    const [name, setName] = useState("");
+    const [seed, setSeed] = useState<"inferred" | "blank">("inferred");
+    const [busy, setBusy] = useState(false);
+    const options = [
+        { value: "inferred" as const, icon: Sparkles, title: "Inferred power tree", text: "Rails, sources, converters and loads read from the netlist. You fill in currents and efficiencies." },
+        { value: "blank" as const, icon: SquareDashed, title: "Blank canvas", text: "Start empty and add each element yourself." },
+    ];
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>New DC IR drop setup</DialogTitle>
+                    <DialogDescription>Each setup keeps its own power tree, loads and solver settings.</DialogDescription>
+                </DialogHeader>
+                <form className="space-y-4" onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!name.trim()) return;
+                    setBusy(true);
+                    onCreate(name.trim(), seed)
+                        .then(() => { setName(""); onOpenChange(false); })
+                        .catch((error) => toast.error(message(error)))
+                        .finally(() => setBusy(false));
+                }}>
+                    <Input autoFocus aria-label="Setup name" placeholder="Name, e.g. Full power tree at max load" value={name} onChange={(event) => setName(event.target.value)} />
+                    <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Start from">
+                        {options.map((option) => (
+                            <button key={option.value} type="button" role="radio" aria-checked={seed === option.value} onClick={() => setSeed(option.value)}
+                                className={cn("flex flex-col items-start rounded-lg border p-3 text-left transition-colors",
+                                    seed === option.value ? "border-primary bg-primary/5" : "hover:border-primary/50")}>
+                                <option.icon className="mb-2 size-5 text-primary" aria-hidden />
+                                <span className="text-sm font-medium">{option.title}</span>
+                                <span className="mt-1 text-xs text-muted-foreground">{option.text}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+                        <Button type="submit" disabled={!name.trim() || busy}>
+                            {busy && <Loader2 className="mr-1.5 size-4 animate-spin" aria-hidden />} Create
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/** Runs of this setup and the chosen run's result. The plots-first layout comes next. */
+function ResultsTab({ projectId, canMutate, runs, viewed, onView }: {
+    projectId: string;
+    canMutate: boolean;
+    runs: SimRun[];
+    viewed: SimRun | null;
+    onView: (runId: string) => void;
+}) {
+    return (
+        <div className="flex min-h-0 flex-1">
+            <aside className="w-64 shrink-0 overflow-y-auto border-r p-2" aria-label="Runs">
+                {runs.length === 0 && <p className="p-2 text-sm text-muted-foreground">No runs yet. Pre-flight, then Run.</p>}
+                <ul className="space-y-1">
+                    {runs.map((run) => (
+                        <li key={run.run_id}>
+                            <button type="button" disabled={run.status !== "succeeded"} onClick={() => onView(run.run_id)}
+                                className={cn("w-full rounded-md px-2 py-1.5 text-left text-sm disabled:cursor-default",
+                                    viewed?.run_id === run.run_id ? "bg-accent" : "enabled:hover:bg-muted")}>
+                                <div className="flex items-center gap-2">
+                                    <Badge variant={run.status === "failed" ? "destructive" : "outline"}>{run.status}</Badge>
+                                    {(run.status === "queued" || run.status === "running") && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
+                                    {run.status === "succeeded" && <Eye className="ml-auto size-3.5 text-muted-foreground" aria-hidden />}
+                                </div>
+                                <p className="mt-1 text-xs text-muted-foreground">rev {run.setup_revision} · {new Date(run.created_at).toLocaleString()}</p>
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </aside>
+            <main className="min-w-0 flex-1 overflow-auto p-4">
+                {viewed?.status === "succeeded"
+                    ? <RunResultView key={viewed.run_id} projectId={projectId} run={viewed} canMutate={canMutate} />
+                    : <p className="text-sm text-muted-foreground">Pick a finished run.</p>}
+            </main>
+        </div>
+    );
+}

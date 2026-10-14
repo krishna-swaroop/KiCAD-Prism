@@ -94,6 +94,8 @@ export interface SemanticComponent {
     reference: string;
     value?: string;
     footprint?: string;
+    /** Schematic symbol, `library:part`. */
+    libraryRef?: string;
     fields?: Record<string, string | number | boolean | null>;
     schematicRefs?: SemanticSchematicRef[];
     pcbRefs?: SemanticPcbRef[];
@@ -116,6 +118,9 @@ export interface SemanticTerminal {
     componentUid: string;
     reference: string;
     pin: string;
+    pinName?: string;
+    /** Electrical type from the schematic symbol: POWER_IN, POWER_OUT, PASSIVE, ... */
+    pinType?: string;
     netUid?: string;
     netName?: string;
     schematicPinUuid?: string;
