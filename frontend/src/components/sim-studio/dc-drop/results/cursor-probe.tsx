@@ -85,8 +85,7 @@ export function CursorProbe({ viewer, host, active }: {
             frame = 0;
             if (!point) return;
             ticket += 1;
-            if (viewer.analyticProbe) show(viewer.analyticProbe(point.clientX, point.clientY));
-            else void refine();
+            show(viewer.analyticProbe(point.clientX, point.clientY));
         };
         const schedule = () => { if (!frame) frame = window.requestAnimationFrame(read); };
 
@@ -101,7 +100,7 @@ export function CursorProbe({ viewer, host, active }: {
             point = { clientX: event.clientX, clientY: event.clientY };
             schedule();
             window.clearTimeout(rest);
-            if (viewer.analyticProbe) rest = window.setTimeout(() => void refine(), REST_MS);
+            rest = window.setTimeout(() => void refine(), REST_MS);
         };
         const leave = () => {
             point = null;

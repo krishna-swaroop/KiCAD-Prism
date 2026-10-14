@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { FloatingToolbar } from "@/features/system-builder/workspace/floating-toolbar";
-import { ToolbarButton } from "@/features/system-builder/workspace/toolbar-button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { PrismAnalyticStyle, PrismSemanticViewerElement } from "@/types/prism-semantic-viewer";
 
 const STORAGE_KEY = "prism.sim.result-look";
@@ -116,36 +115,33 @@ function Slider({ label, value, min, max, step, onChange }: {
     );
 }
 
-/** A small panel of the overlay's look; every change applies at once. */
+/** The overlay's look, in a popover off a toolbar button; every change applies at once. */
 export function LookPanel({ look, catalog }: { look: Look; catalog: Record<string, string[]> | null }) {
-    const [open, setOpen] = useState(false);
     const stopsOf = (name: string) => catalog?.[name] ?? FALLBACK_STOPS[name];
     const { style } = look;
     return (
-        <div className="relative">
-            <FloatingToolbar label="Look">
-                <ToolbarButton title="Colours and arrows" active={open} onClick={() => setOpen(!open)} aria-expanded={open}>
-                    <SlidersHorizontal className="size-3.5" aria-hidden /> Look
-                </ToolbarButton>
-            </FloatingToolbar>
-            {open && (
-                <div className="absolute left-0 top-9 z-20 w-72 space-y-2 rounded-md border bg-popover p-3 text-xs text-popover-foreground shadow-md">
-                    <Ramp label="Copper colours" value={style.fieldColormap} colormaps={look.colormaps} stopsOf={stopsOf} onChange={(name) => look.update({ fieldColormap: name })} />
-                    <Ramp label="Arrow colours" value={style.arrowColormap} colormaps={look.colormaps} stopsOf={stopsOf} onChange={(name) => look.update({ arrowColormap: name })} />
-                    <Slider label="Arrow density" value={style.arrowDensity ?? 70} min={15} max={200} step={5} onChange={(value) => look.update({ arrowDensity: value })} />
-                    <Slider label="Arrow width" value={style.arrowWidth ?? 0.07} min={0.02} max={0.2} step={0.01} onChange={(value) => look.update({ arrowWidth: value })} />
-                    <Slider label="Shortest arrow" value={style.arrowMinLength ?? 0.3} min={0.05} max={1} step={0.05} onChange={(value) => look.update({ arrowMinLength: value })} />
-                    <Slider
-                        label="Arrow outline"
-                        value={style.arrowOutline?.[3] ?? 0.85}
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        onChange={(value) => look.update({ arrowOutline: [...(style.arrowOutline ?? [0.05, 0.05, 0.07, 0.85]).slice(0, 3), value] as PrismAnalyticStyle["arrowOutline"] })}
-                    />
-                    <Button variant="ghost" size="sm" className="h-7 w-full text-xs" onClick={look.reset}>Reset to defaults</Button>
-                </div>
-            )}
-        </div>
+        <Popover>
+            <PopoverTrigger asChild>
+                <Button variant="ghost" size="xs" title="Colours and arrows">
+                    <SlidersHorizontal aria-hidden /> Look
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 space-y-1 text-xs">
+                <Ramp label="Copper colours" value={style.fieldColormap} colormaps={look.colormaps} stopsOf={stopsOf} onChange={(name) => look.update({ fieldColormap: name })} />
+                <Ramp label="Arrow colours" value={style.arrowColormap} colormaps={look.colormaps} stopsOf={stopsOf} onChange={(name) => look.update({ arrowColormap: name })} />
+                <Slider label="Arrow density" value={style.arrowDensity ?? 70} min={15} max={200} step={5} onChange={(value) => look.update({ arrowDensity: value })} />
+                <Slider label="Arrow width" value={style.arrowWidth ?? 0.07} min={0.02} max={0.2} step={0.01} onChange={(value) => look.update({ arrowWidth: value })} />
+                <Slider label="Shortest arrow" value={style.arrowMinLength ?? 0.3} min={0.05} max={1} step={0.05} onChange={(value) => look.update({ arrowMinLength: value })} />
+                <Slider
+                    label="Arrow outline"
+                    value={style.arrowOutline?.[3] ?? 0.85}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    onChange={(value) => look.update({ arrowOutline: [...(style.arrowOutline ?? [0.05, 0.05, 0.07, 0.85]).slice(0, 3), value] as PrismAnalyticStyle["arrowOutline"] })}
+                />
+                <Button variant="ghost" size="sm" className="h-7 w-full text-xs" onClick={look.reset}>Reset to defaults</Button>
+            </PopoverContent>
+        </Popover>
     );
 }

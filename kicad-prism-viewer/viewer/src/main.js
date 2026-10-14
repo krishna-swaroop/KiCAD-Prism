@@ -150,6 +150,8 @@ const BOARD_LAYER_COLORS = { soldermask: "#1f6b45", silkscreen: "#f2f2f2", paste
 function initialState() {
   return {
     workspace: "pcb",
+    // A click selects what is under it unless a host tool owns clicks (setClickSelect).
+    clickSelect: true,
     mode: "3d",
     activeNetId: 0,
     selectedFeatureId: 0,
@@ -537,6 +539,10 @@ export async function mountStandaloneViewer(options = {}) {
     // The field under a client point without a GPU pick: the first visible copper slice along the
     // view ray with a value there. Cheap enough for every pointer move; it can't tell a via barrel
     // from the copper around it, which `analyticAt` (exact, but a GPU round trip) can.
+    // Whether a click selects what is under it (on by default); hosts turn it off while a tool owns clicks.
+    setClickSelect(enabled) {
+      state.clickSelect = enabled !== false;
+    },
     analyticProbe(clientX, clientY) {
       if (!board.analytic?.overlay || board.analytic.overlay.kind === "operation_values") return null;
       const ray = worldRayAt(clientX, clientY);
@@ -5487,10 +5493,13 @@ function bindInteractions() {
     state.dragging = false;
     canvas.releasePointerCapture(event.pointerId);
     if (Math.hypot(event.clientX - state.pointerStartX, event.clientY - state.pointerStartY) >= 3) return;
+    // A host tool (a profile line, say) owns clicks while it runs; dragging still moves the camera.
+    if (!state.clickSelect) return;
     if (event.button === 0) await pickAt(event);
     else if (event.button === 2) await contextPickAt(event);
   });
   canvas.addEventListener("dblclick", async (event) => {
+    if (!state.clickSelect) return;
     await pickAt(event);
     frameSelection();
   });

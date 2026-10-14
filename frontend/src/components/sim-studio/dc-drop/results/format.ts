@@ -13,3 +13,10 @@ export function formatValue(value: number, units?: string, withUnit = true): str
     const text = magnitude !== 0 && (magnitude < 1e-2 || magnitude >= 1e4) ? shown.toExponential(3) : shown.toPrecision(4);
     return withUnit && unit ? `${text} ${unit}` : text;
 }
+
+/** A signed difference in the field: voltages in mV, which is what a drop is read in. */
+export function formatChange(value: number, units?: string): string {
+    const sign = value >= 0 ? "+" : "−";
+    if (units === "V") return `${sign}${+(Math.abs(value) * 1e3).toPrecision(3)} mV`;
+    return `${sign}${formatValue(Math.abs(value), units)}`;
+}

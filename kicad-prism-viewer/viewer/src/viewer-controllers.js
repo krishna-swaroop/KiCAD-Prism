@@ -55,6 +55,7 @@
  * @property {(vectors: object | null) => unknown} setAnalyticVectors
  * @property {(style: object) => unknown} setAnalyticStyle
  * @property {() => object} analyticColormaps
+ * @property {(enabled: boolean) => void} setClickSelect
  * @property {(clientX: number, clientY: number) => object | null} analyticProbe
  * @property {(clientX: number, clientY: number) => Promise<object | null>} analyticAt
  * @property {() => object | null} analyticStats
@@ -278,7 +279,7 @@ export const BOARD_MEMBERS = Object.freeze([
   "setHighlightedNets", "setHiddenComponents", "getComponentReferences", "setViewMode",
   "renderInset", "insetReady", "insetSurfaceZ", "releaseInset", "insetTarget", "projectInset",
   "onSceneChange", "insetStats", "insetSettings", "gpuIdle",
-  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack",
+  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "setClickSelect", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack",
 ]);
 
 /**
@@ -294,6 +295,7 @@ export class BoardModeController extends ModeController {
   #unhookScene = null;
   // The analytic pack and overlay outlive reloads, like the other view state.
   #analytic = null;
+  #clickSelect = true;
 
   attach(port, { workspace = "pcb" } = {}) {
     this.#workspace = workspace;
@@ -311,6 +313,7 @@ export class BoardModeController extends ModeController {
     if (this.shared.selection) port.quietly(() => this.applySelection(port, this.shared.selection));
     if (this.#highlightedNets.length) this.#applyHighlightedNets(port, this.#highlightedNets);
     if (this.#analytic) void this.#replayAnalytic(port, this.#analytic);
+    if (!this.#clickSelect) port.setClickSelect(false);
   }
 
   async #replayAnalytic(port, analytic) {
@@ -447,6 +450,11 @@ export class BoardModeController extends ModeController {
 
   analyticColormaps() {
     return this.port?.analyticColormaps() ?? null;
+  }
+
+  setClickSelect(enabled) {
+    this.#clickSelect = enabled !== false;
+    this.port?.setClickSelect(this.#clickSelect);
   }
 
   analyticProbe(clientX, clientY) {

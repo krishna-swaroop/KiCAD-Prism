@@ -11,6 +11,7 @@ import type { SimRun } from "../../types";
 
 import type { ProfilePoint } from "./board-pane";
 import { EChart, baseOption, type ChartTheme } from "./echart";
+import { formatChange } from "./format";
 import { fieldArtifact, gridOf, histogram, profile } from "./grids";
 import { amps, density, percent, volts, watts, type LoadRow, type ResultsModel } from "./results-model";
 import type { Focus } from "./side-panel";
@@ -249,12 +250,20 @@ function ProfileTab({ projectId, run, result, net, quantity, points }: {
             data: (line?.points ?? []).map(([x, v]) => [x, Number.isFinite(v) ? v * unit.scale : null]),
         }],
     }), [line, unit.scale, unit.unit]);
-    if (!points) return <p className="p-4 text-sm text-muted-foreground">Turn on Profile over the board and click two points on the copper.</p>;
+    if (!points) return <p className="p-4 text-sm text-muted-foreground">Turn on Profile in the board's toolbar, then click the start and end of a line on the copper.</p>;
     if (!grid) return <Loader2 className="m-4 size-4 animate-spin text-muted-foreground" />;
+    const values = (line?.points ?? []).map(([, v]) => v).filter(Number.isFinite);
+    const change = values.length > 1 ? values[values.length - 1] - values[0] : null;
+    const layer = (key?: string) => key?.replace(/^copper\./, "") ?? "?";
     return (
         <div className="flex h-full min-h-[220px] flex-col">
             <p className="px-3 pt-2 text-xs text-muted-foreground">
-                {unit.name} on {line?.slice?.replace(/^copper\./, "")} over {line?.length.toFixed(2)} mm; gaps are where the line leaves the copper.
+                {unit.name} on <span className="font-medium text-foreground">{layer(line?.slice)}</span>
+                {" "}from ({points[0].mm.map((v) => v.toFixed(2)).join(", ")}) to ({points[1].mm.map((v) => v.toFixed(2)).join(", ")}) mm:
+                {" "}<span className="font-medium text-foreground">{line?.length.toFixed(2)} mm</span>
+                {change !== null && <>, change <span className="font-medium text-foreground">{formatChange(change, grid.units)}</span></>}.
+                {" "}Gaps are where the line leaves the copper.
+                {points[1].sliceKey && points[1].sliceKey !== line?.slice && <> The end was clicked on {layer(points[1].sliceKey)}; the line is read on {layer(line?.slice)}.</>}
             </p>
             <div className="min-h-0 flex-1"><EChart option={option} /></div>
         </div>

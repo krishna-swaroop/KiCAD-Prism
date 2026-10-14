@@ -8,9 +8,9 @@ import type { PrismSemanticViewerElement } from "@/types/prism-semantic-viewer";
 import { runBase, type RunOverlayState, type RunResult } from "../../run-overlay";
 import type { SimRun, SimSetup } from "../../types";
 
-import { BoardPane, Stat, type BoardState, type ProfilePoint } from "./board-pane";
+import { BoardPane, type BoardState, type ProfilePoint } from "./board-pane";
 import { Drawer, type DrawerTab } from "./drawer";
-import { amps, density, percent, volts, watts, buildResultsModel, type ResultsModel } from "./results-model";
+import { buildResultsModel } from "./results-model";
 import { SidePanel, type Focus } from "./side-panel";
 
 const DRAWER_KEY = "prism.sim.dc.results-drawer";
@@ -33,7 +33,7 @@ type Props = {
 };
 
 /**
- * One run's results: the board (with headline numbers over it), a side panel
+ * One run's results: the board under its toolbar, a side panel
  * that suits the setup's shape, and an analysis drawer below.
  */
 export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
@@ -98,10 +98,9 @@ export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
                         canMutate={canMutate}
                         board={board}
                         onBoard={changeBoard}
-                        stats={<Stats model={model} onFocus={focus} onTab={setTab} onBoard={changeBoard} />}
                         profiling={profiling}
                         onProfiling={(on) => { setProfiling(on); if (on) setTab("profile"); }}
-                        onProfile={(next) => { setPoints(next); setTab("profile"); }}
+                        onProfile={(next) => { setPoints(next); if (next) setTab("profile"); }}
                         onViewer={registerViewer}
                         onOverlay={setOverlay}
                     />
@@ -135,42 +134,5 @@ export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
                 />
             </div>
         </div>
-    );
-}
-
-/** The headline numbers for the setup's shape; each opens where it comes from. */
-function Stats({ model, onFocus, onTab, onBoard }: {
-    model: ResultsModel;
-    onFocus: (focus: Focus) => void;
-    onTab: (tab: DrawerTab) => void;
-    onBoard: (change: Partial<BoardState>) => void;
-}) {
-    const worst = model.worst;
-    const worstText = worst ? `${volts(worst.dropV)} · ${worst.component ?? worst.id} · ${percent(worst.share)}` : "—";
-    const worstStat = (
-        <Stat label="Worst drop" value={worstText} tone={worst?.share !== undefined ? (worst.share > 1 ? "bad" : "ok") : undefined}
-            title="Largest drop against its budget (5 % of the rail unless the rail sets a tolerance)"
-            onClick={() => { onTab("loads"); if (worst) onFocus({ component: worst.component }); }} />
-    );
-    const copper = <Stat label="Copper loss" value={watts(model.copperLossW)} onClick={() => onTab(model.rails.length > 1 ? "rails" : "loads")} />;
-    const peak = model.peakJ && (
-        <Stat label="Peak density" value={`${density(model.peakJ.value)}${model.peakJ.net ? ` · ${model.peakJ.net}` : ""}`}
-            onClick={() => onBoard({ quantity: "current_density_a_per_m2", ...(model.peakJ?.net ? { net: model.peakJ.net } : {}), mode: "flat" })} />
-    );
-    if (model.shape === "tree") {
-        const input = model.inputs[0];
-        return (
-            <>
-                <Stat label="Input" value={`${watts(model.inputW)}${input ? ` · ${amps(input.currentA)}` : ""}`} title={model.inputs.map((item) => `${item.component ?? item.source}: ${amps(item.currentA)}`).join(", ")} />
-                <Stat label="Efficiency" value={percent(model.efficiency)} title={`Converter losses ${watts(model.converterLossW)}`} onClick={() => onTab("converters")} />
-                {worstStat}{copper}{peak}
-            </>
-        );
-    }
-    return (
-        <>
-            {model.rails.map((rail) => <Stat key={rail.id} label={rail.net} value={amps(rail.currentA)} onClick={() => onFocus({ net: rail.net })} />)}
-            {worstStat}{copper}{peak}
-        </>
     );
 }

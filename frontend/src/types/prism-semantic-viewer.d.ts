@@ -117,6 +117,8 @@ export interface PrismInsetView {
  * their documented default before one is mounted.
  */
 export interface PrismSemanticViewerCommon {
+    /** Where a world point (metres, the viewer's frame) appears on screen in client px; null off screen. */
+    projectPoint(point: [number, number, number], occurrenceKey?: string): { x: number; y: number } | null;
     /** Safe before ready and after reloads: the last selection is replayed on the next board mount. */
     setSelection(selection: PrismRendererSelection | null): void;
     resize(): void;
@@ -188,7 +190,9 @@ export interface PrismSemanticBoardMode {
      * The field overlay's value under a client point from a CPU ray against the copper slices: no GPU
      * pick, so cheap per pointer move. No operation or binding; use `analyticAt` for those (and barrels).
      */
-    analyticProbe?(clientX: number, clientY: number): PrismAnalyticReading | null;
+    analyticProbe(clientX: number, clientY: number): PrismAnalyticReading | null;
+    /** Whether a click on the board selects what is under it (default on); off while a host tool owns clicks. */
+    setClickSelect(enabled: boolean): void;
     /** The operation under a client point, its binding and overlay value; null off the analytic copper. */
     analyticAt(clientX: number, clientY: number): Promise<PrismAnalyticHit | null>;
     analyticStats(): PrismAnalyticStats | null;
