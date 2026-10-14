@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchJson } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,10 @@ type Props = {
     result: RunResult;
     model: ResultsModel;
     tab: DrawerTab;
+    /** Collapsed, only the tab strip shows; a tab click opens the drawer on it. */
+    open: boolean;
     onTab: (tab: DrawerTab) => void;
+    onOpen: (open: boolean) => void;
     net: string | null;
     quantity: string;
     profilePoints: [ProfilePoint, ProfilePoint] | null;
@@ -42,26 +46,51 @@ export function drawerTabs(model: ResultsModel): DrawerTab[] {
         (tab !== "rails" || model.rails.length > 1) && (tab !== "converters" || model.converters.length > 0));
 }
 
-/** Analysis below the board: tables and plots of the run. */
-export function Drawer({ projectId, run, result, model, tab, onTab, net, quantity, profilePoints, onFocus }: Props) {
+/**
+ * Analysis below the board: tables and plots of the run. It collapses to its
+ * tab strip: a tab opens it on that tab, the open tab (or the chevron)
+ * closes it again.
+ */
+export function Drawer({ projectId, run, result, model, tab, open, onTab, onOpen, net, quantity, profilePoints, onFocus }: Props) {
     const tabs = drawerTabs(model);
     const shown = tabs.includes(tab) ? tab : tabs[0];
+    const pick = (item: DrawerTab) => {
+        if (open && item === shown) {
+            onOpen(false);
+            return;
+        }
+        onTab(item);
+        onOpen(true);
+    };
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <Tabs value={shown} onValueChange={(value) => onTab(value as DrawerTab)} className="border-b px-2">
-                <TabsList variant="line">
-                    {tabs.map((item) => <TabsTrigger key={item} value={item}>{TITLES[item]}</TabsTrigger>)}
-                </TabsList>
-            </Tabs>
-            <div className="min-h-0 flex-1 overflow-auto">
-                {shown === "loads" && <LoadsTab model={model} onFocus={onFocus} />}
-                {shown === "rails" && <RailsTab model={model} onFocus={onFocus} />}
-                {shown === "converters" && <ConvertersTab model={model} onFocus={onFocus} />}
-                {shown === "vias" && <ViasTab projectId={projectId} run={run} result={result} />}
-                {shown === "profile" && <ProfileTab projectId={projectId} run={run} result={result} net={net} quantity={quantity} points={profilePoints} />}
-                {shown === "distribution" && <DistributionTab projectId={projectId} run={run} result={result} net={net} />}
-                {shown === "convergence" && <ConvergenceTab realization={(result as { realization?: RunRealization }).realization} />}
+            <div className={cn("flex items-center px-2", open && "border-b")}>
+                <Tabs value={open ? shown : ""} className="min-w-0 flex-1">
+                    <TabsList variant="line">
+                        {tabs.map((item) => (
+                            <TabsTrigger key={item} value={item} onClick={() => pick(item)}
+                                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(item); } }}>
+                                {TITLES[item]}
+                            </TabsTrigger>
+                        ))}
+                    </TabsList>
+                </Tabs>
+                <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label={open ? "Collapse the analysis drawer" : "Expand the analysis drawer"}
+                    aria-expanded={open} title={open ? "Collapse" : "Expand"} onClick={() => onOpen(!open)}>
+                    {open ? <ChevronDown aria-hidden /> : <ChevronUp aria-hidden />}
+                </Button>
             </div>
+            {open && (
+                <div className="min-h-0 flex-1 overflow-auto">
+                    {shown === "loads" && <LoadsTab model={model} onFocus={onFocus} />}
+                    {shown === "rails" && <RailsTab model={model} onFocus={onFocus} />}
+                    {shown === "converters" && <ConvertersTab model={model} onFocus={onFocus} />}
+                    {shown === "vias" && <ViasTab projectId={projectId} run={run} result={result} />}
+                    {shown === "profile" && <ProfileTab projectId={projectId} run={run} result={result} net={net} quantity={quantity} points={profilePoints} />}
+                    {shown === "distribution" && <DistributionTab projectId={projectId} run={run} result={result} net={net} />}
+                    {shown === "convergence" && <ConvergenceTab realization={(result as { realization?: RunRealization }).realization} />}
+                </div>
+            )}
         </div>
     );
 }

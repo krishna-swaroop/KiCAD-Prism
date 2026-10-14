@@ -24,6 +24,14 @@ function storedHeight(): number {
     }
 }
 
+function storedOpen(): boolean {
+    try {
+        return window.localStorage.getItem(`${DRAWER_KEY}.open`) !== "false";
+    } catch {
+        return true;
+    }
+}
+
 type Props = {
     projectId: string;
     run: SimRun;
@@ -56,6 +64,16 @@ export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
     const [profiling, setProfiling] = useState(false);
     const [points, setPoints] = useState<[ProfilePoint, ProfilePoint] | null>(null);
     const [tab, setTab] = useState<DrawerTab>("loads");
+    const [open, setOpen] = useState(storedOpen);
+    const openDrawer = useCallback((next: boolean) => {
+        setOpen(next);
+        try { window.localStorage.setItem(`${DRAWER_KEY}.open`, String(next)); } catch { /* only a preference */ }
+    }, []);
+    // Something that shows its result in the drawer opens it there.
+    const showTab = useCallback((next: DrawerTab) => {
+        setTab(next);
+        openDrawer(true);
+    }, [openDrawer]);
     const [overlay, setOverlay] = useState<RunOverlayState>({ phase: "off" });
     const viewer = useRef<PrismSemanticViewerElement | null>(null);
     const registerViewer = useCallback((value: PrismSemanticViewerElement | null) => {
@@ -96,8 +114,8 @@ export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
                         board={board}
                         onBoard={changeBoard}
                         profiling={profiling}
-                        onProfiling={(on) => { setProfiling(on); if (on) setTab("profile"); }}
-                        onProfile={(next) => { setPoints(next); if (next) setTab("profile"); }}
+                        onProfiling={(on) => { setProfiling(on); if (on) showTab("profile"); }}
+                        onProfile={(next) => { setPoints(next); if (next) showTab("profile"); }}
                         onViewer={registerViewer}
                         onOverlay={setOverlay}
                     />
@@ -107,23 +125,27 @@ export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
                     <SidePanel model={model} onFocus={focus} />
                 </ResizablePanel>
             </div>
-            <div
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Resize the analysis drawer"
-                className="h-1.5 shrink-0 cursor-row-resize border-t bg-background hover:bg-accent"
-                onPointerDown={(event) => { drag.current = { y: event.clientY, h: height }; event.currentTarget.setPointerCapture(event.pointerId); }}
-                onPointerMove={onDrag}
-                onPointerUp={endDrag}
-            />
-            <div style={{ height }} className="shrink-0">
+            {open ? (
+                <div
+                    role="separator"
+                    aria-orientation="horizontal"
+                    aria-label="Resize the analysis drawer"
+                    className="h-1.5 shrink-0 cursor-row-resize border-t bg-background hover:bg-accent"
+                    onPointerDown={(event) => { drag.current = { y: event.clientY, h: height }; event.currentTarget.setPointerCapture(event.pointerId); }}
+                    onPointerMove={onDrag}
+                    onPointerUp={endDrag}
+                />
+            ) : <div className="shrink-0 border-t" />}
+            <div style={open ? { height } : undefined} className="shrink-0">
                 <Drawer
                     projectId={projectId}
                     run={run}
                     result={data.result}
                     model={model}
                     tab={tab}
+                    open={open}
                     onTab={setTab}
+                    onOpen={openDrawer}
                     net={overlay.phase === "ready" ? overlay.net : null}
                     quantity={board.quantity}
                     profilePoints={points}
