@@ -827,7 +827,7 @@ class SemanticGltfBuilder:
         self.feature_bounds[feature_id] = self._merge_bounds(self.feature_bounds.get(feature_id), bounds)
         self.net_bounds[net_id] = self._merge_bounds(self.net_bounds.get(net_id), bounds)
 
-    def build_input_payload(self, *, tile_size_mm: float = TILE_SIZE_MM) -> dict[str, Any]:
+    def build_input_payload(self, *, tile_size_mm: float = TILE_SIZE_MM, include_objects: bool = True) -> dict[str, Any]:
         for net in self.nets[1:]:
             net_id = int(net["id"])
             net["metrics"] = {
@@ -844,7 +844,13 @@ class SemanticGltfBuilder:
             feature["boundsMm"] = self.feature_bounds.get(int(feature["id"]))
         # The objects are most of the input: encode them once, for the
         # revision here and for the input file (serialize_semantic_input).
-        self.objects_json = json.dumps(self.objects, separators=(",", ":"))
+        # Without them (a manifest for the analytic board) only their count
+        # and feature ids enter the revision.
+        self.objects_json = (
+            json.dumps(self.objects, separators=(",", ":"))
+            if include_objects
+            else json.dumps([len(self.objects), len(self.object_features)])
+        )
         revision = hashlib.sha256(
             json.dumps(
                 {
@@ -856,7 +862,8 @@ class SemanticGltfBuilder:
                 separators=(",", ":"),
             ).encode("utf-8")
         )
-        revision.update(self.objects_json.encode("utf-8"))
+        for start in range(0, len(self.objects_json), 1 << 24):
+            revision.update(self.objects_json[start:start + (1 << 24)].encode("utf-8"))
         components = _component_manifest_entries(
             self.topology,
             self.component_nodes,
@@ -888,7 +895,7 @@ class SemanticGltfBuilder:
             "layers": self.layers,
             "nets": self.nets,
             "objectFeatures": self.object_features,
-            "objects": self.objects,
+            "objects": self.objects if include_objects else [],
             "barrels": self.barrels,
             "components": components,
         }
@@ -915,6 +922,35 @@ def serialize_semantic_input(payload: dict[str, Any], objects_json: str | None =
     return "".join((head, objects_json, tail)).encode("utf-8")
 
 
+def write_semantic_input(path: Path, payload: dict[str, Any], objects_json: str | None = None) -> tuple[str, int]:
+    """Write the builder input as ``serialize_semantic_input`` would, in
+    pieces: the objects (most of a large board's input) are written as they
+    are, not joined and re-encoded into further copies. Returns the file's
+    SHA-256 and size."""
+
+    if objects_json is None:
+        pieces = [json.dumps(payload, separators=(",", ":"))]
+    else:
+        head, slot, tail = json.dumps(
+            {**payload, "objects": _OBJECTS_SLOT}, separators=(",", ":")
+        ).partition(json.dumps(_OBJECTS_SLOT))
+        pieces = [head, objects_json, tail] if slot and json.dumps(_OBJECTS_SLOT) not in tail else [
+            json.dumps(payload, separators=(",", ":"))
+        ]
+    digest = hashlib.sha256()
+    size = 0
+    temporary = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+    with temporary.open("wb") as handle:
+        for piece in pieces:
+            for start in range(0, len(piece), 1 << 24):
+                chunk = piece[start:start + (1 << 24)].encode("utf-8")
+                digest.update(chunk)
+                handle.write(chunk)
+                size += len(chunk)
+    temporary.replace(path)
+    return digest.hexdigest(), size
+
+
 def build_semantic_gltf_scene(
     topology: dict[str, Any],
     semantic_geometry: dict[str, Any],
@@ -929,7 +965,11 @@ def build_semantic_gltf_scene(
     meshopt_level: str = "medium",
     progress: Callable[[str], None] | None = None,
     profile_callback: Callable[[str, dict[str, Any]], None] | None = None,
+    geometry: str = "mesh",
 ) -> dict[str, Any]:
+    """Scene tiles for the board copper, or with ``geometry="analytic"`` only
+    the manifest (layers, nets, features, components, barrels) the analytic
+    board pack draws against: no tiles and no geometry handoff to Node."""
     assets = semantic_geometry.get("assets", {})
     base_asset = str(assets.get("base_board_glb") or "")
     base_path = output_dir / base_asset if base_asset else None
@@ -955,6 +995,7 @@ def build_semantic_gltf_scene(
             meshopt_level=meshopt_level,
             progress=progress,
             profile_callback=profile_callback,
+            geometry=geometry,
         )
     finally:
         if collecting:
@@ -977,6 +1018,7 @@ def _build_semantic_gltf_scene(
     meshopt_level: str,
     progress: Callable[[str], None] | None,
     profile_callback: Callable[[str, dict[str, Any]], None] | None,
+    geometry: str = "mesh",
 ) -> dict[str, Any]:
     started = time.perf_counter()
     builder = SemanticGltfBuilder(topology, base_path)
@@ -1042,6 +1084,15 @@ def _build_semantic_gltf_scene(
         )
     scene_dir = output_dir / "scene-gltf"
     tool = Path(__file__).resolve().parents[2] / "tools" / "semantic-gltf" / "build.mjs"
+    if geometry == "analytic":
+        return _write_analytic_manifest(
+            builder,
+            scene_dir,
+            tool,
+            tile_size_mm=tile_size_mm,
+            progress=progress,
+            profile_callback=profile_callback,
+        )
     cache_root = (cache_dir or (output_dir.parent / ".cache")) / "semantic-gltf"
     input_cache_dir = cache_root / "inputs"
     scene_cache_root = cache_root / "scenes"
@@ -1091,18 +1142,24 @@ def _build_semantic_gltf_scene(
             {"elapsed_ms": (time.perf_counter() - started) * 1000.0},
         )
     started = time.perf_counter()
-    input_bytes = serialize_semantic_input(payload, builder.objects_json)
-    input_digest = hashlib.sha256(input_bytes).hexdigest()
     input_path = input_cache_dir / f"{payload['geometryRevision']}-{meshopt_level}.json"
     input_cache_hit = input_path.exists()
-    if not input_cache_hit:
-        input_path.write_bytes(input_bytes)
+    if input_cache_hit:
+        digest = hashlib.sha256()
+        with input_path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 24), b""):
+                digest.update(chunk)
+        input_digest, input_size = digest.hexdigest(), input_path.stat().st_size
+    else:
+        input_digest, input_size = write_semantic_input(input_path, payload, builder.objects_json)
+    # The encoded objects are on disk now; the builder's copy is not needed again.
+    builder.objects_json = None
     if profile_callback:
         profile_callback(
             "serialize_input",
             {
                 "elapsed_ms": (time.perf_counter() - started) * 1000.0,
-                "input_json_bytes": len(input_bytes),
+                "input_json_bytes": input_size,
                 "cache_hit": input_cache_hit,
             },
         )
@@ -1269,6 +1326,84 @@ def _build_semantic_gltf_scene(
         "geometryRevision": payload["geometryRevision"],
         "tiles": len(manifest.get("tiles", [])),
         "bytes": sum(int(tile.get("bytes") or 0) for tile in manifest.get("tiles", [])),
+    }
+
+
+def scene_bounds(objects: list[dict[str, Any]], barrels: list[dict[str, Any]]) -> dict[str, list[float]]:
+    """The manifest ``bbox`` (metres, runtime x / stackup / board-down), as
+    tools/semantic-gltf/build.mjs ``sceneBounds`` computes it."""
+    min_x = min_z = min_y = math.inf
+    max_x = max_z = max_y = -math.inf
+    for item in objects:
+        half = float(item.get("thicknessMm") or 0.0) / 2.0
+        z = float(item.get("zMm") or 0.0)
+        min_y, max_y = min(min_y, z - half), max(max_y, z + half)
+        for polygon in item.get("polygons") or ():
+            for ring in (polygon["outer"], *(polygon.get("holes") or ())):
+                for x, y in ring:
+                    min_x, max_x = min(min_x, x), max(max_x, x)
+                    min_z, max_z = min(min_z, y), max(max_z, y)
+    for barrel in barrels:
+        bounds = barrel.get("boundsMm") or []
+        if len(bounds) != 6:
+            continue
+        min_x, min_z, min_y = min(min_x, bounds[0]), min(min_z, bounds[1]), min(min_y, bounds[2])
+        max_x, max_z, max_y = max(max_x, bounds[3]), max(max_z, bounds[4]), max(max_y, bounds[5])
+    if not math.isfinite(min_x):
+        return {"min": [0.0, 0.0, 0.0], "max": [0.001, 0.001, 0.001]}
+    return {
+        "min": [min_x / 1000.0, (min_y if math.isfinite(min_y) else 0.0) / 1000.0, min_z / 1000.0],
+        "max": [max_x / 1000.0, (max_y if math.isfinite(max_y) else 1.0) / 1000.0, max_z / 1000.0],
+    }
+
+
+def _write_analytic_manifest(
+    builder: "SemanticGltfBuilder",
+    scene_dir: Path,
+    tool: Path,
+    *,
+    tile_size_mm: float,
+    progress: Callable[[str], None] | None,
+    profile_callback: Callable[[str, dict[str, Any]], None] | None,
+) -> dict[str, Any]:
+    """The scene manifest without tiles, for a board drawn from its analytic
+    pack. Node still writes and validates it, from a small input: the copper
+    polygons never leave Python."""
+
+    started = time.perf_counter()
+    payload = builder.build_input_payload(tile_size_mm=tile_size_mm, include_objects=False)
+    payload["manifestOnly"] = True
+    payload["bbox"] = scene_bounds(builder.objects, builder.barrels)
+    payload["boardZOffsetMm"] = builder.board_z_offset_mm or 0.0
+    payload["geometryRevision"] = hashlib.sha256(
+        ("analytic:" + str(payload["geometryRevision"])).encode("utf-8")
+    ).hexdigest()
+    shutil.rmtree(scene_dir, ignore_errors=True)
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="semantic-manifest-") as tmp:
+        input_path = Path(tmp) / "input.json"
+        input_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        _run_node_builder(["node", str(tool), str(input_path), str(scene_dir)], env={}, progress=progress)
+        input_bytes = input_path.stat().st_size
+    if profile_callback:
+        profile_callback(
+            "analytic_manifest",
+            {
+                "elapsed_ms": (time.perf_counter() - started) * 1000.0,
+                "input_json_bytes": input_bytes,
+                "features": len(payload.get("objectFeatures", []) or []),
+                "nets": len(payload.get("nets", []) or []),
+            },
+        )
+    if progress:
+        progress(f"semantic manifest for the analytic board: {input_bytes / 1_000_000:.1f} MB input, no tiles")
+    return {
+        "schema": SCHEMA,
+        "path": "scene-gltf/scene.manifest.json",
+        "geometryRevision": payload["geometryRevision"],
+        "tiles": 0,
+        "bytes": 0,
+        "geometry": "analytic",
     }
 
 

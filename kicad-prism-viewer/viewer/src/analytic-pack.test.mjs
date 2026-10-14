@@ -85,6 +85,10 @@ test("the copper height offset comes from loaded mesh copper", () => {
   const entry = { kind: "copper", layerId: 4, quantMin: [0, 0, 0.0014844, 0], quantSize: [1, 1, 0.000035, 0] };
   assert.ok(Math.abs(copperZOffset([entry], layers) - 0.0007422) < 1e-12);
   assert.equal(copperZOffset([], layers), 0);
+  // Without mesh copper (a bundle built for the analytic board) the manifest's offset applies;
+  // resident mesh copper still decides when there is some.
+  assert.ok(Math.abs(copperZOffset([], layers, 0.7422) - 0.0007422) < 1e-12);
+  assert.ok(Math.abs(copperZOffset([entry], layers, 5) - 0.0007422) < 1e-12);
   // A flat mesh (degenerate z, stored as size 1) lies on its plane.
   const flat = { kind: "copper", layerId: 4, quantMin: [0, 0, 0.0007597, 0], quantSize: [1, 1, 1, 0] };
   assert.ok(Math.abs(copperZOffset([flat], layers)) < 1e-12);

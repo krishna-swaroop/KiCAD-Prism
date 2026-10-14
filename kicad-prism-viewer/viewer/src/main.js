@@ -512,6 +512,7 @@ export async function mountStandaloneViewer(options = {}) {
         toleranceNm: options.toleranceNm,
         nets: board.scene.manifest?.nets,
         features: board.scene.manifest?.objectFeatures,
+        boardZOffsetMm: board.scene.manifest?.boardZOffsetMm,
       });
       return analyticStats();
     },

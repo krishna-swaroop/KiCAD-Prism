@@ -270,8 +270,12 @@ def finalize_project_geometry(
     soldermask_source: Callable[[], dict[str, Any] | None] | None = None,
     progress: Callable[[str], None] | None = None,
     profile_callback: Callable[[str, dict[str, Any]], None] | None = None,
+    soldermask: bool = True,
 ) -> dict[str, Any]:
     """Join completed KiCad exports with topology-dependent semantic metadata.
+
+    ``soldermask=False`` leaves the mask GLB out: a board drawn from its
+    analytic pack draws its mask from the pack.
 
     ``soldermask_source`` builds the mask polygons from an IR the caller already
     has; it is only called when no cached mask exists for this board.
@@ -348,7 +352,7 @@ def finalize_project_geometry(
         "components": components,
         "visibility_groups": visibility_groups,
     }
-    soldermask_asset = _write_soldermask_glb(
+    soldermask_asset = soldermask and _write_soldermask_glb(
         topology,
         artifacts,
         soldermask_source=soldermask_source,

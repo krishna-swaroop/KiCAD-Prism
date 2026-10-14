@@ -7,12 +7,27 @@ describes (disks, capsules, rounded rectangles, swept paths, polygons with
 holes), so edges stay exact at any zoom and nothing is tessellated ahead of
 time.
 
-**Status: experimental and opt-in.** With `PRISM_ANALYTIC_PCB_ENABLED=true`
-the 3D job also writes `board.kmpack` beside the mesh bundle, the status
-response carries its `analytic_pack_url`, and the PCB 3D tab draws the board
-from it (an "Analytic board" badge shows it is in use). Without the flag, or
-when the pack fails, the tab renders the mesh scene as before. Read
-[Pending work](#pending-work) before relying on it.
+**Status: the default.** With `PRISM_ANALYTIC_PCB_ENABLED=true` (the
+default) the 3D job builds the board analytic-first:
+
+1. It writes `board.kmpack` before anything else.
+2. The compiler runs with `--board-geometry analytic`: the scene manifest
+   keeps layers, nets, features, components and barrels but has no copper
+   tiles, and no solder mask GLB is built. The copper polygons never go to the
+   Node builder (12.9 MB of input on EDA-04903-V1-0 instead of 257 MB; peak
+   memory 3.3 GB instead of an out-of-memory kill at 7.75 GB).
+3. The bundle is published with `board_geometry: "analytic"`. The status
+   response carries its `analytic_pack_url`, and the PCB 3D tab draws the
+   board from it (an "Analytic board" badge shows it is in use).
+4. A lower-priority follow-up job (`geometry: "mesh"`) builds the copper tiles
+   and republishes the bundle with them, keeping the pack. The flat layer
+   view and system scenes, which still draw mesh copper, use them. The
+   follow-up publishes no partial bundles, so the analytic board stays on
+   screen while it runs.
+
+If the pack fails, the job builds the mesh board only, as before. With the
+flag off there is no pack. Read [Pending work](#pending-work) before relying
+on it.
 
 ## Pipeline
 
@@ -107,12 +122,16 @@ describes how to measure it.
 
 ## Pending work
 
-- **Opt-in producer.** Packs are written only with
-  `PRISM_ANALYTIC_PCB_ENABLED=true`, from the saved zone fills, as part of the
-  3D job. A failed pack is logged and the mesh board is shown. The flag changes
-  the bundle's build fingerprint, so switching it rebuilds cached bundles.
+- **Producer.** Packs are written from the saved zone fills, first in the 3D
+  job. A failed pack is logged and the mesh board is built and shown. The flag
+  changes the bundle's build fingerprint, so switching it rebuilds cached
+  bundles.
 - **One-board view only.** System scenes and the flat 2D layer view keep the
-  mesh scene.
+  mesh scene, so they show board copper only once the mesh follow-up job has
+  added the tiles.
+- **Board compile still dominates.** The analytic-first build still compiles
+  the board's PCB IR (about 80 s and 3 GB on a large board) for the manifest's
+  features and nets.
 - **Components stay meshes.** Component bodies come from the KiCad 3D models as
   before.
 - **Materializer source.** The materializer is not in an upstream

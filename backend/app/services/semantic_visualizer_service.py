@@ -410,6 +410,7 @@ def get_status_for_source(
             payload["bundle_url"] = bundle_url(project.id, source_hash)
             payload["generated_at"] = bundle.get("generated_at")
             payload["capabilities"] = bundle.get("capabilities", {})
+            payload["board_geometry"] = bundle.get("board_geometry", "mesh")
             _validate_bundle_assets(current_bundle.parent, bundle)
             if bundle.get("analytic_pack"):
                 payload["analytic_pack_url"] = _asset_url(
@@ -874,11 +875,22 @@ def sync_staged_webgpu_status(
     jobs.upsert_webgpu_ready_status(job_id=job_id, fence=fence, details=details)
 
 
+def _published_pack(target: Path, published: Dict[str, Any] | None, output: Path) -> Dict[str, Any] | None:
+    """The analytic pack of the published bundle, copied into ``output``."""
+    entry = (published or {}).get("analytic_pack")
+    source = target / analytic_pack_service.PACK_FILE
+    if not entry or not source.is_file():
+        return None
+    shutil.copy2(source, output / analytic_pack_service.PACK_FILE)
+    return dict(entry)
+
+
 def _write_bundle(
     project: Any,
     output_dir: Path,
     source_hash: str,
     analytic_pack: Dict[str, Any] | None = None,
+    board_geometry: str = "mesh",
 ) -> None:
     topology = output_dir / "topology.json"
     semantic_geometry = output_dir / "semantic_geometry.json"
@@ -889,6 +901,12 @@ def _write_bundle(
         ["board", "components", "semantic-geometry", "topology"],
     )
     bundle = _bundle_document(project, source_hash, readiness)
+    # "analytic": the board is drawn from the pack and the bundle has no
+    # copper tiles yet; a follow-up job adds them ("mesh").
+    bundle["board_geometry"] = board_geometry
+    if board_geometry == "analytic":
+        # The flat layer view compares mesh copper tiles; it waits for them.
+        bundle["capabilities"]["pcb_layer_compare"] = False
     if analytic_pack:
         bundle["analytic_pack"] = analytic_pack
     (output_dir / "bundle.json").write_text(json.dumps(bundle, indent=2), encoding="utf-8")
@@ -901,6 +919,7 @@ def build_visualizer_bundle(
     persist: Callable[[], None],
     *,
     force: bool = False,
+    geometry: str | None = None,
 ) -> Dict[str, Any]:
     total_started = time.perf_counter()
     project_file = find_kicad_project(project.path, path_config_service.anchor_for_project(project))
@@ -916,6 +935,7 @@ def build_visualizer_bundle(
         persist,
         force=force,
         source_hash=source_hash,
+        geometry=geometry,
     )
     _record_perf(job, persist, "request.total", total_started)
     return status
@@ -928,6 +948,7 @@ def build_visualizer_bundle_for_commit(
     persist: Callable[[], None],
     *,
     force: bool = False,
+    geometry: str | None = None,
 ) -> Dict[str, Any]:
     total_started = time.perf_counter()
     location = project_revision.locate(project)
@@ -935,7 +956,7 @@ def build_visualizer_bundle_for_commit(
     resolved_commit = project_revision.resolve_commit(location, commit)
     rel = project_revision.project_file_rel(location)
     indexed = lookup_commit_source(project.id, resolved_commit, rel)
-    if indexed and not force:
+    if indexed and not force and geometry != "mesh":
         status = get_status_for_source(
             project,
             indexed["source_fingerprint"],
@@ -975,6 +996,7 @@ def build_visualizer_bundle_for_commit(
             persist,
             force=force,
             source_hash=source_hash,
+            geometry=geometry,
         )
         status["commit"] = resolved_commit
         status["project_path"] = rel
@@ -991,6 +1013,7 @@ def build_visualizer_bundle_from_project_file(
     *,
     force: bool = False,
     source_hash: str | None = None,
+    geometry: str | None = None,
 ) -> Dict[str, Any]:
     project_file = project_file.resolve()
     if not project_file.is_file():
@@ -1010,6 +1033,7 @@ def build_visualizer_bundle_from_project_file(
             job,
             persist,
             force=force,
+            geometry=geometry,
         )
     finally:
         lock.release()
@@ -1023,11 +1047,31 @@ def _build_visualizer_bundle_locked(
     persist: Callable[[], None],
     *,
     force: bool = False,
+    geometry: str | None = None,
 ) -> Dict[str, Any]:
+    """Build and publish the 3D bundle.
+
+    With the analytic pack enabled the board is built analytic-first: the
+    pack, then a bundle whose manifest has no copper tiles, so the 3D tab is
+    ready without the mesh build's large Node handoff. ``geometry="mesh"`` is
+    the follow-up that adds the copper tiles (flat layer view, system scenes);
+    without a pack the build is mesh-only as before.
+    """
     build_started = time.perf_counter()
     target = bundle_dir(project.id, source_hash)
     existing = target / "bundle.json"
-    if existing.exists() and not force:
+    published: Dict[str, Any] | None = None
+    if existing.exists():
+        try:
+            published = json.loads(existing.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            published = None
+    adding_mesh = (
+        geometry == "mesh"
+        and published is not None
+        and published.get("board_geometry") == "analytic"
+    )
+    if existing.exists() and not force and not adding_mesh:
         try:
             bundle = json.loads(existing.read_text(encoding="utf-8"))
             _validate_bundle_assets(existing.parent, bundle)
@@ -1058,9 +1102,27 @@ def _build_visualizer_bundle_locked(
     persist()
 
     with tempfile.TemporaryDirectory(prefix="semantic-visualizer-") as tmp:
-        job["stage"] = "compile-assets"
         output = Path(tmp) / "bundle"
         output.mkdir(parents=True, exist_ok=True)
+        analytic_pack = None
+        board_geometry = "mesh"
+        if analytic_pack_service.enabled() and geometry != "mesh":
+            job["stage"] = "analytic-pack"
+            job["message"] = "Building the analytic board..."
+            persist()
+            pack_started = time.perf_counter()
+            analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"])
+            _record_perf(job, persist, "analytic_pack", pack_started, written=analytic_pack is not None)
+            if analytic_pack is not None:
+                board_geometry = "analytic"
+            else:
+                job["logs"].append("Analytic pack unavailable; building the mesh board instead")
+        elif adding_mesh:
+            job["logs"].append("Adding mesh copper tiles to the analytic bundle")
+        # A follow-up keeps the published bundle on screen: no partial bundle
+        # replaces it while the mesh copper builds.
+        publish_partials = not (published and (published.get("readiness") or {}).get("stage") == "semantic-ready")
+        job["stage"] = "compile-assets"
         env = os.environ.copy()
         env["PYTHONPATH"] = semantic_viewer_pythonpath(viewer_root, os.environ.get("PYTHONPATH", ""))
         env["PRISM_TOPOLOGY_COMPILER_METRICS_PATH"] = str(output / "generation-profile.json")
@@ -1080,6 +1142,8 @@ def _build_visualizer_bundle_locked(
             str(semantic_tile_size_mm()),
             "--scope",
             "3d",
+            "--board-geometry",
+            board_geometry,
         ]
         if force:
             cmd.append("--force-rebuild")
@@ -1106,7 +1170,7 @@ def _build_visualizer_bundle_locked(
                     compiler_milestones.add("board-ready")
                 if "MILESTONE components-ready" in line:
                     compiler_milestones.add("components-ready")
-                if "board-ready" in compiler_milestones:
+                if publish_partials and "board-ready" in compiler_milestones:
                     partial_stage = (
                         "components-ready"
                         if "components-ready" in compiler_milestones
@@ -1135,14 +1199,17 @@ def _build_visualizer_bundle_locked(
         if return_code != 0:
             raise RuntimeError(f"semantic visualizer compiler exited with code {return_code}")
 
-        analytic_pack = None
-        if analytic_pack_service.enabled():
-            job["stage"] = "analytic-pack"
-            pack_started = time.perf_counter()
-            analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"])
-            _record_perf(job, persist, "analytic_pack", pack_started, written=analytic_pack is not None)
+        if analytic_pack is None and analytic_pack_service.enabled():
+            # The mesh follow-up keeps the pack already published; a mesh-only
+            # build (no pack yet, or a failed one) tries once more here.
+            analytic_pack = _published_pack(target, published, output) if adding_mesh else None
+            if analytic_pack is None and not adding_mesh and geometry == "mesh":
+                job["stage"] = "analytic-pack"
+                pack_started = time.perf_counter()
+                analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"])
+                _record_perf(job, persist, "analytic_pack", pack_started, written=analytic_pack is not None)
         bundle_started = time.perf_counter()
-        _write_bundle(project, output, source_hash, analytic_pack)
+        _write_bundle(project, output, source_hash, analytic_pack, board_geometry=board_geometry)
         _record_perf(job, persist, "bundle.write_and_validate", bundle_started)
         job["stage"] = "publish-assets"
         job["message"] = "Publishing semantic viewer assets..."

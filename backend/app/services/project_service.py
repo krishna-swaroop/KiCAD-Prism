@@ -1,6 +1,7 @@
 import os
 import hashlib
 import json
+import logging
 import shutil
 import datetime
 from typing import Any, Dict, List, Optional
@@ -16,6 +17,8 @@ from app.services.workspace_service import workspace
 from app.services.job_artifact_service import job_artifacts
 from app.services.job_runtime import JobContext, JobResult
 from app.services.job_kinds import JobKind, JobSubject, repository_lock
+
+logger = logging.getLogger(__name__)
 
 class Project(BaseModel):
     id: str
@@ -281,6 +284,8 @@ def run_webgpu_3d_job_v3(context: JobContext) -> JobResult:
     commit = payload.get("commit")
     force = bool(payload.get("force"))
     artifact_key = str(payload["artifact_key"])
+    # "mesh": the follow-up that adds copper tiles to an analytic bundle.
+    geometry = payload.get("geometry")
     status_selector = semantic_visualizer_service.status_selector_for_project(
         project,
         commit=str(commit) if commit else None,
@@ -353,6 +358,7 @@ def run_webgpu_3d_job_v3(context: JobContext) -> JobResult:
             state,
             persist,
             force=force,
+            geometry=geometry,
         )
     else:
         status = semantic_visualizer_service.build_visualizer_bundle(
@@ -360,8 +366,11 @@ def run_webgpu_3d_job_v3(context: JobContext) -> JobResult:
             state,
             persist,
             force=force,
+            geometry=geometry,
         )
     context.check_cancelled()
+    if status.get("board_geometry") == "analytic" and geometry != "mesh":
+        _enqueue_mesh_follow_up(row, project_id, payload, requested_by=str(context.job.get("requested_by") or ""))
     source_fingerprint = str(status["source_fingerprint"])
     build_fingerprint = str(status["build_fingerprint"])
     bundle_path = semantic_visualizer_service.bundle_path(
@@ -613,6 +622,35 @@ def get_subsheets(project_path: str, main_schematic: str) -> List[str]:
                 subsheets.append(subsheet_rel)
                 
     return subsheets
+
+
+#: The mesh follow-up runs after interactive 3D builds.
+MESH_FOLLOW_UP_PRIORITY = 200
+
+
+def _enqueue_mesh_follow_up(row: dict[str, Any], project_id: str, payload: dict[str, Any], *, requested_by: str) -> None:
+    """Queue the copper tiles for a bundle published analytic-first. Its own
+    artifact key keeps one per revision and skips a revision already done."""
+
+    commit = payload.get("commit")
+    key = f"{webgpu_artifact_key(row, commit, force=False)}:mesh"
+    try:
+        WEBGPU_3D.enqueue(
+            {
+                "project_id": project_id,
+                "commit": commit,
+                "force": False,
+                "artifact_key": key,
+                "project_file_rel": payload.get("project_file_rel") or "",
+                "geometry": "mesh",
+            },
+            subject=JobSubject.of_project(row, project_id),
+            artifact_key=key,
+            requested_by=requested_by,
+            priority=MESH_FOLLOW_UP_PRIORITY,
+        )
+    except Exception as exc:  # The analytic bundle is published; the tiles can be built later.
+        logger.warning("Mesh follow-up for %s not queued: %s", project_id, type(exc).__name__)
 
 
 WEBGPU_3D = JobKind(

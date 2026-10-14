@@ -76,8 +76,11 @@ class PipelineSettings(BaseSettings):
         description="PCB copper geometry backend: legacy, or the experimental rust / python-copper.",
     )
     PRISM_ANALYTIC_PCB_ENABLED: bool = Field(
-        default=False,
-        description="Experimental: also write the analytic board pack the 3D tab and Simulation Studio read.",
+        default=True,
+        description=(
+            "Build the 3D board analytic-first: the board pack the 3D tab and Simulation Studio read, "
+            "then copper tiles in a follow-up job. False builds the mesh board only."
+        ),
     )
     PRISM_SIM_STUDIO_ENABLED: bool = Field(
         default=False,

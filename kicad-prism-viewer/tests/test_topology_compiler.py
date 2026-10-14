@@ -60,7 +60,9 @@ from pipeline.topology_compiler.copper_geometry import (
 )
 from pipeline.topology_compiler.semantic_gltf import (
     SemanticGltfBuilder,
+    scene_bounds,
     serialize_semantic_input,
+    write_semantic_input,
     _native_backend_for_semantic_mode,
     _reconcile_packed_net_metadata,
     _semantic_clipper_backend,
@@ -1188,6 +1190,40 @@ class TopologyCompilerTests(unittest.TestCase):
             serialize_semantic_input(payload, builder.objects_json),
             json.dumps(payload, separators=(",", ":")).encode("utf-8"),
         )
+
+    def test_semantic_input_written_in_pieces_matches_the_spliced_encoding(self) -> None:
+        builder = SemanticGltfBuilder(self.semantic_topology())
+        builder.add_pcb_ir({"records": [
+            {"uuid": "track", "kind": "segment", "net_name": "GND", "layer": "F.Cu",
+             "operations": [{"kind": "ThickSegment", "start_x": 0, "start_y": 0,
+                             "end_x": 1_000_000, "end_y": 0, "width_nm": 200_000}]},
+        ]})
+        payload = builder.build_input_payload()
+        expected = serialize_semantic_input(payload, builder.objects_json)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "input.json"
+            digest, size = write_semantic_input(path, payload, builder.objects_json)
+            self.assertEqual(path.read_bytes(), expected)
+        self.assertEqual((digest, size), (hashlib.sha256(expected).hexdigest(), len(expected)))
+
+    def test_manifest_input_for_the_analytic_board_carries_no_copper(self) -> None:
+        builder = SemanticGltfBuilder(self.semantic_topology())
+        builder.add_pcb_ir({"records": [
+            {"uuid": "track", "kind": "segment", "net_name": "GND", "layer": "F.Cu",
+             "operations": [{"kind": "ThickSegment", "start_x": 0, "start_y": 0,
+                             "end_x": 4_000_000, "end_y": 2_000_000, "width_nm": 200_000}]},
+        ]})
+        full = builder.build_input_payload()
+        light = builder.build_input_payload(include_objects=False)
+        self.assertEqual(light["objects"], [])
+        self.assertEqual(light["objectFeatures"], full["objectFeatures"])
+        self.assertEqual(light["nets"], full["nets"])
+        self.assertEqual(light["layers"], full["layers"])
+        self.assertNotEqual(light["geometryRevision"], full["geometryRevision"])
+        bounds = scene_bounds(builder.objects, builder.barrels)
+        # The track's capsule: 0..4 mm by 0..2 mm, widened by its 0.1 mm half width.
+        self.assertAlmostEqual(bounds["min"][0], -0.0001, places=6)
+        self.assertAlmostEqual(bounds["max"][0], 0.0041, places=6)
 
     def test_via_caps_and_barrel_share_one_source_feature(self) -> None:
         builder = SemanticGltfBuilder(self.semantic_topology())

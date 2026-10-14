@@ -148,22 +148,46 @@ def _soldermask_source(context: PrismCompilationContext):
     return build
 
 
+#: Boards whose .kicad_pcb is at least this large export serially in mesh mode.
+LARGE_BOARD_BYTES = int(os.environ.get("PRISM_SERIAL_EXPORT_PCB_BYTES", str(30_000_000)))
+
+
+def _large_board(project_file: Path) -> bool:
+    pcb = project_file.with_suffix(".kicad_pcb")
+    try:
+        return pcb.stat().st_size >= LARGE_BOARD_BYTES
+    except OSError:
+        return False
+
+
 def cmd_from_project(args: argparse.Namespace) -> None:
     _STAGE_TIMINGS_MS.clear()
     _PROFILE_EVENTS.clear()
     total_started = time.perf_counter()
     project_file = args.project
     _progress(f"from-project input={project_file} output={args.output}")
-    _progress("START parallel KiCad GLB export lane")
+    analytic = getattr(args, "board_geometry", "mesh") == "analytic"
+    # On a large board the mesh build's Node tile pass is the memory peak;
+    # KiCad's own export running beside it can push a container over its
+    # limit, so it waits for the copper tiles instead.
+    serial_exports = not analytic and _large_board(project_file)
+    _progress(
+        "START KiCad GLB export lane after the copper tiles (large board)"
+        if serial_exports
+        else "START parallel KiCad GLB export lane"
+    )
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as export_pool:
-        export_future = export_pool.submit(
-            export_project_geometry_assets,
-            project_file,
-            args.output,
-            strict_components=args.strict_components,
-            progress=_progress,
-            profile_callback=_profile("kicad_cli"),
-        )
+        def start_exports() -> concurrent.futures.Future:
+            return export_pool.submit(
+                export_project_geometry_assets,
+                project_file,
+                args.output,
+                strict_components=args.strict_components,
+                progress=_progress,
+                profile_callback=_profile("kicad_cli"),
+            )
+
+        export_future = None if serial_exports else start_exports()
         context = PrismCompilationContext(
             project_file,
             compatibility_design_json=args.compat_design_json,
@@ -233,6 +257,7 @@ def cmd_from_project(args: argparse.Namespace) -> None:
                         tile_size_mm=tile_size_mm,
                         progress=_progress,
                         profile_callback=_profile("semantic_gltf"),
+                        geometry="analytic" if analytic else "mesh",
                     )
             _STAGE_TIMINGS_MS["semantic_copper_ready_ms"] = (
                 time.perf_counter() - total_started
@@ -241,6 +266,13 @@ def cmd_from_project(args: argparse.Namespace) -> None:
             return result
 
         semantic_future = export_pool.submit(build_semantic_lane)
+        if export_future is None:
+            # Waiting here also surfaces a failed copper build before the export runs.
+            try:
+                semantic_future.result()
+            except Exception:
+                pass
+            export_future = start_exports()
         try:
             export_artifacts = export_future.result()
             _STAGE_TIMINGS_MS["kicad_glb_ms"] = export_artifacts.elapsed_ms
@@ -252,9 +284,10 @@ def cmd_from_project(args: argparse.Namespace) -> None:
             semantic_geometry = finalize_project_geometry(
                 topology,
                 export_artifacts,
-                soldermask_source=_soldermask_source(context),
+                soldermask_source=None if analytic else _soldermask_source(context),
                 progress=_progress,
                 profile_callback=_profile("kicad_cli"),
+                soldermask=not analytic,
             )
             semantic_geometry["semantic_gltf"] = semantic_future.result()
             patch_semantic_gltf_components(
@@ -268,6 +301,7 @@ def cmd_from_project(args: argparse.Namespace) -> None:
             raise SystemExit(3)
     topology["design"].setdefault("assets", {})["semantic_geometry"] = "semantic_geometry.json"
     topology["design"]["assets"]["geometry_mode"] = "semantic-gltf"
+    topology["design"]["assets"]["board_geometry"] = "analytic" if analytic else "mesh"
     with _stage("write final viewer bundle files"):
         _write_outputs(
             topology,
@@ -538,6 +572,13 @@ def main() -> None:
         choices=["3d", "all"],
         default="all",
         help="Generate WebGPU 3D assets, or also emit the standalone viewer HTML",
+    )
+    from_project.add_argument(
+        "--board-geometry",
+        choices=["mesh", "analytic"],
+        default="mesh",
+        help="mesh: copper scene tiles and a solder mask GLB; analytic: the manifest only, "
+        "for a board drawn from its analytic pack",
     )
     from_project.add_argument(
         "--meshopt-level",

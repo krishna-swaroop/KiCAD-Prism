@@ -66,6 +66,10 @@ async function runMain() {
     await writeSoldermaskGlb(input, path.join(outputDir, "soldermask.glb"));
     return;
   }
+  if (input.manifestOnly) {
+    await writeManifestOnly(input, outputDir);
+    return;
+  }
   const tileSize = Number(input.tileSizeMm || 20);
   const meshoptLevel = normalizeMeshoptLevel(
     input.meshoptLevel || process.env.PRISM_SEMANTIC_GLTF_MESHOPT_LEVEL || "medium",
@@ -134,6 +138,24 @@ async function runMain() {
     workerCount,
   });
   progress(`done manifestTiles=${manifest.tiles.length}`);
+}
+
+/**
+ * The manifest of a board drawn from its analytic pack: layers, nets,
+ * features, components and barrels, with no copper tiles. Python sends no
+ * copper polygons for it; `bbox` and `boardZOffsetMm` come precomputed.
+ */
+async function writeManifestOnly(input, outputDir) {
+  const manifest = manifestFromSemanticInput(input, {
+    tileSize: Number(input.tileSizeMm || 20),
+    clipper: { backend: "none", reason: "analytic board: no copper tiles" },
+    bbox: input.bbox,
+  });
+  manifest.geometry = "analytic";
+  manifest.boardZOffsetMm = Number(input.boardZOffsetMm || 0);
+  validateSceneManifest(manifest);
+  await fs.mkdir(outputDir, { recursive: true });
+  await fs.writeFile(path.join(outputDir, "scene.manifest.json"), JSON.stringify(manifest));
 }
 
 async function runPackedMain(input, inputPath, outputDir, metrics) {

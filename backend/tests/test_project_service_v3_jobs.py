@@ -253,6 +253,65 @@ class ProjectServiceV3JobTests(unittest.TestCase):
         self.assertIn("28dab1d3-7bf2-4d8a-9723-bcdd14e1d814", command)
         repository.git.add.assert_not_called()
 
+    def _run_webgpu(self, payload: dict[str, object], status: dict[str, object]) -> mock.Mock:
+        """Run the webgpu_3d handler with a stubbed build; returns the enqueue mock."""
+        with tempfile.TemporaryDirectory() as temporary:
+            staging_dir = Path(temporary)
+            bundle_path = staging_dir / "source-bundle.json"
+            bundle_path.write_text('{"schema":"bundle"}', encoding="utf-8")
+            context = SimpleNamespace(
+                job_id="job-webgpu",
+                fence=1,
+                job={"requested_by": "designer@example.com"},
+                payload=payload,
+                staging_dir=staging_dir,
+                check_cancelled=mock.Mock(),
+                progress=lambda **values: None,
+            )
+            prepared = PreparedArtifact(
+                kind="webgpu_3d", artifact_key="artifact-key", digest="digest",
+                object_path="/objects/digest", size_bytes=bundle_path.stat().st_size,
+            )
+            build = mock.Mock(return_value={"source_fingerprint": "source", "build_fingerprint": "build", **status})
+            with (
+                mock.patch.object(project_service.workspace, "get_project_by_id",
+                                  return_value={"id": "project-1", "last_modified": "rev-1"}),
+                mock.patch.object(project_service, "_workspace_row_to_project", return_value=SimpleNamespace(id="project-1")),
+                mock.patch.object(semantic_visualizer_service, "build_visualizer_bundle", build),
+                mock.patch.object(semantic_visualizer_service, "bundle_path", return_value=bundle_path),
+                mock.patch.object(project_service.job_artifacts, "prepare_file", return_value=prepared),
+                mock.patch.object(project_service, "WEBGPU_3D") as kind,
+            ):
+                project_service.run_webgpu_3d_job_v3(context)
+            self.assertEqual(build.call_args.kwargs.get("geometry"), payload.get("geometry"))
+            return kind.enqueue
+
+    def test_analytic_bundle_queues_the_mesh_follow_up_once(self) -> None:
+        enqueue = self._run_webgpu(
+            {"project_id": "project-1", "force": True, "artifact_key": ""},
+            {"board_geometry": "analytic"},
+        )
+        enqueue.assert_called_once()
+        queued = enqueue.call_args.args[0]
+        self.assertEqual(queued["geometry"], "mesh")
+        self.assertFalse(queued["force"])
+        self.assertTrue(queued["artifact_key"].endswith(":mesh"))
+        self.assertEqual(enqueue.call_args.kwargs["artifact_key"], queued["artifact_key"])
+        self.assertEqual(enqueue.call_args.kwargs["priority"], project_service.MESH_FOLLOW_UP_PRIORITY)
+        self.assertEqual(enqueue.call_args.kwargs["requested_by"], "designer@example.com")
+
+    def test_mesh_builds_queue_nothing(self) -> None:
+        follow_up = self._run_webgpu(
+            {"project_id": "project-1", "force": False, "artifact_key": "k:mesh", "geometry": "mesh"},
+            {"board_geometry": "mesh"},
+        )
+        follow_up.assert_not_called()
+        mesh_only = self._run_webgpu(
+            {"project_id": "project-1", "force": False, "artifact_key": "k"},
+            {"board_geometry": "mesh"},
+        )
+        mesh_only.assert_not_called()
+
     def test_webgpu_adapter_uses_list_for_legacy_performance_events(self) -> None:
         progress_updates: list[dict[str, object]] = []
         with tempfile.TemporaryDirectory() as temporary:
@@ -279,6 +338,7 @@ class ProjectServiceV3JobTests(unittest.TestCase):
                 persist: object,
                 *,
                 force: bool,
+                geometry: str | None = None,
             ) -> dict[str, object]:
                 self.assertIsInstance(state["performance"], list)
                 performance = state["performance"]

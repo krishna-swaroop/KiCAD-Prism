@@ -18,7 +18,7 @@ import { AnalyticRenderer } from "./analytic-renderer.js";
  * flat mesh has a degenerate z extent, which `quantisationOf` stores as size
  * 1; its plane is then `quantMin`. Zero when no copper is resident.
  */
-export function copperZOffset(entries, layers) {
+export function copperZOffset(entries, layers, boardZOffsetMm = 0) {
   const byId = new Map((layers || []).map((layer) => [Number(layer.id), layer]));
   for (const entry of entries || []) {
     const layer = byId.get(Number(entry.layerId));
@@ -27,7 +27,9 @@ export function copperZOffset(entries, layers) {
     const middle = entry.quantMin[2] + (flat ? 0 : entry.quantSize[2] / 2);
     return middle - Number(layer.z_mm || 0) / 1000;
   }
-  return 0;
+  // No mesh copper (a bundle built for the analytic board has none): the
+  // manifest states the same shift, from the stackup the compiler used.
+  return Number(boardZOffsetMm || 0) / 1000;
 }
 
 /**
@@ -53,9 +55,9 @@ export function copperPlane(entries, layerId, bottom = false) {
  * walls, solder mask, paste and silkscreen, in place of the mesh layers they
  * replace. `colorFor(layer)` gives each copper layer's linear RGBA.
  */
-export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wasm, toleranceNm, nets = [], features = [] }) {
+export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wasm, toleranceNm, nets = [], features = [], boardZOffsetMm = 0 }) {
   const pack = await openAnalyticPack(bytes, { wasm });
-  const zOffset = copperZOffset(renderer.entries, layers);
+  const zOffset = copperZOffset(renderer.entries, layers, boardZOffsetMm);
   const { planned, unmatched } = planBoardSlices(pack.header, layers, zOffset);
   const byId = new Map(layers.map((layer) => [Number(layer.id), layer]));
   const started = performance.now();

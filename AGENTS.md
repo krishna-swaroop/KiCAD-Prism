@@ -240,8 +240,10 @@ The next tag is `v4.0.0-alpha`, superseding the unpublished v3.1 plan.
 Python-copper require explicit experimental selection; never infer activation
 from an installed helper or replace the published Python toolchain with a
 sibling checkout. See `docs/PCB_RUST_GEOMETRY.md` and `docs/DEPENDENCIES.md`.
-`PRISM_ANALYTIC_PCB_ENABLED=false` is the default too; it adds the analytic
-board pack (`docs/ANALYTIC_3D_VIEW.md`) and never replaces the mesh bundle.
+`PRISM_ANALYTIC_PCB_ENABLED=true` is the default: the 3D job builds the board
+analytic-first (`docs/ANALYTIC_3D_VIEW.md`), publishing a bundle without copper
+tiles, then queues a lower-priority job that adds them for the flat layer view
+and system scenes. If the pack fails, the job builds the mesh board as before.
 
 ## Generated and vendored boundaries
 
