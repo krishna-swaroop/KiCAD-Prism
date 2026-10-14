@@ -12,12 +12,14 @@ import asyncio
 from typing import Any, Callable, TypeVar
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 
 from app.api._helpers import get_project_for_role_or_404
 from app.core import errors, preconditions
 from app.core.config import settings
 from app.core.security import AuthenticatedUser, require_designer, require_viewer
-from app.sim_studio.models import DraftSetupRequest
+from app.sim_studio.models import DraftSetupRequest, SubmitSetupRequest
+from app.sim_studio import runs
 from app.sim_studio.service import sim_studio
 from app.sim_studio.store import ETAG_KIND
 
@@ -60,8 +62,7 @@ async def read_catalog(user: AuthenticatedUser = Depends(require_viewer)) -> dic
 
 @router.get("/sim/a0/engines")
 async def list_engines(user: AuthenticatedUser = Depends(require_viewer)) -> list[dict[str, Any]]:
-    # Engines register with the sim worker pool (step 3); none are installed yet.
-    return []
+    return await _run(runs.engine_descriptors)
 
 
 @router.get(SETUPS)
@@ -139,6 +140,67 @@ async def preflight_setup(
     project_id: str, setup_id: str, user: AuthenticatedUser = Depends(require_viewer),
 ) -> dict[str, Any]:
     return await _check(project_id, setup_id, "preflight", user)
+
+
+
+@router.post(SETUP + "/submit", status_code=202)
+async def submit_setup(
+    project_id: str, setup_id: str, body: SubmitSetupRequest, request: Request,
+    user: AuthenticatedUser = Depends(require_designer),
+) -> dict[str, Any]:
+    """Freeze the current revision (If-Match), preflight it, and queue one analysis."""
+
+    project = get_project_for_role_or_404(project_id, user.role)
+    expected = _expected(request, setup_id)
+    with errors.caller_errors((ValueError, 400), (RuntimeError, 503)):
+        return await _run(lambda: sim_studio.submit(project, setup_id, expected, body.analysis_id, user.email))
+
+
+RUNS = "/projects/{project_id}/sim/a0/runs"
+RUN = RUNS + "/{run_id}"
+
+
+@router.get(RUNS)
+async def list_runs(project_id: str, user: AuthenticatedUser = Depends(require_viewer)) -> list[dict[str, Any]]:
+    get_project_for_role_or_404(project_id, user.role)
+    return await _run(lambda: sim_studio.list_runs(project_id))
+
+
+@router.get(RUN)
+async def read_run(project_id: str, run_id: str, user: AuthenticatedUser = Depends(require_viewer)) -> dict[str, Any]:
+    get_project_for_role_or_404(project_id, user.role)
+    return await _run(lambda: sim_studio.read_run(project_id, run_id))
+
+
+@router.get(RUN + "/result")
+async def read_result(project_id: str, run_id: str, user: AuthenticatedUser = Depends(require_viewer)) -> dict[str, Any]:
+    get_project_for_role_or_404(project_id, user.role)
+    row = await _run(lambda: sim_studio.run_row(project_id, run_id))
+    if not row.get("result"):
+        raise errors.NotFound("The run has no result yet", code="sim_result_pending")
+    return row["result"]
+
+
+@router.get(RUN + "/files/{path:path}")
+async def read_result_file(
+    project_id: str, run_id: str, path: str, user: AuthenticatedUser = Depends(require_viewer),
+) -> FileResponse:
+    get_project_for_role_or_404(project_id, user.role)
+    row = await _run(lambda: sim_studio.run_row(project_id, run_id))
+    return FileResponse(runs.result_file(row, path), media_type="application/json")
+
+
+@router.get(RUN + "/materialization")
+async def read_run_materialization(
+    project_id: str, run_id: str, user: AuthenticatedUser = Depends(require_viewer),
+) -> Response:
+    """The bundle's analytic pack, so overlays index the geometry the engine solved."""
+
+    get_project_for_role_or_404(project_id, user.role)
+    row = await _run(lambda: sim_studio.run_row(project_id, run_id))
+    data = await _run(lambda: runs.materialization(row))
+    return Response(content=data, media_type="application/octet-stream",
+                    headers={"Cache-Control": "private, max-age=86400, immutable"})
 
 
 __all__ = ["router"]

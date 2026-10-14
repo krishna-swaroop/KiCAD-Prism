@@ -13,6 +13,7 @@ from app.sim_studio import drafting, validation
 from app.sim_studio.board_facts import BoardFacts, from_semantic_index
 from app.sim_studio.json_patch import PatchError, apply_patch
 from app.sim_studio.models import DraftSetupRequest, SimSetup
+from app.sim_studio.run_store import RunStore, public as public_run
 from app.sim_studio.store import ETAG_KIND, SetupStore
 
 
@@ -81,8 +82,12 @@ def summary(row: dict[str, Any]) -> dict[str, Any]:
 
 
 class SimStudioService:
-    def __init__(self, store: SetupStore | None = None, facts: FactsLoader = semantic_index_facts) -> None:
+    def __init__(
+        self, store: SetupStore | None = None, facts: FactsLoader = semantic_index_facts,
+        runs: RunStore | None = None,
+    ) -> None:
         self.store = store or SetupStore()
+        self.runs = runs or RunStore()
         self._facts = facts
 
     def catalog(self) -> dict[str, Any]:
@@ -133,6 +138,23 @@ class SimStudioService:
         facts = self._facts(project, row.get("source_commit"))
         run = validation.preflight if stage == "preflight" else validation.validate
         return validation.report(stage, canonical_sha256(row["document"]), run(setup, facts))
+
+    def submit(
+        self, project: Any, setup_id: str, expected_revision: Optional[int], analysis_id: str, actor: str,
+    ) -> dict[str, Any]:
+        from app.sim_studio import runs
+
+        return runs.submit(project, setup_id, expected_revision, analysis_id, actor,
+                           self._facts, setups=self.store, runs=self.runs)
+
+    def list_runs(self, project_id: str) -> list[dict[str, Any]]:
+        return [public_run(row) for row in self.runs.list(project_id)]
+
+    def read_run(self, project_id: str, run_id: str) -> dict[str, Any]:
+        return public_run(self.runs.read(run_id, project_id))
+
+    def run_row(self, project_id: str, run_id: str) -> dict[str, Any]:
+        return self.runs.read(run_id, project_id)
 
 
 sim_studio = SimStudioService()

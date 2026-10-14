@@ -155,6 +155,9 @@ services:
       - PRISM_PCB_GEOMETRY_BACKEND=${PRISM_PCB_GEOMETRY_BACKEND:-legacy}
       - PRISM_ANALYTIC_PCB_ENABLED=${PRISM_ANALYTIC_PCB_ENABLED:-false}
       - PRISM_SIM_STUDIO_ENABLED=${PRISM_SIM_STUDIO_ENABLED:-false}
+      - PRISM_SIM_BIN_DIR=${PRISM_SIM_BIN_DIR:-/opt/prism-sim/bin}
+      - PRISM_SIM_CONCURRENCY=${PRISM_SIM_CONCURRENCY:-1}
+      - PRISM_SIM_TIMEOUT_SECONDS=${PRISM_SIM_TIMEOUT_SECONDS:-3600}
     command: >
       sh -c '/app/venv/bin/python -m uvicorn app.main:app
       --host 0.0.0.0
@@ -309,6 +312,9 @@ services:
       - PRISM_PCB_GEOMETRY_BACKEND=${PRISM_PCB_GEOMETRY_BACKEND:-legacy}
       - PRISM_ANALYTIC_PCB_ENABLED=${PRISM_ANALYTIC_PCB_ENABLED:-false}
       - PRISM_SIM_STUDIO_ENABLED=${PRISM_SIM_STUDIO_ENABLED:-false}
+      - PRISM_SIM_BIN_DIR=${PRISM_SIM_BIN_DIR:-/opt/prism-sim/bin}
+      - PRISM_SIM_CONCURRENCY=${PRISM_SIM_CONCURRENCY:-1}
+      - PRISM_SIM_TIMEOUT_SECONDS=${PRISM_SIM_TIMEOUT_SECONDS:-3600}
     command:
       - /app/venv/bin/python
       - -m

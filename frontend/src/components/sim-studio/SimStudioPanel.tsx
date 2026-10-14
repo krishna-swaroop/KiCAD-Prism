@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, CheckCircle2, Loader2, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Activity, CheckCircle2, Eye, Loader2, Play, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,8 @@ import { cn } from "@/lib/utils";
 
 import * as api from "./api";
 import { installSimStudioScriptApi } from "./script-api";
-import type { CatalogEntry, SetupRecord, SetupRecordSummary, SetupReport } from "./types";
+import { SIM_RUN_PARAM } from "@/hooks/use-sim-run-overlay";
+import type { CatalogEntry, SetupRecord, SetupRecordSummary, SetupReport, SimRun } from "./types";
 
 type Props = {
     projectId: string;
@@ -34,6 +36,23 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
     const [checking, setChecking] = useState(false);
     const [draftName, setDraftName] = useState("");
     const [reloadKey, setReloadKey] = useState(0);
+    const [runs, setRuns] = useState<SimRun[]>([]);
+    const [, setSearchParams] = useSearchParams();
+
+    const viewRun = useCallback((runId: string) => {
+        setSearchParams({ section: "visualizers", tab: "3d", [SIM_RUN_PARAM]: runId });
+    }, [setSearchParams]);
+
+    const active = runs.some((run) => run.status === "queued" || run.status === "running");
+    useEffect(() => {
+        let cancelled = false;
+        const load = () => api.listRuns(projectId)
+            .then((value) => { if (!cancelled) setRuns(value); })
+            .catch(() => undefined);
+        void load();
+        const timer = active ? window.setInterval(load, 2500) : undefined;
+        return () => { cancelled = true; if (timer) window.clearInterval(timer); };
+    }, [projectId, reloadKey, active]);
 
     useEffect(() => {
         let cancelled = false;
@@ -70,7 +89,8 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
             setReloadKey((key) => key + 1);
         },
         onOpen: (setupId) => setSelected(setupId),
-    }), [projectId]);
+        onView: viewRun,
+    }), [projectId, viewRun]);
 
     const check = useCallback(async (stage: "validate" | "preflight") => {
         if (!selected) return;
@@ -91,6 +111,16 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
             const created = await api.draftSetup(projectId, kind, name);
             setDraftName("");
             setSelected(created.setup_id);
+            setReloadKey((key) => key + 1);
+        } catch (error) {
+            toast.error(message(error));
+        }
+    };
+
+    const submit = async () => {
+        if (!record) return;
+        try {
+            await api.submitSetup(projectId, record.setup_id, record.etag, record.setup.analyses[0]?.id ?? "dc");
             setReloadKey((key) => key + 1);
         } catch (error) {
             toast.error(message(error));
@@ -184,20 +214,23 @@ export function SimStudioPanel({ projectId, canMutate }: Props) {
                         canMutate={canMutate}
                         onCheck={check}
                         onToggleRail={toggleRail}
+                        onSubmit={submit}
                     />
                 )}
+                <RunList runs={runs.filter((run) => !record || run.setup_id === record.setup_id)} onView={viewRun} />
             </main>
         </div>
     );
 }
 
-function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleRail }: {
+function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleRail, onSubmit }: {
     record: SetupRecord;
     report: SetupReport | null;
     checking: boolean;
     canMutate: boolean;
     onCheck: (stage: "validate" | "preflight") => void;
     onToggleRail: (railId: string) => void;
+    onSubmit: () => void;
 }) {
     const { setup } = record;
     const solved = new Set(setup.analyses[0]?.rails ?? []);
@@ -216,6 +249,12 @@ function SetupOverview({ record, report, checking, canMutate, onCheck, onToggleR
                         {checking ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Activity className="mr-2 h-3.5 w-3.5" />}
                         Preflight
                     </Button>
+                    {canMutate && (
+                        <Button size="sm" variant="secondary" disabled={checking} onClick={onSubmit}>
+                            <Play className="mr-2 h-3.5 w-3.5" />
+                            Run
+                        </Button>
+                    )}
                 </div>
             </header>
             {report && <ReportView report={report} />}
@@ -275,6 +314,32 @@ function ReportView({ report }: { report: SetupReport }) {
                             ? <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
                             : <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />}
                         <span>{issue.message} <span className="font-mono text-muted-foreground">{issue.path}</span></span>
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+}
+
+function RunList({ runs, onView }: { runs: SimRun[]; onView: (runId: string) => void }) {
+    if (runs.length === 0) return null;
+    return (
+        <section aria-label="Runs" className="space-y-1">
+            <h3 className="text-sm font-semibold">Runs</h3>
+            <ul className="space-y-1 text-sm">
+                {runs.map((run) => (
+                    <li key={run.run_id} className="flex items-center gap-2">
+                        <Badge variant={run.status === "failed" ? "destructive" : "outline"}>{run.status}</Badge>
+                        <span className="font-mono text-xs">{run.run_id}</span>
+                        <span className="text-xs text-muted-foreground">
+                            rev {run.setup_revision} · {new Date(run.created_at).toLocaleString()}
+                        </span>
+                        {(run.status === "queued" || run.status === "running") && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        {run.status === "succeeded" && (
+                            <Button size="sm" variant="ghost" onClick={() => onView(run.run_id)}>
+                                <Eye className="mr-1 h-3.5 w-3.5" /> View on board
+                            </Button>
+                        )}
                     </li>
                 ))}
             </ul>

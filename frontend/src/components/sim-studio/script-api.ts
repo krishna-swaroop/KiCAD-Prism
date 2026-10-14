@@ -11,6 +11,7 @@ import type {
     SetupRecordSummary,
     SetupReport,
     SimCatalog,
+    SimRun,
     SimSetup,
     Source,
     Terminal,
@@ -51,6 +52,11 @@ export interface SimStudioScriptApi {
     pads(net: string): Promise<string[]>;
     /** Show a setup in the Studio. */
     open(setupId: string): void;
+    /** Freeze the setup's current revision and queue one analysis (default `dc`). */
+    submit(setupId: string, analysisId?: string): Promise<SimRun>;
+    runs(): Promise<SimRun[]>;
+    /** Open the PCB 3D tab on a finished run's result. */
+    view(runId: string): void;
 }
 
 declare global {
@@ -70,6 +76,7 @@ type Hooks = {
     /** A setup changed or was created; the UI reloads it. */
     onChange(setupId: string | null): void;
     onOpen(setupId: string): void;
+    onView?(runId: string): void;
     commit?: string;
 };
 
@@ -132,6 +139,14 @@ export function createSimStudioScriptApi(projectId: string, hooks: Hooks): SimSt
                 .sort();
         },
         open: (setupId) => hooks.onOpen(setupId),
+        submit: async (setupId, analysisId = "dc") => {
+            const current = await api.readSetup(projectId, setupId);
+            const run = await api.submitSetup(projectId, setupId, current.etag, analysisId);
+            hooks.onChange(setupId);
+            return run;
+        },
+        runs: () => api.listRuns(projectId),
+        view: (runId) => hooks.onView?.(runId),
     };
 }
 

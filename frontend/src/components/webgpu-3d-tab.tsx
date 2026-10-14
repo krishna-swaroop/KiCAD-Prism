@@ -22,6 +22,7 @@ import { isAbortError, watchPrismJob, type PrismJobStatus } from "@/lib/jobs";
 import { canManageProjects } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { useAnalyticPack } from "@/hooks/use-analytic-pack";
+import { runPackUrl, useSimRunOverlay } from "@/hooks/use-sim-run-overlay";
 import { useCommittedRef } from "@/hooks/use-committed-ref";
 import { dnpVisibilityNotice } from "./design-variants/dnp-visibility";
 import { Semantic3dControls } from "./semantic-3d-controls";
@@ -118,6 +119,8 @@ interface WebGpu3dTabProps {
     user: User | null;
     active: boolean;
     workspace: "pcb" | "stackup";
+    /** A Simulation Studio run whose result colours the board (`?simRun=`). */
+    simRunId?: string | null;
     selection: PrismSelection | null;
     /** Nets accumulated with shift-click; every one renders emphasised (#305). */
     highlightedNets?: readonly HighlightedNet[];
@@ -163,6 +166,7 @@ export function WebGpu3dTab({
     user,
     active,
     workspace,
+    simRunId,
     selection,
     highlightedNets = NO_NETS,
     onSelection,
@@ -400,7 +404,11 @@ export function WebGpu3dTab({
         return () => { cancelled = true; };
     }, [hiddenComponents, isStackup, isolated, userHidden, viewerElement, viewerReady]);
 
-    const analyticPack = useAnalyticPack(viewerElement, viewerReady, status?.analytic_pack_url);
+    const simRun = workspace === "pcb" ? simRunId ?? null : null;
+    // A simulation run is shown on its own bundle's geometry so result indices line up.
+    const packUrl = simRun ? runPackUrl(projectId, simRun) : status?.analytic_pack_url;
+    const analyticPack = useAnalyticPack(viewerElement, viewerReady, packUrl);
+    const simOverlay = useSimRunOverlay(viewerElement, analyticPack.phase === "ready", projectId, simRun);
 
     const ambiguityNotice = dnpVisibilityNotice({
         hidden: [],
@@ -622,6 +630,20 @@ export function WebGpu3dTab({
                         title="The board is drawn from exact geometry (analytic pack)"
                     >
                         Analytic board
+                    </Badge>
+                )}
+                {simOverlay.phase === "ready" && (
+                    <Badge
+                        variant="secondary"
+                        className="pointer-events-auto shadow-sm"
+                        title={`Simulation run ${simRun}: ${simOverlay.count} copper shapes`}
+                    >
+                        {simOverlay.quantity}: {simOverlay.range[0].toFixed(3)}–{simOverlay.range[1].toFixed(3)} {simOverlay.units}
+                    </Badge>
+                )}
+                {simOverlay.phase === "failed" && (
+                    <Badge variant="secondary" className="pointer-events-auto shadow-sm" title={simOverlay.error}>
+                        Simulation overlay failed
                     </Badge>
                 )}
                 {analyticPack.phase === "failed" && (

@@ -37,6 +37,7 @@ _CAPACITIES: Mapping[str, Callable[[], int]] = {
     "semantic_compile": lambda: settings.PRISM_SEMANTIC_COMPILE_SLOTS,
     "catalog_worker": lambda: settings.CATALOG_WORKER_CONCURRENCY,
     "catalog_kicad": lambda: settings.CATALOG_KICAD_CONCURRENCY,
+    "sim": lambda: settings.PRISM_SIM_CONCURRENCY,
     TRACKER_RESOURCE: lambda: min(2, max(1, settings.PRISM_WORKER_CONCURRENCY - 1)),
 }
 RESOURCES = frozenset(_CAPACITIES)

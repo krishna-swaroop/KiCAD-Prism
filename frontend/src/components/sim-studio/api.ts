@@ -6,6 +6,7 @@ import type {
     SetupRecordSummary,
     SetupReport,
     SimCatalog,
+    SimRun,
     SimSetup,
 } from "./types";
 
@@ -50,6 +51,14 @@ export function replaceSetup(projectId: string, setupId: string, etag: string, d
 
 export async function deleteSetup(projectId: string, setupId: string, etag: string): Promise<void> {
     await fetchChecked(setup(projectId, setupId), { method: "DELETE", headers: { "If-Match": etag } }, "Could not delete the setup");
+}
+
+export function submitSetup(projectId: string, setupId: string, etag: string, analysisId: string): Promise<SimRun> {
+    return fetchJson(`${setup(projectId, setupId)}/submit`, json("POST", { analysis_id: analysisId }, { "If-Match": etag }), "Could not start the run");
+}
+
+export function listRuns(projectId: string): Promise<SimRun[]> {
+    return fetchJson(`/api/projects/${encodeURIComponent(projectId)}/sim/a0/runs`, undefined, "Could not load runs");
 }
 
 export function checkSetup(projectId: string, setupId: string, stage: "validate" | "preflight"): Promise<SetupReport> {

@@ -33,6 +33,7 @@ KIND_MODULES = (
     "app.services.systems.service_collisions",
     "app.services.systems.service_step_export",
     "app.services.trackers.jobs",
+    "app.sim_studio.runs",
 )
 
 _KINDS: dict[str, JobKind] = {}

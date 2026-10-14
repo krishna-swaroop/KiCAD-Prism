@@ -83,6 +83,12 @@ class PipelineSettings(BaseSettings):
         default=False,
         description="Experimental: the Simulation Studio tab and its /api/.../sim/a0 routes.",
     )
+    PRISM_SIM_BIN_DIR: str = Field(
+        default="/opt/prism-sim/bin",
+        description="Directory holding the prism-sim-studio binaries (prism-bundle, sim-worker).",
+    )
+    PRISM_SIM_CONCURRENCY: int = Field(default=1, description="Simulation runs one worker executes at once.")
+    PRISM_SIM_TIMEOUT_SECONDS: int = Field(default=3600, description="Longest a simulation engine may run.")
     PRISM_KICAD_MONKEY_SOURCE: str = Field(
         default="",
         description="Label of the installed kicad_monkey build, mixed into the viewer build fingerprint.",

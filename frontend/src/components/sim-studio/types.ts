@@ -131,6 +131,21 @@ export interface SetupReport {
     issues: SetupIssue[];
 }
 
+export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export interface SimRun {
+    schema: "prism.sim.run";
+    version: "a0";
+    run_id: string;
+    job_id: string;
+    setup_id: string;
+    setup_revision: number;
+    setup_sha256: string;
+    analysis_id: string;
+    status: RunStatus;
+    created_at: string;
+}
+
 export type JsonPatchOperation =
     | { op: "add" | "replace" | "test"; path: string; value: unknown }
     | { op: "remove"; path: string }
