@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { FloatingToolbar } from "@/features/system-builder/workspace/floating-toolbar";
+import { ToolbarButton } from "@/features/system-builder/workspace/toolbar-button";
 import type { PrismAnalyticStyle, PrismSemanticViewerElement } from "@/types/prism-semantic-viewer";
 
 const STORAGE_KEY = "prism.sim.result-look";
@@ -121,11 +123,13 @@ export function LookPanel({ look, catalog }: { look: Look; catalog: Record<strin
     const { style } = look;
     return (
         <div className="relative">
-            <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setOpen(!open)} aria-expanded={open}>
-                <SlidersHorizontal className="h-3.5 w-3.5" /> Look
-            </Button>
+            <FloatingToolbar label="Look">
+                <ToolbarButton title="Colours and arrows" active={open} onClick={() => setOpen(!open)} aria-expanded={open}>
+                    <SlidersHorizontal className="size-3.5" aria-hidden /> Look
+                </ToolbarButton>
+            </FloatingToolbar>
             {open && (
-                <div className="absolute right-0 top-8 z-20 w-72 space-y-2 rounded-md border bg-background p-3 text-xs shadow-lg">
+                <div className="absolute left-0 top-9 z-20 w-72 space-y-2 rounded-md border bg-popover p-3 text-xs text-popover-foreground shadow-md">
                     <Ramp label="Copper colours" value={style.fieldColormap} colormaps={look.colormaps} stopsOf={stopsOf} onChange={(name) => look.update({ fieldColormap: name })} />
                     <Ramp label="Arrow colours" value={style.arrowColormap} colormaps={look.colormaps} stopsOf={stopsOf} onChange={(name) => look.update({ arrowColormap: name })} />
                     <Slider label="Arrow density" value={style.arrowDensity ?? 70} min={15} max={200} step={5} onChange={(value) => look.update({ arrowDensity: value })} />

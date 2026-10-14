@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    ArrowLeft, CheckCircle2, ChevronDown, Eye, Loader2, Play, Plus, ShieldAlert, ShieldCheck, Sparkles, SquareDashed, TriangleAlert, Zap,
+    ArrowLeft, CheckCircle2, ChevronDown, Loader2, Play, Plus, ShieldAlert, ShieldCheck, Sparkles, SquareDashed, TriangleAlert, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,15 +16,16 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DesignSearchHit } from "@/lib/design-search";
 import { cn } from "@/lib/utils";
 import type { PrismSemanticIndex } from "@/types/prism-selection";
+import type { PrismSemanticViewerElement } from "@/types/prism-semantic-viewer";
 
 import * as api from "../api";
-import { RunResultView } from "../RunResultView";
 import type { SetupIssue, SetupRecordSummary, SetupReport, SimRun, SimSetup } from "../types";
 
 import { BoardIndex } from "./board-index";
 import { PowerTreeCanvas, type TreeEdit } from "./PowerTreeCanvas";
 import { autoArrange, mergeInferred, nodeId, treeOf, type TreeState } from "./power-tree-model";
 import { boardIndex, createSetup, loadTree, saveTree, type StudioTab, type TreeRecord } from "./power-tree-session";
+import { ResultsView } from "./results/ResultsView";
 import { SetupSettingsPane } from "./SetupSettingsPane";
 
 export type { StudioTab } from "./power-tree-session";
@@ -78,6 +79,7 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     const [reloadKey, setReloadKey] = useState(0);
     const [runs, setRuns] = useState<SimRun[]>([]);
     const [viewedRun, setViewedRun] = useState<string | null>(null);
+    const [resultsViewer, setResultsViewer] = useState<PrismSemanticViewerElement | null>(null);
 
     const commit = tree?.record.source.commit;
     const setTreeState = (value: TreeRecord | null) => {
@@ -235,6 +237,12 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     }, []);
 
     const pickSearch = (hit: DesignSearchHit) => {
+        if (tab === "results" && resultsViewer) {
+            resultsViewer.setSelection?.(hit.kind === "component"
+                ? { reference: hit.component?.reference }
+                : { netName: hit.net?.name });
+            return;
+        }
         if (!tree) return;
         const { elements } = treeOf({ setup: tree.record.setup, layout: tree.layout });
         const matches = hit.kind === "component"
@@ -286,16 +294,15 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-                <Button variant="ghost" size="sm" onClick={onBack} aria-label="All simulations">
-                    <ArrowLeft className="mr-1 size-4" aria-hidden /> Simulations
+            <header className="flex h-11 shrink-0 items-center gap-1.5 overflow-hidden border-b px-2">
+                <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={onBack} title="All simulations" aria-label="All simulations">
+                    <ArrowLeft className="size-4" aria-hidden />
                 </Button>
-                <span className="text-muted-foreground">/</span>
-                <span className="flex items-center gap-1.5 text-sm font-semibold"><Zap className="size-4 text-primary" aria-hidden /> DC IR Drop</span>
+                <span className="flex shrink-0 items-center gap-1.5 text-sm font-semibold"><Zap className="size-4 text-primary" aria-hidden /> DC IR Drop</span>
                 <span className="text-muted-foreground">/</span>
                 <SetupSwitcher setups={setups} current={record ?? null} canMutate={canMutate}
                     onPick={onSetupChange} onNew={() => setCreating(true)} />
-                <Tabs value={tab} onValueChange={(value) => onTabChange(value as StudioTab)} className="ml-2">
+                <Tabs value={tab} onValueChange={(value) => onTabChange(value as StudioTab)} className="shrink-0">
                     <TabsList>
                         <TabsTrigger value="setup">Setup</TabsTrigger>
                         <TabsTrigger value="results">
@@ -304,21 +311,23 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>
-                <div className="min-w-[14rem] flex-1">
+                {tab === "results" && <RunSwitcher runs={setupRuns} current={shownRun} onPick={setViewedRun} />}
+                <span className="min-w-0 flex-1" />
+                <div className="hidden w-64 min-w-[10rem] shrink xl:block">
                     <DesignSearchField inline semanticIndex={semanticIndex} active={active} onPick={pickSearch} loading={!semanticIndex && !!tree} />
                 </div>
                 {latestReport && <IssuesButton report={latestReport} onSelect={selectIssue} />}
-                <Button variant="outline" size="sm" disabled={!record || checking !== null} onClick={() => void check("validate")}
-                    title="Check the setup against the contract and the board">
-                    {checking === "validate" ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <StageIcon report={validated} />}
-                    Validate
+                <Button variant="outline" size="sm" className="h-8 shrink-0" disabled={!record || checking !== null} onClick={() => void check("validate")}
+                    title="Validate: check the setup against the contract and the board" aria-label="Validate">
+                    {checking === "validate" ? <Loader2 className="size-3.5 animate-spin 2xl:mr-1.5" /> : <StageIcon report={validated} />}
+                    <span className="hidden 2xl:inline">Validate</span>
                 </Button>
-                <Button variant="outline" size="sm" disabled={!validated?.ok || checking !== null} onClick={() => void check("preflight")}
-                    title={validated?.ok ? "Check that the engine can run it: terminals on copper, rails connected" : "Validate first"}>
-                    {checking === "preflight" ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <StageIcon report={preflighted} />}
-                    Pre-flight
+                <Button variant="outline" size="sm" className="h-8 shrink-0" disabled={!validated?.ok || checking !== null} onClick={() => void check("preflight")}
+                    title={validated?.ok ? "Pre-flight: check that the engine can run it (terminals on copper, rails connected)" : "Pre-flight (validate first)"} aria-label="Pre-flight">
+                    {checking === "preflight" ? <Loader2 className="size-3.5 animate-spin 2xl:mr-1.5" /> : <StageIcon report={preflighted} />}
+                    <span className="hidden 2xl:inline">Pre-flight</span>
                 </Button>
-                <Button size="sm" disabled={!canMutate || !preflighted?.ok || checking !== null} onClick={() => void submit()}
+                <Button size="sm" className="h-8 shrink-0" disabled={!canMutate || !preflighted?.ok || checking !== null} onClick={() => void submit()}
                     title={preflighted?.ok ? "Freeze this revision and queue the run" : "Pre-flight first"}>
                     {checking === "run" ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Play className="mr-1.5 size-3.5" aria-hidden />}
                     Run
@@ -352,7 +361,9 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
                     </ResizablePanel>
                 </div>
             ) : (
-                <ResultsTab projectId={projectId} canMutate={canMutate} runs={setupRuns} viewed={shownRun} onView={setViewedRun} />
+                shownRun?.status === "succeeded"
+                    ? <ResultsView key={shownRun.run_id} projectId={projectId} run={shownRun} canMutate={canMutate} onViewer={setResultsViewer} />
+                    : <NoResult runs={setupRuns} />
             )}
 
             <NewSetupDialog
@@ -370,10 +381,10 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
 }
 
 function StageIcon({ report }: { report: SetupReport | null }) {
-    if (!report) return <ShieldCheck className="mr-1.5 size-3.5 text-muted-foreground" aria-hidden />;
+    if (!report) return <ShieldCheck className="size-3.5 text-muted-foreground 2xl:mr-1.5" aria-hidden />;
     return report.ok
-        ? <CheckCircle2 className="mr-1.5 size-3.5 text-emerald-500" aria-label="passed" />
-        : <ShieldAlert className="mr-1.5 size-3.5 text-destructive" aria-label="failed" />;
+        ? <CheckCircle2 className="size-3.5 text-success 2xl:mr-1.5" aria-label="passed" />
+        : <ShieldAlert className="size-3.5 text-destructive 2xl:mr-1.5" aria-label="failed" />;
 }
 
 function IssuesButton({ report, onSelect }: { report: SetupReport; onSelect: (issue: SetupIssue) => void }) {
@@ -417,7 +428,7 @@ function SetupSwitcher({ setups, current, canMutate, onPick, onNew }: {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="max-w-[16rem] gap-1">
+                <Button variant="ghost" size="sm" className="h-8 min-w-0 max-w-[14rem] gap-1">
                     <span className="truncate">{current?.setup.name ?? "No setup"}</span>
                     {current && <span className="text-xs text-muted-foreground">rev {current.revision}</span>}
                     <ChevronDown className="size-3.5" aria-hidden />
@@ -508,40 +519,53 @@ function NewSetupDialog({ open, onOpenChange, onCreate }: {
     );
 }
 
-/** Runs of this setup and the chosen run's result. The plots-first layout comes next. */
-function ResultsTab({ projectId, canMutate, runs, viewed, onView }: {
-    projectId: string;
-    canMutate: boolean;
-    runs: SimRun[];
-    viewed: SimRun | null;
-    onView: (runId: string) => void;
-}) {
+function RunSwitcher({ runs, current, onPick }: { runs: SimRun[]; current: SimRun | null; onPick: (runId: string) => void }) {
+    const when = (run: SimRun) => new Date(run.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    if (!runs.length) return null;
     return (
-        <div className="flex min-h-0 flex-1">
-            <aside className="w-64 shrink-0 overflow-y-auto border-r p-2" aria-label="Runs">
-                {runs.length === 0 && <p className="p-2 text-sm text-muted-foreground">No runs yet. Pre-flight, then Run.</p>}
-                <ul className="space-y-1">
-                    {runs.map((run) => (
-                        <li key={run.run_id}>
-                            <button type="button" disabled={run.status !== "succeeded"} onClick={() => onView(run.run_id)}
-                                className={cn("w-full rounded-md px-2 py-1.5 text-left text-sm disabled:cursor-default",
-                                    viewed?.run_id === run.run_id ? "bg-accent" : "enabled:hover:bg-muted")}>
-                                <div className="flex items-center gap-2">
-                                    <Badge variant={run.status === "failed" ? "destructive" : "outline"}>{run.status}</Badge>
-                                    {(run.status === "queued" || run.status === "running") && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
-                                    {run.status === "succeeded" && <Eye className="ml-auto size-3.5 text-muted-foreground" aria-hidden />}
-                                </div>
-                                <p className="mt-1 text-xs text-muted-foreground">rev {run.setup_revision} · {new Date(run.created_at).toLocaleString()}</p>
-                            </button>
-                        </li>
-                    ))}
-                </ul>
-            </aside>
-            <main className="min-w-0 flex-1 overflow-auto p-4">
-                {viewed?.status === "succeeded"
-                    ? <RunResultView key={viewed.run_id} projectId={projectId} run={viewed} canMutate={canMutate} />
-                    : <p className="text-sm text-muted-foreground">Pick a finished run.</p>}
-            </main>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 shrink-0 gap-1.5 px-2">
+                    {current ? <RunStatus run={current} /> : null}
+                    <span className="text-xs">{current ? <>rev {current.setup_revision}<span className="hidden xl:inline"> · {when(current)}</span></> : "Pick a run"}</span>
+                    <ChevronDown className="size-3.5" aria-hidden />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-72">
+                {runs.map((run) => (
+                    <DropdownMenuItem key={run.run_id} disabled={run.status !== "succeeded"} onSelect={() => onPick(run.run_id)}
+                        className={cn("gap-2", run.run_id === current?.run_id && "bg-accent")}>
+                        <RunStatus run={run} />
+                        <span className="text-xs">rev {run.setup_revision} · {when(run)}</span>
+                        <span className="ml-auto text-[11px] text-muted-foreground">{run.status}</span>
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
+
+function RunStatus({ run }: { run: SimRun }) {
+    if (run.status === "queued" || run.status === "running") return <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label={run.status} />;
+    if (run.status === "succeeded") return <CheckCircle2 className="size-3.5 text-success" aria-label="succeeded" />;
+    return <ShieldAlert className="size-3.5 text-destructive" aria-label={run.status} />;
+}
+
+function NoResult({ runs }: { runs: SimRun[] }) {
+    const active = runs.find((run) => run.status === "queued" || run.status === "running");
+    return (
+        <div className="flex flex-1 items-center justify-center p-6 text-center">
+            {active ? (
+                <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-5 animate-spin" aria-hidden />
+                    The run is {active.status}; its results open here when it finishes.
+                </div>
+            ) : (
+                <div className="max-w-sm">
+                    <p className="font-semibold">No results yet</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Validate and pre-flight the setup, then run it.</p>
+                </div>
+            )}
         </div>
     );
 }

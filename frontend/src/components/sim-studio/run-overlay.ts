@@ -10,7 +10,7 @@ export const runBase = (projectId: string, runId: string) =>
 /** The run's own materialization: result indices refer to exactly this geometry. */
 export const runPackUrl = (projectId: string, runId: string) => `${runBase(projectId, runId)}/materialization`;
 
-interface ResultArtifact {
+export interface ResultArtifact {
     kind: string;
     path: string;
     quantity?: string;
@@ -43,7 +43,7 @@ interface LoadedOverlay {
     count: number;
 }
 
-interface LoadedGrid {
+export interface LoadedGrid {
     grid: { origin_x_m: number; origin_y_m: number; dx_m: number; dy_m: number; slices: (FieldGridDocument["slices"][number] & { values: Float32Array })[] };
     quantity: string;
     units: string;
@@ -52,7 +52,7 @@ interface LoadedGrid {
 }
 
 /** A field on the engine's own grid (sim-adr-0018), with every slice's values. */
-async function loadGrid(base: string, artifact: ResultArtifact): Promise<LoadedGrid> {
+export async function loadGrid(base: string, artifact: ResultArtifact): Promise<LoadedGrid> {
     const document = await fetchJson<FieldGridDocument>(`${base}/files/${artifact.path}`);
     const slices = await Promise.all(document.slices.map(async (slice) => {
         const response = await fetchChecked(`${base}/files/${slice.path}`, undefined, "Cannot load the result field");
@@ -178,7 +178,9 @@ export interface RunResult {
         sources: { source: string; current_a: number }[];
         converters?: ConverterResult[];
         copper_loss_w?: number;
+        max_current_density_a_per_m2?: number;
         probes: { probe: string; voltage_v: number }[];
+        nets?: { net: string; copper_loss_w: number; max_current_density_a_per_m2: number }[];
     };
     realization?: RunRealization;
     artifacts: ResultArtifact[];
