@@ -309,6 +309,7 @@ class JobService:
         with self._connect() as conn:
             conn.execute("SET search_path TO workspace, public")
             self._finalize_expired_cancellations(conn, worker_pool)
+            self._end_unleased_attempts(conn, worker_pool)
             self._release_non_authoritative_claims(conn)
             conn.commit()
             candidate_ids = conn.execute(
@@ -569,6 +570,64 @@ class JobService:
                 job_id,
                 "cancelled_after_lease_expiry",
                 details={"previous_fence": old_fence, "fence": old_fence + 1},
+            )
+
+    def _end_unleased_attempts(self, conn: Any, worker_pool: str) -> None:
+        """End active jobs that hold no lease, which no worker can own or reclaim.
+
+        Every claim sets a lease in the same statement that makes a job
+        ``running``, so such a row predates leases (or was edited by hand).
+        Expired-lease recovery only matches rows with a lease, so these stayed
+        "running" forever, blocking dedup for their artifact key. They are
+        failed rather than retried: whatever enqueued them may no longer exist.
+        """
+
+        rows = conn.execute(
+            """
+            SELECT id, fence, status
+            FROM ws_jobs
+            WHERE worker_pool = %s
+              AND status IN ('running', 'cancel_requested')
+              AND lease_expires_at IS NULL
+            ORDER BY created_at, id
+            FOR UPDATE SKIP LOCKED
+            LIMIT 128
+            """,
+            (worker_pool,),
+        ).fetchall()
+        for row in rows:
+            job_id = str(row["id"])
+            old_fence = int(row["fence"] or 0)
+            cancelling = row["status"] == "cancel_requested"
+            conn.execute(
+                """
+                UPDATE ws_jobs
+                SET status = %s, stage = %s, message = %s,
+                    error_code = CASE WHEN %s THEN error_code ELSE 'orphaned' END,
+                    error_message = CASE WHEN %s THEN error_message ELSE %s END,
+                    fence = fence + 1, completed_at = NOW(),
+                    lease_owner = '', updated_at = NOW()
+                WHERE id = %s AND fence = %s
+                  AND status = %s AND lease_expires_at IS NULL
+                """,
+                (
+                    "cancelled" if cancelling else "failed",
+                    "cancelled" if cancelling else "failed",
+                    "Cancelled: no worker held this job" if cancelling else "No worker held this job",
+                    cancelling,
+                    cancelling,
+                    "The job was active without a worker lease, so no worker could finish or reclaim it.",
+                    job_id,
+                    old_fence,
+                    row["status"],
+                ),
+            )
+            self._release_claims(conn, job_id, old_fence)
+            self._event(
+                conn,
+                job_id,
+                "ended_without_lease",
+                details={"previous_status": row["status"], "previous_fence": old_fence, "fence": old_fence + 1},
             )
 
     @staticmethod

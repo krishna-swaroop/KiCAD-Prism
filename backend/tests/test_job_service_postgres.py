@@ -139,6 +139,26 @@ class JobServicePostgresTests(unittest.TestCase):
         self.assertFalse(replacement.get("deduplicated"))
         self.assertNotEqual(first["job_id"], replacement["job_id"])
 
+    def test_active_jobs_without_a_lease_are_ended_and_leave_dedup(self) -> None:
+        running = self.enqueue("unleased-running")
+        cancelling = self.enqueue("unleased-cancelling")
+        with database.connection() as conn:
+            conn.execute("SET search_path TO workspace, public")
+            for job_id, status in ((running["job_id"], "running"), (cancelling["job_id"], "cancel_requested")):
+                conn.execute(
+                    "UPDATE ws_jobs SET status = %s, lease_expires_at = NULL WHERE id = %s",
+                    (status, job_id),
+                )
+            conn.commit()
+
+        self.assertIsNone(self.service.claim("worker-a", worker_pool=self.pool))
+        failed = self.service.get(running["job_id"])
+        self.assertEqual((failed["status"], failed["error_code"]), ("failed", "orphaned"))
+        self.assertEqual(self.service.get(cancelling["job_id"])["status"], "cancelled")
+
+        replacement = self.enqueue("unleased-running")
+        self.assertNotEqual(running["job_id"], replacement["job_id"])
+
     def test_resource_slots_and_reclaim_reject_stale_fence(self) -> None:
         self.service.configure_resource_slots({self.resource: 1})
         first = self.enqueue("first", resources={self.resource: 1})
