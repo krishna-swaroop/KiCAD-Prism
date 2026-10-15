@@ -6,6 +6,7 @@ import json
 import stat
 import tempfile
 import unittest
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,18 +23,6 @@ from support.postgres import requires_scratch_postgres, scratch_schema, seed_pro
 from test_sim_studio_api import PROJECT, SETUPS, _app, _visible
 from test_sim_studio_setup import facts, single_net_setup
 from test_system_api import _request
-
-FAKE_BUNDLE = """#!/bin/sh
-# prism-bundle build PROJECT -o OUT ...
-out="$4"
-python3 - "$out" <<'PY'
-import sys, zipfile
-with zipfile.ZipFile(sys.argv[1], "w") as z:
-    z.writestr("bundle.json", "{}")
-    z.writestr("materialization/board.kmpack", b"PACK")
-PY
-echo "built"
-"""
 
 FAKE_WORKER = """#!/bin/sh
 [ "$1" = engines ] && { echo '[{"schema":"prism.sim.engine","id":"dc-drop-synthetic"}]'; exit 0; }
@@ -75,8 +64,12 @@ class RunPipelineTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         bin_dir = self.tmp / "bin"
         bin_dir.mkdir()
-        _script(bin_dir / "prism-bundle", FAKE_BUNDLE)
         _script(bin_dir / "sim-worker", FAKE_WORKER)
+        # The project's board.prism, as the 3D job stores it.
+        archive = self.tmp / "board.prism"
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("bundle.json", json.dumps({"cross_check": {"status": "passed"}}))
+            bundle.writestr("materialization/board.kmpack", b"PACK")
         project_dir = self.tmp / "project"
         project_dir.mkdir()
         (project_dir / "board.kicad_pro").write_text("{}", encoding="utf-8")
@@ -95,6 +88,7 @@ class RunPipelineTest(unittest.TestCase):
             mock.patch.object(settings, "KICAD_PROJECTS_ROOT", str(self.tmp / "projects")),
             mock.patch.object(runs_module, "SIM_RUN", SimpleNamespace(enqueue=queued)),
             mock.patch.object(runs_module, "_project_sources", sources),
+            mock.patch.object(runs_module, "_project_bundle", lambda project_id, project_file, log: archive),
             mock.patch("app.services.kicad_tools.locate_kicad_cli", return_value=None),
             mock.patch.object(sim_api, "sim_studio", self.service),
             mock.patch.object(sim_api, "get_project_for_role_or_404", _visible),
@@ -186,85 +180,45 @@ class JobKindTest(unittest.TestCase):
             runs_module.result_file(run, "../../etc/passwd")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
-
-class BundleCacheTest(unittest.TestCase):
-    """Runs of one revision share a bundle: its build is mostly KiCad's zone refill."""
+class ProjectBundleTest(unittest.TestCase):
+    """A run hands the engine the project's board.prism, the one the 3D tab uses."""
 
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
-        bin_dir = self.tmp / "bin"
-        bin_dir.mkdir()
-        (bin_dir / "prism-bundle").write_bytes(b"tool v1")
-        self.project = self.tmp / "board"
-        (self.project / "sub").mkdir(parents=True)
-        for name, text in (("b.kicad_pro", "{}"), ("b.kicad_pcb", "(kicad_pcb)"), ("b.kicad_sch", "(kicad_sch)"),
-                           ("sub/power.kicad_sch", "(kicad_sch power)")):
-            (self.project / name).write_text(text)
-        self.builds: list[Path] = []
-        self.refilled: list[Path | None] = []
-
-        def build(project_file: Path, target: Path, log: list[str], refilled: Path | None = None) -> None:
-            self.builds.append(project_file)
-            self.refilled.append(refilled)
-            target.write_bytes(b"bundle " + project_file.read_bytes())
-
+        self.project_file = self.tmp / "board" / "b.kicad_pro"
+        self.project_file.parent.mkdir()
+        self.project_file.write_text("{}")
+        self.bundle_dir = self.tmp / "store" / "prj" / "src" / "build"
+        self.archive = runs_module.project_bundle.archive_path(self.bundle_dir)
         for patcher in (
-            mock.patch.object(settings, "PRISM_SIM_BIN_DIR", str(bin_dir)),
-            mock.patch.object(settings, "KICAD_PROJECTS_ROOT", str(self.tmp / "projects")),
-            mock.patch("app.services.kicad_tools.locate_kicad_cli", return_value=None),
-            mock.patch.object(runs_module, "_build_bundle", build),
+            mock.patch("app.services.semantic_visualizer_service.source_fingerprint_for_root", return_value="src"),
+            mock.patch("app.services.semantic_visualizer_service.bundle_dir", return_value=self.bundle_dir),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
-        runs_module._tool_identity.cache_clear()
-        self.addCleanup(runs_module._tool_identity.cache_clear)
 
-    def stage(self, name: str) -> bytes:
-        target = self.tmp / name
-        runs_module._cached_bundle(self.project / "b.kicad_pro", target, [])
-        return target.read_bytes()
+    def test_a_built_archive_is_used_as_is(self) -> None:
+        self.archive.parent.mkdir(parents=True)
+        self.archive.write_bytes(b"PK")
+        with mock.patch("app.services.semantic_visualizer_service.build_visualizer_bundle_from_project_file") as build:
+            self.assertEqual(runs_module._project_bundle("prj", self.project_file, []), self.archive)
+        build.assert_not_called()
 
-    def test_same_sources_reuse_the_bundle_and_an_edit_rebuilds(self) -> None:
-        first = self.stage("one.prism")
-        self.assertEqual(self.stage("two.prism"), first)
-        self.assertEqual(len(self.builds), 1)
-        key = runs_module.bundle_key(self.project / "b.kicad_pro", None)
-        (self.project / "sub" / "power.kicad_sch").write_text("(kicad_sch power edited)")
-        self.assertNotEqual(runs_module.bundle_key(self.project / "b.kicad_pro", None), key)
-        self.stage("three.prism")
-        self.assertEqual(len(self.builds), 2)
+    def test_a_missing_archive_is_built_the_3d_way(self) -> None:
+        def build(project, project_file, job, persist, source_hash=None):
+            self.archive.parent.mkdir(parents=True, exist_ok=True)
+            self.archive.write_bytes(b"PK")
 
-    def test_the_3d_job_prebuilds_what_a_run_then_reuses(self) -> None:
-        refilled = self.tmp / "refilled.kicad_pcb"
-        refilled.write_text("(kicad_pcb refilled)")
-        with mock.patch("app.services.kicad_tools.locate_kicad_cli", return_value="/opt/kicad-cli"), \
-                mock.patch.object(runs_module, "kicad_cli_version", return_value="10.0.7"), \
-                mock.patch.object(settings, "PRISM_SIM_STUDIO_ENABLED", True):
-            log: list[str] = []
-            runs_module.prebuild_bundle(self.project / "b.kicad_pro", refilled, log)
-            self.assertEqual(self.refilled, [refilled])
-            self.assertTrue(log[-1].startswith("Simulation bundle cached"))
-            self.stage("run.prism")
-            runs_module.prebuild_bundle(self.project / "b.kicad_pro", refilled, log)
-        self.assertEqual(len(self.builds), 1)
-        self.assertTrue(log[-1].startswith("Simulation bundle already cached"))
+        with mock.patch.object(runs_module.project_bundle, "available", return_value=True), \
+                mock.patch("app.services.workspace_service.workspace.get_project_by_id", return_value={"id": "prj"}), \
+                mock.patch("app.services.project_service._workspace_row_to_project", return_value=object()), \
+                mock.patch("app.services.semantic_visualizer_service.build_visualizer_bundle_from_project_file",
+                           side_effect=build) as builder:
+            self.assertEqual(runs_module._project_bundle("prj", self.project_file, []), self.archive)
+        self.assertEqual(builder.call_args.kwargs["source_hash"], "src")
 
-    def test_no_prebuild_without_kicad_or_with_sim_studio_off(self) -> None:
-        refilled = self.tmp / "refilled.kicad_pcb"
-        refilled.write_text("(kicad_pcb refilled)")
-        with mock.patch.object(settings, "PRISM_SIM_STUDIO_ENABLED", True):
-            runs_module.prebuild_bundle(self.project / "b.kicad_pro", refilled, [])
-        with mock.patch("app.services.kicad_tools.locate_kicad_cli", return_value="/opt/kicad-cli"), \
-                mock.patch.object(settings, "PRISM_SIM_STUDIO_ENABLED", False):
-            runs_module.prebuild_bundle(self.project / "b.kicad_pro", refilled, [])
-        self.assertEqual(self.builds, [])
 
-    def test_a_new_tool_is_a_new_key(self) -> None:
-        key = runs_module.bundle_key(self.project / "b.kicad_pro", None)
-        (Path(settings.PRISM_SIM_BIN_DIR) / "prism-bundle").write_bytes(b"tool v2")
-        runs_module._tool_identity.cache_clear()
-        self.assertNotEqual(runs_module.bundle_key(self.project / "b.kicad_pro", None), key)
+if __name__ == "__main__":
+    unittest.main()

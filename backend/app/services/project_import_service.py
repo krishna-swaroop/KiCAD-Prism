@@ -1037,6 +1037,21 @@ def start_thumbnail_job(project_id: str, *, requested_by: str = "") -> Optional[
     return str(queued["job_id"])
 
 
+def start_board_bundle_job(project_id: str, *, requested_by: str = "") -> Optional[str]:
+    """Queue board.prism for the project's current revision (the 3D job builds it).
+
+    Import and sync build it so the 3D tab and Simulation Studio never wait on a
+    first visit. A revision already built is a no-op: its artifact key is taken.
+    """
+    from app.services import project_service
+
+    try:
+        return project_service.start_workflow_job(project_id, "webgpu_3d", author=requested_by or "prism")
+    except Exception as error:
+        print(f"Could not queue board.prism for {project_id}: {error}", flush=True)
+        return None
+
+
 def start_project_metadata_job(project_id: str, *, requested_by: str = "") -> Optional[str]:
     """Queue a metadata refresh for one project.
 
@@ -1247,6 +1262,7 @@ def run_project_sync_job_v3(context: JobContext) -> JobResult:
         start_project_metadata_job(project_id, requested_by="project-sync")
     except Exception as error:
         print(f"Could not queue metadata refresh for {project_id}: {error}", flush=True)
+    start_board_bundle_job(project_id, requested_by="project-sync")
     return JobResult(
         message=str(result.get("message") or "Sync completed"),
         details=dict(result),

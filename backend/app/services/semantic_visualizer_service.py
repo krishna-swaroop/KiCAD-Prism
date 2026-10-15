@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import importlib.util
 import json
+import logging
 import os
 import re
 import shutil
@@ -14,9 +15,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from app.core.config import settings
-from app.services import analytic_pack_service, path_config_service, project_revision, zone_refill
+from app.services import analytic_pack_service, path_config_service, project_bundle, project_revision, zone_refill
 from app.services.job_service import jobs
 from app.services.semantic_viewer_runtime import find_viewer_repo_root, generator_inputs, pythonpath as semantic_viewer_pythonpath, update_native_geometry_fingerprint
+
+logger = logging.getLogger(__name__)
 
 SCHEMA = "prism.visualizer_bundle.a0"
 GENERATOR_NAME = "kicad-prism-webgpu-3d"
@@ -33,6 +36,7 @@ def _compute_build_fingerprint() -> str:
         update_native_geometry_fingerprint(hasher)
         analytic_pack_service.update_fingerprint(hasher)
         zone_refill.update_fingerprint(hasher)
+        project_bundle.update_fingerprint(hasher)
         hasher.update(settings.PRISM_KICAD_MONKEY_SOURCE.encode("utf-8"))
         for path in generator_inputs(viewer_root):
             hasher.update(path.relative_to(viewer_root).as_posix().encode("utf-8"))
@@ -165,6 +169,28 @@ def source_fingerprint(project_path: str, *, project_file_rel: str = "") -> str:
     )
 
 
+_CONTENT_DIGESTS: Dict[tuple[str, int, int, int], bytes] = {}
+_CONTENT_DIGESTS_LIMIT = 4096
+
+
+def _content_digest(path: Path, stat: os.stat_result) -> tuple[bytes, bool]:
+    """A file's SHA-256, remembered per path, size, mtime and inode so status polls
+    do not rehash a large board; returns whether it was read this time."""
+
+    key = (str(path), stat.st_size, stat.st_mtime_ns, stat.st_ino)
+    cached = _CONTENT_DIGESTS.get(key)
+    if cached is not None:
+        return cached, False
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            hasher.update(chunk)
+    if len(_CONTENT_DIGESTS) >= _CONTENT_DIGESTS_LIMIT:
+        _CONTENT_DIGESTS.clear()
+    _CONTENT_DIGESTS[key] = hasher.digest()
+    return _CONTENT_DIGESTS[key], True
+
+
 def source_fingerprint_for_root(
     project_root: Path,
     profile_callback: Callable[[str, Dict[str, Any]], None] | None = None,
@@ -182,7 +208,7 @@ def source_fingerprint_for_root(
     started = time.perf_counter()
     files = 0
     bytes_read = 0
-    metadata_only_files = 0
+    cached_files = 0
     for path in sorted(root.rglob("*")):
         if not path.is_file() or ".git" in path.parts:
             continue
@@ -196,12 +222,15 @@ def source_fingerprint_for_root(
         files += 1
         digest.update(rel.encode("utf-8"))
         digest.update(b"\0")
-        if stat.st_size > 32 * 1024 * 1024:
-            digest.update(f"large:{stat.st_size}:{int(stat.st_mtime_ns)}".encode("utf-8"))
-            metadata_only_files += 1
-        else:
-            digest.update(path.read_bytes())
+        # Content, never size and mtime: a commit checkout gives every file a new
+        # mtime, so a large board's key differed between its commit and its
+        # working copy (and between two checkouts), and board.prism was rebuilt.
+        content, hashed = _content_digest(path, stat)
+        digest.update(content)
+        if hashed:
             bytes_read += stat.st_size
+        else:
+            cached_files += 1
         digest.update(b"\0")
     if profile_callback:
         profile_callback(
@@ -210,7 +239,7 @@ def source_fingerprint_for_root(
                 "elapsed_ms": (time.perf_counter() - started) * 1000.0,
                 "files": files,
                 "bytes_read": bytes_read,
-                "metadata_only_files": metadata_only_files,
+                "cached_files": cached_files,
             },
         )
     return digest.hexdigest()[:32]
@@ -371,6 +400,13 @@ def get_status_for_source(
     project_rel: str | None = None,
 ) -> Dict[str, Any]:
     current_bundle = bundle_path(project.id, source_hash)
+    archive = project_bundle.archive_path(current_bundle.parent)
+    if not current_bundle.exists() and archive.is_file():
+        # The unpacked directory is a cache of board.prism: rebuild it on first use.
+        try:
+            project_bundle.unpack_into(archive, current_bundle.parent)
+        except Exception as exc:  # A damaged archive reads as missing and is rebuilt.
+            logger.warning("Unpacking %s failed: %s", archive, exc)
     available = current_bundle.exists()
     status = "ready" if available else "missing"
     payload: Dict[str, Any] = {
@@ -484,6 +520,10 @@ def commit_index_path(project_id: str) -> Path:
     return semantic_store_root() / project_id / "commit-index.json"
 
 
+#: a1: source keys hash every file's content (a0 keyed large files by mtime).
+COMMIT_INDEX_SCHEMA = "prism.semantic_visualizer_commit_index.a1"
+
+
 def lookup_commit_source(project_id: str, commit: str, project_rel: str) -> dict[str, Any] | None:
     path = commit_index_path(project_id)
     if not path.is_file():
@@ -491,6 +531,8 @@ def lookup_commit_source(project_id: str, commit: str, project_rel: str) -> dict
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        return None
+    if payload.get("schema") != COMMIT_INDEX_SCHEMA:
         return None
     key = _commit_index_key(commit, project_rel)
     entry = (payload.get("entries") or {}).get(key)
@@ -518,9 +560,9 @@ def record_commit_source(
         payload = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     except Exception:
         payload = {}
-    if payload.get("schema") != "prism.semantic_visualizer_commit_index.a0":
+    if payload.get("schema") != COMMIT_INDEX_SCHEMA:
         payload = {
-            "schema": "prism.semantic_visualizer_commit_index.a0",
+            "schema": COMMIT_INDEX_SCHEMA,
             "entries": {},
         }
     entries = payload.setdefault("entries", {})
@@ -896,6 +938,7 @@ def _write_bundle(
     source_hash: str,
     analytic_pack: Dict[str, Any] | None = None,
     board_geometry: str = "mesh",
+    validate: bool = True,
 ) -> None:
     topology = output_dir / "topology.json"
     semantic_geometry = output_dir / "semantic_geometry.json"
@@ -915,7 +958,8 @@ def _write_bundle(
     if analytic_pack:
         bundle["analytic_pack"] = analytic_pack
     (output_dir / "bundle.json").write_text(json.dumps(bundle, indent=2), encoding="utf-8")
-    _validate_bundle_assets(output_dir, bundle)
+    if validate:
+        _validate_bundle_assets(output_dir, bundle)
 
 
 def build_visualizer_bundle(
@@ -1119,19 +1163,12 @@ def _build_visualizer_bundle_locked(
         refill_started = time.perf_counter()
         refilled = zone_refill.refill(kicad_project, Path(tmp) / "refill", job["logs"])
         _record_perf(job, persist, "zone_refill", refill_started, refilled=refilled is not None)
-        sim_logs: list[str] = []
-        sim_bundle = None
-        if refilled is not None:
-            from app.sim_studio import runs as sim_runs
-
-            sim_bundle = threading.Thread(
-                target=sim_runs.prebuild_bundle,
-                args=(kicad_project, refilled, sim_logs),
-                name="sim-bundle-prebuild",
-                daemon=True,
-            )
-            sim_bundle.start()
-        if analytic_pack_service.enabled() and geometry != "mesh":
+        # board.prism carries the board pack: prism-bundle materializes it.
+        archived = project_bundle.available()
+        if archived and analytic_pack_service.enabled() and geometry != "mesh":
+            analytic_pack = {"schema": analytic_pack_service.PACK_SCHEMA, "path": analytic_pack_service.PACK_FILE}
+            board_geometry = "analytic"
+        elif analytic_pack_service.enabled() and geometry != "mesh":
             job["stage"] = "analytic-pack"
             job["message"] = "Building the analytic board..."
             persist()
@@ -1235,20 +1272,26 @@ def _build_visualizer_bundle_locked(
                 pack_started = time.perf_counter()
                 analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"], pcb=refilled)
                 _record_perf(job, persist, "analytic_pack", pack_started, written=analytic_pack is not None)
-        if sim_bundle is not None:
-            # It reads the refilled copy in this temporary directory.
-            sim_started = time.perf_counter()
-            sim_bundle.join()
-            job["logs"].extend(sim_logs)
-            _record_perf(job, persist, "sim_bundle.wait", sim_started)
         if board_geometry == "analytic" and _has_copper_tiles(output):
             # The Rust backend writes the copper tiles alongside the pack, so
             # the bundle is already what the mesh follow-up would publish.
             board_geometry = "mesh"
             job["logs"].append("Copper tiles built with the analytic board; no follow-up needed")
         bundle_started = time.perf_counter()
-        _write_bundle(project, output, source_hash, analytic_pack, board_geometry=board_geometry)
+        _write_bundle(project, output, source_hash, analytic_pack, board_geometry=board_geometry, validate=not archived)
         _record_perf(job, persist, "bundle.write_and_validate", bundle_started)
+        if archived:
+            job["stage"] = "board-prism"
+            job["message"] = "Packing board.prism..."
+            persist()
+            pack_started = time.perf_counter()
+            built = Path(tmp) / "board.prism"
+            manifest = project_bundle.build(kicad_project, refilled, output, built, job["logs"])
+            project_bundle.store(built, project_bundle.archive_path(target))
+            gate = project_bundle.simulation_gate(manifest)
+            if gate:
+                job["logs"].append(f"Simulation is unavailable for this revision: {gate}")
+            _record_perf(job, persist, "board_prism", pack_started, bytes=built.stat().st_size)
         job["stage"] = "publish-assets"
         job["message"] = "Publishing semantic viewer assets..."
         job["percent"] = 85
@@ -1264,8 +1307,12 @@ def _build_visualizer_bundle_locked(
         if staging.exists():
             shutil.rmtree(staging)
         copy_started = time.perf_counter()
-        shutil.copytree(output, staging)
-        _record_perf(job, persist, "publish.copy_to_staging", copy_started)
+        if archived:
+            staging.mkdir()
+            project_bundle.unpack(project_bundle.archive_path(target), staging)
+        else:
+            shutil.copytree(output, staging)
+        _record_perf(job, persist, "publish.copy_to_staging", copy_started, unpacked=archived)
         validate_started = time.perf_counter()
         bundle = json.loads((staging / "bundle.json").read_text(encoding="utf-8"))
         _validate_bundle_assets(staging, bundle)

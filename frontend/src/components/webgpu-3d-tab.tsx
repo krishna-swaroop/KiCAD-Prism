@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Box, Eye, EyeOff, Focus, Layers3, Loader2, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import { Box, Eye, EyeOff, Focus, Layers3, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,14 +9,6 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-    Card,
-    CardAction,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
 import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { isAbortError, watchPrismJob, type PrismJobStatus } from "@/lib/jobs";
 import { canManageProjects } from "@/lib/roles";
@@ -294,6 +286,21 @@ export function WebGpu3dTab({
         }
     }, [canGenerate, commit, jobId, projectId]);
 
+    // No board.prism yet: join the build import or sync queued (the job is keyed
+    // by revision, so this attaches to it), or queue it. Viewers poll instead.
+    const joinedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (loading || !status || status.available || status.status === "building" || jobId || error) return;
+        if (joinedRef.current === statusUrl) return;
+        joinedRef.current = statusUrl;
+        if (canGenerate) void generate(false);
+    }, [canGenerate, error, generate, jobId, loading, status, statusUrl]);
+    useEffect(() => {
+        if (canGenerate || !status || status.available || error) return;
+        const timer = window.setInterval(() => void refreshStatus(), 5000);
+        return () => window.clearInterval(timer);
+    }, [canGenerate, error, refreshStatus, status]);
+
     useEffect(() => {
         if (!viewerReady) return;
         viewerRef.current?.setSelection(selectionForRenderer(selection));
@@ -454,71 +461,36 @@ export function WebGpu3dTab({
     }
 
     if (!canShowViewer) {
+        // board.prism is built on import and after every sync; a tab that finds
+        // none joins that build (or queues it) instead of asking.
+        const failed = Boolean(error) && !jobId;
         return (
             <div className="flex h-full items-center justify-center bg-muted/20 p-6">
-                <Card className="w-full max-w-2xl" size="sm">
-                    <CardHeader className="border-b">
-                        <CardTitle className="flex items-center gap-2">
-                            {isStackup
-                                ? <Layers3 className="h-4 w-4 text-primary" />
-                                : <Box className="h-4 w-4 text-primary" />}
-                            {isStackup ? "Stackup data is not ready" : "WebGPU 3D assets are not ready"}
-                        </CardTitle>
-                        <CardDescription>
-                            {isStackup
-                                ? "Generate this revision’s 3D assets to compile the board stackup, fabrication properties, and design rules."
-                                : "Schematic and PCB viewing remain available. Generate this revision’s isolated 3D bundle when needed."}
-                        </CardDescription>
-                        <CardAction>
-                            <Badge variant="outline">{status?.status || "unavailable"}</Badge>
-                        </CardAction>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        {status?.generator && (
-                            <div className="grid gap-1 rounded-none border bg-muted/30 p-3 text-xs sm:grid-cols-2">
-                                <span className="text-muted-foreground">Source revision</span>
-                                <span className="truncate font-mono">{status.sourceRevisionKey}</span>
-                                <span className="text-muted-foreground">Generator</span>
-                                <span>{status.generator.name} {status.generator.version}</span>
-                                <span className="text-muted-foreground">Generator build</span>
-                                <span className="truncate font-mono">{status.generator.build}</span>
-                            </div>
-                        )}
-                        {error && (
-                            <p className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                                {error}
-                            </p>
-                        )}
-                        {job && (
-                            <div className="space-y-2 border bg-muted/30 p-3">
-                                <div className="flex items-center justify-between text-xs">
-                                    <span className="font-medium">{job.message || job.status}</span>
-                                    <span className="text-muted-foreground">{job.percent ?? 0}%</span>
-                                </div>
-                                {job.logs && job.logs.length > 0 && (
-                                    <div className="max-h-48 overflow-auto font-mono text-xs text-muted-foreground">
-                                        {job.logs.slice(-80).map((line, index) => (
-                                            <div key={`${index}-${line}`} className="whitespace-pre-wrap break-words">{line}</div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        <div className="flex flex-wrap gap-2">
-                            <Button onClick={() => void generate(false)} disabled={!canGenerate || Boolean(jobId)}>
-                                {jobId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                                Generate 3D assets
-                            </Button>
-                            <Button variant="outline" onClick={() => void refreshStatus()} disabled={loading}>
-                                <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />
-                                Refresh status
-                            </Button>
+                <div className="w-full max-w-sm space-y-3 text-sm">
+                    <div className="flex items-center gap-2 font-medium">
+                        {failed
+                            ? (isStackup ? <Layers3 className="h-4 w-4 text-destructive" /> : <Box className="h-4 w-4 text-destructive" />)
+                            : <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                        {failed ? "Board build failed" : (job?.message || "Preparing board")}
+                        {!failed && <span className="ml-auto text-xs tabular-nums text-muted-foreground">{job?.percent ?? 0}%</span>}
+                    </div>
+                    {!failed && (
+                        <div className="h-1 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full bg-primary transition-[width]" style={{ width: `${job?.percent ?? 0}%` }} />
                         </div>
-                        {!canGenerate && (
-                            <p className="text-xs text-muted-foreground">A designer or administrator can generate these assets.</p>
-                        )}
-                    </CardContent>
-                </Card>
+                    )}
+                    {failed && (
+                        <>
+                            <p className="break-words text-xs text-destructive">{error}</p>
+                            {canGenerate && (
+                                <Button size="sm" variant="outline" onClick={() => void generate(false)}>
+                                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                                    Retry
+                                </Button>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
         );
     }

@@ -7,27 +7,30 @@ describes (disks, capsules, rounded rectangles, swept paths, polygons with
 holes), so edges stay exact at any zoom and nothing is tessellated ahead of
 time.
 
-**Status: the default.** With `PRISM_ANALYTIC_PCB_ENABLED=true` (the
-default) the 3D job builds the board analytic-first:
+**Status: the default.** Each project revision has one stored asset,
+`board.prism` (prism-sim-studio's bundle, `docs/sim/adr/sim-adr-0020` there).
+Import and every sync queue its build; the 3D tab and Simulation Studio join a
+build in progress, or queue it, rather than asking.
 
-1. It writes `board.kmpack` before anything else.
-2. The compiler runs with `--board-geometry analytic`: the scene manifest
-   keeps layers, nets, features, components and barrels but has no copper
-   tiles, and no solder mask GLB is built. The copper polygons never go to the
-   Node builder (12.9 MB of input on EDA-04903-V1-0 instead of 257 MB; peak
-   memory 3.3 GB instead of an out-of-memory kill at 7.75 GB).
-3. The bundle is published with `board_geometry: "analytic"`. The status
-   response carries its `analytic_pack_url`, and the PCB 3D tab draws the
-   board from it (an "Analytic board" badge shows it is in use).
-4. A lower-priority follow-up job (`geometry: "mesh"`) builds the copper tiles
-   and republishes the bundle with them, keeping the pack. The flat layer
-   view and system scenes, which still draw mesh copper, use them. The
-   follow-up publishes no partial bundles, so the analytic board stays on
-   screen while it runs.
+1. The board's zones are refilled once, on a copy, with KiCad's zone filler
+   (`backend/app/services/zone_refill.py`; `PRISM_ZONE_REFILL_ENABLED`).
+2. The compiler runs on that copy with the Rust backend: the semantic index,
+   the copper tiles (for the flat layer view and system scenes) and the
+   component models. No solder mask GLB is built; the stackup's mask colour
+   goes in `semantic_geometry.json` as `board_looks`.
+3. `prism-bundle build --refilled-board ... --viewer-dir ...` writes
+   `board.prism`: the sources, the refilled board, the materialization pack,
+   the design JSON and those viewer files under `viewer/`. It is stored beside
+   the 3D key (project, source fingerprint, generator build) as
+   `<build>.prism`.
+4. The 3D tab serves `<build>/`, an unpacked copy of the viewer files and the
+   pack (each checked against the manifest hash). It is a cache: a status
+   request that finds the archive without it unpacks it again.
 
-If the pack fails, the job builds the mesh board only, as before. With the
-flag off there is no pack. Read [Pending work](#pending-work) before relying
-on it.
+A schematic that disagrees with the board, or a project with no schematic,
+still gets a bundle; the manifest's cross-check status gates simulation only.
+Without `prism-bundle` installed the job falls back to the pack from
+`prism-kicad-native` and a published directory, as before.
 
 ## Pipeline
 
@@ -122,16 +125,8 @@ describes how to measure it.
 
 ## Pending work
 
-- **Producer.** Packs are written from the saved zone fills, first in the 3D
-  job. A failed pack is logged and the mesh board is built and shown. The flag
-  changes the bundle's build fingerprint, so switching it rebuilds cached
-  bundles.
-- **One-board view only.** System scenes and the flat 2D layer view keep the
-  mesh scene, so they show board copper only once the mesh follow-up job has
-  added the tiles.
-- **Board compile still dominates.** The analytic-first build still compiles
-  the board's PCB IR (about 80 s and 3 GB on a large board) for the manifest's
-  features and nets.
+- **One-board view only.** System scenes and the flat 2D layer view draw the
+  mesh copper tiles the Rust build writes alongside the pack.
 - **Components stay meshes.** Component bodies come from the KiCad 3D models as
   before.
 - **Materializer source.** The materializer is not in an upstream

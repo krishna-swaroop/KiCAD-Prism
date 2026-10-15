@@ -240,10 +240,10 @@ The next tag is `v4.0.0-alpha`, superseding the unpublished v3.1 plan.
 selectable and Python-copper is an explicit experimental opt-in. Never infer
 the backend from an installed helper or replace the published Python
 toolchain with a sibling checkout. See `docs/PCB_RUST_GEOMETRY.md` and `docs/DEPENDENCIES.md`.
-`PRISM_ANALYTIC_PCB_ENABLED=true` is the default: the 3D job builds the board
-analytic-first (`docs/ANALYTIC_3D_VIEW.md`), publishing a bundle without copper
-tiles, then queues a lower-priority job that adds them for the flat layer view
-and system scenes. If the pack fails, the job builds the mesh board as before.
+`PRISM_ANALYTIC_PCB_ENABLED=true` is the default: the 3D job builds the
+project's one stored asset, `board.prism` (`docs/ANALYTIC_3D_VIEW.md`), from a
+single zone refill; import and sync queue it, and the 3D tab and Simulation
+Studio read their parts from it.
 
 ## Generated and vendored boundaries
 

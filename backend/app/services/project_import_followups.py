@@ -1,4 +1,4 @@
-"""Post-import metadata and thumbnail scheduling.
+"""Post-import metadata, thumbnail and board.prism scheduling.
 
 Import registration stays available even when a derived job cannot be queued.
 Outcomes are recorded so a later retry can name the project and operation.
@@ -52,6 +52,7 @@ def schedule_import_follow_ups(
     requested_by: str = "",
 ) -> list[dict[str, str]]:
     from app.services.project_import_service import (
+        start_board_bundle_job,
         start_project_metadata_job,
         start_thumbnail_job,
     )
@@ -71,6 +72,14 @@ def schedule_import_follow_ups(
                 project_id,
                 "thumbnail",
                 start_thumbnail_job,
+                requested_by=requested_by,
+            )
+        )
+        outcomes.append(
+            schedule_import_follow_up(
+                project_id,
+                "board-prism",
+                start_board_bundle_job,
                 requested_by=requested_by,
             )
         )

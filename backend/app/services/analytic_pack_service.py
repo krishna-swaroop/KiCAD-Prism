@@ -88,7 +88,8 @@ def validate_entry(root: Path, entry: Any) -> None:
     if not isinstance(entry, dict) or entry.get("path") != PACK_FILE:
         raise RuntimeError("Invalid analytic pack entry")
     path = root / PACK_FILE
-    if not path.is_file() or path.stat().st_size != entry.get("bytes"):
+    # A pack unpacked from board.prism is hashed by the archive; its entry records no size.
+    if not path.is_file() or ("bytes" in entry and path.stat().st_size != entry["bytes"]):
         raise RuntimeError(f"Missing analytic pack asset: {PACK_FILE}")
 
 

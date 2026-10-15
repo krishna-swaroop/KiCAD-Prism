@@ -24,7 +24,7 @@ from typing import Any, Iterator, Mapping, Optional
 
 from app.core import errors
 from app.core.config import settings
-from app.services import project_revision
+from app.services import project_bundle, project_revision
 from app.services.job_kinds import JobKind, JobSubject
 from app.services.job_runtime import JobContext, JobResult
 from app.sim_studio import validation
@@ -130,131 +130,37 @@ def _project_sources(run: Mapping[str, Any]) -> Iterator[Path]:
         yield location.checkout
 
 
-def _build_bundle(project_file: Path, target: Path, log: list[str], refilled: Optional[Path] = None) -> None:
-    """``prism-bundle build`` into ``target``, refilling zones with the worker's kicad-cli, or
-    taking ``refilled``, a copy of the board the same KiCad already refilled."""
-
-    from app.services.kicad_tools import locate_kicad_cli
-
-    command = [str(binary("prism-bundle")), "build", str(project_file), "-o", str(target)]
-    cli = locate_kicad_cli()
-    if refilled is not None and cli:
-        command += ["--refilled-board", str(refilled), "--refill-tool", kicad_cli_version(cli)]
-    else:
-        command += ["--kicad-cli", cli] if cli else ["--no-refill"]
-    completed = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False)
-    log.extend(line for line in (completed.stdout + completed.stderr).splitlines() if line.strip())
-    if completed.returncode != 0:
-        # Report from the first error line on; progress lines before it are in the log.
-        lines = [line for line in (completed.stderr or completed.stdout).strip().splitlines() if line.strip()]
-        first = next((i for i, line in enumerate(lines) if line.lower().startswith("error")), 0)
-        shown = lines[first:first + 8]
-        more = len(lines) - first - len(shown)
-        raise RuntimeError("prism-bundle failed: " + "\n".join(shown) + (f"\n... and {more} more line(s) in the job log" if more > 0 else ""))
-
-
-#: Bundles kept for reuse; the oldest beyond this are removed.
-BUNDLE_CACHE_SIZE = 20
-
-
-def bundle_cache_dir() -> Path:
-    return sim_root() / "bundle-cache"
-
-
 @functools.lru_cache(maxsize=4)
 def kicad_cli_version(cli: str) -> str:
     completed = subprocess.run([cli, "version"], capture_output=True, text=True, timeout=60, check=False)
     return completed.stdout.strip()
 
 
-@functools.lru_cache(maxsize=4)
-def _tool_identity(cli: Optional[str]) -> str:
-    """What else decides a bundle: the prism-bundle binary and the KiCad that refills zones."""
+def _project_bundle(project_id: str, project_file: Path, log: list[str]) -> Path:
+    """The project's board.prism for the revision at ``project_file``: the one the 3D tab
+    uses, built here the same way when no import, sync or 3D view has built it yet."""
 
-    parts = [_sha256_file(binary("prism-bundle"))]
-    if cli:
-        parts.append(f"{cli}:{kicad_cli_version(cli)}")
-    else:
-        parts.append("no-refill")
-    return "|".join(parts)
+    from app.services import semantic_visualizer_service as visualizer
+    from app.services.project_service import _workspace_row_to_project
+    from app.services.workspace_service import workspace
 
-
-def bundle_key(project_file: Path, cli: Optional[str]) -> str:
-    """The bundle's inputs: the project, board and rules files, every schematic under the
-    project (a superset of the sheets the build reaches), and the tools."""
-
-    directory, stem = project_file.parent, project_file.stem
-    files = [directory / f"{stem}.{suffix}" for suffix in ("kicad_pro", "kicad_pcb", "kicad_dru")]
-    files += sorted(directory.rglob("*.kicad_sch"))
-    hasher = hashlib.sha256(_tool_identity(cli).encode("utf-8"))
-    for path in files:
-        if not path.is_file():
-            continue
-        hasher.update(f"\0{path.relative_to(directory).as_posix()}\0".encode("utf-8"))
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1 << 20), b""):
-                hasher.update(chunk)
-    return hasher.hexdigest()
-
-
-def _cached_bundle(project_file: Path, target: Path, log: list[str]) -> None:
-    """Build the bundle, or reuse one built from the same sources with the same tools.
-
-    The build is dominated by KiCad's zone refill (minutes on large boards) and depends
-    only on the key's inputs, so runs of one revision share it.
-    """
-
-    from app.services.kicad_tools import locate_kicad_cli
-
-    cache = bundle_cache_dir()
-    key = bundle_key(project_file, locate_kicad_cli())
-    cached = cache / f"{key}.prism"
-    if cached.is_file():
-        log.append(f"bundle cache hit {key[:12]}")
-        try:
-            target.hardlink_to(cached)
-        except OSError:
-            shutil.copyfile(cached, target)
-        os.utime(cached)
-        return
-    _build_bundle(project_file, target, log)
-    _store_bundle(target, key)
-
-
-def _store_bundle(built: Path, key: str) -> None:
-    cache = bundle_cache_dir()
-    cache.mkdir(parents=True, exist_ok=True)
-    partial = cache / f".{key}.{os.getpid()}.partial"
-    shutil.copyfile(built, partial)
-    os.replace(partial, cache / f"{key}.prism")
-    for stale in sorted(cache.glob("*.prism"), key=lambda path: path.stat().st_mtime, reverse=True)[BUNDLE_CACHE_SIZE:]:
-        stale.unlink(missing_ok=True)
-
-
-def prebuild_bundle(project_file: Path, refilled: Path, log: list[str]) -> None:
-    """The run bundle for this revision, built by the 3D job from the board it already
-    refilled, so a first run finds it cached. Failures are logged: a run builds its own."""
-
-    from app.services.kicad_tools import locate_kicad_cli
-
-    if not settings.PRISM_SIM_STUDIO_ENABLED:
-        return
-    cli = locate_kicad_cli()
-    try:
-        if not cli or not binary("prism-bundle").is_file():
-            return
-        key = bundle_key(project_file, cli)
-        if (bundle_cache_dir() / f"{key}.prism").is_file():
-            log.append(f"Simulation bundle already cached ({key[:12]})")
-            return
-        with tempfile.TemporaryDirectory(prefix="sim-bundle-") as scratch:
-            built = Path(scratch) / "board.prism"
-            notes: list[str] = []
-            _build_bundle(project_file, built, notes, refilled=refilled)
-            _store_bundle(built, key)
-        log.append(f"Simulation bundle cached ({key[:12]})")
-    except Exception as exc:  # A run that needs it builds it, and reports why it fails.
-        log.append(f"Simulation bundle not prebuilt: {str(exc).splitlines()[0] if str(exc) else type(exc).__name__}")
+    source_hash = visualizer.source_fingerprint_for_root(project_file.parent, project_file_rel=project_file.name)
+    archive = project_bundle.archive_path(visualizer.bundle_dir(project_id, source_hash))
+    if archive.is_file():
+        log.append(f"board.prism {source_hash[:12]}")
+        return archive
+    if not project_bundle.available():
+        raise RuntimeError("prism-bundle is not installed, so board.prism cannot be built")
+    row = workspace.get_project_by_id(project_id)
+    if not row:
+        raise RuntimeError(f"Project {project_id} not found")
+    job: dict[str, Any] = {"logs": log}
+    visualizer.build_visualizer_bundle_from_project_file(
+        _workspace_row_to_project(row), project_file, job, lambda: None, source_hash=source_hash,
+    )
+    if not archive.is_file():
+        raise RuntimeError("board.prism was not built")
+    return archive
 
 
 def _stage(run: Mapping[str, Any], workspace: Path, log: list[str]) -> dict[str, Any]:
@@ -264,10 +170,14 @@ def _stage(run: Mapping[str, Any], workspace: Path, log: list[str]) -> dict[str,
         project_file = project_dir / Path(str(run["project_path"])).name
         if not project_file.is_file():
             raise RuntimeError(f"{project_file.name} is not in the project at this revision")
-        with tempfile.TemporaryDirectory(prefix="sim-bundle-") as scratch:
-            built = Path(scratch) / "board.prism"
-            _cached_bundle(project_file, built, log)
-            shutil.move(str(built), inputs / "board.prism")
+        archive = _project_bundle(str(run["project_id"]), project_file, log)
+        gate = project_bundle.simulation_gate(project_bundle.read_manifest(archive))
+        if gate:
+            raise RuntimeError(gate)
+        try:
+            (inputs / "board.prism").hardlink_to(archive)
+        except OSError:
+            shutil.copyfile(archive, inputs / "board.prism")
     bundle_sha = _sha256_file(inputs / "board.prism")
     setup = dict(run["setup_document"])
     setup["bundle"] = {**setup.get("bundle", {}), "sha256": bundle_sha}
