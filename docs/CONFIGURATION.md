@@ -157,6 +157,8 @@ constrained host. Unless noted, an empty value means the default.
 | --- | --- |
 | `KICAD_PROJECTS_ROOT` | root for imported projects and `.kicad-prism` state; Compose sets `/app/projects` |
 | `PRISM_JOB_ARTIFACT_RETENTION_DAYS` | days job artifact metadata is kept (default 30) |
+| `PRISM_JOB_RETENTION_DAYS` | days finished jobs, their events and log folders are kept, unless a 3D readiness row, an artifact or a release build still points at them, or they are the newest of their kind and key (default 90) |
+| `PRISM_ROUTINE_JOB_RETENTION_DAYS` | the same for tracker polls and sweeps, background fetches and system source checks (default 7) |
 | `PRISM_JOB_PARTIAL_RETENTION_HOURS` | hours unfinished job artifacts are kept (default 24) |
 | `PRISM_DESIGN_COMPARE_CACHE` | revision snapshot cache (default under the system temporary directory) |
 | `PRISM_DESIGN_COMPARE_JOBS` | design-compare scratch root (default under the system temporary directory) |

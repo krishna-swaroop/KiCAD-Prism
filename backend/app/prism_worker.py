@@ -7,6 +7,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -88,6 +89,7 @@ class PrismWorker:
         self._catalog_maintenance_date = ""
         self._auto_sync_attempts: dict[str, datetime] = {}
         self._next_auto_sync_scan = 0.0
+        self._auto_sync_scan: threading.Thread | None = None
         self._next_tracker_scan = 0.0
         self._next_end_sweep = 0.0
 
@@ -502,13 +504,27 @@ class PrismWorker:
         now_mono = time.monotonic()
         if now_mono < self._next_auto_sync_scan:
             return
+        if self._auto_sync_scan is not None and self._auto_sync_scan.is_alive():
+            return
+        # The scan asks each due remote whether it moved (git ls-remote), which
+        # can take seconds per repository; it must not hold up job supervision.
+        self._auto_sync_scan = threading.Thread(
+            target=self._scan_project_fetches, args=(interval,), name="auto-sync-scan", daemon=True
+        )
+        self._auto_sync_scan.start()
+        self._next_auto_sync_scan = now_mono + min(30, interval)
+
+    def _scan_project_fetches(self, interval: int) -> None:
         from app.services.project_auto_sync_service import enqueue_due_fetches
 
-        enqueue_due_fetches(
-            self._auto_sync_attempts,
-            interval_seconds=interval,
-            now=datetime.now(timezone.utc),
-        )
+        try:
+            enqueue_due_fetches(
+                self._auto_sync_attempts,
+                interval_seconds=interval,
+                now=datetime.now(timezone.utc),
+            )
+        except Exception:
+            logger.exception("Could not queue project fetches")
         try:  # Git-linked systems (CONTRACTS_P2 §21.4); a failure must not stop project fetches
             from app.services.systems import git_tracking
             from app.services.systems.jobs import workspace_connection
@@ -516,7 +532,6 @@ class PrismWorker:
             git_tracking.enqueue_due_fetches(workspace_connection, interval_seconds=interval)
         except Exception:
             logger.exception("Could not queue system repository fetches")
-        self._next_auto_sync_scan = now_mono + min(30, interval)
 
     def schedule_tracker_jobs(self) -> None:
         if self.worker_pool != "prism" or time.monotonic() < self._next_tracker_scan:

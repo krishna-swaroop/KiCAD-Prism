@@ -37,6 +37,8 @@ from app.services.trackers.scheduler import (
 DispatchExecutor = Callable[[dict[str, Any]], str | None]
 
 QUARANTINE_FIRST_MINUTES = 1
+#: How long a skipped poll or sweep waits before the destination is due again.
+SKIPPED_CHECKPOINT_BACKOFF_SECONDS = 30 * 60
 
 logger = logging.getLogger(__name__)
 
@@ -118,12 +120,23 @@ def _run_checkpoint_job(context: JobContext, *, kind: str) -> JobResult:
                 remote_container_id=container_id,
             )
             interval = sweep_interval_seconds(conn, connector_id, container_id)
+        if (result.details or {}).get("skipped"):
+            # Nothing ran (no provider, unknown or paused connector): wait long
+            # before asking again instead of being due on every scheduler scan.
+            interval = max(interval, SKIPPED_CHECKPOINT_BACKOFF_SECONDS)
+        # A run that did not move next_run_at itself (skips, and polls whose
+        # handler leaves it) must still push it past now, or the scheduler
+        # finds the destination due again within seconds.
         conn.execute(
             """
             UPDATE sync_checkpoints
             SET claimed_by = NULL,
                 lease_expires_at = NULL,
-                next_run_at = COALESCE(next_run_at, NOW() + (%s * INTERVAL '1 second'))
+                next_run_at = CASE
+                    WHEN next_run_at IS NULL OR next_run_at <= NOW()
+                        THEN NOW() + (%s * INTERVAL '1 second')
+                    ELSE next_run_at
+                END
             WHERE kind = %s AND scope_key = %s AND fence = %s
             """,
             (interval, kind, scope, int(claimed["fence"])),

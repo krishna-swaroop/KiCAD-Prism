@@ -383,8 +383,19 @@ class TrackerCompositionPostgresTests(unittest.TestCase):
                 "_connect": self._factory,
             }
         )
+        self.conn.execute(
+            "INSERT INTO sync_checkpoints (kind, scope_key, next_run_at) VALUES ('poll', %s, NOW() - INTERVAL '1 day')",
+            (f"{CONNECTOR}:{CONTAINER}",),
+        )
+        self.conn.commit()
         result = run_tracker_poll_job(context)
         self.assertIn("Paused", result.message)
+        # A skipped poll is not due again on the next scan: it backs off.
+        due_in = self.conn.execute(
+            "SELECT EXTRACT(EPOCH FROM next_run_at - NOW()) AS s FROM sync_checkpoints WHERE kind = 'poll' AND scope_key = %s",
+            (f"{CONNECTOR}:{CONTAINER}",),
+        ).fetchone()["s"]
+        self.assertGreater(float(due_in), 25 * 60)
 
 
 if __name__ == "__main__":

@@ -197,6 +197,10 @@ def run_artifact_maintenance(context: JobContext) -> dict[str, Any]:
     garbage_collection = job_artifacts.collect_unreferenced_objects()
     staging_cleanup = job_artifacts.cleanup_stale_staging()
     git_cache_rows_purged = git_read_cache.prune()
+    # After artifact metadata: a job whose artifacts just expired can go too.
+    from app.services.job_retention import prune_jobs
+
+    job_retention = prune_jobs(context_jobs)
     _step(context, progress=80, message="Purging superseded STEP payloads")
     step_result = catalog_service.purge_superseded_step_files()
     staging = catalog_service.cleanup_resolved_import_staging(
@@ -209,6 +213,7 @@ def run_artifact_maintenance(context: JobContext) -> dict[str, Any]:
         **staging_cleanup,
         "job_artifact_metadata_rows_pruned": metadata_rows_pruned,
         "git_cache_rows_purged": git_cache_rows_purged,
+        **job_retention,
         "superseded_steps_purged": step_result["purged"],
         "staging_sessions_removed": staging["removed"],
     }

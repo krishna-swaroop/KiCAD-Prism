@@ -1246,8 +1246,10 @@ def run_project_sync_job_v3(context: JobContext) -> JobResult:
     from app.services import file_service
     from app.services.systems.detection import project_synced
 
-    file_service.invalidate_file_listing_cache()
-    project_synced(project_id)  # System Builder: a fetch may have moved a branch some system tracks
+    # A fetch that moved no ref changed nothing a listing or a tracked system reads.
+    if not fetch_only or result.get("refs_changed", True):
+        file_service.invalidate_file_listing_cache()
+        project_synced(project_id)  # System Builder: a fetch may have moved a branch some system tracks
     if fetch_only:
         return JobResult(message=str(result.get("message") or "Fetched remote refs"), details=dict(result))
     # Re-render in its own job: a `kicad-cli` render can take two minutes, and
@@ -1267,6 +1269,13 @@ def run_project_sync_job_v3(context: JobContext) -> JobResult:
         message=str(result.get("message") or "Sync completed"),
         details=dict(result),
     )
+
+
+def _ref_tips(repo: Repo) -> dict[str, str]:
+    """Every ref and the object it names, to tell whether a fetch moved anything."""
+
+    output = repo.git.for_each_ref("--format=%(objectname) %(refname)")
+    return dict(reversed(line.split(" ", 1)) for line in output.splitlines() if " " in line)
 
 
 def sync_project(project_id: str, *, fetch_only: bool = False) -> dict:
@@ -1300,7 +1309,9 @@ def sync_project(project_id: str, *, fetch_only: bool = False) -> dict:
             derived_assets.purge_legacy_in_tree_thumbnails(sync_path, repo)
 
         # Fetch all refs for branch viewing and prune deleted branches.
+        refs_before = _ref_tips(repo)
         fetch_info = origin.fetch(env=env, prune=True)
+        refs_changed = _ref_tips(repo) != refs_before
 
         if fetch_only:
             message = f"Fetched {len(fetch_info)} ref(s)"
@@ -1330,7 +1341,8 @@ def sync_project(project_id: str, *, fetch_only: bool = False) -> dict:
         return {
             "status": "success",
             "message": message,
-            "path": sync_path
+            "path": sync_path,
+            "refs_changed": refs_changed,
         }
 
     except Exception as e:

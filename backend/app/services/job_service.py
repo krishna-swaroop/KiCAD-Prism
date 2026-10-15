@@ -1689,6 +1689,68 @@ class JobService:
             conn.commit()
         return len(rows)
 
+    def job_ids(self) -> set[str]:
+        self.initialize()
+        with self._connect() as conn:
+            self._set_workspace_search_path(conn)
+            return {str(row["id"]) for row in conn.execute("SELECT id FROM ws_jobs").fetchall()}
+
+    def prune_terminal_jobs(
+        self,
+        *,
+        routine_kinds: Sequence[str],
+        routine_retention_seconds: int,
+        retention_seconds: int,
+        batch: int = 5000,
+    ) -> list[str]:
+        """Delete one batch of finished jobs past retention; returns their log paths.
+
+        Events go with them (ON DELETE CASCADE). A job is kept while anything
+        still points at it: a 3D readiness row (which would cascade away), an
+        artifact (pruned on its own schedule first), a release build, or being
+        the newest job of its kind and key (status lookups read that one).
+        """
+
+        self.initialize()
+        with self._connect() as conn:
+            self._set_workspace_search_path(conn)
+            rows = conn.execute(
+                """
+                WITH doomed AS (
+                    SELECT job.id
+                    FROM ws_jobs job
+                    WHERE job.status IN ('completed', 'failed', 'cancelled')
+                      AND COALESCE(job.completed_at, job.updated_at) < NOW() - (
+                          CASE WHEN job.kind = ANY(%s) THEN %s ELSE %s END * INTERVAL '1 second')
+                      AND NOT EXISTS (SELECT 1 FROM ws_webgpu_ready ready WHERE ready.source_job_id = job.id)
+                      AND NOT EXISTS (SELECT 1 FROM ws_artifacts artifact WHERE artifact.source_job_id = job.id)
+                      AND NOT EXISTS (SELECT 1 FROM ws_release_builds build WHERE build.job_id = job.id)
+                      AND NOT (
+                          COALESCE(job.artifact_key, '') <> ''
+                          AND NOT EXISTS (
+                              SELECT 1 FROM ws_jobs newer
+                              WHERE newer.kind = job.kind
+                                AND newer.artifact_key = job.artifact_key
+                                AND newer.created_at > job.created_at
+                          )
+                      )
+                    ORDER BY COALESCE(job.completed_at, job.updated_at)
+                    LIMIT %s
+                )
+                DELETE FROM ws_jobs job USING doomed
+                WHERE job.id = doomed.id
+                RETURNING job.log_path
+                """,
+                (
+                    list(routine_kinds),
+                    max(0, int(routine_retention_seconds)),
+                    max(0, int(retention_seconds)),
+                    max(1, int(batch)),
+                ),
+            ).fetchall()
+            conn.commit()
+        return [str(row["log_path"]) for row in rows if row["log_path"]]
+
     def invalidate_artifact(self, artifact_id: str, *, reason: str) -> bool:
         """Invalidate a missing/corrupt artifact without changing its source job."""
 

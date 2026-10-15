@@ -169,12 +169,12 @@ class TrackerRuntime:
     ) -> JobResult:
         ctx = self.destination_context(conn, connector_id=connector_id, remote_container_id=remote_container_id)
         if ctx is None:
-            return JobResult(message="Unknown connector")
+            return JobResult(message="Unknown connector", details={"skipped": "unknown-connector"})
         if ctx.paused:
-            return JobResult(message="Paused connector skipped poll")
+            return JobResult(message="Paused connector skipped poll", details={"skipped": "paused"})
         bundle = self.connectors.bundle_for_connector(conn, connector_id)
         if bundle is None or not ctx.container_path:
-            return JobResult(message="Provider unavailable; poll skipped")
+            return JobResult(message="Provider unavailable; poll skipped", details={"skipped": "provider-unavailable"})
         outcome = poll_destination_updates(
             conn,
             connector_id=connector_id,
@@ -212,12 +212,12 @@ class TrackerRuntime:
     ) -> JobResult:
         ctx = self.destination_context(conn, connector_id=connector_id, remote_container_id=remote_container_id)
         if ctx is None:
-            return JobResult(message="Unknown connector")
+            return JobResult(message="Unknown connector", details={"skipped": "unknown-connector"})
         if ctx.paused:
-            return JobResult(message="Paused connector skipped sweep")
+            return JobResult(message="Paused connector skipped sweep", details={"skipped": "paused"})
         bundle = self.connectors.bundle_for_connector(conn, connector_id)
         if bundle is None or not ctx.container_path:
-            return JobResult(message="Provider unavailable; sweep skipped")
+            return JobResult(message="Provider unavailable; sweep skipped", details={"skipped": "provider-unavailable"})
         dest = bundle.destination(ctx)
         outcome = sweep_destination_links(
             conn,

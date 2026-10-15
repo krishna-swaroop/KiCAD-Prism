@@ -517,6 +517,14 @@ class Settings(PipelineSettings):
         ),
     )
 
+    PRISM_JOB_RETENTION_DAYS: int = Field(
+        default=90,
+        description="Days finished jobs (rows, events, logs) are kept, unless still referenced.",
+    )
+    PRISM_ROUTINE_JOB_RETENTION_DAYS: int = Field(
+        default=7,
+        description="Days finished routine jobs (tracker polls and sweeps, background fetches, source checks) are kept.",
+    )
     PRISM_JOB_ARTIFACT_RETENTION_DAYS: int = Field(
         default=30,
         description="Days job artifact metadata is kept by artifact maintenance (negative means 0).",
