@@ -127,7 +127,7 @@ def pcb_geometry_backend() -> str:
         # legacy/rust backend contract above.
         if copper_emit_enabled():
             return "python-copper"
-        return "legacy"
+        return "rust"
     if value not in {"legacy", "rust", "python-copper"}:
         raise RuntimeError(
             "PRISM_PCB_GEOMETRY_BACKEND must be one of legacy, rust, or python-copper"

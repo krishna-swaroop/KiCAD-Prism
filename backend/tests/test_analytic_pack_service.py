@@ -92,5 +92,19 @@ class AnalyticPackServiceTests(unittest.TestCase):
         self.assertNotEqual(enabled, disabled)
 
 
+
+class CopperTilesTests(unittest.TestCase):
+    def test_tiles_written_with_the_pack_complete_the_bundle(self) -> None:
+        from app.services import semantic_visualizer_service as service
+
+        output = Path(tempfile.mkdtemp())
+        self.assertFalse(service._has_copper_tiles(output))
+        (output / "scene-gltf").mkdir()
+        (output / "scene-gltf" / "scene.manifest.json").write_text("{}", encoding="utf-8")
+        self.assertFalse(service._has_copper_tiles(output))
+        (output / "scene-gltf" / "layer-4-tile-0-0.glb").write_bytes(b"glTF")
+        self.assertTrue(service._has_copper_tiles(output))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2316,13 +2316,14 @@ export class Renderer {
 
   visible(entry, panelLayer, visibleLayers, showBoard, showComponents, componentOpacity, compareMode = false, visibleTileIds = null) {
     if (entry.placeholder && !this.showPlaceholders) return false;
+    // The flat layer view draws mesh copper only; analytic slices skip it.
+    if (compareMode) return entry.kind === "copper" && visibleLayers.has(entry.layerId);
     // Analytic copper replaces the mesh copper of the layers it draws, and
     // analytic board layers the mesh substrate, mask, silkscreen and paste.
     if (entry.kind === "copper" && this.analytic?.coversLayer(entry.layerId)) return false;
     if (entry.kind === "board" && this.analytic?.coversRole(entry.boardRole)) return false;
     if (entry.kind === "board" && entry.boardRole === "pad") return false;
-    if (!compareMode && entry.kind === "copper" && visibleTileIds && !visibleTileIds.has(entry.tileId)) return false;
-    if (compareMode) return entry.kind === "copper" && visibleLayers.has(entry.layerId);
+    if (entry.kind === "copper" && visibleTileIds && !visibleTileIds.has(entry.tileId)) return false;
     if (entry.innerCopper && this.innerCopperMode === "none") return false;
     // Paste belongs to its copper layer: shown with it, whatever the substrate does.
     if (entry.boardRole === "paste") return panelLayer === 0 && visibleLayers.has(entry.layerId);

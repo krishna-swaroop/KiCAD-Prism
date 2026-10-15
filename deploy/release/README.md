@@ -108,7 +108,7 @@ They are included in `SHA256SUMS`. A pre-epoch-2 catalog requires the documented
 catalog cutover; do not start the new API against it before preparing backups
 and survivor archives.
 
-Keep `PRISM_PCB_GEOMETRY_BACKEND=legacy` for normal use. Rust and Python-copper
-are experimental opt-ins. Changing an environment value requires recreating
+`PRISM_PCB_GEOMETRY_BACKEND=rust` is the default; `legacy` builds the board in
+Python and Python-copper is an experimental opt-in. Changing an environment value requires recreating
 the affected containers. `PRISM_COMMENT_LIVE_ENABLED=false` disables live
 comment sockets while retaining HTTP comment refresh.

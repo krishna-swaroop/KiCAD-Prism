@@ -236,10 +236,10 @@ Release promotion requires reviewed `dev` to `main`, the main commit Quality
 gate, and checked-in `docs/releases/<tag>.md`; see `docs/RELEASES.md`.
 The next tag is `v4.0.0-alpha`, superseding the unpublished v3.1 plan.
 
-`PRISM_PCB_GEOMETRY_BACKEND=legacy` is the supported default. Rust and
-Python-copper require explicit experimental selection; never infer activation
-from an installed helper or replace the published Python toolchain with a
-sibling checkout. See `docs/PCB_RUST_GEOMETRY.md` and `docs/DEPENDENCIES.md`.
+`PRISM_PCB_GEOMETRY_BACKEND=rust` is the default; `legacy` (Python) remains
+selectable and Python-copper is an explicit experimental opt-in. Never infer
+the backend from an installed helper or replace the published Python
+toolchain with a sibling checkout. See `docs/PCB_RUST_GEOMETRY.md` and `docs/DEPENDENCIES.md`.
 `PRISM_ANALYTIC_PCB_ENABLED=true` is the default: the 3D job builds the board
 analytic-first (`docs/ANALYTIC_3D_VIEW.md`), publishing a bundle without copper
 tiles, then queues a lower-priority job that adds them for the flat layer view

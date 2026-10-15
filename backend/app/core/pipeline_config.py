@@ -72,8 +72,8 @@ class PipelineSettings(BaseSettings):
         description="glTF tile size in mm (1-1000) or auto; other values fall back to auto.",
     )
     PRISM_PCB_GEOMETRY_BACKEND: str = Field(
-        default="legacy",
-        description="PCB copper geometry backend: legacy, or the experimental rust / python-copper.",
+        default="rust",
+        description="PCB geometry backend: rust (the native helper), legacy (the Python IR), or python-copper.",
     )
     PRISM_ANALYTIC_PCB_ENABLED: bool = Field(
         default=True,

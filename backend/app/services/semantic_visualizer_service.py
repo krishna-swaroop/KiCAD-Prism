@@ -885,6 +885,10 @@ def _published_pack(target: Path, published: Dict[str, Any] | None, output: Path
     return dict(entry)
 
 
+def _has_copper_tiles(output_dir: Path) -> bool:
+    return any((output_dir / "scene-gltf").glob("*.glb"))
+
+
 def _write_bundle(
     project: Any,
     output_dir: Path,
@@ -1208,6 +1212,11 @@ def _build_visualizer_bundle_locked(
                 pack_started = time.perf_counter()
                 analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"])
                 _record_perf(job, persist, "analytic_pack", pack_started, written=analytic_pack is not None)
+        if board_geometry == "analytic" and _has_copper_tiles(output):
+            # The Rust backend writes the copper tiles alongside the pack, so
+            # the bundle is already what the mesh follow-up would publish.
+            board_geometry = "mesh"
+            job["logs"].append("Copper tiles built with the analytic board; no follow-up needed")
         bundle_started = time.perf_counter()
         _write_bundle(project, output, source_hash, analytic_pack, board_geometry=board_geometry)
         _record_perf(job, persist, "bundle.write_and_validate", bundle_started)

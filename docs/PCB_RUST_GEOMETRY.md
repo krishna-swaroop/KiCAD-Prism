@@ -1,8 +1,8 @@
 # Rust PCB geometry backend
 
-Prism has an experimental, opt-in Linux path for PCB copper geometry. The
-default remains `legacy`; set `PRISM_PCB_GEOMETRY_BACKEND=rust` to use it. An
-explicit Rust selection fails closed if the helper is missing, the schema or
+Prism builds PCB geometry and the board's semantic index with the native Rust
+helper by default (`PRISM_PCB_GEOMETRY_BACKEND=rust`); `legacy` builds them in
+Python. The Rust selection fails closed if the helper is missing, the schema or
 source digest is wrong, the pinned upstream revision differs, or the helper
 reports an error diagnostic.
 
@@ -125,8 +125,11 @@ is not selected automatically. Rollback: set the backend to
 environment. There is no silent fallback from an explicitly
 selected Rust backend.
 
-The legacy backend is the release default. Corpus performance results do not
-establish full legacy geometry parity; the native path remains experimental.
+Rust is the default since its semantic index matched the legacy one exactly on
+EDA-04903 (components, nets, terminals, footprint courtyards, layers and the
+board-edges box); `tests/test_board_metadata.py` holds that parity. On that
+board the analytic build takes 41 s and 0.7 GB with Rust, 237 s and 3.4 GB with
+legacy.
 
 ## Verification and benchmarking
 
