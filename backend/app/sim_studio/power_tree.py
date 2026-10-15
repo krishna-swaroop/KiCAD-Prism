@@ -5,10 +5,13 @@ schematic symbols' pin electrical types, never datasheets, so currents and
 efficiencies stay unset for the user to fill in (validation flags them).
 
 - Rails: nets whose name states a voltage (``drafting.rail_voltage``).
-- Converters: a part whose output pin (``power_out``, or named SW/LX/OUT/...)
-  lands on a rail directly (linear) or through a two-pad inductor (switching).
-  Its input is the rail on its VIN/IN pins, else its highest other rail.
-- Sources: a connector on a rail that no converter feeds.
+- Converters: a part whose output pin (``power_out``, or named SW/LX/PHASE/
+  OUT/... on a regulator or on a pin not typed as a logic signal) lands on a
+  rail directly (linear) or through a two-pad inductor (switching). Its input
+  is the rail on its VIN/IN pins, else its highest other rail.
+- Sources: a connector on a rail that no converter feeds, else a converter
+  with no input rail (a PoE or isolated module fed off-rail).
+- Supplies whose name states no voltage are noted for the user to add.
 - Loads: parts with ``power_in`` pins on a rail, and connectors on fed rails.
   A rail filtered through a ferrite or inductor into a sub-net is lumped as
   one load on the parent rail at the filter's pad until series elements are
@@ -18,21 +21,32 @@ efficiencies stay unset for the user to fill in (validation flags them).
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from app.sim_studio.board_facts import BoardFacts
-from app.sim_studio.drafting import _CONTROL, _GROUND, _slug, rail_voltage
+from app.sim_studio.drafting import _CONTROL, _GROUND, _SIGNAL, _slug, rail_voltage
 
 _PREFIX = re.compile(r"^[A-Za-z]+")
 _PASSIVE = frozenset({"R", "C", "L", "FB", "D", "LED", "TP", "H", "MH", "FID", "JP", "F", "Y", "NT", "SW", "RN", "RV"})
 _CONNECTOR = frozenset({"J", "P", "CN", "CON", "X"})
 _SERIES = frozenset({"L", "FB"})
-_OUTPUT_PIN = re.compile(r"^(?:P?SW\d*|LX\d*|PH\d*|V?OUT[_\d]*|VO|REG_?OUT|.*_SW|.*_RG|VREG\w*|(?:HV)?LDO\d*)$", re.IGNORECASE)
+_OUTPUT_PIN = re.compile(
+    r"^(?:P?SW\d*|SW_\w+|LX\d*|LX_\w+|PH\d*|PHASE\w*|V?OUT[_\d]*|VO|VO_\w+|REG_?OUT|.*_SW|.*_RG|VREG\w*|(?:HV)?LDO\d*)$",
+    re.IGNORECASE,
+)
+# Logic outputs are named OUT too; a name alone makes one a supply output only on a regulator.
+_SIGNAL_PIN_TYPES = frozenset({"INPUT", "OUTPUT", "BIDIRECTIONAL", "TRI_STATE", "OPEN_COLLECTOR", "OPEN_EMITTER"})
 _INPUT_PIN = re.compile(r"^(?:P?VIN\w*|AVIN|IN[_\d]*|\w*_IN|VCC_?IN|VSUP\w*|VBAT|VS)$", re.IGNORECASE)
 _ZERO_OHM = re.compile(r"^0(?:R|E|Ω|\s*ohms?)?(?:$|[_\s@])", re.IGNORECASE)
 _REGULATOR = re.compile(r"regulator|buck|boost|step[- ]?(?:down|up)|ldo|dc[- ]?dc|converter|pmic", re.IGNORECASE)
 _BATTERY = frozenset({"BT", "BAT"})
+_CLAMP = re.compile(r"zener|tvs|esd|clamp", re.IGNORECASE)
+
+
+def _auto_named(net: str) -> bool:
+    return net.rsplit("/", 1)[-1].startswith("Net-(")
 
 
 @dataclass
@@ -73,7 +87,11 @@ def _is_connector(ref: str, part: dict[str, str]) -> bool:
     if "connector" in library.lower():
         return True
     # "X" is a connector in some libraries and an oscillator in others.
-    return _prefix(ref) in _CONNECTOR and not (_prefix(ref) == "X" and "osc" in (library + part.get("description", "")).lower())
+    # "J" refdes variants ("JFBP1", "JTAG1") are connectors too; "JP" is a jumper.
+    prefix = _prefix(ref)
+    if prefix.startswith("J") and not prefix.startswith("JP"):
+        return True
+    return prefix in _CONNECTOR and not (_prefix(ref) == "X" and "osc" in (library + part.get("description", "")).lower())
 
 
 def _is_passive(ref: str) -> bool:
@@ -93,12 +111,25 @@ class _Board:
             name, kind = facts.pins.get(key, ("", ""))
             self.pins.setdefault(ref, []).append(_Pin(pad, name, kind, net))
         self.grounds = {net for net in facts.nets if _GROUND.search(net.rsplit("/", 1)[-1])}
+        #: The board's main return: the ground with the most pads.
+        self.main_ground = max(sorted(self.grounds), key=lambda n: len(facts.net_pads.get(n, ())), default=None)
 
     def on(self, ref: str, net: str) -> list[str]:
         return [self.facts.pin_ref(ref, pin.pad) for pin in self.pins.get(ref, ()) if pin.net == net]
 
     def ground_pads(self, ref: str) -> list[str]:
-        return [self.facts.pin_ref(ref, pin.pad) for pin in self.pins.get(ref, ()) if pin.net in self.grounds]
+        """``ref``'s return pads on one ground: the main one if it has a pin there, else its most used.
+
+        Split grounds (GNDA, GND_CRYSTAL) join the main ground through a net tie, not copper, so a
+        terminal spanning two would return current into an island the solve cannot reach.
+        """
+
+        pins = [pin for pin in self.pins.get(ref, ()) if pin.net in self.grounds]
+        if not pins:
+            return []
+        counts = Counter(pin.net for pin in pins)
+        pick = self.main_ground if self.main_ground in counts else max(sorted(counts), key=counts.__getitem__)
+        return [self.facts.pin_ref(ref, pin.pad) for pin in pins if pin.net == pick]
 
     def components_on(self, net: str) -> list[str]:
         return sorted({key.partition(".")[0] for key in self.facts.net_pads.get(net, ())})
@@ -120,6 +151,46 @@ class _Board:
                 found.append((ref, here.pad, there.net))
         return found
 
+    def reach(self, net: str, ref: str, depth: int = 3) -> list[str]:
+        """Nets reached through series part ``ref`` from ``net``, on through unnamed passive-only nets (pi filters)."""
+
+        pins = self.pins.get(ref, [])
+        if len(pins) != 2:
+            return []
+        other = next((p.net for p in pins if p.net != net), "")
+        if not other or other in self.grounds:
+            return []
+        if depth <= 1 or not _auto_named(other) or self.consumers(other):
+            return [other]
+        onward = [r for r, _, _ in self.series_across(other, links=True) if r != ref]
+        return [other, *(n for r in onward for n in self.reach(other, r, depth - 1))]
+
+    def signal_only(self, net: str) -> bool:
+        """Every active part's pin on ``net`` is a logic signal (a level-shifted line named for its voltage)."""
+
+        pins = [
+            p for ref in self.components_on(net)
+            if not _is_passive(ref) and not _is_connector(ref, part := self.facts.parts.get(ref, {})) and not _regulator(part)
+            for p in self.pins.get(ref, ()) if p.net == net
+        ]
+        supply_named = any(_INPUT_PIN.match(p.name) or _OUTPUT_PIN.match(p.name) for p in pins)
+        return bool(pins) and not supply_named and all(p.type in _SIGNAL_PIN_TYPES for p in pins)
+
+    def diode_feeds(self, net: str) -> list[str]:
+        """Diodes whose cathode is on ``net`` and anode on another live net (diode-OR inputs), not clamps."""
+
+        found = []
+        for ref in self.components_on(net):
+            part = self.facts.parts.get(ref, {})
+            pins = self.pins.get(ref, [])
+            if _prefix(ref) != "D" or len(pins) != 2 or _CLAMP.search(part.get("library_ref", "") + " " + part.get("value", "")):
+                continue
+            here = next((p for p in pins if p.net == net), None)
+            there = next((p for p in pins if p.net != net), None)
+            if here and there and there.net and there.net not in self.grounds and here.name.upper() in {"K", "CATHODE", "C"}:
+                found.append(ref)
+        return found
+
     def consumers(self, net: str) -> list[str]:
         return [
             ref for ref in self.components_on(net)
@@ -130,14 +201,11 @@ class _Board:
 def infer(facts: BoardFacts) -> Draft:
     board = _Board(facts)
     draft = Draft()
-    named = {
-        net: volts for net in facts.nets
-        if (volts := rail_voltage(net)) is not None and len(facts.net_pads.get(net, ())) >= 2
-    }
+    named = _named_rails(board)
 
-    converters = _converters(board, named, draft)
+    converters, orphans = _converters(board, named, draft)
     fed = {conv["output_net"] for conv in converters}
-    filtered = _filtered_rails(board, named, fed)
+    filtered = _filtered_rails(board, named, fed | set(orphans))
     # Ids are unique within each collection, as the setup contract requires.
     taken_rails: set[str] = set()
     taken_sources: set[str] = set()
@@ -161,6 +229,27 @@ def infer(facts: BoardFacts) -> Draft:
         if net in fed or net in filtered:
             continue
         connectors = [ref for ref in board.components_on(net) if _is_connector(ref, facts.parts.get(ref, {}))]
+        if not connectors and net in orphans:
+            # A module fed off-rail (PoE, isolated): its output is where the rail starts.
+            ref, (pad_ref, pads) = orphans[net]
+            tid = terminal(f"{ref}-{rail_id[net]}-out", [facts.pin_ref(pad_ref, pad) for pad in pads], board.ground_pads(ref))
+            draft.sources.append({"id": _slug(f"{ref}-{rail_id[net]}", taken_sources), "rail": rail_id[net], "terminal": tid,
+                                  "component": f"{facts.board_id}:{ref}"})
+            draft.notes.append(_note("converter-as-source", f"{ref} feeds {net} from no rail on the board; it is the rail's source.",
+                                     [facts.net_ref(net), f"{facts.board_id}:{ref}"]))
+            sourced.add(net)
+            continue
+        diodes = [] if connectors else board.diode_feeds(net)
+        if diodes:
+            # Diode-OR: current enters the rail at the cathodes.
+            pads = [pad for ref in diodes for pad in board.on(ref, net)]
+            tid = terminal(f"{diodes[0]}-{rail_id[net]}-in", pads, [])
+            draft.sources.append({"id": _slug(f"{diodes[0]}-{rail_id[net]}", taken_sources), "rail": rail_id[net],
+                                  "terminal": tid, "component": f"{facts.board_id}:{diodes[0]}"})
+            draft.notes.append(_note("diode-or-source", f"{net} is fed through {', '.join(diodes)}; the source is at their cathodes.",
+                                     [facts.net_ref(net), *(f"{facts.board_id}:{ref}" for ref in diodes)]))
+            sourced.add(net)
+            continue
         if not connectors:
             if board.consumers(net):
                 draft.notes.append(_note("rail-without-source", f"{net} has loads but no converter or connector feeds it.", [facts.net_ref(net)]))
@@ -217,6 +306,16 @@ def infer(facts: BoardFacts) -> Draft:
             draft.loads.append({"id": lid, "rail": rail_id[net], "terminal": tid, "current_a": 0.0,
                                 "distribution": "uniform", "component": f"{facts.board_id}:{ref}"})
 
+    for net in _unnamed_supplies(board, named):
+        feeds = [ref for ref in board.components_on(net)
+                 if _is_connector(ref, facts.parts.get(ref, {})) or any(p.net == net and p.type == "POWER_OUT" for p in board.pins.get(ref, ()))]
+        draft.notes.append(_note(
+            "rail-voltage-unknown",
+            f"{_leaf(net)} looks like a supply (fed by {', '.join(feeds)}; powers {', '.join(board.consumers(net)[:4])}) "
+            "but its name states no voltage; add it as a rail and set the voltage.",
+            [facts.net_ref(net)],
+        ))
+
     for conv in converters:
         if conv["input_net"] not in sourced:
             draft.notes.append(_note(
@@ -228,6 +327,16 @@ def infer(facts: BoardFacts) -> Draft:
     draft.notes = [n for n in draft.notes if not ((key := (n["code"], *n["refs"])) in seen or seen.add(key))]
     draft.analysis_rails = [rail_id[net] for net in sorted(named, key=lambda n: (-named[n], n)) if net in sourced]
     return draft
+
+
+def _named_rails(board: _Board) -> dict[str, float]:
+    """Nets whose name states a voltage, on two or more pads, that are not logic lines."""
+
+    facts = board.facts
+    return {
+        net: volts for net in facts.nets
+        if (volts := rail_voltage(net)) is not None and len(facts.net_pads.get(net, ())) >= 2 and not board.signal_only(net)
+    }
 
 
 def _filtered_rails(board: _Board, named: dict[str, float], fed: set[str]) -> set[str]:
@@ -242,19 +351,20 @@ def _filtered_rails(board: _Board, named: dict[str, float], fed: set[str]) -> se
     while changed:
         changed = False
         for net in sorted(set(named) - parents - filtered):
-            if any(other in parents or other in filtered for _, _, other in board.series_across(net, links=True)):
+            reached = {other for ref, _, _ in board.series_across(net, links=True) for other in board.reach(net, ref)}
+            if reached & (parents | filtered):
                 filtered.add(net)
                 changed = True
     return filtered
 
 
 def _filtered_branch(board: _Board, draft: Draft, net: str, ref: str, rail: str, taken: set[str], terminal) -> None:
-    pins = board.pins.get(ref, [])
-    if len(pins) != 2:
+    reached = board.reach(net, ref)
+    if not reached:
         return
-    other = next((p.net for p in pins if p.net != net), "")
-    downstream = [r for r in board.consumers(other) if r != ref]
-    if not downstream or other in board.grounds:
+    other = next((n for n in reached if board.consumers(n)), reached[0])
+    downstream = sorted({r for n in reached for r in board.consumers(n) if r != ref})
+    if not downstream:
         return
     lid = _slug(f"{ref}-{rail}", taken)
     tid = terminal(f"{lid}-t", board.on(ref, net), [])
@@ -267,15 +377,28 @@ def _filtered_branch(board: _Board, draft: Draft, net: str, ref: str, rail: str,
     ))
 
 
-def _converters(board: _Board, named: dict[str, float], draft: Draft) -> list[dict[str, Any]]:
+def _supply_output(pin: _Pin, regulator: bool) -> bool:
+    if pin.type == "POWER_OUT":
+        return True
+    return bool(_OUTPUT_PIN.match(pin.name)) and (regulator or pin.type not in _SIGNAL_PIN_TYPES)
+
+
+def _converters(
+    board: _Board, named: dict[str, float], draft: Draft,
+) -> tuple[list[dict[str, Any]], dict[str, tuple[str, tuple[str, list[str]]]]]:
+    """Converters with an input rail, and outputs of those without one (net -> (ref, output pads))."""
+
     found: list[dict[str, Any]] = []
+    orphans: dict[str, tuple[str, tuple[str, list[str]]]] = {}
     for ref in sorted(board.pins):
-        if _is_passive(ref) or _is_connector(ref, board.facts.parts.get(ref, {})):
+        part = board.facts.parts.get(ref, {})
+        if _is_passive(ref) or _is_connector(ref, part):
             continue
         pins = board.pins[ref]
+        regulator = _regulator(part)
         outputs: dict[str, tuple[str, tuple[str, list[str]]]] = {}
         for pin in pins:
-            if pin.net in board.grounds or not (pin.type == "POWER_OUT" or _OUTPUT_PIN.match(pin.name)):
+            if pin.net in board.grounds or not _supply_output(pin, regulator):
                 continue
             if pin.net in named:
                 outputs.setdefault(pin.net, ("linear", (ref, [p.pad for p in pins if p.net == pin.net])))
@@ -287,11 +410,10 @@ def _converters(board: _Board, named: dict[str, float], draft: Draft) -> list[di
         for out_net, (kind, output_pads) in outputs.items():
             input_net = _input_rail(pins, out_net, named, board.grounds)
             if input_net is None:
-                draft.notes.append(_note("converter-without-input", f"{ref} feeds {out_net} but no input rail was found.",
-                                         [board.facts.net_ref(out_net), f"{board.facts.board_id}:{ref}"]))
+                orphans.setdefault(out_net, (ref, output_pads))
                 continue
             found.append({"ref": ref, "output_net": out_net, "input_net": input_net, "kind": kind, "output_pads": output_pads})
-    return found
+    return found, orphans
 
 
 def _input_rail(pins: Iterable[_Pin], out_net: str, named: dict[str, float], grounds: set[str]) -> str | None:
@@ -299,6 +421,26 @@ def _input_rail(pins: Iterable[_Pin], out_net: str, named: dict[str, float], gro
     preferred = {p.net for p in candidates if _INPUT_PIN.match(p.name)}
     pool = preferred or {p.net for p in candidates if named[p.net] > named[out_net]}
     return max(pool, key=lambda n: (named[n], n)) if pool else None
+
+
+def _unnamed_supplies(board: _Board, named: dict[str, float]) -> list[str]:
+    """Nets that a connector or a power output feeds and power inputs draw from, with no voltage in the name."""
+
+    found = []
+    for net in sorted(board.facts.nets):
+        leaf = net.rsplit("/", 1)[-1]
+        if (net in named or net in board.grounds or leaf.startswith(("Net-(", "unconnected-"))
+                or _CONTROL.search(leaf) or _SIGNAL.search(leaf)):
+            continue
+        consumers = board.consumers(net)
+        feeds = [
+            ref for ref in board.components_on(net)
+            if _is_connector(ref, board.facts.parts.get(ref, {}))
+            or (not _is_passive(ref) and any(p.net == net and p.type == "POWER_OUT" for p in board.pins.get(ref, ())))
+        ]
+        if consumers and [ref for ref in feeds if ref not in consumers or len(consumers) > 1]:
+            found.append(net)
+    return found
 
 
 def _note(code: str, message: str, refs: list[str]) -> dict[str, Any]:
@@ -324,11 +466,8 @@ def candidates(facts: BoardFacts) -> dict[str, list[dict[str, Any]]]:
     """
 
     board = _Board(facts)
-    named = {
-        net: volts for net in facts.nets
-        if (volts := rail_voltage(net)) is not None and len(facts.net_pads.get(net, ())) >= 2
-    }
-    found = _converters(board, named, Draft())
+    named = _named_rails(board)
+    found, _ = _converters(board, named, Draft())
     switch_nodes = {
         pin.net
         for conv in found if conv["kind"] == "switching"
@@ -340,7 +479,8 @@ def candidates(facts: BoardFacts) -> dict[str, list[dict[str, Any]]]:
 
     def usable(net: str) -> bool:
         leaf = net.rsplit("/", 1)[-1]
-        return bool(net) and net not in board.grounds and not _CONTROL.search(leaf) and net not in switch_nodes
+        return (bool(net) and net not in board.grounds and not _CONTROL.search(leaf) and not _SIGNAL.search(leaf)
+                and net not in switch_nodes)
 
     rails: dict[str, dict[str, Any]] = {}
     for net in named:

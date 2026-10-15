@@ -22,6 +22,8 @@ from test_system_api import _request
 PROJECT = SimpleNamespace(id="prj_sim", name="board", project_file="board.kicad_pro")
 PROJECT_PATH = "/api/projects/prj_sim"
 SETUPS = PROJECT_PATH + "/sim/a0/setups"
+OTHER = SimpleNamespace(id="prj_other", name="other", project_file="other.kicad_pro")
+OTHER_SETUPS = "/api/projects/prj_other/sim/a0/setups"
 
 
 def _app() -> FastAPI:
@@ -32,9 +34,10 @@ def _app() -> FastAPI:
 
 
 def _visible(project_id: str, role: str):
-    if project_id != PROJECT.id:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return PROJECT
+    for project in (PROJECT, OTHER):
+        if project.id == project_id:
+            return project
+    raise HTTPException(status_code=404, detail="Project not found")
 
 
 class RoutingTest(unittest.TestCase):
@@ -69,6 +72,7 @@ class SetupApiTest(unittest.TestCase):
         scratch = scratch_schema(self, "sim_api", ledgers=(WORKSPACE_LEDGER,))
         seed_repository(scratch.conn, "repo_sim")
         seed_project(scratch.conn, PROJECT.id, "repo_sim")
+        seed_project(scratch.conn, OTHER.id, "repo_sim")
         scratch.conn.commit()
         service = SimStudioService(
             SetupStore(scratch.connection), facts=lambda project, commit: facts(),
@@ -148,6 +152,35 @@ class SetupApiTest(unittest.TestCase):
         self.assertEqual(self.call("DELETE", path, headers={"If-Match": record["etag"]}).status, 412)
         self.assertEqual(self.call("DELETE", path, headers={"If-Match": replaced.json["etag"]}).status, 204)
         self.assertEqual(self.call("GET", path).status, 404)
+
+    def test_an_unchanged_document_keeps_its_revision(self) -> None:
+        record = self.draft()
+        path = f"{SETUPS}/{record['setup_id']}"
+        same = self.call("PUT", path, body=record["setup"], headers={"If-Match": record["etag"]})
+        self.assertEqual((same.status, same.json["revision"], same.json["etag"]), (200, 1, record["etag"]))
+        noop = self.call("PATCH", path, body=[], headers={"If-Match": record["etag"]})
+        self.assertEqual((noop.status, noop.json["revision"]), (200, 1))
+        changed = self.call("PUT", path, body=dict(record["setup"], name="Idle"), headers={"If-Match": record["etag"]})
+        self.assertEqual(changed.json["revision"], 2)
+
+    def test_setups_are_scoped_to_their_project(self) -> None:
+        record = self.draft()
+        theirs = self.call("POST", OTHER_SETUPS, body={"kind": "dc-drop", "name": "Theirs"})
+        self.assertEqual(theirs.status, 201, theirs.text)
+        self.assertEqual([item["setup_id"] for item in self.call("GET", SETUPS).json], [record["setup_id"]])
+        self.assertEqual([item["setup_id"] for item in self.call("GET", OTHER_SETUPS).json], [theirs.json["setup_id"]])
+        # Through the other project's URL, this project's setup does not exist.
+        foreign = f"{OTHER_SETUPS}/{record['setup_id']}"
+        guard = {"If-Match": record["etag"]}
+        self.assertEqual(self.call("GET", foreign).status, 404)
+        self.assertEqual(self.call("PUT", foreign, body=dict(record["setup"], name="x"), headers=guard).status, 404)
+        self.assertEqual(self.call("PATCH", foreign, body=[], headers=guard).status, 404)
+        self.assertEqual(self.call("POST", foreign + "/validate").status, 404)
+        self.assertEqual(self.call("GET", foreign + "/layout").status, 404)
+        self.assertEqual(self.call("PUT", foreign + "/layout", body={"nodes": {}}).status, 404)
+        self.assertEqual(self.call("DELETE", foreign, headers=guard).status, 404)
+        unchanged = self.call("GET", f"{SETUPS}/{record['setup_id']}").json
+        self.assertEqual((unchanged["revision"], unchanged["setup"]["name"]), (1, "Max load"))
 
     def test_validate_reports_what_is_missing(self) -> None:
         record = self.draft()

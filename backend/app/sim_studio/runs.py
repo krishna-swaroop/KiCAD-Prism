@@ -139,7 +139,12 @@ def _build_bundle(project_file: Path, target: Path, log: list[str]) -> None:
     completed = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False)
     log.extend(line for line in (completed.stdout + completed.stderr).splitlines() if line.strip())
     if completed.returncode != 0:
-        raise RuntimeError(f"prism-bundle failed: {(completed.stderr or completed.stdout).strip()[-400:]}")
+        # Report from the first error line on; progress lines before it are in the log.
+        lines = [line for line in (completed.stderr or completed.stdout).strip().splitlines() if line.strip()]
+        first = next((i for i, line in enumerate(lines) if line.lower().startswith("error")), 0)
+        shown = lines[first:first + 8]
+        more = len(lines) - first - len(shown)
+        raise RuntimeError("prism-bundle failed: " + "\n".join(shown) + (f"\n... and {more} more line(s) in the job log" if more > 0 else ""))
 
 
 def _stage(run: Mapping[str, Any], workspace: Path, log: list[str]) -> dict[str, Any]:

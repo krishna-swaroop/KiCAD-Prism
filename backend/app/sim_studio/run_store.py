@@ -114,4 +114,6 @@ def public(row: dict[str, Any]) -> dict[str, Any]:
     }
     if row.get("source_commit"):
         run["commit"] = row["source_commit"]
+    if row.get("message") and row["status"] in {"failed", "cancelled"}:
+        run["message"] = row["message"]
     return run

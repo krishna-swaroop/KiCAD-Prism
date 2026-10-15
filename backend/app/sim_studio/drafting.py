@@ -41,19 +41,27 @@ AVAILABLE_KINDS = frozenset(entry.kind for entry in CATALOG if entry.status == "
 # part must start the name or follow a non-digit, and the volts marker must
 # end the name or be followed by a separator.
 _VOLTS = re.compile(r"(?:^|[^0-9.])(\d{1,2})(?:V(\d{1,3})|\.(\d{1,3})V|V)(?=$|[_\-/.])", re.IGNORECASE)
+# "V3P3", "3P3V", "VDD_1P8": P as the decimal point, with an optional V on either side.
+_VOLTS_P = re.compile(r"(?:^|[^0-9A-Z])V?(\d{1,2})P(\d{1,3})V?(?=$|[_\-/.])", re.IGNORECASE)
 _GROUND = re.compile(r"^(?:A|D|P|S)?GND|^VSS|^0V$", re.IGNORECASE)
 # Regulator control and switching nodes name the rail they serve but carry no
 # load current: switch nodes, power-good, enables, feedback, sense, bootstrap.
 _CONTROL = re.compile(r"^(?:LX|SW|PG|PGOOD|EN|FB|SENSE|SNS|BST|BOOT|SS|COMP|ILIM|VSEL)(?:[_\-]|$)", re.IGNORECASE)
+# Signals that carry a rail's name: "P3V3_EN", "/power/P1V8_PG", "LED_DIN_5V".
+_SIGNAL = re.compile(
+    r"(?:^|[_\-])(?:EN|ENABLE|PG|PGOOD|PWRGD|POK|FB|SENSE|SNS|DIN|DOUT|DATA|SDA|SCL|RST|RESET|ALERT|IRQ|INT|CTRL)(?:[_\-]|$)",
+    re.IGNORECASE,
+)
 
 
 def rail_voltage(net: str) -> float | None:
     """Supply voltage a net's name states, if it states exactly one."""
 
     leaf = net.rsplit("/", 1)[-1]
-    if _GROUND.search(leaf) or _CONTROL.search(leaf):
+    if _GROUND.search(leaf) or _CONTROL.search(leaf) or _SIGNAL.search(leaf):
         return None
-    found = {
+    # The P form wins: in "3P3V" the plain form also reads a stray "3V".
+    found = {float(f"{whole}.{fraction}") for whole, fraction in _VOLTS_P.findall(leaf)} or {
         float(f"{whole}.{fraction or decimal or 0}")
         for whole, fraction, decimal in _VOLTS.findall(net)
     }
@@ -75,14 +83,16 @@ def _slug(text: str, taken: set[str]) -> str:
 
 
 def inferred_rails(facts: BoardFacts) -> list[dict[str, Any]]:
-    """A rail for every net whose name states a voltage and that reaches two or more pads."""
+    """A rail for every net whose name states a voltage, that reaches two or more pads and is not a logic line."""
 
+    # Imported here: power_tree builds on this module's name rules.
+    from app.sim_studio.power_tree import _Board, _named_rails
+
+    named = _named_rails(_Board(facts))
     taken: set[str] = set()
     rails = []
-    for net in sorted(facts.nets):
-        volts = rail_voltage(net)
-        if volts is None or len(facts.net_pads.get(net, ())) < 2:
-            continue
+    for net in sorted(named):
+        volts = named[net]
         rails.append({
             "id": _slug(net, taken),
             "net": facts.net_ref(net),

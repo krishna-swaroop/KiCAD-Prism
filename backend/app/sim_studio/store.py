@@ -86,7 +86,11 @@ class SetupStore:
         self, project_id: str, setup_id: str, *, expected_revision: Optional[int],
         change: Callable[[dict[str, Any]], dict[str, Any]],
     ) -> dict[str, Any]:
-        """Lock the row, check the revision, store ``change(document)`` and bump the revision."""
+        """Lock the row, check the revision, store ``change(document)`` and bump the revision.
+
+        A change that leaves the document as it was writes nothing: the revision
+        names a distinct document, and runs and checks are kept per revision.
+        """
 
         with self._connect() as conn:
             row = conn.execute(
@@ -104,14 +108,21 @@ class SetupStore:
             except Exception:
                 conn.rollback()
                 raise
+            if document == row["document"]:
+                current = conn.execute(
+                    f"SELECT {_COLUMNS} FROM ws_sim_setups WHERE project_id = %s AND setup_id = %s",
+                    (project_id, setup_id),
+                ).fetchone()
+                conn.rollback()
+                return dict(current)
             updated = conn.execute(
                 f"""
                 UPDATE ws_sim_setups
                    SET document = %s, name = %s, revision = revision + 1, updated_at = now()
-                 WHERE setup_id = %s
+                 WHERE project_id = %s AND setup_id = %s
                 RETURNING {_COLUMNS}
                 """,
-                (Jsonb(document), document["name"], setup_id),
+                (Jsonb(document), document["name"], project_id, setup_id),
             ).fetchone()
             conn.commit()
         return dict(updated)
@@ -128,7 +139,7 @@ class SetupStore:
             if expected_revision is not None and expected_revision != int(row["revision"]):
                 conn.rollback()
                 raise StaleSetup(setup_id, int(row["revision"]))
-            conn.execute("DELETE FROM ws_sim_setups WHERE setup_id = %s", (setup_id,))
+            conn.execute("DELETE FROM ws_sim_setups WHERE project_id = %s AND setup_id = %s", (project_id, setup_id))
             conn.commit()
 
 

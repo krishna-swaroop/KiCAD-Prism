@@ -120,3 +120,127 @@ class CandidatesTest(unittest.TestCase):
         pairs = [(row["component"], row["net"]) for row in self.found["loads"]]
         self.assertEqual(pairs, [("U1", "+3V3"), ("U1", "VDDA"), ("U3", "VDD_IO_1V8"), ("X1", "+3V3")])
         self.assertEqual(self.found["loads"][0]["power_in"], 2)
+
+
+# Edge cases found running inference over real boards: PMIC phase pins,
+# mis-typed LDO outputs, logic buffers named OUT, level-shifted lines and
+# enables named for a voltage, off-rail modules, diode-OR inputs, pi
+# filters, split grounds, and supplies whose name gives no voltage.
+_EDGE_PARTS = {
+    "J1": ("Connector:USB_C", "USB-C"),
+    "J2": ("Connector:RJ45", "RJ45"),
+    "JFB1": ("Vendor:HARWIN_M22", "M22"),
+    "U1": ("Regulators:IRPS5401", "IRPS5401", "Flexible Power Management Unit (switching regulators)"),
+    "U2": ("Standard Logic:74HCT1G125", "74HCT1G125"),
+    "U3": ("Logic:Shift_Register", "74LVC594"),
+    "U4": ("Clock:SI5340", "SI5340"),
+    "PS1": ("q-lab:PSU_poe", "poe-12v"),
+    "U5": ("MCU:Chip", "MCU"),
+    "D1": ("Device:D_Schottky", "SS14"),
+    "D2": ("Device:D_Schottky", "SS14"),
+    "D3": ("Device:D_Zener", "5V6"),
+    "L1": ("Device:L", "2.2uH"),
+    "L2": ("Device:FerriteBead", "BLM21"),
+    "L3": ("Device:FerriteBead", "BLM21"),
+    "C1": ("Device:C", "22uF"),
+    "U6": ("Logic:Buffer", "74LVC1G"),
+}
+_EDGE_PINS = (
+    ("J1", "1", "VBUS", "PASSIVE", "USB_VBUS"), ("J1", "2", "GND", "PASSIVE", "GND"),
+    ("D1", "1", "K", "PASSIVE", "+5V"), ("D1", "2", "A", "PASSIVE", "USB_VBUS"),
+    ("D2", "1", "K", "PASSIVE", "+5V"), ("D2", "2", "A", "PASSIVE", "Net-(D2-A)"),
+    ("D3", "1", "K", "PASSIVE", "+5V"), ("D3", "2", "A", "PASSIVE", "GND"),
+    ("U1", "1", "VIN_C", "INPUT", "+5V"), ("U1", "2", "PHASE_C", "INPUT", "Net-(U1-PHASE_C)"),
+    ("U1", "3", "VO_LDO", "POWER_IN", "V0P9"), ("U1", "4", "PG_C", "OUTPUT", "P1V8_EN"), ("U1", "5", "GND", "POWER_IN", "GND"),
+    ("L1", "1", "1", "PASSIVE", "Net-(U1-PHASE_C)"), ("L1", "2", "2", "PASSIVE", "P1V8"),
+    ("U5", "1", "VDD", "POWER_IN", "P1V8"), ("U5", "2", "VDDA", "POWER_IN", "V0P9"), ("U5", "3", "VSS", "POWER_IN", "GND"),
+    ("U5", "4", "IOVDD", "POWER_IN", "V3P3"), ("U5", "5", "VSSA", "POWER_IN", "GND_XTAL"),
+    ("U2", "1", "VCC", "POWER_IN", "FP_VDD"), ("U2", "2", "OUT", "TRI_STATE", "LED_DIN_5V"), ("U2", "3", "GND", "POWER_IN", "GND"),
+    ("JFB1", "1", "1", "PASSIVE", "FP_VDD"), ("JFB1", "2", "2", "PASSIVE", "LED_DIN_5V"), ("JFB1", "3", "3", "PASSIVE", "GND"),
+    ("U6", "1", "Y", "OUTPUT", "CK_3V3"), ("U6", "2", "VCC", "POWER_IN", "P1V8"), ("U6", "3", "GND", "POWER_IN", "GND"),
+    ("U3", "1", "SHCP", "INPUT", "CK_3V3"), ("U3", "2", "VCC", "POWER_IN", "P1V8"), ("U3", "3", "GND", "POWER_IN", "GND"),
+    ("L2", "1", "1", "PASSIVE", "P1V8"), ("L2", "2", "2", "PASSIVE", "Net-(C1-Pad2)"),
+    ("C1", "1", "1", "PASSIVE", "GND"), ("C1", "2", "2", "PASSIVE", "Net-(C1-Pad2)"),
+    ("L3", "1", "1", "PASSIVE", "Net-(C1-Pad2)"), ("L3", "2", "2", "PASSIVE", "P1V8_CLK"),
+    ("U4", "1", "VDD", "POWER_IN", "P1V8_CLK"), ("U4", "2", "VDD", "POWER_IN", "P1V8_CLK"),
+    ("U4", "3", "GND", "POWER_IN", "GND"), ("U4", "4", "GND", "POWER_IN", "GND_XTAL"),
+    ("J2", "1", "P0", "PASSIVE", "Net-(J2-P0)"), ("J2", "2", "P1", "PASSIVE", "Net-(J2-P1)"),
+    ("PS1", "1", "P0", "PASSIVE", "Net-(J2-P0)"), ("PS1", "2", "P1", "PASSIVE", "Net-(J2-P1)"),
+    ("PS1", "3", "+3V3", "POWER_OUT", "V3P3"), ("PS1", "4", "GND", "PASSIVE", "GND"),
+)
+
+
+def edge_board():
+    def part(ref, spec):
+        lib, value, *description = spec
+        return {"reference": ref, "pcbRefs": [{}], "libraryRef": lib, "value": value,
+                "fields": {"Description": description[0]} if description else {}}
+
+    return from_semantic_index({
+        "components": [part(ref, spec) for ref, spec in _EDGE_PARTS.items()],
+        "nets": [{"name": name} for name in {pin[4] for pin in _EDGE_PINS}],
+        "terminals": [
+            {"reference": ref, "pin": pin, "pinName": name, "pinType": kind, "netName": net, "pcbPadUuid": f"{ref}-{pin}"}
+            for ref, pin, name, kind, net in _EDGE_PINS
+        ],
+    })
+
+
+class EdgeCaseTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tree = infer(edge_board())
+        self.rails = {r["id"]: r["voltage_v"] for r in self.tree.rails}
+        self.notes = {n["code"]: n for n in self.tree.notes}
+
+    def terminal(self, terminal_id: str) -> dict:
+        return next(t for t in self.tree.terminals if t["id"] == terminal_id)
+
+    def test_signals_named_for_a_voltage_are_not_rails(self) -> None:
+        # P1V8_EN is a power-good line, LED_DIN_5V a buffered data line, CK_3V3 a shifted clock.
+        # (P1V8_CLK is a rail, but filtered off P1V8, so it is a load there instead.)
+        self.assertEqual(set(self.rails), {"5v", "p1v8", "v0p9", "v3p3"})
+        self.assertEqual(self.rails["v3p3"], 3.3)
+        self.assertEqual(self.rails["v0p9"], 0.9)
+
+    def test_pmic_phase_and_ldo_pins_are_converter_outputs(self) -> None:
+        kinds = {c["id"]: (c["input_rail"], c["kind"]) for c in self.tree.converters}
+        self.assertEqual(kinds, {"u1-p1v8": ("5v", "switching"), "u1-v0p9": ("5v", "linear")})
+
+    def test_a_logic_buffer_named_out_is_not_a_converter(self) -> None:
+        self.assertFalse(any(c["component"] == "main:U2" for c in self.tree.converters))
+
+    def test_an_off_rail_module_is_its_rails_source(self) -> None:
+        source = next(s for s in self.tree.sources if s["rail"] == "v3p3")
+        self.assertEqual(source["component"], "main:PS1")
+        self.assertIn("converter-as-source", self.notes)
+
+    def test_a_diode_or_feeds_the_rail_at_its_cathodes_but_a_zener_does_not(self) -> None:
+        source = next(s for s in self.tree.sources if s["rail"] == "5v")
+        self.assertEqual(self.terminal(source["terminal"])["positive"], ["main:D1.1", "main:D2.1"])
+        self.assertIn("diode-or-source", self.notes)
+
+    def test_a_pi_filter_is_one_load_on_the_parent_rail(self) -> None:
+        self.assertNotIn("p1v8_clk", self.tree.analysis_rails)
+        branch = next(l for l in self.tree.loads if l["component"] == "main:L2")
+        self.assertEqual(branch["rail"], "p1v8")
+        self.assertIn("U4", self.notes["filtered-branch"]["message"])
+
+    def test_return_pads_stay_on_one_ground(self) -> None:
+        # U5 has a pin on GND_XTAL, a ground joined to GND by a net tie; its returns use GND only.
+        for load in (l for l in self.tree.loads if l["component"] == "main:U5"):
+            self.assertEqual(self.terminal(load["terminal"])["reference"], ["main:U5.3"])
+
+    def test_a_supply_with_no_voltage_in_its_name_is_noted(self) -> None:
+        self.assertIn("FP_VDD", self.notes["rail-voltage-unknown"]["message"])
+        self.assertIn("JFB1", self.notes["rail-voltage-unknown"]["message"])
+
+
+class RailVoltageTest(unittest.TestCase):
+    def test_names(self) -> None:
+        from app.sim_studio.drafting import rail_voltage
+
+        cases = {
+            "+3V3": 3.3, "V3P3": 3.3, "3P3V": 3.3, "/pwr/VDD_1P8": 1.8, "MGT_0V85": 0.85, "+12V_POE": 12.0,
+            "P3V3_EN": None, "/x/P1V8AUX_PG": None, "/LED_IO_DIN_5V": None, "P3V3_CLK": 3.3, "GND": None,
+        }
+        self.assertEqual({name: rail_voltage(name) for name in cases}, cases)
