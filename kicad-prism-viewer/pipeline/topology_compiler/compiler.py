@@ -115,12 +115,30 @@ def _layers_from_pcb_metadata(metadata: dict[str, Any] | None) -> list[Layer]:
         if has_physical_stackup
         else []
     )
+    # A board without a stackup section gets a synthetic one whose "Board" core
+    # fills what the copper and mask leave of the board thickness, as KiCad's
+    # own default does. Centring that whole stack puts the outer copper on the
+    # core's faces and the mask on the copper, where KiCad's board export puts
+    # them (and its silkscreen over them).
+    synthetic_z = (
+        {
+            id(raw): z_mm
+            for raw, z_mm in zip(
+                raw_layers,
+                centred_layer_z(float(raw.get("thickness_mm") or 0.0) for raw in raw_layers),
+            )
+        }
+        if not has_physical_stackup and board_layer is not None and not has_real_dielectrics
+        else {}
+    )
     for index, raw in enumerate(stack_layers):
         thickness = float(raw.get("thickness_mm") or 0.0)
         name = str(raw.get("name") or raw.get("display_name") or f"layer_{index}")
         role = str(raw.get("role") or raw.get("type") or "unknown")
         if has_physical_stackup:
             z_mm = physical_z[index]
+        elif synthetic_z:
+            z_mm = synthetic_z[id(raw)]
         elif role == "copper" and name == "F.Cu":
             z_mm = board_thickness / 2.0 + thickness / 2.0
         elif role == "copper" and name == "B.Cu":

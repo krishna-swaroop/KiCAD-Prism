@@ -58,6 +58,7 @@ from pipeline.topology_compiler.copper_geometry import (
     is_copper_geometry_document,
     pcb_geometry_backend,
 )
+from pipeline.topology_compiler.soldermask import _mask_faces_mm
 from pipeline.topology_compiler.semantic_gltf import (
     SemanticGltfBuilder,
     serialize_semantic_input,
@@ -588,8 +589,14 @@ class TopologyCompilerTests(unittest.TestCase):
             "B.SilkS",
         ])
         by_topology_name = {item["name"]: item for item in topology["layers"]}
-        self.assertAlmostEqual(by_topology_name["F.Cu"]["z_mm"], 0.8175)
-        self.assertAlmostEqual(by_topology_name["B.Cu"]["z_mm"], -0.8175)
+        # KiCad's frame: the 1.51 mm core, copper on its faces, the mask on the copper.
+        self.assertAlmostEqual(by_topology_name["F.Cu"]["z_mm"], 0.7725)
+        self.assertAlmostEqual(by_topology_name["B.Cu"]["z_mm"], -0.7725)
+        self.assertAlmostEqual(by_topology_name["F.Mask"]["z_mm"], 0.795)
+        self.assertAlmostEqual(by_topology_name["F.SilkS"]["z_mm"], 0.8)
+        faces = _mask_faces_mm(topology)
+        self.assertAlmostEqual(faces["top"], 1.555)
+        self.assertAlmostEqual(faces["bottom"], -0.045)
 
     def test_board_bbox_accepts_outline_items_without_get_bounds(self) -> None:
         rect = SimpleNamespace(

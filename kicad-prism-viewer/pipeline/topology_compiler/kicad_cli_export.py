@@ -388,6 +388,9 @@ def _soldermask_cache_path(cache_dir: Path, pcb_hash: str) -> Path:
     for source in (
         here.parent / "soldermask.py",
         here.parent / "pcb_geometry.py",
+        # The mask sits at the layer heights these place.
+        here.parent / "compiler.py",
+        here.parent / "stackup_frame.py",
         here.parents[2] / "tools" / "semantic-gltf" / "build.mjs",
     ):
         if source.is_file():
