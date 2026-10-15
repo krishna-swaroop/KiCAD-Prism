@@ -19,6 +19,7 @@ import {
   planComponentVisibility,
 } from "./component-visibility.js";
 import { escapeHtml } from "./escape-html.js";
+import { explodeClearance, explodeGap } from "./explode-stackup.js";
 import { findNetByName } from "./net-emphasis.js";
 import { hasCommandModifier, isTypingTarget } from "./key-target.js";
 import { componentDraws } from "./component-models.js";
@@ -2297,8 +2298,18 @@ function stackupSteps(b) {
 function explodeFor(b, separation) {
   const bounds = b?.scene.runtimeBounds;
   const diagonal = bounds ? Math.hypot((bounds[3] - bounds[0]) * 1000, (bounds[4] - bounds[1]) * 1000) : 0;
-  const gap = separation * separation * clamp(diagonal * 0.12, 8, 25) / 1000;
+  const gap = explodeGap(separation, diagonal, boardExplodeClearance(b), b.scene.copperLayers.length);
   return [gap, separation < 0.0999 ? 1 : 0, 1 - separation * 0.72, 1];
+}
+
+/** How far a board's outer copper steps out to clear its mask and silkscreen (explode-stackup.js). */
+function boardExplodeClearance(b) {
+  const entries = b.renderer?.entries || [];
+  if (b.scene.explodeClearanceEntries !== entries.length) {
+    b.scene.explodeClearance = explodeClearance(runtimeBoundsFromGltf(b.scene.manifest?.bbox), entries);
+    b.scene.explodeClearanceEntries = entries.length;
+  }
+  return b.scene.explodeClearance;
 }
 
 function boardSeparated(b) {
@@ -3928,7 +3939,7 @@ function stackupOffsets(b = board) {
     (bounds[3] - bounds[0]) * 1000,
     (bounds[4] - bounds[1]) * 1000,
   );
-  const gap = state.separation * state.separation * clamp(diagonal * 0.12, 8, 25) / 1000;
+  const gap = explodeGap(state.separation, diagonal, boardExplodeClearance(b), b.scene.copperLayers.length);
   const signature = `${state.separation}:${gap}:${b.scene.copperLayers.length}`;
   if (b.scene.layerZOffsetSignature === signature) return b.scene.layerZOffsets;
   const output = b.scene.layerZOffsets;

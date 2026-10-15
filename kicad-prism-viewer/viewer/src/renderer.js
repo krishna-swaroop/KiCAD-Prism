@@ -1,4 +1,5 @@
 import { GeometryArena } from "./geometry-arena.js";
+import { boardContextOffset } from "./explode-stackup.js";
 import { buildVariant, featureKey, hook, sortedFeatures, stripHooks } from "./shader-variants.js";
 import {
   FEATURE_MASK_WGSL,
@@ -2484,16 +2485,6 @@ function boardRoleOpacity(entry, materialAlpha) {
   if (entry.boardRole === "soldermask") return Math.min(materialAlpha, 0.72);
   if (entry.boardRole === "silkscreen") return Math.min(materialAlpha, 0.92);
   return materialAlpha;
-}
-
-function boardContextOffset(entry) {
-  if (entry.kind !== "board") return 0;
-  if (entry.boardRole !== "soldermask" && entry.boardRole !== "silkscreen") return 0;
-  const bounds = entry.bounds;
-  const centerZ = bounds ? (bounds[2] + bounds[5]) * 0.5 : 0;
-  const direction = centerZ < 0 ? -1 : 1;
-  const roleOffset = entry.boardRole === "silkscreen" ? 0.000035 : 0.000018;
-  return direction * roleOffset;
 }
 
 function clampViewport(viewport, width, height) {
