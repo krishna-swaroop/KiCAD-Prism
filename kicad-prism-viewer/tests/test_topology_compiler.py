@@ -40,6 +40,7 @@ from pipeline.topology_compiler.context import PrismCompilationContext
 from pipeline.topology_compiler.pcb_extract import _board_bbox, _declared_layers, _stackup_metadata_from_pcb_file
 from pipeline.topology_compiler.pcb_extract import compile_pcb_artifacts, extract_pcb_metadata_light
 from pipeline.topology_compiler.pcb_geometry import KIND_IDS, circle, extract_pad_holes
+from pipeline.topology_compiler.soldermask import _mask_faces_mm
 from pipeline.topology_compiler.kicad_cli_export import (
     BOARD_CONTEXT_CACHE_VERSION,
     ExportResult,
@@ -588,8 +589,37 @@ class TopologyCompilerTests(unittest.TestCase):
             "B.SilkS",
         ])
         by_topology_name = {item["name"]: item for item in topology["layers"]}
-        self.assertAlmostEqual(by_topology_name["F.Cu"]["z_mm"], 0.8175)
-        self.assertAlmostEqual(by_topology_name["B.Cu"]["z_mm"], -0.8175)
+        # KiCad's default stackup: copper on the 1.51 mm body, mask on the copper.
+        self.assertAlmostEqual(by_topology_name["F.Cu"]["z_mm"], 0.7725)
+        self.assertAlmostEqual(by_topology_name["B.Cu"]["z_mm"], -0.7725)
+        self.assertAlmostEqual(by_topology_name["F.Mask"]["z_mm"], 0.795)
+        self.assertAlmostEqual(by_topology_name["B.Mask"]["z_mm"], -0.795)
+        # Below KiCad's silkscreen at 1.585 mm, as in KiCad's own export.
+        faces = _mask_faces_mm(topology)
+        self.assertAlmostEqual(faces["top"], 1.555)
+        self.assertAlmostEqual(faces["bottom"], -0.045)
+
+    def test_layer_list_fallback_keeps_inner_copper_in_the_body(self) -> None:
+        names = ["F.Mask", "F.Cu", "In1.Cu", "In2.Cu", "B.Cu", "B.Mask"]
+        pcb = SimpleNamespace(
+            thickness=1.6,
+            stackup=SimpleNamespace(layers=[]),
+            layers=[SimpleNamespace(canonical_name=name, layer_type=SimpleNamespace(value="")) for name in names],
+        )
+        topology = compile_topology(
+            self.sample_design(),
+            pcb_metadata={
+                "board": {
+                    "bbox_mm": [0, 0, 10, 10],
+                    "thickness_mm": 1.6,
+                    "stackup": {"present": True, "layers": _declared_layers(pcb)},
+                }
+            },
+        )
+        by_name = {item["name"]: item for item in topology["layers"]}
+        # KiCad's body is 1.51 mm: the 1.44 mm dielectric plus inner copper.
+        self.assertAlmostEqual(by_name["F.Cu"]["z_mm"], 0.7725)
+        self.assertAlmostEqual(by_name["B.Cu"]["z_mm"], -0.7725)
 
     def test_board_bbox_accepts_outline_items_without_get_bounds(self) -> None:
         rect = SimpleNamespace(

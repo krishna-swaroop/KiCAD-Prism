@@ -115,6 +115,21 @@ def _layers_from_pcb_metadata(metadata: dict[str, Any] | None) -> list[Layer]:
         if has_physical_stackup
         else []
     )
+    # Without an authored stackup KiCad still builds its default one: the
+    # "Board" dielectric plus inner copper is the body, outer copper sits on
+    # its faces and every other outer layer on that copper.
+    body_thickness = board_thickness
+    if board_layer and not has_physical_stackup:
+        body_thickness = float(board_layer.get("thickness_mm") or board_thickness) + sum(
+            float(raw.get("thickness_mm") or 0.0)
+            for raw in stack_layers
+            if str(raw.get("role") or "") == "copper" and raw.get("name") not in {"F.Cu", "B.Cu"}
+        )
+    outer_copper = {
+        str(raw.get("name"))[:2]: float(raw.get("thickness_mm") or 0.0)
+        for raw in stack_layers
+        if raw.get("name") in {"F.Cu", "B.Cu"}
+    }
     for index, raw in enumerate(stack_layers):
         thickness = float(raw.get("thickness_mm") or 0.0)
         name = str(raw.get("name") or raw.get("display_name") or f"layer_{index}")
@@ -122,13 +137,14 @@ def _layers_from_pcb_metadata(metadata: dict[str, Any] | None) -> list[Layer]:
         if has_physical_stackup:
             z_mm = physical_z[index]
         elif role == "copper" and name == "F.Cu":
-            z_mm = board_thickness / 2.0 + thickness / 2.0
+            z_mm = body_thickness / 2.0 + thickness / 2.0
         elif role == "copper" and name == "B.Cu":
-            z_mm = -board_thickness / 2.0 - thickness / 2.0
+            z_mm = -body_thickness / 2.0 - thickness / 2.0
         elif role == "copper":
             z_mm = 0.0
         else:
-            z_mm = board_thickness / 2.0 + 0.05 if name.startswith("F.") else -board_thickness / 2.0 - 0.05
+            side = 1.0 if name.startswith("F.") else -1.0
+            z_mm = side * (body_thickness / 2.0 + outer_copper.get(name[:2], 0.0) + thickness / 2.0)
         layers.append(
             Layer(
                 uid=stable_id("layer", name),
