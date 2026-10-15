@@ -11,6 +11,9 @@ const indexPath = path.join(repositoryRoot, "frontend", "index.html");
 // The analytic-pack WASM the element fetches beside itself (analytic-pack.js).
 const wasmSource = path.join(packageRoot, "viewer", "vendor", "kicad-monkey-analytic", "kicad_monkey_analytic_bg.wasm");
 const wasmServed = path.join(repositoryRoot, "frontend", "public", "kicad-monkey-analytic.wasm");
+// The analytic lowering worker the element starts beside itself (analytic-lower-client.js).
+const workerBuilt = path.join(packageRoot, "dist", "prism-semantic-viewer-lower.js");
+const workerServed = path.join(repositoryRoot, "frontend", "public", "prism-semantic-viewer-lower.js");
 
 const bundle = await readFile(builtPath);
 const digest = createHash("sha256").update(bundle).digest("hex");
@@ -44,6 +47,7 @@ if (servedExists) {
 
   await writeFile(servedPath, bundle);
   await writeFile(wasmServed, await readFile(wasmSource));
+  await writeFile(workerServed, await readFile(workerBuilt));
   await writeFile(
     indexPath,
     index.replace(scriptPattern, `/prism-semantic-viewer.js?v=${digest}`),

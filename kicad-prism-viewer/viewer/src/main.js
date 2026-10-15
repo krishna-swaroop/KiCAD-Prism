@@ -41,7 +41,7 @@ import { harnessKey, harnessSegments, hubPoint, litEnds, litHarnessWires, segmen
 import { AUTO, bendNode, levelMatrix, nodeHandles, toLevel, toWorld, withNodePreview } from "./harness-edit.js";
 import { pickTube } from "./tube-pick.js";
 import { dragInViewPlane, isDrag } from "./route-drag.js";
-import { cameraRay, invert4, surfaceHit } from "./model-pick.js";
+import { cameraRay, matrixRay, surfaceHit } from "./model-pick.js";
 // SB2-44: the placement library is shared with the app (one implementation, CONTRACTS_P2 §17).
 import { harnessScene } from "../../../frontend/src/features/system-builder/placement/harness-tubes.ts";
 import { allReadyBoardsDrawn, assetLoadable, assetOccurrenceMatrix, boardTransition, boxRendererId, drawnOccurrences, STAND_INS, standInKind, standInMatrix } from "./system-placement.js";
@@ -502,8 +502,13 @@ export async function mountStandaloneViewer(options = {}) {
     // Analytic spike: copper from a kicad_monkey materialization pack (analytic-board.js).
     async loadAnalyticPack(bytes, options = {}) {
       if (!board.renderer) return null;
+      const releaseStarted = performance.now();
       releaseAnalytic();
-      board.analytic = await attachAnalyticPack({
+      const releaseMs = Math.round(performance.now() - releaseStarted);
+      // Lowering is asynchronous (a worker): a newer load or an unload while it
+      // runs wins, and this one's pack is dropped instead of attached.
+      const generation = ++analyticGeneration;
+      const attached = await attachAnalyticPack({
         renderer: board.renderer,
         layers: board.scene.layers,
         colorFor: (layer) => {
@@ -517,6 +522,16 @@ export async function mountStandaloneViewer(options = {}) {
         features: board.scene.manifest?.objectFeatures,
         boardZOffsetMm: board.scene.manifest?.boardZOffsetMm,
       });
+      if (generation !== analyticGeneration || !board.renderer) {
+        attached.analytic.destroy();
+        attached.pack.free();
+        return null;
+      }
+      const attachStarted = performance.now();
+      board.renderer.setAnalytic(attached.analytic);
+      attached.timings.attach = Math.round(performance.now() - attachStarted);
+      board.analytic = attached;
+      board.analytic.timings = { release: releaseMs, ...board.analytic.timings };
       return analyticStats();
     },
     setAnalyticOverlay(overlay) {
@@ -578,6 +593,7 @@ export async function mountStandaloneViewer(options = {}) {
     },
     analyticStats,
     unloadAnalyticPack() {
+      analyticGeneration += 1;
       releaseAnalytic();
     },
     // Force a level of detail on every occurrence (0 full, 1 board, 2 body, 3 box), or null for automatic.
@@ -626,7 +642,7 @@ export async function mountStandaloneViewer(options = {}) {
 function analyticStats() {
   const analytic = board.analytic;
   if (!analytic) return null;
-  return { operations: analytic.operations, lowerMs: analytic.lowerMs, zOffset: analytic.zOffset, unmatched: analytic.unmatched, ...analytic.analytic.stats() };
+  return { operations: analytic.operations, lowerMs: analytic.lowerMs, timings: analytic.timings, zOffset: analytic.zOffset, unmatched: analytic.unmatched, ...analytic.analytic.stats() };
 }
 
 /**
@@ -662,6 +678,9 @@ function applyRelief(frame) {
   renderer.invalidate?.();
   return { sliceKey: chosen.key, slices: slices.map((item) => ({ key: item.key, layerId: item.layerId, cells: item.cells })) };
 }
+
+/** Bumped by every analytic load and unload; a load that finishes after a newer one is dropped. */
+let analyticGeneration = 0;
 
 function releaseAnalytic() {
   board.renderer?.relief?.destroy();
@@ -5783,21 +5802,10 @@ function surfaceMarker(world, pixels = 11, sides = 32) {
  */
 function worldRayAt(clientX, clientY) {
   if (!panel || !canvas) return null;
-  const inverse = invert4(panel.matrix);
-  if (!inverse) return null;
   const rect = canvas.getBoundingClientRect();
   const x = ((clientX - rect.left) / rect.width) * 2 - 1;
   const y = 1 - ((clientY - rect.top) / rect.height) * 2;
-  const unproject = (depth) => {
-    const p = [x, y, depth, 1];
-    const out = [0, 1, 2, 3].map((row) => inverse[row] * p[0] + inverse[4 + row] * p[1] + inverse[8 + row] * p[2] + inverse[12 + row] * p[3]);
-    return out.slice(0, 3).map((value) => value / out[3]);
-  };
-  const near = unproject(0);
-  const far = unproject(1);
-  const direction = far.map((value, k) => value - near[k]);
-  const length = Math.hypot(...direction);
-  return length > 0 ? { origin: near, direction: direction.map((value) => value / length) } : null;
+  return matrixRay(panel.matrix, x, y);
 }
 
 // Picks resolve out of order (the GPU read is async): only the latest click selects.

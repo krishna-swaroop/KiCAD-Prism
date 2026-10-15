@@ -27,6 +27,40 @@ export function loadAnalyticWasm(module = defaultWasmUrl()) {
   return wasmReady;
 }
 
+/** One slice of an open WASM `AnalyticPack`, lowered to typed arrays (shared by the main thread and the lowering worker). */
+export function lowerPackSlice(pack, key, toleranceNm = DEFAULT_TOLERANCE_NM) {
+  const records = pack.lowerSlice(key, toleranceNm);
+  try {
+    return {
+      shapes: new Uint32Array(records.shapes()),
+      subtractShapes: records.subtractShapes(),
+      fanVertices: new Float32Array(records.fanVertices()),
+      covers: new Uint32Array(records.covers()),
+      batches: new Uint32Array(records.batches()),
+      contourEdges: new Float32Array(records.contourEdges()),
+      contourEdgeOperations: new Uint32Array(records.contourEdgeOperations()),
+      shapeCuts: new Uint32Array(records.shapeCuts()),
+      edgeCuts: new Uint32Array(records.edgeCuts()),
+      cutIndices: new Uint32Array(records.cutIndices()),
+      outlineEdges: new Float32Array(records.outlineEdges()),
+      outlineShapes: new Uint32Array(records.outlineShapes()),
+      stats: JSON.parse(records.statsJson()),
+    };
+  } finally {
+    records.free();
+  }
+}
+
+/** The buffers a lowered slice owns, for a zero-copy transfer between threads. */
+export function loweredBuffers(lowered) {
+  return Object.values(lowered).filter((value) => ArrayBuffer.isView(value)).map((view) => view.buffer);
+}
+
+/** The URL the element would load the WASM from, as a string (workers take it as is). */
+export function analyticWasmUrl() {
+  return String(defaultWasmUrl());
+}
+
 /**
  * Open a pack. Returns its header (identity, stack, nets, components, chunk
  * directory; no binding), `lowerSlice(key, toleranceNm)` returning typed
@@ -40,26 +74,7 @@ export async function openAnalyticPack(bytes, { wasm } = {}) {
   return {
     header,
     lowerSlice(key, toleranceNm = DEFAULT_TOLERANCE_NM) {
-      const records = pack.lowerSlice(key, toleranceNm);
-      try {
-        return {
-          shapes: new Uint32Array(records.shapes()),
-          subtractShapes: records.subtractShapes(),
-          fanVertices: new Float32Array(records.fanVertices()),
-          covers: new Uint32Array(records.covers()),
-          batches: new Uint32Array(records.batches()),
-          contourEdges: new Float32Array(records.contourEdges()),
-          contourEdgeOperations: new Uint32Array(records.contourEdgeOperations()),
-          shapeCuts: new Uint32Array(records.shapeCuts()),
-          edgeCuts: new Uint32Array(records.edgeCuts()),
-          cutIndices: new Uint32Array(records.cutIndices()),
-          outlineEdges: new Float32Array(records.outlineEdges()),
-          outlineShapes: new Uint32Array(records.outlineShapes()),
-          stats: JSON.parse(records.statsJson()),
-        };
-      } finally {
-        records.free();
-      }
+      return lowerPackSlice(pack, key, toleranceNm);
     },
     /** The plated holes' barrels: `BARREL_FLOATS` floats and `BARREL_WORDS` words each. */
     barrels() {

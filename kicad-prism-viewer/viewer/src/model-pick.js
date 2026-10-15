@@ -15,6 +15,26 @@ export function cameraRay(camera, ndcX, ndcY, aspect) {
   return { origin, direction };
 }
 
+/**
+ * The view ray through normalized device point (ndcX, ndcY) of a
+ * view-projection `matrix`, from the camera into the scene. The projections
+ * use reversed depth (math.js: near -> 1, far -> 0), so the near plane is
+ * unprojected at depth 1. Null when the matrix is singular.
+ */
+export function matrixRay(matrix, ndcX, ndcY) {
+  const inverse = invert4(Array.from(matrix, Number));
+  if (!inverse) return null;
+  const unproject = (depth) => {
+    const out = [0, 1, 2, 3].map((row) => inverse[row] * ndcX + inverse[4 + row] * ndcY + inverse[8 + row] * depth + inverse[12 + row]);
+    return out.slice(0, 3).map((value) => value / out[3]);
+  };
+  const near = unproject(1);
+  const far = unproject(0);
+  const direction = far.map((value, k) => value - near[k]);
+  const length = Math.hypot(...direction);
+  return length > 0 ? { origin: near, direction: direction.map((value) => value / length) } : null;
+}
+
 /** A general 4×4 inverse (column-major); null when singular. */
 export function invert4(m) {
   const inv = new Array(16);

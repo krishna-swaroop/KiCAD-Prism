@@ -1,6 +1,8 @@
 import {
+  analyticWasmUrl,
   BARREL_WORDS,
   composeFieldRasters,
+  DEFAULT_TOLERANCE_NM,
   gridFieldRasters,
   denseOperationValues,
   openAnalyticPack,
@@ -11,6 +13,7 @@ import {
   planWalls,
   valueRange,
 } from "./analytic-pack.js";
+import { lowerSlicesInWorker } from "./analytic-lower-client.js";
 import { AnalyticRenderer } from "./analytic-renderer.js";
 
 /**
@@ -56,45 +59,64 @@ export function copperPlane(entries, layerId, bottom = false) {
  * walls, solder mask, paste and silkscreen, in place of the mesh layers they
  * replace. `colorFor(layer)` gives each copper layer's linear RGBA.
  */
+// The caller attaches the result (`renderer.setAnalytic(state.analytic)`) once it knows the load is
+// still current: lowering is asynchronous, and attaching a stale board would destroy the current one.
 export async function attachAnalyticPack({ renderer, layers, colorFor, bytes, wasm, toleranceNm, nets = [], features = [], boardZOffsetMm = 0 }) {
+  // Milliseconds per phase, reported in the stats: where a large board's load goes.
+  const timings = {};
+  let mark = performance.now();
+  const lap = (name) => {
+    const now = performance.now();
+    timings[name] = Math.round(now - mark);
+    mark = now;
+  };
   const pack = await openAnalyticPack(bytes, { wasm });
+  lap("open");
   const zOffset = copperZOffset(renderer.entries, layers, boardZOffsetMm);
   const { planned, unmatched } = planBoardSlices(pack.header, layers, zOffset);
   const byId = new Map(layers.map((layer) => [Number(layer.id), layer]));
   const started = performance.now();
+  // The WASM lowering runs in a worker so a large board does not freeze the page;
+  // whatever the worker cannot give is lowered here, as before.
+  const keys = [...new Set(planned.map((slice) => slice.key))];
+  const fromWorker = await lowerSlicesInWorker(bytes, keys, toleranceNm ?? DEFAULT_TOLERANCE_NM, wasm ?? analyticWasmUrl());
+  timings.lowerIn = fromWorker ? "worker" : "main";
   const lowered = new Map();
-  for (const slice of planned) {
-    if (!lowered.has(slice.key)) lowered.set(slice.key, pack.lowerSlice(slice.key, toleranceNm));
-  }
+  for (const key of keys) lowered.set(key, fromWorker?.get(key) ?? pack.lowerSlice(key, toleranceNm));
   const slices = planned.map((slice) => ({
     ...slice,
     color: slice.role === "copper" ? colorFor(byId.get(slice.layerId)) : slice.color || [1, 1, 1, 1],
     lowered: lowered.get(slice.key),
   }));
   const lowerMs = performance.now() - started;
+  lap("lower");
   const analytic = new AnalyticRenderer(renderer);
   analytic.setSlices(slices);
+  lap("slices");
   // Barrels and drill walls from the pack's holes replace the bundle's mesh barrels.
   // Castellated holes are cut by the board's outline (any dielectric's).
   const outline = slices.find((slice) => slice.role === "dielectric" && slice.lowered?.contourEdges?.length)?.lowered.contourEdges;
   const barrels = pack.barrels();
   analytic.setBarrels(planBarrels(pack.header, barrels, slices, outline));
+  lap("barrels");
   // A hit is a barrel only if the pack has one for that operation; overlays also carry plane values.
   const barrelOperations = new Set();
   for (let index = 0; index < barrels.words.length; index += BARREL_WORDS) barrelOperations.add(barrels.words[index]);
   analytic.edgePlated = Boolean(pack.header.stack?.edge_plating);
   analytic.setWalls(planWalls(slices, lowered, layers, zOffset));
+  lap("walls");
   // Net glow and isolation read each operation's viewer net.
   const netIds = operationNetIds(pack, nets);
   analytic.setOperationNets(netIds);
-  renderer.setAnalytic(analytic);
+  lap("nets");
   const featuresBySource = new Map();
   for (const feature of features || []) {
     if (!feature?.sourceUid) continue;
     if (!featuresBySource.has(feature.sourceUid)) featuresBySource.set(feature.sourceUid, []);
     featuresBySource.get(feature.sourceUid).push(feature);
   }
-  return { pack, analytic, unmatched, lowerMs, zOffset, operations: operationCount(pack.header), overlay: null, netIds, featuresBySource, barrelOperations };
+  lap("features");
+  return { pack, analytic, unmatched, lowerMs, timings, zOffset, operations: operationCount(pack.header), overlay: null, netIds, featuresBySource, barrelOperations };
 }
 
 /**

@@ -52,3 +52,18 @@ test("the camera ray through the centre runs from the eye to the focus", () => {
   const corner = cameraRay(camera, 1, 1, 1.5);
   close(corner.direction, [Math.tan(Math.PI / 8) * 1.5, Math.tan(Math.PI / 8), -1].map((value, _i, all) => value / Math.hypot(...all)));
 });
+
+test("matrixRay starts at the camera and points into the scene under reversed depth", async () => {
+  const { lookAt, mat4Multiply, orthographic, perspective } = await import("./math.js");
+  const { matrixRay } = await import("./model-pick.js");
+  const view = lookAt([0, 0, 1], [0, 0, 0], [0, 1, 0]);
+  for (const projection of [perspective(Math.PI / 4, 1, 0.01, 10), orthographic(1, 1, 0.01, 10)]) {
+    const ray = matrixRay(mat4Multiply(projection, view), 0, 0);
+    // From the camera (above the board, near z = 1) down towards it.
+    assert.ok(ray.origin[2] > 0.9 && ray.origin[2] <= 1, `origin ${ray.origin}`);
+    assert.ok(ray.direction[2] < -0.999, `direction ${ray.direction}`);
+    // So of two copper planes, the upper (front) one is met first.
+    const t = (z) => (z - ray.origin[2]) / ray.direction[2];
+    assert.ok(t(0.0008) > 0 && t(0.0008) < t(-0.0008));
+  }
+});
