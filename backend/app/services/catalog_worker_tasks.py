@@ -201,6 +201,9 @@ def run_artifact_maintenance(context: JobContext) -> dict[str, Any]:
     from app.services.job_retention import prune_jobs
 
     job_retention = prune_jobs(context_jobs)
+    from app.sim_studio.retention import prune_runs
+
+    sim_retention = prune_runs()
     _step(context, progress=80, message="Purging superseded STEP payloads")
     step_result = catalog_service.purge_superseded_step_files()
     staging = catalog_service.cleanup_resolved_import_staging(
@@ -214,6 +217,7 @@ def run_artifact_maintenance(context: JobContext) -> dict[str, Any]:
         "job_artifact_metadata_rows_pruned": metadata_rows_pruned,
         "git_cache_rows_purged": git_cache_rows_purged,
         **job_retention,
+        **sim_retention,
         "superseded_steps_purged": step_result["purged"],
         "staging_sessions_removed": staging["removed"],
     }

@@ -62,11 +62,18 @@ def _prune_stale_bundles(project_id: str, source_hash: str, *, keep_build: str =
     removed: list[str] = []
     if not parent.is_dir():
         return removed
+    keep_archive = project_bundle.archive_path(keep_dir)
     for path in parent.iterdir():
-        if not path.is_dir() or path.resolve() == keep_dir:
+        if path.resolve() in (keep_dir, keep_archive):
             continue
-        shutil.rmtree(path)
-        removed.append(path.name.rsplit("_", 1)[-1])
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.suffix == project_bundle.ARCHIVE_SUFFIX:
+            # Older builds' board.prism archives (only directories were pruned).
+            path.unlink(missing_ok=True)
+        else:
+            continue
+        removed.append(path.name.removesuffix(project_bundle.ARCHIVE_SUFFIX).rsplit("_", 1)[-1])
     return removed
 
 

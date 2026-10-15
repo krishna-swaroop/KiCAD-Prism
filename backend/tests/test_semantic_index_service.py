@@ -1,4 +1,3 @@
-import hashlib
 import json
 import sys
 import tempfile
@@ -1386,40 +1385,16 @@ class VariantAssemblyIntegrationTests(unittest.TestCase):
             [("Lite", "R2"), ("lite", "R1")],
         )
 
-    def test_generator_identity_covers_the_variant_modules(self) -> None:
-        from app.services import (
-            project_source_snapshot,
-            semantic_index_variants,
-            variant_catalog_service,
-        )
-
-        for module in (
-            semantic_index_variants,
-            variant_catalog_service,
-            project_source_snapshot,
-        ):
-            self.assertIn(
-                Path(module.__file__),
-                semantic_index_service.GENERATOR_MODULE_PATHS,
-                module.__name__,
-            )
-        recomputed = hashlib.sha256(
-            b"\0".join(
-                (
-                    "|".join(semantic_index_service._GENERATOR_INPUTS).encode("utf-8"),
-                    *(
-                        path.read_bytes()
-                        for path in semantic_index_service.GENERATOR_MODULE_PATHS
-                    ),
-                )
-            )
-        ).hexdigest()[:12]
-        self.assertEqual(recomputed, semantic_index_service.GENERATOR_BUILD)
+    def test_generator_identity_is_an_explicit_build_not_a_source_hash(self) -> None:
+        # Edits that leave the payload alone must not discard every stored
+        # index; a payload change bumps GENERATOR_BUILD instead.
+        self.assertRegex(semantic_index_service.GENERATOR_BUILD, r"^r[0-9]+$")
         self.assertEqual(semantic_index_service.GENERATOR_VERSION, "0.2.0")
-        self.assertIn(
-            "0.2.0", semantic_index_service.generator_cache_tag()
-        )
-
+        with patch.object(semantic_index_service, "_kicad_monkey_version", return_value="2026.9.7"):
+            self.assertEqual(
+                semantic_index_service.generator_cache_tag(),
+                f"0.2.0-{semantic_index_service.GENERATOR_BUILD}-kicad-monkey-2026.9.7",
+            )
 
 if __name__ == "__main__":
     unittest.main()

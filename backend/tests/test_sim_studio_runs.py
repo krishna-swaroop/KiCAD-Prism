@@ -220,5 +220,62 @@ class ProjectBundleTest(unittest.TestCase):
         self.assertEqual(builder.call_args.kwargs["source_hash"], "src")
 
 
+
+@requires_scratch_postgres("Simulation run retention tests")
+class RunRetentionTest(unittest.TestCase):
+    def setUp(self) -> None:
+        scratch = scratch_schema(self, "sim_retention", ledgers=(WORKSPACE_LEDGER,))
+        seed_repository(scratch.conn, "repo_sim")
+        seed_project(scratch.conn, PROJECT.id, "repo_sim")
+        scratch.conn.commit()
+        self.conn = scratch.conn
+        self.runs = RunStore(scratch.connection)
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
+        patcher = mock.patch.object(settings, "KICAD_PROJECTS_ROOT", str(self.tmp))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def add_run(self, setup: str, status: str, age_days: float, bundle: bytes | None = None) -> str:
+        run_id = RunStore.new_id()
+        self.runs.create({
+            "run_id": run_id, "project_id": PROJECT.id, "setup_id": setup, "setup_revision": 1,
+            "setup_sha256": "x", "setup_document": {}, "analysis_id": "dc", "source_commit": None,
+            "project_path": "board.kicad_pro", "job_id": f"job-{run_id}", "status": status,
+            "created_by": "d@example.com",
+            "bundle_sha256": __import__("hashlib").sha256(bundle).hexdigest() if bundle else None,
+        })
+        self.conn.execute(
+            "UPDATE ws_sim_runs SET created_at = now() - (%s * INTERVAL '1 day') WHERE run_id = %s",
+            (age_days, run_id),
+        )
+        self.conn.commit()
+        (runs_module.run_dir(run_id) / "input").mkdir(parents=True)
+        (runs_module.run_dir(run_id) / "input" / "board.prism").write_bytes(bundle or b"x")
+        return run_id
+
+    def test_keeps_the_newest_three_successes_and_only_a_latest_failure(self) -> None:
+        from app.sim_studio import retention
+
+        succeeded = [self.add_run("sup_a", "succeeded", 30 - day, b"same bundle") for day in range(5)]
+        failed_between = self.add_run("sup_a", "failed", 27.5)  # between the successes
+        failed_older = [self.add_run("sup_b", "failed", 400 - day) for day in range(2)]
+        latest_failed = self.add_run("sup_b", "failed", 1)
+        running = self.add_run("sup_c", "running", 400)
+        orphan = runs_module.run_dir("run_orphaned")
+        orphan.mkdir(parents=True)
+
+        with mock.patch.object(settings, "PRISM_SIM_SUCCEEDED_RUNS_KEPT", 3):
+            report = retention.prune_runs(self.runs)
+
+        self.assertEqual(self.runs.ids(), set(succeeded[2:]) | {latest_failed, running})
+        self.assertNotIn(failed_between, self.runs.ids())
+        self.assertFalse(runs_module.run_dir(succeeded[0]).exists())
+        self.assertFalse(orphan.exists())
+        inputs = [runs_module.run_dir(run_id) / "input" / "board.prism" for run_id in succeeded[2:]]
+        self.assertTrue(all(__import__("os").path.samefile(inputs[0], path) for path in inputs))
+        self.assertEqual(report["sim_runs_pruned"], 5)
+        self.assertEqual(report["sim_inputs_linked"], 2)
+
 if __name__ == "__main__":
     unittest.main()

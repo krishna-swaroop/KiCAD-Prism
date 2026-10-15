@@ -76,6 +76,52 @@ class RunStore:
             )
             conn.commit()
 
+    def prune(self, *, keep_succeeded: int) -> list[str]:
+        """Delete runs past retention; returns their ids.
+
+        The newest ``keep_succeeded`` succeeded runs of each setup are kept
+        indefinitely; older succeeded runs go. Failed and cancelled runs go,
+        except a setup's newest run, whose message the Studio shows until a
+        newer run replaces it. Runs still queued or running are never touched.
+        """
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                WITH ranked AS (
+                    SELECT run_id, status,
+                           ROW_NUMBER() OVER (PARTITION BY project_id, setup_id ORDER BY created_at DESC) AS newest,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY project_id, setup_id, status = 'succeeded' ORDER BY created_at DESC
+                           ) AS newest_of_kind
+                    FROM ws_sim_runs
+                )
+                DELETE FROM ws_sim_runs run USING ranked
+                WHERE run.run_id = ranked.run_id
+                  AND (
+                      (ranked.status = 'succeeded' AND ranked.newest_of_kind > %s)
+                      OR (ranked.status IN ('failed', 'cancelled') AND ranked.newest > 1)
+                  )
+                RETURNING run.run_id
+                """,
+                (max(1, int(keep_succeeded)),),
+            ).fetchall()
+            conn.commit()
+        return [str(row["run_id"]) for row in rows]
+
+    def ids(self) -> set[str]:
+        with self._connect() as conn:
+            return {str(row["run_id"]) for row in conn.execute("SELECT run_id FROM ws_sim_runs").fetchall()}
+
+    def bundles(self) -> dict[str, str]:
+        """``run_id -> bundle_sha256`` for every run that recorded one."""
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT run_id, bundle_sha256 FROM ws_sim_runs WHERE bundle_sha256 IS NOT NULL"
+            ).fetchall()
+        return {str(row["run_id"]): str(row["bundle_sha256"]) for row in rows}
+
     def unsettled_job_ids(self) -> list[str]:
         with self._connect() as conn:
             rows = conn.execute(

@@ -517,6 +517,13 @@ class Settings(PipelineSettings):
         ),
     )
 
+    PRISM_SIM_SUCCEEDED_RUNS_KEPT: int = Field(
+        default=3,
+        description=(
+            "Succeeded Simulation Studio runs kept indefinitely per setup (the newest). Failed and "
+            "cancelled runs are deleted, except a setup's latest run."
+        ),
+    )
     PRISM_JOB_RETENTION_DAYS: int = Field(
         default=90,
         description="Days finished jobs (rows, events, logs) are kept, unless still referenced.",

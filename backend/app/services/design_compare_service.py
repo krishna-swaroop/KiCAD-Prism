@@ -115,12 +115,15 @@ def _project_cache_namespace(project_id: str) -> str:
 def _cache_dir(project_id: str, commit: str) -> Path:
     namespace = _project_cache_namespace(project_id)
     _touch_cache_entry(namespace, commit)
-    return (
-        _CACHE_ROOT
-        / namespace
-        / commit
-        / semantic_index_service.generator_cache_tag()
-    )
+    entry = _CACHE_ROOT / namespace / commit
+    tag = semantic_index_service.generator_cache_tag()
+    # A commit's entry kept one copy per generator build (sources, Gerbers,
+    # parse caches); only the current build's is ever read.
+    if entry.is_dir():
+        for stale in entry.iterdir():
+            if stale.is_dir() and stale.name != tag:
+                shutil.rmtree(stale, ignore_errors=True)
+    return entry / tag
 
 
 def _touch_cache_entry(project_namespace: str, commit: str) -> None:

@@ -10,6 +10,7 @@ and Simulation Studio hands the archive to its engines as it is.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import shutil
@@ -39,12 +40,26 @@ def available() -> bool:
 
 
 def update_fingerprint(hasher) -> None:
-    """A new prism-bundle makes new archives."""
+    """A prism-bundle that writes different archives makes new ones.
+
+    Keyed on what the tool says decides its output (``prism-bundle version``),
+    not on the binary: rebuilding the same sources used to discard every
+    project's board.prism.
+    """
 
     binary = prism_bundle_binary()
     if binary.is_file():
         hasher.update(b"board-prism-a1")
-        hasher.update(hashlib.sha256(binary.read_bytes()).digest())
+        hasher.update(tool_identity(str(binary), binary.stat().st_mtime_ns).encode("utf-8"))
+
+
+@functools.lru_cache(maxsize=4)
+def tool_identity(binary: str, _mtime_ns: int) -> str:
+    completed = subprocess.run([binary, "version"], capture_output=True, text=True, timeout=30, check=False)
+    if completed.returncode != 0:
+        # An older prism-bundle without ``version``: fall back to its bytes.
+        return hashlib.sha256(Path(binary).read_bytes()).hexdigest()
+    return completed.stdout.strip()
 
 
 def archive_path(bundle_dir: Path) -> Path:

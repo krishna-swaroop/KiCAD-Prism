@@ -69,6 +69,23 @@ class ProjectBundleTests(unittest.TestCase):
         )
 
 
+class StaleBuildTests(unittest.TestCase):
+    def test_other_builds_archives_go_with_their_folders(self) -> None:
+        from unittest import mock
+
+        from app.services import semantic_visualizer_service as visualizer
+
+        root = Path(tempfile.mkdtemp())
+        source = root / "prj" / "src"
+        for name in ("build-old", "build-new"):
+            (source / name).mkdir(parents=True)
+            (source / f"{name}.prism").write_bytes(b"PK")
+        (source / "notes.txt").write_text("kept")
+        with mock.patch.object(visualizer, "semantic_store_root", return_value=root):
+            visualizer._prune_stale_bundles("prj", "src", keep_build="build-new")
+        self.assertEqual(sorted(path.name for path in source.iterdir()), ["build-new", "build-new.prism", "notes.txt"])
+
+
 class SourceKeyTests(unittest.TestCase):
     def test_a_checkout_of_the_same_sources_has_the_same_key(self) -> None:
         import os

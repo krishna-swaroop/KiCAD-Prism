@@ -7,6 +7,7 @@ import importlib.metadata
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -17,15 +18,11 @@ from typing import Any, Callable, Iterable, Iterator
 from app.core.config import settings
 from app.services import (
     kicad_library_reader,
-    kicad_monkey_design_adapter,
     path_config_service,
     project_revision,
-    project_source_snapshot,
     semantic_index_nets,
     semantic_index_variants,
     semantic_visualizer_service,
-    variant_catalog_service,
-    variant_source_scan,
 )
 from app.services.kicad_monkey_design_adapter import KiCadMonkeyDesign
 
@@ -33,28 +30,12 @@ from app.services.kicad_monkey_design_adapter import KiCadMonkeyDesign
 SCHEMA = "prism.semantic_index_a0"
 GENERATOR_NAME = "kicad-prism-semantic-index"
 GENERATOR_VERSION = "0.2.0"
-_GENERATOR_INPUTS = ("semantic-index", SCHEMA, GENERATOR_VERSION)
-# The build identity covers every module whose logic shapes the payload, so a
-# change to the kicad-monkey adapter, the variant resolver or the catalog
-# discovery invalidates cached indexes like a change to this file does.
-GENERATOR_MODULE_PATHS = (
-    Path(__file__),
-    Path(kicad_monkey_design_adapter.__file__),
-    Path(kicad_library_reader.__file__),
-    Path(semantic_index_nets.__file__),
-    Path(semantic_index_variants.__file__),
-    Path(variant_catalog_service.__file__),
-    Path(project_source_snapshot.__file__),
-    Path(variant_source_scan.__file__),
-)
-GENERATOR_BUILD = hashlib.sha256(
-    b"\0".join(
-        (
-            "|".join(_GENERATOR_INPUTS).encode("utf-8"),
-            *(path.read_bytes() for path in GENERATOR_MODULE_PATHS),
-        )
-    )
-).hexdigest()[:12]
+#: Bump when the stored payload changes (new fields, different values), in
+#: this module or in what it calls (the kicad-monkey adapter, the variant
+#: resolver, catalog discovery). The index used to be keyed by a hash of those
+#: modules' source, so any edit, a comment or a refactor, discarded every
+#: project's stored index and rebuilt it (minutes on a large board).
+GENERATOR_BUILD = "r1"
 
 _LOCKS: dict[str, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
@@ -296,7 +277,18 @@ def _build_and_store(
             commit=resolved_commit,
         )
     _write_artifact(path, payload)
+    _prune_other_builds(str(project.id), source_revision_key)
     return payload
+
+
+def _prune_other_builds(project_id: str, source_revision_key: str) -> None:
+    """Other generator builds of this revision's index are never read again."""
+
+    revision = artifact_dir(project_id, source_revision_key).parent
+    current = generator_cache_tag()
+    for stale in revision.iterdir():
+        if stale.is_dir() and stale.name != current:
+            shutil.rmtree(stale, ignore_errors=True)
 
 
 def get_or_build(project: Any, commit: str | None = None) -> dict[str, Any]:
