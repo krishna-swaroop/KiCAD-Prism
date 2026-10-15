@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs } from "@/components/ui/tabs";
 import { useAnalyticPack } from "@/hooks/use-analytic-pack";
 import { fetchApi, fetchJson } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ import type { SimRun } from "../../types";
 import { CursorProbe } from "./cursor-probe";
 import { displayUnit, formatValue } from "./format";
 import { ProfileTool } from "./profile-tool";
+import { StudioTabsList, StudioTabsTrigger } from "../../studio-tabs";
 
 interface WebGpuStatus {
     available: boolean;
@@ -57,13 +58,15 @@ type Props = {
     onProfile: (points: [ProfilePoint, ProfilePoint] | null) => void;
     onViewer?: (viewer: PrismSemanticViewerElement | null) => void;
     onOverlay?: (overlay: RunOverlayState) => void;
+    /** False while the results are kept mounted behind another tab. */
+    visible?: boolean;
 };
 
 /**
  * The run on the board: Prism's WebGPU viewer with the result over the
  * copper, under one docked toolbar of the view's controls.
  */
-export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling, onProfiling, onProfile, onViewer, onOverlay }: Props) {
+export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling, onProfiling, onProfile, onViewer, onOverlay, visible = true }: Props) {
     const [status, setStatus] = useState<WebGpuStatus | null>(null);
     const [building, setBuilding] = useState(false);
     const [viewer, setViewer] = useState<PrismSemanticViewerElement | null>(null);
@@ -124,9 +127,9 @@ export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling
             {live && (
                 <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-background px-2 py-1">
                     <Tabs value={board.quantity} onValueChange={(value) => onBoard({ quantity: value as FieldQuantity })}>
-                        <TabsList className="h-7">
-                            {overlay.fields.scalars.map((name) => <TabsTrigger key={name} value={name} title={FIELD_QUANTITIES[name]} className="text-xs">{SHORT_QUANTITY[name] ?? FIELD_QUANTITIES[name]}</TabsTrigger>)}
-                        </TabsList>
+                        <StudioTabsList>
+                            {overlay.fields.scalars.map((name) => <StudioTabsTrigger key={name} value={name} title={FIELD_QUANTITIES[name]} className="h-6 px-2">{SHORT_QUANTITY[name] ?? FIELD_QUANTITIES[name]}</StudioTabsTrigger>)}
+                        </StudioTabsList>
                     </Tabs>
                     {overlay.fieldNets.length > 1 && (
                         <Select value={overlay.net ?? ""} onValueChange={(value) => onBoard({ net: value })}>
@@ -155,14 +158,14 @@ export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling
                         ref={setViewer}
                         bundle-url={bundleUrl}
                         workspace="pcb"
-                        active="true"
+                        active={visible ? "true" : undefined}
                         hide-panel="true"
                         className="block h-full w-full"
                     />
                 ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
                         {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
-                        <p>{pending ? "Building the 3D view of this revision…" : "This revision has no 3D view yet."}</p>
+                        <p>{pending ? "Building 3D view…" : "No 3D view"}</p>
                         {!pending && canMutate && <Button size="sm" onClick={() => void build()}>Build 3D view</Button>}
                     </div>
                 )}
@@ -176,8 +179,8 @@ export function BoardPane({ projectId, run, canMutate, board, onBoard, profiling
                         {pack.phase === "failed" ? pack.error : overlay.phase === "failed" ? overlay.error : ""}
                     </Badge>
                 )}
-                <CursorProbe viewer={viewer} host={host} active={live && !profiling} />
-                <ProfileTool viewer={viewer} host={host} active={live && profiling} units={live ? overlay.units : undefined}
+                <CursorProbe viewer={viewer} host={host} active={visible && live && !profiling} />
+                <ProfileTool viewer={viewer} host={host} active={visible && live && profiling} units={live ? overlay.units : undefined}
                     onLine={(line) => onProfile(line && [{ mm: line[0].mm, sliceKey: line[0].sliceKey }, { mm: line[1].mm, sliceKey: line[1].sliceKey }])} />
                 {/* Bottom right: the viewer keeps its axis gizmo in the bottom-left corner. */}
                 {live && (

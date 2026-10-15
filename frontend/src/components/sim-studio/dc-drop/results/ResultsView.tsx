@@ -38,13 +38,15 @@ type Props = {
     canMutate: boolean;
     /** The board viewer, for the studio's search. */
     onViewer?: (viewer: PrismSemanticViewerElement | null) => void;
+    /** False while kept mounted behind another tab: no keys or probes. */
+    visible?: boolean;
 };
 
 /**
  * One run's results: the board under its toolbar, a side panel
  * that suits the setup's shape, and an analysis drawer below.
  */
-export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
+export function ResultsView({ projectId, run, canMutate, onViewer, visible = true }: Props) {
     const [data, setData] = useState<{ result: RunResult; setup: SimSetup } | null>(null);
     const [failed, setFailed] = useState<string | null>(null);
     useEffect(() => {
@@ -108,6 +110,7 @@ export function ResultsView({ projectId, run, canMutate, onViewer }: Props) {
             <div className="flex min-h-0 flex-1">
                 <div className="min-w-0 flex-1">
                     <BoardPane
+                        visible={visible}
                         projectId={projectId}
                         run={run}
                         canMutate={canMutate}

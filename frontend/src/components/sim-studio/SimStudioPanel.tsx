@@ -100,8 +100,7 @@ export function SimStudioPanel({ projectId, canMutate, active = true }: Props) {
     return (
         <div className="h-full overflow-auto p-6">
             <div className="mx-auto max-w-5xl">
-                <h2 className="text-lg font-semibold">Simulation Studio</h2>
-                <p className="mb-6 text-sm text-muted-foreground">Pick a simulation. Each has its own setup, runs and results.</p>
+                <h2 className="mb-6 text-lg font-semibold">Simulation Studio</h2>
                 {catalog === null && <Loader2 className="size-5 animate-spin text-muted-foreground" />}
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                     {catalog?.map((entry) => {
@@ -120,7 +119,6 @@ export function SimStudioPanel({ projectId, canMutate, active = true }: Props) {
                                     {!available && <Badge variant="outline">Planned</Badge>}
                                 </div>
                                 <h3 className="mb-1 font-semibold">{entry.display_name}</h3>
-                                <p className="text-sm text-muted-foreground">{entry.summary}</p>
                             </button>
                         );
                     })}

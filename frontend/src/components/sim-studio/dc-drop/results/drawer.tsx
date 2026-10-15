@@ -69,6 +69,7 @@ export function Drawer({ projectId, run, result, model, tab, open, onTab, onOpen
                     <TabsList variant="line">
                         {tabs.map((item) => (
                             <TabsTrigger key={item} value={item} onClick={() => pick(item)}
+                                className="data-[state=active]:text-primary dark:data-[state=active]:text-primary after:!bg-primary data-[state=active]:font-semibold"
                                 onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(item); } }}>
                                 {TITLES[item]}
                             </TabsTrigger>
@@ -230,7 +231,7 @@ function ViasTab({ projectId, run, result }: { projectId: string; run: SimRun; r
         }
         return [...byHole.values()].sort((a, b) => Math.abs(b.current) - Math.abs(a.current)).slice(0, 50);
     }, [segments]);
-    if (!artifact) return <p className="p-4 text-sm text-muted-foreground">This run wrote no via currents.</p>;
+    if (!artifact) return <p className="p-4 text-sm text-muted-foreground">No via currents</p>;
     if (!segments) return <Loader2 className="m-4 size-4 animate-spin text-muted-foreground" />;
     const total = holes.reduce((sum, hole) => sum + hole.power, 0);
     return (
@@ -279,7 +280,7 @@ function ProfileTab({ projectId, run, result, net, quantity, points }: {
             data: (line?.points ?? []).map(([x, v]) => [x, Number.isFinite(v) ? v * unit.scale : null]),
         }],
     }), [line, unit.scale, unit.unit]);
-    if (!points) return <p className="p-4 text-sm text-muted-foreground">Turn on Profile in the board's toolbar, then click the start and end of a line on the copper.</p>;
+    if (!points) return <p className="p-4 text-sm text-muted-foreground">No profile line</p>;
     if (!grid) return <Loader2 className="m-4 size-4 animate-spin text-muted-foreground" />;
     const values = (line?.points ?? []).map(([, v]) => v).filter(Number.isFinite);
     const change = values.length > 1 ? values[values.length - 1] - values[0] : null;

@@ -83,7 +83,6 @@ export function ElementInspector({ element, setup, board, candidates, canEdit, o
                                 Solve this rail
                             </label>
                         )}
-                        {element.inferred && <p className="text-xs text-muted-foreground">Voltage read from the net name; set it if that is wrong.</p>}
                     </>
                 ) : (
                     <>

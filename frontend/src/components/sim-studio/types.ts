@@ -149,6 +149,8 @@ export interface SimRun {
     analysis_id: string;
     commit?: string;
     status: RunStatus;
+    /** Why a failed or cancelled run stopped. */
+    message?: string;
     created_at: string;
 }
 

@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { cn } from "@/lib/utils";
 
 import { EChart, baseOption, type ChartTheme } from "./echart";
 import { percent, volts, watts, type ResultsModel } from "./results-model";
+import { SEGMENT_GROUP, segmentItem } from "../../studio-tabs";
 
 export interface Focus {
     component?: string;
@@ -27,23 +27,21 @@ export function SidePanel({ model, onFocus }: Props) {
     const titles = { flow: "Power flow", rails: "Rails", loads: "Loads" } as const;
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center gap-1 border-b px-3 py-1.5">
-                {views.map((item) => (
-                    <button key={item} type="button" onClick={() => setView(item)}
-                        className={cn("rounded px-2 py-1 text-xs", shown === item ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>
-                        {titles[item]}
-                    </button>
-                ))}
+            <div className="flex items-center border-b px-3 py-1.5">
+                <div className={SEGMENT_GROUP} role="tablist" aria-label="Chart">
+                    {views.map((item) => (
+                        <button key={item} type="button" role="tab" aria-selected={shown === item} onClick={() => setView(item)}
+                            className={segmentItem(shown === item)}>
+                            {titles[item]}
+                        </button>
+                    ))}
+                </div>
             </div>
             <div className="min-h-0 flex-1 p-2">
-                {shown === "flow" && <PowerFlow model={model} onFocus={onFocus} />}
-                {shown === "rails" && <RailBars model={model} onFocus={onFocus} />}
-                {shown === "loads" && <BudgetBars model={model} onFocus={onFocus} />}
+                {shown === "flow" && (model.rails.length ? <PowerFlow model={model} onFocus={onFocus} /> : <Empty label="No rails" />)}
+                {shown === "rails" && (model.rails.length ? <RailBars model={model} onFocus={onFocus} /> : <Empty label="No rails" />)}
+                {shown === "loads" && (model.loads.length ? <BudgetBars model={model} onFocus={onFocus} /> : <Empty label="No loads" />)}
             </div>
-            <p className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
-                {shown === "flow" ? "Width is power. Click a part or rail to show it on the board."
-                    : "Worst drop against the budget (5 % of the rail unless it sets a tolerance). Click to show it."}
-            </p>
         </div>
     );
 }
@@ -179,6 +177,10 @@ function PowerFlow({ model, onFocus }: Props) {
         const focus = (params.data as Partial<FlowNode> | undefined)?.focus;
         if (focus) onFocus(focus);
     }} />;
+}
+
+function Empty({ label }: { label: string }) {
+    return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">{label}</div>;
 }
 
 function RailBars({ model, onFocus }: Props) {

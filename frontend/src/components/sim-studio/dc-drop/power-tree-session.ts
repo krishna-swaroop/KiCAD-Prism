@@ -1,4 +1,6 @@
 import * as api from "../api";
+import type { PrismSemanticIndex } from "@/types/prism-selection";
+
 import type { SetupRecord, SimSetup } from "../types";
 
 import { BoardIndex } from "./board-index";
@@ -35,6 +37,20 @@ export async function saveTree(projectId: string, current: TreeRecord, next: Tre
     return { record, layout: next.layout };
 }
 
+const indexes = new Map<string, Promise<PrismSemanticIndex>>();
+
+/** The board's design index at a commit (about 4 MB on large boards), fetched once per page for every user. */
+export function semanticIndexFor(projectId: string, commit?: string): Promise<PrismSemanticIndex> {
+    const key = `${projectId}@${commit ?? ""}`;
+    let index = indexes.get(key);
+    if (!index) {
+        index = api.readSemanticIndex(projectId, commit);
+        index.catch(() => indexes.delete(key));
+        indexes.set(key, index);
+    }
+    return index;
+}
+
 const boards = new Map<string, Promise<BoardIndex>>();
 
 /** The board's pads and parts at a commit, fetched once per page. */
@@ -42,7 +58,7 @@ export function boardIndex(projectId: string, commit?: string): Promise<BoardInd
     const key = `${projectId}@${commit ?? ""}`;
     let board = boards.get(key);
     if (!board) {
-        board = api.readSemanticIndex(projectId, commit).then((index) => new BoardIndex(index));
+        board = semanticIndexFor(projectId, commit).then((index) => new BoardIndex(index));
         board.catch(() => boards.delete(key));
         boards.set(key, board);
     }

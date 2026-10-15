@@ -11,6 +11,7 @@ import { pickItems, type Candidates, type Pick, type PickContext } from "./candi
 import { filterItems, PickList, useListKeys } from "./pick-list";
 import type { ElementKind } from "./power-tree-model";
 import { ELEMENT_STYLE } from "./power-tree-nodes";
+import { SEGMENT_GROUP, segmentItem } from "../studio-tabs";
 
 const PROMPT: Record<ElementKind, string> = {
     source: "Search connectors and batteries",
@@ -54,13 +55,13 @@ export function ElementPalette({ kinds, candidates, board, setup, context, style
         <div ref={root} style={style} className={cn("nowheel nodrag nopan z-30 w-96 rounded-lg border bg-card p-2 text-card-foreground shadow-lg", className)}
             role="dialog" aria-label={`Add a ${label}`}>
             {kinds.length > 1 && (
-                <div className="mb-2 flex gap-1">
+                <div className={cn(SEGMENT_GROUP, "mb-2 flex")} role="tablist" aria-label="Element kind">
                     {kinds.map((item) => {
                         const look = ELEMENT_STYLE[item];
                         return (
-                            <button key={item} type="button" onClick={() => setKind(item)}
-                                className={cn("flex items-center gap-1 rounded px-2 py-1 text-xs", item === kind ? "bg-accent font-medium" : "text-muted-foreground hover:text-foreground")}>
-                                <look.icon className={cn("size-3.5", look.text)} aria-hidden /> {look.label}
+                            <button key={item} type="button" role="tab" aria-selected={item === kind} onClick={() => setKind(item)}
+                                className={cn(segmentItem(item === kind), "flex-1")}>
+                                <look.icon className={cn("size-3.5", item !== kind && look.text)} aria-hidden /> {look.label}
                             </button>
                         );
                     })}

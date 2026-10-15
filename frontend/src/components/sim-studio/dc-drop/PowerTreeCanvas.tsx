@@ -317,18 +317,12 @@ function InferMenu({ canEdit, empty, inferring, onInfer }: {
                     {icon} Infer
                 </ToolbarButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuItem onSelect={() => onInfer("add")}>
-                    <div>
-                        <p className="text-sm">Add what is missing <span className="text-xs text-muted-foreground">Shift+I</span></p>
-                        <p className="text-xs text-muted-foreground">Keeps your elements and values.</p>
-                    </div>
+            <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onSelect={() => onInfer("add")} title="Keeps your elements and values" className="justify-between">
+                    Add missing <span className="text-xs text-muted-foreground">Shift+I</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => onInfer("replace")}>
-                    <div>
-                        <p className="text-sm">Replace the whole tree</p>
-                        <p className="text-xs text-muted-foreground">Discards currents and efficiencies you set.</p>
-                    </div>
+                <DropdownMenuItem onSelect={() => onInfer("replace")} title="Discards currents and efficiencies you set" className="text-destructive focus:text-destructive">
+                    Replace tree
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
@@ -363,7 +357,6 @@ function EmptyState({ canEdit, inferring, onInfer, onAdd }: {
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <div className="pointer-events-auto w-[22rem] rounded-lg border bg-card p-5 text-center text-card-foreground shadow-sm">
                 <p className="text-sm font-semibold">Build the board's power tree</p>
-                <p className="mt-1 text-xs text-muted-foreground">Sources feed rails, converters link rails, loads draw from them.</p>
                 <Button className="mt-4 w-full" disabled={!canEdit || inferring} onClick={onInfer}>
                     {inferring ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden /> : <Sparkles className="mr-2 size-4" aria-hidden />}
                     Start from the inferred power tree
@@ -379,7 +372,6 @@ function EmptyState({ canEdit, inferring, onInfer, onAdd }: {
                         </Button>
                     ))}
                 </div>
-                <p className="mt-3 text-[11px] text-muted-foreground">Drag from a node's right handle to the next one to connect them.</p>
             </div>
         </div>
     );

@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    ArrowLeft, CheckCircle2, ChevronDown, Loader2, Play, Plus, ShieldAlert, ShieldCheck, Sparkles, SquareDashed, TriangleAlert, Zap,
+    ArrowLeft, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, Loader2, Play, Plus, ShieldAlert, Sparkles, SquareDashed, TriangleAlert, XCircle, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { DesignSearchField } from "@/components/design-search-field";
-import { Badge } from "@/components/ui/badge";
+import { ApiHttpError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ResizablePanel } from "@/components/ui/resizable-panel";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs } from "@/components/ui/tabs";
 import type { DesignSearchHit } from "@/lib/design-search";
 import { cn } from "@/lib/utils";
 import type { PrismSemanticIndex } from "@/types/prism-selection";
@@ -25,9 +25,10 @@ import { BoardIndex } from "./board-index";
 import { PowerTreeCanvas, type TreeEdit } from "./PowerTreeCanvas";
 import { autoArrange, mergeInferred, nodeId, treeOf, type TreeState } from "./power-tree-model";
 import { NO_CANDIDATES, type Candidates } from "./candidates";
-import { boardIndex, candidatesFor, createSetup, loadTree, saveTree, type StudioTab, type TreeRecord } from "./power-tree-session";
+import { boardIndex, candidatesFor, semanticIndexFor, createSetup, loadTree, saveTree, type StudioTab, type TreeRecord } from "./power-tree-session";
 import { ResultsView } from "./results/ResultsView";
 import { SetupSettingsPane } from "./SetupSettingsPane";
+import { StudioTabsList, StudioTabsTrigger } from "../studio-tabs";
 
 export type { StudioTab } from "./power-tree-session";
 
@@ -65,7 +66,10 @@ type Checked = { report: SetupReport; revision: number };
  * setup's current revision.
  */
 export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSetupChange, onTabChange, onBack, controls }: Props) {
-    const [setups, setSetups] = useState<SetupRecordSummary[] | null>(null);
+    // Tagged with the project it was listed for, so a list from the project the
+    // reviewer just left is never shown or auto-opened here.
+    const [listing, setListing] = useState<{ projectId: string; items: SetupRecordSummary[] } | null>(null);
+    const setups = listing?.projectId === projectId ? listing.items : null;
     const [tree, setTree] = useState<TreeRecord | null>(null);
     const treeRef = useRef<TreeRecord | null>(null);
     const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -92,7 +96,9 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     useEffect(() => {
         let cancelled = false;
         api.listSetups(projectId)
-            .then((list) => { if (!cancelled) setSetups(list.filter((item) => item.kind === "dc-drop")); })
+            .then((list) => {
+                if (!cancelled) setListing({ projectId, items: list.filter((item) => item.kind === "dc-drop") });
+            })
             .catch((error) => toast.error(message(error)));
         return () => { cancelled = true; };
     }, [projectId, reloadKey]);
@@ -108,6 +114,16 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
         setSelected(null);
     }, [setupId]);
 
+    // Whether Results has been opened for this setup; once it has, it stays mounted.
+    const [resultsSeen, setResultsSeen] = useState(tab === "results");
+    useEffect(() => { if (tab === "results") setResultsSeen(true); }, [tab]);
+    const seenFor = useRef(setupId);
+    useEffect(() => {
+        if (seenFor.current === setupId) return;
+        seenFor.current = setupId;
+        setResultsSeen(tab === "results");
+    }, [setupId, tab]);
+
     useEffect(() => {
         if (!setupId) {
             setTreeState(null);
@@ -116,9 +132,14 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
         let cancelled = false;
         loadTree(projectId, setupId)
             .then((value) => { if (!cancelled) setTreeState(value); })
-            .catch((error) => toast.error(message(error)));
+            .catch((error) => {
+                if (cancelled) return;
+                // A link to a setup of another project (or a deleted one): open this project's own instead.
+                if (error instanceof ApiHttpError && error.isNotFound) onSetupChange(null);
+                else toast.error(message(error));
+            });
         return () => { cancelled = true; };
-    }, [projectId, setupId, reloadKey]);
+    }, [projectId, setupId, reloadKey, onSetupChange]);
 
     useEffect(() => {
         if (!tree) return;
@@ -130,7 +151,7 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
         candidatesFor(projectId, commit)
             .then((value) => { if (!cancelled) setCandidates(value); })
             .catch(() => undefined);
-        api.readSemanticIndex(projectId, commit)
+        semanticIndexFor(projectId, commit)
             .then((value) => { if (!cancelled) setSemanticIndex(value); })
             .catch(() => undefined);
         return () => { cancelled = true; };
@@ -150,7 +171,7 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     const setupRuns = useMemo(() => runs.filter((run) => run.setup_id === setupId), [runs, setupId]);
     useEffect(() => {
         if (viewedRun && setupRuns.some((run) => run.run_id === viewedRun)) return;
-        setViewedRun(setupRuns.find((run) => run.status === "succeeded")?.run_id ?? null);
+        setViewedRun(setupRuns.find((run) => run.status === "succeeded" || run.status === "failed")?.run_id ?? null);
     }, [setupRuns, viewedRun]);
 
     /** Apply an edit to the latest tree and save it; edits run one at a time. */
@@ -203,21 +224,39 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     const preflighted = fresh(checks.preflight);
     const latestReport = preflighted ?? validated;
 
-    const check = async (stage: "validate" | "preflight") => {
-        if (!record) return;
+    /** Run one check on the saved revision; `quiet` skips the toasts (the automatic checks). Returns its report. */
+    const check = async (stage: "validate" | "preflight", quiet = false): Promise<SetupReport | null> => {
+        if (!record) return null;
         setChecking(stage);
         try {
             await queue.current;
             const current = treeRef.current!.record;
             const report = await api.checkSetup(projectId, current.setup_id, stage);
             setChecks((value) => ({ ...value, [stage]: { report, revision: current.revision } }));
-            if (!report.ok) toast.error(`${stage === "validate" ? "Validation" : "Pre-flight"} found ${report.issues.filter((i) => i.severity === "error").length} problem(s).`);
+            if (!report.ok && !quiet) toast.error(`${stage === "validate" ? "Validation" : "Pre-flight"} found ${report.issues.filter((i) => i.severity === "error").length} problem(s).`);
+            return report;
         } catch (error) {
-            toast.error(message(error));
+            if (!quiet) toast.error(message(error));
+            return null;
         } finally {
             setChecking(null);
         }
     };
+
+    // Checks run by themselves on each saved revision, so the stages always say
+    // where the setup stands; the buttons re-run them on demand.
+    const checkRef = useRef(check);
+    checkRef.current = check;
+    const revisionKey = record ? `${record.setup_id}@${record.revision}` : null;
+    useEffect(() => {
+        if (!revisionKey) return;
+        let cancelled = false;
+        const timer = window.setTimeout(async () => {
+            const validated = await checkRef.current("validate", true);
+            if (!cancelled && validated?.ok) await checkRef.current("preflight", true);
+        }, 600);
+        return () => { cancelled = true; window.clearTimeout(timer); };
+    }, [revisionKey]);
 
     const submit = async () => {
         if (!record) return;
@@ -309,13 +348,13 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
                 <SetupSwitcher setups={setups} current={record ?? null} canMutate={canMutate}
                     onPick={onSetupChange} onNew={() => setCreating(true)} />
                 <Tabs value={tab} onValueChange={(value) => onTabChange(value as StudioTab)} className="shrink-0">
-                    <TabsList>
-                        <TabsTrigger value="setup">Setup</TabsTrigger>
-                        <TabsTrigger value="results">
+                    <StudioTabsList>
+                        <StudioTabsTrigger value="setup">Setup</StudioTabsTrigger>
+                        <StudioTabsTrigger value="results">
                             Results
                             {setupRuns.some((run) => run.status === "queued" || run.status === "running") && <Loader2 className="size-3 animate-spin" aria-hidden />}
-                        </TabsTrigger>
-                    </TabsList>
+                        </StudioTabsTrigger>
+                    </StudioTabsList>
                 </Tabs>
                 {tab === "results" && <RunSwitcher runs={setupRuns} current={shownRun} onPick={setViewedRun} />}
                 <span className="min-w-0 flex-1" />
@@ -323,28 +362,28 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
                     <DesignSearchField inline semanticIndex={semanticIndex} active={active} onPick={pickSearch} loading={!semanticIndex && !!tree} />
                 </div>
                 {latestReport && <IssuesButton report={latestReport} onSelect={selectIssue} />}
-                <Button variant="outline" size="sm" className="h-8 shrink-0" disabled={!record || checking !== null} onClick={() => void check("validate")}
-                    title="Validate: check the setup against the contract and the board" aria-label="Validate">
-                    {checking === "validate" ? <Loader2 className="size-3.5 animate-spin 2xl:mr-1.5" /> : <StageIcon report={validated} />}
-                    <span className="hidden 2xl:inline">Validate</span>
-                </Button>
-                <Button variant="outline" size="sm" className="h-8 shrink-0" disabled={!validated?.ok || checking !== null} onClick={() => void check("preflight")}
-                    title={validated?.ok ? "Pre-flight: check that the engine can run it (terminals on copper, rails connected)" : "Pre-flight (validate first)"} aria-label="Pre-flight">
-                    {checking === "preflight" ? <Loader2 className="size-3.5 animate-spin 2xl:mr-1.5" /> : <StageIcon report={preflighted} />}
-                    <span className="hidden 2xl:inline">Pre-flight</span>
-                </Button>
-                <Button size="sm" className="h-8 shrink-0" disabled={!canMutate || !preflighted?.ok || checking !== null} onClick={() => void submit()}
-                    title={preflighted?.ok ? "Freeze this revision and queue the run" : "Pre-flight first"}>
-                    {checking === "run" ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Play className="mr-1.5 size-3.5" aria-hidden />}
-                    Run
-                </Button>
+                <div className="flex shrink-0 items-center" role="group" aria-label="Checks and run">
+                    <StageButton label="Validate" report={validated} busy={checking === "validate"} disabled={!record || checking !== null}
+                        title="Check the setup against the contract and the board" onClick={() => void check("validate")} />
+                    <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    <StageButton label="Pre-flight" report={preflighted} busy={checking === "preflight"} disabled={!validated?.ok || checking !== null}
+                        title={validated?.ok ? "Check that the engine can run it" : "Validate first"} onClick={() => void check("preflight")} />
+                    <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    <Button size="sm" className="h-8 shrink-0" disabled={!canMutate || !preflighted?.ok || checking !== null} onClick={() => void submit()}
+                        title={preflighted?.ok ? "Freeze this revision and queue the run" : "Pre-flight first"}>
+                        {checking === "run" ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" aria-hidden />}
+                        Run
+                    </Button>
+                </div>
             </header>
 
             {setups !== null && setups.length === 0 && !setupId ? (
                 <NoSetups canMutate={canMutate} onNew={() => setCreating(true)} />
             ) : !state ? (
                 <div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
-            ) : tab === "setup" ? (
+            ) : (
+                <>
+                {tab === "setup" && (
                 <div className="flex min-h-0 flex-1">
                     <div className="min-w-0 flex-1">
                         <PowerTreeCanvas
@@ -361,16 +400,26 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
                             focus={focus}
                         />
                     </div>
-                    <ResizablePanel side="left" storageKey="prism.sim.dc.settings-width" defaultWidth={380} minWidth={300} maxWidth={640}
-                        aria-label="Simulation settings" className="overflow-y-auto border-l">
+                    <ResizablePanel side="right" storageKey="prism.sim.dc.settings-width" defaultWidth={380} minWidth={300} maxWidth={720}
+                        aria-label="Simulation settings">
                         <SetupSettingsPane setup={state.setup} canEdit={canMutate}
                             onChange={(setup) => void edit((current) => ({ ...current, setup })).catch(() => undefined)} />
                     </ResizablePanel>
                 </div>
-            ) : (
-                shownRun?.status === "succeeded"
-                    ? <ResultsView key={shownRun.run_id} projectId={projectId} run={shownRun} canMutate={canMutate} onViewer={setResultsViewer} />
-                    : <NoResult runs={setupRuns} />
+                )}
+                {/* Results stay mounted once opened (hidden on Setup), so switching tabs keeps the
+                    board, the net and field being viewed and the camera instead of reloading them. */}
+                {(tab === "results" || resultsSeen) && (
+                    <div className={cn("flex min-h-0 flex-1 flex-col", tab !== "results" && "hidden")}>
+                        {shownRun?.status === "succeeded"
+                            ? <ResultsView key={shownRun.run_id} projectId={projectId} run={shownRun} canMutate={canMutate} onViewer={setResultsViewer}
+                                visible={tab === "results"} />
+                            : shownRun?.status === "failed" || shownRun?.status === "cancelled"
+                                ? <FailedRun run={shownRun} onSetup={() => onTabChange("setup")} />
+                                : <NoResult runs={setupRuns} />}
+                    </div>
+                )}
+                </>
             )}
 
             <NewSetupDialog
@@ -387,11 +436,36 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     );
 }
 
-function StageIcon({ report }: { report: SetupReport | null }) {
-    if (!report) return <ShieldCheck className="size-3.5 text-muted-foreground 2xl:mr-1.5" aria-hidden />;
-    return report.ok
-        ? <CheckCircle2 className="size-3.5 text-success 2xl:mr-1.5" aria-label="passed" />
-        : <ShieldAlert className="size-3.5 text-destructive 2xl:mr-1.5" aria-label="failed" />;
+/** A check stage: its name, and whether it has not run, is running, passed (with warnings) or failed. */
+function StageButton({ label, report, busy, disabled, title, onClick }: {
+    label: string;
+    report: SetupReport | null;
+    busy: boolean;
+    disabled: boolean;
+    title: string;
+    onClick: () => void;
+}) {
+    const errors = report?.issues.filter((issue) => issue.severity === "error").length ?? 0;
+    const warnings = (report?.issues.length ?? 0) - errors;
+    const state = busy ? "busy" : !report ? "idle" : !report.ok ? "failed" : warnings ? "warned" : "passed";
+    const look = {
+        idle: { icon: <Circle className="size-3.5 text-muted-foreground" aria-hidden />, tone: "", note: null },
+        busy: { icon: <Loader2 className="size-3.5 animate-spin" aria-hidden />, tone: "", note: null },
+        passed: { icon: <CheckCircle2 className="size-3.5 text-success" aria-hidden />, tone: "border-success/50", note: null },
+        warned: { icon: <CheckCircle2 className="size-3.5 text-warning" aria-hidden />, tone: "border-warning/50",
+            note: <span className="tabular-nums text-warning">{warnings}</span> },
+        failed: { icon: <XCircle className="size-3.5 text-destructive" aria-hidden />, tone: "border-destructive/60",
+            note: <span className="tabular-nums text-destructive">{errors}</span> },
+    }[state];
+    const status = { idle: "not run", busy: "running", passed: "passed", warned: `passed with ${warnings} warning(s)`, failed: `${errors} error(s)` }[state];
+    return (
+        <Button variant="outline" size="sm" className={cn("h-8 shrink-0", look.tone)} disabled={disabled} onClick={onClick}
+            title={`${title} (${status})`} aria-label={`${label}: ${status}`}>
+            {look.icon}
+            {label}
+            {look.note}
+        </Button>
+    );
 }
 
 function IssuesButton({ report, onSelect }: { report: SetupReport; onSelect: (issue: SetupIssue) => void }) {
@@ -401,10 +475,12 @@ function IssuesButton({ report, onSelect }: { report: SetupReport; onSelect: (is
     return (
         <Popover>
             <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-1.5">
-                    {errors > 0 && <Badge variant="destructive">{errors}</Badge>}
-                    {warnings > 0 && <Badge variant="outline" className="border-amber-500 text-amber-600">{warnings}</Badge>}
-                    Issues
+                <Button variant="ghost" size="sm" className="h-8 shrink-0 gap-1 px-2" title="Issues from the last check"
+                    aria-label={`Issues: ${errors} error(s), ${warnings} warning(s)`}>
+                    {errors > 0
+                        ? <ShieldAlert className="size-3.5 text-destructive" aria-hidden />
+                        : <TriangleAlert className="size-3.5 text-warning" aria-hidden />}
+                    <span className={cn("tabular-nums", errors > 0 ? "text-destructive" : "text-warning")}>{errors || warnings}</span>
                 </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="max-h-96 w-[28rem] overflow-auto p-2">
@@ -425,6 +501,10 @@ function IssuesButton({ report, onSelect }: { report: SetupReport; onSelect: (is
     );
 }
 
+function shortDate(iso: string): string {
+    return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
 function SetupSwitcher({ setups, current, canMutate, onPick, onNew }: {
     setups: SetupRecordSummary[] | null;
     current: { setup_id: string; setup: SimSetup; revision: number } | null;
@@ -435,28 +515,33 @@ function SetupSwitcher({ setups, current, canMutate, onPick, onNew }: {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 min-w-0 max-w-[14rem] gap-1">
+                <Button variant="ghost" size="sm" className="h-8 min-w-0 max-w-[11rem] gap-1 text-xs">
                     <span className="truncate">{current?.setup.name ?? "No setup"}</span>
-                    {current && <span className="text-xs text-muted-foreground">rev {current.revision}</span>}
+                    {current && <span className="text-[11px] tabular-nums text-muted-foreground">rev {current.revision}</span>}
                     <ChevronDown className="size-3.5" aria-hidden />
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72">
-                {(setups ?? []).map((item) => (
-                    <DropdownMenuItem key={item.setup_id} onSelect={() => onPick(item.setup_id)}
-                        className={cn(item.setup_id === current?.setup_id && "bg-accent")}>
-                        <div className="min-w-0">
-                            <p className="truncate text-sm">{item.name}</p>
-                            <p className="text-xs text-muted-foreground">rev {item.revision} · {new Date(item.updated_at).toLocaleString()}</p>
-                        </div>
-                    </DropdownMenuItem>
-                ))}
+            <DropdownMenuContent align="start" className="themed-scrollbar max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-64 overflow-y-auto">
                 {canMutate && (
                     <>
+                        <DropdownMenuItem onSelect={onNew} className="gap-2 text-xs font-medium text-primary focus:text-primary">
+                            <Plus className="size-3.5" aria-hidden /> New setup
+                        </DropdownMenuItem>
                         {(setups ?? []).length > 0 && <DropdownMenuSeparator />}
-                        <DropdownMenuItem onSelect={onNew}><Plus className="mr-2 size-4" aria-hidden /> New setup…</DropdownMenuItem>
                     </>
                 )}
+                {(setups ?? []).map((item) => {
+                    const currentItem = item.setup_id === current?.setup_id;
+                    return (
+                        <DropdownMenuItem key={item.setup_id} onSelect={() => onPick(item.setup_id)} className="gap-2 py-1.5">
+                            <Check className={cn("size-3.5 shrink-0 text-primary", !currentItem && "invisible")} aria-hidden />
+                            <div className="min-w-0 flex-1">
+                                <p className={cn("truncate text-xs", currentItem && "font-medium")}>{item.name}</p>
+                                <p className="text-[11px] tabular-nums text-muted-foreground">rev {item.revision} · {shortDate(item.updated_at)}</p>
+                            </div>
+                        </DropdownMenuItem>
+                    );
+                })}
             </DropdownMenuContent>
         </DropdownMenu>
     );
@@ -467,7 +552,6 @@ function NoSetups({ canMutate, onNew }: { canMutate: boolean; onNew: () => void 
         <div className="flex flex-1 items-center justify-center p-6">
             <div className="max-w-sm text-center">
                 <p className="font-semibold">No DC IR drop setups yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">A setup holds the power tree, its loads and the solver settings.</p>
                 {canMutate && <Button className="mt-4" onClick={onNew}><Plus className="mr-1.5 size-4" aria-hidden /> New setup</Button>}
             </div>
         </div>
@@ -483,15 +567,15 @@ function NewSetupDialog({ open, onOpenChange, onCreate }: {
     const [seed, setSeed] = useState<"inferred" | "blank">("inferred");
     const [busy, setBusy] = useState(false);
     const options = [
-        { value: "inferred" as const, icon: Sparkles, title: "Inferred power tree", text: "Rails, sources, converters and loads read from the netlist. You fill in currents and efficiencies." },
-        { value: "blank" as const, icon: SquareDashed, title: "Blank canvas", text: "Start empty and add each element yourself." },
+        { value: "inferred" as const, icon: Sparkles, title: "Inferred power tree" },
+        { value: "blank" as const, icon: SquareDashed, title: "Blank canvas" },
     ];
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>New DC IR drop setup</DialogTitle>
-                    <DialogDescription>Each setup keeps its own power tree, loads and solver settings.</DialogDescription>
+                    <DialogDescription className="sr-only">Each setup keeps its own power tree, loads and solver settings.</DialogDescription>
                 </DialogHeader>
                 <form className="space-y-4" onSubmit={(event) => {
                     event.preventDefault();
@@ -502,7 +586,7 @@ function NewSetupDialog({ open, onOpenChange, onCreate }: {
                         .catch((error) => toast.error(message(error)))
                         .finally(() => setBusy(false));
                 }}>
-                    <Input autoFocus aria-label="Setup name" placeholder="Name, e.g. Full power tree at max load" value={name} onChange={(event) => setName(event.target.value)} />
+                    <Input autoFocus aria-label="Setup name" placeholder="Name" value={name} onChange={(event) => setName(event.target.value)} />
                     <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Start from">
                         {options.map((option) => (
                             <button key={option.value} type="button" role="radio" aria-checked={seed === option.value} onClick={() => setSeed(option.value)}
@@ -510,7 +594,6 @@ function NewSetupDialog({ open, onOpenChange, onCreate }: {
                                     seed === option.value ? "border-primary bg-primary/5" : "hover:border-primary/50")}>
                                 <option.icon className="mb-2 size-5 text-primary" aria-hidden />
                                 <span className="text-sm font-medium">{option.title}</span>
-                                <span className="mt-1 text-xs text-muted-foreground">{option.text}</span>
                             </button>
                         ))}
                     </div>
@@ -540,7 +623,7 @@ function RunSwitcher({ runs, current, onPick }: { runs: SimRun[]; current: SimRu
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-72">
                 {runs.map((run) => (
-                    <DropdownMenuItem key={run.run_id} disabled={run.status !== "succeeded"} onSelect={() => onPick(run.run_id)}
+                    <DropdownMenuItem key={run.run_id} disabled={run.status === "queued" || run.status === "running"} onSelect={() => onPick(run.run_id)}
                         className={cn("gap-2", run.run_id === current?.run_id && "bg-accent")}>
                         <RunStatus run={run} />
                         <span className="text-xs">rev {run.setup_revision} · {when(run)}</span>
@@ -558,6 +641,23 @@ function RunStatus({ run }: { run: SimRun }) {
     return <ShieldAlert className="size-3.5 text-destructive" aria-label={run.status} />;
 }
 
+function FailedRun({ run, onSetup }: { run: SimRun; onSetup: () => void }) {
+    return (
+        <div className="flex flex-1 items-center justify-center p-6">
+            <div className="w-full max-w-xl rounded-lg border border-destructive/30 bg-destructive/5 p-5">
+                <div className="flex items-center gap-2">
+                    <ShieldAlert className="size-4 text-destructive" aria-hidden />
+                    <p className="font-semibold">Run {run.status} (rev {run.setup_revision})</p>
+                </div>
+                <pre className="themed-scrollbar mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/70 p-3 font-mono text-xs text-muted-foreground">
+                    {run.message ?? "No reason recorded"}
+                </pre>
+                <Button variant="outline" size="sm" className="mt-4" onClick={onSetup}>Back to setup</Button>
+            </div>
+        </div>
+    );
+}
+
 function NoResult({ runs }: { runs: SimRun[] }) {
     const active = runs.find((run) => run.status === "queued" || run.status === "running");
     return (
@@ -565,13 +665,10 @@ function NoResult({ runs }: { runs: SimRun[] }) {
             {active ? (
                 <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="size-5 animate-spin" aria-hidden />
-                    The run is {active.status}; its results open here when it finishes.
+                    <span className="capitalize">{active.status}</span>
                 </div>
             ) : (
-                <div className="max-w-sm">
-                    <p className="font-semibold">No results yet</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Validate and pre-flight the setup, then run it.</p>
-                </div>
+                <p className="text-sm text-muted-foreground">No results yet</p>
             )}
         </div>
     );
