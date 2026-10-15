@@ -17,8 +17,8 @@ from pipeline.topology_compiler.copper_geometry import (
 )
 from pipeline.topology_compiler.pcb_extract import compile_pcb_artifacts, extract_pcb_metadata_light
 
-# A rotated footprint with pads, a padless footprint on the back, manufacturing
-# flags in the stackup, and net classes in the project.
+# A rotated footprint with pads and a courtyard, a padless footprint on the
+# back, manufacturing flags in the stackup, and net classes in the project.
 BOARD = """(kicad_pcb
   (version 20240108)
   (generator "kicad")
@@ -49,7 +49,8 @@ BOARD = """(kicad_pcb
     (property "Reference" "R1" (at 0 0 0) (layer "F.SilkS"))
     (property "Value" "10k" (at 0 1 0) (layer "F.Fab"))
     (pad "1" smd rect (at -1 0 90) (size 1 1) (layers "F.Cu") (net 1 "/A") (uuid "pad-r1-1"))
-    (pad "2" smd rect (at 1 0 90) (size 1 1) (layers "F.Cu") (net 2 "GND") (uuid "pad-r1-2")))
+    (pad "2" smd rect (at 1 0 90) (size 1 1) (layers "F.Cu") (net 2 "GND") (uuid "pad-r1-2"))
+    (fp_rect (start -1.6 -0.6) (end 1.6 0.6) (stroke (width 0.05) (type solid)) (layer "F.CrtYd")))
   (footprint "Logo:Mark" (layer "B.Cu") (at 20 5 45) (uuid "fp-logo")
     (property "Reference" "G1" (at 0 0 0) (layer "B.SilkS"))
     (fp_line (start -1 0) (end 1 0) (stroke (width 0.1) (type solid)) (layer "B.SilkS")))
@@ -113,7 +114,15 @@ def _mesh_pack_payload() -> dict:
             ),
         ],
         "footprints": [
-            {"uid": "fp-r1", "reference": "R1", "layer": "F.Cu", "positionMm": [10.0, 12.0], "angleDeg": 90.0},
+            {
+                "uid": "fp-r1",
+                "reference": "R1",
+                "layer": "F.Cu",
+                "positionMm": [10.0, 12.0],
+                "angleDeg": 90.0,
+                # The courtyard turned with the footprint: 3.2 x 1.2 becomes 1.2 x 3.2.
+                "bodyBboxMm": [9.4, 10.4, 10.6, 13.6],
+            },
             {"uid": "fp-logo", "reference": "G1", "layer": "B.Cu", "positionMm": [20.0, 5.0], "angleDeg": 45.0},
         ],
         "stats": {"pads": 2, "tracks": 0, "vias": 0, "zone_fills": 0},
@@ -161,6 +170,17 @@ def _board_facts(metadata: dict) -> dict:
             for link in metadata["terminal_pad_links"]
         ),
     }
+
+
+def _bodies(metadata: dict) -> list[tuple]:
+    return sorted(
+        (component["designator"], tuple(round(value, 6) for value in component.get("body_bbox_mm") or ()))
+        for component in metadata["components"]
+    )
+
+
+def _layer_looks(metadata: dict) -> list[tuple]:
+    return [(layer["name"], layer["material"], layer["color"]) for layer in metadata["board"]["stackup"]["layers"]]
 
 
 def _placements(metadata: dict) -> list[tuple]:
@@ -225,6 +245,12 @@ class BoardMetadataParityTest(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(_placements(self.adapters[name]), reference)
 
+    def test_rust_states_courtyards_and_layer_looks_as_the_ir_path_does(self) -> None:
+        reference = self.adapters["unified"]
+        self.assertEqual(_bodies(reference), [("G1", ()), ("R1", (9.4, 10.4, 10.6, 13.6))])
+        self.assertEqual(_bodies(self.adapters["rust"]), _bodies(reference))
+        self.assertEqual(_layer_looks(self.adapters["rust"]), _layer_looks(reference))
+
     def test_the_copper_document_places_components_by_their_pads(self) -> None:
         # Its contract carries no footprint records: a padless footprint has no
         # component, and placement is the pads' centre without rotation.
@@ -248,6 +274,12 @@ class BoardMetadataParityTest(unittest.TestCase):
         )
         self.assertEqual(_board_facts(metadata), _board_facts(self.adapters["unified"]))
         self.assertEqual(_placements(metadata), _placements(self.adapters["unified"]))
+        self.assertEqual(_bodies(metadata), _bodies(self.adapters["unified"]))
+        self.assertEqual(_layer_looks(metadata), _layer_looks(self.adapters["unified"]))
+        # KiCad's board-edges box: the outline grown by half its stroke.
+        for reference in ([-0.05, -0.05, 25.05, 25.05], self.adapters["unified"]["board"]["bbox_mm"]):
+            for actual, expected in zip(metadata["board"]["bbox_mm"], reference, strict=True):
+                self.assertAlmostEqual(actual, expected, places=6)
 
 
 if __name__ == "__main__":

@@ -183,6 +183,7 @@ def cmd_from_project(args: argparse.Namespace) -> None:
                 project_file,
                 args.output,
                 strict_components=args.strict_components,
+                soldermask=not analytic,
                 progress=_progress,
                 profile_callback=_profile("kicad_cli"),
             )

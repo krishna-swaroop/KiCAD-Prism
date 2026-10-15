@@ -3,6 +3,7 @@ use crate::contract::{
     Board, CoordinateSystem, Diagnostic, Document, Drill, Feature, KICAD_MONKEY_REVISION, Layer,
     Metrics, Net, SCHEMA, SourceIdentity, StackupLayer,
 };
+use crate::extents;
 use crate::geometry::{
     Point, capsule, chamfered_rectangle, circle, mm_to_nm, oval, point_to_nm, rectangle,
     ring_to_nm, rounded_rectangle, sample_arc, transform_footprint, trapezoid,
@@ -369,7 +370,9 @@ impl AnalyticProducer for TemporaryPrismProducer {
             .with(PcbFamily::Vias)
             .with(PcbFamily::Zones)
             .with(PcbFamily::Holes)
-            .with(PcbFamily::FootprintTransforms);
+            .with(PcbFamily::FootprintTransforms)
+            .with(PcbFamily::FootprintGraphics)
+            .with(PcbFamily::Profile);
         let view = PcbView::parse_selected(source, Default::default(), selection)
             .context("parse selected PCB source families with kicad-monkey-core")?;
         let parse_index_ms = parse_started.elapsed().as_secs_f64() * 1000.0;
@@ -558,11 +561,14 @@ impl AnalyticProducer for TemporaryPrismProducer {
                 .as_ref()
                 .and_then(|value| value.stackup.as_ref())
                 .is_some_and(|value| value.edge_plating),
+            outline_bounds_nm: extents::outline_bounds_nm(&view, &footprints),
         };
 
+        let body_bounds = extents::footprint_body_bounds_nm(&view, &footprints);
         let footprints = footprints
             .iter()
-            .map(|footprint| analytic::Footprint {
+            .zip(body_bounds)
+            .map(|(footprint, body_bounds_nm)| analytic::Footprint {
                 source_uid: source_uid(
                     "footprint",
                     footprint.uuid.as_deref(),
@@ -579,6 +585,7 @@ impl AnalyticProducer for TemporaryPrismProducer {
                     footprint.at_y.unwrap_or_default(),
                 )),
                 angle_deg: footprint.angle.unwrap_or_default(),
+                body_bounds_nm,
             })
             .collect();
 

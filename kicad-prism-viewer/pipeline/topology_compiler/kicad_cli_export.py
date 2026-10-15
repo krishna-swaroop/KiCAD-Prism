@@ -101,10 +101,14 @@ def export_project_geometry_assets(
     output_dir: Path,
     *,
     strict_components: bool = False,
+    soldermask: bool = True,
     progress: Callable[[str], None] | None = None,
     profile_callback: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> GeometryExportArtifacts:
-    """Export board and component GLBs without waiting for topology compilation."""
+    """Export board and component GLBs without waiting for topology compilation.
+
+    ``soldermask=False`` skips the mask polygons: an analytic board draws its own mask.
+    """
 
     lane_started = time.perf_counter()
     cli = find_kicad_cli()
@@ -190,7 +194,7 @@ def export_project_geometry_assets(
         # from it in finalize_project_geometry. The others never parse the board
         # in Python, so the mask parses it here, in its own process so parsing
         # and clipping do not contend for the GIL with the topology compile.
-        if pcb_geometry_backend() == "legacy":
+        if not soldermask or pcb_geometry_backend() == "legacy":
             return None
         if _soldermask_cache_path(cache_dir, pcb_hash).is_file():
             return None
@@ -228,11 +232,11 @@ def export_project_geometry_assets(
             mask_future = pool.submit(build_mask)
             board_export = board_future.result()
             component_export = component_future.result()
-            soldermask = mask_future.result()
+            mask_polygons = mask_future.result()
     else:
         board_export = export_board()
         component_export = export_components()
-        soldermask = build_mask()
+        mask_polygons = build_mask()
     if profile_callback:
         profile_callback(
             "exports.wall",
@@ -259,7 +263,7 @@ def export_project_geometry_assets(
         pcb_hash=pcb_hash,
         exports=exports,
         elapsed_ms=(time.perf_counter() - lane_started) * 1000.0,
-        soldermask=soldermask,
+        soldermask=mask_polygons,
     )
 
 

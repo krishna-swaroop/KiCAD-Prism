@@ -66,6 +66,8 @@ pub struct Board {
     pub copper_finish: String,
     pub edge_connector: String,
     pub edge_plating: bool,
+    /// KiCad's board-edges bounding box (stroke included); None without an outline.
+    pub outline_bounds_nm: Option<[i64; 4]>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -225,6 +227,8 @@ pub struct Footprint {
     pub layer: String,
     pub position_nm: NmPoint,
     pub angle_deg: f64,
+    /// Courtyard extent, else the fab outline's; None when it has neither.
+    pub body_bounds_nm: Option<[i64; 4]>,
 }
 
 #[derive(Clone, Debug, Serialize)]

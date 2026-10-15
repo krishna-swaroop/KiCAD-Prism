@@ -93,6 +93,8 @@ pub struct FootprintRecord {
     pub layer: String,
     pub position_mm: [f64; 2],
     pub angle_deg: f64,
+    /// Courtyard extent, else the fab outline's.
+    pub body_bbox_mm: Option<[f64; 4]>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -499,7 +501,12 @@ pub fn compile_semantic(
         });
     }
     let packed_output_ms = packed_started.elapsed().as_secs_f64() * 1000.0;
-    let bounds_nm = document.bounds_nm.unwrap_or([0, 0, 1_000_000, 1_000_000]);
+    // KiCad's board-edges box; the copper extent stands in only without an outline.
+    let bounds_nm = document
+        .board
+        .outline_bounds_nm
+        .or(document.bounds_nm)
+        .unwrap_or([0, 0, 1_000_000, 1_000_000]);
     let metrics = CompileMetrics {
         parse_analytics_ms,
         classification_ms,
@@ -566,6 +573,7 @@ pub fn compile_semantic(
                     nm_to_mm(footprint.position_nm[1]),
                 ],
                 angle_deg: footprint.angle_deg,
+                body_bbox_mm: footprint.body_bounds_nm.map(|bounds| bounds.map(nm_to_mm)),
             })
             .collect(),
         barrels,
@@ -1443,6 +1451,7 @@ mod tests {
                 copper_finish: String::new(),
                 edge_connector: String::new(),
                 edge_plating: false,
+                outline_bounds_nm: None,
             },
             bounds_nm: None,
             layers: vec![

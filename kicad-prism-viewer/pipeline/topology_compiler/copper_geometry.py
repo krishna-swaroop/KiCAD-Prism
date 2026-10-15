@@ -400,20 +400,24 @@ def extract_pcb_metadata_from_mesh_pack(
     started = time.perf_counter()
     payload = pack.payload
     board = dict(payload.get("board") or {})
-    layers = [
-        {
-            "name": str(layer.get("name") or ""),
-            "role": str(layer.get("role") or "unknown"),
-            "type": str(layer.get("role") or "unknown"),
-            "thickness_mm": float(layer.get("thicknessMm") or 0.0),
-            "material": str(layer.get("material") or ""),
-            "color": str(layer.get("color") or ""),
-            "stack_index": int(layer.get("stackIndex") or 0),
-            "epsilon_r": layer.get("epsilonR"),
-            "loss_tangent": layer.get("lossTangent"),
-        }
-        for layer in payload.get("layers") or ()
-    ]
+    # The same palette and material names as the Python path. The pack fills a
+    # missing stackup material with the role, so that counts as unauthored here.
+    layers = _normalize_stackup_layers(
+        [
+            {
+                "name": str(layer.get("name") or ""),
+                "role": str(layer.get("role") or "unknown"),
+                "type": str(layer.get("role") or "unknown"),
+                "thickness_mm": float(layer.get("thicknessMm") or 0.0),
+                "material": "" if layer.get("material") == layer.get("role") else str(layer.get("material") or ""),
+                "color": str(layer.get("color") or ""),
+                "epsilon_r": layer.get("epsilonR"),
+                "loss_tangent": layer.get("lossTangent"),
+            }
+            for layer in payload.get("layers") or ()
+        ],
+        {"copper", "dielectric", "soldermask", "silkscreen", "paste"},
+    )
     layer_names = {
         int(layer.get("id") or 0): str(layer.get("name") or "")
         for layer in payload.get("layers") or ()
@@ -450,6 +454,7 @@ def extract_pcb_metadata_from_mesh_pack(
             "x_mm": float((footprint.get("positionMm") or (0.0, 0.0))[0]),
             "y_mm": float((footprint.get("positionMm") or (0.0, 0.0))[1]),
             "angle_deg": float(footprint.get("angleDeg") or 0.0),
+            "body_bbox_mm": footprint.get("bodyBboxMm"),
         }
         for footprint in payload.get("footprints") or ()
     ]

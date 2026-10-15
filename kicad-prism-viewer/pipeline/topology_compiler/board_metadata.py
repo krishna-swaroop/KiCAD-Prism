@@ -160,8 +160,9 @@ def components_from_pads(
 
     Each pad is ``{designator, footprint_uid, number, source_uid, net_name,
     layers, bbox_mm}``. ``footprints``, when the backend has them, are
-    ``{uid, designator, layer, x_mm, y_mm, angle_deg}``: every footprint is a
-    component at its own placement, its bbox the extent of its pads. Without
+    ``{uid, designator, layer, x_mm, y_mm, angle_deg, body_bbox_mm?}``: every
+    footprint is a component at its own placement, its bbox the extent of its
+    pads and its body bbox, when given, the courtyard or fab outline. Without
     them a component exists only for footprints with pads, placed at the
     centre of its pads with no rotation.
     """
@@ -182,6 +183,9 @@ def components_from_pads(
             "y_mm": round(float(footprint.get("y_mm") or 0.0), 6),
             "angle_deg": float(footprint.get("angle_deg") or 0.0),
         }
+        body_bbox = footprint.get("body_bbox_mm")
+        if isinstance(body_bbox, (list, tuple)) and len(body_bbox) == 4:
+            components_by_key[key]["body_bbox_mm"] = [float(value) for value in body_bbox]
     placed = bool(components_by_key)
 
     terminal_pad_links: list[dict[str, str]] = []

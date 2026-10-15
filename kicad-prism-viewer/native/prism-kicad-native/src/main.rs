@@ -2,6 +2,7 @@ pub mod analytic_contract;
 pub mod analytic_pack;
 mod board_body;
 mod contract;
+mod extents;
 mod geometer_ffi;
 pub mod geometer_packets;
 mod geometry;
