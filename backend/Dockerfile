@@ -120,6 +120,9 @@ ENV PRISM_SEMANTIC_VIEWER_REPO=/opt/kicad-prism-viewer
 ENV PYTHONPATH=/opt/kicad-prism-viewer
 ENV PRISM_CLIPPER2_LIBRARY=/usr/local/lib/libprism_clipper2.so
 ENV PRISM_KICAD_NATIVE_PATH=/usr/local/bin/prism-kicad-native
+# glibc gives each thread its own malloc arena and rarely returns their memory;
+# two arenas keep a long-lived API or worker process near its working set.
+ENV MALLOC_ARENA_MAX=2
 
 # API, workers, Release Studio, and the semantic viewer share one fully resolved
 # runtime. Installing two independently resolved files into this venv was the

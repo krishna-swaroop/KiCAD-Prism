@@ -285,6 +285,10 @@ def _read_configured_commit_file(
     return _read_commit_file(project, commit, selected, not_found_detail=not_found_detail)
 
 
+#: Larger commit files are served from the content-addressed blob cache, not read whole.
+COMMIT_FILE_STREAM_BYTES = 1 << 20
+
+
 def _commit_file_response(
     commit_file: file_service.CommitFile,
     *,
@@ -298,6 +302,8 @@ def _commit_file_response(
     response_headers["Content-Disposition"] = (
         f'{disposition}; filename="{safe_name}"; filename*=UTF-8\'\'{quote(commit_file.name)}'
     )
+    if commit_file.size > COMMIT_FILE_STREAM_BYTES:
+        return FileResponse(commit_file.cached_path(), media_type=media_type, headers=response_headers)
     return Response(content=commit_file.content, media_type=media_type, headers=response_headers)
 
 
@@ -741,25 +747,25 @@ async def generate_semantic_index(
 
 @router.get("/{project_id}/semantic-index/identity")
 async def get_semantic_index_identity(
+    request: Request,
     project_id: str,
     commit: Optional[str] = Query(default=None),
     user: AuthenticatedUser = Depends(require_viewer),
 ):
     project = get_project_for_role_or_404(project_id, user.role)
     with caller_errors((ValueError, 400), (RuntimeError, 503)):
-        payload = await asyncio.to_thread(
-            semantic_index_service.get_or_build,
+        # The stored file goes out as is: parsing and re-serializing a large
+        # board's index held tens of MB per request, and the process kept them.
+        path, source_revision_key = await asyncio.to_thread(
+            semantic_index_service.artifact_file,
             project,
             commit,
         )
-        return Response(
-            content=json.dumps(payload),
-            media_type="application/json",
-            headers={
-                "Cache-Control": "private, max-age=300",
-                "ETag": f'"{payload.get("sourceRevisionKey", "")}-{semantic_index_service.generator_cache_tag()}"',
-            },
-        )
+        etag = f'"{source_revision_key}-{semantic_index_service.generator_cache_tag()}"'
+        headers = {"Cache-Control": "private, max-age=300", "ETag": etag}
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=headers)
+        return FileResponse(path, media_type="application/json", headers=headers)
 
 
 @router.get("/{project_id}/webgpu-3d/status")

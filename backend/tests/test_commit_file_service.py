@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from fastapi import HTTPException
 from git import Actor, Repo
@@ -23,6 +24,25 @@ def _commit_all(repo: Repo, message: str):
 
 
 class CommitFileServiceTests(unittest.TestCase):
+    def test_a_large_file_is_served_from_one_cached_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = Repo.init(root)
+            board = bytes(range(256)) * 12_000  # about 3 MB
+            (root / "board.kicad_pcb").write_bytes(board)
+            commit = _commit_all(repo, "board").hexsha
+            (root / "board.kicad_pcb").write_bytes(b"edited after the commit")
+
+            committed = file_service.read_file_from_commit(str(root), commit, "board.kicad_pcb")
+
+            self.assertEqual(committed.size, len(board))
+            with mock.patch.object(file_service, "commit_blob_root", return_value=root / "blobs"):
+                cached = committed.cached_path()
+                self.assertEqual(cached.read_bytes(), board)
+                self.assertEqual(cached.name, committed.blob_sha)
+                self.assertEqual(committed.cached_path(), cached)
+            self.assertEqual(committed.content, board)
+
     def test_lists_files_from_selected_commit_without_checkout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

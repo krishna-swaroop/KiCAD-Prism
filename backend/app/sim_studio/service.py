@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from collections import OrderedDict
 from typing import Any, Callable, Optional
 
 from pydantic import ValidationError
@@ -24,10 +26,34 @@ class InvalidSetup(errors.Invalid):
 FactsLoader = Callable[[Any, Optional[str]], BoardFacts]
 
 
+#: Board facts of recently used index files, newest last.
+_FACTS_CACHE: "OrderedDict[tuple[str, int], BoardFacts]" = OrderedDict()
+_FACTS_CACHE_SIZE = 8
+_FACTS_LOCK = threading.Lock()
+
+
 def semantic_index_facts(project: Any, commit: Optional[str]) -> BoardFacts:
+    """The board facts of one revision, derived once per index file.
+
+    Every setup request needs them, and the canvas sends several at once. Each
+    used to parse the whole semantic index (tens of MB on a large board) and
+    the process kept the peak, so facts are cached by the file they came from.
+    """
+
     from app.services import semantic_index_service
 
-    return from_semantic_index(semantic_index_service.get_or_build(project, commit))
+    path, _key = semantic_index_service.artifact_file(project, commit)
+    stat = path.stat()
+    key = (str(path), stat.st_mtime_ns)
+    with _FACTS_LOCK:
+        cached = _FACTS_CACHE.get(key)
+        if cached is None:
+            cached = from_semantic_index(json.loads(path.read_bytes()))
+            _FACTS_CACHE[key] = cached
+            while len(_FACTS_CACHE) > _FACTS_CACHE_SIZE:
+                _FACTS_CACHE.popitem(last=False)
+        _FACTS_CACHE.move_to_end(key)
+        return cached
 
 
 def canonical_sha256(document: dict[str, Any]) -> str:

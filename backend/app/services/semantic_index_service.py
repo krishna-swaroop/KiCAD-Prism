@@ -278,7 +278,8 @@ def _project_file_for_revision(project: Any, commit: str | None) -> Iterator[tup
 def _write_artifact(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    # Compact: the identity endpoint streams this file to the browser as is.
+    temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     temporary.replace(path)
 
 
@@ -308,6 +309,23 @@ def get_or_build(project: Any, commit: str | None = None) -> dict[str, Any]:
         if path.is_file():
             return json.loads(path.read_text(encoding="utf-8"))
         return _build_and_store(project, commit, source_revision_key, path)
+
+
+def artifact_file(project: Any, commit: str | None = None) -> tuple[Path, str]:
+    """The stored index file and its revision key, built first if missing, never parsed.
+
+    Readers that only pass the index on (the identity endpoint) or reduce it
+    (Simulation Studio's board facts, cached per file) start from this, so a
+    request no longer holds the whole index as Python objects.
+    """
+
+    source_revision_key, _resolved_commit = _revision_identity(project, commit)
+    path = artifact_path(str(project.id), source_revision_key)
+    if not path.is_file():
+        with _lock(str(project.id), source_revision_key):
+            if not path.is_file():
+                _build_and_store(project, commit, source_revision_key, path)
+    return path, source_revision_key
 
 
 def get_existing(project: Any, commit: str | None = None) -> dict[str, Any] | None:

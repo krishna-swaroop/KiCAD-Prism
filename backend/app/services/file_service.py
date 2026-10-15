@@ -1,9 +1,12 @@
 import fnmatch
 import os
 import posixpath
+import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import HTTPException
@@ -24,9 +27,73 @@ class FileItem(BaseModel):
 
 @dataclass(frozen=True)
 class CommitFile:
+    """A file at a commit. Its bytes are read on first use of ``content``;
+    a response can stream them instead (``stream``), so serving a large board
+    never holds the whole blob in the API process."""
+
     name: str
     path: str
-    content: bytes
+    repo_path: str
+    blob_sha: str
+    size: int
+
+    @property
+    def content(self) -> bytes:
+        completed = subprocess.run(
+            ["git", "-C", self.repo_path, "cat-file", "blob", self.blob_sha],
+            capture_output=True, check=False,
+        )
+        if completed.returncode != 0:
+            raise HTTPException(status_code=500, detail="Git error: could not read the file")
+        return completed.stdout
+
+    def cached_path(self) -> Path:
+        """The blob as a file under ``commit-blobs/<sha>``, written once by git.
+
+        Large files are served from here so the API never holds them in
+        memory and git never waits on a client. Named by content, so every
+        view of the same board reuses one copy; unused copies are swept after
+        an hour.
+        """
+
+        root = commit_blob_root()
+        target = root / self.blob_sha
+        if target.is_file():
+            os.utime(target)
+            return target
+        root.mkdir(parents=True, exist_ok=True)
+        partial = root / f".{self.blob_sha}.{os.getpid()}.{threading.get_ident()}"
+        with partial.open("wb") as sink:
+            completed = subprocess.run(
+                ["git", "-C", self.repo_path, "cat-file", "blob", self.blob_sha],
+                stdout=sink, stderr=subprocess.DEVNULL, check=False,
+            )
+        if completed.returncode != 0:
+            partial.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail="Git error: could not read the file")
+        partial.replace(target)
+        _sweep_commit_blobs(root)
+        return target
+
+
+#: Commit blobs not served for this long are removed from the cache.
+COMMIT_BLOB_IDLE_SECONDS = 60 * 60
+
+
+def commit_blob_root() -> Path:
+    from app.services.job_runtime import job_state_root
+
+    return job_state_root() / "commit-blobs"
+
+
+def _sweep_commit_blobs(root: Path) -> None:
+    cutoff = time.time() - COMMIT_BLOB_IDLE_SECONDS
+    for path in root.iterdir():
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+        except OSError:
+            continue
 
 
 FILE_LISTING_CACHE_TTL = 2.0
@@ -162,7 +229,9 @@ def read_file_from_commit(
     return CommitFile(
         name=posixpath.basename(normalized_file_path),
         path=normalized_file_path,
-        content=entry.data_stream.read(),
+        repo_path=repo_path,
+        blob_sha=entry.hexsha,
+        size=int(entry.size),
     )
 
 
