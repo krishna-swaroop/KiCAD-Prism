@@ -130,14 +130,18 @@ def _project_sources(run: Mapping[str, Any]) -> Iterator[Path]:
         yield location.checkout
 
 
-def _build_bundle(project_file: Path, target: Path, log: list[str]) -> None:
-    """``prism-bundle build`` into ``target``, refilling zones with the worker's kicad-cli."""
+def _build_bundle(project_file: Path, target: Path, log: list[str], refilled: Optional[Path] = None) -> None:
+    """``prism-bundle build`` into ``target``, refilling zones with the worker's kicad-cli, or
+    taking ``refilled``, a copy of the board the same KiCad already refilled."""
 
     from app.services.kicad_tools import locate_kicad_cli
 
     command = [str(binary("prism-bundle")), "build", str(project_file), "-o", str(target)]
     cli = locate_kicad_cli()
-    command += ["--kicad-cli", cli] if cli else ["--no-refill"]
+    if refilled is not None and cli:
+        command += ["--refilled-board", str(refilled), "--refill-tool", kicad_cli_version(cli)]
+    else:
+        command += ["--kicad-cli", cli] if cli else ["--no-refill"]
     completed = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False)
     log.extend(line for line in (completed.stdout + completed.stderr).splitlines() if line.strip())
     if completed.returncode != 0:
@@ -158,13 +162,18 @@ def bundle_cache_dir() -> Path:
 
 
 @functools.lru_cache(maxsize=4)
+def kicad_cli_version(cli: str) -> str:
+    completed = subprocess.run([cli, "version"], capture_output=True, text=True, timeout=60, check=False)
+    return completed.stdout.strip()
+
+
+@functools.lru_cache(maxsize=4)
 def _tool_identity(cli: Optional[str]) -> str:
-    """What else decides a bundle: the prism-bundle binary and the kicad-cli that refills zones."""
+    """What else decides a bundle: the prism-bundle binary and the KiCad that refills zones."""
 
     parts = [_sha256_file(binary("prism-bundle"))]
     if cli:
-        completed = subprocess.run([cli, "version"], capture_output=True, text=True, timeout=60, check=False)
-        parts.append(f"{cli}:{completed.stdout.strip()}")
+        parts.append(f"{cli}:{kicad_cli_version(cli)}")
     else:
         parts.append("no-refill")
     return "|".join(parts)
@@ -209,12 +218,43 @@ def _cached_bundle(project_file: Path, target: Path, log: list[str]) -> None:
         os.utime(cached)
         return
     _build_bundle(project_file, target, log)
+    _store_bundle(target, key)
+
+
+def _store_bundle(built: Path, key: str) -> None:
+    cache = bundle_cache_dir()
     cache.mkdir(parents=True, exist_ok=True)
     partial = cache / f".{key}.{os.getpid()}.partial"
-    shutil.copyfile(target, partial)
-    os.replace(partial, cached)
+    shutil.copyfile(built, partial)
+    os.replace(partial, cache / f"{key}.prism")
     for stale in sorted(cache.glob("*.prism"), key=lambda path: path.stat().st_mtime, reverse=True)[BUNDLE_CACHE_SIZE:]:
         stale.unlink(missing_ok=True)
+
+
+def prebuild_bundle(project_file: Path, refilled: Path, log: list[str]) -> None:
+    """The run bundle for this revision, built by the 3D job from the board it already
+    refilled, so a first run finds it cached. Failures are logged: a run builds its own."""
+
+    from app.services.kicad_tools import locate_kicad_cli
+
+    if not settings.PRISM_SIM_STUDIO_ENABLED:
+        return
+    cli = locate_kicad_cli()
+    try:
+        if not cli or not binary("prism-bundle").is_file():
+            return
+        key = bundle_key(project_file, cli)
+        if (bundle_cache_dir() / f"{key}.prism").is_file():
+            log.append(f"Simulation bundle already cached ({key[:12]})")
+            return
+        with tempfile.TemporaryDirectory(prefix="sim-bundle-") as scratch:
+            built = Path(scratch) / "board.prism"
+            notes: list[str] = []
+            _build_bundle(project_file, built, notes, refilled=refilled)
+            _store_bundle(built, key)
+        log.append(f"Simulation bundle cached ({key[:12]})")
+    except Exception as exc:  # A run that needs it builds it, and reports why it fails.
+        log.append(f"Simulation bundle not prebuilt: {str(exc).splitlines()[0] if str(exc) else type(exc).__name__}")
 
 
 def _stage(run: Mapping[str, Any], workspace: Path, log: list[str]) -> dict[str, Any]:

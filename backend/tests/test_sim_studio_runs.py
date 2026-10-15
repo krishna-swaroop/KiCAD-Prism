@@ -205,9 +205,11 @@ class BundleCacheTest(unittest.TestCase):
                            ("sub/power.kicad_sch", "(kicad_sch power)")):
             (self.project / name).write_text(text)
         self.builds: list[Path] = []
+        self.refilled: list[Path | None] = []
 
-        def build(project_file: Path, target: Path, log: list[str]) -> None:
+        def build(project_file: Path, target: Path, log: list[str], refilled: Path | None = None) -> None:
             self.builds.append(project_file)
+            self.refilled.append(refilled)
             target.write_bytes(b"bundle " + project_file.read_bytes())
 
         for patcher in (
@@ -235,6 +237,31 @@ class BundleCacheTest(unittest.TestCase):
         self.assertNotEqual(runs_module.bundle_key(self.project / "b.kicad_pro", None), key)
         self.stage("three.prism")
         self.assertEqual(len(self.builds), 2)
+
+    def test_the_3d_job_prebuilds_what_a_run_then_reuses(self) -> None:
+        refilled = self.tmp / "refilled.kicad_pcb"
+        refilled.write_text("(kicad_pcb refilled)")
+        with mock.patch("app.services.kicad_tools.locate_kicad_cli", return_value="/opt/kicad-cli"), \
+                mock.patch.object(runs_module, "kicad_cli_version", return_value="10.0.7"), \
+                mock.patch.object(settings, "PRISM_SIM_STUDIO_ENABLED", True):
+            log: list[str] = []
+            runs_module.prebuild_bundle(self.project / "b.kicad_pro", refilled, log)
+            self.assertEqual(self.refilled, [refilled])
+            self.assertTrue(log[-1].startswith("Simulation bundle cached"))
+            self.stage("run.prism")
+            runs_module.prebuild_bundle(self.project / "b.kicad_pro", refilled, log)
+        self.assertEqual(len(self.builds), 1)
+        self.assertTrue(log[-1].startswith("Simulation bundle already cached"))
+
+    def test_no_prebuild_without_kicad_or_with_sim_studio_off(self) -> None:
+        refilled = self.tmp / "refilled.kicad_pcb"
+        refilled.write_text("(kicad_pcb refilled)")
+        with mock.patch.object(settings, "PRISM_SIM_STUDIO_ENABLED", True):
+            runs_module.prebuild_bundle(self.project / "b.kicad_pro", refilled, [])
+        with mock.patch("app.services.kicad_tools.locate_kicad_cli", return_value="/opt/kicad-cli"), \
+                mock.patch.object(settings, "PRISM_SIM_STUDIO_ENABLED", False):
+            runs_module.prebuild_bundle(self.project / "b.kicad_pro", refilled, [])
+        self.assertEqual(self.builds, [])
 
     def test_a_new_tool_is_a_new_key(self) -> None:
         key = runs_module.bundle_key(self.project / "b.kicad_pro", None)

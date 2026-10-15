@@ -197,6 +197,7 @@ def cmd_from_project(args: argparse.Namespace) -> None:
             native_semantic_output=args.output / ".native-semantic-pack",
             semantic_tile_size=args.tile_size,
             semantic_meshopt_level=args.meshopt_level,
+            pcb_override=getattr(args, "pcb", None),
         )
         # The native compiler reads the board file directly. Start it before
         # KiCadDesign hydration so Rust analytics overlap both the topology
@@ -580,6 +581,11 @@ def main() -> None:
         default="mesh",
         help="mesh: copper scene tiles and a solder mask GLB; analytic: the manifest only, "
         "for a board drawn from its analytic pack",
+    )
+    from_project.add_argument(
+        "--pcb",
+        type=Path,
+        help="Board file for the native compile in place of the project's, e.g. a copy with refilled zones",
     )
     from_project.add_argument(
         "--meshopt-level",

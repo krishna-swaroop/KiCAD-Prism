@@ -82,6 +82,18 @@ class PipelineSettings(BaseSettings):
             "then copper tiles in a follow-up job. False builds the mesh board only."
         ),
     )
+    PRISM_ZONE_REFILL_ENABLED: bool = Field(
+        default=True,
+        description=(
+            "Refill a copy of the board's zones once per revision; the 3D view and the simulation "
+            "bundle are built from it. False keeps the fills saved in the file."
+        ),
+    )
+    PRISM_KICAD_PYTHON: str = Field(
+        default="/usr/bin/python3",
+        description="Python interpreter with KiCad's pcbnew module, for the zone refill.",
+    )
+    PRISM_ZONE_REFILL_TIMEOUT_SECONDS: float = Field(default=900, description="Zone refill time limit.")
     PRISM_SIM_STUDIO_ENABLED: bool = Field(
         default=False,
         description="Experimental: the Simulation Studio tab and its /api/.../sim/a0 routes.",

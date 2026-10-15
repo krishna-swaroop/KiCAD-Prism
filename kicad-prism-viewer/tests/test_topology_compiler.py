@@ -761,7 +761,7 @@ class TopologyCompilerTests(unittest.TestCase):
         with patch(
             "pipeline.topology_compiler.context.compile_pcb_artifacts",
             side_effect=compile_artifacts,
-        ):
+        ), patch.dict(os.environ, {"PRISM_PCB_GEOMETRY_BACKEND": "legacy"}):
             self.assertEqual(context.pcb_metadata["mode"], "unified")
             self.assertEqual(context.pcb_ir, {"records": []})
             self.assertIn("pad", context.pad_holes)

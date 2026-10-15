@@ -37,9 +37,14 @@ def update_fingerprint(hasher) -> None:
         hasher.update(helper.read_bytes())
 
 
-def write_pack(project_file: Path, output_dir: Path, log: list[str]) -> Dict[str, Any] | None:
-    """Writes ``board.kmpack`` into ``output_dir`` and returns its bundle entry."""
-    pcb = project_file.with_suffix(".kicad_pcb")
+def write_pack(
+    project_file: Path, output_dir: Path, log: list[str], pcb: Path | None = None
+) -> Dict[str, Any] | None:
+    """Writes ``board.kmpack`` into ``output_dir`` and returns its bundle entry.
+
+    ``pcb`` replaces the project's board, e.g. a copy with refilled zones.
+    """
+    pcb = pcb or project_file.with_suffix(".kicad_pcb")
     helper = native_geometry_helper()
     if not pcb.is_file():
         log.append(f"Analytic pack skipped: no board file {pcb.name}")

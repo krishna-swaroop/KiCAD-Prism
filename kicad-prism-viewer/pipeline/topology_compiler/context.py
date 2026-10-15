@@ -37,6 +37,8 @@ class PrismCompilationContext:
     semantic_tile_size: str = "auto"
     semantic_mesh_tolerance_mm: float = 0.005
     semantic_meshopt_level: str = "medium"
+    # A refilled copy of the board for the native compile; the project's own otherwise.
+    pcb_override: Path | None = None
     timings: dict[str, float] = field(default_factory=dict)
     _design: Any = None
     _board_compilation: BoardCompilation | None = None
@@ -75,6 +77,8 @@ class PrismCompilationContext:
 
     @property
     def pcb_path(self) -> Path:
+        if self.pcb_override is not None:
+            return self.pcb_override
         conventional = self.project_file.with_suffix(".kicad_pcb")
         if conventional.is_file():
             return conventional

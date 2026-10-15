@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from app.core.config import settings
-from app.services import analytic_pack_service, path_config_service, project_revision
+from app.services import analytic_pack_service, path_config_service, project_revision, zone_refill
 from app.services.job_service import jobs
 from app.services.semantic_viewer_runtime import find_viewer_repo_root, generator_inputs, pythonpath as semantic_viewer_pythonpath, update_native_geometry_fingerprint
 
@@ -32,6 +32,7 @@ def _compute_build_fingerprint() -> str:
         hasher.update(base.encode("utf-8"))
         update_native_geometry_fingerprint(hasher)
         analytic_pack_service.update_fingerprint(hasher)
+        zone_refill.update_fingerprint(hasher)
         hasher.update(settings.PRISM_KICAD_MONKEY_SOURCE.encode("utf-8"))
         for path in generator_inputs(viewer_root):
             hasher.update(path.relative_to(viewer_root).as_posix().encode("utf-8"))
@@ -1110,12 +1111,32 @@ def _build_visualizer_bundle_locked(
         output.mkdir(parents=True, exist_ok=True)
         analytic_pack = None
         board_geometry = "mesh"
+        # One refill feeds the analytic board, the semantic index and the
+        # simulation bundle, so all three show the same copper.
+        job["stage"] = "zone-refill"
+        job["message"] = "Refilling zones..."
+        persist()
+        refill_started = time.perf_counter()
+        refilled = zone_refill.refill(kicad_project, Path(tmp) / "refill", job["logs"])
+        _record_perf(job, persist, "zone_refill", refill_started, refilled=refilled is not None)
+        sim_logs: list[str] = []
+        sim_bundle = None
+        if refilled is not None:
+            from app.sim_studio import runs as sim_runs
+
+            sim_bundle = threading.Thread(
+                target=sim_runs.prebuild_bundle,
+                args=(kicad_project, refilled, sim_logs),
+                name="sim-bundle-prebuild",
+                daemon=True,
+            )
+            sim_bundle.start()
         if analytic_pack_service.enabled() and geometry != "mesh":
             job["stage"] = "analytic-pack"
             job["message"] = "Building the analytic board..."
             persist()
             pack_started = time.perf_counter()
-            analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"])
+            analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"], pcb=refilled)
             _record_perf(job, persist, "analytic_pack", pack_started, written=analytic_pack is not None)
             if analytic_pack is not None:
                 board_geometry = "analytic"
@@ -1149,6 +1170,8 @@ def _build_visualizer_bundle_locked(
             "--board-geometry",
             board_geometry,
         ]
+        if refilled is not None:
+            cmd += ["--pcb", str(refilled)]
         if force:
             cmd.append("--force-rebuild")
         job["logs"].append(f"Command: {' '.join(cmd)}")
@@ -1210,8 +1233,14 @@ def _build_visualizer_bundle_locked(
             if analytic_pack is None and not adding_mesh and geometry == "mesh":
                 job["stage"] = "analytic-pack"
                 pack_started = time.perf_counter()
-                analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"])
+                analytic_pack = analytic_pack_service.write_pack(kicad_project, output, job["logs"], pcb=refilled)
                 _record_perf(job, persist, "analytic_pack", pack_started, written=analytic_pack is not None)
+        if sim_bundle is not None:
+            # It reads the refilled copy in this temporary directory.
+            sim_started = time.perf_counter()
+            sim_bundle.join()
+            job["logs"].extend(sim_logs)
+            _record_perf(job, persist, "sim_bundle.wait", sim_started)
         if board_geometry == "analytic" and _has_copper_tiles(output):
             # The Rust backend writes the copper tiles alongside the pack, so
             # the bundle is already what the mesh follow-up would publish.
