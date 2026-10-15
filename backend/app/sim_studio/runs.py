@@ -11,8 +11,10 @@ stay in the run's directory and are served from there.
 from __future__ import annotations
 
 import contextlib
+import functools
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -147,6 +149,74 @@ def _build_bundle(project_file: Path, target: Path, log: list[str]) -> None:
         raise RuntimeError("prism-bundle failed: " + "\n".join(shown) + (f"\n... and {more} more line(s) in the job log" if more > 0 else ""))
 
 
+#: Bundles kept for reuse; the oldest beyond this are removed.
+BUNDLE_CACHE_SIZE = 20
+
+
+def bundle_cache_dir() -> Path:
+    return sim_root() / "bundle-cache"
+
+
+@functools.lru_cache(maxsize=4)
+def _tool_identity(cli: Optional[str]) -> str:
+    """What else decides a bundle: the prism-bundle binary and the kicad-cli that refills zones."""
+
+    parts = [_sha256_file(binary("prism-bundle"))]
+    if cli:
+        completed = subprocess.run([cli, "version"], capture_output=True, text=True, timeout=60, check=False)
+        parts.append(f"{cli}:{completed.stdout.strip()}")
+    else:
+        parts.append("no-refill")
+    return "|".join(parts)
+
+
+def bundle_key(project_file: Path, cli: Optional[str]) -> str:
+    """The bundle's inputs: the project, board and rules files, every schematic under the
+    project (a superset of the sheets the build reaches), and the tools."""
+
+    directory, stem = project_file.parent, project_file.stem
+    files = [directory / f"{stem}.{suffix}" for suffix in ("kicad_pro", "kicad_pcb", "kicad_dru")]
+    files += sorted(directory.rglob("*.kicad_sch"))
+    hasher = hashlib.sha256(_tool_identity(cli).encode("utf-8"))
+    for path in files:
+        if not path.is_file():
+            continue
+        hasher.update(f"\0{path.relative_to(directory).as_posix()}\0".encode("utf-8"))
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _cached_bundle(project_file: Path, target: Path, log: list[str]) -> None:
+    """Build the bundle, or reuse one built from the same sources with the same tools.
+
+    The build is dominated by KiCad's zone refill (minutes on large boards) and depends
+    only on the key's inputs, so runs of one revision share it.
+    """
+
+    from app.services.kicad_tools import locate_kicad_cli
+
+    cache = bundle_cache_dir()
+    key = bundle_key(project_file, locate_kicad_cli())
+    cached = cache / f"{key}.prism"
+    if cached.is_file():
+        log.append(f"bundle cache hit {key[:12]}")
+        try:
+            target.hardlink_to(cached)
+        except OSError:
+            shutil.copyfile(cached, target)
+        os.utime(cached)
+        return
+    _build_bundle(project_file, target, log)
+    cache.mkdir(parents=True, exist_ok=True)
+    partial = cache / f".{key}.{os.getpid()}.partial"
+    shutil.copyfile(target, partial)
+    os.replace(partial, cached)
+    for stale in sorted(cache.glob("*.prism"), key=lambda path: path.stat().st_mtime, reverse=True)[BUNDLE_CACHE_SIZE:]:
+        stale.unlink(missing_ok=True)
+
+
 def _stage(run: Mapping[str, Any], workspace: Path, log: list[str]) -> dict[str, Any]:
     inputs = workspace / "input"
     inputs.mkdir(parents=True, exist_ok=True)
@@ -156,7 +226,7 @@ def _stage(run: Mapping[str, Any], workspace: Path, log: list[str]) -> dict[str,
             raise RuntimeError(f"{project_file.name} is not in the project at this revision")
         with tempfile.TemporaryDirectory(prefix="sim-bundle-") as scratch:
             built = Path(scratch) / "board.prism"
-            _build_bundle(project_file, built, log)
+            _cached_bundle(project_file, built, log)
             shutil.move(str(built), inputs / "board.prism")
     bundle_sha = _sha256_file(inputs / "board.prism")
     setup = dict(run["setup_document"])

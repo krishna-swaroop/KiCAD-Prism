@@ -188,3 +188,56 @@ class JobKindTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BundleCacheTest(unittest.TestCase):
+    """Runs of one revision share a bundle: its build is mostly KiCad's zone refill."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "prism-bundle").write_bytes(b"tool v1")
+        self.project = self.tmp / "board"
+        (self.project / "sub").mkdir(parents=True)
+        for name, text in (("b.kicad_pro", "{}"), ("b.kicad_pcb", "(kicad_pcb)"), ("b.kicad_sch", "(kicad_sch)"),
+                           ("sub/power.kicad_sch", "(kicad_sch power)")):
+            (self.project / name).write_text(text)
+        self.builds: list[Path] = []
+
+        def build(project_file: Path, target: Path, log: list[str]) -> None:
+            self.builds.append(project_file)
+            target.write_bytes(b"bundle " + project_file.read_bytes())
+
+        for patcher in (
+            mock.patch.object(settings, "PRISM_SIM_BIN_DIR", str(bin_dir)),
+            mock.patch.object(settings, "KICAD_PROJECTS_ROOT", str(self.tmp / "projects")),
+            mock.patch("app.services.kicad_tools.locate_kicad_cli", return_value=None),
+            mock.patch.object(runs_module, "_build_bundle", build),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        runs_module._tool_identity.cache_clear()
+        self.addCleanup(runs_module._tool_identity.cache_clear)
+
+    def stage(self, name: str) -> bytes:
+        target = self.tmp / name
+        runs_module._cached_bundle(self.project / "b.kicad_pro", target, [])
+        return target.read_bytes()
+
+    def test_same_sources_reuse_the_bundle_and_an_edit_rebuilds(self) -> None:
+        first = self.stage("one.prism")
+        self.assertEqual(self.stage("two.prism"), first)
+        self.assertEqual(len(self.builds), 1)
+        key = runs_module.bundle_key(self.project / "b.kicad_pro", None)
+        (self.project / "sub" / "power.kicad_sch").write_text("(kicad_sch power edited)")
+        self.assertNotEqual(runs_module.bundle_key(self.project / "b.kicad_pro", None), key)
+        self.stage("three.prism")
+        self.assertEqual(len(self.builds), 2)
+
+    def test_a_new_tool_is_a_new_key(self) -> None:
+        key = runs_module.bundle_key(self.project / "b.kicad_pro", None)
+        (Path(settings.PRISM_SIM_BIN_DIR) / "prism-bundle").write_bytes(b"tool v2")
+        runs_module._tool_identity.cache_clear()
+        self.assertNotEqual(runs_module.bundle_key(self.project / "b.kicad_pro", None), key)
