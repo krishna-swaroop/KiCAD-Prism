@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.services.catalog.preview_files import read_preview  # noqa: E402
 from app.services.catalog.asset_imports import CatalogAssetImports  # noqa: E402
 from app.services.catalog.asset_registry import CatalogAssetRegistry  # noqa: E402
 from app.services.catalog.postgres_runtime import CatalogPostgresConnection, PostgresCatalogRuntime  # noqa: E402
@@ -985,13 +986,9 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
                     else FIXTURE_FOOTPRINT_PREVIEW_FINGERPRINT
                 ),
             )
-            backing = Path(preview["file_path"])
-            self.assertTrue(backing.is_file(), preview["file_path"])
-            self.assertEqual(backing.read_bytes(), FIXTURE_PREVIEW_SVG)
-            self.assertEqual(
-                hashlib.sha256(backing.read_bytes()).hexdigest(),
-                preview["sha256"],
-            )
+            stored = read_preview(Path(preview["file_path"]))
+            self.assertEqual(stored, FIXTURE_PREVIEW_SVG, preview["file_path"])
+            self.assertEqual(hashlib.sha256(stored).hexdigest(), preview["sha256"])
             bucket = "symbols" if preview["kind"] == "symbol" else "footprints"
             self.assertEqual(
                 _normalize_contract(preview["file_path"], ("previews", "file_path")),

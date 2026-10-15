@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.api._helpers import preview_file_response
 from app.core.errors import caller_errors, value_errors_as
 from app.core.config import settings
 from app.core import policy, preconditions
@@ -874,13 +875,15 @@ def list_component_releases(component_id: str, user: AuthenticatedUser = Depends
 
 
 @router.get("/previews/{preview_id}")
-def get_catalog_preview(preview_id: str, user: AuthenticatedUser = Depends(require_catalog_browser)):
+def get_catalog_preview(
+    preview_id: str, request: Request, user: AuthenticatedUser = Depends(require_catalog_browser)
+):
     _ = user
     preview = catalog_service.catalog_preview_path(preview_id)
     if not preview:
         raise HTTPException(status_code=404, detail="Preview not found")
     path, content_type = preview
-    return FileResponse(path, media_type=content_type, headers={"Cache-Control": "private, max-age=300"})
+    return preview_file_response(request, path, content_type, {"Cache-Control": "private, max-age=300"})
 
 
 @router.get("/assets/{asset_id}/content")

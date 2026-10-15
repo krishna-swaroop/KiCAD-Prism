@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import uuid
 from typing import Any, Mapping
 
-from app.services.catalog.normalization import sha256_bytes, sha256_file, utc_now_iso
+from app.services.catalog.normalization import sha256_bytes, utc_now_iso
+from app.services.catalog.preview_files import preview_sha256, read_preview, stored_file, write_preview
 
 
 class CatalogPreviewStore:
@@ -33,19 +33,16 @@ class CatalogPreviewStore:
         ).fetchone()
         if existing:
             path = Path(str(existing["file_path"])).resolve()
-            if not path.is_file() or sha256_file(path) != sha256:
+            if preview_sha256(path) != sha256:
                 raise ValueError(f"Immutable preview backing file is missing or corrupt: {path}")
             return dict(existing)
 
         destination = destination.resolve()
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            if destination.read_bytes() != payload:
+        if stored_file(destination) is not None:
+            if read_preview(destination) != payload:
                 raise ValueError(f"Immutable preview hash collision at {destination}")
         else:
-            temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
-            temporary.write_bytes(payload)
-            os.replace(temporary, destination)
+            write_preview(destination, payload)
         now = utc_now_iso()
         preview_id = str(uuid.uuid4())
         conn.execute(
@@ -93,11 +90,7 @@ class CatalogPreviewStore:
         if not row:
             return False
         file_path = str(row["file_path"] or "")
-        return bool(
-            file_path
-            and Path(file_path).is_file()
-            and sha256_file(Path(file_path)) == str(row["sha256"])
-        )
+        return bool(file_path and preview_sha256(Path(file_path)) == str(row["sha256"]))
 
 
 __all__ = ["CatalogPreviewStore"]

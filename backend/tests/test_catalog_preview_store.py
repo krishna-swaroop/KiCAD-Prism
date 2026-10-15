@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.services.catalog import preview_files as preview_files_module  # noqa: E402
 from app.services.catalog import preview_store as preview_store_module  # noqa: E402
 from app.services.catalog.preview_store import CatalogPreviewStore  # noqa: E402
 
@@ -125,7 +127,7 @@ class CatalogPreviewStoreTests(unittest.TestCase):
 
                 self.assertEqual(len(conn.calls), 1)
 
-    def test_new_preview_is_atomically_stored_and_insert_params_are_exact(self) -> None:
+    def test_new_preview_is_stored_gzipped_atomically_and_insert_params_are_exact(self) -> None:
         payload = b"<svg>new</svg>"
         digest = hashlib.sha256(payload).hexdigest()
         destination = self._destination(payload)
@@ -134,10 +136,8 @@ class CatalogPreviewStoreTests(unittest.TestCase):
         temporary_uuid = uuid.UUID("00000000-0000-0000-0000-000000000011")
         preview_uuid = uuid.UUID("00000000-0000-0000-0000-000000000012")
         now = "2026-09-01T00:00:00+00:00"
-        resolved_destination = destination.resolve()
-        expected_temporary = resolved_destination.with_name(
-            f".{resolved_destination.name}.{temporary_uuid.hex}.tmp"
-        )
+        packed = destination.resolve().with_name(destination.name + ".gz")
+        expected_temporary = packed.with_name(f".{packed.name}.{temporary_uuid.hex}.tmp")
 
         with patch.object(
             preview_store_module.uuid,
@@ -148,16 +148,18 @@ class CatalogPreviewStoreTests(unittest.TestCase):
             "utc_now_iso",
             return_value=now,
         ), patch.object(
-            preview_store_module.os,
+            preview_files_module.os,
             "replace",
             side_effect=os.replace,
         ) as replace:
             result = self._store(conn, payload, destination)
 
         self.assertEqual(result, inserted)
-        self.assertEqual(destination.read_bytes(), payload)
+        # The row keeps the SVG's own path, hash and size; the bytes on disk are gzipped.
+        self.assertFalse(destination.exists())
+        self.assertEqual(gzip.decompress(packed.read_bytes()), payload)
         self.assertFalse(expected_temporary.exists())
-        replace.assert_called_once_with(expected_temporary, destination.resolve())
+        replace.assert_called_once_with(expected_temporary, packed)
         self.assertEqual(
             conn.calls[1][1],
             (
@@ -179,17 +181,23 @@ class CatalogPreviewStoreTests(unittest.TestCase):
 
     def test_existing_destination_with_same_bytes_is_reused(self) -> None:
         payload = b"<svg>already-stored</svg>"
-        destination = self._destination(payload)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(payload)
-        conn = _RecordingConnection(None, None, {"id": "preview-existing-destination"})
+        for packed in (False, True):
+            with self.subTest(packed=packed):
+                destination = self._destination(payload + str(packed).encode())
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                stored = payload + str(packed).encode()
+                if packed:
+                    destination.with_name(destination.name + ".gz").write_bytes(gzip.compress(stored))
+                else:
+                    destination.write_bytes(stored)
+                conn = _RecordingConnection(None, None, {"id": "preview-existing-destination"})
 
-        with patch.object(preview_store_module.os, "replace") as replace:
-            self._store(conn, payload, destination)
+                with patch.object(preview_files_module.os, "replace") as replace:
+                    self._store(conn, stored, destination)
 
-        replace.assert_not_called()
-        self.assertEqual(destination.read_bytes(), payload)
-        self.assertEqual(len(conn.calls), 3)
+                replace.assert_not_called()
+                self.assertEqual(preview_files_module.read_preview(destination), stored)
+                self.assertEqual(len(conn.calls), 3)
 
     def test_destination_collision_has_exact_error(self) -> None:
         payload = b"<svg>new-content</svg>"
@@ -226,6 +234,8 @@ class CatalogPreviewStoreTests(unittest.TestCase):
         valid = self.root / "valid.svg"
         valid.write_bytes(payload)
         cases.append(("valid", {"file_path": str(valid), "sha256": digest}, True))
+        (self.root / "packed.svg.gz").write_bytes(gzip.compress(payload))
+        cases.append(("valid gzipped", {"file_path": str(self.root / "packed.svg"), "sha256": digest}, True))
 
         for label, row, expected in cases:
             with self.subTest(label=label):

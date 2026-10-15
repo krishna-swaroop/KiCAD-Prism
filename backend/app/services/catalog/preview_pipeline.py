@@ -33,6 +33,7 @@ from app.services.catalog.preview_renderer import (
     PREVIEW_STATUS_READY,
     CatalogPreviewRenderer,
 )
+from app.services.catalog.preview_files import stored_file
 from app.services.catalog.preview_store import CatalogPreviewStore
 from app.services.catalog.revision_kernel import CatalogRevisionKernel
 from app.services.catalog.runtime import CatalogRuntime
@@ -372,7 +373,7 @@ class CatalogPreviewPipeline:
             path.relative_to((runtime.store_root / "previews").resolve())
         except ValueError:
             return None
-        return (path, str(row["content_type"] or "image/svg+xml")) if path.is_file() else None
+        return (path, str(row["content_type"] or "image/svg+xml")) if stored_file(path) else None
 
     @staticmethod
     def preview_record(conn: Any, preview_id: str) -> CatalogPreview | None:

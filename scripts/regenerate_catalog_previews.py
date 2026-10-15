@@ -88,7 +88,7 @@ def _default_workers() -> int:
 
 
 def _build_ready_preview_index(service: Any, conn: Any) -> dict[str, set[str]]:
-    from app.services.catalog.normalization import sha256_file  # noqa: PLC0415
+    from app.services.catalog.preview_files import preview_sha256  # noqa: PLC0415
 
     rows = conn.execute(
         """
@@ -104,10 +104,8 @@ def _build_ready_preview_index(service: Any, conn: Any) -> dict[str, set[str]]:
         expected = service.previews.generator_identity(kind)["generator_fingerprint"]
         if str(row["generator_fingerprint"]) != expected:
             continue
-        file_path = Path(str(row["file_path"] or ""))
-        if not file_path.is_file():
-            continue
-        if sha256_file(file_path) != str(row["sha256"]):
+        file_path = str(row["file_path"] or "")
+        if not file_path or preview_sha256(Path(file_path)) != str(row["sha256"]):
             continue
         index[str(row["asset_id"])].add(kind)
     return index

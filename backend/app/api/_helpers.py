@@ -1,12 +1,14 @@
 from pathlib import Path
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+from fastapi.responses import FileResponse, Response
 
 from app.core import policy
 from app.core.roles import Role
 from app.core.security import AuthenticatedUser
 from app.services.workspace_service import workspace
 from app.services import project_service
+from app.services.catalog.preview_files import stored_file
 
 
 VALID_OUTPUT_TYPES = {"design", "manufacturing"}
@@ -126,3 +128,25 @@ def resolve_path_within_root(root: str, relative_path: str, *, invalid_detail: s
         raise HTTPException(status_code=400, detail=invalid_detail) from error
 
     return target_path
+
+
+def preview_file_response(request: Request, path: Path, media_type: str, headers: dict[str, str]) -> Response:
+    """Serve a catalog preview, which is usually stored gzipped beside its ``.svg`` path.
+
+    A browser that accepts gzip gets the stored bytes as they are, marked
+    ``Content-Encoding: gzip`` so the compression middleware leaves them alone;
+    any other client gets them decompressed.
+    """
+
+    stored = stored_file(path)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="Preview not found")
+    file, packed = stored
+    if not packed:
+        return FileResponse(file, media_type=media_type, headers=headers)
+    headers = {**headers, "Vary": "Accept-Encoding"}
+    if "gzip" in request.headers.get("accept-encoding", "").lower():
+        return FileResponse(file, media_type=media_type, headers={**headers, "Content-Encoding": "gzip"})
+    import gzip  # noqa: PLC0415
+
+    return Response(gzip.decompress(file.read_bytes()), media_type=media_type, headers=headers)
