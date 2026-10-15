@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { AnalyticRenderer, viewEye } from "./analytic-renderer.js";
+import { AnalyticRenderer, viewEye, withStackupLooks } from "./analytic-renderer.js";
 import { lookAt, mat4Multiply, orthographic, perspective } from "./math.js";
 import { ANALYTIC_SHADER, STENCIL_STEPS } from "./analytic-shaders.js";
 
@@ -329,4 +329,14 @@ test("silkscreen never prints in a mask opening", () => {
   assert.equal(colouredBy.get("pad"), undefined);
   assert.equal(colouredBy.get("laminate"), undefined);
   for (const [pixel, value] of stencil) assert.equal(value & 0xe6, 0, `${pixel} clean: ${value.toString(16)}`);
+});
+
+test("the stackup's mask and paste fill in when no mesh layer gives them", () => {
+  const stackup = { soldermask: { front: [0.05, 0.05, 0.05, 0.85], back: [0.05, 0.05, 0.05, 0.85] }, paste: [0.62, 0.63, 0.65, 1] };
+  const looks = withStackupLooks({ substrate: { color: [0.3, 0.3, 0.2, 1] } }, stackup);
+  assert.deepEqual(looks.soldermask.color, [0.05, 0.05, 0.05, 0.85]);
+  assert.deepEqual(looks.paste.color, [0.62, 0.63, 0.65, 1]);
+  const mesh = { color: [0.5, 0.1, 0.1, 0.83], metallic: 0, roughness: 0.6 };
+  assert.equal(withStackupLooks({ soldermask: mesh }, stackup).soldermask, mesh);
+  assert.deepEqual(withStackupLooks({}, null), {});
 });

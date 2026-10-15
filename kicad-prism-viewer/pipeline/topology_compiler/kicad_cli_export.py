@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .board_looks import board_looks
 from .copper_geometry import native_helper_path, pcb_geometry_backend
 
 
@@ -353,6 +354,9 @@ def finalize_project_geometry(
             "components_glb": "geometry/components.glb",
         },
         "exports": [item.to_dict(output_dir) for item in exports],
+        # The stackup's mask and paste colours: an analytic board, which draws
+        # its own mask, takes them from here when no mask GLB is built.
+        "board_looks": board_looks(pcb_file),
         "components": components,
         "visibility_groups": visibility_groups,
     }
@@ -439,7 +443,7 @@ def _write_soldermask_glb(
                 "soldermask.polygons",
                 {"elapsed_ms": (time.perf_counter() - started) * 1000.0},
             )
-    document = place_soldermask(polygons, topology)
+    document = place_soldermask(polygons, topology, board_looks(artifacts.pcb_file)["soldermask"]["front"])
     if not document:
         return None
     started = time.perf_counter()

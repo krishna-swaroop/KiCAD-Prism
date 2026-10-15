@@ -1502,6 +1502,7 @@ async function loadBoard(token = activeViewerToken, b = board) {
       : null,
   ]);
   if (!viewerSessionActive(token) || !b.renderer) return null;
+  b.renderer.stackupLooks = b.semanticGeometry.board_looks || null;
   b.loadedBytes += loaded.byteLength;
   if (mask) b.loadedBytes += mask.byteLength;
   const contextPrimitives = [

@@ -22,6 +22,7 @@ from shapely import clip_by_rect, make_valid
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 from shapely.ops import polygonize, unary_union
 
+from .board_looks import MASK_COLORS, PASTE_COLOR
 from .pcb_geometry import NM_TO_MM, capsule, pad_rings, point_nm, sample_arc_op, transform
 from .stackup_frame import board_frame, outward_face_z
 
@@ -38,7 +39,6 @@ PASTE_LIFT_MM = 0.005
 # KiCad chains them, and without joining them the outline never closes and the
 # board gets no mask at all.
 OUTLINE_JOIN_MM = 0.01
-PASTE_COLOR = [0.62, 0.63, 0.65, 1.0]
 # Bump when the geometry changes, so cached masks are rebuilt.
 SOLDERMASK_VERSION = "ir-a3"
 
@@ -435,17 +435,6 @@ def _mask_faces_mm(topology: dict[str, Any]) -> dict[str, float]:
         return z + offset
 
     return {"top": face("F.Mask", 1, top), "bottom": face("B.Mask", -1, bottom)}
-
-
-MASK_COLORS = {
-    "green": [0.06, 0.16, 0.11, 0.83],
-    "red": [0.52, 0.05, 0.05, 0.83],
-    "blue": [0.05, 0.12, 0.42, 0.83],
-    "black": [0.05, 0.05, 0.05, 0.85],
-    "white": [0.9, 0.9, 0.9, 0.83],
-    "purple": [0.3, 0.1, 0.4, 0.83],
-    "yellow": [0.7, 0.62, 0.1, 0.83],
-}
 
 
 def mask_color(topology: dict[str, Any]) -> list[float]:

@@ -75,6 +75,17 @@ export function hiddenBoardLayer(hidden, slice) {
   return Boolean(hidden?.size && role) && hidden.has(boardLayerKey(role, slice.faceDown ? "back" : "front"));
 }
 
+/**
+ * `looks` with the solder mask and paste the stackup states (`semantic_geometry.board_looks`)
+ * filled in where no mesh layer gave one; the materials match the mesh mask's.
+ */
+export function withStackupLooks(looks, stackup) {
+  const mask = stackup?.soldermask?.front;
+  if (!looks.soldermask && mask?.length >= 3) looks.soldermask = { color: mask, metallic: 0, roughness: 0.6 };
+  if (!looks.paste && stackup?.paste?.length >= 3) looks.paste = { color: stackup.paste, metallic: 0, roughness: 0.45 };
+  return looks;
+}
+
 /** The key a side's board layer is hidden by: "soldermask:front", "paste:back", ... */
 export function boardLayerKey(role, side) {
   return `${role}:${side}`;
@@ -803,6 +814,8 @@ export class AnalyticRenderer {
   /**
    * The mesh board layers' colour and material by role (substrate, solder
    * mask, silkscreen, paste), so analytic layers follow the viewer's colours.
+   * Without a mesh mask (the Rust board body has none), the mask and paste
+   * take the stackup's colours from the bundle (`renderer.stackupLooks`).
    */
   boardLooks() {
     const looks = {};
@@ -815,7 +828,7 @@ export class AnalyticRenderer {
         roughness: entry.material?.roughness ?? 0.72,
       };
     }
-    return looks;
+    return withStackupLooks(looks, this.renderer.stackupLooks);
   }
 
   /** The laminate's colour from the stackup (its first dielectric's), if any. */
