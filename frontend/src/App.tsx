@@ -306,7 +306,7 @@ function App() {
                                         <Search className="h-3.5 w-3.5" />
                                         {IS_APPLE_PLATFORM ? '⌘K' : 'Ctrl K'}
                                     </Button>
-                                    <HelpMenu />
+                                    <HelpMenu className="size-7" />
                                     {user && user.email !== 'guest@local' && (
                                         <>
                                             <span className="text-sm text-muted-foreground">

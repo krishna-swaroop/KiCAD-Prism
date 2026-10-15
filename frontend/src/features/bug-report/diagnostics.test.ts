@@ -63,7 +63,10 @@ describe("describeAuth", () => {
 
 describe("formatDiagnostics", () => {
   it("renders a KiCad-style block with no workspace or project names", () => {
-    const text = formatDiagnostics(input());
+    const text = formatDiagnostics(input({
+      semanticViewer: "ba3143d70e697322bd8a48267b34ee7ae41d5a53155e5ca5038a4e41c8dce0e1",
+      simEngines: [{ id: "dc-drop-grid", engine_version: "0.1.0" }],
+    }));
     expect(text).toBe(
       [
         "Application: KiCAD Prism",
@@ -71,6 +74,8 @@ describe("formatDiagnostics", () => {
         "Backend: v4.0.0-alpha, revision 57a7581aaaaa, built 2026-09-20",
         "Frontend: v4.0.0-alpha, revision 57a7581aaaaa, built 2026-09-20",
         "ECAD viewer: upstream c3537042ff71, adapter 461a091952ef",
+        "3D viewer: bundle ba3143d70e69",
+        "Simulation engines: dc-drop-grid 0.1.0",
         "KiCad CLI: 10.0.4",
         "Authentication: OIDC + password",
         "Browser: Google Chrome 153.0.7240.62",
@@ -90,6 +95,14 @@ describe("formatDiagnostics", () => {
     expect(text).toContain("Warning: frontend and backend revisions differ");
   });
 
+  it("shortens a revision built from a dirty tree and keeps the mark", () => {
+    const sha = "ffa9836e9b267c2361a8fb0a8dd3b8414f31753c";
+    const text = formatDiagnostics(input({
+      backend: { release: "dev", revision: `${sha}-dirty`, buildDate: "x", kicadCli: "10.0.7" },
+    }));
+    expect(text).toContain("Backend: dev, revision ffa9836e9b26-dirty, built x");
+  });
+
   it("does not flag a mismatch when a revision is unknown", () => {
     const text = formatDiagnostics(input({
       backend: { release: "development", revision: "unknown", buildDate: "unknown", kicadCli: "10.0.4" },
@@ -103,6 +116,8 @@ describe("formatDiagnostics", () => {
     expect(text).toContain("Backend: unavailable");
     expect(text).toContain("ECAD viewer: unavailable");
     expect(text).toContain("KiCad CLI: unavailable");
+    expect(text).toContain("3D viewer: unavailable");
+    expect(text).toContain("Simulation engines: off");
   });
 });
 

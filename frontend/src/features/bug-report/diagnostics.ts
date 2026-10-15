@@ -26,11 +26,21 @@ export interface ViewerManifest {
   adapterCommit?: string;
 }
 
+/** A Simulation Studio engine as `/api/sim/a0/engines` describes it. */
+export interface SimEngine {
+  id: string;
+  engine_version: string;
+}
+
 export interface DiagnosticsInput {
   frontend: PrismBuildInfo;
   /** Null when the About endpoint could not be reached. */
   backend: BackendAbout | null;
   viewer: ViewerManifest | null;
+  /** The 3D viewer bundle's content hash, from its script URL; null when not loaded. */
+  semanticViewer?: string | null;
+  /** Null when Simulation Studio is off or its engines could not be listed. */
+  simEngines?: SimEngine[] | null;
   authConfig: AuthConfig;
   client: ClientEnvironment;
   language: string;
@@ -44,7 +54,8 @@ const SLUG = /^[a-z0-9-]{1,40}$/i;
 
 function shortCommit(value: string | undefined): string {
   if (!value || value === "unknown") return "unknown";
-  return /^[0-9a-f]{12,}$/i.test(value) ? value.slice(0, 12) : value;
+  const match = /^([0-9a-f]{12,})(-dirty)?$/i.exec(value);
+  return match ? `${match[1].slice(0, 12)}${match[2] ?? ""}` : value;
 }
 
 /**
@@ -89,6 +100,10 @@ export function formatDiagnostics(input: DiagnosticsInput): string {
     viewer
       ? `ECAD viewer: upstream ${shortCommit(viewer.upstreamCommit)}, adapter ${shortCommit(viewer.adapterCommit)}`
       : `ECAD viewer: ${UNAVAILABLE}`,
+    `3D viewer: ${input.semanticViewer ? `bundle ${input.semanticViewer.slice(0, 12)}` : UNAVAILABLE}`,
+    `Simulation engines: ${input.simEngines?.length
+      ? input.simEngines.map((engine) => `${engine.id} ${engine.engine_version}`).join(", ")
+      : "off"}`,
     `KiCad CLI: ${backend?.kicadCli ?? UNAVAILABLE}`,
     `Authentication: ${describeAuth(input.authConfig)}`,
     `Browser: ${input.client.browser}`,
@@ -127,7 +142,16 @@ export function bugReportUrl(version: string, diagnostics: string): { url: strin
 export interface DiagnosticSources {
   backend: BackendAbout | null;
   viewer: ViewerManifest | null;
+  semanticViewer: string | null;
+  simEngines: SimEngine[] | null;
   client: ClientEnvironment;
+}
+
+/** The `?v=` content hash on the page's 3D viewer script, which the viewer build writes into index.html. */
+export function semanticViewerHash(doc: Pick<Document, "querySelector"> = document): string | null {
+  const src = doc.querySelector<HTMLScriptElement>('script[src*="prism-semantic-viewer.js"]')?.src;
+  if (!src) return null;
+  return new URL(src, "http://localhost").searchParams.get("v");
 }
 
 /** Reads the backend identity, the viewer manifest (either may come back null) and the browser environment. */
@@ -137,10 +161,11 @@ export async function loadDiagnosticSources(
 ): Promise<DiagnosticSources> {
   // Each source is optional: a report about a broken backend is exactly the
   // one that most needs to open, so a failed lookup reads "unavailable".
-  const [backend, viewer, client] = await Promise.all([
+  const [backend, viewer, simEngines, client] = await Promise.all([
     fetchJson<BackendAbout>("/api/health/about", { signal }).catch(() => null),
     fetchJson<ViewerManifest>("/ecad-viewer.manifest.json", { signal, cache: "no-store" }).catch(() => null),
+    fetchJson<SimEngine[]>("/api/sim/a0/engines", { signal }).catch(() => null),
     loadClientEnvironment(nav),
   ]);
-  return { backend, viewer, client };
+  return { backend, viewer, semanticViewer: semanticViewerHash(), simEngines, client };
 }

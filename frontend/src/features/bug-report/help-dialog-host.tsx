@@ -62,6 +62,8 @@ function HelpDialogContent({ dialog, authConfig, onDialogChange, onClose }: Help
         frontend: FRONTEND_BUILD,
         backend: sources.backend,
         viewer: sources.viewer,
+        semanticViewer: sources.semanticViewer,
+        simEngines: sources.simEngines,
         authConfig,
         client: sources.client,
         language: navigator.language,

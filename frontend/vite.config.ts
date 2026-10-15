@@ -14,10 +14,22 @@ function git(...args: string[]): string | undefined {
 // Image builds pass PRISM_* as build args. A checkout built without them (the
 // dev server, `npm run build`) asks git, so a bug report from a source build
 // still names the commit it came from.
+function dirty(): boolean {
+  try {
+    execFileSync("git", ["diff", "--quiet", "HEAD"], { stdio: "ignore" })
+    return false
+  } catch {
+    return true
+  }
+}
+
+const head = git("rev-parse", "HEAD")
 const prismBuild = {
   release: process.env.PRISM_RELEASE || git("describe", "--tags", "--always", "--dirty") || "development",
-  revision: process.env.PRISM_REVISION || git("rev-parse", "HEAD") || "unknown",
-  buildDate: process.env.PRISM_BUILD_DATE || "unknown",
+  // Marked -dirty like the image builds, so a source build and an image built
+  // from the same working tree report the same revision.
+  revision: process.env.PRISM_REVISION || (head ? `${head}${dirty() ? "-dirty" : ""}` : "unknown"),
+  buildDate: process.env.PRISM_BUILD_DATE || new Date().toISOString().replace(/\.\d+Z$/, "Z"),
 }
 
 // https://vite.dev/config/

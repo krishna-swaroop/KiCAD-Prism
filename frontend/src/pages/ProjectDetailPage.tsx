@@ -543,6 +543,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     <Button
                         variant="outline"
                         size="icon"
+                        className="size-9 rounded-md"
                         onClick={() => { window.location.href = `prism://open/${project.id}`; }}
                         title="Open in KiCad (requires the Prism agent)"
                     >
@@ -557,7 +558,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         size="sm"
                         onClick={handleSync}
                         disabled={syncing}
-                        className="flex items-center gap-2"
+                        className="flex h-9 items-center gap-2 rounded-md px-3"
                         title="Sync with remote repository"
                     >
                         <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
@@ -569,6 +570,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     <Button
                         variant="outline"
                         size="icon"
+                        className="size-9 rounded-md"
                         onClick={() => setTrackerSettingsOpen(true)}
                         title="Issue publishing settings"
                         aria-label="Issue publishing settings"
@@ -581,6 +583,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     <Button
                         variant="outline"
                         size="icon"
+                        className="size-9 rounded-md"
                         onClick={() => setPathConfigOpen(true)}
                         title="Project settings"
                     >
@@ -588,7 +591,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     </Button>
                 )}
 
-                <HelpMenu />
+                <HelpMenu className="size-9" />
 
                 {projectId && pathConfigOpen && (
                     <Suspense fallback={null}>
@@ -810,7 +813,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                             fill
                         >
                             <ErrorBoundary label="the simulation studio panel" resetKeys={[projectId]}>
-                                <SimStudioPanel projectId={projectId!} canMutate={canMutateProject} active={activeSection === "simulation-studio"} />
+                                <SimStudioPanel key={projectId} projectId={projectId!} canMutate={canMutateProject} active={activeSection === "simulation-studio"} />
                             </ErrorBoundary>
                         </ProjectSectionPanel>
                     )}
