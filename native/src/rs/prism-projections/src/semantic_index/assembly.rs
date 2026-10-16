@@ -4,6 +4,9 @@
 //! semantic_index_variants.py:752-903) and the join onto the components
 //! (`_project_onto_components`, :948-1037).
 
+mod catalog;
+mod scan;
+
 use super::{Placements, State};
 use crate::{ProjectionError, ProjectionInput, SchematicModel};
 use serde_json::{Value, json};
@@ -22,10 +25,14 @@ pub(super) fn empty() -> Value {
 
 /// Build `assembly` for the revision.
 pub(super) fn build(
-    _input: &ProjectionInput<'_>,
+    input: &ProjectionInput<'_>,
     _schematic: &SchematicModel<'_>,
     _state: &State,
     _placements: &Placements,
 ) -> Result<Value, ProjectionError> {
-    Ok(empty())
+    let catalog = catalog::discover(input)?;
+    let mut value = empty();
+    value["catalog"] = Value::Array(catalog.entries);
+    value["diagnostics"] = Value::Array(catalog.diagnostics);
+    Ok(value)
 }
