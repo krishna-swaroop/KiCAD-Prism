@@ -98,7 +98,10 @@ mod tests {
         assert_eq!(stable_uid("net", &["GND"]), "net:ccdd8d41edbac58e6d53");
         assert_eq!(stable_uid("cmp", &["R1", ""]), "cmp:3e661ccfd941c00e1f0f");
         assert_eq!(stable_uid("cmp", &["R1"]), "cmp:a791366f6f6201254edc");
-        assert_eq!(stable_uid("term", &["U1", "5"]), "term:e4b346d426274cc821b9");
+        assert_eq!(
+            stable_uid("term", &["U1", "5"]),
+            "term:e4b346d426274cc821b9"
+        );
         assert_eq!(
             stable_uid("sheet-instance", &["/", "oracle.kicad_sch"]),
             "sheet-instance:b0b571a586b4a97f4dc7"

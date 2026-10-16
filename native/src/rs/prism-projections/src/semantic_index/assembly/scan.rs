@@ -53,7 +53,7 @@ fn scan_structural(text: &str, root: &str) -> Option<SourceRecords> {
         return None;
     }
     let root_end = mask.iter().rposition(|&byte| byte == b')')? + 1;
-    if !text[root_end..].chars().all(char::is_whitespace) {
+    if !text[root_end..].chars().all(is_python_space) {
         return None;
     }
 
@@ -177,8 +177,8 @@ fn name_form(slice: &str) -> Option<(&str, &str)> {
         return None;
     }
     let mut at = 1;
-    while at < bytes.len() && is_space(bytes[at]) {
-        at += 1;
+    while at < bytes.len() && space_len(bytes, at) > 0 {
+        at += space_len(bytes, at);
     }
     let key = if starts_word(bytes, at, b"name") {
         at += "name".len();
@@ -189,17 +189,17 @@ fn name_form(slice: &str) -> Option<(&str, &str)> {
     } else {
         return None;
     };
-    if at >= bytes.len() || !is_space(bytes[at]) {
+    if at >= bytes.len() || space_len(bytes, at) == 0 {
         return None;
     }
-    while at < bytes.len() && is_space(bytes[at]) {
-        at += 1;
+    while at < bytes.len() && space_len(bytes, at) > 0 {
+        at += space_len(bytes, at);
     }
     let token_start = at;
     let token_end = match_quoted(bytes, at)?;
     let mut after = token_end;
-    while after < bytes.len() && is_space(bytes[after]) {
-        after += 1;
+    while after < bytes.len() && space_len(bytes, after) > 0 {
+        after += space_len(bytes, after);
     }
     if after + 1 != bytes.len() || bytes[after] != b')' {
         return None;
@@ -215,27 +215,27 @@ fn property_pair(text: &str, start: usize) -> Option<(&str, &str)> {
         return None;
     }
     let mut at = start + 1;
-    while at < bytes.len() && is_space(bytes[at]) {
-        at += 1;
+    while at < bytes.len() && space_len(bytes, at) > 0 {
+        at += space_len(bytes, at);
     }
     if !starts_word(bytes, at, b"property") {
         return None;
     }
     at += "property".len();
-    if at >= bytes.len() || !is_space(bytes[at]) {
+    if at >= bytes.len() || space_len(bytes, at) == 0 {
         return None;
     }
-    while at < bytes.len() && is_space(bytes[at]) {
-        at += 1;
+    while at < bytes.len() && space_len(bytes, at) > 0 {
+        at += space_len(bytes, at);
     }
     let key_start = at;
     let key_end = match_quoted(bytes, at)?;
     at = key_end;
-    if at >= bytes.len() || !is_space(bytes[at]) {
+    if at >= bytes.len() || space_len(bytes, at) == 0 {
         return None;
     }
-    while at < bytes.len() && is_space(bytes[at]) {
-        at += 1;
+    while at < bytes.len() && space_len(bytes, at) > 0 {
+        at += space_len(bytes, at);
     }
     let value_start = at;
     let value_end = match_quoted(bytes, at)?;
@@ -295,8 +295,8 @@ fn find_forms(mask: &[u8]) -> Vec<Form> {
     while at < mask.len() {
         if mask[at] == b'(' {
             let mut word = at + 1;
-            while word < mask.len() && is_space(mask[word]) {
-                word += 1;
+            while word < mask.len() && space_len(mask, word) > 0 {
+                word += space_len(mask, word);
             }
             if let Some((tag, tag_end)) = match_tag(mask, word) {
                 forms.push(Form {
@@ -331,7 +331,7 @@ fn match_tag(mask: &[u8], at: usize) -> Option<(Tag, usize)> {
     for (word, tag) in TAGS {
         if starts_word(mask, at, word) {
             let end = at + word.len();
-            if end >= mask.len() || is_space(mask[end]) || mask[end] == b')' {
+            if end >= mask.len() || space_len(mask, end) > 0 || mask[end] == b')' {
                 return Some((tag, end));
             }
         }
@@ -347,8 +347,8 @@ fn has_relevant_form(text: &str) -> bool {
             continue;
         }
         let mut word = at + 1;
-        while word < bytes.len() && is_space(bytes[word]) {
-            word += 1;
+        while word < bytes.len() && space_len(bytes, word) > 0 {
+            word += space_len(bytes, word);
         }
         if !starts_word(bytes, word, b"variant") {
             continue;
@@ -357,7 +357,7 @@ fn has_relevant_form(text: &str) -> bool {
         if end < bytes.len() && bytes[end] == b's' {
             end += 1;
         }
-        if end >= bytes.len() || is_space(bytes[end]) || bytes[end] == b')' {
+        if end >= bytes.len() || space_len(bytes, end) > 0 || bytes[end] == b')' {
             return true;
         }
     }
@@ -412,6 +412,9 @@ fn match_string(bytes: &[u8], at: usize) -> Option<usize> {
 
 /// A quoted token that must be terminated (`_NAME`/`_PROPERTY` groups).
 fn match_quoted(bytes: &[u8], at: usize) -> Option<usize> {
+    if bytes.get(at) != Some(&b'"') {
+        return None;
+    }
     let mut index = at + 1;
     while index < bytes.len() {
         match bytes[index] {
@@ -432,21 +435,21 @@ fn match_quoted(bytes: &[u8], at: usize) -> Option<usize> {
 /// `\s*\(\s*ROOT(?=\s|\))` at the start of the mask (:62).
 fn starts_root(mask: &[u8], root: &str) -> bool {
     let mut at = 0;
-    while at < mask.len() && is_space(mask[at]) {
-        at += 1;
+    while at < mask.len() && space_len(mask, at) > 0 {
+        at += space_len(mask, at);
     }
     if at >= mask.len() || mask[at] != b'(' {
         return false;
     }
     at += 1;
-    while at < mask.len() && is_space(mask[at]) {
-        at += 1;
+    while at < mask.len() && space_len(mask, at) > 0 {
+        at += space_len(mask, at);
     }
     if !starts_word(mask, at, root.as_bytes()) {
         return false;
     }
     let end = at + root.len();
-    end >= mask.len() || is_space(mask[end]) || mask[end] == b')'
+    end >= mask.len() || space_len(mask, end) > 0 || mask[end] == b')'
 }
 
 /// The `_PARENS` balance/one-root check (`variant_source_scan.py:64-73`).
@@ -482,9 +485,33 @@ fn starts_word(bytes: &[u8], at: usize, word: &[u8]) -> bool {
     bytes.len() >= at + word.len() && &bytes[at..at + word.len()] == word
 }
 
-/// ASCII `\s` (Python's `\s` on KiCad's ASCII sources).
-fn is_space(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c)
+/// The byte length of the `\s` character at `at`, or 0 (also 0 past the end
+/// or inside a UTF-8 sequence). The mask keeps every unmasked byte, and masks
+/// whole strings with ASCII spaces, so it stays valid UTF-8.
+fn space_len(bytes: &[u8], at: usize) -> usize {
+    let Some(&lead) = bytes.get(at) else {
+        return 0;
+    };
+    if lead.is_ascii() {
+        return usize::from(is_python_space(char::from(lead)));
+    }
+    let width = match lead {
+        0xc0..=0xdf => 2,
+        0xe0..=0xef => 3,
+        _ => 4,
+    };
+    bytes
+        .get(at..at + width)
+        .and_then(|slice| std::str::from_utf8(slice).ok())
+        .and_then(|text| text.chars().next())
+        .filter(|&character| is_python_space(character))
+        .map_or(0, char::len_utf8)
+}
+
+/// Python's `str.isspace()`, which `\s` and `str.strip()` use on `str`:
+/// Unicode `White_Space` plus the four information separators U+001C-U+001F.
+fn is_python_space(character: char) -> bool {
+    character.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&character)
 }
 
 #[cfg(test)]
@@ -542,5 +569,26 @@ mod tests {
             super::SourceRecords::empty()
         );
         assert!(!scan("(kicad_pcb (variants (variant (name \"x\")))", "kicad_pcb").readable);
+    }
+
+    #[test]
+    fn a_property_without_a_quoted_value_is_skipped_not_unreadable() {
+        // `_PROPERTY` simply does not match; the source stays readable.
+        let records = scan(
+            "(kicad_sch (sheet (property \"Sheetname\\x\" footprint\"x\") \
+             (property \"Sheetfile\" \"a.kicad_sch\")))",
+            "kicad_sch",
+        );
+        assert!(records.readable);
+        assert_eq!(records.sheets, ["a.kicad_sch"]);
+    }
+
+    #[test]
+    fn unicode_whitespace_is_python_whitespace() {
+        let records = scan(
+            "(kicad_pcb (variants (\u{a0}variant (name\u{3000}\"A\") (description \"d\"\u{1f}))))",
+            "kicad_pcb",
+        );
+        assert_eq!(records.header, [("A".to_owned(), Some("d".to_owned()))]);
     }
 }

@@ -93,7 +93,11 @@ impl State {
     /// Everything but `assembly`, with `sourceRevisionKey` = `key`.
     pub fn into_document(self, key: &str) -> Value {
         let index = |map: BTreeMap<String, usize>| -> Value {
-            Value::Object(map.into_iter().map(|(k, v)| (k, json!(v))).collect::<Map<_, _>>())
+            Value::Object(
+                map.into_iter()
+                    .map(|(k, v)| (k, json!(v)))
+                    .collect::<Map<_, _>>(),
+            )
         };
         let indexes = self.indexes;
         json!({
