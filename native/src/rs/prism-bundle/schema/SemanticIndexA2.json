@@ -1,16 +1,16 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "urn:prism:schema:prism.semantic_index:a1",
+    "$id": "urn:prism:schema:prism.semantic_index:a2",
     "type": "object",
     "properties": {
         "schema": {
             "type": "string",
-            "const": "prism.semantic_index.a1",
-            "description": "Schema id. a0 was `prism.semantic_index_a0`."
+            "const": "prism.semantic_index.a2",
+            "description": "Schema id. a0 was `prism.semantic_index_a0`; a1 carried `sourceRevisionKey`; a2 carries `designKey`."
         },
-        "sourceRevisionKey": {
+        "designKey": {
             "$ref": "#/$defs/Sha256Hex",
-            "description": "The design revision key (`prism.revision_key.a1`, ADR §5) of the bundle\nthat holds this member. Readers use it as an opaque revision identity\n(cross-probe guard, comment anchors). a0 held a 32-digit key over the\nsemantic sources only."
+            "description": "The design key (ADR amendment K2 §3.6): lowercase hex SHA-256 over\n`\"prism.design_key.a0\" NUL config_digest NUL R`, where `R` is the bundle's\ncanonical read set (bundle-format.md §2.3). It is the same for every\nrevision whose tree gives the same configuration and leaves the read set\nunchanged, and for every build of it, so readers use it as the identity of\nthe design content: the cross-probe guard, comment anchors and the ETag.\nIt is not a revision key, and no member carries one: the revision a user\nasked for comes from the request. Replaces a1's `sourceRevisionKey`."
         },
         "components": {
             "type": "array",
@@ -58,7 +58,7 @@
     },
     "required": [
         "schema",
-        "sourceRevisionKey",
+        "designKey",
         "components",
         "nets",
         "terminals",
@@ -71,7 +71,7 @@
         "not": {}
     },
     "description": "`projections/semantic-index.json`, written at stage `parse`. Read by the\nidentity endpoint (streamed as is), the inspector, search, BOM table,\nvariants UI and API, component import, Release Studio, Design Comparison\nand Simulation Studio board facts.",
-    "title": "Semantic index a1",
+    "title": "Semantic index a2",
     "$defs": {
         "Sha256Hex": {
             "type": "string",

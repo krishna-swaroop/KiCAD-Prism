@@ -1,8 +1,8 @@
-# Design bundle archive format (`.prism`, manifest a2)
+# Design bundle archive format (`.prism`, manifest a3)
 
 - **Status:** W0 draft for maintainer review. Once accepted it changes only by an ADR amendment, like the contracts.
 - **Parent:** [`../adr-native-design-bundle.md`](../../../docs/architecture/adr-native-design-bundle.md) §4.4, §5, §6, §7 and §11 (G2, G8).
-- **Manifest:** `bundle.json`, schema `prism.bundle.manifest.a2`, root `BundleManifestA2` in [`tsp/prism/bundle-manifest-a2.tsp`](../../src/tsp/prism/bundle-manifest-a2.tsp). Field-by-field traceability and the a1 → a2 mapping are in [`field-maps/bundle-manifest.md`](field-maps/bundle-manifest.md).
+- **Manifest:** `bundle.json`, schema `prism.bundle.manifest.a3`, root `BundleManifestA3` in [`tsp/prism/bundle-manifest-a3.tsp`](../../src/tsp/prism/bundle-manifest-a3.tsp). a3 adds the read set (§2.3, ADR amendment K2). Field-by-field traceability and the a1 → a2 mapping are in [`field-maps/bundle-manifest.md`](field-maps/bundle-manifest.md).
 - **Companion:** [`cli-spec.md`](cli-spec.md) specifies the `prism-kicad` process that writes and checks bundles: stage chaining (§5.2), atomic writes (§5.2.5), what is recorded on failure (§5.2.7), the reader's zip checks (§6.2) and the limits (§7). This document owns the archive layout, the member set, the stage semantics a reader relies on, the unpacked cache, and the reader's manifest-level checks. Where both say the same thing they must agree; §11 lists the points where the two W0 drafts still differ.
 - **Implemented by:** WP-B (`prism-bundle` writer and reader, `prism-kicad bundle verify`), WP-K (`backend/app/services/design_bundle/` reader, store, unpacked cache, job). Every other WP reads members only through those two.
 - **Lineage:** a1's writer and reader (sim: `src/prism-bundle/src/zip.rs`, `reader.rs`, `build.rs`) and the reference branch's unpacker (ref: `backend/app/services/project_bundle.py:103-146`). Citations follow `conventions.md`: a bare path is in this repository, `sim:` is prism-sim-studio, `ref:` is `feature/analytic-pack-spike`, `fork:` is kicad_monkey at `b6316117`.
@@ -23,10 +23,10 @@ A bundle is one zip file per (revision key, generator id) (ADR §5). It holds th
 
 | Archive path | Role | Stage | `member_schema` | Present when | Written by | Read by |
 |---|---|---|---|---|---|---|
-| `bundle.json` | (not listed) | every stage | its own `schema`, `prism.bundle.manifest.a2` | always, the first entry | B | every reader (K) |
+| `bundle.json` | (not listed) | every stage | its own `schema`, `prism.bundle.manifest.a3` | always, the first entry | B | every reader (K) |
 | `sources/<repo path>` | `source-*` (§2.2) | parse | — | always, also when stage parse failed | K materializes the source set; the CLI copies the closure the build read (§2.2, cli-spec.md §5.2.2) | browser viewers (C2 overlay, Schematic/PCB tabs), KiCad-output jobs (C3, C4 STEP), the job's refill and GLB export, C7 |
 | `design.json` | `design` | parse | `kicad_monkey.design.a0` | stage parse `complete` or `partial`, `config.root_schematic` present, and not in `failed_members` | B (fork core `design_json`) | Simulation Studio engines (C6), the cross-check |
-| `projections/semantic-index.json` | `projection` | parse | `prism.semantic_index.a1` | stage parse `complete`, or `partial` and not in `failed_members` | P1 | C1, C3, C6 |
+| `projections/semantic-index.json` | `projection` | parse | `prism.semantic_index.a2` | stage parse `complete`, or `partial` and not in `failed_members` | P1 | C1, C3, C6 |
 | `projections/board-objects.json` | `projection` | parse | `prism.board_objects.a0` | same | P2 | C2 |
 | `projections/occurrences.json` | `projection` | parse | `prism.occurrences.a0` | same | P2 | C2, C3, C4, C7 |
 | `projections/stackup.json` | `projection` | parse | `prism.stackup.a0` | same | P3 | C2, C3, C4, C5, C6 |
@@ -75,6 +75,25 @@ Rules that follow from the table:
 | `symlink`, `gitlink` | no member |
 
   The ADR §5 kinds are a subset. dev already checks out the same KiCad kinds for comparisons (`COMPARE_INPUTS`, `backend/app/services/project_revision.py:264-270`), and Release Studio lists the model suffixes (`backend/app/release_studio/closure_models.py:47-49`). The closure normally holds one `source-project` member, `config.project_file`; a reference into another project's directory can add more. `config` says which one the bundle is about.
+
+### 2.3 The read set
+
+Stage parse reads the source set only through three recorded queries (cli-spec.md §5.2.2, ADR amendment K2 §3.1): read a path, test that a path exists, and list a directory by suffix. What it read is the set of source members. Everything else it looked at is `bundle.json` `read_set`:
+- **probes:** every path it asked about without reading, `present` or not: a read that found no such file in the source set, or an existence test;
+- **listings:** every listing, as `directory` (`""` for the repository root), sorted `suffixes` (lowered ASCII, as the revision key's name rules; empty for every name) and the `paths` it returned, at any depth below `directory`;
+- **gitlinks:** every submodule a source member, probe or listing reached into, with the commit its gitlink records.
+
+The recording is a set: producers run in parallel, so `read_set` is sorted and free of duplicates (I13), never a log in call order. Stages board and models copy it unchanged.
+
+**Why it is there.** Stage parse is deterministic in its inputs (ADR §7), and its inputs are the source members' bytes, the configuration and the generator. A stored bundle therefore serves any revision key of the same project, configuration digest and generator whose tree gives every source member the same key entry, every probe the same answer and every listing the same paths (`prism-kicad bundle reuse`, cli-spec.md §5.10). Stages board and models run on the archive's own `sources/` (cli-spec.md §9.1), so the rule covers all three stages.
+
+**Canonical form `R`** (the design key's input, `prism.semantic_index.a2` `designKey`). The concatenation, with `HT` = 0x09 and `NUL` = 0x00:
+1. for each source member in `members` order: `"read" HT path HT kind HT object_id NUL`, with `gitlink HT` + the gitlink path inserted before `NUL` for a file inside a submodule;
+2. for each probe in order: `"probe" HT path HT ("present" | "absent") NUL`;
+3. for each listing in order: `"list" HT directory HT suffixes joined by "," HT paths joined by HT NUL`;
+4. for each gitlink in order: `"gitlink" HT path HT commit NUL`.
+
+`designKey` = lowercase hex SHA-256 of `"prism.design_key.a0" NUL config_digest NUL R`, where `config_digest` is the revision key's (revision-key.md §8). A build without `--key-record` has no `config_digest`; it hashes the canonical config bytes (§4.2 there) instead, which give the same digest.
 
 ## 3. Stages
 
@@ -153,7 +172,7 @@ WP-B's `bundle verify` checks all of them (cli-spec.md §5.3 check 5, `stage-inc
 
 - **I1** `members` is sorted by `path` in code point order, without duplicates. The archive's entries are `bundle.json` followed by exactly the `members` paths, in that order.
 - **I2** Each member's `stage` is its role's stage, and its `path` has its role's form (§2.1). A source member's role is the one §2.2 gives its file name.
-- **I3** `member_schema` is present exactly for roles `design`, `materialization` and `projection`, and equals the `generator.member_schemas` entry for the same path. `generator.member_schemas` lists `bundle.json` with `prism.bundle.manifest.a2`.
+- **I3** `member_schema` is present exactly for roles `design`, `materialization` and `projection`, and equals the `generator.member_schemas` entry for the same path. `generator.member_schemas` lists `bundle.json` with `prism.bundle.manifest.a3`.
 - **I4** `sources/` + `config.project_file` is a `source-project` member. `sources/` + `config.board` and `sources/` + `config.root_schematic`, when present, are `source-board` and `source-schematic` members.
 - **I5** Statuses and `skip_reason` follow §3.1: parse is `complete`, `partial` or `failed`; board is `skipped` exactly when parse `failed` (`earlier-stage-failed`) or else `config.board` is absent (`no-board`); models is `pending` while board is `pending`, `skipped` when board is `skipped` (same reason) or `partial` (`earlier-stage-failed`), and never `partial` or `failed`.
 - **I6** For each stage: `error` is present exactly when the status is `failed`, `skip_reason` exactly when it is `skipped`, and `failed_members` is non-empty exactly when it is `partial`. A `pending` or `skipped` stage has empty `warnings`. Every `failed_members` path is a fixed-path member of that stage and is not in `members`.
@@ -163,6 +182,8 @@ WP-B's `bundle verify` checks all of them (cli-spec.md §5.3 check 5, `stage-inc
 - **I10** Every stage `warnings`, `cross_check.warnings` and `cross_check.errors` is sorted by `code`, then `message`, in code point order, without equal entries; `mappings` by `kind`, then `board`, then `design`; `failed_members` by `path`, without duplicates.
 - **I11** `bundle_key` is present exactly when `revision_key` is, and equals `SHA-256("prism.bundle_key.a0" 0x00 revision_key 0x00 generator_bytes)` over the generator's canonical bytes (cli-spec.md §5.1.3–§5.1.4).
 - **I12** `source` is present exactly on the `source-*` members, and its `path` is the member's `path` without `sources/`.
+- **I13** `read_set.probes` is sorted by `path`, `read_set.listings` by `directory` and then `suffixes` (element by element), and `read_set.gitlinks` by `path`, each in code point order and without duplicates. Each listing's `suffixes` and `paths` are sorted and free of duplicates, and every listed path lies below its `directory`. No probe names a source member's path.
+- **I14** The read set holds in the build's own key record: `bundle reuse` of the archive against the `--key-record` stage parse was given holds (cli-spec.md §5.10). Stage parse checks it before it writes the archive; a violation is a defect (exit 1, `internal`). `bundle verify` has no key record and does not check it.
 
 ## 4. Zip encoding
 
@@ -278,6 +299,7 @@ Because members and their order never change between rewrites, the archive after
 - **Reuse.** A member with the same path and `sha256` as in the previous version may be hard-linked from that version's directory instead of extracted again.
 - **Modes.** Regular files `0644`, directories `0755`. No symlinks, devices or other special files are ever created; nothing from the archive's attributes is applied.
 - **Path safety.** Extraction never follows a symbolic link below the version directory and opens new files exclusively (cli-spec.md §5.4 containment). A file in the way with other bytes is an error, never overwritten.
+- **Shared archives** (ADR amendment K2 §3.6). An archive stays at the path of the revision key it was built for. Other revision keys it serves reach it through the commit index's alias table (revision-key.md §10); no copy is made. Retention keeps an archive while an alias row references it.
 - **Clean-up.** K's retention removes version directories that are not the current archive's after a grace period, and the whole `<generator_digest>/` when the archive goes (ADR §5: older generators of a revision are removed when a new one is stored).
 
 ## 9. Reader validation
@@ -286,7 +308,7 @@ Every reader (WP-B's Rust reader, `bundle verify`, `bundle extract` and `--in`; 
 
 1. **Container** (G8). The file is at most `max-archive-bytes`. The end record is the last 22 bytes (comment length 0, nothing after it); its disk numbers are 0; its two counts are equal and at most `max-archive-members`.
 2. **Central directory and local headers.** Every check of cli-spec.md §6.2, plus the canonical layout of §4.2: versions `20`, flags `0x0800`, time `0x0000` and date `0x0021` in both headers; extra and comment lengths 0; entry *i*'s local header starts where entry *i−1*'s data ends, and the central directory starts where the last entry's data ends; the local header repeats the central record's method, flags, time, date, CRC, both sizes and exact name bytes. Names pass §5. Declared sizes respect §6.
-3. **Manifest.** The first entry is `bundle.json`. It inflates within `max-member-bytes`, parses as UTF-8 JSON without BOM within `max-json-depth` and `max-json-nodes`, and validates against `generated/schema/BundleManifestA2.json` with every schema of `generated/schema/` registered, so the embedded generator and effective-config roots resolve by `$id`. A document whose `schema` is not `prism.bundle.manifest.a2` is rejected (`manifest-unsupported`); an a1 `board.prism` (`schema: "prism.bundle.manifest"`, `version: "a1"`) needs a rebuild.
+3. **Manifest.** The first entry is `bundle.json`. It inflates within `max-member-bytes`, parses as UTF-8 JSON without BOM within `max-json-depth` and `max-json-nodes`, and validates against `generated/schema/BundleManifestA3.json` with every schema of `generated/schema/` registered, so the embedded generator and effective-config roots resolve by `$id`. A document whose `schema` is not `prism.bundle.manifest.a3` is rejected (`manifest-unsupported`): an a2 bundle, or an a1 `board.prism` (`schema: "prism.bundle.manifest"`, `version: "a1"`), needs a rebuild, which the generator bump of a3 makes happen anyway.
 4. **Listing.** The remaining entry names equal `members`' paths one to one and in order. Each entry's uncompressed size equals the member's `bytes`; their sum is within `max-total-unpacked-bytes`.
 5. **Identity.** `bundle_key` equals the key the reader asked for: K knows it from the store path and the commit index. A mismatch means the file is in the wrong place.
 6. **Member bytes.** Inflate with an output limit of `bytes` (a1 does this: sim `src/prism-bundle/src/zip.rs:275`); the result must be exactly `bytes` long, match the CRC-32 and match `sha256`. A reader that streams to disk hashes while writing and deletes the file on mismatch (as ref `project_bundle.py:117-123` does).

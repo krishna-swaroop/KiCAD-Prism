@@ -1,4 +1,4 @@
-//! The `.prism` design bundle (`prism.bundle.manifest.a2`): the archive of
+//! The `.prism` design bundle (`prism.bundle.manifest.a3`): the archive of
 //! `native/contracts/prism/bundle-format.md`, moved here from
 //! prism-sim-studio's `prism-bundle` (manifest a1) and rebuilt for a2.
 //!
@@ -47,6 +47,9 @@ pub mod revision_key;
 pub mod schema;
 pub mod verify;
 pub mod zip;
+
+#[cfg(feature = "build")]
+pub mod read_set;
 
 #[cfg(feature = "build")]
 pub mod stages;

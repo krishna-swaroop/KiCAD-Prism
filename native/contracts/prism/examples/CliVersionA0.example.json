@@ -10,7 +10,7 @@
   "member_schemas": [
     {
       "path": "bundle.json",
-      "schema": "prism.bundle.manifest.a2"
+      "schema": "prism.bundle.manifest.a3"
     },
     {
       "path": "design.json",
@@ -42,7 +42,7 @@
     },
     {
       "path": "projections/semantic-index.json",
-      "schema": "prism.semantic_index.a1"
+      "schema": "prism.semantic_index.a2"
     },
     {
       "path": "projections/stackup.json",

@@ -185,7 +185,7 @@ class SwitchTests(unittest.TestCase):
 
     def test_a_ready_member_supplies_the_catalog(self) -> None:
         document = {
-            "schema": "prism.semantic_index.a1",
+            "schema": "prism.semantic_index.a2",
             "assembly": {"catalog": [BUNDLE_ENTRY], "diagnostics": [BUNDLE_DIAGNOSTIC]},
         }
         opened = _Opened("ready", document)

@@ -90,8 +90,8 @@ impl State {
             .map_or_else(|| stable_uid("cmp", &[reference]), str::to_owned)
     }
 
-    /// Everything but `assembly`, with `sourceRevisionKey` = `key`.
-    pub fn into_document(self, key: &str) -> Value {
+    /// Everything but `designKey` and `assembly`.
+    pub fn into_document(self) -> Value {
         let index = |map: BTreeMap<String, usize>| -> Value {
             Value::Object(
                 map.into_iter()
@@ -102,7 +102,6 @@ impl State {
         let indexes = self.indexes;
         json!({
             "schema": super::SCHEMA,
-            "sourceRevisionKey": key,
             "components": self.components,
             "nets": self.nets,
             "terminals": self.terminals,

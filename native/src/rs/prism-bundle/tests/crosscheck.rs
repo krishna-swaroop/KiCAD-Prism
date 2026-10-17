@@ -4,7 +4,7 @@
 //! the a2 record of a failing cross-check in stage board.
 
 use prism_bundle::Limits;
-use prism_bundle::manifest::{DESIGN_PATH, a2};
+use prism_bundle::manifest::{DESIGN_PATH, a3};
 use prism_bundle::stages::board::{BoardRequest, Refilled};
 use prism_bundle::stages::chain::Input;
 use prism_bundle::stages::crosscheck::{
@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 fn generator() -> Generator {
-    let document: a2::CliVersionA0 = serde_json::from_str(include_str!(
+    let document: a3::CliVersionA0 = serde_json::from_str(include_str!(
         "../../../../contracts/prism/examples/CliVersionA0.example.json"
     ))
     .unwrap();
@@ -282,9 +282,9 @@ fn a_failing_cross_check_is_recorded_sorted_and_the_stage_completes() {
     })
     .unwrap();
     let record = &board.manifest.stages.board;
-    assert_eq!(record.status, a2::BundleManifestStageStatus::Complete);
+    assert_eq!(record.status, a3::BundleManifestStageStatus::Complete);
     let check = record.cross_check.as_ref().unwrap();
-    assert_eq!(check.status, a2::BundleManifestCrossCheckStatus::Failed);
+    assert_eq!(check.status, a3::BundleManifestCrossCheckStatus::Failed);
     let codes: Vec<&str> = check
         .errors
         .iter()

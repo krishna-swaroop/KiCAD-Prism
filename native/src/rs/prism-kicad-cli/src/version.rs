@@ -5,7 +5,7 @@
 //! the same inputs, `kicad_version` with the worker image's KiCad, and
 //! `member_schemas` with every member schema version.
 
-use prism_bundle::manifest::{a2, member_schemas};
+use prism_bundle::manifest::{a3, member_schemas};
 use prism_bundle::stages::Generator;
 use prism_bundle::{Failure, Outcome};
 
@@ -34,7 +34,7 @@ pub fn generator() -> Outcome<Generator> {
         "refill_procedure": "pcbnew-zone-filler-a0",
         "upgrade_procedure": "kicad-seeded-upgrade-a0",
     });
-    let document: a2::CliVersionA0 = serde_json::from_value(document)
+    let document: a3::CliVersionA0 = serde_json::from_value(document)
         .map_err(|error| Failure::internal(format!("the generator id does not encode: {error}")))?;
     Generator::new(document)
 }

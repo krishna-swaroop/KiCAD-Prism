@@ -246,9 +246,12 @@ export interface AssemblyState {
 export type PhysicalVisibility = "visible" | "hidden" | "ambiguous" | "absent";
 
 export interface PrismSemanticIndex {
-    /** a0: today's Python index; a1: the design bundle's `projections/semantic-index.json` (additive). */
-    schema: "prism.semantic_index_a0" | "prism.semantic_index.a1";
-    sourceRevisionKey: string;
+    /** a0: today's Python index; a1/a2: the design bundle's `projections/semantic-index.json` (a2 replaces `sourceRevisionKey` with `designKey`). */
+    schema: "prism.semantic_index_a0" | "prism.semantic_index.a1" | "prism.semantic_index.a2";
+    /** a0/a1: the revision key; absent in a2, whose design key is `designKey`. */
+    sourceRevisionKey?: string;
+    /** a2: the design key (bundle-format.md §2.3); absent in a0/a1. */
+    designKey?: string;
     generator?: {
         name: string;
         version: string;

@@ -1,5 +1,5 @@
 {
-  "generator_digest": "e3ddccae177a2d64f21fd081684a61e905ae23b03449912fc9901f3a3f4d781d",
+  "generator_digest": "6b9b4b9334a5ecc61403b7487703ee3c753f0149080fc8e8fb381d25d4dce4df",
   "fixtures": {
     "fixtures/release-studio/cynthion": {
       "design.json": "bff2346eb8a07411618885de3afd57ee56d36fff2d04477e7023bb2e605494a4",
@@ -8,7 +8,7 @@
       "projections/placements.json": "0c6c9e5a26f56cd32ee282990a470a68fbb44767dd901f08ff65b09d028e7f19",
       "projections/project.json": "0bcadb23c804c9820b59df91fe71c46388efa25cead2699bc2fd31faadc57d72",
       "projections/route-metrics.json": "b6870e5c5c6bc96b90e521ac5409b361115a458b3c62e6a22563d0b1bc4bb057",
-      "projections/semantic-index.json": "1e42eefbe39b7b15f6eb3c32a1f4eabf134f6230e740dacf1129ed59120d886c",
+      "projections/semantic-index.json": "39ef6462d7cdb8ee08af95c703316f61ad4473aec36692adfca5014c0fd6ddb0",
       "projections/stackup.json": "903e3bc543739aa39d0178c6770ade8fe094e30ee7b04872836a77d8a0a6001f",
       "projections/system-interface.json": "f4d250df53629d476e39a7d350c93137b80f9346a66604a7daf25cec9f56642e",
       "refilled/cynthion.kicad_pcb": "6dc0e1aff40685c04542f29f53546746d7609f55ee6cb4d2bcac6859fcd25922",
@@ -77,7 +77,7 @@
       "projections/placements.json": "622687831be9f66ba79309360fa5eaf9a3baa0c91213589c3cbba641cf3e142d",
       "projections/project.json": "c50f854d1b70ad4e2e93d5dd5f8e18eadb26429fbd8b3c5659dd7905d61f78f9",
       "projections/route-metrics.json": "bcda87e20350798fef802e470605f5da94c33ae4d7d04b76accde97ca2eb0781",
-      "projections/semantic-index.json": "de63dc4ada7a57fc6f691cb560d99ab59638fdac1bf807f59b44cbdd3c5a7c93",
+      "projections/semantic-index.json": "102199c329750aae69445084f52928bcb959a23e8d3037372e1f6762c5a81068",
       "projections/stackup.json": "bc229a2b5d85ee9dbfa6d52ab39db3c83e57e7dd6e1d37a40a0ac42c30bf3b54",
       "projections/system-interface.json": "5062a1bb120824ae96823541a2df70e8b33d522f5f38875658b28b12280b6714",
       "refilled/synthetic.kicad_pcb": "ab24df3451c3ca70c3d62087deaa223fba6958e2e6cab4f8af506b9ee1a2ebbe",
@@ -94,7 +94,7 @@
       "projections/placements.json": "8bb5729b0855f00ce6e7bf7e1e6e89a07e68c1ba97ad6e7167e50591e7e6e8bd",
       "projections/project.json": "c883dcee01766a97f7074f7f1f208d2fc5df9b3262232f503143d1ddc324f930",
       "projections/route-metrics.json": "974f2416fa43bf1e056d566e20051feea8bc7351e0a0269e87ba6f5c341464dc",
-      "projections/semantic-index.json": "3ac0993bf5659f9337ec6d16449d4821715a04367cb2a37994209bb8c9b230d4",
+      "projections/semantic-index.json": "e3f1540777287b37a972a9341cfa10d25b41704bcb48ff47917007c685cedef6",
       "projections/stackup.json": "6ffcdbfbc61fb5d3d4fd90c7440d812dbe67695174f7b1fc868e6fe64c249ea0",
       "projections/system-interface.json": "f5c3f6197598b7270f79bf6563fa7b32f30c07d6268e2b4852bbacf3a6b2d9d1",
       "refilled/USB-PD-Trigger-Board.kicad_pcb": "ef71b931f45f28bb8877d20e538691cc7a93ba91b602aa86aa2548a298545870",
@@ -115,7 +115,7 @@
       "projections/placements.json": "bfc88c28a6a9109ddc9d8027f46b21800f6b194e697307d43983c1f17367fa09",
       "projections/project.json": "cd466a2449d643f1b6fb7b25e7a39b012924619a5b2b5e2a74f4c76891387b5a",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "271c58d2a0c976a8f94a35c6b1d056366f2707f824ec9c93205d8cfec1ebbd6b",
+      "projections/semantic-index.json": "9f96dc7a0b7828d48446f1fb22ed98eb4373af291cbf657811fa7d467319659e",
       "projections/stackup.json": "0a46b865f43a6adb24621509ba07c214aa87fc3684bcd36980c78116e2c7d139",
       "projections/system-interface.json": "f7c0b3b658f2642cf158673e8ac1ce0c22537a1c6cb75a3147ade81378f7990d",
       "refilled/casefold.kicad_pcb": "774ca1d26ea9b5c9a784299dfabae49bb0bf3191079f8986fdb25c65cc50d087",
@@ -125,14 +125,14 @@
       "viewer/models/components.glb": "583b42e28a5909645c807b3e117f65d466eea57f3598ed55b665622527a81b92"
     },
     "backend/tests/fixtures/design_variants/kicad11_tokens": {
-      "bundle.json": "9e3e8fb85ad6935d04563d9ac37caea2dfc368022cbec7aabf7a425e96cd5187",
+      "bundle.json": "a99a87f263b5866f1c1f257bc7861d05dc211aef6ff03a518c26222abc1d5934",
       "design.json": "897f59674825ebe8590525120cb08ac08e15accdd21fc412fce1f4345820d017",
       "projections/board-objects.json": "624ef4196e69b43300cc20303cc23fa143eb20de4b723f7a7a6c4945a8884941",
       "projections/occurrences.json": "db4fa985987a3e7c8892ec4e252ca341f542b0efdc507643bbdf4182a710f74b",
       "projections/placements.json": "90ca3c6bcc8afc6830338765a2361d57d85832ae3437766016f092505c81112d",
       "projections/project.json": "edc51ff939b6c562423d69b96178014501245649190861d93168f99086e7413e",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "5d839b04cbd153ac7430d86d146a0de66ca505387d0c51049d23b0824acbfd55",
+      "projections/semantic-index.json": "f374ca1f9dc6a5fe59f21a7c88a0d1438c71c19620b023a16a4610d68f247244",
       "projections/stackup.json": "0a46b865f43a6adb24621509ba07c214aa87fc3684bcd36980c78116e2c7d139",
       "projections/system-interface.json": "77fd5b7d5fc9538d54e9dbe8340327d98f31169ec501112ee7f910ca4abdfbd3",
       "sources/k11.kicad_pcb": "9ca2be3ae6665de134a8fc6e9e614fdd5224ddf674665fabf9cc7064ed63926a",
@@ -140,21 +140,21 @@
       "sources/k11.kicad_sch": "f8fddbc98634ddcd98498849c5d3301d42417d72f6048ce51da236ef569158bb"
     },
     "backend/tests/fixtures/design_variants/legacy_in_bom": {
-      "bundle.json": "632e268bb9d3d2a431a8d0a97b6bb999425943ab9ca6090e84518222f9158f93",
+      "bundle.json": "c64d637f26a2aaeafba7c0aca8ecff10799b7365badb4e686d820c5f56b55b8c",
       "design.json": "4253f45a0f5187e7ff0857b0d5265d69f563baa7f6f70ee0113e0e7c694f5ed3",
       "projections/board-objects.json": "50af79df6c0812cb0fa47f845ae046cded5c8fa5cbdb0ae3a4f374fa0fcd3ee6",
       "projections/occurrences.json": "d490cc946fe5a0329a84cf47b1eb99dfc6f8a4ab16d7370c6fbd25688f5abac5",
       "projections/placements.json": "ea075debf6d3823f41343a09e4e3f5b1d05fa4431cdf015fefb1c0d6a30a28e8",
       "projections/project.json": "33db4fd6b02d5b60f90a6f05b70d1da1116e5e93e63622d944c45354a2c254cb",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "3b09c0a4b15c4c33f14325db16b975c776713882f70225dc0467348ebad6efc8",
+      "projections/semantic-index.json": "9af78512d49179bbae1e7a5e766a0b4eabe2de5261f81dfa959f0f1468b6719f",
       "projections/stackup.json": "d5b74a5fed709bafcc5eef4d1c34418558cb7d6b436b53a13e2cbaad6ee11c14",
       "projections/system-interface.json": "bf1f443ed06a40ad67b2a68bf82aad57d262b9525d8e352838ccc1b59ef7fbc2",
       "sources/legacy.kicad_pro": "efd8d0252696474f1476deed48b408711ed8ce3cf768d00ef1ae2083a035caef",
       "sources/legacy.kicad_sch": "ee6a7e16efdba47dd519749764a4e7870e3f9438629b9497aef9ceec8ce68c2e"
     },
     "backend/tests/fixtures/design_variants/malformed": {
-      "bundle.json": "03f4c1e5f1beb0c42610a9d8e2a2dbdd14a2534d2df66037c8209f5712837e05",
+      "bundle.json": "cdde5f9465ed7fd53f61f870de81a4947ff9177bc37568cf2e42639721ad985c",
       "sources/broken.kicad_pcb": "1e81b1f4bf86a0b732bd593c46bdcd5202f0a44a59ef517eb464a008979641b0",
       "sources/broken.kicad_pro": "41eee78536b07d3ff81dbf62e186402272afbeb12362793965489d50e729eed6",
       "sources/broken.kicad_sch": "8be1f0272a62ebe5604a0bc442b4652c5ed2b368a64549e9fa9198d47fc13521"
@@ -166,7 +166,7 @@
       "projections/placements.json": "005795e819b588aae77363db2c892cfe6277ac0768f5e60ab75be2a46f58e58e",
       "projections/project.json": "6a6396b2e18bf86aa7f2f4f630fd3974a59d4cb3c9edf27efef567b3a11e9e0f",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "a2838ca412a83c8f3b9deb8f961e0eeb6e2ca092cb35db07cb3fa22a98889b4e",
+      "projections/semantic-index.json": "1830ba35189d2ba2a44f11d61cca778b5943ea74ca4a850f70a522c3b42d29c3",
       "projections/stackup.json": "0a46b865f43a6adb24621509ba07c214aa87fc3684bcd36980c78116e2c7d139",
       "projections/system-interface.json": "be573c5ed4830ca625bc54483cab57d85ac1de8e82dd003f5cd143842742a8e8",
       "refilled/plain.kicad_pcb": "7dc14291d1f1cc74ac082367386bb2c4994de937c1dfa9511be26d6f2dce03d2",
@@ -182,7 +182,7 @@
       "projections/placements.json": "f66f5a98c76a947220e745e43c952c8501fe6d725a92cbcb41de326fcfe225a6",
       "projections/project.json": "8f46441d74eaa077b502080a05083adc67086f9105eec65862516c5e7a0f0ac9",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "1c0145084a9e29c801a9db85d02d34e7606b60bb77347bef057407cf6a36973b",
+      "projections/semantic-index.json": "2cafddff5e8925d942de258c635007279a7ce8ac97650bdb23f179796f4d2abd",
       "projections/stackup.json": "0a46b865f43a6adb24621509ba07c214aa87fc3684bcd36980c78116e2c7d139",
       "projections/system-interface.json": "b6e9ec25c2abe55d3f8ad2b526813de7b9a820c4d2c4be6c5975687e68268637",
       "refilled/variants_oracle.kicad_pcb": "bfbe954c0175b50ac514d677ca5ea8e83ae645e7c1b7520af024ff8cdba7aac0",
@@ -201,7 +201,7 @@
       "projections/placements.json": "dd1b24e1f3757d7e24181edc6718a6a0973c951e181fdac5c3fe3c4cd31db080",
       "projections/project.json": "8f46441d74eaa077b502080a05083adc67086f9105eec65862516c5e7a0f0ac9",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "c299fe366f489354bd1f86f48812ea279273f7b2dbda886eebc44f0de204a2a3",
+      "projections/semantic-index.json": "18a803a40386c00a924aff4a5cc2673baaaea1c772a2b5a9fb6834f75df28039",
       "projections/stackup.json": "0a46b865f43a6adb24621509ba07c214aa87fc3684bcd36980c78116e2c7d139",
       "projections/system-interface.json": "b6e9ec25c2abe55d3f8ad2b526813de7b9a820c4d2c4be6c5975687e68268637",
       "refilled/variants_oracle.kicad_pcb": "61204f305631ccdbdda1e7dc04fe962cb25c89aa7e03ded4195ac32c7e0a04f1",
@@ -214,28 +214,28 @@
       "viewer/models/components.glb": "d2dbe40dac4c832cf4187c778f8bb5886467fd44d73968b7a5cdfd0e122cc9bd"
     },
     "backend/tests/fixtures/design_variants/rule_area": {
-      "bundle.json": "09848df950ec2be8589b6d93bd7d14023f7054f19b443f0a33e75c0c466971be",
+      "bundle.json": "36473ab05943cf42f8549de7e72daae2d68b25f1afb48ab508e5be6a08cf2a90",
       "design.json": "2de0c4e0cb3db17e06134b8777b973b96e51bdd9f3610e667ea37ff93155c055",
       "projections/board-objects.json": "669c3fde67190442283ec412a70c3c8242e70fa610f647e06a4e4474f6289751",
       "projections/occurrences.json": "67cfb9336007feebe86d9d179a004cde4ba83d8cf9f2df2d6138b6321bfda9b1",
       "projections/placements.json": "ea075debf6d3823f41343a09e4e3f5b1d05fa4431cdf015fefb1c0d6a30a28e8",
       "projections/project.json": "75045a64c32b80ea0f7ab53c04d3b03141de2c90ecc464ecf028477ce4191cf5",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "631102eb059134fd17e4ba1b7e46a9fe04683fa1e23260aba792509e8a36cdae",
+      "projections/semantic-index.json": "78d8f4bd076cf79d745fdb1e294f96ad5b19b6805eba9c5e93859caa5c4d155e",
       "projections/stackup.json": "d5b74a5fed709bafcc5eef4d1c34418558cb7d6b436b53a13e2cbaad6ee11c14",
       "projections/system-interface.json": "5885f9e1a573afd483bdfe660f6151ac0a73c9f777bd7492b0cc8c4ea3a3d2d1",
       "sources/rule_area.kicad_pro": "a8079787b9506e125d203cdbb15e737490572fd205cf1561bbae059563e7a3c1",
       "sources/rule_area.kicad_sch": "bb37936ceb5754eb1bd36b8a5668b16654f5de67ae0fa8cac2bb8929685b5287"
     },
     "backend/tests/fixtures/design_variants/sch_only": {
-      "bundle.json": "fd52af2302aebe447f7c5f831886a8a85254e64d87f3256bd754ba60f185bf85",
+      "bundle.json": "288cf5d36b3b9b86efe4a7f44b185f677b4883a85ea488f1db34e62cdaf55158",
       "design.json": "35df4bddbee739b40f9cfd16e92d4daf5ca1651d3e60eb7e2048f5a6e47e5795",
       "projections/board-objects.json": "cb320b1dcbf5c8ea542870ec0202d62ac72cfb41945e85e0b6197986eb0c0fcd",
       "projections/occurrences.json": "410463b4f096e1a476d2f8694e5972f6c5680a63fb04e3aa870612f57b6efb67",
       "projections/placements.json": "ea075debf6d3823f41343a09e4e3f5b1d05fa4431cdf015fefb1c0d6a30a28e8",
       "projections/project.json": "c58341f691cf1f9b4c18f3bd0e2d697725487fc1d6fefaca49c059878bed6693",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "d3d8204ae2ed8889c36adaa852c1c082bd868b9bb48e77fd492dfb01b19d5cf1",
+      "projections/semantic-index.json": "ab1723cd5be91a818a0a977953032b354e93157078983c133591e191c29cbcfa",
       "projections/stackup.json": "d5b74a5fed709bafcc5eef4d1c34418558cb7d6b436b53a13e2cbaad6ee11c14",
       "projections/system-interface.json": "2e6e00ea119156d5f4d8a871851f23c16f54881182fca96ddc1ad0197b11459c",
       "sources/sch_only.kicad_pro": "7ca1f80149e06cce2932453367fb89b7036cc672925b5e6edd0fa6a532cd5e9e",
@@ -248,7 +248,7 @@
       "projections/placements.json": "f037fc25e384b712d86dc33c04ee7371c09e6c36e84b22b8112e9773ba11695a",
       "projections/project.json": "3ab42cc6f6b0d8859a09018d65c4865788eec87fe9c63dcd8bc2282011e7f7fa",
       "projections/route-metrics.json": "a45dc90d28256738eb9655698fecb5782884b3b15f82267b4cd335ec7a63d8d0",
-      "projections/semantic-index.json": "c7290fca67c504f52e9595c21cdf20025016cb87b7ee5b0b86f08ee84042d21b",
+      "projections/semantic-index.json": "17648027b406d4e7dc4b44afe48dc6eb3279473ff581f4daf4f39d496deadb4a",
       "projections/stackup.json": "88d1a9315892c85b5330bb42330e213addba2f6a51756e40c34b2c45360a7dc6",
       "projections/system-interface.json": "dea908247206fb72bb51ca89f63b1ee011736bf5142a92202778054dc7d5da52",
       "refilled/ambiguous.kicad_pcb": "6804331e78e8e0ebb62ca8020bbf074bdb280d9c3aab0f5c253b6fb3f7c6f922",
@@ -270,7 +270,7 @@
       "projections/placements.json": "e81cbdcd175021d3de6b62dd3b83bdfc605497178fe02ab929fa2ab101130aca",
       "projections/project.json": "e01289f4531d4be835935d6db817b7c393ce13afa02b7d0e9698595bd1622c07",
       "projections/route-metrics.json": "d2dd321a9c49fa37150fb9026753ddf5383e030b7c68ff303466c89e2b87fd73",
-      "projections/semantic-index.json": "54a4594fc3088376f95d6580f897525ea75523d59e9c1b0472f9a49192a1496a",
+      "projections/semantic-index.json": "04ef2ad77073bc411807a9239a4860dfe73bb7aa789aef5268c89d0a8b89ed32",
       "projections/stackup.json": "88d1a9315892c85b5330bb42330e213addba2f6a51756e40c34b2c45360a7dc6",
       "projections/system-interface.json": "774b00c5a94c81678180a231dd441d30809b9fc8941b50f0e6983b199c10c59f",
       "refilled/edge_a.kicad_pcb": "dc886b5c6cea49a6425c5ad7253df25c04578c4c83fce9282dac78b38cb9739e",
@@ -292,7 +292,7 @@
       "projections/placements.json": "85232f12ed86dd8d74fe8a060c82438919454b27bf36a180c0902f2b510f9710",
       "projections/project.json": "191b500c35e634555813f81b3979cf5d707e54f273a8f82e8b54032872af75ab",
       "projections/route-metrics.json": "d2dd321a9c49fa37150fb9026753ddf5383e030b7c68ff303466c89e2b87fd73",
-      "projections/semantic-index.json": "e0196a58a0b779a250f16e40e563303e3010f7c7dc568d5ccc32410930512a6c",
+      "projections/semantic-index.json": "230dad2763f4dac1333f2ca334175955b0129d634fd62943d45477a87c55266e",
       "projections/stackup.json": "88d1a9315892c85b5330bb42330e213addba2f6a51756e40c34b2c45360a7dc6",
       "projections/system-interface.json": "25c7bc0e9b047253bcbc8e08ff57b30a351786b8e07d0c9c55f2060b40c9eaae",
       "refilled/edge_b.kicad_pcb": "d1c28ef36544fead41b29345faa7a0eaab1ba17354713a1ee79908b0adb2bb92",
@@ -314,7 +314,7 @@
       "projections/placements.json": "596356c403c43c61511f8b76ffe2c7e86d7b4c837fdedb013b7702f394f9d67c",
       "projections/project.json": "f3eea1ee614ee87bbca090cfcba8169ddd2d53b0991939d999e8ea12070bdf3a",
       "projections/route-metrics.json": "7e723eb9d15e12baf46c709927cffc30f69adcd5db7849586439403b2510f7d2",
-      "projections/semantic-index.json": "57d857f3cc23b14cbd714768744b7b7207b894cc9d7cd7c3111a4575bd403b67",
+      "projections/semantic-index.json": "66476926c09cd59af95ed4d156ce68801d519e959b0d2abbe72e9337b8d7ea17",
       "projections/stackup.json": "88d1a9315892c85b5330bb42330e213addba2f6a51756e40c34b2c45360a7dc6",
       "projections/system-interface.json": "993732222a92893a23246ab7ba8effb5933b1584082ad0ebfa05144c41e2c6b6",
       "refilled/mezz_base.kicad_pcb": "2248a1b58c494fad59de5c73a2cfc899a5e6a053f24ebbd05054a92376bf8501",
@@ -336,7 +336,7 @@
       "projections/placements.json": "4fa94e1ddd58709cf576003c371f1e53c3b9e0ee4f09c3304fc0b075b2365466",
       "projections/project.json": "d6321aad036d796b1537b4aa4c620112d7621cf3777f62af2d320b48f0bb9656",
       "projections/route-metrics.json": "e0359b3f6ebe90b9493b39e2d7bd8e6db2770e979b1a6f06a570a66a11b50402",
-      "projections/semantic-index.json": "fc3f9bb7b1bc77432e5a463e858b47b39e19da574920a200c8d516b7decea3fa",
+      "projections/semantic-index.json": "7390aa82538588d26f506605f2b193d31dd550b9b19eef2f232df3f59cc27ba1",
       "projections/stackup.json": "88d1a9315892c85b5330bb42330e213addba2f6a51756e40c34b2c45360a7dc6",
       "projections/system-interface.json": "b42b10aa77b8943fae27f44befd27471baaf4ea21ddae2cfed8b346cf90e2abb",
       "refilled/mezz_top.kicad_pcb": "558ce463840e4313062fe58ca75cba74b49b61fa7329b3f953156cba3e95f83b",
@@ -358,7 +358,7 @@
       "projections/placements.json": "78f947288564edae43c89583d2d8a72e2503bc61f998aa54495ac2a4a866c04f",
       "projections/project.json": "d6321aad036d796b1537b4aa4c620112d7621cf3777f62af2d320b48f0bb9656",
       "projections/route-metrics.json": "e0359b3f6ebe90b9493b39e2d7bd8e6db2770e979b1a6f06a570a66a11b50402",
-      "projections/semantic-index.json": "f54a6a966f1efcceff8f3104dc14fcc1affd95bf97e5765fe91875617f5d865f",
+      "projections/semantic-index.json": "056ec13f4b67cbd360ebfb58138d08635d4d1535dd3a5568a4fb5180e5898b8d",
       "projections/stackup.json": "88d1a9315892c85b5330bb42330e213addba2f6a51756e40c34b2c45360a7dc6",
       "projections/system-interface.json": "7025a15f7d4be334fdaaafdebfb46bf75cc3c58eb5107af0b66cc6df88129048",
       "refilled/mezz_top.kicad_pcb": "5e67c89f5589463b47670f1db102d01fb47c333824a965fcc567f23a4f720d1f",
@@ -380,7 +380,7 @@
       "projections/placements.json": "ef2348a79efa4ae28ed69c7a039d7c2983a4cf5d501b568388a55e0038bd13ba",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "76f499e4cd217dd50d1d36224e2b1bdc7482949dd7104252ac4b1a5a0c75cbe7",
+      "projections/semantic-index.json": "bf3f3a019604b7d85a9a9218e50ce8d449575df4e8183f6de1cdac4ac0582c1d",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "5109fb55e35661b15d6e10c2ea0b8b2bef26b34901295800098ef64d06584323",
       "refilled/mini_obc.kicad_pcb": "28cdbbbfea9986f2cdab5a38e3277244ac9dc92fac5fc21170162c366fb7f6b4",
@@ -397,7 +397,7 @@
       "projections/placements.json": "021da6ebdf12dc23eeac68f42d6823a04f88176db45fa5ce72a9cd4adea15a13",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "bd19943d38d609795b612bb77487178686a5498a30e20ceb34986efed95ea193",
+      "projections/semantic-index.json": "9b4eceb2dcf94b7de7ff967a6dc94774eee5807ee11c8eff2b6b8ce6f6973ffb",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "3b9e5d98cf92763f40ec55fdc1f155ee73ee57e892cb4ee265d2911aa6781397",
       "refilled/mini_obc.kicad_pcb": "7278ec61f2d9d667f2359bdc1e05fdb42e2acbab03662d1bb39d94efee44caa2",
@@ -414,7 +414,7 @@
       "projections/placements.json": "021da6ebdf12dc23eeac68f42d6823a04f88176db45fa5ce72a9cd4adea15a13",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "bd19943d38d609795b612bb77487178686a5498a30e20ceb34986efed95ea193",
+      "projections/semantic-index.json": "9b4eceb2dcf94b7de7ff967a6dc94774eee5807ee11c8eff2b6b8ce6f6973ffb",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "3b9e5d98cf92763f40ec55fdc1f155ee73ee57e892cb4ee265d2911aa6781397",
       "refilled/mini_obc.kicad_pcb": "7278ec61f2d9d667f2359bdc1e05fdb42e2acbab03662d1bb39d94efee44caa2",
@@ -431,7 +431,7 @@
       "projections/placements.json": "021da6ebdf12dc23eeac68f42d6823a04f88176db45fa5ce72a9cd4adea15a13",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "5c6e8b1d49f945501cb6e9bd3715890390a456cd31bab3ad57b18a3c2d5b0fd8",
+      "projections/semantic-index.json": "8f7f2f237d60409e6cdd0d8b89f8adb2fd142535e7ebb950996d9c03f6e9c1cb",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "580f6c8976b09aadb7f862fd4b6fffc3bb286c7e71bff220f99edb1441a702d9",
       "refilled/mini_obc.kicad_pcb": "df6b37658cfdcb24f568442c2c2323a76f99d7f564c96e7af5a8a1928a467521",
@@ -448,7 +448,7 @@
       "projections/placements.json": "916b7c3205cb968e1b4b4c725183facd66a0b0745c2a577c7dfb069b247c6b3e",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "1272c024d656b1316aaa284ed9ed02a10f4dded8a36ba596b469aad2e202034f",
+      "projections/semantic-index.json": "861c15684ca38d44fd9519b8e9432f5d7206ace146d7d61fd3e3bf86c0501361",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "5f34d6289d6da34a760138d03d66eed4c384f1a4f7d03650165d8144df6814b6",
       "refilled/mini_obc.kicad_pcb": "56ab381f0e82f94a15264016fd5901fac58c993605060c789f0006522a130e89",
@@ -465,7 +465,7 @@
       "projections/placements.json": "9dffc76c4917bb669ad931b4b2e6708da0a54bdee5a7a1ce3fe8b891d765addc",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "471a34aa3649e56fdf464cd740dde916f8f00e09b0407ac5ef88ccee11e03480",
+      "projections/semantic-index.json": "a45ce7082b5f901170e9944f56bb0b1f59f49a2f14c30d34edf78edd7b5c62db",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "c8b10f6c089e99fb4911a0c264435c05b4549e4f1188f41e084eb38d85138b02",
       "refilled/mini_obc.kicad_pcb": "0a990cb76e30bda39f95d33f2678abe636aaf0aa3790efdf21024cc2b8f2eedb",
@@ -482,7 +482,7 @@
       "projections/placements.json": "eab25aa731ac1416fe32240246e2812d787d2eb54ece72b0a1c8fd875b007430",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "545a408cccd58ad6672c530190a98b1253f06c83cf0a8d185a816e773e121879",
+      "projections/semantic-index.json": "ce082c39fb4bd5fb5a0892d14709e883f62ccbfd14b3d7e0e90e130885a6a034",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "ebd7283aaeeddf004c6408b9354b5222ff0a3c152f5be414c9cdc2196867071d",
       "refilled/mini_obc.kicad_pcb": "ac2de7214a2ad15e53f745f922ed621011f330420f43965646af0e91491c4e5a",
@@ -499,7 +499,7 @@
       "projections/placements.json": "e74cf9892a8f5aac4783cfb7c368826335d8122785b21c7023dabc3e74dd25a6",
       "projections/project.json": "575652513600ba37781e756bf3abcc052bf06f99991f33042195bce2f1dd4c75",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "9802e411639bc3597c26e267023c1c0b3acaaeb5246bf1a08b954af85688f824",
+      "projections/semantic-index.json": "f37daa2747ad7beb32481889d2974e96e05a56a908ff0dafdccc645347e731c1",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "82d47bb2f715000649c776360f81925f42b0fff3f0b7b48cdde816f672c36cff",
       "refilled/mini_obc.kicad_pcb": "4bec6c1d7bdc8582eaa05d0258e212ab21c21fffdfa72db0e77097c44d2b0a0e",
@@ -516,7 +516,7 @@
       "projections/placements.json": "ef2348a79efa4ae28ed69c7a039d7c2983a4cf5d501b568388a55e0038bd13ba",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "76f499e4cd217dd50d1d36224e2b1bdc7482949dd7104252ac4b1a5a0c75cbe7",
+      "projections/semantic-index.json": "bf3f3a019604b7d85a9a9218e50ce8d449575df4e8183f6de1cdac4ac0582c1d",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "5109fb55e35661b15d6e10c2ea0b8b2bef26b34901295800098ef64d06584323",
       "refilled/mini_obc.kicad_pcb": "28cdbbbfea9986f2cdab5a38e3277244ac9dc92fac5fc21170162c366fb7f6b4",
@@ -533,7 +533,7 @@
       "projections/placements.json": "31f4ecb42eb84f73446a81f4bf13e848321d4e91917c19c0c4e05fd4d0e64dfc",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "72d7a7634266f182a251e28b6701dcc09637eca2ae4a3419cc63657598c20c94",
+      "projections/semantic-index.json": "5fffa4a1fec8b879d8c2d3a43104181a7f29a049fb7b16b5bee446c0461c8e4d",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "d874c2a2c6155e45ed94c8a260d0ae9b2b22bccb4b105039394090df8fe62c3f",
       "refilled/mini_obc.kicad_pcb": "eaae23f4579ca04af08e0343d0b6355d11c60394dd6cfd37145d86834772c975",
@@ -550,7 +550,7 @@
       "projections/placements.json": "ef2348a79efa4ae28ed69c7a039d7c2983a4cf5d501b568388a55e0038bd13ba",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "f09529314656e4d4f3a106cece6ad8b33dbc75adb2b38a0e24a662f368a7e8b7",
+      "projections/semantic-index.json": "8d5dc433cd85c8205e2290809da9ee63b4a0ff48a50a22b8c4230b764221b740",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "7205ba48be951dd2ec3ab7c3fd3046aa5ff477a77ff66a0dde45e1cba8d2017f",
       "refilled/mini_obc.kicad_pcb": "28cdbbbfea9986f2cdab5a38e3277244ac9dc92fac5fc21170162c366fb7f6b4",
@@ -567,7 +567,7 @@
       "projections/placements.json": "4564f7e3b130daf5418eaf2c3406189c6395acf96500dde0801b15945194cda8",
       "projections/project.json": "e03a5fc6b93550a2ca4275f5edc659d99e6e0c6f954a2900c1bbd74d5d8d9f08",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "a792875d7fba28dbff87999b9235d31ab2f53a05b23c3cf442d520556505ce4f",
+      "projections/semantic-index.json": "f4c95b2e3d75496ba7ae913e20e2024c90891f793fd3a4ee546ca30ca1b0becd",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "41075fe4244e18ebf7e4b66f19c05f589129b255e5dbbb062cf0bee997fb14c9",
       "refilled/mini_obc.kicad_pcb": "0ed9174ccb2e4cc5261e43352146428cabbcf76276c54a823020c52745b7943d",
@@ -578,14 +578,14 @@
       "viewer/models/components.glb": "0c71008fdfaa5afb747e85098f5e8e005ad20a515022c2e95a1d3eb6f314efa1"
     },
     "backend/tests/fixtures/system_builder/sources/mini_payload/F0": {
-      "bundle.json": "fd9d080054eeaf5cb5bd461079ed64a57bb5ec62da0ef189f5d487989a951ee1",
+      "bundle.json": "84182ba22ab02d36ecbedcd7e10a75e4b7833c30f7c236e105fe2156bd1c2722",
       "design.json": "c9faf8aa1fa8b6a1143056df0e1502b0cdfcf4a86b2e98b8e8e3d5beeef2793a",
       "projections/board-objects.json": "7e404e9c026479f7f0b970545531298fa6e4cfaa9fc31a7094f12715b8aa99af",
       "projections/occurrences.json": "3b88ea110a64d2d2e288a86d1d1bf872ea012857f32426d4ee0763ec55599d6c",
       "projections/placements.json": "ea075debf6d3823f41343a09e4e3f5b1d05fa4431cdf015fefb1c0d6a30a28e8",
       "projections/project.json": "be71768a51efbac3ce5eacc048109fa4c6519471f0e707858b938f35d7b4e358",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "2f8695c0f84fd82c34bac06219f0ef9805d103ffeed3c018001c5191daff3a7e",
+      "projections/semantic-index.json": "f4439f02d4b873e041ceb1f14b7b0bc11f2a80bd01626ec9d476d314f84c7aa5",
       "projections/stackup.json": "d5b74a5fed709bafcc5eef4d1c34418558cb7d6b436b53a13e2cbaad6ee11c14",
       "projections/system-interface.json": "fcd7230981b0bb47b8a7fde2ab1d10317e15df28b8116a89633574f71f01dd75",
       "sources/channel.kicad_sch": "0ae2fe9b23452d261e0b350aa6300f128e8f9d5e4482a903f5068de668526946",
@@ -599,7 +599,7 @@
       "projections/placements.json": "53c7a083c897a9d3a548f1c13202c5eb23a98f6291d7a021573caed9a1e5ec68",
       "projections/project.json": "f50bc8b8d5c478e1ec283f86a9993e6e243098264260a86f099562a27f4703b1",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "edc4522f0337a5c2ba459b05b3069e04cdcc7e9c2e957b4cb2b1bff99ede9e36",
+      "projections/semantic-index.json": "6f72645af2936d2d75487d573d8ed86c3009b1d8bae57bb1efcdc256320ae0d0",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "566459c1696a82c0594d259debbb159b8089d58644a50e018a31bc29c88a71dc",
       "refilled/mini_power.kicad_pcb": "3a0c852d0ee605ae53108bfd64c9d0a0ee28d697b66bc96bdd52237e6267e91f",
@@ -615,7 +615,7 @@
       "projections/placements.json": "7338862020614fb5107ac2aaffd611284b37f4330b773189e9b7d5d30dd59a7c",
       "projections/project.json": "f50bc8b8d5c478e1ec283f86a9993e6e243098264260a86f099562a27f4703b1",
       "projections/route-metrics.json": "c9e08126abd11f01518cd4949958639ceb02d343e5539d15f9d9f4441877fcf7",
-      "projections/semantic-index.json": "3046142071de0e8b13aa8117f9a095d866bdb880fd06ec4dba937761a4718e5a",
+      "projections/semantic-index.json": "8c7169676b956653be5c54b5edba423470cec1c5f7f385b1456c78094c223915",
       "projections/stackup.json": "b16f26021612e486da5703a5aa39fbf034df583aa73933b7fa4d3544c9196bdd",
       "projections/system-interface.json": "1367cb2c8bd853c21d0ba892e4c89c371f621ea4749cc329d5c19a270a049558",
       "refilled/mini_power.kicad_pcb": "f172dbf35c1e8e204cf81696aa4df3a51ee5e6e0788c8de0fe678536ecb76466",
@@ -628,111 +628,111 @@
   "per_target": {
     "aarch64-macos": {
       "fixtures/release-studio/cynthion": {
-        "bundle.json": "7e6ab556fb83d2603bf367a7786914d2499bba1f1c0a4534f8229c30ed6cbc2d",
+        "bundle.json": "920d3b2ff66e834731c292dfc30d153341aa3b02fbabe6fdb29335cc44b0019b",
         "materialization/board.kmpack": "ad1825ca4e339d22c402c8bc04b87f26b6bc69bdc710eae63b59e3809a9929dc"
       },
       "fixtures/release-studio/synthetic": {
-        "bundle.json": "3d0155e06113bbd1aad4b16667af282f33017c9349153b489d86505385d32449",
+        "bundle.json": "4ef3b980be97fc7623d7df79001828a291b3b0b4603a4f72b1edc561dabc3296",
         "materialization/board.kmpack": "dcc62fb087ffc4ae052a8ab1186f5add54dfbdfbfd7ff556381c6522a8f70a21"
       },
       "fixtures/release-studio/usb-pd": {
-        "bundle.json": "53db56d7a2b75ea867d33fd90930bb521cf7267a03d7eca22544e55c229e403e",
+        "bundle.json": "16b00fb93f9ed3bbeeaa56b5ea127600763b69780832f6a0ecedf591eb55fb7b",
         "materialization/board.kmpack": "273028521ffbb0130b21e001092c020e22ed655c67eef89c800a23b996a02f64"
       },
       "backend/tests/fixtures/design_variants/case_fold": {
-        "bundle.json": "958f883ba0b5c498014da193de3e16ae72ac11745ed77ec5d6aa32e11b980c95",
+        "bundle.json": "76b103188b78843967e843cada9510710fd26e9013cf5d115ef70a9683ca44cf",
         "materialization/board.kmpack": "5875c3b37ea59a7dd58a900470459c403f9d24ade2cbbcc43347fb1f32b34753"
       },
       "backend/tests/fixtures/design_variants/no_variants": {
-        "bundle.json": "4e016c0e849c51d3e9ca636b2249a0a50a30479d7ea0dfff385486263eec7e95",
+        "bundle.json": "22d14f490f988df105b3f66e9dbf6bf61a9721ec9c21db566807bc1a44aae81a",
         "materialization/board.kmpack": "09a8c152c28696c7e7525aae941914e756c91358df58efa84aa14dfc229cf1af"
       },
       "backend/tests/fixtures/design_variants/oracle": {
-        "bundle.json": "b0a4d1af96f05fa584c3b720b47e93ccbf780c81d153dc904129155faca387d6",
+        "bundle.json": "00881eb64383164a6f6017911e880375e68021fa3c769686b6b54628b6b5640f",
         "materialization/board.kmpack": "c0858822e4975fd9f11567500aaf9f06726f827c68dd8688818e14b22a88dbc6"
       },
       "backend/tests/fixtures/design_variants/oracle_rev2": {
-        "bundle.json": "b70ab2aa054ffd490b8bccc5b30f029a69ef85f78529a16513d3fdfd1729e776",
+        "bundle.json": "79b2fb1a6ab794c66a14253032946dee9816f32b5ab4f70ce22ae0f4fcd9ea55",
         "materialization/board.kmpack": "c0cc54a7f8bbb8aa9b1ac9267f98c909011c6e9e1ad7b98feb1864d6f2b02df3"
       },
       "backend/tests/fixtures/system_builder/p2/sources/ambiguous/F0": {
-        "bundle.json": "d91a05cb14556004845b26831ff3bbe88d19f5c58f144ba6199ae44e924b4b9c",
+        "bundle.json": "d92a4c8a6422810188e6da210a9b2bb31c3b41f3e87d15f44c4868eb5005b4c6",
         "materialization/board.kmpack": "ab42c03e8dfdd22e0deec47cd2d5ac99bee3a6f6799ea1ec627d7394dd688055"
       },
       "backend/tests/fixtures/system_builder/p2/sources/edge_a/F0": {
-        "bundle.json": "606da89ef505f5229ef16065731141b147e39f1622a4526a6070d613da6d9961",
+        "bundle.json": "3d18e5991802ac7762ddf04074972fda53a5746aff4f9830bf3f061886b2d774",
         "materialization/board.kmpack": "74d6175f0c752a10d03ed4945f4dd3baddf8e1fa4ab2a4c10ab425ea1d7c384f"
       },
       "backend/tests/fixtures/system_builder/p2/sources/edge_b/F0": {
-        "bundle.json": "4629d0321787619f49b3907b3fdd1b10968652bd4f2e36b18a5e8c4563300772",
+        "bundle.json": "760704f8ab76dc92304fff89d8b506dda1ed6f340481582dcc9b607874a87a4f",
         "materialization/board.kmpack": "d881a29366e3725dd0f66c69ac04d5cbf0990606db4940569eb1bd0d4cb7b348"
       },
       "backend/tests/fixtures/system_builder/p2/sources/mezz_base/F0": {
-        "bundle.json": "064737cb70d9d0664f1c201f9c6ff630ffe3be9bd76cee254a850157812d460f",
+        "bundle.json": "c1df5b422b1b59291871a0f74001f35b58006cc7d8d4f406c2650f680afc041b",
         "materialization/board.kmpack": "711fd02db548dd434683a8ea34ba5b232e8de2f6c542063746df4e8d97377b21"
       },
       "backend/tests/fixtures/system_builder/p2/sources/mezz_top/F0": {
-        "bundle.json": "e849b9f69405228ee4b523d012bc3f5f3d0c199723f00ac41fee84d6cb1bd263",
+        "bundle.json": "2c8a85ab7fff19d1369f1f391fae39a72547848b9bee872afc39a59532a145d1",
         "materialization/board.kmpack": "f654bc46427b6fa382291786ea53d629c635af3d1791e3123d597d2498a0f708"
       },
       "backend/tests/fixtures/system_builder/p2/sources/mezz_top/F1": {
-        "bundle.json": "fc13425f9a137cfb2fc37d089287ceabd8193f4a681f1df94b85b29035b4f572",
+        "bundle.json": "1ba0516b8e670ac3be7cfacc4bab42864cb8867e9a537b7585f28559d7d030a3",
         "materialization/board.kmpack": "afc0a20640a5fa68614a9dbf9afb26c40ee8fdd8a25d3bd539e83cb528982e7d"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F0": {
-        "bundle.json": "94402eba4930c88b2f2c4aae10946e581c72fee174356c9f88414bc889f8873b",
+        "bundle.json": "95eb502fd7deda01b1387377c685cfd48dc37ee69e42d1d54b0c117c84dabd58",
         "materialization/board.kmpack": "9d07cef56acbbef4edca6488c36c3b9e7935c36690b9be2f17fec2ab2563485e"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F1": {
-        "bundle.json": "bc0ca3ff8253c759c575997d720a1b8123af3e33faf7041b99cd033c86a7aa19",
+        "bundle.json": "1ba37b87fc3c53539b3ebd12ad27b983ad39b90cc46b72823c7049d871d054a1",
         "materialization/board.kmpack": "cb1fa302fd66e99b90d6d3188b66c0e651f6f2d58e5c36324c024e36c9ca8798"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F11.1": {
-        "bundle.json": "bc0ca3ff8253c759c575997d720a1b8123af3e33faf7041b99cd033c86a7aa19",
+        "bundle.json": "1ba37b87fc3c53539b3ebd12ad27b983ad39b90cc46b72823c7049d871d054a1",
         "materialization/board.kmpack": "cb1fa302fd66e99b90d6d3188b66c0e651f6f2d58e5c36324c024e36c9ca8798"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F11.2": {
-        "bundle.json": "58ca771bc19152081d35d684a23ca38313cea1f036e28ba574b58b8046a9997c",
+        "bundle.json": "5e672896b9415d75ba97ad53756657d049f7c5d140ace2cae522f7f03b43da32",
         "materialization/board.kmpack": "9855dc24126d58aa44dc74139d7f8d9f2dee124dd1add06969facdbbafd13255"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F2": {
-        "bundle.json": "4a9bbe64732854e72d1047297670211a5ed1673b56632d32d5a915866ab0db51",
+        "bundle.json": "8c464f131450d11f2078d7ba8dd74987400fe857083b2063db9afa2c176e7389",
         "materialization/board.kmpack": "9f68f8807385848f60260b233a193eab16242721746e379c039e7a5b1fd99a23"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F3": {
-        "bundle.json": "14a399c048b8045cd671b1907d25e954bfbcf86f919d8102e95149b6b0f103ef",
+        "bundle.json": "1e5c625e674da8f6e6a33f32f47c6aa5c1be5690f067614b120d4b02fd26ad81",
         "materialization/board.kmpack": "816791ca34d63ddd6c383165e4840f1e42036ac7bcf1f863e0a5049ff72076e3"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F4": {
-        "bundle.json": "1e629590d188db0ba06647a01bd332d7d7989d90487d174746445e18c956c4c3",
+        "bundle.json": "3bebc3bca6767a0203cb292a34e7198faa8108e17e9954e422a191f6de69f9d8",
         "materialization/board.kmpack": "72701ebe8c21739ddc8448ef6cc389be11b3fa2c4deb630ad190de9e1d9e3285"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F5": {
-        "bundle.json": "be3c30ba4652b5cabb9a45221483baa3ac94cc30540628dde1260903975ad4f7",
+        "bundle.json": "8ab19a5d71ba37360c190280822914a8824be9e4e92b54692cec418859d6fe15",
         "materialization/board.kmpack": "70fcaeb0a9f58766eb2615d5b0332ec901f9aff22679ba446b26122d819ea825"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F6": {
-        "bundle.json": "94402eba4930c88b2f2c4aae10946e581c72fee174356c9f88414bc889f8873b",
+        "bundle.json": "95eb502fd7deda01b1387377c685cfd48dc37ee69e42d1d54b0c117c84dabd58",
         "materialization/board.kmpack": "9d07cef56acbbef4edca6488c36c3b9e7935c36690b9be2f17fec2ab2563485e"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F7": {
-        "bundle.json": "d01354560a02c54f97bbce9a58a9b82c5909bdaf9ed25ec1f35d77459dd3eab2",
+        "bundle.json": "b0da21b578d607e4047a8460f72b6dcdc3736bd7a32dffa0d4b63672fca9d182",
         "materialization/board.kmpack": "01e5c6476cdcdb794a19eb1c9fc9bbe671c707fa5d7d9811e645fd408ce135ad"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F8": {
-        "bundle.json": "8ab12798b89b74a3abb10d6da414b75ab86052c2f02476dc13e9db2d24c1e5fc",
+        "bundle.json": "97fb20e74c72d6d1fae9c05d869b3f665715f80ecda49b803b56f52cd9a46784",
         "materialization/board.kmpack": "9d07cef56acbbef4edca6488c36c3b9e7935c36690b9be2f17fec2ab2563485e"
       },
       "backend/tests/fixtures/system_builder/sources/mini_obc/F9": {
-        "bundle.json": "ea49987af978176984426b7c641fcbec3511865ee230e70b2f66d98e30a9b9ce",
+        "bundle.json": "c9013317667f75319cd9db9c548c7c70bfce6b2348b759ae1c934c082e84a368",
         "materialization/board.kmpack": "2a620a738b7d2ae1234db76168912cc8e19de3101b188201bcaaae155bcf63fd"
       },
       "backend/tests/fixtures/system_builder/sources/mini_power/F0": {
-        "bundle.json": "449d48a6087ce6247a9f7f6e5b96a55a01bcb19da1dfcb36fcc3ed6fc494c064",
+        "bundle.json": "7f03a1b4a6e2e8801a9904d71b32de9bc25bcb62a492438bf8c8a9b166ff2c5f",
         "materialization/board.kmpack": "cf81b81476f48ebfa6af4f239e22d13e54a301d10e9a2f8a671bc97df66a0071"
       },
       "backend/tests/fixtures/system_builder/sources/mini_power/F10": {
-        "bundle.json": "b8d3ffa6064d96796c08e9b1de59fb1ee833b5c75995660a4fe9c91c71393cfc",
+        "bundle.json": "17210d3dab10160aa3eb8389c905349f58cb7b5b30b969254ad8847be587905b",
         "materialization/board.kmpack": "58c7246c57c6b2a064cb10290cd1483b74d9286ffad718435d76a0aeb0555784"
       }
     }

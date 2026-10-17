@@ -1,20 +1,20 @@
 # Divergences: semantic-index
 
-- Member: `projections/semantic-index.json`, schema `prism.semantic_index.a1` (root `SemanticIndexA1`)
+- Member: `projections/semantic-index.json`, schema `prism.semantic_index.a2` (root `SemanticIndexA2`)
 - Producer: P1 (`native/src/rs/prism-projections/src/semantic_index.rs`)
 - Field map: [`native/contracts/prism/field-maps/semantic-index.md`](../../contracts/prism/field-maps/semantic-index.md) ("Expected divergences" holds the full text; maintainer decisions in [`decisions.md`](../../contracts/prism/decisions.md), "Semantic index")
 - Golden: `capture/semantic_index.py` (dev's builder with the a1 additions patched in memory, then the a0 → a1 envelope), on the prepared, KiCad-upgraded sources.
 
-No divergence makes a correct P1 output differ from the golden on a committed fixture, so `semantic-index.json` accepts nothing. Each item below is either already in the golden transform, removed by the comparison, or absent from the fixtures.
+One runner entry, D1's a2 envelope, applies to every case: the goldens hold the a1 envelope until they are recaptured. Every other item below is either already in the golden transform, removed by the comparison, or absent from the fixtures.
 
 ## D1. Envelope
 
 - Today: `schema: prism.semantic_index_a0`, plus `commit`, `generator` and `generatedAt`.
-- Bundle: `schema: prism.semantic_index.a1`, with no `commit`, `generator` or `generatedAt` (decisions, Semantic index 1).
+- Bundle: `schema: prism.semantic_index.a2`, with no `commit`, `generator` or `generatedAt` (decisions, Semantic index 1), and `designKey` in place of a1's `sourceRevisionKey` (bundle-format.md §2.3).
 - Why: a member is keyed by revision key, not by commit. The generator is recorded in `bundle.json`. A wall-clock time would break determinism.
 - Consumer: C1 (`frontend/src/types/prism-selection.ts` literal type, ETag); K (job details).
 - Fixtures: all 32 goldens.
-- Runner: nothing to do. The golden transform writes the a1 envelope.
+- Runner: rule `semantic-index/envelope-a2` (`divergences.py`), cases `["*"]`. The golden transform writes the a1 envelope, so the rule sets the golden's `schema` to a2 until the goldens are recaptured; `sourceRevisionKey` and `designKey` are non-semantic in `members.py`.
 
 ## D2. Revision key
 

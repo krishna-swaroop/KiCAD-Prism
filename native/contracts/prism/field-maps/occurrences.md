@@ -21,11 +21,11 @@ What it does not hold, and where that is:
 
 | Fact | Member |
 |---|---|
-| Per-component (per-reference) view, `componentUid`, nets, terminals, pins | `prism.semantic_index.a1` |
-| Resolved per-variant state (effective flags and fields under a variant) | `prism.semantic_index.a1` `assembly.variants` |
+| Per-component (per-reference) view, `componentUid`, nets, terminals, pins | `prism.semantic_index.a2` |
+| Resolved per-variant state (effective flags and fields under a variant) | `prism.semantic_index.a2` `assembly.variants` |
 | A symbol's or footprint's own `dnp` / `in_bom` / `on_board` attributes, positions, library link, kiid paths of every object | `prism.board_objects.a0` |
 | Footprint side, position, rotation, courtyard, pads, models | `prism.placements.a0` |
-| Sheet names, human sheet paths, pages | `prism.semantic_index.a1` `sheetInstances`, `prism.project.a0` |
+| Sheet names, human sheet paths, pages | `prism.semantic_index.a2` `sheetInstances`, `prism.project.a0` |
 
 Citations follow `conventions.md`: a bare path is in this repository, `fork:` is kicad_monkey at `b6316117` (`src/rs/kicad-monkey-core/src/…`), `ref:` is the reference branch.
 
@@ -40,7 +40,7 @@ Abbreviations in the table: `dco` = `backend/app/services/design_compare_occurre
 |---|---|---|---|---|---|---|
 | `/schema` | const `"prism.occurrences.a0"` | — | required | new | `backend/app/services/design_bundle/` reader (K) | — |
 | `/sheets` | `OccurrencesSheet[]` | — | required; hierarchy order: depth-first pre-order from the root, child sheets in `(sheet …)` file order; empty without a schematic | `siv:236-259` (`graph.instances` = kicad_monkey `schematic_instances()`); fork `schematic_bundle.rs:991-1073` (`realize_occurrences`, same pre-order) | `dco:166-170` (C2: sheet fold); P1 assembly fold cross-check | today's instance order on every fixture (verified: oracle, cynthion 20 sheets) |
-| `/sheets/*/sheetPath` | `KiidPath` (schematic form) | — | required; unique | `siv:236-259` (`sheet_instance_path`); `sis:593-598`; fork `schematic_bundle.rs:95` (`occurrence_address`) | join key to `prism.semantic_index.a1` `/sheetInstances/*/sheetInstancePath` | equal to the index's set on every fixture |
+| `/sheets/*/sheetPath` | `KiidPath` (schematic form) | — | required; unique | `siv:236-259` (`sheet_instance_path`); `sis:593-598`; fork `schematic_bundle.rs:95` (`occurrence_address`) | join key to `prism.semantic_index.a2` `/sheetInstances/*/sheetInstancePath` | equal to the index's set on every fixture |
 | `/sheets/*/dnp` | boolean | — | required; root `false` | own flag: `dco:51-94` (`(dnp yes)` on the sheet form), `siv:176-213`; fold: `siv:216-234`, `:261-283`; fork `schematic_bundle.rs:1064` | `dco:166-167` (C2); `siv:216-234` (P1) | KiCad 10.0.6 netlist agrees (x-sheetflags) |
 | `/sheets/*/excludeFromBom` | boolean | — | required; root `false` | `dco:91` (`in_bom no`), `siv:176-213`, `:216-234`; fork `schematic_bundle.rs:1062` | `dco:168-170` (C2); P1 | as above |
 | `/sheets/*/excludeFromBoard` | boolean | — | required; root `false` | `siv:176-213` (`on_board`), `:216-234`; fork `schematic_bundle.rs:1063` | P1; C5 (board visibility) through the index | as above |
@@ -118,7 +118,7 @@ Abbreviations in the table: `dco` = `backend/app/services/design_compare_occurre
 | `/references/*/footprints` | `KiCadUuid[]` | — | required; order of `/footprints` (board file order) | `sis:1068-1078` | C2 (`dco:140-144` keeps the last), P1 `pcbRefs` (keeps all) | — |
 | `/references/*/footprints/*` | `KiCadUuid` | — | — | as above | as above | — |
 | `/variantDeclarations` | `OccurrencesVariantDeclaration[]` | — | required; project registry in file order, then board header in file order | `rsp:677-686` (project), `rsp:651-664` (board header via kicad_monkey `VariantCatalog.from_pcb`); `backend/app/services/variant_catalog_service.py:177-211`, `:270-306` | `rsp:753-871` (C3 `declarations`, `ordering`, `divergence_reasons`) | — |
-| `/variantDeclarations/*/source` | enum `project` \| `pcb` | — | required | `variant_catalog_service.py:45-46` (same spellings) | `rsp:28` (`board` ↔ `pcb`) | same values as `prism.semantic_index.a1` `SemanticIndexVariantSource` |
+| `/variantDeclarations/*/source` | enum `project` \| `pcb` | — | required | `variant_catalog_service.py:45-46` (same spellings) | `rsp:28` (`board` ↔ `pcb`) | same values as `prism.semantic_index.a2` `SemanticIndexVariantSource` |
 | `/variantDeclarations/*/name` | string, min 1 | — | required | `.kicad_pro` `$.schematic.variants[*].name`; board `(variant (name …))` | `rsp:465-479` | `< Default >` kept (`rsp` keeps it; `variant_catalog_service.py:202` drops it) |
 | `/variantDeclarations/*/description` | string | — | optional; absent = none or empty | kicad_monkey `ProjectVariant.from_json_dict`, `BoardVariant.from_sexp` | `rsp:465-479` (`None` when absent) | project registry `""` becomes absent (today `""`) |
 
@@ -158,7 +158,7 @@ Abbreviations in the table: `dco` = `backend/app/services/design_compare_occurre
 - **Skipped objects:** none is invented. A placed symbol whose `uuid` is not a canonical `KiCadUuid`, a footprint with neither a canonical `(uuid …)` nor `(tstamp …)`, and an occurrence whose unit is below 1 are left out and reported once each as a manifest warning (codes proposed to the manifest owner: `occurrences-symbol-without-uuid`, `occurrences-footprint-without-uuid`, `occurrences-unit-invalid`). None occurs in the committed fixtures.
 - **Determinism:** arrays in the documented orders; maps in code point key order (`BTreeMap`); no provenance.
 
-### Relation to `semantic-index` (`prism.semantic_index.a1`)
+### Relation to `semantic-index` (`prism.semantic_index.a2`)
 
 The two members split one domain by grain. The index is per **component** (one entry per reference, multi-unit merged) and owns the **resolved** variant state. Occurrences is per **occurrence** and per **footprint**, in the **default** state, with variant records **unresolved**. P1 and P2 both read the core model, not each other's member. Facts that appear in both:
 

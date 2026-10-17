@@ -12,7 +12,7 @@ use crate::generator::sha256_hex;
 use crate::json_scan::{JsonBound, scan};
 use crate::limits::{LimitName, Limits};
 use crate::manifest::{
-    DESIGN_SCHEMA, MANIFEST_PATH, MANIFEST_SCHEMA, MATERIALIZATION_SCHEMA, Manifest, a2,
+    DESIGN_SCHEMA, MANIFEST_PATH, MANIFEST_SCHEMA, MATERIALIZATION_SCHEMA, Manifest, a3,
 };
 use crate::zip::{Entry, ReadAt, ZipError, ZipIndex};
 use serde_json::Value;
@@ -22,7 +22,7 @@ use serde_json::Value;
 pub enum OpenError {
     /// Its structure (step 1–2) or a limit.
     Zip(ZipError),
-    /// `bundle.json` is not `prism.bundle.manifest.a2` (`manifest-unsupported`).
+    /// `bundle.json` is not `prism.bundle.manifest.a3` (`manifest-unsupported`).
     Unsupported(Finding),
     /// `bundle.json` is invalid (`manifest-invalid`) or over a JSON limit.
     Manifest(ZipError),
@@ -290,7 +290,7 @@ impl<R: ReadAt> BundleReader<R> {
     }
 }
 
-fn size_finding(member: &a2::BundleManifestMember, declared: u64) -> Finding {
+fn size_finding(member: &a3::BundleManifestMember, declared: u64) -> Finding {
     Finding::new(
         "member-digest-mismatch",
         format!(
@@ -307,7 +307,7 @@ pub fn read_checked<R: ReadAt + ?Sized>(
     source: &R,
     index: &ZipIndex,
     entry: &Entry,
-    member: &a2::BundleManifestMember,
+    member: &a3::BundleManifestMember,
 ) -> Result<Vec<u8>, Finding> {
     let bytes = index.read(source, entry).map_err(|error| error.finding())?;
     let size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
@@ -330,7 +330,7 @@ pub fn read_checked<R: ReadAt + ?Sized>(
 /// Check a structured member's content against its `member_schema` (step 7).
 /// An unknown schema id is not checked.
 pub fn check_structured(
-    member: &a2::BundleManifestMember,
+    member: &a3::BundleManifestMember,
     bytes: &[u8],
     pack_format_version: u16,
     limits: &Limits,

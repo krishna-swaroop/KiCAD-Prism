@@ -9,7 +9,7 @@ The field map's "Expected divergences" table is the source of each id. A diverge
 
 | Member | Producer | Prose | Runner entries | Applied on the committed fixtures |
 |---|---|---|---|---|
-| `semantic-index` | P1 | [semantic-index.md](divergences/semantic-index.md) | none | — |
+| `semantic-index` | P1 | [semantic-index.md](divergences/semantic-index.md) | D1 (rule `semantic-index/envelope-a2`, every case) | every golden: `/schema` a1 → a2 |
 | `board-objects` | P2 | [board-objects.md](divergences/board-objects.md) | none | — |
 | `occurrences` | P2 | [occurrences.md](divergences/occurrences.md) | none | — |
 | `route-metrics` | P2 | [route-metrics.md](divergences/route-metrics.md) | D7 (rule `route-metrics/via-spans-used-layers`, every case) | `rs-cynthion`: 150 of 336 nets gain inner copper layers |

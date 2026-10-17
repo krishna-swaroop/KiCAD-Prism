@@ -26,7 +26,7 @@ use super::{CompareError, Entries, diff};
 use prism_kicad_contracts::generated::prism_design_compare_result_a1 as dc;
 use prism_kicad_contracts::generated::prism_occurrences_a0::OccurrencesA0;
 use prism_kicad_contracts::generated::prism_route_metrics_a0::RouteMetricsA0;
-use prism_kicad_contracts::generated::prism_semantic_index_a1::SemanticIndexA1;
+use prism_kicad_contracts::generated::prism_semantic_index_a2::SemanticIndexA2;
 use prism_kicad_contracts::generated::prism_stackup_a0::StackupA0;
 use serde_json::Value;
 
@@ -63,7 +63,7 @@ pub struct Revision {
     /// (the member's parsed JSON is dropped once these exist).
     pub objects: Entries,
     /// `projections/semantic-index.json`.
-    pub semantic_index: SemanticIndexA1,
+    pub semantic_index: SemanticIndexA2,
     /// `projections/occurrences.json`.
     pub occurrences: OccurrencesA0,
     /// `projections/stackup.json`.

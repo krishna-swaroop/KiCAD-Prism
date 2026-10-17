@@ -334,6 +334,21 @@ ADR §5: `(project, commit sha, effective-config digest) → revision key`, cach
 - K MAY memoize the effective-config resolution itself, keyed by `(project_id, commit, sha256 of the stored settings and anchor)`. That cache is K's own, not part of this contract.
 - A working-tree key is never indexed: it has no commit.
 
+**Alias table** (ADR amendment K2 §3.3, §3.6). A revision key that a stored bundle serves without being built for it gets one row:
+
+| Column | Type | Notes |
+|---|---|---|
+| `project_id` | text | Prism project id |
+| `revision_key` | `Sha256Hex` | the key that has no archive of its own |
+| `algorithm` | text | `prism.revision_key.a1` |
+| `generator_digest` | `Sha256Hex` | the generator of the archive it points to |
+| `bundle_key` | `Sha256Hex` | that archive's `bundle_key`; its store path follows from the archive's own `revision_key` |
+
+- Primary key: `(project_id, revision_key, algorithm, generator_digest)`. A row is written only after `prism-kicad bundle reuse` held for the key's record against that archive (cli-spec.md §5.10), and it is immutable.
+- Lookup: a consumer that has a revision key looks for its own archive first, then for an alias row. Either way, the revision it reports is the key it asked for, never the archive's.
+- Retention keeps an archive while any alias row points to it. A generator bump starts new rows; old rows go with their archives.
+- The revision key itself is unchanged: aliasing never changes a stored key or the algorithm.
+
 ## 11. `prism-kicad revision-key` and its record
 
 ```text

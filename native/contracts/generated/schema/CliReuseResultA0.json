@@ -1,0 +1,89 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "urn:prism:schema:prism.cli.reuse_result:a0",
+    "type": "object",
+    "properties": {
+        "schema": {
+            "type": "string",
+            "const": "prism.cli.reuse_result.a0",
+            "description": "Document schema id."
+        },
+        "holds": {
+            "type": "boolean",
+            "description": "Whether the bundle serves the key: every condition of cli-spec.md §5.10 holds."
+        },
+        "bundle_key": {
+            "$ref": "#/$defs/Sha256Hex",
+            "description": "The bundle's own key, `bundle_key` of its manifest: what the backend's alias row points to."
+        },
+        "revision_key": {
+            "$ref": "#/$defs/Sha256Hex",
+            "description": "The revision key asked about, `revision_key` of the `--key-record`."
+        },
+        "failure": {
+            "$ref": "#/$defs/CliReuseFailure",
+            "description": "The first failing condition. Present exactly when `holds` is false."
+        }
+    },
+    "required": [
+        "schema",
+        "holds",
+        "bundle_key",
+        "revision_key"
+    ],
+    "unevaluatedProperties": {
+        "not": {}
+    },
+    "description": "stdout of `bundle reuse` (exit 0 whether or not the read set holds; cli-spec.md §5.10).",
+    "title": "prism-kicad bundle reuse result a0",
+    "$defs": {
+        "Sha256Hex": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Lowercase hexadecimal SHA-256 digest: exactly 64 characters, no prefix such as `sha256:`."
+        },
+        "CliReuseFailure": {
+            "type": "object",
+            "properties": {
+                "condition": {
+                    "$ref": "#/$defs/CliReuseCondition",
+                    "description": "The first condition, in the order of this enum, that failed."
+                },
+                "path": {
+                    "$ref": "#/$defs/RepoPath",
+                    "description": "The repository path the condition failed on, the first in code point order; absent for `config`, `generator` and `model-unavailable`."
+                },
+                "message": {
+                    "type": "string",
+                    "description": "One sentence for logs."
+                }
+            },
+            "required": [
+                "condition",
+                "message"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Why a read set does not hold."
+        },
+        "CliReuseCondition": {
+            "type": "string",
+            "enum": [
+                "config",
+                "generator",
+                "model-unavailable",
+                "read",
+                "probe",
+                "listing",
+                "gitlink"
+            ],
+            "description": "The condition of `bundle reuse` that failed first (cli-spec.md §5.10, ADR amendment K2 §3.3)."
+        },
+        "RepoPath": {
+            "type": "string",
+            "pattern": "^(?:[^/\\\\:.][^/\\\\:]*|\\.[^/\\\\:.][^/\\\\:]*|\\.\\.[^/\\\\:]+)(?:/(?:[^/\\\\:.][^/\\\\:]*|\\.[^/\\\\:.][^/\\\\:]*|\\.\\.[^/\\\\:]+))*$",
+            "description": "Repository-relative POSIX path, exactly as `git ls-tree` names the entry:\n`/`-separated, case preserved, no leading `/`, no empty, `.` or `..`\nsegment, no backslash and no `:`. The same character rule as ArchivePath.\nIt is the only path type in bundle documents: a file has one spelling\nwhichever project in the repository refers to it, and a file outside the\nproject directory needs no `..`."
+        }
+    }
+}

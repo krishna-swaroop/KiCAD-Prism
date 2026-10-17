@@ -63,15 +63,27 @@ pub struct Listing {
     pub paths: Vec<String>,
 }
 
-/// The recorded read set of one build (ADR amendment K2 §3.1): every probe and
-/// listing, sorted by path and by `(directory, suffixes)` and without
-/// duplicates. Reads are not repeated here: they are the `sources/` members.
+/// One submodule the build looked into, with the commit its gitlink records
+/// (bundle-format.md §2.3).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Gitlink {
+    /// The gitlink entry's repository path.
+    pub path: String,
+    /// The commit the gitlink records.
+    pub commit: String,
+}
+
+/// The recorded read set of one build (ADR amendment K2 §3.1): every probe,
+/// listing and gitlink, sorted and without duplicates. Reads are not repeated
+/// here: they are the `sources/` members.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReadSet {
     /// Every probe, by path.
     pub probes: Vec<Probe>,
     /// Every listing, by directory then suffixes.
     pub listings: Vec<Listing>,
+    /// Every gitlink the build looked into, by path.
+    pub gitlinks: Vec<Gitlink>,
 }
 
 /// The selected files under one source root, and the ones read so far.
@@ -356,6 +368,7 @@ impl SourceTree {
                 })
                 .collect(),
             listings: locked(&self.listings).iter().cloned().collect(),
+            gitlinks: Vec::new(),
         }
     }
 
@@ -439,7 +452,7 @@ impl prism_projections::Sources for SourceTree {
 
 /// Whether `path`'s lowered name (the bytes after the last `/`) ends with one
 /// of `suffixes` (already lowered), ASCII only (revision-key.md §5.2).
-fn name_matches(path: &str, suffixes: &[String]) -> bool {
+pub(crate) fn name_matches(path: &str, suffixes: &[String]) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     let lowered = name.to_ascii_lowercase();
     suffixes

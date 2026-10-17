@@ -1,0 +1,11 @@
+{
+  "schema": "prism.cli.reuse_result.a0",
+  "holds": false,
+  "bundle_key": "4f6ad1b0c3e27f1c9b2d6e8a0f4c1e5d7b9a3c2e1f0d8b6a4c2e0f9d7b5a3c1e",
+  "revision_key": "c0d3a9b7e5f1c3a8d6e4b2f0a9c7e5d3b1f8a6c4e2d0b9f7a5c3e1d8b6f4a2c0",
+  "failure": {
+    "condition": "probe",
+    "path": "fp-lib-table",
+    "message": "fp-lib-table was absent when the bundle was built and is selected in this revision"
+  }
+}

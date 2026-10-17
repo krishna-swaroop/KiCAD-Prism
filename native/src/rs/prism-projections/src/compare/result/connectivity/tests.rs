@@ -9,16 +9,16 @@ use super::{nets, structure};
 use crate::compare::entry::{self, Entry};
 use prism_kicad_contracts::generated::prism_design_compare_result_a1 as dc;
 use prism_kicad_contracts::generated::prism_occurrences_a0::OccurrencesA0;
-use prism_kicad_contracts::generated::prism_semantic_index_a1::SemanticIndexA1;
+use prism_kicad_contracts::generated::prism_semantic_index_a2::SemanticIndexA2;
 use serde_json::{Value, json};
 
 // ------------------------------------------------------------------ fixtures
 
 /// An empty semantic index with the given arrays.
-fn semantic(nets: Value, terminals: Value, sheets: Value, buses: Value) -> SemanticIndexA1 {
+fn semantic(nets: Value, terminals: Value, sheets: Value, buses: Value) -> SemanticIndexA2 {
     serde_json::from_value(json!({
-        "schema": "prism.semantic_index.a1",
-        "sourceRevisionKey": "0".repeat(64),
+        "schema": "prism.semantic_index.a2",
+        "designKey": "0".repeat(64),
         "components": [],
         "nets": nets,
         "terminals": terminals,
@@ -790,7 +790,7 @@ fn dedupe_merges_targets_sharing_source_and_sheet() {
 
 #[test]
 fn net_bucket_targets_keep_the_bucket_order_and_only_labels_when_asked() {
-    let net: prism_kicad_contracts::generated::prism_semantic_index_a1::SemanticIndexNet =
+    let net: prism_kicad_contracts::generated::prism_semantic_index_a2::SemanticIndexNet =
         serde_json::from_value(net(
             "N",
             "net:n",

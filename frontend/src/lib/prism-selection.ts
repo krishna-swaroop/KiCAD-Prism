@@ -141,11 +141,12 @@ export function enrichPrismSelection(
     index: PrismSemanticIndex | null,
 ): PrismSelection {
     if (!index) return selection;
+    const revisionKey = index.designKey ?? index.sourceRevisionKey;
     const revisionSelection = {
         ...selection,
-        sourceRevisionKey: index.sourceRevisionKey,
+        sourceRevisionKey: revisionKey,
         anchor: selection.anchor
-            ? { ...selection.anchor, sourceRevisionKey: index.sourceRevisionKey }
+            ? { ...selection.anchor, sourceRevisionKey: revisionKey }
             : selection.anchor,
     } as PrismSelection;
     if (revisionSelection.kind === "component") {

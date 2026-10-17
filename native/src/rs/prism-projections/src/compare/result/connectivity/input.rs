@@ -5,8 +5,8 @@
 use super::super::Revision;
 use crate::compare::entry::Entry;
 use prism_kicad_contracts::generated::prism_occurrences_a0::OccurrencesSymbol;
-use prism_kicad_contracts::generated::prism_semantic_index_a1::{
-    SemanticIndexA1, SemanticIndexTerminal,
+use prism_kicad_contracts::generated::prism_semantic_index_a2::{
+    SemanticIndexA2, SemanticIndexTerminal,
 };
 use std::collections::{BTreeSet, HashMap};
 
@@ -29,7 +29,7 @@ pub(super) struct Component<'a> {
 /// A revision's schematic view and hot lookup tables.
 pub(super) struct View<'a> {
     /// The revision's semantic index; the schematic view is derived on demand.
-    pub semantic: &'a SemanticIndexA1,
+    pub semantic: &'a SemanticIndexA2,
     /// Positions in `semantic.nets` of the schematic nets (`aliases` present, D7).
     pub nets: Vec<usize>,
     /// Positions in `semantic.terminals` of the netlist terminals
@@ -57,7 +57,7 @@ impl<'a> View<'a> {
 
     /// Build the view from a revision's members directly.
     pub(super) fn from_parts(
-        semantic: &'a SemanticIndexA1,
+        semantic: &'a SemanticIndexA2,
         occurrences: &'a prism_kicad_contracts::generated::prism_occurrences_a0::OccurrencesA0,
         objects: &'a [Entry],
     ) -> Self {
@@ -95,7 +95,7 @@ impl<'a> View<'a> {
 }
 
 /// The schematic nets: the member's, where `aliases` is present (D7).
-fn schematic_nets(semantic: &SemanticIndexA1) -> Vec<usize> {
+fn schematic_nets(semantic: &SemanticIndexA2) -> Vec<usize> {
     semantic
         .nets
         .iter()
@@ -106,7 +106,7 @@ fn schematic_nets(semantic: &SemanticIndexA1) -> Vec<usize> {
 }
 
 /// The netlist terminals: the member's, where `schematicNetName` is present (D7).
-fn schematic_terminals(semantic: &SemanticIndexA1) -> Vec<usize> {
+fn schematic_terminals(semantic: &SemanticIndexA2) -> Vec<usize> {
     semantic
         .terminals
         .iter()
@@ -119,7 +119,7 @@ fn schematic_terminals(semantic: &SemanticIndexA1) -> Vec<usize> {
 /// `terminal_pairs_by_net` and `terminals_by_pair`: the first terminal for a
 /// `(reference, pin)` wins, and a terminal names its net by its schematic name.
 fn terminal_lookups<'a>(
-    semantic: &'a SemanticIndexA1,
+    semantic: &'a SemanticIndexA2,
     terminals: &[usize],
 ) -> (HashMap<&'a str, Fingerprint<'a>>, HashMap<Pair<'a>, usize>) {
     let mut pairs_by_net: HashMap<&'a str, Fingerprint<'a>> = HashMap::new();

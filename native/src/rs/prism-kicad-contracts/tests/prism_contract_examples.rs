@@ -34,7 +34,7 @@ fn every_prism_example_round_trips_through_its_generated_type() {
     round_trip::<generated::prism_artwork_config_a0::ArtworkConfigA0>("ArtworkConfigA0");
     round_trip::<generated::prism_assembly_hlr_a0::AssemblyHlrA0>("AssemblyHlrA0");
     round_trip::<generated::prism_board_objects_a0::BoardObjectsA0>("BoardObjectsA0");
-    round_trip::<generated::prism_bundle_manifest_a2::BundleManifestA2>("BundleManifestA2");
+    round_trip::<generated::prism_bundle_manifest_a3::BundleManifestA3>("BundleManifestA3");
     round_trip::<generated::prism_cli_artwork_result_a0::CliArtworkResultA0>("CliArtworkResultA0");
     round_trip::<generated::prism_cli_build_result_a0::CliBuildResultA0>("CliBuildResultA0");
     round_trip::<generated::prism_cli_compare_result_a0::CliCompareResultA0>("CliCompareResultA0");
@@ -45,6 +45,7 @@ fn every_prism_example_round_trips_through_its_generated_type() {
     round_trip::<generated::prism_cli_error_a0::CliErrorA0>("CliErrorA0");
     round_trip::<generated::prism_cli_extract_result_a0::CliExtractResultA0>("CliExtractResultA0");
     round_trip::<generated::prism_cli_project_absent_a0::CliProjectAbsentA0>("CliProjectAbsentA0");
+    round_trip::<generated::prism_cli_reuse_result_a0::CliReuseResultA0>("CliReuseResultA0");
     round_trip::<generated::prism_cli_stroke_font_metrics_a0::CliStrokeFontMetricsA0>(
         "CliStrokeFontMetricsA0",
     );
@@ -79,7 +80,7 @@ fn every_prism_example_round_trips_through_its_generated_type() {
         "RevisionKeyVectorsA1",
     );
     round_trip::<generated::prism_route_metrics_a0::RouteMetricsA0>("RouteMetricsA0");
-    round_trip::<generated::prism_semantic_index_a1::SemanticIndexA1>("SemanticIndexA1");
+    round_trip::<generated::prism_semantic_index_a2::SemanticIndexA2>("SemanticIndexA2");
     round_trip::<generated::prism_stackup_a0::StackupA0>("StackupA0");
     round_trip::<generated::prism_stroke_text_request_a0::StrokeTextRequestA0>(
         "StrokeTextRequestA0",

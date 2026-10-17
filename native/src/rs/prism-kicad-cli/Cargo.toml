@@ -1,7 +1,7 @@
 [package]
 name = "prism-kicad-cli"
 description = "prism-kicad: parse a KiCad revision once and write its design bundle (cli-spec.md)"
-version = "0.6.0"
+version = "0.6.1"
 edition.workspace = true
 rust-version.workspace = true
 license = "Apache-2.0"

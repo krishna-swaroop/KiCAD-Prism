@@ -6,7 +6,7 @@ use crate::generator::{bundle_key, canonical};
 use crate::limits::{LimitName, Limits};
 use crate::manifest::{
     DESIGN_PATH, MANIFEST_PATH, MANIFEST_SCHEMA, MATERIALIZATION_PATH, MODELS_PATH, Manifest,
-    PROJECTIONS, REFILLED_PREFIX, Role, SOURCES_PREFIX, Stage, Status, a2, is_source_role,
+    PROJECTIONS, REFILLED_PREFIX, Role, SOURCES_PREFIX, Stage, Status, a3, is_source_role,
     role_for_source, role_stage,
 };
 use crate::reader::{OpenError, check_listing, check_structured, read_checked, read_manifest};
@@ -27,7 +27,7 @@ pub enum Depth {
 pub struct Report {
     /// The `schema` `bundle.json` declares, when it could be read.
     pub manifest_schema: Option<String>,
-    /// The manifest, when it is a valid a2 document.
+    /// The manifest, when it is a valid a3 document.
     pub manifest: Option<Manifest>,
     /// Whether its generator equals `generator_bytes`.
     pub generator_matches: Option<bool>,
@@ -179,10 +179,10 @@ fn fixed_paths(manifest: &Manifest, stage: Stage) -> Vec<String> {
 struct StageView<'a> {
     stage: Stage,
     status: Status,
-    skip_reason: Option<a2::BundleManifestSkipReason>,
+    skip_reason: Option<a3::BundleManifestSkipReason>,
     has_error: bool,
-    warnings: &'a [a2::Warning],
-    failed: &'a [a2::BundleManifestMemberFailure],
+    warnings: &'a [a3::Warning],
+    failed: &'a [a3::BundleManifestMemberFailure],
 }
 
 fn stage_views(manifest: &Manifest) -> [StageView<'_>; 3] {
@@ -234,6 +234,7 @@ pub fn invariants(manifest: &Manifest) -> Vec<Finding> {
     i10_sorted(manifest, &views, &mut findings);
     i11_bundle_key(manifest, &mut findings);
     i12_sources(manifest, &mut findings);
+    i13_read_set(manifest, &mut findings);
     findings
 }
 
@@ -259,7 +260,7 @@ fn i1_order(manifest: &Manifest, findings: &mut Vec<Finding>) {
     }
 }
 
-fn role_path_ok(manifest: &Manifest, member: &a2::BundleManifestMember) -> bool {
+fn role_path_ok(manifest: &Manifest, member: &a3::BundleManifestMember) -> bool {
     let path = member.path.as_str();
     match member.role {
         Role::Design => path == DESIGN_PATH,
@@ -385,7 +386,7 @@ fn require(findings: &mut Vec<Finding>, holds: bool, invariant: u8, message: &st
 }
 
 fn board_status_ok(manifest: &Manifest) -> bool {
-    use a2::BundleManifestSkipReason::{EarlierStageFailed, NoBoard};
+    use a3::BundleManifestSkipReason::{EarlierStageFailed, NoBoard};
     let stages = &manifest.stages;
     let skip = if stages.parse.status == Status::Failed {
         Some(EarlierStageFailed)
@@ -404,7 +405,7 @@ fn board_status_ok(manifest: &Manifest) -> bool {
 }
 
 fn models_status_ok(manifest: &Manifest) -> bool {
-    use a2::BundleManifestSkipReason::EarlierStageFailed;
+    use a3::BundleManifestSkipReason::EarlierStageFailed;
     let (board, models) = (&manifest.stages.board, &manifest.stages.models);
     let skipped_for = |reason| models.status == Status::Skipped && models.skip_reason == reason;
     let follows = match board.status {
@@ -510,12 +511,12 @@ fn i7_members(manifest: &Manifest, view: &StageView<'_>, findings: &mut Vec<Find
     }
 }
 
-fn has_warning(warnings: &[a2::Warning], code: &str) -> bool {
+fn has_warning(warnings: &[a3::Warning], code: &str) -> bool {
     warnings.iter().any(|warning| warning.code.0 == code)
 }
 
 fn i8_fills(manifest: &Manifest, findings: &mut Vec<Finding>) {
-    use a2::BundleManifestFillProvenance::{Refilled, Saved};
+    use a3::BundleManifestFillProvenance::{Refilled, Saved};
     let board = &manifest.stages.board;
     let ran = matches!(board.status, Status::Complete | Status::Partial);
     let mode = if manifest.config.zone_fills.is_some() {
@@ -559,8 +560,8 @@ fn i8_fills(manifest: &Manifest, findings: &mut Vec<Finding>) {
     }
 }
 
-fn cross_check_status_ok(check: &a2::BundleManifestCrossCheck) -> bool {
-    use a2::BundleManifestCrossCheckStatus::{Failed, Passed, PassedWithWarnings, Skipped};
+fn cross_check_status_ok(check: &a3::BundleManifestCrossCheck) -> bool {
+    use a3::BundleManifestCrossCheckStatus::{Failed, Passed, PassedWithWarnings, Skipped};
     let (warnings, errors) = (check.warnings.is_empty(), check.errors.is_empty());
     match check.status {
         Passed => [warnings, errors].iter().all(|holds| *holds),
@@ -589,7 +590,7 @@ fn i9_cross_check(manifest: &Manifest, findings: &mut Vec<Finding>) {
         9,
         "cross_check's status does not follow its findings",
     );
-    let skipped = check.status == a2::BundleManifestCrossCheckStatus::Skipped;
+    let skipped = check.status == a3::BundleManifestCrossCheckStatus::Skipped;
     require(
         findings,
         skipped != has_member(manifest, DESIGN_PATH),
@@ -598,7 +599,7 @@ fn i9_cross_check(manifest: &Manifest, findings: &mut Vec<Finding>) {
     );
 }
 
-fn warnings_sorted(warnings: &[a2::Warning]) -> bool {
+fn warnings_sorted(warnings: &[a3::Warning]) -> bool {
     warnings.windows(2).all(|pair| {
         (pair[0].code.as_str(), pair[0].message.as_str())
             < (pair[1].code.as_str(), pair[1].message.as_str())
@@ -623,7 +624,7 @@ fn i10_sorted(manifest: &Manifest, views: &[StageView<'_>; 3], findings: &mut Ve
     }
     if let Some(check) = &manifest.stages.board.cross_check {
         let mappings_sorted = check.mappings.windows(2).all(|pair| {
-            let key = |mapping: &a2::BundleManifestCrossCheckMapping| {
+            let key = |mapping: &a3::BundleManifestCrossCheckMapping| {
                 (
                     crate::manifest::retype::<_, String>(&mapping.kind).unwrap_or_default(),
                     mapping.board.to_string(),
@@ -662,6 +663,118 @@ fn i11_bundle_key(manifest: &Manifest, findings: &mut Vec<Finding>) {
     }
 }
 
+/// Whether `directory` (`""` = the repository root) holds `path` at any depth.
+fn directory_reaches(directory: &str, path: &str) -> bool {
+    if directory.is_empty() {
+        !path.is_empty()
+    } else {
+        crate::paths::is_within(path, directory)
+    }
+}
+
+fn strictly_sorted<T: Ord>(items: &[T]) -> bool {
+    items.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+/// I13: the read set's canonical order and membership (bundle-format.md §3.4).
+fn i13_read_set(manifest: &Manifest, findings: &mut Vec<Finding>) {
+    let read_set = &manifest.read_set;
+    if !strictly_sorted(
+        &read_set
+            .probes
+            .iter()
+            .map(|probe| probe.path.0.as_str())
+            .collect::<Vec<_>>(),
+    ) {
+        findings.push(inconsistent(
+            13,
+            "read_set.probes is not sorted by path without duplicates".to_owned(),
+        ));
+    }
+    if !strictly_sorted(
+        &read_set
+            .gitlinks
+            .iter()
+            .map(|gitlink| gitlink.path.0.as_str())
+            .collect::<Vec<_>>(),
+    ) {
+        findings.push(inconsistent(
+            13,
+            "read_set.gitlinks is not sorted by path without duplicates".to_owned(),
+        ));
+    }
+    let listing_key = |listing: &a3::BundleManifestListing| {
+        (
+            listing.directory.to_string(),
+            listing
+                .suffixes
+                .iter()
+                .map(|suffix| suffix.0.clone())
+                .collect::<Vec<_>>(),
+        )
+    };
+    let keys: Vec<_> = read_set.listings.iter().map(listing_key).collect();
+    if !strictly_sorted(&keys) {
+        findings.push(inconsistent(
+            13,
+            "read_set.listings is not sorted by directory and suffixes without duplicates"
+                .to_owned(),
+        ));
+    }
+    let sources: std::collections::BTreeSet<&str> = manifest
+        .members
+        .iter()
+        .filter_map(|member| {
+            is_source_role(member.role)
+                .then(|| member.path.as_str().strip_prefix(SOURCES_PREFIX))
+                .flatten()
+        })
+        .collect();
+    if read_set
+        .probes
+        .iter()
+        .any(|probe| sources.contains(probe.path.0.as_str()))
+    {
+        findings.push(inconsistent(
+            13,
+            "a read_set probe names a source member's path".to_owned(),
+        ));
+    }
+    for listing in &read_set.listings {
+        let suffixes: Vec<&str> = listing
+            .suffixes
+            .iter()
+            .map(|suffix| suffix.0.as_str())
+            .collect();
+        if !strictly_sorted(&suffixes) {
+            findings.push(inconsistent(
+                13,
+                "a read_set listing's suffixes are not sorted without duplicates".to_owned(),
+            ));
+            return;
+        }
+        let paths: Vec<&str> = listing.paths.iter().map(|path| path.0.as_str()).collect();
+        if !strictly_sorted(&paths) {
+            findings.push(inconsistent(
+                13,
+                "a read_set listing's paths are not sorted without duplicates".to_owned(),
+            ));
+            return;
+        }
+        let directory = listing.directory.to_string();
+        if let Some(path) = paths
+            .iter()
+            .find(|path| !directory_reaches(&directory, path))
+        {
+            findings.push(inconsistent(
+                13,
+                format!("the listed path {path} does not lie below its directory"),
+            ));
+            return;
+        }
+    }
+}
+
 fn i12_sources(manifest: &Manifest, findings: &mut Vec<Finding>) {
     for member in &manifest.members {
         let ok = match (&member.source, is_source_role(member.role)) {
@@ -689,7 +802,7 @@ mod tests {
 
     fn example() -> Manifest {
         serde_json::from_str(include_str!(
-            "../../../../contracts/prism/examples/BundleManifestA2.example.json"
+            "../../../../contracts/prism/examples/BundleManifestA3.example.json"
         ))
         .unwrap()
     }
@@ -723,7 +836,7 @@ mod tests {
                 .any(|finding| finding.message.starts_with("I1"))
         );
         let mut manifest = example();
-        manifest.bundle_key = Some(a2::Sha256Hex("0".repeat(64)));
+        manifest.bundle_key = Some(a3::Sha256Hex("0".repeat(64)));
         assert!(
             invariants(&manifest)
                 .iter()
@@ -736,5 +849,104 @@ mod tests {
                 .iter()
                 .any(|finding| finding.message.starts_with("I8"))
         );
+    }
+
+    fn i13(manifest: &Manifest) -> Vec<String> {
+        invariants(manifest)
+            .into_iter()
+            .filter(|finding| finding.message.starts_with("I13"))
+            .map(|finding| finding.message)
+            .collect()
+    }
+
+    fn source_member(manifest: &Manifest) -> String {
+        manifest
+            .members
+            .iter()
+            .find(|member| is_source_role(member.role))
+            .unwrap()
+            .path
+            .as_str()
+            .strip_prefix(SOURCES_PREFIX)
+            .unwrap()
+            .to_owned()
+    }
+
+    #[test]
+    fn i13_rejects_each_unsorted_or_stray_entry() {
+        let probe = |path: &str| a3::BundleManifestProbe {
+            path: a3::RepoPath(path.to_owned()),
+            present: false,
+        };
+        let mut manifest = example();
+        manifest.read_set.probes = vec![probe("b"), probe("a")];
+        assert!(!i13(&manifest).is_empty(), "unsorted probes");
+
+        let mut manifest = example();
+        manifest.read_set.probes = vec![probe("a"), probe("a")];
+        assert!(!i13(&manifest).is_empty(), "duplicate probes");
+
+        let mut manifest = example();
+        manifest.read_set.probes = vec![probe(&source_member(&manifest))];
+        assert!(
+            !i13(&manifest).is_empty(),
+            "a probe names a source member's path"
+        );
+
+        let listing =
+            |directory: &str, suffixes: Vec<&str>, paths: Vec<&str>| a3::BundleManifestListing {
+                directory: if directory.is_empty() {
+                    a3::BundleManifestListingDirectory::String(String::new())
+                } else {
+                    a3::BundleManifestListingDirectory::RepoPath(a3::RepoPath(directory.to_owned()))
+                },
+                suffixes: suffixes
+                    .into_iter()
+                    .map(|suffix| a3::BundleManifestListingSuffix(suffix.to_owned()))
+                    .collect(),
+                paths: paths
+                    .into_iter()
+                    .map(|path| a3::RepoPath(path.to_owned()))
+                    .collect(),
+            };
+        let mut manifest = example();
+        manifest.read_set.listings = vec![listing("", vec![".b", ".a"], vec![])];
+        assert!(!i13(&manifest).is_empty(), "unsorted suffixes");
+
+        let mut manifest = example();
+        manifest.read_set.listings = vec![listing("", vec![".a", ".a"], vec![])];
+        assert!(!i13(&manifest).is_empty(), "duplicate suffixes");
+
+        let mut manifest = example();
+        manifest.read_set.listings = vec![listing("lib", vec![], vec!["lib/b", "lib/a"])];
+        assert!(!i13(&manifest).is_empty(), "unsorted paths");
+
+        let mut manifest = example();
+        manifest.read_set.listings = vec![listing("lib", vec![], vec!["lib/a", "lib/a"])];
+        assert!(!i13(&manifest).is_empty(), "duplicate paths");
+
+        let mut manifest = example();
+        manifest.read_set.listings = vec![listing("lib", vec![], vec!["other/a"])];
+        assert!(!i13(&manifest).is_empty(), "a path above its directory");
+
+        let mut manifest = example();
+        manifest.read_set.listings = vec![
+            listing("lib", vec![".a"], vec![]),
+            listing("lib", vec![".b"], vec![]),
+        ];
+        manifest.read_set.listings.reverse();
+        assert!(!i13(&manifest).is_empty(), "unsorted listings");
+
+        let gitlink = |path: &str| a3::BundleManifestGitlink {
+            path: a3::RepoPath(path.to_owned()),
+            commit: a3::GitObjectId("0".repeat(40)),
+        };
+        let mut manifest = example();
+        manifest.read_set.gitlinks = vec![gitlink("b"), gitlink("a")];
+        assert!(!i13(&manifest).is_empty(), "unsorted gitlinks");
+
+        let mut manifest = example();
+        manifest.read_set.gitlinks = vec![gitlink("a"), gitlink("a")];
+        assert!(!i13(&manifest).is_empty(), "duplicate gitlinks");
     }
 }

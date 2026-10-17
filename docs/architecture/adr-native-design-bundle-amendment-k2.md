@@ -117,7 +117,7 @@ A stored bundle `B` serves revision key `K` of the same project when all of the 
 Notes on the rule:
 
 - **Cost.** The check needs only `K`'s key record, which K already has, and `B`'s `bundle.json`. No blob is read and nothing is parsed.
-- **`prism-kicad bundle reuse --in <B.prism> --key-record <K.json>`** runs the check. It replaces U's `bundle rekey`. It exits 0 when the read set holds and 1 when it does not, and prints the first failing condition. One implementation, in Rust, keeps the rule in one place.
+- **`prism-kicad bundle reuse --in <B.prism> --key-record <K.json>`** runs the check. It replaces U's `bundle rekey`. It prints `CliReuseResultA0`: whether the read set holds and, when it does not, the first failing condition. It exits 0 either way, because exit 1 means an internal error (cli-spec.md §4); the full rule is cli-spec.md §5.10. One implementation, in Rust, keeps the rule in one place.
 - **Budget:** ≤ 0.2 s per candidate on EDA-04903.
 - **Why it is sound.** Stage parse is deterministic in its inputs (parent §7). Its inputs are the read set's bytes, the configuration and the generator. Under §3.5, stages board and models are too.
 
@@ -128,11 +128,13 @@ Notes on the rule:
 ```json
 "read_set": {
   "probes":   [{"path": "lib/fp-lib-table", "present": false}],
-  "listings": [{"directory": "", "suffixes": [".kicad_jobset"], "paths": ["ci/release.kicad_jobset"]}]
+  "listings": [{"directory": "", "suffixes": [".kicad_jobset"], "paths": ["ci/release.kicad_jobset"]}],
+  "gitlinks": [{"path": "lib/kicad-libraries", "commit": "3f2a…"}]
 }
 ```
 
 - Reads are not repeated there: they are the source members, whose `source` entries already carry path, kind and object id.
+- `gitlinks` lists every submodule a read, probe or listing reached into, with its commit. The key record holds only the gitlink, not the files below it, so the commit is what pins them (added while writing the contracts).
 - **New invariants for `bundle verify`:**
   - **I13:** `probes` is sorted by `path` without duplicates. `listings` is sorted by `directory`, then `suffixes`, without duplicates. Each listing's `suffixes` and `paths` are sorted.
   - **I14:** when `--key-record` is given, the read set holds in the build's own key record (§3.3, conditions 3–5).
@@ -154,7 +156,7 @@ Notes on the rule:
   designKey = lowercase-hex(SHA-256("prism.design_key.a0" NUL config_digest NUL R))
   ```
 
-  - `R` is the canonical read set: each source member's `path HT kind HT object_id NUL` in path order, then each probe's `path HT present|absent NUL`, then each listing's `directory HT suffixes joined by "," HT paths joined by HT NUL`.
+  - `R` is the canonical read set, defined in bundle-format.md §2.3: the source members, probes, listings and gitlinks, each as a tagged, tab-separated record ending in NUL.
   - The generator is not in it, so anchors survive Prism upgrades that read the same files.
 - **`bundle.json` keeps `revision_key` and `bundle_key`.** They name the build that produced the archive, and its store path. An alias points other revision keys at that bundle key.
 - **The requested revision comes from the request.**

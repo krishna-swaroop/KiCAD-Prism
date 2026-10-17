@@ -124,7 +124,7 @@ def violations(manifest: Mapping[str, Any]) -> list[str]:
     if not _sorted_unique(paths):
         found.append("I1: members are not sorted by path without duplicates")
     schemas = {item["path"]: item["schema"] for item in manifest["generator"]["member_schemas"]}
-    if schemas.get("bundle.json") != "prism.bundle.manifest.a2":
+    if schemas.get("bundle.json") != "prism.bundle.manifest.a3":
         found.append("I3: generator.member_schemas lacks bundle.json")
     for member in members:
         role, path = member["role"], member["path"]

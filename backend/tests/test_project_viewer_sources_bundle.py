@@ -136,7 +136,7 @@ def manifest_for(members: dict[str, bytes], config: dict, *, parse_status: str =
             )
         listed.append(entry)
     return {
-        "schema": "prism.bundle.manifest.a2",
+        "schema": "prism.bundle.manifest.a3",
         "generator": GENERATOR,
         "revision_key": REVISION_KEY,
         "bundle_key": bundle_key(REVISION_KEY, GENERATOR),
@@ -147,6 +147,7 @@ def manifest_for(members: dict[str, bytes], config: dict, *, parse_status: str =
             "board": {"status": "pending", "warnings": [], "failed_members": []},
             "models": {"status": "pending", "warnings": [], "failed_members": []},
         },
+        "read_set": {"probes": [], "listings": [], "gitlinks": []},
         "members": listed,
     }
 

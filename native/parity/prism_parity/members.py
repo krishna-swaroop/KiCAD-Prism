@@ -41,9 +41,11 @@ MEMBERS: dict[str, Member] = {
             "SemanticIndexA1",
             "P1",
             "field-maps/semantic-index.md",
-            # The bundle writes its design revision key; the golden holds whatever key
-            # it was captured with (field map, "How a golden is produced", step 2).
-            non_semantic=("/sourceRevisionKey",),
+            # The bundle (a2) writes its design key; the golden holds the a1
+            # envelope and its sourceRevisionKey until it is recaptured (field
+            # map, "How a golden is produced", step 2). The comparison ignores
+            # both names (field map, "Comparison").
+            non_semantic=("/sourceRevisionKey", "/designKey"),
         ),
         Member(
             "board-objects",

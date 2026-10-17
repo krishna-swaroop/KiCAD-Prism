@@ -1,5 +1,5 @@
 {
-  "schema": "prism.bundle.manifest.a2",
+  "schema": "prism.bundle.manifest.a3",
   "generator": {
     "schema": "prism.cli.version.a0",
     "crate_version": "0.1.0",
@@ -12,7 +12,7 @@
     "member_schemas": [
       {
         "path": "bundle.json",
-        "schema": "prism.bundle.manifest.a2"
+        "schema": "prism.bundle.manifest.a3"
       },
       {
         "path": "design.json",
@@ -44,7 +44,7 @@
       },
       {
         "path": "projections/semantic-index.json",
-        "schema": "prism.semantic_index.a1"
+        "schema": "prism.semantic_index.a2"
       },
       {
         "path": "projections/stackup.json",
@@ -61,7 +61,7 @@
     "upgrade_procedure": "kicad-seeded-upgrade-a0"
   },
   "revision_key": "faea5ace66f591553c21fdcb2555e5a67e6e2fe73b7d17663375ac6f809206f5",
-  "bundle_key": "d59a758370bd428e43a3482505c9273caa9a12353345fbc2fe5f3db8e8de0e07",
+  "bundle_key": "e07cc22a402108b4588da59e9319e3a6cae1a2c4eb98ff42d4eb8eedf2c6df09",
   "config": {
     "schema": "prism.revision_key.effective_config.a1",
     "project_file": "USB-PD-Trigger-Board.kicad_pro",
@@ -114,6 +114,32 @@
       "warnings": [],
       "failed_members": []
     }
+  },
+  "read_set": {
+    "probes": [
+      {
+        "path": "USB-PD-Trigger-Board.kicad_dru",
+        "present": false
+      },
+      {
+        "path": "fp-lib-table",
+        "present": false
+      },
+      {
+        "path": "sym-lib-table",
+        "present": false
+      }
+    ],
+    "listings": [
+      {
+        "directory": "",
+        "suffixes": [
+          ".kicad_jobset"
+        ],
+        "paths": []
+      }
+    ],
+    "gitlinks": []
   },
   "members": [
     {
@@ -178,7 +204,7 @@
       "stage": "parse",
       "sha256": "dfb3b7986d827b37b8367ab797cf444f16d8c9f2a6f922976d2f156ec53c5844",
       "bytes": 16611,
-      "member_schema": "prism.semantic_index.a1"
+      "member_schema": "prism.semantic_index.a2"
     },
     {
       "path": "projections/stackup.json",

@@ -195,7 +195,7 @@ No code produces these documents today, so there is no parity golden. WP-B's con
 - **Version:** a1 `prism-bundle version` prints `{"prism_bundle":"0.1.0","manifest":"a1","materializer_revision":"b6316117901b344114385242b0ad13be45dfefae","design_engine":"2026.9.7"}` (sim `target/release/prism-bundle`, built from `src/prism-bundle/src/bin/prism-bundle.rs:219-227`). The mapping into `CliVersionA0`:
   - `prism_bundle` → `crate_version`;
   - `design_engine` → `engine_version`;
-  - `manifest` → the `bundle.json` row of `member_schemas` (`prism.bundle.manifest.a2`);
+  - `manifest` → the `bundle.json` row of `member_schemas` (`prism.bundle.manifest.a3`);
   - `materializer_revision` is dropped;
   - `kicad_version` comes from `kicad-cli version` (`10.0.6` on the development machine);
   - `pack_format_version` comes from fork `PACK_FORMAT_VERSION` (0);
@@ -261,4 +261,4 @@ Archive digests come from a Python stand-in writer that uses zlib, not miniz_oxi
 - two more `CliErrorA0` cases (`option-conflict`, `stage-not-applicable`);
 - the four stderr lines of the malformed run.
 
-The manifest contract's example (`examples/BundleManifestA2.example.json`) embeds this example's generator id byte for byte. Its `bundle_key` recomputes with cli-spec.md §5.1.4.
+The manifest contract's example (`examples/BundleManifestA3.example.json`) embeds this example's generator id byte for byte. Its `bundle_key` recomputes with cli-spec.md §5.1.4.

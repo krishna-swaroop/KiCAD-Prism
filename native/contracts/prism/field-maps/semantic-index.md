@@ -1,6 +1,6 @@
-# Field map: projections/semantic-index.json (`prism.semantic_index.a1`)
+# Field map: projections/semantic-index.json (`prism.semantic_index.a2`)
 
-Root model `SemanticIndexA1` in `tsp/prism/semantic-index-a1.tsp`. Example `examples/SemanticIndexA1.example.json`.
+Root model `SemanticIndexA2` in `tsp/prism/semantic-index-a2.tsp`. Example `examples/SemanticIndexA2.example.json`. a2 is a1 with `designKey` in place of `sourceRevisionKey` (ADR amendment K2 §3.6); every other field is unchanged.
 Written by: P1, `native/src/rs/prism-projections/src/semantic_index.rs`. Stage: parse.
 
 This is a parity document (conventions.md §4, §5, §14). Every field keeps today's name, unit, value and null-versus-absent behaviour from `prism.semantic_index_a0`, except the changes listed under "Expected divergences". The ADR §6 additions (`libraryRef`, `pinName`, `pinType`, `schematicNetName`) are marked **a1**.
@@ -41,8 +41,8 @@ Pointers are RFC 6901 with two extensions: `*` is every element of an array, `{k
 
 | Field (JSON pointer) | Type | Unit | Order / nullability | Today's source (path:line) | Consumers (path:line) | Parity note |
 |---|---|---|---|---|---|---|
-| `/schema` | const `"prism.semantic_index.a1"` | — | required | `sis:30`, `:1146` (`prism.semantic_index_a0`) | `pst:242` (literal type); `rss:26` (enters the domain digest); `psvc:432` (job artifact schema) | **divergence**: value changes (D1) |
-| `/sourceRevisionKey` | `Sha256Hex` | — | required | `sis:1147`; computed by `_revision_key` `sis:90-103` (32 hex over the semantic sources) | `vis:728`, `:803`, `:810` (viewer revision key); `bom:424`, `sel:146` (selection anchor); `frontend/src/hooks/use-prism-cross-probe.ts:45-52` (cross-probe guard); `backend/app/api/comments.py:58` → `backend/app/services/comment_anchor_service.py:161`; `api:764` (ETag); `psvc:440` | **non-semantic**: the bundle writes its design revision key (ADR §5), 64 hex (D1, D2) |
+| `/schema` | const `"prism.semantic_index.a2"` | — | required | `sis:30`, `:1146` (`prism.semantic_index_a0`) | `pst:242` (literal type); `rss:26` (enters the domain digest); `psvc:432` (job artifact schema) | **divergence**: value changes (D1) |
+| `/designKey` | `Sha256Hex` | — | required | a1 `/sourceRevisionKey`, a0 `sis:1147` (`_revision_key`, `sis:90-103`, 32 hex over the semantic sources) | the cross-probe guard, comment anchors and the identity endpoint's ETag (C1); readers that need the revision take it from the request | **non-semantic**: SHA-256 over `prism.design_key.a0`, the config digest and the canonical read set (bundle-format.md §2.3, ADR amendment K2 §3.6); the same for every revision and every build that reads the same bytes. a2 replaces a1's `sourceRevisionKey`, which held the bundle's revision key |
 | *(a0 `/commit`)* | — | — | **not in a1** | `sis:1148` | no reader (grep of `frontend/src`, `backend/app`) | removed (D1) |
 | *(a0 `/generator`)* | — | — | **not in a1** | `sis:1149-1155` | `psvc:441` (job details); `pst:244-248` declares it, nothing reads it | removed (D1) |
 | *(a0 `/generatedAt`)* | — | — | **not in a1** | `sis:1156` | `pst:249` declares it, nothing reads it; `rss` excludes it | removed (D1); ADR §7 already excludes it |
@@ -230,7 +230,7 @@ Not in the contract although `pst:206` declares it: `footprintUuid` on a diagnos
    - schematic terminal (`sis:994-1002`): after `"pin"`, `"pinName": _string(raw_terminal.get("pin_name"))` and `"pinType": _string(raw_terminal.get("pin_type"))` **only when `"pin_type" in raw_terminal`** (the graphical-pin-only terminals built at `sis:982-987` get neither); after `"netName": name`, `"schematicNetName": name`.
    - Do **not** take the reference branch's `semantic_index_service.py` as a whole. Its board path (`ref:backend/app/services/semantic_index_board.py`) falls back to `design.to_json(include_pcb=False)` when `prism-bundle` is not on `PRISM_SIM_BIN_DIR`; the adapter then detaches the board, and `assembly.footprintInventory`, `default.footprints` and every variant's `footprints` come out empty (29 of the 33 fixtures; the other 4 have no footprints). With the tool present it reads `(tstamp …)` ids, unlike dev. Its three added lines are the only part a golden needs.
 2. **Envelope (a0 → a1).** `schema` = `prism.semantic_index.a1`; `sourceRevisionKey` = the bundle's revision key (non-semantic: the golden stores whatever key it was built with and the comparison ignores it); delete `commit`, `generator`, `generatedAt`. Body keys unchanged.
-3. **Comparison** (conventions §14): JSON value equality after removing `/sourceRevisionKey`. Arrays in order, objects as key sets, so map key order and struct key order do not matter. Expected divergences D4–D6 are recorded per fixture in `native/parity/divergences.md`.
+3. **Comparison** (conventions §14): JSON value equality after removing `/designKey` (a1: `/sourceRevisionKey`). Arrays in order, objects as key sets, so map key order and struct key order do not matter. Expected divergences D4–D6 are recorded per fixture in `native/parity/divergences.md`.
 4. **Fixtures**: every committed project with a `.kicad_pro` (9 + 3 + 21 below) plus the corpus. `design_variants/malformed` raises in today's builder (`SexprTreeError`, unbalanced schematic) and has no golden; `design_variants/pcb_only` has no project file.
 
 **Serialization today vs a1** (bytes differ, values do not):

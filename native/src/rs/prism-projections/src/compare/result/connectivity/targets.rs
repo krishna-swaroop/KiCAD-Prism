@@ -4,7 +4,7 @@
 
 use super::super::{VisualRole, VisualSide, VisualStatus, VisualTarget};
 use super::input::{Pair, View};
-use prism_kicad_contracts::generated::prism_semantic_index_a1::SemanticIndexNet;
+use prism_kicad_contracts::generated::prism_semantic_index_a2::SemanticIndexNet;
 use std::collections::HashMap;
 
 /// Which of a net's buckets become targets (`_net_bucket_targets`'s `buckets`).

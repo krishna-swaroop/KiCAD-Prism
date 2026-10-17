@@ -1,5 +1,12 @@
 {
  "schema": "prism.parity.divergences.a0",
  "member": "semantic-index",
- "accepted": []
+ "accepted": [
+  {
+   "id": "D1",
+   "summary": "The bundle writes the a2 envelope (schema prism.semantic_index.a2, designKey); the goldens hold the a1 envelope until they are recaptured.",
+   "cases": ["*"],
+   "rule": "semantic-index/envelope-a2"
+  }
+ ]
 }

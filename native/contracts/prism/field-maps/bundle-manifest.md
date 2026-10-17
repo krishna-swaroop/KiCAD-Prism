@@ -1,6 +1,6 @@
-# Field map: `bundle.json` (`prism.bundle.manifest.a2`)
+# Field map: `bundle.json` (`prism.bundle.manifest.a3`)
 
-Root model `BundleManifestA2` in `tsp/prism/bundle-manifest-a2.tsp`. Example `examples/BundleManifestA2.example.json`.
+Root model `BundleManifestA3` in `tsp/prism/bundle-manifest-a3.tsp`. Example `examples/BundleManifestA3.example.json`. a3 is a2 plus `read_set` (ADR amendment K2; "a2 → a3" below).
 Written by: WP-B, `native/src/rs/prism-bundle/` through `prism-kicad bundle build` (cli-spec.md §5.2). Stage: all three. Stage parse writes it first and stages board and models rewrite it (`bundle-format.md` §7).
 
 The archive rules, the member table, stage semantics, readiness and reader validation are in [`bundle-format.md`](../bundle-format.md). This map covers the fields. Lineage is sim's `prism.bundle.manifest` a1: the TypeSpec `sim: contracts/contracts/bundle.tsp`, the Rust model `sim: src/prism-bundle/src/manifest.rs`, and the builder `sim: src/prism-bundle/src/build.rs`. It was measured at sim `a714101` with the working tree's uncommitted `bin/prism-bundle.rs` and `board_refs.rs`.
@@ -13,7 +13,7 @@ Pointers are RFC 6901 with two extensions: `*` is every element of an array, `{k
 
 | Field (JSON pointer) | Type | Unit | Order / nullability | Today's source (path:line) | Consumers (path:line) | Parity note |
 |---|---|---|---|---|---|---|
-| `/schema` | const `"prism.bundle.manifest.a2"` | — | required | a1 `schema: "prism.bundle.manifest"` + `version: "a1"` (sim: `contracts/contracts/bundle.tsp:128-129`; `src/prism-bundle/src/build.rs:310-311`) | a1 reader's version gate (sim: `src/prism-bundle/src/reader.rs:41`) → B's reader and `--in` check (cli-spec.md §5.2.1 check 1, `manifest-unsupported`); K's reader | two a1 fields become one (`conventions.md` §4) |
+| `/schema` | const `"prism.bundle.manifest.a3"` | — | required | a1 `schema: "prism.bundle.manifest"` + `version: "a1"` (sim: `contracts/contracts/bundle.tsp:128-129`; `src/prism-bundle/src/build.rs:310-311`) | a1 reader's version gate (sim: `src/prism-bundle/src/reader.rs:41`) → B's reader and `--in` check (cli-spec.md §5.2.1 check 1, `manifest-unsupported`); K's reader | two a1 fields become one (`conventions.md` §4) |
 | `/generator` | `CliVersionA0` (by `$id`) | — | required; the `prism-kicad version` document verbatim | a1 `created_by` (sim: `build.rs:313-316`), `materializer` (`:318-325`), `design` (`:326-329`); `prism-bundle version` JSON (sim: `src/prism-bundle/src/bin/prism-bundle.rs:219-227`), which the reference branch keys bundles on (ref: `backend/app/services/project_bundle.py:42-62`) | K: bundle key and store path (cli-spec.md §5.1.4); B: `--in` generator check (`generator-mismatch`), `bundle verify` `generator_matches` | replaces four a1 fields; see the mapping below |
 | `/generator/kicad_version` | `CliReleaseVersion` | — | required | a1 `kicad_cli_version` (sim: `build.rs:335`), the `--refill-tool` value (sim: `bin/prism-bundle.rs:75`; ref: `project_bundle.py:84`) | stage board's refill and stage models' export were made with it (`--refill-tool`, `--models-tool` must equal it, cli-spec.md §5.2.3–§5.2.4); C6 can show it | a1 recorded the tool that ran; a2 records the version every KiCad step must use |
 | `/generator/member_schemas` | `CliVersionMemberSchema[]` | — | required; sorted by `path` in code point order | new (cli-spec.md §5.1.1) | invariant I3: each `/members/*/member_schema` equals the entry for its path (`bundle-format.md` §3.4) | — |
@@ -77,6 +77,14 @@ Pointers are RFC 6901 with two extensions: `*` is every element of an array, `{k
 | `/stages/models/warnings/*/code`, `/message` | `DiagnosticCode`, string | — | required in an entry | new | UI | — |
 | `/stages/models/failed_members` | `BundleManifestMemberFailure[]` | — | required; always empty in a2 | new | generic stage readers | — |
 | `/stages/models/failed_members/*/path`, `/code`, `/message` | `ArchivePath`, `DiagnosticCode`, string | — | never present in a2 | new | generic stage readers | — |
+| `/read_set` | `BundleManifestReadSet` | — | required | new in a3 (ADR amendment K2 §3.4); written by stage parse, copied by later stages | K2b's reuse check through `bundle reuse` (cli-spec.md §5.10); the semantic index's `designKey` (bundle-format.md §2.3) | — |
+| `/read_set/probes` | `BundleManifestProbe[]` | — | required; sorted by `path`, unique (I13) | every `read` that found nothing and every `exists` of stage parse and the producers (cli-spec.md §5.2.2) | `bundle reuse` condition 5 | — |
+| `/read_set/probes/*/path`, `…/present` | `RepoPath`, boolean | — | required | the path asked about; whether it was in the source set | same | — |
+| `/read_set/listings` | `BundleManifestListing[]` | — | required; sorted by `directory`, then `suffixes` (I13) | every `list` call | `bundle reuse` condition 6 | — |
+| `/read_set/listings/*/directory` | `RepoPath` or `""` | — | required | the directory listed; `""` is the repository root | same | — |
+| `/read_set/listings/*/suffixes` | `BundleManifestListingSuffix[]` | — | required; sorted, unique; empty for every name | the suffixes, lowered ASCII | same | — |
+| `/read_set/listings/*/paths` | `RepoPath[]` | — | required; sorted | the paths returned, at any depth below `directory` | same | — |
+| `/read_set/gitlinks` | `BundleManifestGitlink[]` | — | required; sorted by `path`, unique (I13) | every submodule a read, probe or listing reached into, with its commit from `--key-record` | `bundle reuse` conditions 4 and 7 | — |
 | `/members` | `BundleManifestMember[]` | — | required, at least one; sorted by `path` in code point order; the archive's entries after `bundle.json` in the same order | a1 `members` (sim: `contracts/contracts/bundle.tsp:135-136`; `build.rs:423`, `:358-369`) | every reader (sim: `reader.rs:47-62`; ref: `project_bundle.py:108-123`); K's extraction and readiness | unchanged order rule |
 | `/members/*/path` | `ArchivePath` | — | required; unique, also after NFC and case folding | sim: `build.rs:363` (`sources/…` `:141-149`, `refilled/…` `:166-174`, `MATERIALIZATION_PATH` `:28`, `DESIGN_PATH` `:30`, `viewer/…` `:242`) | as above; ref: `project_bundle.py:109-115` (viewer prefix, pack path) | sources are repository-relative in a2 |
 | `/members/*/role` | `BundleManifestMemberRole` | — | required | sim: `build.rs:362`; roles at `manifest.rs:28-48` | a1 `member_with(role)` (sim: `reader.rs:80-85`); K | a1's values kept except `viewer-asset`, which is removed (`decisions.md`); `source-worksheet`, `source-jobset`, `source-library-table`, `source-symbol-library`, `source-footprint`, `source-3d-model`, `source-prism-settings`, `projection`, `component-models` are new |
@@ -91,6 +99,16 @@ Pointers are RFC 6901 with two extensions: `*` is every element of an array, `{k
 | `/members/*/member_schema` | `SchemaId` | — | optional; present exactly for roles `design`, `materialization`, `projection` | sim: `build.rs:366`, values `design.rs:17` and fork `board_materialization.rs:60` | reader step 7; a1 consumers read `materializer.schema` instead (sim: `src/sim-worker/src/main.rs:144`) | a1 free string → `SchemaId`; now also set on projections |
 
 Known values of `member_schema` and `role` per path are in `bundle-format.md` §2.1. Known warning and error codes are in `bundle-format.md` §3.2 and cli-spec.md §8.
+
+## a2 → a3
+
+| a2 | a3 | Why |
+|---|---|---|
+| `schema: "prism.bundle.manifest.a2"` | `schema: "prism.bundle.manifest.a3"` | the field set changed |
+| — | `read_set`: probes, listings, gitlinks | with the source members, everything stage parse looked at, so a stored bundle can serve another revision key whose tree leaves it unchanged (ADR amendment K2 §3.3) |
+| `revision_key`: the key the bundle is for | `revision_key`: the key it was built for; other keys may reach it through the alias table | ADR amendment K2 §3.6; readers take the revision they asked for from the request |
+
+An a2 archive is not read: the reader rejects it (`manifest-unsupported`), and the generator bump that comes with a3 rebuilds every stored bundle anyway.
 
 ## How a golden is produced from today's code
 
@@ -168,6 +186,7 @@ There is no producer of a2 yet: WP-B writes it. Today's equivalent is a1, and a2
   - `design.json`, `materialization/board.kmpack`, `refilled/USB-PD-Trigger-Board.kicad_pcb`, `stages.board.fill_check`, `stages.board.cross_check` and `stages.board.warnings` come from sim's `prism-bundle` 0.1.0 (fork `b6316117`, engine 2026.9.7), run on that tree with KiCad 10.0.6 refilling the zones.
   - `viewer/models/components.glb` is `kicad-cli` 10.0.6 `pcb export glb --no-board-body`, canonicalized. Its hash, `ec4b495a…`, matches the value cli-spec.md §5.2.4 measured independently.
   - The source members are the materialized bytes.
+- **a3 (ADR amendment K2).** `read_set` is what stage parse looks at for this revision besides the source members: its three companion files are absent (`USB-PD-Trigger-Board.kicad_dru`, `fp-lib-table`, `sym-lib-table`), the repository has no jobset, and no submodule. WP-K2a recomputes `bundle_key` for the a3 generator id when it updates `examples/CliVersionA0.example.json`.
 - **Copied from other W0 examples.** `generator` is `examples/CliVersionA0.example.json`. `bundle_key` is computed from it by cli-spec.md §5.1.4; the same code reproduces the vectors of cli-spec.md §5.1.5.
 - **Placeholders.** No projection producer exists yet. Each projection member's `sha256` and `bytes` are those of its W0 example document serialized compact + LF, and that example may come from another fixture. Where that example did not exist when this one was generated (`project`, `system-interface`), they are those of the minimal `{"schema":"<id>"}` + LF; regenerating the example once those land changes only these two hashes. `stages.parse.warnings` is empty because no producer ran.
 - **Trimming.** None: 19 members, 292 lines.

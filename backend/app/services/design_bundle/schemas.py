@@ -46,7 +46,7 @@ def schema_dir() -> Path:
 
 
 def urn(schema_id: str) -> str:
-    """``prism.bundle.manifest.a2`` -> ``urn:prism:schema:prism.bundle.manifest:a2`` (conventions.md §3)."""
+    """``prism.bundle.manifest.a3`` -> ``urn:prism:schema:prism.bundle.manifest:a3`` (conventions.md §3)."""
 
     name, _, version = schema_id.rpartition(".")
     if not name or not version:

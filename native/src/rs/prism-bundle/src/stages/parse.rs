@@ -16,6 +16,7 @@
 
 use super::design::{self, Text};
 use super::keys::{source_entry, upgrade_invalid};
+use super::producers::ProjectionResult;
 use super::sexpr_check::{self, BOARD_FORMAT, CheckError, SCHEMATIC_FORMAT};
 use super::sheets::{Unresolved, resolve};
 use super::sources::SourceTree;
@@ -24,13 +25,14 @@ use crate::finding::{Failure, Finding, Location, Outcome};
 use crate::limits::{LimitName, Limits};
 use crate::manifest::{
     BOARD_ID, DESIGN_PATH, DESIGN_SCHEMA, MANIFEST_SCHEMA, PROJECTIONS, Role, SOURCES_PREFIX,
-    Stage, Status, a2, json_bytes, member_failure, models_stage, pending_board, retype,
+    Stage, Status, a3, json_bytes, member_failure, models_stage, pending_board, retype,
     skipped_board, sort_warnings, source_role, warning,
 };
 use crate::paths::{file_name, is_within, join, parent};
 use crate::revision_key::{EffectiveConfig, default_config};
 use prism_kicad_contracts::generated::prism_revision_key_effective_config_a1 as cfg;
 use prism_kicad_contracts::generated::prism_revision_key_record_a1 as rk;
+use prism_kicad_contracts::generated::prism_semantic_index_a2::SemanticIndexA2;
 use prism_kicad_core::{PcbLimits, PcbView, ProjectDocument, ProjectLimits};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -223,6 +225,7 @@ pub fn run(request: &ParseRequest<'_>) -> Outcome<ParseOutcome> {
         warnings: Vec::new(),
         failed: Vec::new(),
         derived: Vec::new(),
+        pending_index: None,
     };
     let error = stage.parse()?;
     stage
@@ -262,9 +265,12 @@ struct ParseRun<'a> {
     request: &'a ParseRequest<'a>,
     tree: &'a SourceTree,
     config: EffectiveConfig,
-    warnings: Vec<a2::Warning>,
-    failed: Vec<a2::BundleManifestMemberFailure>,
+    warnings: Vec<a3::Warning>,
+    failed: Vec<a3::BundleManifestMemberFailure>,
     derived: Vec<MemberData>,
+    /// The semantic index, typed, until the read set is final and its
+    /// `designKey` can be set (bundle-format.md §2.3).
+    pending_index: Option<Box<SemanticIndexA2>>,
 }
 
 pub(super) fn member(path: &str) -> String {
@@ -709,12 +715,28 @@ impl ParseRun<'_> {
         if let Some(failure) = self.tree.take_failure() {
             return Err(failure);
         }
+        self.record_projections(results)
+    }
+
+    /// Record each producer's result, in `PROJECTIONS` order (bundle-format.md
+    /// §3.1): its warnings, the typed semantic index held aside for its
+    /// `designKey`, or a failed member when it could not build.
+    fn record_projections(
+        &mut self,
+        results: Vec<Option<Result<ProjectionResult, String>>>,
+    ) -> Outcome<()> {
         for ((path, schema), result) in PROJECTIONS.into_iter().zip(results) {
             let Some(result) = result else {
                 continue;
             };
             match result {
-                Ok((value, warnings))
+                Ok(ProjectionResult::SemanticIndex { document, warnings }) => {
+                    for produced in warnings {
+                        self.warn(&produced.code, produced.message)?;
+                    }
+                    self.pending_index = Some(document);
+                }
+                Ok(ProjectionResult::Json { value, warnings })
                     if value.get("schema").and_then(Value::as_str) == Some(schema) =>
                 {
                     for produced in warnings {
@@ -725,7 +747,7 @@ impl ParseRun<'_> {
                     }
                     self.add_json(path, schema, &value)?;
                 }
-                Ok(_) => {
+                Ok(ProjectionResult::Json { .. }) => {
                     return Err(internal(format!(
                         "the {path} producer wrote another schema"
                     )));
@@ -867,7 +889,7 @@ impl ParseRun<'_> {
         }
     }
 
-    fn stage_record(&mut self, error: Option<Finding>) -> Outcome<a2::BundleManifestParseStage> {
+    fn stage_record(&mut self, error: Option<Finding>) -> Outcome<a3::BundleManifestParseStage> {
         sort_warnings(&mut self.warnings);
         self.failed.sort_by(|a, b| a.path.0.cmp(&b.path.0));
         let status = match (&error, self.failed.is_empty()) {
@@ -878,7 +900,7 @@ impl ParseRun<'_> {
         if let Some(finding) = &error {
             self.request.reporter.error(finding);
         }
-        Ok(a2::BundleManifestParseStage {
+        Ok(a3::BundleManifestParseStage {
             status,
             error: error
                 .as_ref()
@@ -895,7 +917,7 @@ impl ParseRun<'_> {
     }
 
     fn finish(mut self, error: Option<Finding>) -> Outcome<Built> {
-        use a2::BundleManifestSkipReason::{EarlierStageFailed, NoBoard};
+        use a3::BundleManifestSkipReason::{EarlierStageFailed, NoBoard};
         let failed = error.is_some();
         let parse = self.stage_record(error)?;
         let (board, models) = if failed {
@@ -913,6 +935,32 @@ impl ParseRun<'_> {
         };
         self.check_upgraded()?;
         let mut members = self.source_members()?;
+        let read_set = crate::read_set::complete(
+            &self.tree.read_set(),
+            &members,
+            self.request.key_record.as_ref(),
+        );
+        if let Some(record) = &self.request.key_record
+            && let Some(mismatch) = crate::read_set::check(&read_set, &members, record)
+        {
+            return Err(internal(format!(
+                "I14: the read set does not hold in --key-record at {}: {}",
+                mismatch.path, mismatch.message
+            )));
+        }
+        let config_digest = self.request.key_record.as_ref().map_or_else(
+            || crate::revision_key::config_digest(&self.config),
+            |record| record.config_digest.0.clone(),
+        );
+        let design_key = crate::read_set::design_key(&config_digest, &members, &read_set);
+        if let Some(mut index) = self.pending_index.take() {
+            index.design_key = design_key.into();
+            self.add_json(
+                "projections/semantic-index.json",
+                "prism.semantic_index.a2",
+                &index,
+            )?;
+        }
         if !failed {
             members.append(&mut self.derived);
         }
@@ -921,18 +969,19 @@ impl ParseRun<'_> {
         let bundle_key = revision_key
             .as_deref()
             .map(|key| crate::generator::bundle_key(key, &generator.bytes));
-        let manifest = a2::BundleManifestA2 {
+        let manifest = a3::BundleManifestA3 {
             schema: MANIFEST_SCHEMA.to_owned(),
             generator: generator.document.clone(),
-            revision_key: revision_key.map(a2::Sha256Hex),
-            bundle_key: bundle_key.map(a2::Sha256Hex),
+            revision_key: revision_key.map(a3::Sha256Hex),
+            bundle_key: bundle_key.map(a3::Sha256Hex),
             config: retype(&self.config).map_err(internal)?,
-            board_id: a2::BundleManifestBoardId(BOARD_ID.to_owned()),
-            stages: a2::BundleManifestStages {
+            board_id: a3::BundleManifestBoardId(BOARD_ID.to_owned()),
+            stages: a3::BundleManifestStages {
                 parse,
                 board,
                 models,
             },
+            read_set: crate::read_set::contract(&read_set),
             members: Vec::new(),
         };
         let written = members.iter().map(|member| member.path.clone()).collect();

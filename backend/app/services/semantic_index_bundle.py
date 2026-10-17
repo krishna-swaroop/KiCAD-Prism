@@ -2,7 +2,7 @@
 
 With ``PRISM_DESIGN_SOURCE_SEMANTIC_INDEX=bundle``, ``semantic_index_service``
 answers a commit request from the bundle member ``projections/semantic-index.json``
-(``prism.semantic_index.a1``; native/contracts/prism/field-maps/semantic-index.md)
+(``prism.semantic_index.a2``; native/contracts/prism/field-maps/semantic-index.md)
 instead of building and storing its own index. This module holds that branch;
 the service keeps resolving the commit and falls back to its legacy build on
 ``None``.

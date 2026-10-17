@@ -1,12 +1,12 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "urn:prism:schema:prism.bundle.manifest:a2",
+    "$id": "urn:prism:schema:prism.bundle.manifest:a3",
     "type": "object",
     "properties": {
         "schema": {
             "type": "string",
-            "const": "prism.bundle.manifest.a2",
-            "description": "Schema id of this document. Replaces a1's `schema: \"prism.bundle.manifest\"` plus `version: \"a1\"`."
+            "const": "prism.bundle.manifest.a3",
+            "description": "Schema id of this document. a1 had `schema: \"prism.bundle.manifest\"` plus `version: \"a1\"`; a2 added the stages; a3 adds `read_set`."
         },
         "generator": {
             "$ref": "urn:prism:schema:prism.cli.version:a0",
@@ -14,7 +14,7 @@
         },
         "revision_key": {
             "$ref": "#/$defs/Sha256Hex",
-            "description": "The design revision key the bundle was built for (`RevisionKeyRecordA1.revision_key`, ADR §5), as the backend passed it with `--revision-key`; `<revision_key>` in the store path. Absent only for a bundle built without one (local and test builds, cli-spec.md §5.2.2); the backend always passes it."
+            "description": "The design revision key the bundle was built for (`RevisionKeyRecordA1.revision_key`, ADR §5), as the backend passed it with `--revision-key`; `<revision_key>` in the store path. Absent only for a bundle built without one (local and test builds, cli-spec.md §5.2.2); the backend always passes it. The archive may also serve other revision keys whose tree leaves `read_set` and the source members unchanged, through the backend's alias table (revision-key.md §10, ADR amendment K2 §3.6); this field always names the key it was built for, and a reader takes the revision it asked for from its request, never from here."
         },
         "bundle_key": {
             "$ref": "#/$defs/Sha256Hex",
@@ -32,6 +32,10 @@
             "$ref": "#/$defs/BundleManifestStages",
             "description": "Status and results of each stage."
         },
+        "read_set": {
+            "$ref": "#/$defs/BundleManifestReadSet",
+            "description": "What stage parse looked at besides the source members (ADR amendment K2 §3.4)."
+        },
         "members": {
             "type": "array",
             "items": {
@@ -47,13 +51,14 @@
         "config",
         "board_id",
         "stages",
+        "read_set",
         "members"
     ],
     "unevaluatedProperties": {
         "not": {}
     },
     "description": "`bundle.json`: the manifest of one design bundle, the first member of the\n`.prism` archive and the only one it does not list. It records what was\nbuilt (generator id, revision key, bundle key, effective configuration),\nthe state of every stage, and the role, stage, schema id, size and SHA-256\nof every other member. It is rewritten, with\nthe archive, at the end of each stage. It contains no wall-clock time,\nduration, host path, user or machine name.",
-    "title": "Bundle manifest a2",
+    "title": "Bundle manifest a3",
     "$defs": {
         "Sha256Hex": {
             "type": "string",
@@ -90,6 +95,41 @@
                 "not": {}
             },
             "description": "One record per stage of ADR §4.4. Readers use them to know which members exist, which will come and which never will (`bundle-format.md` §3.3)."
+        },
+        "BundleManifestReadSet": {
+            "type": "object",
+            "properties": {
+                "probes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/BundleManifestProbe"
+                    },
+                    "description": "Every probe, sorted by `path` in code point order, without duplicates."
+                },
+                "listings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/BundleManifestListing"
+                    },
+                    "description": "Every listing, sorted by `directory`, then by `suffixes` (compared element by element), without duplicates."
+                },
+                "gitlinks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/BundleManifestGitlink"
+                    },
+                    "description": "Every gitlink a source member, probe or listing reached into, sorted by `path`, without duplicates."
+                }
+            },
+            "required": [
+                "probes",
+                "listings",
+                "gitlinks"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "What stage parse looked at besides the files it read, which are the\nsource members (ADR amendment K2 §3.3–§3.4). A stored bundle serves another\nrevision key of the same project, configuration and generator when every\nsource member's key entry, every probe and every listing is the same in\nthat key's tree (`prism-kicad bundle reuse`, cli-spec.md §5.10). Written at\nthe end of stage parse and copied unchanged by later stages."
         },
         "BundleManifestMember": {
             "type": "object",
@@ -262,6 +302,88 @@
                 "not": {}
             },
             "description": "Stage models: the KiCad component GLB."
+        },
+        "BundleManifestProbe": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "$ref": "#/$defs/RepoPath",
+                    "description": "The repository path asked about."
+                },
+                "present": {
+                    "type": "boolean",
+                    "description": "Whether the path was in the source set."
+                }
+            },
+            "required": [
+                "path",
+                "present"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "A path stage parse asked about without reading it: a `read` that found no\nsuch file in the source set, or an existence test (ADR amendment K2 §3.1)."
+        },
+        "BundleManifestListing": {
+            "type": "object",
+            "properties": {
+                "directory": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/RepoPath"
+                        },
+                        {
+                            "type": "string",
+                            "const": ""
+                        }
+                    ],
+                    "description": "The directory listed: a repository path, or `\"\"` for the repository root. A path is under it when it starts with `directory` + `/`."
+                },
+                "suffixes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/BundleManifestListingSuffix"
+                    },
+                    "description": "The suffixes, sorted in code point order, without duplicates; empty for every name."
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/RepoPath"
+                    },
+                    "description": "The paths the listing returned, sorted in code point order."
+                }
+            },
+            "required": [
+                "directory",
+                "suffixes",
+                "paths"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "One directory listing stage parse made: the source-set paths under\n`directory`, at any depth, whose name, lowered in ASCII, ends with one of\n`suffixes` (any name when `suffixes` is empty)."
+        },
+        "BundleManifestGitlink": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "$ref": "#/$defs/RepoPath",
+                    "description": "The gitlink entry's repository path."
+                },
+                "commit": {
+                    "$ref": "#/$defs/GitObjectId",
+                    "description": "The commit the gitlink records, as in the revision key's entry."
+                }
+            },
+            "required": [
+                "path",
+                "commit"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "A submodule stage parse looked into: a source member inside it, or a probe\nor listing that reaches into it. Its commit pins every file below it, so\nthe read set holds below `path` exactly when the commit is the same."
         },
         "ArchivePath": {
             "type": "string",
@@ -536,6 +658,16 @@
             "pattern": "^(?:[^/\\\\:.][^/\\\\:]*|\\.[^/\\\\:.][^/\\\\:]*|\\.\\.[^/\\\\:]+)(?:/(?:[^/\\\\:.][^/\\\\:]*|\\.[^/\\\\:.][^/\\\\:]*|\\.\\.[^/\\\\:]+))*$",
             "description": "Repository-relative POSIX path, exactly as `git ls-tree` names the entry:\n`/`-separated, case preserved, no leading `/`, no empty, `.` or `..`\nsegment, no backslash and no `:`. The same character rule as ArchivePath.\nIt is the only path type in bundle documents: a file has one spelling\nwhichever project in the repository refers to it, and a file outside the\nproject directory needs no `..`."
         },
+        "BundleManifestListingSuffix": {
+            "type": "string",
+            "pattern": "^\\.[a-z0-9._-]{1,63}$",
+            "description": "A suffix a listing selected by, as the revision key's name rules write\none: a lowercase ASCII name ending that starts with `.` (revision-key.md\n§5.2)."
+        },
+        "GitObjectId": {
+            "type": "string",
+            "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+            "description": "Git object id in lowercase hexadecimal: 40 characters in a SHA-1\nrepository, 64 in a SHA-256 repository. Used for commit ids and blob ids."
+        },
         "RevisionKeyEntryKind": {
             "type": "string",
             "enum": [
@@ -545,11 +677,6 @@
                 "gitlink"
             ],
             "description": "Kind of a source-set entry, fixed by its git tree mode and object type. The\nhashed framing spells each kind as git does (revision-key.md, \"Hashing\")."
-        },
-        "GitObjectId": {
-            "type": "string",
-            "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
-            "description": "Git object id in lowercase hexadecimal: 40 characters in a SHA-1\nrepository, 64 in a SHA-256 repository. Used for commit ids and blob ids."
         },
         "DiagnosticCode": {
             "type": "string",

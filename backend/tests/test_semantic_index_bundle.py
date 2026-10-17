@@ -2,7 +2,7 @@
 
 With ``PRISM_DESIGN_SOURCE_SEMANTIC_INDEX=bundle`` every public reader of
 ``semantic_index_service`` serves the bundle member
-``projections/semantic-index.json`` (``prism.semantic_index.a1``) instead of
+``projections/semantic-index.json`` (``prism.semantic_index.a2``) instead of
 building and storing its own index; the legacy path is untouched when the
 switch is ``legacy``, when a working-tree request is made, when the member is
 not ready yet, and when the bundle answers a final non-member.
@@ -67,12 +67,13 @@ def _manifest(members: dict[str, bytes]) -> dict:
         listed.append(entry)
     stage = {"status": "complete", "warnings": [], "failed_members": []}
     return {
-        "schema": "prism.bundle.manifest.a2", "generator": generator, "revision_key": REVISION_KEY,
+        "schema": "prism.bundle.manifest.a3", "generator": generator, "revision_key": REVISION_KEY,
         "bundle_key": bundle_key(REVISION_KEY, generator),
         "config": {"schema": "prism.revision_key.effective_config.a1", "project_file": "p.kicad_pro", "excluded_dirs": []},
         "board_id": "main",
         "stages": {"parse": stage, "board": {"status": "skipped", "skip_reason": "no-board", "warnings": [], "failed_members": []},
                    "models": {"status": "skipped", "skip_reason": "no-board", "warnings": [], "failed_members": []}},
+        "read_set": {"probes": [], "listings": [], "gitlinks": []},
         "members": listed,
     }
 

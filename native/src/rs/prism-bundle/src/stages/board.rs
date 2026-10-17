@@ -11,7 +11,7 @@ use crate::finding::{Failure, Finding, Outcome};
 use crate::limits::{LimitName, Limits};
 use crate::manifest::{
     DESIGN_PATH, MATERIALIZATION_PATH, MATERIALIZATION_SCHEMA, REFILLED_PREFIX, Role,
-    SOURCES_PREFIX, Stage, Status, a2, member_failure, models_stage, sort_warnings, warning,
+    SOURCES_PREFIX, Stage, Status, a3, member_failure, models_stage, sort_warnings, warning,
 };
 use crate::paths::file_name;
 use crate::revision_key::EffectiveConfig;
@@ -120,11 +120,11 @@ fn refilled_text(
 }
 
 struct Work {
-    warnings: Vec<a2::Warning>,
-    failed: Vec<a2::BundleManifestMemberFailure>,
+    warnings: Vec<a3::Warning>,
+    failed: Vec<a3::BundleManifestMemberFailure>,
     members: Vec<MemberData>,
-    fill_check: Option<a2::BundleManifestFillCheck>,
-    cross_check: Option<a2::BundleManifestCrossCheck>,
+    fill_check: Option<a3::BundleManifestFillCheck>,
+    cross_check: Option<a3::BundleManifestCrossCheck>,
 }
 
 impl Work {
@@ -153,8 +153,8 @@ fn fill_check(
 ) -> Result<Outcome<()>, String> {
     let fills = compare_fills(saved, refilled, project, max_operations)?;
     let stale = !fills.matches();
-    let wide = |value: usize| a2::Count(u64::try_from(value).unwrap_or(u64::MAX));
-    work.fill_check = Some(a2::BundleManifestFillCheck {
+    let wide = |value: usize| a3::Count(u64::try_from(value).unwrap_or(u64::MAX));
+    work.fill_check = Some(a3::BundleManifestFillCheck {
         saved_operations: wide(fills.saved_operations),
         refilled_operations: wide(fills.refilled_operations),
         differing_operations: wide(fills.differing_operations),
@@ -339,11 +339,11 @@ fn materialize(
 }
 
 fn finish(request: &BoardRequest<'_>, mut work: Work, refilled_member: &str) -> Outcome<Built> {
-    use a2::BundleManifestFillProvenance::{Refilled, Saved};
+    use a3::BundleManifestFillProvenance::{Refilled, Saved};
     sort_warnings(&mut work.warnings);
     let partial = !work.failed.is_empty();
     let mut manifest = request.input.manifest.clone();
-    manifest.stages.board = a2::BundleManifestBoardStage {
+    manifest.stages.board = a3::BundleManifestBoardStage {
         status: if partial {
             Status::Partial
         } else {
@@ -364,7 +364,7 @@ fn finish(request: &BoardRequest<'_>, mut work: Work, refilled_member: &str) -> 
     manifest.stages.models = if partial {
         models_stage(
             Status::Skipped,
-            Some(a2::BundleManifestSkipReason::EarlierStageFailed),
+            Some(a3::BundleManifestSkipReason::EarlierStageFailed),
         )
     } else {
         chain::pending_models()

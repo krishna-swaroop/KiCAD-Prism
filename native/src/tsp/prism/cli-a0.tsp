@@ -757,7 +757,7 @@ model CliVerifyReportA0 {
   /** The `schema` that `bundle.json` declares, when `bundle.json` could be read and declares a well-formed schema id. */
   manifest_schema?: SchemaId;
 
-  /** Whether the manifest's generator id equals this binary's, byte for byte in canonical form. Absent when the manifest could not be read as `prism.bundle.manifest.a2`. A bundle of another generator can be valid. */
+  /** Whether the manifest's generator id equals this binary's, byte for byte in canonical form. Absent when the manifest could not be read as `prism.bundle.manifest.a3`. A bundle of another generator can be valid. */
   generator_matches?: boolean;
 
   /** Every stage's state as the manifest records it, in stage order (`parse`, `board`, `models`); empty when the manifest could not be read. */
@@ -773,6 +773,63 @@ model CliVerifyReportA0 {
    * plus one `findings-truncated`.
    */
   findings: CliFinding[];
+}
+
+/** The condition of `bundle reuse` that failed first (cli-spec.md §5.10, ADR amendment K2 §3.3). */
+enum CliReuseCondition {
+  /** The key's effective configuration digest differs from the bundle's. */
+  config,
+
+  /** The bundle's generator is not this binary's. */
+  generator,
+
+  /** The bundle's stage parse recorded `model-unavailable`, so it depends on which objects a worker could fetch. */
+  `model-unavailable`,
+
+  /** A source member's entry (path, kind, object id) is not in the key, or a submodule it lies in records another commit. */
+  read,
+
+  /** A probe's path is selected in the key when the probe found it absent, or the reverse. */
+  probe,
+
+  /** A listing evaluated on the key returns other paths. */
+  listing,
+
+  /** A gitlink of the read set is absent from the key or records another commit. */
+  gitlink,
+}
+
+/** Why a read set does not hold. */
+model CliReuseFailure {
+  /** The first condition, in the order of this enum, that failed. */
+  condition: CliReuseCondition;
+
+  /** The repository path the condition failed on, the first in code point order; absent for `config`, `generator` and `model-unavailable`. */
+  path?: RepoPath;
+
+  /** One sentence for logs. */
+  message: string;
+}
+
+/** stdout of `bundle reuse` (exit 0 whether or not the read set holds; cli-spec.md §5.10). */
+@jsonSchema
+@id("urn:prism:schema:prism.cli.reuse_result:a0")
+@extension("title", "prism-kicad bundle reuse result a0")
+model CliReuseResultA0 {
+  /** Document schema id. */
+  schema: "prism.cli.reuse_result.a0";
+
+  /** Whether the bundle serves the key: every condition of cli-spec.md §5.10 holds. */
+  holds: boolean;
+
+  /** The bundle's own key, `bundle_key` of its manifest: what the backend's alias row points to. */
+  bundle_key: Sha256Hex;
+
+  /** The revision key asked about, `revision_key` of the `--key-record`. */
+  revision_key: Sha256Hex;
+
+  /** The first failing condition. Present exactly when `holds` is false. */
+  failure?: CliReuseFailure;
 }
 
 /** stdout of `bundle extract` (exit 0). */

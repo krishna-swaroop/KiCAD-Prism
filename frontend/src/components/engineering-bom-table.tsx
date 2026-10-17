@@ -421,7 +421,7 @@ export function EngineeringBomTable({
                                                                 onClick={() => onSelection({
                                                                     kind: "component",
                                                                     sourceContext: "BOM",
-                                                                    sourceRevisionKey: semanticIndex.sourceRevisionKey,
+                                                                    sourceRevisionKey: semanticIndex.designKey ?? semanticIndex.sourceRevisionKey,
                                                                     reference: component.reference,
                                                                     componentUid: component.componentUid,
                                                                 })}

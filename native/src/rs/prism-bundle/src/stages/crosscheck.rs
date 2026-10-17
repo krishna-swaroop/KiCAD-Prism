@@ -47,7 +47,7 @@
 //! Pads without a net (mechanical pads, unnamed pads) take no part in the
 //! join and are not compared.
 
-use crate::manifest::a2;
+use crate::manifest::a3;
 use prism_kicad_contracts::generated::materialization_document::{
     BindingSourceKind, MaterializationDocumentA0,
 };
@@ -585,11 +585,11 @@ pub fn cross_check(header: &MaterializationDocumentA0, design: &DesignView) -> C
     CrossCheckOutcome { report, errors }
 }
 
-/// The report as the manifest records it (bundle-manifest-a2.tsp,
+/// The report as the manifest records it (bundle-manifest-a3.tsp,
 /// `BundleManifestCrossCheck`): `errors` always written, warnings and errors
 /// sorted by code then message without repeats, mappings by kind, board,
 /// design.
-pub fn manifest_report(report: &CrossCheckReport) -> Result<a2::BundleManifestCrossCheck, String> {
+pub fn manifest_report(report: &CrossCheckReport) -> Result<a3::BundleManifestCrossCheck, String> {
     let sorted = |findings: &[BundleWarning]| {
         let mut findings = findings.to_vec();
         findings.sort();

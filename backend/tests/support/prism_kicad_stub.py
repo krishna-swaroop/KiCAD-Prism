@@ -37,7 +37,7 @@ PROJECTIONS = {
     "projections/placements.json": "PlacementsA0",
     "projections/project.json": "ProjectA0",
     "projections/route-metrics.json": "RouteMetricsA0",
-    "projections/semantic-index.json": "SemanticIndexA1",
+    "projections/semantic-index.json": "SemanticIndexA2",
     "projections/stackup.json": "StackupA0",
     "projections/system-interface.json": "SystemInterfaceV1",
 }
@@ -425,12 +425,14 @@ def build_parse(positionals: list[str], options: dict[str, Any]) -> NoReturn:
         board, models = empty_stage("skipped", "no-board"), empty_stage("skipped", "no-board")
     else:
         board, models = empty_stage("pending"), empty_stage("pending")
-    manifest: dict[str, Any] = {"schema": "prism.bundle.manifest.a2", "generator": gen}
+    manifest: dict[str, Any] = {"schema": "prism.bundle.manifest.a3", "generator": gen}
     if "--revision-key" in options:
         rk = options["--revision-key"]
         manifest["revision_key"] = rk
         manifest["bundle_key"] = hashlib.sha256(b"prism.bundle_key.a0\0" + rk.encode("ascii") + b"\0" + generator_bytes(gen)).hexdigest()
-    manifest.update(config=config, board_id="main", stages={"parse": parse, "board": board, "models": models}, members=listed)
+    read_set = {"probes": [], "listings": [], "gitlinks": []}
+    manifest.update(config=config, board_id="main", stages={"parse": parse, "board": board, "models": models},
+                    read_set=read_set, members=listed)
     diagnostic("info", "stage-finished", f"stage parse {parse['status']}", stage="parse")
     finish(manifest, members, Path(options["-o"]), "parse", [m["path"] for m in listed])
 
@@ -446,8 +448,8 @@ def load_in(options: dict[str, Any], stage: str) -> tuple[dict[str, Any], dict[s
         manifest = json.loads(entries[0][1])
     except (ValueError, struct.error, IndexError):
         error(3, "bundle-invalid", "--in is not a bundle", argument="in")
-    if manifest.get("schema") != "prism.bundle.manifest.a2":
-        error(7, "manifest-unsupported", "--in is not manifest a2", argument="in")
+    if manifest.get("schema") != "prism.bundle.manifest.a3":
+        error(7, "manifest-unsupported", "--in is not manifest a3", argument="in")
     if generator_bytes(manifest["generator"]) != generator_bytes(generator()):
         error(7, "generator-mismatch", "--in was written by another generator", argument="in")
     if "--revision-key" in options and options["--revision-key"] != manifest.get("revision_key"):

@@ -73,7 +73,7 @@
           "note": "generated from W0's TypeSpec; never edited by hand"
         },
         {
-          "path": "native/contracts/generated/schema/BundleManifestA2.json",
+          "path": "native/contracts/generated/schema/BundleManifestA3.json",
           "status": "new",
           "note": "generated from W0's TypeSpec; never edited by hand"
         },
@@ -148,7 +148,7 @@
           "note": "generated from W0's TypeSpec; never edited by hand"
         },
         {
-          "path": "native/contracts/generated/schema/SemanticIndexA1.json",
+          "path": "native/contracts/generated/schema/SemanticIndexA2.json",
           "status": "new",
           "note": "generated from W0's TypeSpec; never edited by hand"
         },

@@ -423,7 +423,7 @@ fn main() -> Result<()> {
             .and_then(Value::as_str)
             .is_some_and(|id| id.starts_with("urn:prism:schema:"))
         {
-            // Name the generated root after its model (BundleManifestA2,
+            // Name the generated root after its model (BundleManifestA3,
             // CliVersionA0), not after its human title.
             let model = schema_name.trim_end_matches(".json").to_owned();
             schema["title"] = Value::String(model);

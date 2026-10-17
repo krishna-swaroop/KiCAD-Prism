@@ -98,6 +98,12 @@ class Divergences(unittest.TestCase):
         self.assertEqual(out["nets"][0]["usedLayers"], ["B.Cu", "F.Cu", "In1.Cu", "In2.Cu"])
         self.assertEqual(out["nets"][1]["usedLayers"], ["F.Cu"])
 
+    def test_semantic_index_envelope_a2_rule(self):
+        rule = dv.RULES["semantic-index/envelope-a2"]
+        self.assertEqual(rule({"schema": "prism.semantic_index.a1", "nets": []}, {}),
+                         {"schema": "prism.semantic_index.a2", "nets": []})
+        self.assertEqual(rule({"schema": "prism.semantic_index.a2"}, {}), {"schema": "prism.semantic_index.a2"})
+
 
 class MemberChecks(unittest.TestCase):
     def test_non_semantic_field_is_ignored(self):

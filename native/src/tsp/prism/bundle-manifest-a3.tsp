@@ -7,15 +7,17 @@ using TypeSpec.JsonSchema;
 using Prism.Contracts.Common;
 
 /**
- * `prism.bundle.manifest.a2`: `bundle.json`, the first member of a `.prism`
+ * `prism.bundle.manifest.a3`: `bundle.json`, the first member of a `.prism`
  * design bundle (ADR §4.4, §5, §6). Successor of sim's `prism.bundle.manifest`
  * a1 (sim: `contracts/contracts/bundle.tsp`). The archive rules (member
  * order, compression, timestamps, limits, atomic stage rewrites, the
  * unpacked cache, readiness and reader validation) are in
- * `bundle-format.md`; the a1 → a2 mapping is in
- * `field-maps/bundle-manifest.md`.
+ * `bundle-format.md`; the a1 → a2 mapping and the a2 → a3 change are in
+ * `field-maps/bundle-manifest.md`. a3 adds `read_set` (ADR amendment K2
+ * §3.4): with the source members, it is everything stage parse read, so a
+ * stored bundle can serve every revision key whose tree leaves it unchanged.
  */
-namespace Prism.Contracts.BundleManifestA2;
+namespace Prism.Contracts.BundleManifestA3;
 
 // ------------------------------------------------------------------ scalars
 
@@ -194,6 +196,73 @@ model BundleManifestSourceEntry {
    * file was used as committed.
    */
   upgraded_from_version?: safeint;
+}
+
+/**
+ * A suffix a listing selected by, as the revision key's name rules write
+ * one: a lowercase ASCII name ending that starts with `.` (revision-key.md
+ * §5.2).
+ */
+@pattern("^\\.[a-z0-9._-]{1,63}$")
+scalar BundleManifestListingSuffix extends string;
+
+/**
+ * A path stage parse asked about without reading it: a `read` that found no
+ * such file in the source set, or an existence test (ADR amendment K2 §3.1).
+ */
+model BundleManifestProbe {
+  /** The repository path asked about. */
+  path: RepoPath;
+
+  /** Whether the path was in the source set. */
+  present: boolean;
+}
+
+/**
+ * One directory listing stage parse made: the source-set paths under
+ * `directory`, at any depth, whose name, lowered in ASCII, ends with one of
+ * `suffixes` (any name when `suffixes` is empty).
+ */
+model BundleManifestListing {
+  /** The directory listed: a repository path, or `""` for the repository root. A path is under it when it starts with `directory` + `/`. */
+  directory: RepoPath | "";
+
+  /** The suffixes, sorted in code point order, without duplicates; empty for every name. */
+  suffixes: BundleManifestListingSuffix[];
+
+  /** The paths the listing returned, sorted in code point order. */
+  paths: RepoPath[];
+}
+
+/**
+ * A submodule stage parse looked into: a source member inside it, or a probe
+ * or listing that reaches into it. Its commit pins every file below it, so
+ * the read set holds below `path` exactly when the commit is the same.
+ */
+model BundleManifestGitlink {
+  /** The gitlink entry's repository path. */
+  path: RepoPath;
+
+  /** The commit the gitlink records, as in the revision key's entry. */
+  commit: GitObjectId;
+}
+
+/**
+ * What stage parse looked at besides the files it read, which are the
+ * source members (ADR amendment K2 §3.3–§3.4). A stored bundle serves another
+ * revision key of the same project, configuration and generator when every
+ * source member's key entry, every probe and every listing is the same in
+ * that key's tree (`prism-kicad bundle reuse`, cli-spec.md §5.10). Written at
+ * the end of stage parse and copied unchanged by later stages.
+ */
+model BundleManifestReadSet {
+  /** Every probe, sorted by `path` in code point order, without duplicates. */
+  probes: BundleManifestProbe[];
+
+  /** Every listing, sorted by `directory`, then by `suffixes` (compared element by element), without duplicates. */
+  listings: BundleManifestListing[];
+  /** Every gitlink a source member, probe or listing reached into, sorted by `path`, without duplicates. */
+  gitlinks: BundleManifestGitlink[];
 }
 
 /** One archive member other than `bundle.json` itself, which is never listed and never hashed by the manifest. */
@@ -395,16 +464,16 @@ model BundleManifestStages {
  * duration, host path, user or machine name.
  */
 @jsonSchema
-@id("urn:prism:schema:prism.bundle.manifest:a2")
-@extension("title", "Bundle manifest a2")
-model BundleManifestA2 {
-  /** Schema id of this document. Replaces a1's `schema: "prism.bundle.manifest"` plus `version: "a1"`. */
-  schema: "prism.bundle.manifest.a2";
+@id("urn:prism:schema:prism.bundle.manifest:a3")
+@extension("title", "Bundle manifest a3")
+model BundleManifestA3 {
+  /** Schema id of this document. a1 had `schema: "prism.bundle.manifest"` plus `version: "a1"`; a2 added the stages; a3 adds `read_set`. */
+  schema: "prism.bundle.manifest.a3";
 
   /** The generator id: the `prism-kicad version` document, verbatim (ADR §5). Replaces a1's `created_by`, `design`, `materializer` and `kicad_cli_version`. */
   generator: Prism.Contracts.CliA0.CliVersionA0;
 
-  /** The design revision key the bundle was built for (`RevisionKeyRecordA1.revision_key`, ADR §5), as the backend passed it with `--revision-key`; `<revision_key>` in the store path. Absent only for a bundle built without one (local and test builds, cli-spec.md §5.2.2); the backend always passes it. */
+  /** The design revision key the bundle was built for (`RevisionKeyRecordA1.revision_key`, ADR §5), as the backend passed it with `--revision-key`; `<revision_key>` in the store path. Absent only for a bundle built without one (local and test builds, cli-spec.md §5.2.2); the backend always passes it. The archive may also serve other revision keys whose tree leaves `read_set` and the source members unchanged, through the backend's alias table (revision-key.md §10, ADR amendment K2 §3.6); this field always names the key it was built for, and a reader takes the revision it asked for from its request, never from here. */
   revision_key?: Sha256Hex;
 
   /** The bundle key, `SHA-256("prism.bundle_key.a0" 0x00 revision_key 0x00 generator_bytes)` (cli-spec.md §5.1.4). Present exactly when `revision_key` is. Readers check it against the key they asked for. */
@@ -418,6 +487,9 @@ model BundleManifestA2 {
 
   /** Status and results of each stage. */
   stages: BundleManifestStages;
+
+  /** What stage parse looked at besides the source members (ADR amendment K2 §3.4). */
+  read_set: BundleManifestReadSet;
 
   /** Every member except `bundle.json`, sorted by path in code point order (UTF-8 byte order); the archive's entries follow `bundle.json` in this order. */
   @minItems(1)

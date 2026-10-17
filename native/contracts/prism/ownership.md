@@ -556,7 +556,7 @@ Every path a WP may edit in its wave, from `ownership.json` `/workPackages`. "AD
 | `docs/architecture/adr-native-design-bundle.md` | dev | the ADR; changed only by a maintainer-approved amendment PR |
 | `native/src/tsp/prism/**`, `native/contracts/prism/**`, `native/scripts/contracts/**` | dev | the W0 contracts, moved from `docs/architecture/design-bundle-contracts/` by the W0 move |
 | `native/contracts/generated/schema/BoardObjectsA0.json` | new | generated from W0's TypeSpec; never edited by hand |
-| `native/contracts/generated/schema/BundleManifestA2.json` | new | generated from W0's TypeSpec; never edited by hand |
+| `native/contracts/generated/schema/BundleManifestA3.json` | new | generated from W0's TypeSpec; never edited by hand |
 | `native/contracts/generated/schema/CliBuildResultA0.json` | new | generated from W0's TypeSpec; never edited by hand |
 | `native/contracts/generated/schema/CliDiagnosticA0.json` | new | generated from W0's TypeSpec; never edited by hand |
 | `native/contracts/generated/schema/CliErrorA0.json` | new | generated from W0's TypeSpec; never edited by hand |
@@ -571,7 +571,7 @@ Every path a WP may edit in its wave, from `ownership.json` `/workPackages`. "AD
 | `native/contracts/generated/schema/RevisionKeyRecordA1.json` | new | generated from W0's TypeSpec; never edited by hand |
 | `native/contracts/generated/schema/RevisionKeyVectorsA1.json` | new | generated from W0's TypeSpec; never edited by hand |
 | `native/contracts/generated/schema/RouteMetricsA0.json` | new | generated from W0's TypeSpec; never edited by hand |
-| `native/contracts/generated/schema/SemanticIndexA1.json` | new | generated from W0's TypeSpec; never edited by hand |
+| `native/contracts/generated/schema/SemanticIndexA2.json` | new | generated from W0's TypeSpec; never edited by hand |
 | `native/contracts/generated/schema/StackupA0.json` | new | generated from W0's TypeSpec; never edited by hand |
 | `native/contracts/generated/schema/SystemInterfaceV1.json` | new | generated from W0's TypeSpec; never edited by hand |
 | `native/contracts/prism/**` | new | proposed home of STAGE's examples/, field-maps/, scripts/, conventions.md, cli-spec.md, bundle-format.md, revision-key.md, revision-key-vectors.json and this map (STAGE/README.md, 'After WP-F1') |

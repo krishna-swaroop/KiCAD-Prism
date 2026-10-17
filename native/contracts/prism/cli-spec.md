@@ -19,6 +19,7 @@ Citations follow [`conventions.md`](conventions.md): a bare path is in this repo
 | `CliBuildResultA0` | `prism.cli.build_result.a0` | stdout of `bundle build`, exit 0 or 9 | `examples/CliBuildResultA0.example.json` |
 | `CliVerifyReportA0` | `prism.cli.verify_report.a0` | stdout of `bundle verify`, exit 0 or 8 | `examples/CliVerifyReportA0.example.json` |
 | `CliExtractResultA0` | `prism.cli.extract_result.a0` | stdout of `bundle extract`, exit 0 | `examples/CliExtractResultA0.example.json` |
+| `CliReuseResultA0` | `prism.cli.reuse_result.a0` | stdout of `bundle reuse`, exit 0 (§5.10) | `examples/CliReuseResultA0.example.json` |
 | `CliErrorA0` | `prism.cli.error.a0` | stdout of any command, exit 1–7 | `examples/CliErrorA0.example.json` |
 | `CliProjectAbsentA0` | `prism.cli.project_absent.a0` | stdout of `revision-key` and `bundle build --stage parse`, exit 10: the project is absent at this revision | `examples/CliProjectAbsentA0.example.json` |
 | `CliCompareResultA0` | `prism.cli.compare_result.a0` | stdout of `compare`, exit 0 | `examples/CliCompareResultA0.example.json` |
@@ -83,11 +84,14 @@ prism-kicad bundle build --stage models --in <bundle.prism> -o <out.prism>
 
 prism-kicad bundle verify <bundle.prism> [COMMON]
 prism-kicad bundle extract <bundle.prism> <member>... -o <dir> [COMMON]
+prism-kicad bundle reuse --in <bundle.prism> --key-record <record.json> [COMMON]
 
 prism-kicad revision-key <repo> (--commit <rev> | --worktree) --project <rel> [--config <effective.json>] [COMMON]
 
-prism-kicad compare --base <base.prism> --head <head.prism> -o <result.json> [COMMON]
+prism-kicad compare --base <base.prism> --head <head.prism>
+            --base-revision-key <hex> --head-revision-key <hex> -o <result.json> [COMMON]
 prism-kicad compare --base-src <project.kicad_pro> --head-src <project.kicad_pro>
+            --base-revision-key <hex> --head-revision-key <hex>
             [--base-source-root <dir>] [--head-source-root <dir>]
             [--base-upgraded <path>=<version>]... [--head-upgraded <path>=<version>]...
             [--config <effective.json>] -o <result.json> [COMMON]
@@ -355,7 +359,7 @@ The member paths, roles and stage-record rules belong to the manifest contract (
 The final archive of `parse → board → models` is therefore the same whatever was re-run on the way. K never re-runs a stage on a stored bundle: for K, a stage only moves from `pending` to final (bundle-format.md §3.3).
 
 **Checks on `--in`**, before any other work:
-1. `bundle.json` declares `prism.bundle.manifest.a2`; otherwise exit 7, `manifest-unsupported`. An a1 `board.prism` from the reference branch is rejected here.
+1. `bundle.json` declares `prism.bundle.manifest.a3`; otherwise exit 7, `manifest-unsupported`. An a2 bundle, or an a1 `board.prism` from the reference branch, is rejected here.
 2. It passes every other reader check (§6.2; bundle-format.md §9 steps 1–4 and 6); otherwise exit 3, `bundle-invalid`, with the first finding's location.
 3. Its generator id equals this binary's, compared as canonical bytes; otherwise exit 7, `generator-mismatch`. The bundle key covers the generator, so stages of two generators never mix.
 4. Its stage states allow the requested stage (table above); otherwise exit 7:
@@ -381,6 +385,12 @@ The final archive of `parse → board → models` is therefore the same whatever
 **Source selection.** `parse` bundles the closure the build read, exactly as bundle-format.md §2.2 defines it (revision-key.md §12, Q3).
 - **Selector.** It uses the same Rust selector as `revision-key --worktree` (revision-key.md, "Selection"), applied to the files under the source root with the effective configuration's `excluded_dirs`, to find the source set the parse may read. A materialized submodule's files are selected like any other file, by name, while the key holds only the gitlink.
 - **Members.** Each file of the source set that the parse reads becomes the member `sources/<RepoPath>`, with its bytes unchanged. A selected file no reference reaches is not a member.
+- **Recording** (ADR amendment K2 §3.1). Stage parse and every producer reach the source set only through three queries, and each call is recorded:
+  - *read* a path: a file it returns becomes a member; a path not in the source set is recorded as a probe, absent;
+  - *exists*: a probe, present or absent;
+  - *list* a directory by suffixes: the source-set paths at any depth below it whose ASCII-lowered name ends with one of the suffixes (every name when none are given), in code point order, recorded with the paths returned.
+
+  No producer may see the source set as a whole. A query that reaches into a materialized submodule also records that gitlink with its commit, taken from `--key-record`. The manifest writes the recording as `read_set` (bundle-format.md §2.3), sorted and without duplicates, whatever order the parallel producers called in.
 - **Key entries.** `--key-record <record.json>` is the `RevisionKeyRecordA1` of the revision, as `revision-key` printed it; one that is not valid against its schema is exit 3, `key-record-invalid`. Its `revision_key` must equal `--revision-key` and its `config` the effective configuration; otherwise exit 7, `revision-key-mismatch` or `config-mismatch`. Each member's `source` (`path`, `kind`, `object_id`) is copied from its entry, or from the gitlink entry above it plus the file's blob id in the submodule. A member with neither is exit 7, `revision-key-mismatch`. Without `--key-record` (local and test builds), `kind` comes from the executable bit and `object_id` is the SHA-1 blob id of the bytes as `git hash-object --no-filters` computes it, which matches the key only when no clean filter or LFS applies.
 - **Upgrades.** Each `--upgraded <path>=<version>` names a source K upgraded before the parse (§9.4). The member `sources/<path>` records `upgraded_from_version: <version>` (bundle-format.md §2.2), and its `source` keeps the committed blob's key entry. A path that is not a member, or a version not older than `kicad_file_formats` for its kind, is exit 3, `upgrade-record-invalid`. The CLI does not compare the member's bytes with the version: they are already upgraded.
 - **Links.** The selector never follows a symbolic link. A link or special file under the source root is exit 3, `source-not-regular-file`. K does not materialize symlink entries (bundle-format.md §2.2).
@@ -521,7 +531,7 @@ Limits, timeouts and the memory cap are not recorded. They depend on configured 
 
 Checks, in order:
 1. **Archive structure, path and size rules** (§6.2; bundle-format.md §9 steps 1–2). A structural failure stops the checks.
-2. **Manifest** (bundle-format.md §9 step 3). `bundle.json` is the first member, valid JSON within `max-json-depth`/`max-json-nodes`. It declares `prism.bundle.manifest.a2` (else `manifest-unsupported`) and validates against that schema (else `manifest-invalid`, with `pointer`).
+2. **Manifest** (bundle-format.md §9 step 3). `bundle.json` is the first member, valid JSON within `max-json-depth`/`max-json-nodes`. It declares `prism.bundle.manifest.a3` (else `manifest-unsupported`) and validates against that schema (else `manifest-invalid`, with `pointer`).
 3. **Members** (bundle-format.md §9 steps 4 and 6):
    - The archive's members and the manifest's member list are the same set, in the same order: `member-missing`, `member-unlisted`, `member-order`.
    - Each member's size, CRC-32 and SHA-256 match: `member-digest-mismatch`, `zip-size-mismatch`, `zip-crc-mismatch`.
@@ -530,7 +540,7 @@ Checks, in order:
    - Every JSON member with a schema id in `member_schemas` validates against that schema: `member-schema-invalid`, with `pointer`.
    - `materialization/board.kmpack` opens with the pack reader and its header validates, as a1's verify does (sim: `prism-bundle.rs:186-201`); otherwise `member-unreadable`.
    - `design.json` has no published JSON Schema in the fork (fork: `contracts/generated/schema/` holds none), so only its `schema` field is checked.
-5. **Stage states and invariants** (bundle-format.md §3.4, I1–I12): `stage-inconsistent`, with the invariant's number in the message. For example:
+5. **Stage states and invariants** (bundle-format.md §3.4, I1–I13; I14 is stage parse's own check): `stage-inconsistent`, with the invariant's number in the message. For example:
    - `board` `complete` requires `materialization/board.kmpack`;
    - a `failed` stage has none of its members;
    - `bundle_key` recomputes from `revision_key` and `generator` (I11).
@@ -593,7 +603,8 @@ This spec fixes only the process contract:
 
 - **Arguments.** Each side is a bundle or a source tree:
   - `--base <bundle.prism>` / `--head <bundle.prism>`: a stored bundle. The two may name the same file, which gives no changes.
-  - `--base-src <project.kicad_pro>` / `--head-src …`: a source tree, for a commit with no bundle yet. It takes `--<side>-revision-key <hex>` (required; the result's identity), and optionally `--<side>-source-root`, `--<side>-config` and `--<side>-upgraded <path>=<version>`, with `bundle build --stage parse`'s meaning. `compare` runs the parse stage's own code with only the five producers it reads (`board-objects`, `semantic-index`, `occurrences`, `stackup`, `route-metrics`), in memory: no archive, no deflate, no verify. Of `design.json` it builds only the `components` and `nets` the semantic index reads. A source tree and its bundle give the same result, apart from the side's `bundleKey`.
+  - `--base-revision-key <hex>` / `--head-revision-key <hex>`, required in both modes: each side's revision key, the result's identity. A bundle may serve several revision keys (ADR amendment K2 §3.6), so `compare` never takes the identity from the archive's `revision_key`; with these arguments, a bundle and a source tree of the same revision give the same result, apart from the side's `bundleKey`.
+  - `--base-src <project.kicad_pro>` / `--head-src …`: a source tree, for a commit with no bundle yet. It takes optionally `--<side>-source-root`, `--<side>-config` and `--<side>-upgraded <path>=<version>`, with `bundle build --stage parse`'s meaning. `compare` runs the parse stage's own code with only the five producers it reads (`board-objects`, `semantic-index`, `occurrences`, `stackup`, `route-metrics`), in memory: no archive, no deflate, no verify. Of `design.json` it builds only the `components` and `nets` the semantic index reads. A source tree and its bundle give the same result, apart from the side's `bundleKey`.
   - `--include-unchanged` lists unchanged BOM rows too.
   - `-o <result.json>` is required.
 - **Checks, in order.**
@@ -646,6 +657,23 @@ Release Studio's assembly and testpoint views (amendment C3 §3.2), a port of Cr
 - **`stroke-text --metrics`** prints `CliStrokeFontMetricsA0`, the per-glyph advance table, so layout can measure text without a process per string.
 - **`drawing-sheet --request <sheet.json>`** takes a `DrawingSheetRequestA0`: page size in nm, paper name, title block, comments 1–4, sheet index and count, file name, sheet path and name, and KiCad version. It prints `CliDrawingSheetResultA0`, the default worksheet's operations: lines, rectangles, polylines and text runs with their stroke-text geometry.
 - **Parity:** equal to Python kicad_monkey's `kicad_stroke_font` and `drawing_sheet_to_ops(load_default_drawing_sheet(), …)` within 1e-9 mm (amendment C3 §4).
+
+### 5.10 `bundle reuse`
+
+`prism-kicad bundle reuse --in <bundle.prism> --key-record <record.json>` answers whether a stored bundle serves another revision key of its project (ADR amendment K2 §3.3). It reads only `bundle.json` and the key record: no source, no blob, no member other than the manifest. It writes no file.
+
+- **Inputs.** `--in` passes the reader checks and manifest checks 1–2 of §5.3; otherwise exit 3, `bundle-invalid`. `--key-record` is a `RevisionKeyRecordA1` valid against its schema; otherwise exit 3, `key-record-invalid`.
+- **Conditions,** checked in this order. The first that fails is the result's `failure`, with the first failing path in code point order:
+  1. `config`: the record's `config_digest` equals the digest of the bundle's `config` (revision-key.md §8);
+  2. `generator`: the bundle's generator id is this binary's, byte for byte in canonical form;
+  3. `model-unavailable`: stage parse recorded no `model-unavailable` warning;
+  4. `read`: every source member's `source` is an entry of the record with the same `path`, `kind` and `object_id`, or, for a file inside a submodule, its `gitlink` is an entry of the record;
+  5. `probe`: each probe's path is the path of a record entry of kind `regular` or `executable` exactly when the probe says `present`; a probe below a gitlink of the read set is not evaluated here (condition 7 covers it);
+  6. `listing`: each listing, evaluated on the record's `regular` and `executable` entries, returns exactly its `paths`, apart from paths below a gitlink of the read set;
+  7. `gitlink`: every gitlink of the read set is an entry of the record with the same commit, and no gitlink entry of the record lies below a listing's `directory` unless the read set lists it.
+- **Output.** stdout is `CliReuseResultA0`: `holds`, the bundle's `bundle_key`, the record's `revision_key`, and `failure` when it does not hold. Exit 0 in both cases: not holding is an answer, not an error.
+- **Budget.** ≤ 0.2 s on EDA-04903's bundle and key record (ADR amendment K2 §3.3).
+- **Idempotence.** The same two inputs give byte-identical stdout.
 
 ## 6. Archive rules
 
@@ -810,7 +838,7 @@ Codes are `DiagnosticCode` (kebab-case). A code never changes meaning; a new mea
 | `output-write-failed` | error | output-io / 6 | the temp file or the rename failed: missing directory, permissions, full disk |
 | `output-not-directory` | error | output-io / 6 | `extract`'s `-o` is not an existing directory |
 | `stdout-write-failed` | stderr only | output-io / 6 | stdout could not be written; for `bundle build`, `-o` already holds the new archive |
-| `manifest-unsupported` | error, verify finding | precondition / 7 | `bundle.json` is not `prism.bundle.manifest.a2`, for example a1 |
+| `manifest-unsupported` | error, verify finding | precondition / 7 | `bundle.json` is not `prism.bundle.manifest.a3`, for example a2 or a1 |
 | `generator-mismatch` | error | precondition / 7 | `--in` was written by another generator id; for `compare`, `--base` and `--head` were written by different generator ids |
 | `stage-order` | error | precondition / 7 | a prerequisite stage of `--in` is not in the required status |
 | `stage-not-applicable` | error | precondition / 7 | the requested stage is `skipped` in `--in` |
@@ -873,6 +901,7 @@ The commands below use three names:
 ```
 
 **Running each step:**
+- **Later stages run on the archive's sources** (ADR amendment K2 §3.5). Before step 3, K replaces `$JOB/src` with the archive's own `sources/`, extracted with `bundle extract`, so the refill and the GLB export read exactly the files stage parse read. They are the upgraded bytes (§9.4), which is what step 1 left in `$JOB/src` before. Steps 4 and 6 run on the archive as stored, with the `--revision-key` it records: the key it was built for, also when the job runs for another key that reaches it through an alias (revision-key.md §10).
 - **Zone fills.** K reads `zone_fills` from the effective configuration it wrote in step 1 (revision-key.md §4.4). With `"saved"`, it skips step 3 and runs step 4 without `--refilled-board` and `--refill-tool`. Otherwise it runs step 3, and a refill failure follows §9.2 step 4: retried, then the board stage stays `pending`; K never switches to saved mode itself.
 - Before each later step, K reads `stages` from the previous `CliBuildResultA0`. It skips a step whose stage is `skipped`, and stops when no later stage can run.
 - After every exit 0 or 9, K re-reads `bundle.json` and publishes readiness (bundle-format.md §3.3). Consumers that need only `parse` members proceed after step 2 (ADR §4.4).
@@ -909,10 +938,7 @@ Two refills of usb-pd with KiCad 10.0.6 on one host gave byte-identical boards (
    ```
    - Models resolve through `${KIPRJMOD}` to the bundled repository models, and through `KICAD*_3DMODEL_DIR` to the image's stock library (G3).
    - The output file name is always `components.glb` (§5.2.4).
-2. **Cache.** Cache the result by:
-   - the source board's blob id;
-   - the blob ids of the repository model files;
-   - the generator's `kicad_version` and `models_procedure` (ADR §4.4).
+2. **Cache.** Cache the result by the bundle key. The archive pins the board and every repository model file the export can resolve, and the generator pins `kicad_version` and `models_procedure` (ADR §4.4, ADR amendment K2 §3.5).
 3. **Handle failures.** A failure is retried like the refill. After `max_attempts`, stage `models` stays `pending` and the job ends failed (bundle-format.md §3.1).
 
 ### 9.4 `kicad-seeded-upgrade-a0`

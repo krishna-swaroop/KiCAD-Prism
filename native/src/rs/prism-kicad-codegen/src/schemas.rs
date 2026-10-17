@@ -1,6 +1,6 @@
 //! Every schema the codegen turns into Rust: `(<schema file>, <generated module file>)`.
 
-pub const SCHEMAS: [(&str, &str); 73] = [
+pub const SCHEMAS: [(&str, &str); 74] = [
     ("BoardPlotDocument.json", "board_plot_document.rs"),
     ("BoardPlotRequest.json", "board_plot_request.rs"),
     ("BoardPlotResult.json", "board_plot_result.rs"),
@@ -71,7 +71,7 @@ pub const SCHEMAS: [(&str, &str); 73] = [
     ("ArtworkConfigA0.json", "prism_artwork_config_a0.rs"),
     ("AssemblyHlrA0.json", "prism_assembly_hlr_a0.rs"),
     ("BoardObjectsA0.json", "prism_board_objects_a0.rs"),
-    ("BundleManifestA2.json", "prism_bundle_manifest_a2.rs"),
+    ("BundleManifestA3.json", "prism_bundle_manifest_a3.rs"),
     ("CliArtworkResultA0.json", "prism_cli_artwork_result_a0.rs"),
     ("CliBuildResultA0.json", "prism_cli_build_result_a0.rs"),
     ("CliCompareResultA0.json", "prism_cli_compare_result_a0.rs"),
@@ -82,6 +82,7 @@ pub const SCHEMAS: [(&str, &str); 73] = [
     ),
     ("CliErrorA0.json", "prism_cli_error_a0.rs"),
     ("CliExtractResultA0.json", "prism_cli_extract_result_a0.rs"),
+    ("CliReuseResultA0.json", "prism_cli_reuse_result_a0.rs"),
     ("CliProjectAbsentA0.json", "prism_cli_project_absent_a0.rs"),
     (
         "CliStrokeFontMetricsA0.json",
@@ -126,7 +127,7 @@ pub const SCHEMAS: [(&str, &str); 73] = [
         "prism_revision_key_vectors_a1.rs",
     ),
     ("RouteMetricsA0.json", "prism_route_metrics_a0.rs"),
-    ("SemanticIndexA1.json", "prism_semantic_index_a1.rs"),
+    ("SemanticIndexA2.json", "prism_semantic_index_a2.rs"),
     ("StackupA0.json", "prism_stackup_a0.rs"),
     (
         "StrokeTextRequestA0.json",

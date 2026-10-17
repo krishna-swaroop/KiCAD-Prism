@@ -851,7 +851,7 @@ impl ::std::convert::TryFrom<::std::string::String> for CliStageStatus {
 ///      }
 ///    },
 ///    "generator_matches": {
-///      "description": "Whether the manifest's generator id equals this binary's, byte for byte in canonical form. Absent when the manifest could not be read as `prism.bundle.manifest.a2`. A bundle of another generator can be valid.",
+///      "description": "Whether the manifest's generator id equals this binary's, byte for byte in canonical form. Absent when the manifest could not be read as `prism.bundle.manifest.a3`. A bundle of another generator can be valid.",
 ///      "type": "boolean"
 ///    },
 ///    "manifest_schema": {
@@ -893,7 +893,7 @@ pub struct CliVerifyReportA0 {
     ///The `schema` that `bundle.json` declares, when `bundle.json` could be read and declares a well-formed schema id.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub manifest_schema: ::std::option::Option<SchemaId>,
-    ///Whether the manifest's generator id equals this binary's, byte for byte in canonical form. Absent when the manifest could not be read as `prism.bundle.manifest.a2`. A bundle of another generator can be valid.
+    ///Whether the manifest's generator id equals this binary's, byte for byte in canonical form. Absent when the manifest could not be read as `prism.bundle.manifest.a3`. A bundle of another generator can be valid.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub generator_matches: ::std::option::Option<bool>,
     ///Every stage's state as the manifest records it, in stage order (`parse`, `board`, `models`); empty when the manifest could not be read.

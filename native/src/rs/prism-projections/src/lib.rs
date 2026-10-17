@@ -15,7 +15,7 @@
 //!
 //! | Module | Member | `Root` (generated in `prism-kicad-contracts`) | WP |
 //! |---|---|---|---|
-//! | [`semantic_index`] | `projections/semantic-index.json` | `prism_semantic_index_a1::SemanticIndexA1` | P1 |
+//! | [`semantic_index`] | `projections/semantic-index.json` | `prism_semantic_index_a2::SemanticIndexA2` | P1 |
 //! | [`board_objects`] | `projections/board-objects.json` | `prism_board_objects_a0::BoardObjectsA0` | P2 |
 //! | [`occurrences`] | `projections/occurrences.json` | `prism_occurrences_a0::OccurrencesA0` | P2 |
 //! | [`route_metrics`] | `projections/route-metrics.json` | `prism_route_metrics_a0::RouteMetricsA0` | P2 |
@@ -53,9 +53,8 @@
 //!   declaration order (maps are `BTreeMap`), and its bytes are the same on
 //!   every architecture: transcendental functions go through the `libm` crate
 //!   (conventions.md §14). No wall-clock time, host path or provenance (the
-//!   manifest records provenance once; the semantic index's
-//!   `sourceRevisionKey` is the one envelope value, from
-//!   [`ProjectionInput::revision_key`]).
+//!   manifest records provenance once; the semantic index's `designKey` is
+//!   filled by stage parse from the final read set and configuration).
 //! - **Paths.** Every path is a repository-relative `RepoPath`; files belong to
 //!   the project only through `config` (conventions.md §8).
 

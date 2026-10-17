@@ -5,7 +5,7 @@
 use super::internal;
 use super::parse::member;
 use crate::finding::{Failure, Outcome};
-use crate::manifest::a2;
+use crate::manifest::a3;
 use crate::paths::is_within;
 use crate::revision_key::ObjectFormat;
 use prism_kicad_contracts::generated::prism_revision_key_record_a1 as rk;
@@ -25,7 +25,7 @@ pub(super) fn source_entry(
     bytes: &[u8],
     executable: bool,
     record: Option<&rk::RevisionKeyRecordA1>,
-) -> Outcome<a2::BundleManifestSourceEntry> {
+) -> Outcome<a3::BundleManifestSourceEntry> {
     let kind = if executable {
         rk::RevisionKeyEntryKind::Executable
     } else {
@@ -72,7 +72,7 @@ fn entry_json(
     kind: rk::RevisionKeyEntryKind,
     object_id: &str,
     gitlink: Option<&str>,
-) -> Outcome<a2::BundleManifestSourceEntry> {
+) -> Outcome<a3::BundleManifestSourceEntry> {
     let mut value = serde_json::json!({ "path": path, "kind": kind, "object_id": object_id });
     if let Some(gitlink) = gitlink {
         value["gitlink"] = gitlink.into();

@@ -18,7 +18,7 @@
         },
         "generator_matches": {
             "type": "boolean",
-            "description": "Whether the manifest's generator id equals this binary's, byte for byte in canonical form. Absent when the manifest could not be read as `prism.bundle.manifest.a2`. A bundle of another generator can be valid."
+            "description": "Whether the manifest's generator id equals this binary's, byte for byte in canonical form. Absent when the manifest could not be read as `prism.bundle.manifest.a3`. A bundle of another generator can be valid."
         },
         "stages": {
             "type": "array",

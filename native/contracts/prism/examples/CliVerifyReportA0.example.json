@@ -1,7 +1,7 @@
 {
   "schema": "prism.cli.verify_report.a0",
   "status": "invalid",
-  "manifest_schema": "prism.bundle.manifest.a2",
+  "manifest_schema": "prism.bundle.manifest.a3",
   "generator_matches": true,
   "stages": [
     {

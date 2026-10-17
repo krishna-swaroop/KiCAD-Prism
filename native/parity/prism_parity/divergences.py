@@ -148,6 +148,20 @@ def _route_metrics_via_spans_used_layers(golden: dict, siblings: dict[str, Any])
     return golden
 
 
+def _semantic_index_envelope_a2(golden: dict, siblings: dict[str, Any]) -> dict:
+    """semantic-index D1 (field map, "Envelope"): the bundle writes the a2 envelope.
+
+    The goldens hold the a1 envelope until they are recaptured; a2 changes the
+    schema id and renames the key (``sourceRevisionKey`` -> ``designKey``), which
+    the comparison already ignores as non-semantic (``members.py``).
+    """
+
+    if golden.get("schema") == "prism.semantic_index.a1":
+        golden["schema"] = "prism.semantic_index.a2"
+    return golden
+
+
 RULES: dict[str, Callable[[Any, dict[str, Any]], Any]] = {
     "route-metrics/via-spans-used-layers": _route_metrics_via_spans_used_layers,
+    "semantic-index/envelope-a2": _semantic_index_envelope_a2,
 }

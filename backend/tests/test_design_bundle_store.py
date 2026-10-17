@@ -39,12 +39,13 @@ def _manifest(members: dict[str, bytes]) -> dict:
         listed.append(entry)
     stage = {"status": "complete", "warnings": [], "failed_members": []}
     return {
-        "schema": "prism.bundle.manifest.a2", "generator": generator, "revision_key": RK,
+        "schema": "prism.bundle.manifest.a3", "generator": generator, "revision_key": RK,
         "bundle_key": bundle_key(RK, generator),
         "config": {"schema": "prism.revision_key.effective_config.a1", "project_file": "p.kicad_pro", "excluded_dirs": []},
         "board_id": "main",
         "stages": {"parse": stage, "board": {"status": "skipped", "skip_reason": "no-board", "warnings": [], "failed_members": []},
                    "models": {"status": "skipped", "skip_reason": "no-board", "warnings": [], "failed_members": []}},
+        "read_set": {"probes": [], "listings": [], "gitlinks": []},
         "members": listed,
     }
 
@@ -85,7 +86,7 @@ class ReaderTests(unittest.TestCase):
             self.assertEqual(archive.read(path), data)
 
     def test_the_contract_example_keeps_every_invariant(self) -> None:
-        example = json.loads((EXAMPLES / "BundleManifestA2.example.json").read_text())
+        example = json.loads((EXAMPLES / "BundleManifestA3.example.json").read_text())
         self.assertEqual(rules.violations(example), [])
         broken = copy.deepcopy(example)
         broken["stages"]["board"].pop("fill_check")
@@ -155,7 +156,7 @@ class ReaderTests(unittest.TestCase):
 
 class ReadinessTests(unittest.TestCase):
     def test_section_3_3(self) -> None:
-        example = json.loads((EXAMPLES / "BundleManifestA2.example.json").read_text())
+        example = json.loads((EXAMPLES / "BundleManifestA3.example.json").read_text())
         self.assertEqual(rules.readiness(example, "projections/stackup.json", job_active=False).state, "ready")
         pending = copy.deepcopy(example)
         pending["members"] = [m for m in pending["members"] if m["stage"] == "parse"]

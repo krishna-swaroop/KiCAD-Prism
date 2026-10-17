@@ -28,7 +28,7 @@ pub mod stackup;
 
 use crate::finding::{Failure, Finding, Outcome};
 use crate::limits::Limits;
-use crate::manifest::{MANIFEST_PATH, Manifest, Role, Stage, a2, to_bytes};
+use crate::manifest::{MANIFEST_PATH, Manifest, Role, Stage, a3, to_bytes};
 use crate::zip::{WriteError, ZipWriter};
 use std::io::Write;
 use std::sync::Arc;
@@ -57,14 +57,14 @@ impl Reporter for Silent {
 #[derive(Clone, Debug)]
 pub struct Generator {
     /// The document.
-    pub document: a2::CliVersionA0,
+    pub document: a3::CliVersionA0,
     /// Its canonical bytes (cli-spec.md §5.1.3).
     pub bytes: Vec<u8>,
 }
 
 impl Generator {
     /// Wrap `document`, computing its canonical bytes.
-    pub fn new(document: a2::CliVersionA0) -> Outcome<Self> {
+    pub fn new(document: a3::CliVersionA0) -> Outcome<Self> {
         let value = serde_json::to_value(&document).map_err(|error| {
             Failure::internal(format!("the generator does not encode: {error}"))
         })?;
@@ -85,20 +85,20 @@ pub struct MemberData {
     /// `member_schema`, for structured members.
     pub schema: Option<String>,
     /// The key entry of a source member.
-    pub source: Option<a2::BundleManifestSourceEntry>,
+    pub source: Option<a3::BundleManifestSourceEntry>,
 }
 
 impl MemberData {
     /// The manifest record of this member.
     #[must_use]
-    pub fn record(&self) -> a2::BundleManifestMember {
-        a2::BundleManifestMember {
-            path: a2::ArchivePath(self.path.clone()),
+    pub fn record(&self) -> a3::BundleManifestMember {
+        a3::BundleManifestMember {
+            path: a3::ArchivePath(self.path.clone()),
             role: self.role,
             stage: crate::manifest::role_stage(self.role),
-            sha256: a2::Sha256Hex(crate::generator::sha256_hex(&self.bytes)),
-            bytes: a2::ByteCount(u64::try_from(self.bytes.len()).unwrap_or(u64::MAX)),
-            member_schema: self.schema.clone().map(a2::SchemaId),
+            sha256: a3::Sha256Hex(crate::generator::sha256_hex(&self.bytes)),
+            bytes: a3::ByteCount(u64::try_from(self.bytes.len()).unwrap_or(u64::MAX)),
+            member_schema: self.schema.clone().map(a3::SchemaId),
             source: self.source.clone(),
         }
     }
@@ -216,15 +216,15 @@ pub struct StageRecord<'a> {
     /// The stage.
     pub stage: Stage,
     /// Its status.
-    pub status: a2::BundleManifestStageStatus,
+    pub status: a3::BundleManifestStageStatus,
     /// Its content error.
-    pub error: Option<&'a a2::CliFinding>,
+    pub error: Option<&'a a3::CliFinding>,
     /// Its skip reason.
-    pub skip_reason: Option<a2::BundleManifestSkipReason>,
+    pub skip_reason: Option<a3::BundleManifestSkipReason>,
     /// Its warnings.
-    pub warnings: &'a [a2::Warning],
+    pub warnings: &'a [a3::Warning],
     /// Its failed members.
-    pub failed_members: &'a [a2::BundleManifestMemberFailure],
+    pub failed_members: &'a [a3::BundleManifestMemberFailure],
 }
 
 impl<'a> StageRecord<'a> {

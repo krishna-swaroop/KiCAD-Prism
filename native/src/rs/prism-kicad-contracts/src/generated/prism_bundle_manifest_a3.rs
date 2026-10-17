@@ -82,8 +82,8 @@ duration, host path, user or machine name.*/
 ///
 /// ```json
 ///{
-///  "$id": "urn:prism:schema:prism.bundle.manifest:a2",
-///  "title": "BundleManifestA2",
+///  "$id": "urn:prism:schema:prism.bundle.manifest:a3",
+///  "title": "BundleManifestA3",
 ///  "description": "`bundle.json`: the manifest of one design bundle, the first member of the\n`.prism` archive and the only one it does not list. It records what was\nbuilt (generator id, revision key, bundle key, effective configuration),\nthe state of every stage, and the role, stage, schema id, size and SHA-256\nof every other member. It is rewritten, with\nthe archive, at the end of each stage. It contains no wall-clock time,\nduration, host path, user or machine name.",
 ///  "type": "object",
 ///  "required": [
@@ -91,6 +91,7 @@ duration, host path, user or machine name.*/
 ///    "config",
 ///    "generator",
 ///    "members",
+///    "read_set",
 ///    "schema",
 ///    "stages"
 ///  ],
@@ -119,14 +120,18 @@ duration, host path, user or machine name.*/
 ///      },
 ///      "minItems": 1
 ///    },
+///    "read_set": {
+///      "description": "What stage parse looked at besides the source members (ADR amendment K2 §3.4).",
+///      "$ref": "#/$defs/BundleManifestReadSet"
+///    },
 ///    "revision_key": {
-///      "description": "The design revision key the bundle was built for (`RevisionKeyRecordA1.revision_key`, ADR §5), as the backend passed it with `--revision-key`; `<revision_key>` in the store path. Absent only for a bundle built without one (local and test builds, cli-spec.md §5.2.2); the backend always passes it.",
+///      "description": "The design revision key the bundle was built for (`RevisionKeyRecordA1.revision_key`, ADR §5), as the backend passed it with `--revision-key`; `<revision_key>` in the store path. Absent only for a bundle built without one (local and test builds, cli-spec.md §5.2.2); the backend always passes it. The archive may also serve other revision keys whose tree leaves `read_set` and the source members unchanged, through the backend's alias table (revision-key.md §10, ADR amendment K2 §3.6); this field always names the key it was built for, and a reader takes the revision it asked for from its request, never from here.",
 ///      "$ref": "#/$defs/Sha256Hex"
 ///    },
 ///    "schema": {
-///      "description": "Schema id of this document. Replaces a1's `schema: \"prism.bundle.manifest\"` plus `version: \"a1\"`.",
+///      "description": "Schema id of this document. a1 had `schema: \"prism.bundle.manifest\"` plus `version: \"a1\"`; a2 added the stages; a3 adds `read_set`.",
 ///      "type": "string",
-///      "const": "prism.bundle.manifest.a2"
+///      "const": "prism.bundle.manifest.a3"
 ///    },
 ///    "stages": {
 ///      "description": "Status and results of each stage.",
@@ -139,12 +144,12 @@ duration, host path, user or machine name.*/
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct BundleManifestA2 {
-    ///Schema id of this document. Replaces a1's `schema: "prism.bundle.manifest"` plus `version: "a1"`.
+pub struct BundleManifestA3 {
+    ///Schema id of this document. a1 had `schema: "prism.bundle.manifest"` plus `version: "a1"`; a2 added the stages; a3 adds `read_set`.
     pub schema: ::std::string::String,
     ///The generator id: the `prism-kicad version` document, verbatim (ADR §5). Replaces a1's `created_by`, `design`, `materializer` and `kicad_cli_version`.
     pub generator: CliVersionA0,
-    ///The design revision key the bundle was built for (`RevisionKeyRecordA1.revision_key`, ADR §5), as the backend passed it with `--revision-key`; `<revision_key>` in the store path. Absent only for a bundle built without one (local and test builds, cli-spec.md §5.2.2); the backend always passes it.
+    ///The design revision key the bundle was built for (`RevisionKeyRecordA1.revision_key`, ADR §5), as the backend passed it with `--revision-key`; `<revision_key>` in the store path. Absent only for a bundle built without one (local and test builds, cli-spec.md §5.2.2); the backend always passes it. The archive may also serve other revision keys whose tree leaves `read_set` and the source members unchanged, through the backend's alias table (revision-key.md §10, ADR amendment K2 §3.6); this field always names the key it was built for, and a reader takes the revision it asked for from its request, never from here.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub revision_key: ::std::option::Option<Sha256Hex>,
     ///The bundle key, `SHA-256("prism.bundle_key.a0" 0x00 revision_key 0x00 generator_bytes)` (cli-spec.md §5.1.4). Present exactly when `revision_key` is. Readers check it against the key they asked for.
@@ -156,6 +161,8 @@ pub struct BundleManifestA2 {
     pub board_id: BundleManifestBoardId,
     ///Status and results of each stage.
     pub stages: BundleManifestStages,
+    ///What stage parse looked at besides the source members (ADR amendment K2 §3.4).
+    pub read_set: BundleManifestReadSet,
     ///Every member except `bundle.json`, sorted by path in code point order (UTF-8 byte order); the archive's entries follow `bundle.json` in this order.
     pub members: ::std::vec::Vec<BundleManifestMember>,
 }
@@ -697,6 +704,182 @@ impl ::std::convert::TryFrom<::std::string::String> for BundleManifestFillProven
         value.parse()
     }
 }
+/**A submodule stage parse looked into: a source member inside it, or a probe
+or listing that reaches into it. Its commit pins every file below it, so
+the read set holds below `path` exactly when the commit is the same.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A submodule stage parse looked into: a source member inside it, or a probe\nor listing that reaches into it. Its commit pins every file below it, so\nthe read set holds below `path` exactly when the commit is the same.",
+///  "type": "object",
+///  "required": [
+///    "commit",
+///    "path"
+///  ],
+///  "properties": {
+///    "commit": {
+///      "description": "The commit the gitlink records, as in the revision key's entry.",
+///      "$ref": "#/$defs/GitObjectId"
+///    },
+///    "path": {
+///      "description": "The gitlink entry's repository path.",
+///      "$ref": "#/$defs/RepoPath"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BundleManifestGitlink {
+    ///The gitlink entry's repository path.
+    pub path: RepoPath,
+    ///The commit the gitlink records, as in the revision key's entry.
+    pub commit: GitObjectId,
+}
+/**One directory listing stage parse made: the source-set paths under
+`directory`, at any depth, whose name, lowered in ASCII, ends with one of
+`suffixes` (any name when `suffixes` is empty).*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "One directory listing stage parse made: the source-set paths under\n`directory`, at any depth, whose name, lowered in ASCII, ends with one of\n`suffixes` (any name when `suffixes` is empty).",
+///  "type": "object",
+///  "required": [
+///    "directory",
+///    "paths",
+///    "suffixes"
+///  ],
+///  "properties": {
+///    "directory": {
+///      "description": "The directory listed: a repository path, or `\"\"` for the repository root. A path is under it when it starts with `directory` + `/`.",
+///      "oneOf": [
+///        {
+///          "$ref": "#/$defs/RepoPath"
+///        },
+///        {
+///          "type": "string",
+///          "const": ""
+///        }
+///      ]
+///    },
+///    "paths": {
+///      "description": "The paths the listing returned, sorted in code point order.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/RepoPath"
+///      }
+///    },
+///    "suffixes": {
+///      "description": "The suffixes, sorted in code point order, without duplicates; empty for every name.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/BundleManifestListingSuffix"
+///      }
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BundleManifestListing {
+    ///The directory listed: a repository path, or `""` for the repository root. A path is under it when it starts with `directory` + `/`.
+    pub directory: BundleManifestListingDirectory,
+    ///The suffixes, sorted in code point order, without duplicates; empty for every name.
+    pub suffixes: ::std::vec::Vec<BundleManifestListingSuffix>,
+    ///The paths the listing returned, sorted in code point order.
+    pub paths: ::std::vec::Vec<RepoPath>,
+}
+///The directory listed: a repository path, or `""` for the repository root. A path is under it when it starts with `directory` + `/`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "The directory listed: a repository path, or `\"\"` for the repository root. A path is under it when it starts with `directory` + `/`.",
+///  "oneOf": [
+///    {
+///      "$ref": "#/$defs/RepoPath"
+///    },
+///    {
+///      "type": "string",
+///      "const": ""
+///    }
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(::serde::Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum BundleManifestListingDirectory {
+    RepoPath(RepoPath),
+    String(::std::string::String),
+}
+impl ::std::fmt::Display for BundleManifestListingDirectory {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match self {
+            Self::RepoPath(x) => x.fmt(f),
+            Self::String(x) => x.fmt(f),
+        }
+    }
+}
+impl ::std::convert::From<RepoPath> for BundleManifestListingDirectory {
+    fn from(value: RepoPath) -> Self {
+        Self::RepoPath(value)
+    }
+}
+/**A suffix a listing selected by, as the revision key's name rules write
+one: a lowercase ASCII name ending that starts with `.` (revision-key.md
+§5.2).*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A suffix a listing selected by, as the revision key's name rules write\none: a lowercase ASCII name ending that starts with `.` (revision-key.md\n§5.2).",
+///  "type": "string"
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize, ::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd,
+)]
+#[serde(transparent)]
+pub struct BundleManifestListingSuffix(pub ::std::string::String);
+impl ::std::ops::Deref for BundleManifestListingSuffix {
+    type Target = ::std::string::String;
+    fn deref(&self) -> &::std::string::String {
+        &self.0
+    }
+}
+impl ::std::convert::From<BundleManifestListingSuffix> for ::std::string::String {
+    fn from(value: BundleManifestListingSuffix) -> Self {
+        value.0
+    }
+}
+impl ::std::convert::From<::std::string::String> for BundleManifestListingSuffix {
+    fn from(value: ::std::string::String) -> Self {
+        Self(value)
+    }
+}
+impl ::std::str::FromStr for BundleManifestListingSuffix {
+    type Err = ::std::convert::Infallible;
+    fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+        Ok(Self(value.to_string()))
+    }
+}
+impl ::std::fmt::Display for BundleManifestListingSuffix {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 ///One archive member other than `bundle.json` itself, which is never listed and never hashed by the manifest.
 ///
 /// <details><summary>JSON schema</summary>
@@ -1146,6 +1329,96 @@ pub struct BundleManifestParseStage {
     pub warnings: ::std::vec::Vec<Warning>,
     ///Derived members of the stage (`design.json`, projections) whose producer failed on this project (codes `design-build-failed`, `projection-failed`), sorted by path in code point order. Non-empty exactly when `status` is `partial`.
     pub failed_members: ::std::vec::Vec<BundleManifestMemberFailure>,
+}
+/**A path stage parse asked about without reading it: a `read` that found no
+such file in the source set, or an existence test (ADR amendment K2 §3.1).*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A path stage parse asked about without reading it: a `read` that found no\nsuch file in the source set, or an existence test (ADR amendment K2 §3.1).",
+///  "type": "object",
+///  "required": [
+///    "path",
+///    "present"
+///  ],
+///  "properties": {
+///    "path": {
+///      "description": "The repository path asked about.",
+///      "$ref": "#/$defs/RepoPath"
+///    },
+///    "present": {
+///      "description": "Whether the path was in the source set.",
+///      "type": "boolean"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BundleManifestProbe {
+    ///The repository path asked about.
+    pub path: RepoPath,
+    ///Whether the path was in the source set.
+    pub present: bool,
+}
+/**What stage parse looked at besides the files it read, which are the
+source members (ADR amendment K2 §3.3–§3.4). A stored bundle serves another
+revision key of the same project, configuration and generator when every
+source member's key entry, every probe and every listing is the same in
+that key's tree (`prism-kicad bundle reuse`, cli-spec.md §5.10). Written at
+the end of stage parse and copied unchanged by later stages.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "What stage parse looked at besides the files it read, which are the\nsource members (ADR amendment K2 §3.3–§3.4). A stored bundle serves another\nrevision key of the same project, configuration and generator when every\nsource member's key entry, every probe and every listing is the same in\nthat key's tree (`prism-kicad bundle reuse`, cli-spec.md §5.10). Written at\nthe end of stage parse and copied unchanged by later stages.",
+///  "type": "object",
+///  "required": [
+///    "gitlinks",
+///    "listings",
+///    "probes"
+///  ],
+///  "properties": {
+///    "gitlinks": {
+///      "description": "Every gitlink a source member, probe or listing reached into, sorted by `path`, without duplicates.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/BundleManifestGitlink"
+///      }
+///    },
+///    "listings": {
+///      "description": "Every listing, sorted by `directory`, then by `suffixes` (compared element by element), without duplicates.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/BundleManifestListing"
+///      }
+///    },
+///    "probes": {
+///      "description": "Every probe, sorted by `path` in code point order, without duplicates.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/BundleManifestProbe"
+///      }
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct BundleManifestReadSet {
+    ///Every probe, sorted by `path` in code point order, without duplicates.
+    pub probes: ::std::vec::Vec<BundleManifestProbe>,
+    ///Every listing, sorted by `directory`, then by `suffixes` (compared element by element), without duplicates.
+    pub listings: ::std::vec::Vec<BundleManifestListing>,
+    ///Every gitlink a source member, probe or listing reached into, sorted by `path`, without duplicates.
+    pub gitlinks: ::std::vec::Vec<BundleManifestGitlink>,
 }
 ///Why a stage is skipped. The values are the CLI's `CliSkipReason` (`cli-a0.tsp`).
 ///
@@ -3027,5 +3300,25 @@ impl<'de> ::serde::Deserialize<'de> for WarningMessage {
             .map_err(|e: self::error::ConversionError| {
                 <D::Error as ::serde::de::Error>::custom(e.to_string())
             })
+    }
+}
+impl<'de> ::serde::Deserialize<'de> for BundleManifestListingDirectory {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "generated: one dispatch arm per union variant"
+    )]
+    fn deserialize<D: ::serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> ::std::result::Result<Self, D::Error> {
+        let value = <::serde_json::Value as ::serde::Deserialize>::deserialize(deserializer)?;
+        if let Ok(inner) = ::serde_json::from_value::<RepoPath>(value.clone()) {
+            return Ok(Self::RepoPath(inner));
+        }
+        if let Ok(inner) = ::serde_json::from_value::<::std::string::String>(value.clone()) {
+            return Ok(Self::String(inner));
+        }
+        Err(<D::Error as ::serde::de::Error>::custom(
+            "data did not match any variant of untagged enum BundleManifestListingDirectory",
+        ))
     }
 }

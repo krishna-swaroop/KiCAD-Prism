@@ -55,7 +55,7 @@ Citations: a bare path is in this repository (`dev` plus the ADR). `fork:` is ki
 | Namespace | `Prism.Contracts.<Pascal(stem)><VERSION>`, one per file | `Prism.Contracts.StackupA0` |
 | Shared types | `common.tsp`, namespace `Prism.Contracts.Common` | `Prism.Contracts.Common.Nanometres` |
 | Entry point | `main.tsp` imports `@typespec/json-schema`, `./common.tsp` and every contract file, in alphabetical order. It declares nothing. | — |
-| Root model | `<Pascal(name)><VERSION>`, unique across all files | `StackupA0`, `BundleManifestA2`, `SemanticIndexA1`, `SystemInterfaceV1` |
+| Root model | `<Pascal(name)><VERSION>`, unique across all files | `StackupA0`, `BundleManifestA3`, `SemanticIndexA2`, `SystemInterfaceV1` |
 | Other types | Any PascalCase name. A prefix with the contract name is recommended (`StackupLayer`, not `Layer`) because the generated Rust and Python types are named after it. | `BundleManifestMember` |
 | Generated schema | `generated/schema/<RootModel>.json` | `generated/schema/StackupA0.json` |
 | Example | `examples/<RootModel>.example.json` | `examples/StackupA0.example.json` |
@@ -67,7 +67,7 @@ Citations: a bare path is in this repository (`dev` plus the ADR). `fork:` is ki
 
 ## 3. Ids and versions
 
-- **Schema id:** `prism.<name>.<version>`, for example `prism.stackup.a0` or `prism.bundle.manifest.a2`. `<name>` is lowercase words joined by `_`, with `.` for hierarchy. `<version>` is `a<N>` while pre-stable and `v<N>` once stable. Common's `SchemaId` scalar also admits the fork's ids (`kicad_monkey.design.a0`), because the manifest lists them.
+- **Schema id:** `prism.<name>.<version>`, for example `prism.stackup.a0` or `prism.bundle.manifest.a3`. `<name>` is lowercase words joined by `_`, with `.` for hierarchy. `<version>` is `a<N>` while pre-stable and `v<N>` once stable. Common's `SchemaId` scalar also admits the fork's ids (`kicad_monkey.design.a0`), because the manifest lists them.
 - **JSON Schema `$id`:** `urn:prism:schema:prism.<name>:<version>`, for example `urn:prism:schema:prism.bundle.manifest:a2`. This mirrors the fork's `urn:wavenumber:schema:kicad_monkey.<name>:<version>` (fork: `src/tsp/kicad_monkey/source-bundle-a0.tsp:34`).
 - **Freezing:** a contract is frozen when the maintainer accepts W0. From then on, any change bumps `<N>` and needs an ADR amendment. That includes a new optional field, a new enum member and a changed doc that changes meaning. The old version's file stays as long as stored bundles can hold it.
 - **Exceptions to the a-numbering:**

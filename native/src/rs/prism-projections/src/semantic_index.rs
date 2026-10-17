@@ -1,4 +1,4 @@
-//! `projections/semantic-index.json` (`prism.semantic_index.a1`), WP-P1.
+//! `projections/semantic-index.json` (`prism.semantic_index.a2`), WP-P1.
 //!
 //! A port of today's `backend/app/services/semantic_index_service.py`
 //! (`build_semantic_index`), `semantic_index_nets.py`,
@@ -32,28 +32,23 @@ mod state;
 
 use crate::{Produced, ProjectionError, ProjectionInput, document};
 pub(crate) use assembly::default_components;
-use prism_kicad_contracts::generated::prism_semantic_index_a1::SemanticIndexA1;
+use prism_kicad_contracts::generated::prism_semantic_index_a2::SemanticIndexA2;
 use serde_json::Value;
 pub(crate) use state::{Placement, Placements, State, stable_uid, string};
 
 /// The member's schema id.
-pub const SCHEMA: &str = "prism.semantic_index.a1";
+pub const SCHEMA: &str = "prism.semantic_index.a2";
 const NAME: &str = "projections/semantic-index.json";
 
 /// Build `projections/semantic-index.json` from the single parse of the revision.
-pub fn produce(input: &ProjectionInput<'_>) -> Result<Produced<SemanticIndexA1>, ProjectionError> {
-    // A build without `--revision-key` has no key; the all-zero key stands in
-    // for it (local and test builds only, cli-spec.md §5.2.2).
-    let key = input
-        .revision_key
-        .map_or_else(|| "0".repeat(64), str::to_owned);
+pub fn produce(input: &ProjectionInput<'_>) -> Result<Produced<SemanticIndexA2>, ProjectionError> {
     let (Some(schematic), Some(design)) = (input.schematic, input.design) else {
         if input.config.root_schematic.is_some() {
             return Err(ProjectionError::new(format!(
                 "{NAME}: the schematic model could not be built"
             )));
         }
-        return document(NAME, empty_form(&key));
+        return document(NAME, empty_form());
     };
     let mut state = State::default();
     let placements = sheets::project(input, schematic, &mut state)?;
@@ -66,15 +61,20 @@ pub fn produce(input: &ProjectionInput<'_>) -> Result<Produced<SemanticIndexA1>,
         claims.reconcile(&mut state);
     }
     let assembly = assembly::build(input, schematic, &mut state, &placements)?;
-    let mut value = state.into_document(&key);
+    let mut value = state.into_document();
+    // The design key depends on every producer's read set, so stage parse
+    // sets it once all of them have finished (bundle-format.md §2.3). The
+    // all-zero placeholder is never serialized.
+    value["designKey"] = Value::String("0".repeat(64));
     value["assembly"] = assembly;
     serde_json::from_value(value)
         .map(Produced::new)
         .map_err(|error| ProjectionError::new(format!("{NAME}: {error}")))
 }
 
-fn empty_form(key: &str) -> Value {
-    let mut value = State::default().into_document(key);
+fn empty_form() -> Value {
+    let mut value = State::default().into_document();
+    value["designKey"] = Value::String("0".repeat(64));
     value["assembly"] = assembly::empty();
     value
 }

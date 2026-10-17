@@ -6,16 +6,17 @@ using Prism.Contracts.Common;
 
 /**
  * `projections/semantic-index.json`: the design's semantic identity index,
- * schema `prism.semantic_index.a1`. It is a parity document (conventions.md
+ * schema `prism.semantic_index.a2`. It is a parity document (conventions.md
  * §4, §5, §14): every field keeps the name, unit, null-versus-absent
  * behaviour and value of today's `prism.semantic_index_a0`
  * (`backend/app/services/semantic_index_service.py:784-1171`,
  * `semantic_index_nets.py`, `semantic_index_variants.py`), except the
  * changes listed in `field-maps/semantic-index.md` ("Expected divergences"):
  *
- * - the envelope: `schema` becomes `prism.semantic_index.a1`,
- *   `sourceRevisionKey` holds the design revision key, and `commit`,
- *   `generator` and `generatedAt` are not member fields;
+ * - the envelope: `schema` becomes `prism.semantic_index.a2`,
+ *   `sourceRevisionKey` is replaced by `designKey` (a2, ADR amendment K2
+ *   §3.6), and `commit`, `generator` and `generatedAt` are not member
+ *   fields;
  * - the fields ADR §6 adds: `components[].libraryRef`,
  *   `terminals[].pinName`, `terminals[].pinType` and
  *   `terminals[].schematicNetName` (`netName` stays the pad-resolved name);
@@ -24,7 +25,7 @@ using Prism.Contracts.Common;
  * Coordinates in `buses` are schematic millimetres as today (a parity
  * document keeps today's units); no other field holds a length.
  */
-namespace Prism.Contracts.SemanticIndexA1;
+namespace Prism.Contracts.SemanticIndexA2;
 
 // ------------------------------------------------------------------ scalars
 
@@ -1054,19 +1055,23 @@ model SemanticIndexAssembly {
  * and Simulation Studio board facts.
  */
 @jsonSchema
-@id("urn:prism:schema:prism.semantic_index:a1")
-@extension("title", "Semantic index a1")
-model SemanticIndexA1 {
-  /** Schema id. a0 was `prism.semantic_index_a0`. */
-  schema: "prism.semantic_index.a1";
+@id("urn:prism:schema:prism.semantic_index:a2")
+@extension("title", "Semantic index a2")
+model SemanticIndexA2 {
+  /** Schema id. a0 was `prism.semantic_index_a0`; a1 carried `sourceRevisionKey`; a2 carries `designKey`. */
+  schema: "prism.semantic_index.a2";
 
   /**
-   * The design revision key (`prism.revision_key.a1`, ADR §5) of the bundle
-   * that holds this member. Readers use it as an opaque revision identity
-   * (cross-probe guard, comment anchors). a0 held a 32-digit key over the
-   * semantic sources only.
+   * The design key (ADR amendment K2 §3.6): lowercase hex SHA-256 over
+   * `"prism.design_key.a0" NUL config_digest NUL R`, where `R` is the bundle's
+   * canonical read set (bundle-format.md §2.3). It is the same for every
+   * revision whose tree gives the same configuration and leaves the read set
+   * unchanged, and for every build of it, so readers use it as the identity of
+   * the design content: the cross-probe guard, comment anchors and the ETag.
+   * It is not a revision key, and no member carries one: the revision a user
+   * asked for comes from the request. Replaces a1's `sourceRevisionKey`.
    */
-  sourceRevisionKey: Sha256Hex;
+  designKey: Sha256Hex;
 
   /** Every component, in design-netlist component order (`design.json` `components[]`), skipping entries with no reference. */
   components: SemanticIndexComponent[];

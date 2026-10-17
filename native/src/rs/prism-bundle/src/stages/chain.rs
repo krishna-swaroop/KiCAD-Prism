@@ -5,7 +5,7 @@
 use super::{Generator, MemberData, internal};
 use crate::finding::{Failure, Outcome};
 use crate::generator::{canonical, sha256_hex};
-use crate::manifest::{Manifest, Stage, Status, a2, role_stage};
+use crate::manifest::{Manifest, Stage, Status, a3, role_stage};
 use crate::reader::BundleReader;
 use crate::revision_key::{EffectiveConfig, canonical_config};
 use crate::zip::ReadAt;
@@ -158,6 +158,6 @@ pub fn earlier_members(input: &Input, stage: Stage) -> Vec<MemberData> {
 
 /// A models record reset to `pending`.
 #[must_use]
-pub fn pending_models() -> a2::BundleManifestModelsStage {
+pub fn pending_models() -> a3::BundleManifestModelsStage {
     crate::manifest::models_stage(Status::Pending, None)
 }

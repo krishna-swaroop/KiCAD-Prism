@@ -28,7 +28,7 @@ from app.services.design_bundle import schemas
 from app.services.design_bundle.revision_key import is_repo_path
 
 MANIFEST = "bundle.json"
-MANIFEST_SCHEMA = "prism.bundle.manifest.a2"
+MANIFEST_SCHEMA = "prism.bundle.manifest.a3"
 PACK_MAGIC = b"KMMATPK\0"
 _EOCD = struct.Struct("<IHHHHIIH")
 _CENTRAL = struct.Struct("<IHHHHHHIIIHHHHHII")
@@ -330,7 +330,7 @@ def _check_local_headers(handle: BinaryIO, entries: dict[str, Entry], cd_offset:
 def _check_manifest(data: bytes, limits: Limits) -> dict[str, Any]:
     manifest = parse_json_member(data, MANIFEST, limits)
     if not isinstance(manifest, dict) or manifest.get("schema") != MANIFEST_SCHEMA:
-        raise BundleInvalid("manifest-unsupported", "bundle.json is not a prism.bundle.manifest.a2", MANIFEST)
+        raise BundleInvalid("manifest-unsupported", "bundle.json is not a prism.bundle.manifest.a3", MANIFEST)
     try:
         schemas.validate(manifest, MANIFEST_SCHEMA)
     except schemas.SchemaInvalid as error:

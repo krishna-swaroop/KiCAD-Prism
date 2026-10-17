@@ -715,19 +715,19 @@ and Simulation Studio board facts.*/
 ///
 /// ```json
 ///{
-///  "$id": "urn:prism:schema:prism.semantic_index:a1",
-///  "title": "SemanticIndexA1",
+///  "$id": "urn:prism:schema:prism.semantic_index:a2",
+///  "title": "SemanticIndexA2",
 ///  "description": "`projections/semantic-index.json`, written at stage `parse`. Read by the\nidentity endpoint (streamed as is), the inspector, search, BOM table,\nvariants UI and API, component import, Release Studio, Design Comparison\nand Simulation Studio board facts.",
 ///  "type": "object",
 ///  "required": [
 ///    "assembly",
 ///    "buses",
 ///    "components",
+///    "designKey",
 ///    "indexes",
 ///    "nets",
 ///    "schema",
 ///    "sheetInstances",
-///    "sourceRevisionKey",
 ///    "terminals"
 ///  ],
 ///  "properties": {
@@ -749,6 +749,10 @@ and Simulation Studio board facts.*/
 ///        "$ref": "#/$defs/SemanticIndexComponent"
 ///      }
 ///    },
+///    "designKey": {
+///      "description": "The design key (ADR amendment K2 §3.6): lowercase hex SHA-256 over\n`\"prism.design_key.a0\" NUL config_digest NUL R`, where `R` is the bundle's\ncanonical read set (bundle-format.md §2.3). It is the same for every\nrevision whose tree gives the same configuration and leaves the read set\nunchanged, and for every build of it, so readers use it as the identity of\nthe design content: the cross-probe guard, comment anchors and the ETag.\nIt is not a revision key, and no member carries one: the revision a user\nasked for comes from the request. Replaces a1's `sourceRevisionKey`.",
+///      "$ref": "#/$defs/Sha256Hex"
+///    },
 ///    "indexes": {
 ///      "description": "Lookup maps into the arrays above.",
 ///      "$ref": "#/$defs/SemanticIndexIndexes"
@@ -761,9 +765,9 @@ and Simulation Studio board facts.*/
 ///      }
 ///    },
 ///    "schema": {
-///      "description": "Schema id. a0 was `prism.semantic_index_a0`.",
+///      "description": "Schema id. a0 was `prism.semantic_index_a0`; a1 carried `sourceRevisionKey`; a2 carries `designKey`.",
 ///      "type": "string",
-///      "const": "prism.semantic_index.a1"
+///      "const": "prism.semantic_index.a2"
 ///    },
 ///    "sheetInstances": {
 ///      "description": "Every sheet instance, in hierarchy walk order: the root first, then depth-first pre-order, a sheet's child sheets in the order its file places them.",
@@ -771,10 +775,6 @@ and Simulation Studio board facts.*/
 ///      "items": {
 ///        "$ref": "#/$defs/SemanticIndexSheetInstance"
 ///      }
-///    },
-///    "sourceRevisionKey": {
-///      "description": "The design revision key (`prism.revision_key.a1`, ADR §5) of the bundle\nthat holds this member. Readers use it as an opaque revision identity\n(cross-probe guard, comment anchors). a0 held a 32-digit key over the\nsemantic sources only.",
-///      "$ref": "#/$defs/Sha256Hex"
 ///    },
 ///    "terminals": {
 ///      "description": "Every terminal: per schematic net in netlist order, the terminals\n`design.json` lists for it (sorted by designator, then pin, in code point\norder; a repeated (designator, pin) keeps its first position), then pins\nonly the net's graphical pin list has, in that list's order; then\nboard-only terminals in board pad order (footprints in file order, each\nfootprint's pads in file order).",
@@ -790,15 +790,19 @@ and Simulation Studio board facts.*/
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct SemanticIndexA1 {
-    ///Schema id. a0 was `prism.semantic_index_a0`.
+pub struct SemanticIndexA2 {
+    ///Schema id. a0 was `prism.semantic_index_a0`; a1 carried `sourceRevisionKey`; a2 carries `designKey`.
     pub schema: ::std::string::String,
-    /**The design revision key (`prism.revision_key.a1`, ADR §5) of the bundle
-    that holds this member. Readers use it as an opaque revision identity
-    (cross-probe guard, comment anchors). a0 held a 32-digit key over the
-    semantic sources only.*/
-    #[serde(rename = "sourceRevisionKey")]
-    pub source_revision_key: Sha256Hex,
+    /**The design key (ADR amendment K2 §3.6): lowercase hex SHA-256 over
+    `"prism.design_key.a0" NUL config_digest NUL R`, where `R` is the bundle's
+    canonical read set (bundle-format.md §2.3). It is the same for every
+    revision whose tree gives the same configuration and leaves the read set
+    unchanged, and for every build of it, so readers use it as the identity of
+    the design content: the cross-probe guard, comment anchors and the ETag.
+    It is not a revision key, and no member carries one: the revision a user
+    asked for comes from the request. Replaces a1's `sourceRevisionKey`.*/
+    #[serde(rename = "designKey")]
+    pub design_key: Sha256Hex,
     ///Every component, in design-netlist component order (`design.json` `components[]`), skipping entries with no reference.
     pub components: ::std::vec::Vec<SemanticIndexComponent>,
     /**Every net: schematic nets in design-netlist net order (`design.json`

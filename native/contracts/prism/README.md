@@ -77,8 +77,8 @@ Known issue for F1 and L:
 
 | Bundle member | Schema id | Root model | Contract | Example | Field map | Producer | Consumers |
 |---|---|---|---|---|---|---|---|
-| `bundle.json` | `prism.bundle.manifest.a2` | `BundleManifestA2` | [`bundle-manifest-a2.tsp`](../../src/tsp/prism/bundle-manifest-a2.tsp) | [example](examples/BundleManifestA2.example.json) | [bundle-manifest](field-maps/bundle-manifest.md) | B | all |
-| `projections/semantic-index.json` | `prism.semantic_index.a1` | `SemanticIndexA1` | [`semantic-index-a1.tsp`](../../src/tsp/prism/semantic-index-a1.tsp) | [example](examples/SemanticIndexA1.example.json) | [semantic-index](field-maps/semantic-index.md) | P1 | C1, C3, C6 |
+| `bundle.json` | `prism.bundle.manifest.a3` | `BundleManifestA3` | [`bundle-manifest-a3.tsp`](../../src/tsp/prism/bundle-manifest-a3.tsp) | [example](examples/BundleManifestA3.example.json) | [bundle-manifest](field-maps/bundle-manifest.md) | B | all |
+| `projections/semantic-index.json` | `prism.semantic_index.a2` | `SemanticIndexA2` | [`semantic-index-a2.tsp`](../../src/tsp/prism/semantic-index-a2.tsp) | [example](examples/SemanticIndexA2.example.json) | [semantic-index](field-maps/semantic-index.md) | P1 | C1, C3, C6 |
 | `projections/board-objects.json` | `prism.board_objects.a0` | `BoardObjectsA0` | [`board-objects-a0.tsp`](../../src/tsp/prism/board-objects-a0.tsp) | [example](examples/BoardObjectsA0.example.json) | [board-objects](field-maps/board-objects.md) | P2 | C2 |
 | `projections/occurrences.json` | `prism.occurrences.a0` | `OccurrencesA0` | [`occurrences-a0.tsp`](../../src/tsp/prism/occurrences-a0.tsp) | [example](examples/OccurrencesA0.example.json) | [occurrences](field-maps/occurrences.md) | P2 | C2, C3, C4a, C7 |
 | `projections/stackup.json` | `prism.stackup.a0` | `StackupA0` | [`stackup-a0.tsp`](../../src/tsp/prism/stackup-a0.tsp) | [example](examples/StackupA0.example.json) | [stackup](field-maps/stackup.md) | P3 | C2, C3, C4b, C5, C6 |

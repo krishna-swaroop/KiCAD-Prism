@@ -1,26 +1,26 @@
-//! `bundle.json` (`prism.bundle.manifest.a2`): the generated contract types,
+//! `bundle.json` (`prism.bundle.manifest.a3`): the generated contract types,
 //! the fixed member paths, the role and stage rules of bundle-format.md §2,
 //! and the compact serialization of conventions.md §13.
 
 use crate::finding::Finding;
 use crate::revision_key::Category;
-pub use prism_kicad_contracts::generated::prism_bundle_manifest_a2 as a2;
+pub use prism_kicad_contracts::generated::prism_bundle_manifest_a3 as a3;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The manifest document.
-pub type Manifest = a2::BundleManifestA2;
+pub type Manifest = a3::BundleManifestA3;
 /// A member role.
-pub type Role = a2::BundleManifestMemberRole;
+pub type Role = a3::BundleManifestMemberRole;
 /// A stage.
-pub type Stage = a2::BundleManifestStage;
+pub type Stage = a3::BundleManifestStage;
 /// A stage status.
-pub type Status = a2::BundleManifestStageStatus;
+pub type Status = a3::BundleManifestStageStatus;
 
 /// Archive path of the manifest.
 pub const MANIFEST_PATH: &str = "bundle.json";
 /// Schema id of the manifest.
-pub const MANIFEST_SCHEMA: &str = "prism.bundle.manifest.a2";
+pub const MANIFEST_SCHEMA: &str = "prism.bundle.manifest.a3";
 /// Archive path of the design JSON.
 pub const DESIGN_PATH: &str = "design.json";
 /// Schema id of the design JSON.
@@ -45,7 +45,7 @@ pub const PROJECTIONS: [(&str, &str); 8] = [
     ("projections/placements.json", "prism.placements.a0"),
     ("projections/project.json", "prism.project.a0"),
     ("projections/route-metrics.json", "prism.route_metrics.a0"),
-    ("projections/semantic-index.json", "prism.semantic_index.a1"),
+    ("projections/semantic-index.json", "prism.semantic_index.a2"),
     ("projections/stackup.json", "prism.stackup.a0"),
     (
         "projections/system-interface.json",
@@ -153,7 +153,7 @@ pub fn retype<A: Serialize, B: DeserializeOwned>(value: &A) -> Result<B, String>
 }
 
 /// The `CliFinding` of `finding`.
-pub fn cli_finding(finding: &Finding) -> Result<a2::CliFinding, String> {
+pub fn cli_finding(finding: &Finding) -> Result<a3::CliFinding, String> {
     serde_json::from_value(finding_json(finding)).map_err(|error| error.to_string())
 }
 
@@ -197,7 +197,7 @@ pub fn location_json(location: &crate::finding::Location) -> serde_json::Value {
 
 /// The finding of a manifest `CliFinding`.
 #[must_use]
-pub fn finding_of(finding: &a2::CliFinding) -> Finding {
+pub fn finding_of(finding: &a3::CliFinding) -> Finding {
     let location = finding
         .location
         .as_ref()
@@ -217,14 +217,14 @@ pub fn finding_of(finding: &a2::CliFinding) -> Finding {
 }
 
 /// A manifest warning.
-pub fn warning(code: &str, message: impl Into<String>) -> Result<a2::Warning, String> {
+pub fn warning(code: &str, message: impl Into<String>) -> Result<a3::Warning, String> {
     let message: String = message.into();
     serde_json::from_value(serde_json::json!({ "code": code, "message": message }))
         .map_err(|error| error.to_string())
 }
 
 /// Sort `warnings` by code, then message, and drop equal entries (I10).
-pub fn sort_warnings(warnings: &mut Vec<a2::Warning>) {
+pub fn sort_warnings(warnings: &mut Vec<a3::Warning>) {
     warnings.sort_by(|a, b| {
         (a.code.as_str(), a.message.as_str()).cmp(&(b.code.as_str(), b.message.as_str()))
     });
@@ -236,7 +236,7 @@ pub fn member_failure(
     path: &str,
     code: &str,
     message: impl Into<String>,
-) -> Result<a2::BundleManifestMemberFailure, String> {
+) -> Result<a3::BundleManifestMemberFailure, String> {
     let message: String = message.into();
     serde_json::from_value(serde_json::json!({ "path": path, "code": code, "message": message }))
         .map_err(|error| error.to_string())
@@ -244,8 +244,8 @@ pub fn member_failure(
 
 /// The record of a stage that has not run.
 #[must_use]
-pub fn pending_board() -> a2::BundleManifestBoardStage {
-    a2::BundleManifestBoardStage {
+pub fn pending_board() -> a3::BundleManifestBoardStage {
+    a3::BundleManifestBoardStage {
         status: Status::Pending,
         skip_reason: None,
         error: None,
@@ -259,8 +259,8 @@ pub fn pending_board() -> a2::BundleManifestBoardStage {
 
 /// The record of a board stage skipped for `reason`.
 #[must_use]
-pub fn skipped_board(reason: a2::BundleManifestSkipReason) -> a2::BundleManifestBoardStage {
-    a2::BundleManifestBoardStage {
+pub fn skipped_board(reason: a3::BundleManifestSkipReason) -> a3::BundleManifestBoardStage {
+    a3::BundleManifestBoardStage {
         status: Status::Skipped,
         skip_reason: Some(reason),
         ..pending_board()
@@ -271,9 +271,9 @@ pub fn skipped_board(reason: a2::BundleManifestSkipReason) -> a2::BundleManifest
 #[must_use]
 pub fn models_stage(
     status: Status,
-    reason: Option<a2::BundleManifestSkipReason>,
-) -> a2::BundleManifestModelsStage {
-    a2::BundleManifestModelsStage {
+    reason: Option<a3::BundleManifestSkipReason>,
+) -> a3::BundleManifestModelsStage {
+    a3::BundleManifestModelsStage {
         status,
         skip_reason: reason,
         error: None,
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn the_example_manifest_parses_into_the_generated_types() {
         let manifest: Manifest = serde_json::from_str(include_str!(
-            "../../../../contracts/prism/examples/BundleManifestA2.example.json"
+            "../../../../contracts/prism/examples/BundleManifestA3.example.json"
         ))
         .unwrap();
         assert_eq!(manifest.schema, MANIFEST_SCHEMA);
