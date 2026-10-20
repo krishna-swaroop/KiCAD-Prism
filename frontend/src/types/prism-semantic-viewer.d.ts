@@ -180,8 +180,40 @@ export interface PrismSemanticBoardMode {
     /** The operation under a client point, its binding and overlay value; null off the analytic copper. */
     analyticAt(clientX: number, clientY: number): Promise<PrismAnalyticHit | null>;
     analyticStats(): PrismAnalyticStats | null;
+    /**
+     * The current 3D view path-traced to a PNG (the Render action): rejects with an AbortError when
+     * `signal` aborts. `onProgress` reports the worker's stages and samples.
+     */
+    renderImage(options: PrismRenderImageOptions): Promise<PrismRenderImageResult>;
     /** Back to mesh copper. */
     unloadAnalyticPack(): void;
+}
+
+export interface PrismRenderImageOptions {
+    width: number;
+    height: number;
+    /** Samples per pixel; denoised after. */
+    samples: number;
+    background?: "studio" | "transparent";
+    signal?: AbortSignal;
+    onProgress?: (progress: PrismRenderProgress) => void;
+}
+
+export interface PrismRenderProgress {
+    /** "scene", "device", "bvh", "shaders", "pilot", "final", "denoising" or "encoding". */
+    stage: string;
+    elapsedMs: number;
+    samples?: number;
+    targetSamples?: number;
+    amount?: number;
+}
+
+export interface PrismRenderImageResult {
+    blob: Blob;
+    width: number;
+    height: number;
+    samples: number;
+    timings: Record<string, number | null>;
 }
 
 export interface PrismAnalyticStyle {

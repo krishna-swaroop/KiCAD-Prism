@@ -294,7 +294,7 @@ export const BOARD_MEMBERS = Object.freeze([
   "setHighlightedNets", "setHiddenComponents", "getComponentReferences", "setViewMode",
   "renderInset", "insetReady", "insetSurfaceZ", "releaseInset", "insetTarget", "projectInset",
   "onSceneChange", "insetStats", "insetSettings", "gpuIdle",
-  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "setAnalyticRelief", "setClickSelect", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack",
+  "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "setAnalyticRelief", "setClickSelect", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack", "captureTraceScene", "renderCapture", "renderImage",
 ]);
 
 /**
@@ -493,6 +493,18 @@ export class BoardModeController extends ModeController {
   unloadAnalyticPack() {
     this.#analytic = null;
     this.port?.unloadAnalyticPack();
+  }
+
+  captureTraceScene(options) {
+    return this.port?.captureTraceScene(options) ?? Promise.reject(new Error("No board to render"));
+  }
+
+  renderCapture(capture, options) {
+    return this.port?.renderCapture(capture, options) ?? Promise.reject(new Error("No board to render"));
+  }
+
+  renderImage(options) {
+    return this.port?.renderImage(options) ?? Promise.reject(new Error("No board to render"));
   }
 }
 

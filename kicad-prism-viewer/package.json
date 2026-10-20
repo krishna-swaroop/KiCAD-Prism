@@ -8,7 +8,7 @@
     "npm": "11.19.x"
   },
   "scripts": {
-    "build:element": "esbuild viewer/src/element-entry.js --bundle --minify --format=esm --platform=browser --loader:.css=text --external:node:fs --external:node:path --outfile=dist/prism-semantic-viewer.js && esbuild viewer/src/analytic-lower-worker.js --bundle --minify --format=esm --platform=browser --log-override:empty-import-meta=silent --outfile=dist/prism-semantic-viewer-lower.js && node scripts/sync-served-element.mjs",
+    "build:element": "esbuild viewer/src/element-entry.js --bundle --minify --format=esm --platform=browser --loader:.css=text --external:node:fs --external:node:path --outfile=dist/prism-semantic-viewer.js && esbuild viewer/src/analytic-lower-worker.js --bundle --minify --format=esm --platform=browser --log-override:empty-import-meta=silent --outfile=dist/prism-semantic-viewer-lower.js && node scripts/build-trace-worker.mjs && node scripts/sync-served-element.mjs",
     "build:analytic-wasm": "node scripts/build-analytic-wasm.mjs",
     "build": "npm run build:element",
     "test:viewer": "node --test viewer/src/*.test.mjs",
@@ -19,9 +19,11 @@
     "@gltf-transform/core": "^4.4.2",
     "@gltf-transform/extensions": "^4.4.2",
     "@gltf-transform/functions": "^4.4.2",
+    "@meimu/mutracer": "0.1.3",
     "earcut": "^3.2.3",
     "esbuild": "^0.25.5",
     "meshoptimizer": "^0.24.0",
-    "polygon-clipping": "^0.15.7"
+    "polygon-clipping": "^0.15.7",
+    "three": "0.186.1"
   }
 }

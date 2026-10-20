@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Box } from "lucide-react";
+import { Box, Camera } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +17,7 @@ import {
     RailSlider,
     ViewerSideRail,
 } from "./ecad-viewer-controls";
+import { RenderImageDialog } from "@/features/render-image/render-image-dialog";
 import type {
     PrismSemanticLayerPreset,
     PrismSemanticViewerElement,
@@ -38,11 +39,15 @@ const LAYER_PRESETS: readonly (readonly [PrismSemanticLayerPreset, string])[] = 
 export function Semantic3dControls({
     viewer,
     onVisibleWidthChange,
+    renderName = "board",
 }: {
     viewer: PrismSemanticViewerElement | null;
     onVisibleWidthChange?: (width: number) => void;
+    /** The rendered PNG's file name stem. */
+    renderName?: string;
 }) {
     const [section, setSection] = useState<"layers" | "settings">("layers");
+    const [renderOpen, setRenderOpen] = useState(false);
     const [viewState, setViewState] = useState<PrismSemanticViewState | null>(null);
 
     useEffect(() => {
@@ -109,7 +114,20 @@ export function Semantic3dControls({
                         Isolate
                     </Button>
                 </div>
+                {viewState?.mode === "3d" && viewer?.renderImage && (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-full text-[11px]"
+                        onClick={() => setRenderOpen(true)}
+                        title="Path-trace this view to a PNG"
+                    >
+                        <Camera className="size-3.5" />
+                        Render
+                    </Button>
+                )}
             </div>
+            <RenderImageDialog viewer={viewer} open={renderOpen} onOpenChange={setRenderOpen} fileStem={renderName} />
 
             <RailSectionSwitch
                 value={section}

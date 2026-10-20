@@ -579,7 +579,7 @@ export function WebGpu3dTab({
                 className="block h-full min-h-0 w-full"
             />
             {!isStackup && (
-                <Semantic3dControls viewer={viewerElement} onVisibleWidthChange={setLeftInset} />
+                <Semantic3dControls viewer={viewerElement} onVisibleWidthChange={setLeftInset} renderName={projectId} />
             )}
             <DropdownMenu open={Boolean(contextMenu)} onOpenChange={(open) => { if (!open) setContextMenu(null); }}>
                 <DropdownMenuTrigger asChild>

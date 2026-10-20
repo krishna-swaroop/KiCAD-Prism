@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { access, readFile, writeFile } from "node:fs/promises";
+import { access, cp, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -14,6 +14,11 @@ const wasmServed = path.join(repositoryRoot, "frontend", "public", "prism-kicad-
 // The analytic lowering worker the element starts beside itself (analytic-lower-client.js).
 const workerBuilt = path.join(packageRoot, "dist", "prism-semantic-viewer-lower.js");
 const workerServed = path.join(repositoryRoot, "frontend", "public", "prism-semantic-viewer-lower.js");
+// The Render action's worker and MuTracer's assets beside it (trace-client.js).
+const traceBuilt = path.join(packageRoot, "dist", "prism-semantic-viewer-trace.js");
+const traceServed = path.join(repositoryRoot, "frontend", "public", "prism-semantic-viewer-trace.js");
+const traceAssetsBuilt = path.join(packageRoot, "dist", "prism-trace");
+const traceAssetsServed = path.join(repositoryRoot, "frontend", "public", "prism-trace");
 
 const bundle = await readFile(builtPath);
 const digest = createHash("sha256").update(bundle).digest("hex");
@@ -48,6 +53,9 @@ if (servedExists) {
   await writeFile(servedPath, bundle);
   await writeFile(wasmServed, await readFile(wasmSource));
   await writeFile(workerServed, await readFile(workerBuilt));
+  await writeFile(traceServed, await readFile(traceBuilt));
+  await rm(traceAssetsServed, { recursive: true, force: true });
+  await cp(traceAssetsBuilt, traceAssetsServed, { recursive: true });
   await writeFile(
     indexPath,
     index.replace(scriptPattern, `/prism-semantic-viewer.js?v=${digest}`),

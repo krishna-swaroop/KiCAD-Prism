@@ -45,7 +45,9 @@ import { analyticWasmKey, analyticWasmUrl, DEFAULT_TOLERANCE_NM, openAnalyticPac
 import { BOARD_RECORD_KEY, isLoweringCached, readLowered } from "./analytic-lower-cache.js";
 import { hostedPack, LowerPool, MAX_LOWER_WORKERS, storedPack, workerCount } from "./analytic-lower-client.js";
 import { AnalyticRenderer } from "./analytic-renderer.js";
-import { analyticBoardLooks, analyticSceneManifest } from "./analytic-scene.js";
+import { analyticBoardLooks, analyticBoundsMm, analyticSceneManifest } from "./analytic-scene.js";
+import { captureBoardScene } from "./trace-capture.js";
+import { traceCapture } from "./trace-client.js";
 import { analyticFeatureId, analyticOperationFeature, applyAnalyticOverlay, applyAnalyticStyle, applyAnalyticVectors, attachAnalyticPack, describeAnalyticHit, fieldAlongRay, netIdByName, operationSliceKey, reliefSlices } from "./analytic-board.js";
 import { FieldRelief } from "./field-relief.js";
 import { barrelsAtCopperFaces } from "./barrel-records.js";
@@ -615,6 +617,15 @@ export async function mountStandaloneViewer(options = {}) {
       Object.assign(insetSettings, settings || {});
       return { ...insetSettings };
     },
+    // The Render action: the current view as plain data for the trace worker, and a path-traced PNG of it.
+    captureTraceScene: captureTrace,
+    renderCapture: (capture, options = {}) => traceCapture(capture, options),
+    async renderImage(options = {}) {
+      const { mapPixels, view, holeOverride, ...render } = options;
+      const capture = await captureTrace({ mapPixels, view, holeOverride });
+      const result = await traceCapture(capture, render);
+      return { ...result, timings: { ...capture.timings, ...result.timings } };
+    },
     /** Resolves when the GPU has finished everything submitted so far. */
     gpuIdle() {
       return board.renderer?.device.queue.onSubmittedWorkDone() ?? Promise.resolve();
@@ -624,6 +635,51 @@ export async function mountStandaloneViewer(options = {}) {
       disposeViewerSession(token);
     },
   };
+}
+
+/**
+ * The board as the 3D view shows it, for the Render action (trace-capture.js):
+ * the analytic board, its visible components and the camera, settled.
+ */
+async function captureTrace({ mapPixels, view: override = null, holeOverride = null } = {}) {
+  const b = board;
+  if (!b.renderer || !b.analytic) throw new Error("No analytic board to render");
+  camera.snap();
+  const { up, back } = camera.basis();
+  const view = override ? { fovY: camera.fov, sceneRadius: camera.sceneRadius, ...override } : {
+    eye: add(camera.focus, scale(back, camera.distance)),
+    target: [...camera.focus],
+    up,
+    fovY: camera.fov,
+    sceneRadius: camera.sceneRadius,
+  };
+  let components = null;
+  const path = b.semanticGeometry.assets?.components_glb;
+  if (path && state.showComponents) {
+    const loaded = await loadGltfModels(new URL(path, location.href).toString(), {
+      componentFeatures: b.scene.componentFeatures,
+      fetchBytes: assetFetcher(b),
+      zOffset: Number(b.scene.manifest?.componentsZOffsetMm || 0) / 1000,
+    });
+    components = loaded.models.map((model) => ({
+      ...model,
+      placements: model.placements.filter((placement) => !isComponentHidden(placement.designator, b.hiddenComponents)),
+    }));
+  }
+  const bounds = analyticBoundsMm(b.analytic.pack.header);
+  const pad = 0.5;
+  return captureBoardScene({
+    renderer: b.renderer,
+    analytic: b.analytic.analytic,
+    pack: b.analytic.pack,
+    holeOverride,
+    layers: b.scene.layers,
+    stackup: b.analyticSource?.stackup || null,
+    boundsMm: [bounds[0] - pad, bounds[1] - pad, bounds[2] + pad, bounds[3] + pad],
+    view,
+    components,
+    mapPixels,
+  });
 }
 
 /** The analytic pack drawn on the board, as `analyticStats()` reports it; null without one. */
