@@ -72,6 +72,7 @@ describe("buildScene", () => {
   it("draws a mate between the two pins and a harness end into its block", () => {
     const scene = buildScene(DOCUMENT, BUNDLE);
     const mate = scene.connections.find((connection) => connection.id === "mate_a");
+    expect(mate?.pins).toBe(2);
     const carrierPin = scene.symbols[0].ports.find((port) => port.key === "J202");
     expect(mate?.points[0]).toEqual(carrierPin?.point);
     expect(mate?.stored).toBe(false);

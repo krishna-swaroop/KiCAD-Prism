@@ -142,4 +142,26 @@ describe("RootSheetCanvas", () => {
     const [op] = apply.mock.calls[0][0] as SystemOp[];
     expect(op).toMatchObject({ kind: "set-layout", item: "occ_a", placement: { ports: { J1: { edge: "right", offsetNm: 40_640_000 } } } });
   });
+
+  it("draws the documents' title block with the system, sheet and bundle key", () => {
+    render(
+      <RootSheetCanvas
+        document={DOCUMENT}
+        bundle={BUNDLE}
+        selected={new Set()}
+        onSelect={vi.fn()}
+        canEdit
+        apply={vi.fn()}
+        tool="select"
+        onToolChange={vi.fn()}
+        systemName="Openswitch"
+        version={48}
+        bundleKey="eec36c7adf3a24ae9f123"
+      />,
+    );
+    expect(screen.getByText("Openswitch · System schematic")).toBeTruthy();
+    expect(screen.getByText("Openswitch v48")).toBeTruthy();
+    expect(screen.getByText("Root")).toBeTruthy();
+    expect(screen.getByText("eec36c7adf3a24ae")).toBeTruthy();
+  });
 });

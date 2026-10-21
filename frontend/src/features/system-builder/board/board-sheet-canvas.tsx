@@ -12,12 +12,14 @@ import { PaperGrid } from "../schematic/canvas-overlays";
 import { normalizeRect, selectionMode } from "../schematic/geometry";
 import { hitAt, hitOf, toggled } from "../schematic/gestures";
 import { COLOURS } from "../schematic/sheet-svg";
+import { SheetChrome } from "../schematic/sheet-frame";
 import { capture, isPanButton, useSheetView } from "../schematic/use-sheet-view";
 import { panBy, toSheet } from "../schematic/viewport";
 import { groupOps, groupRefusal, interiorOps, orderedPads } from "./board-edits";
 import { boxWires, interiorDrag, storedInterior, type BoardDrag } from "./board-gestures";
 import { buildBoardScene, parseWireKey, wireKey, type BoardScene } from "./board-scene";
 import { BoardSheetSvg } from "./board-sheet-svg";
+import { BoxRect } from "./box-rect";
 import { ExportPinsCard } from "../publish/export-pins-card";
 import { BoardSidePanel } from "./board-side-panel";
 import { GroupPopover } from "./group-popover";
@@ -32,6 +34,10 @@ interface Props {
   canEdit: boolean;
   apply: (ops: SystemOp[]) => Promise<unknown>;
   onLeave: () => void;
+  /** The system's name, version and bundle key for the title block. */
+  systemName?: string;
+  version?: number;
+  bundleKey?: string;
 }
 
 export interface BoardSheetHandle {
@@ -47,27 +53,8 @@ function selectionConnector(selected: ReadonlySet<string>): string | null {
   return connectors.size === 1 ? [...connectors][0] : null;
 }
 
-function BoxRect({ drag }: { drag: BoardDrag | null }) {
-  if (drag?.kind !== "box") return null;
-  const box = normalizeRect(drag.start, drag.current);
-  const crossing = selectionMode(drag.start, drag.current) === "crossing";
-  return (
-    <rect
-      x={box.x / 1e6}
-      y={box.y / 1e6}
-      width={box.w / 1e6}
-      height={box.h / 1e6}
-      fill={crossing ? "rgba(0,160,0,0.06)" : "rgba(47,155,255,0.08)"}
-      stroke={crossing ? "#00a000" : COLOURS.select}
-      strokeWidth={0.15}
-      strokeDasharray={crossing ? "0.8 0.5" : undefined}
-      pointerEvents="none"
-    />
-  );
-}
-
 export const BoardSheetCanvas = forwardRef<BoardSheetHandle, Props>(function BoardSheetCanvas(
-  { unfolded, onUnfoldedChange, document, bundle, occurrence, canEdit, apply, onLeave },
+  { unfolded, onUnfoldedChange, document, bundle, occurrence, canEdit, apply, onLeave, systemName, version, bundleKey },
   handle,
 ) {
   const container = useRef<HTMLDivElement>(null);
@@ -227,6 +214,7 @@ export const BoardSheetCanvas = forwardRef<BoardSheetHandle, Props>(function Boa
   }
   const transform = `scale(${view.scale}) translate(${-view.x / 1e6} ${-view.y / 1e6})`;
   const labels = new Set(labelSelected ? [labelSelected] : []);
+  const counts = `Board sheet · ${scene.label} · ${scene.connectors.length} ${scene.connectors.length === 1 ? "connector" : "connectors"} · double-click a connector to unfold`;
 
   return (
     <div
@@ -234,7 +222,7 @@ export const BoardSheetCanvas = forwardRef<BoardSheetHandle, Props>(function Boa
       tabIndex={0}
       role="application"
       aria-label={`Board sheet ${scene.label}`}
-      className="relative h-full w-full overflow-hidden outline-none"
+      className="sb-docs relative h-full w-full overflow-hidden outline-none"
       style={{ background: COLOURS.paper, cursor: drag?.kind === "pan" ? "grabbing" : "default", touchAction: "none" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -257,8 +245,12 @@ export const BoardSheetCanvas = forwardRef<BoardSheetHandle, Props>(function Boa
           <BoxRect drag={drag} />
         </g>
       </svg>
+      <SheetChrome system={systemName ?? document.name} version={version} sheet={scene.label} bundleKey={bundleKey} counts={counts} />
       {scene.state !== "ready" && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/70 px-2 py-1 text-xs text-white">
+        <div
+          className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap px-2.5 py-1 text-xs"
+          style={{ background: COLOURS.white, border: `1.4px solid ${COLOURS.ink}`, borderRadius: 3, color: COLOURS.ink }}
+        >
           {scene.state === "pending" ? "The board's design bundle is building…" : `Board state: ${scene.state}`}
         </div>
       )}
@@ -292,7 +284,10 @@ export const BoardSheetCanvas = forwardRef<BoardSheetHandle, Props>(function Boa
         </div>
       )}
       {selected.size > 0 && !grouping && (
-        <div className="pointer-events-none absolute left-3 top-3 rounded bg-black/70 px-2 py-1 text-xs text-white">
+        <div
+          className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap px-2.5 py-1 text-xs"
+          style={{ background: COLOURS.white, border: `1.4px solid ${COLOURS.ink}`, borderRadius: 3, color: COLOURS.ink }}
+        >
           {selected.size} {selected.size === 1 ? "wire" : "wires"} selected{canEdit ? " · G to group" : ""} · Esc to clear
         </div>
       )}

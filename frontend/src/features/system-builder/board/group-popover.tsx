@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import type { BundlePin } from "../model/types";
@@ -29,7 +28,7 @@ export function GroupPopover({ connector, pins, refusal, onGroup, onCancel }: Pr
   return (
     <dialog
       open
-      className="static m-0 block w-80 space-y-2 rounded-lg border border-white/10 bg-zinc-900/95 p-3 text-sm text-zinc-100 shadow-xl"
+      className="sb-docs sb-card static m-0 block w-80 p-0 text-[12px]"
       aria-label="Group as a sub-port"
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
@@ -37,34 +36,37 @@ export function GroupPopover({ connector, pins, refusal, onGroup, onCancel }: Pr
         if (event.key === "Escape") onCancel();
       }}
     >
-      <div className="font-medium">
-        Group {pins.length} {pins.length === 1 ? "wire" : "wires"} on {connector} <kbd className="ml-1 rounded border border-white/20 px-1 text-[11px]">G</kbd>
+      <div className="sb-band flex items-baseline justify-between px-3 py-2">
+        <span className="sb-docs-display truncate text-[15px]">Group {pins.length} {pins.length === 1 ? "wire" : "wires"} on {connector}</span>
+        <kbd className="border border-[#1d1d1f] px-1 text-[10px]">G</kbd>
       </div>
-      <Input
-        autoFocus
-        value={name}
-        aria-label="Sub-port name"
-        className="h-8 border-white/20 bg-transparent"
-        onChange={(event) => setName(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") submit(event.shiftKey);
-        }}
-      />
-      <div className="max-h-32 overflow-y-auto font-mono text-[11px] text-zinc-300">
-        {pins.map((pin, index) => (
-          <div key={pin.pad}>
-            {pin.pad} · {pin.net ?? "no net"} → <span className="text-sky-300">{proposed.members[index]}</span>
-          </div>
-        ))}
-      </div>
-      <div className="font-mono text-[11px] text-zinc-400">
-        {name.trim() || "…"}{`{${proposed.members.join(" ")}}`}
-      </div>
-      {problem && <p className="text-xs text-amber-300" role="alert">{problem}</p>}
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => submit(false)} disabled={Boolean(problem)}>Group ↵</Button>
-        <Button size="sm" variant="secondary" onClick={() => submit(true)} disabled={Boolean(problem)} title="Shift+Enter">Group and fold</Button>
-        <Button size="sm" variant="ghost" className="text-zinc-300" onClick={onCancel}>Esc</Button>
+      <div className="space-y-2 p-3">
+        <Input
+          autoFocus
+          value={name}
+          aria-label="Sub-port name"
+          className="h-7 rounded-none border-[#1d1d1f] bg-white px-2 text-[12px] focus-visible:border-[#1d1d1f] focus-visible:ring-0"
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") submit(event.shiftKey);
+          }}
+        />
+        <div className="sb-striped max-h-32 overflow-y-auto text-[10.5px]" style={{ borderTop: "0.6px solid var(--sb-rule)", borderBottom: "0.6px solid var(--sb-rule)" }}>
+          {pins.map((pin, index) => (
+            <div key={pin.pad} className="px-1 py-0.5">
+              {pin.pad} · {pin.net ?? "no net"} → <span className="text-[#0284c7]">{proposed.members[index]}</span>
+            </div>
+          ))}
+        </div>
+        <div className="text-[10.5px]" style={{ color: "var(--sb-muted)" }}>
+          {name.trim() || "…"}{`{${proposed.members.join(" ")}}`}
+        </div>
+        {problem && <p className="text-[11px]" role="alert" style={{ color: "var(--sb-warning)" }}>{problem}</p>}
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" className="sb-ink-button px-2 py-1 text-[11px]" onClick={() => submit(false)} disabled={Boolean(problem)}>Group ↵</button>
+          <button type="button" className="sb-ghost-button px-2 py-1 text-[11px]" onClick={() => submit(true)} disabled={Boolean(problem)} title="Shift+Enter">Group and fold</button>
+          <button type="button" className="sb-ghost-button px-2 py-1 text-[11px]" onClick={onCancel}>Esc</button>
+        </div>
       </div>
     </dialog>
   );

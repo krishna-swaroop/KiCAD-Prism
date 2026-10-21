@@ -84,6 +84,8 @@ export interface SceneConnection {
   /** One side's pin is missing. */
   dangling: boolean;
   label: string;
+  /** A mate's pin count (the smaller side's), for its tag. */
+  pins?: number;
 }
 
 export interface Scene {
@@ -272,6 +274,7 @@ export function buildScene(document: SystemDocument, bundle: SystemBundle | unde
 
   const byId = new Map(symbols.map((symbol) => [symbol.id, symbol]));
   const portOf = (item: string, key: string) => byId.get(item)?.ports.find((port) => port.key === key);
+  const pinsOf = (item: string, key: string) => bundled.get(item)?.connectors.find((connector) => connector.refdes === key)?.pins.length;
   const occurrenceLabel = new Map(document.occurrences.map((item) => [item.id, item.label]));
 
   // Harness blocks: between their ends' pins by default; each end's pin faces its site.
@@ -337,6 +340,8 @@ export function buildScene(document: SystemDocument, bundle: SystemBundle | unde
     if (!byId.has(siteA.occurrence) || !byId.has(siteB.occurrence)) continue;
     const a = portOf(siteA.occurrence, siteA.connector);
     const b = portOf(siteB.occurrence, siteB.connector);
+    const aPins = pinsOf(siteA.occurrence, siteA.connector);
+    const bPins = pinsOf(siteB.occurrence, siteB.connector);
     connections.push({
       id,
       kind: "mate",
@@ -345,6 +350,7 @@ export function buildScene(document: SystemDocument, bundle: SystemBundle | unde
       ...route(id, a, b),
       dangling: !a || !b || a.missing || b.missing,
       label: `${siteA.connector} ↔ ${siteB.connector}`,
+      pins: aPins === undefined ? bPins : bPins === undefined ? aPins : Math.min(aPins, bPins),
     });
   }
   for (const harness of harnesses) {

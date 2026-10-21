@@ -27,6 +27,8 @@ export function freshLabel(base: string, taken: readonly string[]): string {
   for (let index = 2; ; index += 1) if (!used.has(`${base} ${index}`)) return `${base} ${index}`;
 }
 
+const INPUT = "h-8 rounded-none border-[#1d1d1f] bg-white px-2 text-[12px] text-[#1d1d1f] focus-visible:border-[#1d1d1f] focus-visible:ring-0";
+
 /** Mounted only while open. */
 export function AddBoardDialog({ projects, existingLabels, onClose, onAdd }: Props) {
   const [query, setQuery] = useState("");
@@ -67,15 +69,15 @@ export function AddBoardDialog({ projects, existingLabels, onClose, onAdd }: Pro
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add board</DialogTitle>
-          <DialogDescription>Place a project's board on the root sheet. A followed board advances with its branch; a pinned one stays at its commit.</DialogDescription>
+      <DialogContent className="sb-docs !gap-0 !rounded-[3px] !border-[1.4px] !border-[#1d1d1f] !bg-white !p-0 !text-[#1d1d1f] sm:!max-w-lg">
+        <DialogHeader className="sb-band gap-1 px-4 py-3 text-left">
+          <DialogTitle className="sb-docs-display !text-[17px] !font-normal">Add board</DialogTitle>
+          <DialogDescription className="!text-[10.5px] !text-[#6b6b70]">Place a project's board on the root sheet. A followed board advances with its branch; a pinned one stays at its commit.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" />
-          <div className="max-h-56 overflow-y-auto rounded-md border" role="listbox" aria-label="Projects">
-            {matching.length === 0 && <p className="p-3 text-sm text-muted-foreground">No projects match.</p>}
+        <div className="space-y-3 px-4 py-3">
+          <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" className={INPUT} />
+          <div className="sb-striped max-h-56 overflow-y-auto border border-[#1d1d1f]" role="listbox" aria-label="Projects">
+            {matching.length === 0 && <p className="p-3 text-[12px]" style={{ color: "var(--sb-muted)" }}>No projects match.</p>}
             {matching.map((item) => (
               <button
                 key={item.id}
@@ -87,7 +89,7 @@ export function AddBoardDialog({ projects, existingLabels, onClose, onAdd }: Pro
                   setBranchRef(null);
                   setLabel(null);
                 }}
-                className={`block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-muted ${item.id === projectId ? "bg-primary/10 font-medium" : ""}`}
+                className={`block w-full truncate px-3 py-1.5 text-left text-[12px] hover:bg-[#f7f8fa] ${item.id === projectId ? "bg-[#eef0f3] font-semibold" : ""}`}
               >
                 {displayName(item)}
               </button>
@@ -95,13 +97,13 @@ export function AddBoardDialog({ projects, existingLabels, onClose, onAdd }: Pro
           </div>
           {project && (
             <>
-              <div className="grid grid-cols-[6rem_1fr] items-center gap-2">
+              <div className="grid grid-cols-[6rem_1fr] items-center gap-2 text-[11px]">
                 <Label htmlFor="sb-board-label">Label</Label>
-                <Input id="sb-board-label" value={shownLabel} onChange={(event) => setLabel(event.target.value)} />
+                <Input id="sb-board-label" value={shownLabel} onChange={(event) => setLabel(event.target.value)} className={INPUT} />
                 <Label htmlFor="sb-board-branch">Branch</Label>
                 <select
                   id="sb-board-branch"
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                  className="h-8 rounded-none border border-[#1d1d1f] bg-white px-2 text-[12px] text-[#1d1d1f]"
                   value={branch?.ref ?? ""}
                   onChange={(event) => setBranchRef(event.target.value)}
                   disabled={!branches.data}
@@ -112,17 +114,17 @@ export function AddBoardDialog({ projects, existingLabels, onClose, onAdd }: Pro
                   ))}
                 </select>
               </div>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-[11px]">
                 <input type="checkbox" checked={pinned} onChange={(event) => setPinned(event.target.checked)} />
                 Pin to this commit instead of following the branch
               </label>
             </>
           )}
-          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+          {error && <p className="text-[12px]" role="alert" style={{ color: "var(--sb-warning)" }}>{error}</p>}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={() => void submit()} disabled={busy || !project || !branch || !shownLabel.trim()}>{busy ? "Adding…" : "Add board"}</Button>
+        <DialogFooter className="flex-row justify-end gap-2 border-t border-[#9a9aa0] px-4 py-3">
+          <Button variant="outline" className="!rounded-none !border-[#1d1d1f] !bg-white !text-[#1d1d1f] hover:!bg-[#f7f8fa]" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button className="!rounded-none !border-[#1d1d1f] !bg-[#1d1d1f] !text-white hover:!bg-[#1d1d1f]/90" onClick={() => void submit()} disabled={busy || !project || !branch || !shownLabel.trim()}>{busy ? "Adding…" : "Add board"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

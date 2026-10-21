@@ -1,0 +1,93 @@
+/*
+ * The system-builder surfaces in the harness documents' look (mockup 11).
+ *
+ * The font files are the same ones Release Studio embeds in its PDFs, copied
+ * into `public/fonts/geist/`. The families are declared once here and only used
+ * by the schematic, board-sheet and panel components in this feature; the app
+ * chrome around them keeps its own typography.
+ */
+
+@font-face {
+  font-family: "PrismDisplay";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/geist/GeistPixel-Square.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "PrismBody";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/geist/GeistMono-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "PrismBody";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/geist/GeistMono-SemiBold.ttf") format("truetype");
+}
+
+.sb-docs {
+  --sb-ink: #1d1d1f;
+  --sb-muted: #6b6b70;
+  --sb-rule: #9a9aa0;
+  --sb-head: #eef0f3;
+  --sb-stripe: #f7f8fa;
+  --sb-sheath: #c4c8cf;
+  --sb-paper: #fbfbf9;
+  --sb-selection: #0284c7;
+  --sb-warning: #b45309;
+  color: var(--sb-ink);
+  font-family: "PrismBody", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.sb-docs-display {
+  font-family: "PrismDisplay", "PrismBody", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 400;
+}
+
+/* A floating paper card: the selection panel, the palettes and the dialogs. */
+.sb-card {
+  background: #fff;
+  border: 1.4px solid var(--sb-ink);
+  border-radius: 3px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.sb-band {
+  background: var(--sb-head);
+  border-bottom: 1px solid var(--sb-ink);
+}
+
+/* Facts and connector tables alternate a faint stripe, as the drawing does. */
+.sb-striped > *:nth-child(even) {
+  background: var(--sb-stripe);
+}
+
+.sb-ink-button {
+  border: 1.2px solid var(--sb-ink);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--sb-ink);
+}
+
+.sb-ink-button:hover:not(:disabled) {
+  background: var(--sb-stripe);
+}
+
+.sb-ink-button[aria-pressed="true"],
+.sb-ink-button[data-on="true"] {
+  background: var(--sb-ink);
+  color: #fff;
+}
+
+.sb-ghost-button {
+  border: 1.2px solid var(--sb-rule);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--sb-muted);
+}

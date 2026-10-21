@@ -7,9 +7,10 @@
  * The open tab, the pane beside it and the open B2B tabs live in the URL
  * (`?tab=…&beside=…&b2b=…`), so a link reopens the same view.
  */
+import "../system-builder.css";
+
 import { useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowUp, Boxes, Cable, Maximize, MousePointer2, Plus, Unplug } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ import { AddBoardDialog } from "./add-board-dialog";
 import { HeaderDialogs, type HeaderDialog } from "./header-dialogs";
 import { SystemHeader } from "./system-header";
 import { TABS, TAB_LABEL, harnessOfTab, mateOfTab, useSystemView, type FixedTab, type TabId } from "./system-view";
+import { BoardToolPalette, RootToolPalette } from "./tool-palette";
 import { ViewTabs } from "./view-tabs";
 
 /**
@@ -172,11 +174,11 @@ export function SystemPage({ user }: { user: User | null }) {
     if (id === "schematic" && sheetOccurrence) {
       return (
         <div className="relative flex h-full flex-col">
-          <div className="flex h-8 shrink-0 items-center gap-1.5 border-b bg-[#f5f4ef] px-3 text-xs text-zinc-600">
+          <div className="sb-docs flex h-8 shrink-0 items-center gap-1.5 border-b border-[#9a9aa0] bg-[#fbfbf9] px-3 text-xs text-[#6b6b70]">
             <button type="button" className="hover:underline" onClick={() => openSheet(null)}>{record?.name ?? "Root"}</button>
             <span>›</span>
-            <span className="font-medium text-zinc-900">{sheetOccurrence.label}</span>
-            <span className="ml-2 text-zinc-500">Alt/⌥+Backspace to leave</span>
+            <span className="font-medium text-[#1d1d1f]">{sheetOccurrence.label}</span>
+            <span className="ml-2 text-[#6b6b70]">Alt/⌥+Backspace to leave</span>
           </div>
           <div className="relative min-h-0 flex-1">
             <BoardSheetCanvas
@@ -190,11 +192,11 @@ export function SystemPage({ user }: { user: User | null }) {
               canEdit={canEdit}
               apply={apply}
               onLeave={() => openSheet(null)}
+              systemName={record?.name ?? document.name}
+              version={record?.version}
+              bundleKey={state.bundleAnswer?.key}
             />
-            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-zinc-900/95 p-1 text-zinc-100 shadow-xl" role="toolbar" aria-label="Sheet tools">
-              <ToolButton active={false} onClick={() => openSheet(null)} icon={ArrowUp} label="Up (⌥⌫)" />
-              <ToolButton active={false} onClick={() => boardCanvas.current?.fit()} icon={Maximize} label="Fit" />
-            </div>
+            <BoardToolPalette onUp={() => openSheet(null)} onFit={() => boardCanvas.current?.fit()} />
           </div>
         </div>
       );
@@ -215,20 +217,16 @@ export function SystemPage({ user }: { user: User | null }) {
             ref={canvas}
             onEnter={(occurrence) => openSheet(occurrence)}
             onOpenHarness={openHarness}
+            systemName={record?.name ?? document.name}
+            version={record?.version}
+            bundleKey={state.bundleAnswer?.key}
           />
           {single && (
             <div className="absolute right-3 top-3">
-              <SelectionPanel key={`${single}:${record?.version}`} document={document} id={single} canEdit={canEdit} apply={apply} onRemoved={() => setSelected(new Set())} projectNames={projectNames} onOpenMate={openMate} onOpenHarness={openHarness} />
+              <SelectionPanel key={`${single}:${record?.version}`} document={document} bundle={state.bundle} id={single} canEdit={canEdit} apply={apply} onRemoved={() => setSelected(new Set())} projectNames={projectNames} onOpenMate={openMate} onOpenHarness={openHarness} />
             </div>
           )}
-          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-zinc-900/95 p-1 text-zinc-100 shadow-xl" role="toolbar" aria-label="Schematic tools">
-            <ToolButton active={tool === "select"} onClick={() => setTool("select")} icon={MousePointer2} label="Select" />
-            {canEdit && <ToolButton active={tool === "mate"} onClick={() => setTool("mate")} icon={Unplug} label="Mate" />}
-            {canEdit && <ToolButton active={tool === "harness"} onClick={() => setTool("harness")} icon={Cable} label="Harness (H)" />}
-            {canEdit && <ToolButton active={false} onClick={() => setAddingBoard(true)} icon={Plus} label="Add board" />}
-            {canEdit && <ToolButton active={false} onClick={() => setPlacingSystem(true)} icon={Boxes} label="Place system" />}
-            <ToolButton active={false} onClick={() => canvas.current?.fit()} icon={Maximize} label="Fit" />
-          </div>
+          <RootToolPalette tool={tool} canEdit={canEdit} onTool={setTool} onAddBoard={() => setAddingBoard(true)} onPlaceSystem={() => setPlacingSystem(true)} onFit={() => canvas.current?.fit()} />
         </div>
       );
     }
@@ -362,19 +360,5 @@ export function SystemPage({ user }: { user: User | null }) {
         onImported={() => run(session?.reload())}
       />
     </div>
-  );
-}
-
-function ToolButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof Plus; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs ${active ? "bg-white/15 text-white" : "text-zinc-300 hover:bg-white/10"}`}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-    </button>
   );
 }

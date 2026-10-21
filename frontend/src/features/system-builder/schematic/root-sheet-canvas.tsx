@@ -13,6 +13,7 @@ import { connectRefusal, harnessOps, layoutOps, mateOps, removeOps, type Layout,
 import { normalizeRect, selectionMode, type Handle, type Point } from "./geometry";
 import { boxSelection, dragLayout, hitAt, hitOf, toggled, type Drag } from "./gestures";
 import { buildScene } from "./scene";
+import { SheetChrome } from "./sheet-frame";
 import { COLOURS, SheetSvg } from "./sheet-svg";
 import { capture, isPanButton, useSheetView } from "./use-sheet-view";
 import { panBy, toSheet } from "./viewport";
@@ -29,6 +30,10 @@ interface Props {
   apply: (ops: SystemOp[]) => Promise<unknown>;
   tool: Tool;
   onToolChange: (tool: Tool) => void;
+  /** The system's name, version and bundle key for the title block. */
+  systemName?: string;
+  version?: number;
+  bundleKey?: string;
   /** Double-click on a board: open its sheet. */
   onEnter?: (occurrence: string) => void;
   /** Double-click on a harness block opens its tab (§16.5). */
@@ -43,8 +48,10 @@ export interface RootSheetHandle {
 
 const THRESHOLD_PX = 3;
 
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
 export const RootSheetCanvas = forwardRef<RootSheetHandle, Props>(function RootSheetCanvas(
-  { document, bundle, projectNames, selected, onSelect, canEdit, apply, tool, onToolChange, onEnter, onOpenHarness },
+  { document, bundle, projectNames, selected, onSelect, canEdit, apply, tool, onToolChange, systemName, version, bundleKey, onEnter, onOpenHarness },
   handle,
 ) {
   const container = useRef<HTMLDivElement>(null);
@@ -211,6 +218,10 @@ export const RootSheetCanvas = forwardRef<RootSheetHandle, Props>(function RootS
     [canEdit, tool, selected, scene],
   );
 
+  const rootOccurrences = document.occurrences.filter((item) => !item.sheet).length;
+  const rootHarnesses = document.harnesses.filter((item) => !item.sheet).length;
+  const counts = `Root sheet · ${plural(rootOccurrences, "occurrence", "occurrences")} · ${plural(document.mates.length, "mate", "mates")} · ${plural(rootHarnesses, "harness", "harnesses")} · double-click a board to open its sheet`;
+
   const transform = `scale(${current.scale}) translate(${-current.x / 1e6} ${-current.y / 1e6})`;
 
   return (
@@ -219,7 +230,7 @@ export const RootSheetCanvas = forwardRef<RootSheetHandle, Props>(function RootS
       tabIndex={0}
       role="application"
       aria-label="System schematic, root sheet"
-      className="relative h-full w-full overflow-hidden outline-none"
+      className="sb-docs relative h-full w-full overflow-hidden outline-none"
       style={{ background: COLOURS.paper, cursor: tool === "select" ? (drag?.kind === "pan" ? "grabbing" : "default") : "crosshair", touchAction: "none" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -245,6 +256,7 @@ export const RootSheetCanvas = forwardRef<RootSheetHandle, Props>(function RootS
           <GestureOverlay scene={scene} connectFrom={connectFrom} pointer={pointer} drag={drag} kind={tool === "mate" ? "mate" : "harness"} />
         </g>
       </svg>
+      <SheetChrome system={systemName ?? document.name} version={version} sheet="Root" bundleKey={bundleKey} counts={counts} />
       <CanvasHints empty={scene.symbols.length === 0} tool={tool} connectFrom={connectFrom} document={document} />
     </div>
   );
