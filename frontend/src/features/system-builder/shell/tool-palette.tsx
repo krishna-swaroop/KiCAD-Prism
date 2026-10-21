@@ -6,7 +6,8 @@ import { ArrowUp, Boxes, Cable, Maximize, MousePointer2, Plus, Unplug } from "lu
 
 import type { Tool } from "../schematic/root-sheet-canvas";
 
-const PALETTE = "sb-docs absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-[3px] border-[1.4px] border-[#1d1d1f] bg-white p-1 shadow-lg";
+// Centred in the space left of the title block (340 px wide, 24 px in from the edge).
+const PALETTE = "sb-docs absolute z-20 bottom-4 left-[calc((100%-364px)/2)] flex -translate-x-1/2 items-center gap-0.5 rounded-[3px] border-[1.4px] border-[#1d1d1f] bg-white p-1 shadow-lg";
 
 function ToolButton({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon: typeof Plus; label: string }) {
   return (

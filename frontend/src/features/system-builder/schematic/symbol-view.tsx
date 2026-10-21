@@ -134,7 +134,10 @@ function SymbolView({ symbol, selected, selectedPorts }: { symbol: SceneSymbol; 
     <g data-symbol={symbol.id}>
       {selected && <SelectionHalo rect={rect} />}
       <rect
-        {...rect}
+        x={rect.x}
+        y={rect.y}
+        width={rect.w}
+        height={rect.h}
         rx={harness ? 1 : CARD.radius}
         fill={harness ? COLOURS.sheath : COLOURS.white}
         stroke={COLOURS.ink}

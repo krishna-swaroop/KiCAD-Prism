@@ -26,8 +26,8 @@ const KICKERS = { board: "BOARD", body: "BODY", entry: "SYSTEM" } as const;
 function Row({ label, value, warn = false }: { label: string; value: string; warn?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-2 px-3 py-[5px] text-[11.5px]">
-      <span style={{ color: "var(--sb-muted)" }}>{label}</span>
-      <span className={`truncate text-right ${warn ? "font-semibold" : ""}`} style={warn ? { color: "var(--sb-warning)" } : undefined} title={value}>{value}</span>
+      <span className="shrink-0" style={{ color: "var(--sb-muted)" }}>{label}</span>
+      <span className={`min-w-0 truncate text-right ${warn ? "font-semibold" : ""}`} style={warn ? { color: "var(--sb-warning)" } : undefined} title={value}>{value}</span>
     </div>
   );
 }
@@ -96,7 +96,7 @@ export function SelectionPanel({ document, bundle, id, canEdit, apply, onRemoved
   return (
     <div className="sb-docs sb-card w-72 text-[12px]" onPointerDown={(event) => event.stopPropagation()}>
       <div className="sb-band flex items-baseline justify-between gap-2 px-3 pb-1.5 pt-2.5">
-        <span className="sb-docs-display truncate text-[16px]">{title}</span>
+        <span className="sb-docs-display min-w-0 truncate text-[16px]">{title}</span>
         <span className="shrink-0 text-[9px] tracking-[0.08em]" style={{ color: "var(--sb-muted)" }}>{kicker}</span>
       </div>
       {source && (
@@ -108,7 +108,7 @@ export function SelectionPanel({ document, bundle, id, canEdit, apply, onRemoved
             value={draft}
             disabled={!canEdit}
             aria-label="Label"
-            className="h-7 rounded-none border-[#1d1d1f] bg-white px-2 text-[12px] text-[#1d1d1f] focus-visible:border-[#1d1d1f] focus-visible:ring-0"
+            className="h-7 rounded-none border-[#1d1d1f] bg-white px-2 dark:bg-white text-[12px] text-[#1d1d1f] focus-visible:border-[#1d1d1f] focus-visible:ring-0"
             onChange={(event) => setDraft(event.target.value)}
             onBlur={rename}
             onKeyDown={(event) => {

@@ -45,7 +45,7 @@ export function GroupPopover({ connector, pins, refusal, onGroup, onCancel }: Pr
           autoFocus
           value={name}
           aria-label="Sub-port name"
-          className="h-7 rounded-none border-[#1d1d1f] bg-white px-2 text-[12px] focus-visible:border-[#1d1d1f] focus-visible:ring-0"
+          className="h-7 rounded-none border-[#1d1d1f] bg-white px-2 text-[12px] text-[#1d1d1f] dark:bg-white focus-visible:border-[#1d1d1f] focus-visible:ring-0"
           onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") submit(event.shiftKey);

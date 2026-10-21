@@ -222,7 +222,7 @@ export function SystemPage({ user }: { user: User | null }) {
             bundleKey={state.bundleAnswer?.key}
           />
           {single && (
-            <div className="absolute right-3 top-3">
+            <div className="absolute right-3 top-3 z-20">
               <SelectionPanel key={`${single}:${record?.version}`} document={document} bundle={state.bundle} id={single} canEdit={canEdit} apply={apply} onRemoved={() => setSelected(new Set())} projectNames={projectNames} onOpenMate={openMate} onOpenHarness={openHarness} />
             </div>
           )}

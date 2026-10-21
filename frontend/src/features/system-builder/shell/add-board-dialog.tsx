@@ -27,7 +27,7 @@ export function freshLabel(base: string, taken: readonly string[]): string {
   for (let index = 2; ; index += 1) if (!used.has(`${base} ${index}`)) return `${base} ${index}`;
 }
 
-const INPUT = "h-8 rounded-none border-[#1d1d1f] bg-white px-2 text-[12px] text-[#1d1d1f] focus-visible:border-[#1d1d1f] focus-visible:ring-0";
+const INPUT = "h-8 rounded-none border-[#1d1d1f] bg-white dark:bg-white px-2 text-[12px] text-[#1d1d1f] focus-visible:border-[#1d1d1f] focus-visible:ring-0";
 
 /** Mounted only while open. */
 export function AddBoardDialog({ projects, existingLabels, onClose, onAdd }: Props) {
