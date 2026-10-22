@@ -148,7 +148,7 @@ fn current_kicad_formatting_quoting_and_escaping_vectors_are_preserved() {
 }
 
 #[test]
-fn expansion_matches_python_alias_group_and_vector_semantics() {
+fn expansion_matches_kicad_alias_group_and_vector_semantics() {
     let limits = SchematicBusExpansionLimits::default();
     let aliases = HashMap::from([
         (
@@ -162,11 +162,10 @@ fn expansion_matches_python_alias_group_and_vector_semantics() {
         ("D[0..2]", vec!["D0", "D1", "D2"]),
         ("{D[0..1]+,CLK}", vec!["D0+", "D1+", "CLK"]),
         ("MIX{A,B}", vec!["MIX.A", "MIX.B"]),
-        ("OUTER", vec!["X0", "X1", "Y", "Z"]),
-        (
-            "TOP{OUTER,CLK}",
-            vec!["TOP.X0", "TOP.X1", "TOP.Y", "TOP.Z", "TOP.CLK"],
-        ),
+        ("INNER", vec!["X0", "X1", "Y"]),
+        // An alias member naming another alias is a signal name (KiCad 10.0.7).
+        ("OUTER", vec!["INNER", "Z"]),
+        ("TOP{OUTER,CLK}", vec!["TOP.INNER", "TOP.Z", "TOP.CLK"]),
         (
             "BUS{\"Data Bus\"[1..2] PLAIN}",
             vec!["BUS.Data Bus1", "BUS.Data Bus2", "BUS.PLAIN"],
@@ -277,14 +276,27 @@ fn group_alias_work_and_depth_limits_are_independent() {
         ("A".to_owned(), vec!["B".to_owned()]),
         ("B".to_owned(), vec!["C".to_owned()]),
         ("C".to_owned(), vec!["A".to_owned()]),
+        (
+            "SELF".to_owned(),
+            vec!["SELF".to_owned(), "SELF2".to_owned()],
+        ),
     ]);
-    let cycle = expand_schematic_bus_label("A", &aliases, defaults)
-        .expect_err("alias cycle must fail closed");
+    assert_eq!(
+        expand_schematic_bus_label("A", &aliases, defaults).expect("alias members are names"),
+        ["B"]
+    );
+    assert_eq!(
+        expand_schematic_bus_label("SELF", &aliases, defaults).expect("self-named member"),
+        ["SELF", "SELF2"]
+    );
+    let grouped = HashMap::from([("A".to_owned(), vec!["X{A}".to_owned()])]);
+    let cycle = expand_schematic_bus_label("A", &grouped, defaults)
+        .expect_err("a group re-entering its alias must fail closed");
     assert_eq!(cycle.kind, SchematicBusExpansionErrorKind::AliasCycle);
 
     let deep = HashMap::from([
-        ("A".to_owned(), vec!["B".to_owned()]),
-        ("B".to_owned(), vec!["C".to_owned()]),
+        ("A".to_owned(), vec!["X{B}".to_owned()]),
+        ("B".to_owned(), vec!["Y{C}".to_owned()]),
         ("C".to_owned(), vec!["leaf".to_owned()]),
     ]);
     let depth = expand_schematic_bus_label(

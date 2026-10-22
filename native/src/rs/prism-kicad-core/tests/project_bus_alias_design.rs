@@ -117,17 +117,20 @@ fn project_aliases_override_legacy_and_keep_unrelated_legacy_aliases() {
 }
 
 #[test]
-fn project_origin_alias_cycle_fails_closed() {
-    let bundle = modified_fixture_bundle(
-        serde_json::json!({"CTRL": ["SECOND"], "SECOND": ["CTRL"]}),
+fn project_alias_members_naming_aliases_are_signal_names() {
+    // KiCad 10.0.7 netlists of this fixture: only CTRL_B stays bused across the
+    // hierarchy when CTRL's other member names an alias, cyclic or not.
+    let nested = modified_fixture_bundle(
+        serde_json::json!({"CTRL": ["INNER", "CTRL_B"], "INNER": ["CTRL_A"]}),
         &[],
     );
-    let index = SchematicBundleIndex::build(&bundle, SchematicBundleLimits::default())
-        .expect("cyclic aliases remain valid project JSON");
-    let error = build_schematic_scalar_design_nets(&index, 1, Default::default())
-        .expect_err("project alias cycle");
-    assert_eq!(error.kind, SourceBundleErrorKind::Schematic);
-    assert!(error.message.contains("bus alias cycle"));
+    assert_eq!(merged_net_count(&nested), 1);
+
+    let cyclic = modified_fixture_bundle(
+        serde_json::json!({"CTRL": ["SECOND", "CTRL_B"], "SECOND": ["CTRL"]}),
+        &[],
+    );
+    assert_eq!(merged_net_count(&cyclic), 1);
 }
 
 fn merged_net_count(bundle: &SourceBundle) -> usize {

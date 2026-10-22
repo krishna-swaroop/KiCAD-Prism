@@ -159,7 +159,8 @@ where
                     text,
                     qualifier,
                     depth,
-                } => self.expand(text, qualifier, depth)?,
+                    alias_member,
+                } => self.expand(text, qualifier, depth, alias_member)?,
             }
         }
         Ok(self.output)
@@ -170,12 +171,21 @@ where
         text: String,
         qualifier: String,
         depth: usize,
+        alias_member: bool,
     ) -> Result<(), SchematicBusExpansionError> {
         if depth > self.limits.max_nesting_depth {
             return Err(resource_error("bus expansion nesting exceeds its limit"));
         }
         check_input(&text, self.limits)?;
-        if let Some((alias_name, members)) = self.aliases.get_key_value(text.as_str()) {
+        // An alias's own members are signal names, never further aliases: KiCad
+        // 10 reads `FAN_TACH: [FAN_TACH, FAN2_TACH]` as the signal FAN_TACH and
+        // leaves a member naming another alias unexpanded (a cycle included).
+        let alias = if alias_member {
+            None
+        } else {
+            self.aliases.get_key_value(text.as_str())
+        };
+        if let Some((alias_name, members)) = alias {
             let alias_name = alias_name.borrow();
             let members = members.as_ref();
             if members.is_empty() {
@@ -197,6 +207,7 @@ where
                     text: member.clone(),
                     qualifier: child_qualifier,
                     depth: child_depth,
+                    alias_member: true,
                 })?;
             }
             return Ok(());
@@ -217,6 +228,7 @@ where
                     text: member,
                     qualifier: child_qualifier,
                     depth: child_depth,
+                    alias_member: false,
                 })?;
             }
             return Ok(());
@@ -294,6 +306,7 @@ where
             text: text.to_owned(),
             qualifier: qualifier.to_owned(),
             depth,
+            alias_member: false,
         })
     }
 
@@ -395,6 +408,7 @@ enum ExpansionTask<'a> {
         text: String,
         qualifier: String,
         depth: usize,
+        alias_member: bool,
     },
     LeaveAlias(&'a str),
 }
