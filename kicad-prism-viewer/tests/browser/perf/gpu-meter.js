@@ -64,13 +64,13 @@
       bump("draws");
       bump("vertices", indexCount * instanceCount);
     });
-    wrap(proto, "drawIndirect", () => { bump("draws"); bump("indirectDraws"); });
-    wrap(proto, "drawIndexedIndirect", () => { bump("draws"); bump("indirectDraws"); });
+    wrap(proto, "drawIndirect", () => { meter.pendingDraws += 1; bump("draws"); bump("indirectDraws"); });
+    wrap(proto, "drawIndexedIndirect", () => { meter.pendingDraws += 1; bump("draws"); bump("indirectDraws"); });
     wrap(proto, "setPipeline", () => bump("pipelines"));
     wrap(proto, "setBindGroup", () => bump("bindGroupsSet"));
     wrap(proto, "setStencilReference", () => bump("stencilRefs"));
     wrap(proto, "setScissorRect", () => bump("scissors"));
-    wrap(proto, "executeBundles", (bundles) => bump("bundles", bundles?.length || 0));
+    wrap(proto, "executeBundles", (bundles) => { meter.pendingDraws += bundles?.length || 0; bump("bundles", bundles?.length || 0); });
   }
   wrap(globalThis.GPUQueue?.prototype, "writeBuffer", (buffer, offset, data, dataOffset = 0, size) => {
     bump("writeBuffers");
@@ -101,6 +101,22 @@
         return native(...args);
       };
     }
+    // Live render-attachment bytes (textures with RENDER_ATTACHMENT usage), by label.
+    const BYTES = { "depth32float-stencil8": 8, depth32float: 4, rg32uint: 8, rgba16float: 8, r32float: 4, rg32float: 8, rgba32float: 16 };
+    meter.attachments = new Map();
+    const createTexture = device.createTexture.bind(device);
+    device.createTexture = (desc) => {
+      const texture = createTexture(desc);
+      if (desc.usage & GPUTextureUsage.RENDER_ATTACHMENT) {
+        const [w, h = 1] = Array.isArray(desc.size) ? desc.size : [desc.size.width, desc.size.height];
+        const bytes = w * h * (BYTES[desc.format] ?? 4) * (desc.sampleCount || 1);
+        meter.attachments.set(texture, { label: desc.label || desc.format, w, h, samples: desc.sampleCount || 1, format: desc.format, bytes });
+        const destroy = texture.destroy.bind(texture);
+        texture.destroy = () => { meter.attachments.delete(texture); destroy(); };
+      }
+      return texture;
+    };
+    meter.attachmentReport = () => [...meter.attachments.values()];
     meter.timestamps = device.features.has("timestamp-query");
     const CAPACITY = 1024;
     const querySet = meter.timestamps ? device.createQuerySet({ type: "timestamp", count: CAPACITY }) : null;
@@ -174,7 +190,7 @@
     if (meter.wanted) {
       const before = meter.drawnFrames;
       const result = callback(at);
-      if (meter.drawnFrames !== before) grab();
+      if (meter.drawnFrames !== before) { try { grab(); } catch (error) { meter.captureError = String(error); } }
       return result;
     }
     if (!meter.enabled) return callback(at);

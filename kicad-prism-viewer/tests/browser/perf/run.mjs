@@ -56,6 +56,10 @@ const CASES = [
   // As Simulation Studio shows a run: the copper alone, exploded, coloured by a field.
   ["field-exploded", "el.setShowComponents(false); el.setShowBoard(false); el.setSeparation(1); el.setAnalyticOverlay(window.__fields.a)"],
   ["field-relief", "el.setSeparation(0); el.setAnalyticRelief({})"],
+  // Spike: the solid board with its parts hidden, near and far (what part geometry costs).
+  ["solid-noparts", "el.setAnalyticRelief(null); el.setAnalyticOverlay(null); el.setShowBoard(true); el.setSeparation(0); el.setShowComponents(false)"],
+  ["solid-far-noparts", "", [0.5, 0.5, -6]],
+  ["solid-parts-again", "el.setShowComponents(true)"],
 ];
 
 // Captured views (--capture): name and setup code; each is drawn from the loaded camera, settled.
@@ -264,6 +268,7 @@ async function openViewer(server, build, boardName) {
   const { width, height, scale } = options;
   const page = await chrome.newPage({ width, height, deviceScaleFactor: scale });
   await page.send("Page.addScriptToEvaluateOnNewDocument", { source: readFileSync(join(here, "gpu-meter.js"), "utf8") });
+  if (options.msaa) await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `window.__prismSampleCount = ${options.msaa};` });
   await page.goto(`${server.origin}/page.html?build=${encodeURIComponent(build)}`);
   await waitFor(page, "window.__loaded === true", 60000, "element module");
   const mounted = JSON.parse(await page.evaluate(mountSource()));
@@ -303,6 +308,8 @@ async function measure(server, build, boardName) {
       await page.evaluate("el.setAnalyticOverlay(null); el.setShowBoard(true); el.setShowComponents(true); el.setSeparation(0)");
       out.idle.push({ name: "board, net highlighted", ...JSON.parse(await page.evaluate("window.__idle('await window.__highlight(0.5, 0.5)')")) });
     }
+    out.attachments = JSON.parse(await page.evaluate("JSON.stringify(window.__gpuMeter.attachmentReport())"));
+    out.attachmentMB = +(out.attachments.reduce((a, t) => a + t.bytes, 0) / 1048576).toFixed(1);
     out.analyticGpuMB = JSON.parse(await page.evaluate("JSON.stringify(+(el.analyticStats().gpuMemoryBytes / 1048576).toFixed(1))"));
     if (page.errors?.length) out.pageErrors = [...new Set(page.errors)].slice(0, 5);
     return out;
@@ -465,7 +472,7 @@ function pageHelpers() {
 }
 
 function report(board, build, result) {
-  console.log(`\n== ${board} / ${build}: ready ${result.readyMs} ms, timestamps ${result.timestamps}, analytic GPU ${result.analyticGpuMB} MB${result.pageErrors ? `, PAGE ERRORS ${result.pageErrors.join(" | ")}` : ""}`);
+  console.log(`\n== ${board} / ${build}: ready ${result.readyMs} ms, timestamps ${result.timestamps}, analytic GPU ${result.analyticGpuMB} MB, attachments ${result.attachmentMB} MB${result.pageErrors ? `, PAGE ERRORS ${result.pageErrors.join(" | ")}` : ""}`);
   console.log("case               gpu p50/p95   cpu p50/p95   int p95  draws  stencil scissor  vertices    wBuf  upKB  new | after release: ms frames gpu-ms");
   for (const c of result.cases) {
     console.log(`${c.name.padEnd(18)} ${`${c.gpuP50}/${c.gpuP95}`.padStart(11)}   ${`${c.cpuP50}/${c.cpuP95}`.padStart(11)}   ${String(c.intervalP95).padStart(6)} ${String(c.draws).padStart(6)} ${String(c.stencilRefs).padStart(7)} ${String(c.scissors).padStart(7)} ${String(c.vertices).padStart(9)} ${String(c.writeBuffers).padStart(7)} ${String(c.uploadKB).padStart(5)} ${String(c.created).padStart(4)} | ${c.settleMs} ${c.settleFrames} ${c.settleGpuMs}`);
@@ -523,6 +530,7 @@ function parseArgs(argv) {
     else if (flag === "--out") parsed.out = argv[++i];
     else if (flag === "--headed") parsed.headed = true;
     else if (flag === "--capture") parsed.capture = true;
+    else if (flag === "--msaa") parsed.msaa = Number(argv[++i]);
     else throw new Error(`unknown option ${flag}`);
   }
   if (!parsed.boards.length) throw new Error("--board name=<analytic bundle dir> is required");

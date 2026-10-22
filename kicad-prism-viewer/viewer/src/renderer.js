@@ -839,7 +839,7 @@ export const BASE_SHADERS = Object.freeze({
 const FLAT_LAYER_OFFSETS = new Float32Array(256);
 
 export class Renderer {
-  static async create(canvas, { sampleCount = 4 } = {}) {
+  static async create(canvas, { sampleCount = globalThis.__prismSampleCount ?? 4 } = {}) {
     if (!navigator.gpu) throw new Error("WebGPU is unavailable in this browser");
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
     if (!adapter) throw new Error("No WebGPU adapter is available");
