@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path, PurePosixPath
@@ -25,6 +26,7 @@ from app.services import (
     semantic_visualizer_service,
 )
 from app.services.kicad_monkey_design_adapter import KiCadMonkeyDesign
+from app.services import semantic_index_board
 
 
 SCHEMA = "prism.semantic_index_a0"
@@ -514,47 +516,6 @@ def _canonical_fields(component: dict[str, Any]) -> dict[str, str]:
     return {**required, **extras}
 
 
-def _property_map(footprint: object) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for prop in getattr(footprint, "properties", ()) or ():
-        name = _string(getattr(prop, "name", ""))
-        if name:
-            result[name] = _string(getattr(prop, "value", ""))
-    return result
-
-
-def _net_table(pcb: object) -> object | None:
-    """Snapshot the board's net table, when the installed kicad-monkey has one.
-
-    Without it every ``resolve_net_name`` call rebuilds the whole mapping, so
-    projecting a board costs O(elements x nets). Older releases lack
-    ``net_table``; there the per-call path below still works, just slowly.
-    """
-
-    build = getattr(pcb, "net_table", None)
-    if not callable(build):
-        return None
-    try:
-        return build()
-    except Exception:  # pragma: no cover - fall back to per-call resolution
-        return None
-
-
-def _net_name(pcb: object, item: object, net_table: object | None = None) -> str:
-    net = getattr(item, "net", None)
-    if net_table is not None:
-        return _string(net_table.name_of(net))
-    resolver = getattr(pcb, "resolve_net_name", None)
-    if callable(resolver):
-        return _string(resolver(net))
-    return _string(getattr(net, "name", ""))
-
-
-def _net_code(item: object) -> int | None:
-    ordinal = getattr(getattr(item, "net", None), "ordinal", None)
-    return int(ordinal) if isinstance(ordinal, int) else None
-
-
 def _relative_schematic_page(project_file: Path, source_path: object) -> str:
     if source_path is None:
         return ""
@@ -823,18 +784,49 @@ def build_semantic_index(
         lambda: KiCadMonkeyDesign(KiCadDesign.from_project_file(project_file), board=pcb),
     )
     netlist = timed("compile-netlist", design.netlist)
-    # kicad_design_to_json materializes PnP data and therefore accesses the
-    # lazily parsed board. Resolve it explicitly so benchmark output separates
-    # the parser cost from the much smaller JSON projection cost.
-    pcb = timed("load-pcb", design.board) if include_pcb else None
+    # The index reads only item identities and nets from the board (see
+    # semantic_index_board). A board the caller already parsed provides them;
+    # otherwise prism-bundle reads them in about a second, and only without it
+    # is the board parsed here (tens of seconds and gigabytes on a large board).
+    board_refs = None
+    board_path = getattr(design.native, "pcb_path", None)
+    footprints_board = None
+    scratch = None
+    if include_pcb and pcb is not None:
+        board_refs = timed("project-board-refs", lambda: semantic_index_board.refs_from_pcb(pcb))
+    elif include_pcb:
+        # Removed once parsed below, or by its finalizer if the build fails first.
+        scratch = tempfile.TemporaryDirectory(prefix="semantic-index-board-")
+        footprints_board = Path(scratch.name) / "footprints.kicad_pcb" if include_assembly else None
+        board_refs = timed(
+            "read-board-refs",
+            lambda: semantic_index_board.refs_from_tool(Path(board_path), footprints_board) if board_path else None,
+        )
+        if board_refs is None:
+            footprints_board = None
+            parsed = timed("load-pcb", design.board)
+            board_refs = semantic_index_board.refs_from_pcb(parsed) if parsed is not None else None
 
+    # The index never reads the design's placement (PnP) section, which is the
+    # only part of the projection that needs the board.
     design_payload = timed(
         "materialize-design-json",
-        lambda: design.to_json(include_indexes=True, include_pcb=include_pcb),
+        lambda: design.to_json(include_indexes=True, include_pcb=include_pcb and pcb is not None),
         components=len(getattr(netlist, "components", ()) or ()),
         nets=len(getattr(netlist, "nets", ()) or ()),
         includePcb=include_pcb,
     )
+    if footprints_board is not None and footprints_board.is_file():
+        # The variant assembly reads footprints' properties, attributes and
+        # variant records through the design's board; a model of the
+        # footprints-only board answers that at a fraction of the parse.
+        # The real board path stays for its diagnostics.
+        design.native._pcb = timed(
+            "load-footprints-board", lambda: semantic_index_board.footprints_board_model(footprints_board)
+        )
+        design.native.pcb_path = board_path
+    if scratch is not None:
+        scratch.cleanup()
     sheet_instances, buses, schematic_placements = timed(
         "project-schematic-instances",
         lambda: _schematic_semantic_projection(design.native, project_file),
@@ -1038,10 +1030,7 @@ def build_semantic_index(
 
     pcb_started_ns = time.perf_counter_ns()
     pcb_cpu_started_ns = time.thread_time_ns()
-    if pcb is not None:
-        # One snapshot for the whole board: resolving each element against the
-        # board rebuilds the net mapping every time.
-        net_table = _net_table(pcb)
+    if board_refs is not None:
         split_nets = semantic_index_nets.SplitNetClaims(net_by_name)
 
         def ensure_pcb_net(name: str, code: int | None) -> tuple[dict[str, Any], int] | tuple[None, None]:
@@ -1069,21 +1058,19 @@ def build_semantic_index(
                 indexes["netByNetCode"][str(code)] = index
             return entry, index
 
-        for footprint in getattr(pcb, "footprints", ()) or ():
-            properties = _property_map(footprint)
-            reference = properties.get("Reference", "")
-            footprint_uuid = _string(getattr(footprint, "uuid", ""))
+        for footprint in board_refs["footprints"]:
+            reference = _string(footprint.get("reference"))
+            footprint_uuid = _string(footprint.get("uuid"))
             component = component_by_reference.get(reference)
             if component is not None:
                 component["pcbRefs"].append({"footprintUuid": footprint_uuid})
                 component_index = indexes["componentByReference"].get(reference)
                 if footprint_uuid and component_index is not None:
                     indexes["componentByPcbFootprintUuid"][footprint_uuid] = component_index
-            for pad in getattr(footprint, "pads", ()) or ():
-                pad_uuid = _string(getattr(pad, "uuid", ""))
-                pin_number = _string(getattr(pad, "number", ""))
-                name = _net_name(pcb, pad, net_table)
-                code = _net_code(pad)
+            for raw_pad_uuid, raw_pin_number, (code, raw_name) in footprint["pads"]:
+                pad_uuid = _string(raw_pad_uuid)
+                pin_number = _string(raw_pin_number)
+                name = _string(raw_name)
                 net_entry, net_index = ensure_pcb_net(name, code)
                 if net_entry is not None and net_index is not None and pad_uuid:
                     net_entry["pcbRefs"][0]["padUuids"].append(pad_uuid)
@@ -1120,11 +1107,9 @@ def build_semantic_index(
             ("vias", "viaUuids"),
             ("zones", "zoneUuids"),
         ):
-            for item in getattr(pcb, collection_name, ()) or ():
-                source_uuid = _string(getattr(item, "uuid", ""))
-                name = _net_name(pcb, item, net_table)
-                code = _net_code(item)
-                net_entry, net_index = ensure_pcb_net(name, code)
+            for raw_uuid, (code, raw_name) in board_refs[collection_name]:
+                source_uuid = _string(raw_uuid)
+                net_entry, net_index = ensure_pcb_net(_string(raw_name), code)
                 if net_entry is None or net_index is None or not source_uuid:
                     continue
                 net_entry["pcbRefs"][0][target_key].append(source_uuid)
