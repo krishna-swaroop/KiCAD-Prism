@@ -1,0 +1,220 @@
+{
+ "nets": [
+  {
+   "who": "regex",
+   "n": 21,
+   "accuracy": 0.476,
+   "per_role": {
+    "ground": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_control": {
+     "n": 8,
+     "precision": null,
+     "recall": 0.0
+    },
+    "signal": {
+     "n": 5,
+     "precision": 0.312,
+     "recall": 1.0
+    },
+    "supply_rail": {
+     "n": 7,
+     "precision": 1.0,
+     "recall": 0.571
+    }
+   },
+   "errors": [
+    "Net-(D1-A): power_control -> signal",
+    "Net-(D1-K): supply_rail -> signal",
+    "Net-(Q3A-D1): supply_rail -> signal",
+    "Net-(Q3A-G1): power_control -> signal",
+    "Net-(U1-ISNK_COARSE): power_control -> signal",
+    "Net-(U1-ISNK_FINE): power_control -> signal",
+    "Net-(U1-SAFE_PWR_EN): power_control -> signal",
+    "Net-(U1-VBUS_FET_EN): power_control -> signal",
+    "Net-(U1-VBUS_MAX): power_control -> signal",
+    "Net-(U1-VBUS_MIN): power_control -> signal",
+    "VCC_USB_PD_OUT: supply_rail -> signal"
+   ]
+  },
+  {
+   "who": "model",
+   "n": 21,
+   "accuracy": 0.571,
+   "per_role": {
+    "ground": {
+     "n": 1,
+     "precision": 0.2,
+     "recall": 1.0
+    },
+    "power_control": {
+     "n": 8,
+     "precision": 1.0,
+     "recall": 0.375
+    },
+    "signal": {
+     "n": 5,
+     "precision": 0.375,
+     "recall": 0.6
+    },
+    "supply_rail": {
+     "n": 7,
+     "precision": 1.0,
+     "recall": 0.714
+    }
+   },
+   "errors": [
+    "Net-(D1-K): supply_rail -> signal",
+    "Net-(J1-CC1): signal -> ground",
+    "Net-(J1-CC2): signal -> ground",
+    "Net-(Q3A-D1): supply_rail -> ground",
+    "Net-(Q3A-G1): power_control -> ground",
+    "Net-(U1-ISNK_COARSE): power_control -> signal",
+    "Net-(U1-ISNK_FINE): power_control -> signal",
+    "Net-(U1-VBUS_MAX): power_control -> signal",
+    "Net-(U1-VBUS_MIN): power_control -> signal"
+   ],
+   "auto@0.5": {
+    "share": 0.476,
+    "accuracy": 0.8
+   },
+   "auto@0.7": {
+    "share": 0.238,
+    "accuracy": 0.6
+   },
+   "auto@0.9": {
+    "share": 0.048,
+    "accuracy": 1.0
+   }
+  }
+ ],
+ "parts": [
+  {
+   "who": "regex",
+   "n": 6,
+   "accuracy": 0.5,
+   "per_role": {
+    "load": {
+     "n": 1,
+     "precision": null,
+     "recall": 0.0
+    },
+    "other": {
+     "n": 1,
+     "precision": 0.333,
+     "recall": 1.0
+    },
+    "power_input": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_switch": {
+     "n": 2,
+     "precision": null,
+     "recall": 0.0
+    },
+    "signal_connector": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "Q1: power_switch -> other",
+    "Q3: power_switch -> other",
+    "U1: load -> switching_regulator"
+   ]
+  },
+  {
+   "who": "model",
+   "n": 6,
+   "accuracy": 0.833,
+   "per_role": {
+    "load": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "other": {
+     "n": 1,
+     "precision": null,
+     "recall": 0.0
+    },
+    "power_input": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_switch": {
+     "n": 2,
+     "precision": 0.667,
+     "recall": 1.0
+    },
+    "signal_connector": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "Q2: other -> power_switch"
+   ],
+   "auto@0.5": {
+    "share": 0.667,
+    "accuracy": 0.75
+   },
+   "auto@0.7": {
+    "share": 0.667,
+    "accuracy": 0.75
+   },
+   "auto@0.9": {
+    "share": 0.0,
+    "accuracy": 0.0
+   }
+  }
+ ],
+ "unnamed_rail_voltages": {
+  "who": "model",
+  "n": 3,
+  "accuracy": 0.667,
+  "per_role": {
+   "1.8": {
+    "n": 1,
+    "precision": null,
+    "recall": 0.0
+   },
+   "5.0": {
+    "n": 0,
+    "precision": null,
+    "recall": null
+   },
+   "unknown": {
+    "n": 2,
+    "precision": 0.667,
+    "recall": 1.0
+   }
+  },
+  "errors": [
+   "Net-(U1-VCCD): 1.8 -> unknown"
+  ]
+ },
+ "label_mix": {
+  "nets": {
+   "ground": 1,
+   "power_control": 8,
+   "supply_rail": 7,
+   "signal": 5
+  },
+  "parts": {
+   "power_input": 1,
+   "signal_connector": 1,
+   "power_switch": 2,
+   "other": 1,
+   "load": 1
+  }
+ }
+}

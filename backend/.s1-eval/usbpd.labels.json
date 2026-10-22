@@ -1,0 +1,56 @@
+{
+ "nets": {
+  "GND": "ground",
+  "Net-(D1-A)": "power_control",
+  "Net-(D1-K)": "supply_rail",
+  "Net-(J1-CC1)": "signal",
+  "Net-(J1-CC2)": "signal",
+  "Net-(Q2-D)": "signal",
+  "Net-(Q2-G)": "signal",
+  "Net-(Q3A-D1)": "supply_rail",
+  "Net-(Q3A-G1)": "power_control",
+  "Net-(U1-FLIP)": "signal",
+  "Net-(U1-ISNK_COARSE)": "power_control",
+  "Net-(U1-ISNK_FINE)": "power_control",
+  "Net-(U1-SAFE_PWR_EN)": "power_control",
+  "Net-(U1-VBUS_FET_EN)": "power_control",
+  "Net-(U1-VBUS_MAX)": "power_control",
+  "Net-(U1-VBUS_MIN)": "power_control",
+  "Net-(U1-VCCD)": "supply_rail",
+  "V3P3": "supply_rail",
+  "VCC_USB_PD_IN": "supply_rail",
+  "VCC_USB_PD_OUT": "supply_rail",
+  "VCC_USB_SAFE_5V": "supply_rail"
+ },
+ "parts": {
+  "J1": "power_input",
+  "J2": "signal_connector",
+  "Q1": "power_switch",
+  "Q2": "other",
+  "Q3": "power_switch",
+  "U1": "load"
+ },
+ "voltages": {
+  "Net-(D1-K)": "unknown",
+  "Net-(Q3A-D1)": "5.0",
+  "Net-(U1-VCCD)": "1.8",
+  "V3P3": "3.3",
+  "VCC_USB_PD_IN": "unknown",
+  "VCC_USB_PD_OUT": "unknown",
+  "VCC_USB_SAFE_5V": "5.0"
+ },
+ "uncertain": {
+  "Net-(D1-K)": "common-source midpoint of back-to-back PFET pair Q1; carries VBUS load current but is an internal switch node (also gate-zener reference)",
+  "Net-(Q3A-D1)": "midpoint of back-to-back PFET pair Q3 on the safe-5V path; carries current, not a usable rail",
+  "Net-(Q2-G)": "CYPD3177 FAULT output driving LED transistor; could be read as power-good/fault (power_control)",
+  "Net-(U1-ISNK_COARSE)": "resistor-divider config input setting requested sink current; config strap vs power_control",
+  "Net-(U1-ISNK_FINE)": "resistor-divider config input setting requested sink current; config strap vs power_control",
+  "Net-(U1-VBUS_MAX)": "resistor-divider config input setting max requested VBUS; config strap vs power_control",
+  "Net-(U1-VBUS_MIN)": "resistor-divider config input setting min requested VBUS; config strap vs power_control",
+  "Net-(U1-VCCD)": "CYPD3177 internal 1.8V core LDO output, decoupling cap only",
+  "VCC_USB_SAFE_5V": "switched safe-5V output that only feeds indicator LED D3",
+  "J2": "output terminal block: PD power leaves the board here (signal_connector per rules)",
+  "U1": "CYPD3177 negotiates and drives external FETs Q1/Q3 via VBUS_FET_EN/SAFE_PWR_EN; VBUS itself does not pass through U1, so load",
+  "Q2": "small-signal NFET driving fault LED"
+ }
+}

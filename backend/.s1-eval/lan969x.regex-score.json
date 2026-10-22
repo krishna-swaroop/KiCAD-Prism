@@ -1,0 +1,105 @@
+{
+ "nets": [
+  {
+   "who": "regex",
+   "n": 262,
+   "accuracy": 0.95,
+   "per_role": {
+    "ground": {
+     "n": 2,
+     "precision": 1.0,
+     "recall": 0.5
+    },
+    "power_control": {
+     "n": 13,
+     "precision": 1.0,
+     "recall": 0.385
+    },
+    "signal": {
+     "n": 221,
+     "precision": 0.957,
+     "recall": 0.995
+    },
+    "supply_rail": {
+     "n": 21,
+     "precision": 0.9,
+     "recall": 0.857
+    },
+    "switch_node": {
+     "n": 5,
+     "precision": 0.833,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "/LAN969x GPIO/eMMC/EMMC_VDDI: supply_rail -> signal",
+    "/USB0_OC_DET: power_control -> signal",
+    "/USB0_VBUS: supply_rail -> signal",
+    "Net-(U14-BST): power_control -> signal",
+    "Net-(U14-FB): power_control -> signal",
+    "Net-(U14-VCC): supply_rail -> switch_node",
+    "Net-(U1A-RESERVED_5): signal -> supply_rail",
+    "Net-(U1E-VSSPLL): ground -> supply_rail",
+    "Net-(U3-EN): power_control -> signal",
+    "Net-(U3-FB): power_control -> signal",
+    "Net-(U3-MODE): power_control -> signal",
+    "Net-(U8-FB): power_control -> signal",
+    "Net-(U9-FB): power_control -> signal"
+   ]
+  }
+ ],
+ "parts": [
+  {
+   "who": "regex",
+   "n": 18,
+   "accuracy": 0.889,
+   "per_role": {
+    "linear_regulator": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "load": {
+     "n": 11,
+     "precision": 1.0,
+     "recall": 0.818
+    },
+    "other": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_input": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "switching_regulator": {
+     "n": 4,
+     "precision": 0.667,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "U4: load -> switching_regulator",
+    "U7: load -> switching_regulator"
+   ]
+  }
+ ],
+ "label_mix": {
+  "nets": {
+   "supply_rail": 21,
+   "signal": 221,
+   "switch_node": 5,
+   "power_control": 13,
+   "ground": 2
+  },
+  "parts": {
+   "power_input": 1,
+   "other": 1,
+   "load": 11,
+   "switching_regulator": 4,
+   "linear_regulator": 1
+  }
+ }
+}

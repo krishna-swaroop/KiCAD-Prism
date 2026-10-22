@@ -1,0 +1,3055 @@
+{
+ "nets": {
+  "+0V9": {
+   "net": "+0V9",
+   "pads": 63,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDD (power_in) x23"
+   ],
+   "C parts": [
+    "C105 33p to Net-(U14-FB)",
+    "C110 22u to GND",
+    "C111 22u to GND",
+    "C112 22u to GND",
+    "C113 22u to GND",
+    "C114 22u to GND",
+    "... 28 more"
+   ],
+   "FB parts": [
+    "FB2 110R @ 100MHz to VDDHS",
+    "FB3 110R @ 100MHz to VDDHV",
+    "FB4 110R @ 100MHz to VDDHV_PCIE",
+    "FB5 110R @ 100MHz to VDDHS_PCIE"
+   ],
+   "L parts": [
+    "L1 470nH to LX_0V9"
+   ],
+   "R parts": [
+    "R35 10K to Net-(U14-FB)"
+   ]
+  },
+  "+1V0_ENET": {
+   "net": "+1V0_ENET",
+   "pads": 11,
+   "pins": [
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: DVDD10 (power_in)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: AVDD10 (power_in) x3"
+   ],
+   "C parts": [
+    "C138 100n to GND",
+    "C139 100n to GND",
+    "C140 100n to GND",
+    "C143 100n to GND",
+    "C146 100n to GND",
+    "C149 4.7u to GND"
+   ],
+   "L parts": [
+    "L5 4.7uH to Net-(U4-REG_OUT)"
+   ]
+  },
+  "+1V2": {
+   "net": "+1V2",
+   "pads": 70,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDIODDR (power_in) x10",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: VDDQ (power_in) x10",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: VDD (power_in) x10",
+    "U8 TPS628302A [q-lab:Regulator_TPS62830x]: VOS (input)"
+   ],
+   "C parts": [
+    "C10 1u to GND",
+    "C100 1u to GND",
+    "C101 1u to GND",
+    "C102 1u to GND",
+    "C103 1u to GND",
+    "C104 1u to GND",
+    "... 29 more"
+   ],
+   "L parts": [
+    "L2 470nH to Net-(U8-SW)"
+   ],
+   "R parts": [
+    "R11 280K to Net-(U8-FB)",
+    "R202 49.9 to ~{DDR_ALERT}",
+    "R4 1K to DDR_VREF"
+   ]
+  },
+  "+1V8": {
+   "net": "+1V8",
+   "pads": 82,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_113 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_115 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDIO (power_in) x17",
+    "U12 TPS3808EG18 [Power_Supervisor:TPS3808DBV]: SENSE (input)",
+    "U12 TPS3808EG18 [Power_Supervisor:TPS3808DBV]: VDD (power_in)",
+    "U13 74LVC2G07: VCC (power_in)",
+    "U5 Flash_EMMC: VCCQ1 (power_in)",
+    "U5 Flash_EMMC: VCCQ2 (power_in)",
+    "U5 Flash_EMMC: VCCQ3 (power_in)",
+    "U5 Flash_EMMC: VCCQ4 (power_in)",
+    "U5 Flash_EMMC: VCCQ5 (power_in)",
+    "U6 W25Q32JWZPIQ [Memory_Flash:W25Q32JVZP]: VCC (power_in)",
+    "U7 USB3343: VDDIO (power_in)",
+    "U9 TPS628302A [q-lab:Regulator_TPS62830x]: VOS (input)",
+    "X1 26MHz [Oscillator:ECS-2520MV-xxx-xx]: VDD (power_in)"
+   ],
+   "C parts": [
+    "C116 100n to GND",
+    "C120 22u to GND",
+    "C128 4.7u to GND",
+    "C129 100n to GND",
+    "C130 100n to GND",
+    "C131 100n to GND",
+    "... 22 more"
+   ],
+   "FB parts": [
+    "FB1 110R @ 100MHz to VDDPLLDDR",
+    "FB6 110R @ 100MHz to VDDH18",
+    "FB7 110R @ 100MHz to VDDH18_PCIE"
+   ],
+   "L parts": [
+    "L3 470nH to Net-(U9-SW)"
+   ],
+   "R parts": [
+    "R1 10 to Net-(U1E-VDDPLL)",
+    "R15 523K to Net-(U9-FB)",
+    "R20 10K to ~{EMMC_RST}",
+    "R36 10K to ~{ETH_INT0}",
+    "R37 10K to ~{ETH_RST0}",
+    "R39 10K to REFCLK_SEL",
+    "... 13 more"
+   ]
+  },
+  "+1V8_ENET": {
+   "net": "+1V8_ENET",
+   "pads": 6,
+   "pins": [
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: DVDD_RG (power_out)"
+   ],
+   "C parts": [
+    "C147 100n to GND",
+    "C148 4.7u to GND"
+   ],
+   "R parts": [
+    "R30 4.7K to RGMII0_RX_D3",
+    "R32 4.7K to RGMII0_RX_D1",
+    "R33 4.7K to RGMII0_RX_D0"
+   ]
+  },
+  "+20V0": {
+   "net": "+20V0",
+   "pads": 18,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_117 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_119 (passive)",
+    "U14 TPS51375 [q-lab:Regulator_TPS51375]: VIN (power_in)",
+    "U3 TPS54338 [q-lab:Regulator_TPS54x38]: VIN (power_in) x2"
+   ],
+   "C parts": [
+    "C121 4.7u to GND",
+    "C122 4.7u to GND",
+    "C160 100n to GND",
+    "C163 4.7u to GND",
+    "C168 4.7u to GND",
+    "C169 4.7u to GND",
+    "... 5 more"
+   ],
+   "R parts": [
+    "R7 174K to Net-(U3-EN)"
+   ],
+   "TP parts": [
+    "TP11 TestPoint"
+   ]
+  },
+  "+2V5": {
+   "net": "+2V5",
+   "pads": 6,
+   "pins": [
+    "U16 LP5912-2.5DRV: OUT (power_out)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: VPP (power_in) x2"
+   ],
+   "C parts": [
+    "C164 1u to GND",
+    "C83 1u to GND",
+    "C84 1u to GND"
+   ]
+  },
+  "+3V3": {
+   "net": "+3V3",
+   "pads": 42,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_118 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_120 (passive)",
+    "U11 AX3PAF1-156.2500T3 [q-lab:OSC_Abracon_AK]: EN/NC (input)",
+    "U11 AX3PAF1-156.2500T3 [q-lab:OSC_Abracon_AK]: VDD (power_in)",
+    "U16 LP5912-2.5DRV: IN (power_in)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: AVDD33 (power_in) x2",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: DVDD33 (power_in)",
+    "U5 Flash_EMMC: VCC1 (power_in)",
+    "U5 Flash_EMMC: VCC2 (power_in)",
+    "U5 Flash_EMMC: VCC3 (power_in)",
+    "U5 Flash_EMMC: VCC4 (power_in)",
+    "U7 USB3343: VBAT (power_in)",
+    "U8 TPS628302A [q-lab:Regulator_TPS62830x]: VIN (power_in)",
+    "U8 TPS628302A [q-lab:Regulator_TPS62830x]: MODE (input)",
+    "U9 TPS628302A [q-lab:Regulator_TPS62830x]: VIN (power_in)",
+    "U9 TPS628302A [q-lab:Regulator_TPS62830x]: MODE (input)",
+    "X2 25MHz [Oscillator:ECS-2520MV-xxx-xx]: VDD (power_in)"
+   ],
+   "C parts": [
+    "C118 4.7u to GND",
+    "C119 4.7u to GND",
+    "C125 100n to GND",
+    "C126 100n to GND",
+    "C127 4.7u to GND",
+    "C132 1u to GND",
+    "... 11 more"
+   ],
+   "L parts": [
+    "L4 4.7uH to Net-(U3-SW)"
+   ],
+   "R parts": [
+    "R13 10K to PG_1V2",
+    "R14 10K to PG_1V8",
+    "R17 21.5K to Net-(U3-FB)",
+    "R18 10K to PG_3V3",
+    "R19 10K to PG_0V9",
+    "R26 4.7K to ~{MGMT_LED2}"
+   ]
+  },
+  "/DDR/DDR_A0": {
+   "net": "DDR_A0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A0 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A0 (input)"
+   ]
+  },
+  "/DDR/DDR_A1": {
+   "net": "DDR_A1",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A1 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A1 (input)"
+   ]
+  },
+  "/DDR/DDR_A10": {
+   "net": "DDR_A10",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A10 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A10/AP (input)"
+   ]
+  },
+  "/DDR/DDR_A11": {
+   "net": "DDR_A11",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A11 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A11 (input)"
+   ]
+  },
+  "/DDR/DDR_A12": {
+   "net": "DDR_A12",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A12 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A12/BC_n (input)"
+   ]
+  },
+  "/DDR/DDR_A13": {
+   "net": "DDR_A13",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A13 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A13 (input)"
+   ]
+  },
+  "/DDR/DDR_A14": {
+   "net": "DDR_A14",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A14 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A14/WE_n (input)"
+   ]
+  },
+  "/DDR/DDR_A15": {
+   "net": "DDR_A15",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A15 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A15/CAS_n (input)"
+   ]
+  },
+  "/DDR/DDR_A16": {
+   "net": "DDR_A16",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A16_3WE_n (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A16/RAS_n (input)"
+   ]
+  },
+  "/DDR/DDR_A2": {
+   "net": "DDR_A2",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A2 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A2 (input)"
+   ]
+  },
+  "/DDR/DDR_A3": {
+   "net": "DDR_A3",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A3 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A3 (input)"
+   ]
+  },
+  "/DDR/DDR_A4": {
+   "net": "DDR_A4",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A4 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A4 (input)"
+   ]
+  },
+  "/DDR/DDR_A5": {
+   "net": "DDR_A5",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A5 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A5 (input)"
+   ]
+  },
+  "/DDR/DDR_A6": {
+   "net": "DDR_A6",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A6 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A6 (input)"
+   ]
+  },
+  "/DDR/DDR_A7": {
+   "net": "DDR_A7",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A7 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A7 (input)"
+   ]
+  },
+  "/DDR/DDR_A8": {
+   "net": "DDR_A8",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A8 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A8 (input)"
+   ]
+  },
+  "/DDR/DDR_A9": {
+   "net": "DDR_A9",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_A9 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: A9 (input)"
+   ]
+  },
+  "/DDR/DDR_BA0": {
+   "net": "DDR_BA0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_BA0 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: BA0 (input)"
+   ]
+  },
+  "/DDR/DDR_BA1": {
+   "net": "DDR_BA1",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_BA1 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: BA1 (input)"
+   ]
+  },
+  "/DDR/DDR_BG0": {
+   "net": "DDR_BG0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_BG0_3BA2 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: BG0 (input)"
+   ]
+  },
+  "/DDR/DDR_CKE": {
+   "net": "DDR_CKE",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_CKE0 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: CKE (input)"
+   ]
+  },
+  "/DDR/DDR_CK_N": {
+   "net": "DDR_CK_N",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_CK_c (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: CK_c (input)"
+   ],
+   "R parts": [
+    "R203 49.9 to Net-(C201-Pad1)"
+   ]
+  },
+  "/DDR/DDR_CK_P": {
+   "net": "DDR_CK_P",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_CK_t (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: CK_t (input)"
+   ],
+   "R parts": [
+    "R201 49.9 to Net-(C201-Pad1)"
+   ]
+  },
+  "/DDR/DDR_DM0": {
+   "net": "DDR_DM0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DM0 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: LDM_n/UDBI_n (input)"
+   ]
+  },
+  "/DDR/DDR_DM1": {
+   "net": "DDR_DM1",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DM1 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: UDM_n/UDBI_n (input)"
+   ]
+  },
+  "/DDR/DDR_DQ0": {
+   "net": "DDR_DQ0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ0 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ0 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ1": {
+   "net": "DDR_DQ1",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ1 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ1 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ10": {
+   "net": "DDR_DQ10",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ10 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ10 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ11": {
+   "net": "DDR_DQ11",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ11 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ11 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ12": {
+   "net": "DDR_DQ12",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ12 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ12 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ13": {
+   "net": "DDR_DQ13",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ13 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ13 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ14": {
+   "net": "DDR_DQ14",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ14 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ14 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ15": {
+   "net": "DDR_DQ15",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ15 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ15 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ2": {
+   "net": "DDR_DQ2",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ2 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ2 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ3": {
+   "net": "DDR_DQ3",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ3 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ3 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ4": {
+   "net": "DDR_DQ4",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ4 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ4 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ5": {
+   "net": "DDR_DQ5",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ5 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ5 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ6": {
+   "net": "DDR_DQ6",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ6 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ6 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ7": {
+   "net": "DDR_DQ7",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ7 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ7 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ8": {
+   "net": "DDR_DQ8",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ8 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ8 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQ9": {
+   "net": "DDR_DQ9",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQ9 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: DQ9 (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQS0_N": {
+   "net": "DDR_DQS0_N",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQS_c0 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: LDQS_c (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQS0_P": {
+   "net": "DDR_DQS0_P",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQS_t0 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: LDQS_t (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQS1_N": {
+   "net": "DDR_DQS1_N",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQS_c1 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: UDQS_c (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_DQS1_P": {
+   "net": "DDR_DQS1_P",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_DQS_t1 (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: UDQS_t (bidirectional)"
+   ]
+  },
+  "/DDR/DDR_ODT": {
+   "net": "DDR_ODT",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_ODT0 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: ODT (input)"
+   ]
+  },
+  "/DDR/DDR_PAR": {
+   "net": "DDR_PAR",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_PAR (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: PAR (input)"
+   ]
+  },
+  "/DDR/DDR_VREF": {
+   "net": "DDR_VREF",
+   "pads": 5,
+   "pins": [
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: VREFCA (input)"
+   ],
+   "C parts": [
+    "C81 100n to +1V2",
+    "C82 100n to GND"
+   ],
+   "R parts": [
+    "R4 1K to +1V2",
+    "R5 1K to GND"
+   ]
+  },
+  "/DDR/~{DDR_ACT}": {
+   "net": "~{DDR_ACT}",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_ACT_3RAS_n (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: ACT_n (input)"
+   ]
+  },
+  "/DDR/~{DDR_ALERT}": {
+   "net": "~{DDR_ALERT}",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_ALERT_n (bidirectional)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: ALERT_n (input)"
+   ],
+   "R parts": [
+    "R202 49.9 to +1V2"
+   ]
+  },
+  "/DDR/~{DDR_CS}": {
+   "net": "~{DDR_CS}",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_CS_n0 (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: CS_n (input)"
+   ]
+  },
+  "/DDR/~{DDR_RESET}": {
+   "net": "~{DDR_RESET}",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_RESET_n (output)",
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: RESET_n (input)"
+   ]
+  },
+  "/ENET_MDC_0": {
+   "net": "ENET_MDC_0",
+   "pads": 3,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_29 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_9 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDC (input)"
+   ]
+  },
+  "/ENET_MDIO_0": {
+   "net": "ENET_MDIO_0",
+   "pads": 4,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_31 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_10 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIO (bidirectional)"
+   ],
+   "R parts": [
+    "R501 1.5K to +1V8"
+   ]
+  },
+  "/FC0_RXI": {
+   "net": "FC0_RXI",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_30 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_3 (bidirectional)"
+   ]
+  },
+  "/FC0_TXO": {
+   "net": "FC0_TXO",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_32 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_4 (bidirectional)"
+   ]
+  },
+  "/FC3_SCL": {
+   "net": "FC3_SCL",
+   "pads": 3,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_34 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_55 (bidirectional)"
+   ],
+   "R parts": [
+    "R503 1.5K to +1V8"
+   ]
+  },
+  "/FC3_SDA": {
+   "net": "FC3_SDA",
+   "pads": 3,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_36 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_56 (bidirectional)"
+   ],
+   "R parts": [
+    "R502 1.5K to +1V8"
+   ]
+  },
+  "/GPIO_2": {
+   "net": "GPIO_2",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_10 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_2 (bidirectional)"
+   ]
+  },
+  "/GPIO_25": {
+   "net": "GPIO_25",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_111 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_25 (bidirectional)"
+   ]
+  },
+  "/GPIO_26": {
+   "net": "GPIO_26",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_109 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_26 (bidirectional)"
+   ]
+  },
+  "/GPIO_27": {
+   "net": "GPIO_27",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_107 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_27 (bidirectional)"
+   ]
+  },
+  "/GPIO_28": {
+   "net": "GPIO_28",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_105 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_28 (bidirectional)"
+   ]
+  },
+  "/GPIO_29": {
+   "net": "GPIO_29",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_103 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_29 (bidirectional)"
+   ]
+  },
+  "/GPIO_54": {
+   "net": "GPIO_54",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_14 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_54 (bidirectional)"
+   ]
+  },
+  "/GPIO_57": {
+   "net": "GPIO_57",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_16 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_57 (bidirectional)"
+   ]
+  },
+  "/GPIO_58": {
+   "net": "GPIO_58",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_18 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_58 (bidirectional)"
+   ]
+  },
+  "/GPIO_59": {
+   "net": "GPIO_59",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_20 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_59 (bidirectional)"
+   ]
+  },
+  "/GPIO_63": {
+   "net": "GPIO_63",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_22 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_63 (bidirectional)"
+   ]
+  },
+  "/GPIO_64": {
+   "net": "GPIO_64",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_24 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_64 (bidirectional)"
+   ]
+  },
+  "/GPIO_65": {
+   "net": "GPIO_65",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_26 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_65 (bidirectional)"
+   ]
+  },
+  "/GPIO_66": {
+   "net": "GPIO_66",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_28 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_66 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_CLK": {
+   "net": "EMMC_CLK",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_15 (bidirectional)",
+    "U5 Flash_EMMC: CLK (input)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_CMD": {
+   "net": "EMMC_CMD",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_14 (bidirectional)",
+    "U5 Flash_EMMC: CMD (output)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_D0": {
+   "net": "EMMC_D0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_16 (bidirectional)",
+    "U5 Flash_EMMC: DAT0 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_D1": {
+   "net": "EMMC_D1",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_17 (bidirectional)",
+    "U5 Flash_EMMC: DAT1 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_D2": {
+   "net": "EMMC_D2",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_18 (bidirectional)",
+    "U5 Flash_EMMC: DAT2 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_D3": {
+   "net": "EMMC_D3",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_19 (bidirectional)",
+    "U5 Flash_EMMC: NC11 (passive)",
+    "U5 Flash_EMMC: DAT3 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_D4": {
+   "net": "EMMC_D4",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_20 (bidirectional)",
+    "U5 Flash_EMMC: NC2 (passive)",
+    "U5 Flash_EMMC: DAT4 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_D5": {
+   "net": "EMMC_D5",
+   "pads": 4,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_21 (bidirectional)",
+    "U5 Flash_EMMC: DAT5 (bidirectional)",
+    "U5 Flash_EMMC: NC21 (passive)",
+    "U5 Flash_EMMC: NC33 (passive)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_D6": {
+   "net": "EMMC_D6",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_22 (bidirectional)",
+    "U5 Flash_EMMC: DAT6 (bidirectional)",
+    "U5 Flash_EMMC: NC22 (passive)"
+   ]
+  },
+  "/LAN969x GPIO/EMMC_D7": {
+   "net": "EMMC_D7",
+   "pads": 4,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_23 (bidirectional)",
+    "U5 Flash_EMMC: NC4 (passive)",
+    "U5 Flash_EMMC: DAT7 (bidirectional)",
+    "U5 Flash_EMMC: NC12 (passive)"
+   ]
+  },
+  "/LAN969x GPIO/Managment Port/MGMT_LED0": {
+   "net": "MGMT_LED0",
+   "pads": 2,
+   "pins": [
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: LED0/CFG_EXT (output)"
+   ],
+   "R parts": [
+    "R25 4.7K to GND"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_RX_CLK": {
+   "net": "RGMII0_RX_CLK",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_46 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: RXC/PHYAD1 (output)"
+   ],
+   "R parts": [
+    "R29 4.7K to GND"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_RX_CTL": {
+   "net": "RGMII0_RX_CTL",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_47 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: RXCTL/PHYAD2 (output)"
+   ],
+   "R parts": [
+    "R28 4.7K to GND"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_RX_D0": {
+   "net": "RGMII0_RX_D0",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_42 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: RXD0/RXDLY (output)"
+   ],
+   "R parts": [
+    "R33 4.7K to +1V8_ENET"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_RX_D1": {
+   "net": "RGMII0_RX_D1",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_43 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: RXD1/TXDLY (output)"
+   ],
+   "R parts": [
+    "R32 4.7K to +1V8_ENET"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_RX_D2": {
+   "net": "RGMII0_RX_D2",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_44 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: RXD2/PLLOFF (output)"
+   ],
+   "R parts": [
+    "R31 4.7K to GND"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_RX_D3": {
+   "net": "RGMII0_RX_D3",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_45 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: RXD3/PHYAD0 (output)"
+   ],
+   "R parts": [
+    "R30 4.7K to +1V8_ENET"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_TX_CLK": {
+   "net": "RGMII0_TX_CLK",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_52 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: TXC (input)"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_TX_CTL": {
+   "net": "RGMII0_TX_CTL",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_53 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: TXCTL (input)"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_TX_D0": {
+   "net": "RGMII0_TX_D0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_48 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: TXD0 (input)"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_TX_D1": {
+   "net": "RGMII0_TX_D1",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_49 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: TXD1 (input)"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_TX_D2": {
+   "net": "RGMII0_TX_D2",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_50 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: TXD2 (input)"
+   ]
+  },
+  "/LAN969x GPIO/RGMII0_TX_D3": {
+   "net": "RGMII0_TX_D3",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_51 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: TXD3 (input)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_CLK": {
+   "net": "ULPI0_CLK",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_30 (bidirectional)",
+    "U7 USB3343: CLKOUT (output)"
+   ],
+   "R parts": [
+    "R23 10K to GND"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_D0": {
+   "net": "ULPI0_D0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_31 (bidirectional)",
+    "U7 USB3343: DATA0 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_D1": {
+   "net": "ULPI0_D1",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_32 (bidirectional)",
+    "U7 USB3343: DATA1 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_D2": {
+   "net": "ULPI0_D2",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_33 (bidirectional)",
+    "U7 USB3343: DATA2 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_D3": {
+   "net": "ULPI0_D3",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_34 (bidirectional)",
+    "U7 USB3343: DATA3 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_D4": {
+   "net": "ULPI0_D4",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_35 (bidirectional)",
+    "U7 USB3343: DATA4 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_D5": {
+   "net": "ULPI0_D5",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_36 (bidirectional)",
+    "U7 USB3343: DATA5 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_D6": {
+   "net": "ULPI0_D6",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_37 (bidirectional)",
+    "U7 USB3343: DATA6 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_D7": {
+   "net": "ULPI0_D7",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_38 (bidirectional)",
+    "U7 USB3343: DATA7 (bidirectional)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_DIR": {
+   "net": "ULPI0_DIR",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_40 (bidirectional)",
+    "U7 USB3343: DIR (output)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_NXT": {
+   "net": "ULPI0_NXT",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_41 (bidirectional)",
+    "U7 USB3343: NXT (output)"
+   ]
+  },
+  "/LAN969x GPIO/ULPI0_STP": {
+   "net": "ULPI0_STP",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_39 (bidirectional)",
+    "U7 USB3343: STP (input)"
+   ]
+  },
+  "/LAN969x GPIO/eMMC/EMMC_VDDI": {
+   "net": "EMMC_VDDI",
+   "pads": 4,
+   "pins": [
+    "U5 Flash_EMMC: NC20 (passive)",
+    "U5 Flash_EMMC: VDDI (passive)"
+   ],
+   "C parts": [
+    "C123 1u to GND",
+    "C124 100n to GND"
+   ]
+  },
+  "/LAN969x GPIO/~{EMMC_RST}": {
+   "net": "~{EMMC_RST}",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_24 (bidirectional)",
+    "U5 Flash_EMMC: ~{RST} (input)"
+   ],
+   "R parts": [
+    "R20 10K to +1V8"
+   ]
+  },
+  "/LAN969x GPIO/~{ULPI0_RESET}": {
+   "net": "~{ULPI0_RESET}",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_12 (bidirectional)",
+    "U7 USB3343: ~{RESETB} (input)"
+   ]
+  },
+  "/LAN969x Misc/JTAG_CPU_nRST": {
+   "net": "JTAG_CPU_nRST",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: JTAG_CPU_nRST (input)"
+   ],
+   "TP parts": [
+    "TP8 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/JTAG_SEL": {
+   "net": "JTAG_SEL",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: JTAG_SEL (input)"
+   ],
+   "R parts": [
+    "R46 10K to +1V8"
+   ],
+   "TP parts": [
+    "TP7 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/JTAG_TCK": {
+   "net": "JTAG_TCK",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: JTAG_TCK (output)"
+   ],
+   "TP parts": [
+    "TP2 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/JTAG_TDI": {
+   "net": "JTAG_TDI",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: JTAG_TDI (input)"
+   ],
+   "TP parts": [
+    "TP3 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/JTAG_TDO": {
+   "net": "JTAG_TDO",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: JTAG_TDO (output)"
+   ],
+   "TP parts": [
+    "TP4 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/JTAG_TMS": {
+   "net": "JTAG_TMS",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: JTAG_TMS (input)"
+   ],
+   "TP parts": [
+    "TP5 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/JTAG_nTRST": {
+   "net": "JTAG_nTRST",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: JTAG_nTRST (input)"
+   ],
+   "R parts": [
+    "R45 10K to +1V8"
+   ],
+   "TP parts": [
+    "TP6 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/LAN_CKC_N": {
+   "net": "LAN_CKC_N",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: REFCLK0_N (input)"
+   ],
+   "C parts": [
+    "C151 10n to LAN_CK_N"
+   ]
+  },
+  "/LAN969x Misc/LAN_CKC_P": {
+   "net": "LAN_CKC_P",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: REFCLK0_P (input)"
+   ],
+   "C parts": [
+    "C150 10n to LAN_CK_P"
+   ]
+  },
+  "/LAN969x Misc/LAN_CK_25M": {
+   "net": "LAN_CK_25M",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: REFCLK1 (input)"
+   ],
+   "TP parts": [
+    "TP601 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/LAN_CK_N": {
+   "net": "LAN_CK_N",
+   "pads": 3,
+   "pins": [
+    "U11 AX3PAF1-156.2500T3 [q-lab:OSC_Abracon_AK]: ~{OUT} (output)"
+   ],
+   "C parts": [
+    "C151 10n to LAN_CKC_N"
+   ],
+   "R parts": [
+    "R40 169 to GND"
+   ]
+  },
+  "/LAN969x Misc/LAN_CK_P": {
+   "net": "LAN_CK_P",
+   "pads": 3,
+   "pins": [
+    "U11 AX3PAF1-156.2500T3 [q-lab:OSC_Abracon_AK]: OUT (output)"
+   ],
+   "C parts": [
+    "C150 10n to LAN_CKC_P"
+   ],
+   "R parts": [
+    "R41 169 to GND"
+   ]
+  },
+  "/LAN969x Misc/PCIE_TXC_N": {
+   "net": "PCIE_TXC_N",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: PCIE_TXN (output)"
+   ],
+   "C parts": [
+    "C155 100n to PCIE_TX_N"
+   ]
+  },
+  "/LAN969x Misc/PCIE_TXC_P": {
+   "net": "PCIE_TXC_P",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: PCIE_TXP (output)"
+   ],
+   "C parts": [
+    "C154 100n to PCIE_TX_P"
+   ]
+  },
+  "/LAN969x Misc/QSPI_CLK": {
+   "net": "QSPI_CLK",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: SI_CLK (bidirectional)",
+    "U6 W25Q32JWZPIQ [Memory_Flash:W25Q32JVZP]: CLK (input)"
+   ]
+  },
+  "/LAN969x Misc/QSPI_D0": {
+   "net": "QSPI_D0",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: SI_D0 (bidirectional)",
+    "U6 W25Q32JWZPIQ [Memory_Flash:W25Q32JVZP]: DI/IO_{0} (bidirectional)"
+   ]
+  },
+  "/LAN969x Misc/QSPI_D1": {
+   "net": "QSPI_D1",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: SI_D1 (bidirectional)",
+    "U6 W25Q32JWZPIQ [Memory_Flash:W25Q32JVZP]: DO/IO_{1} (bidirectional)"
+   ]
+  },
+  "/LAN969x Misc/QSPI_D2": {
+   "net": "QSPI_D2",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: SI_D2 (bidirectional)",
+    "U6 W25Q32JWZPIQ [Memory_Flash:W25Q32JVZP]: ~{WP}/IO_{2} (bidirectional)"
+   ]
+  },
+  "/LAN969x Misc/QSPI_D3": {
+   "net": "QSPI_D3",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: SI_D3 (bidirectional)",
+    "U6 W25Q32JWZPIQ [Memory_Flash:W25Q32JVZP]: ~{HOLD}/~{RESET}/IO_{3} (bidirectional)"
+   ]
+  },
+  "/LAN969x Misc/REFCLKPCIEC_N": {
+   "net": "REFCLKPCIEC_N",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: REFCLKPCIE_N (input)"
+   ],
+   "C parts": [
+    "C153 100n to REFCLKPCIE_N"
+   ]
+  },
+  "/LAN969x Misc/REFCLKPCIEC_P": {
+   "net": "REFCLKPCIEC_P",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: REFCLKPCIE_P (input)"
+   ],
+   "C parts": [
+    "C152 100n to REFCLKPCIE_P"
+   ]
+  },
+  "/LAN969x Misc/REFCLK_SEL": {
+   "net": "REFCLK_SEL",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: REFCLK_SEL (input)"
+   ],
+   "R parts": [
+    "R39 10K to +1V8"
+   ]
+  },
+  "/LAN969x Misc/THERMDA": {
+   "net": "THERMDA",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: THERMDA (passive)"
+   ],
+   "TP parts": [
+    "TP9 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/THERMDC": {
+   "net": "THERMDC",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: THERMDC (passive)"
+   ],
+   "TP parts": [
+    "TP10 TestPoint"
+   ]
+  },
+  "/LAN969x Misc/VCORE_0": {
+   "net": "VCORE_0",
+   "pads": 3,
+   "pins": [
+    "SW1 CHS-04TA [Switch:SW_DIP_x04]: pin 5 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VCORE_0 (input)"
+   ],
+   "R parts": [
+    "R53 10K to +1V8"
+   ]
+  },
+  "/LAN969x Misc/VCORE_1": {
+   "net": "VCORE_1",
+   "pads": 3,
+   "pins": [
+    "SW1 CHS-04TA [Switch:SW_DIP_x04]: pin 6 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VCORE_1 (input)"
+   ],
+   "R parts": [
+    "R52 10K to +1V8"
+   ]
+  },
+  "/LAN969x Misc/VCORE_2": {
+   "net": "VCORE_2",
+   "pads": 3,
+   "pins": [
+    "SW1 CHS-04TA [Switch:SW_DIP_x04]: pin 7 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VCORE_2 (input)"
+   ],
+   "R parts": [
+    "R51 10K to +1V8"
+   ]
+  },
+  "/LAN969x Misc/VCORE_3": {
+   "net": "VCORE_3",
+   "pads": 3,
+   "pins": [
+    "SW1 CHS-04TA [Switch:SW_DIP_x04]: pin 8 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VCORE_3 (input)"
+   ],
+   "R parts": [
+    "R50 10K to +1V8"
+   ]
+  },
+  "/LAN969x Misc/~{QSPI_CS}": {
+   "net": "~{QSPI_CS}",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: SI_nCS0 (bidirectional)",
+    "U6 W25Q32JWZPIQ [Memory_Flash:W25Q32JVZP]: ~{CS} (input)"
+   ]
+  },
+  "/LAN969x Power/VDDH18": {
+   "net": "VDDH18",
+   "pads": 5,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDH18 (power_in) x2"
+   ],
+   "C parts": [
+    "C75 1u to GND",
+    "C77 1u to GND"
+   ],
+   "FB parts": [
+    "FB6 110R @ 100MHz to +1V8"
+   ]
+  },
+  "/LAN969x Power/VDDH18_PCIE": {
+   "net": "VDDH18_PCIE",
+   "pads": 4,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDH18_PCIE (power_in)"
+   ],
+   "C parts": [
+    "C78 1u to GND",
+    "C80 100n to GND"
+   ],
+   "FB parts": [
+    "FB7 110R @ 100MHz to +1V8"
+   ]
+  },
+  "/LAN969x Power/VDDHS": {
+   "net": "VDDHS",
+   "pads": 22,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDHS (power_in) x10"
+   ],
+   "C parts": [
+    "C32 1u to GND",
+    "C33 1u to GND",
+    "C60 1u to GND",
+    "C61 1u to GND",
+    "C62 1u to GND",
+    "C63 1u to GND",
+    "... 5 more"
+   ],
+   "FB parts": [
+    "FB2 110R @ 100MHz to +0V9"
+   ]
+  },
+  "/LAN969x Power/VDDHS_PCIE": {
+   "net": "VDDHS_PCIE",
+   "pads": 5,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDHS_PCIE (power_in) x2"
+   ],
+   "C parts": [
+    "C29 1u to GND",
+    "C30 1u to GND"
+   ],
+   "FB parts": [
+    "FB5 110R @ 100MHz to +0V9"
+   ]
+  },
+  "/LAN969x Power/VDDHV": {
+   "net": "VDDHV",
+   "pads": 5,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDHV (power_in) x2"
+   ],
+   "C parts": [
+    "C31 1u to GND",
+    "C74 1u to GND"
+   ],
+   "FB parts": [
+    "FB3 110R @ 100MHz to +0V9"
+   ]
+  },
+  "/LAN969x Power/VDDHV_PCIE": {
+   "net": "VDDHV_PCIE",
+   "pads": 4,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDHV_PCIE (power_in)"
+   ],
+   "C parts": [
+    "C73 1u to GND",
+    "C76 100n to GND"
+   ],
+   "FB parts": [
+    "FB4 110R @ 100MHz to +0V9"
+   ]
+  },
+  "/LAN969x Power/VDDPLLDDR": {
+   "net": "VDDPLLDDR",
+   "pads": 5,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDPLLDDR (power_in) x2"
+   ],
+   "C parts": [
+    "C3 100n to GND",
+    "C4 1u to GND"
+   ],
+   "FB parts": [
+    "FB1 110R @ 100MHz to +1V8"
+   ]
+  },
+  "/MGMT_D0_N": {
+   "net": "MGMT_D0_N",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_9 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIN0 (bidirectional)"
+   ]
+  },
+  "/MGMT_D0_P": {
+   "net": "MGMT_D0_P",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_7 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIP0 (bidirectional)"
+   ]
+  },
+  "/MGMT_D1_N": {
+   "net": "MGMT_D1_N",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_13 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIN1 (bidirectional)"
+   ]
+  },
+  "/MGMT_D1_P": {
+   "net": "MGMT_D1_P",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_11 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIP1 (bidirectional)"
+   ]
+  },
+  "/MGMT_D2_N": {
+   "net": "MGMT_D2_N",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_17 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIN2 (bidirectional)"
+   ]
+  },
+  "/MGMT_D2_P": {
+   "net": "MGMT_D2_P",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_15 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIP2 (bidirectional)"
+   ]
+  },
+  "/MGMT_D3_N": {
+   "net": "MGMT_D3_N",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_21 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIN3 (bidirectional)"
+   ]
+  },
+  "/MGMT_D3_P": {
+   "net": "MGMT_D3_P",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_19 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: MDIP3 (bidirectional)"
+   ]
+  },
+  "/MGMT_LED1": {
+   "net": "MGMT_LED1",
+   "pads": 3,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_25 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: LED1/CFG_LDO0 (output)"
+   ],
+   "R parts": [
+    "R27 4.7K to GND"
+   ]
+  },
+  "/PCIE_RX_N": {
+   "net": "PCIE_RX_N",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_8 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: PCIE_RXN (input)"
+   ]
+  },
+  "/PCIE_RX_P": {
+   "net": "PCIE_RX_P",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_6 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: PCIE_RXP (input)"
+   ]
+  },
+  "/PCIE_TX_N": {
+   "net": "PCIE_TX_N",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_2 (passive)"
+   ],
+   "C parts": [
+    "C155 100n to PCIE_TXC_N"
+   ]
+  },
+  "/PCIE_TX_P": {
+   "net": "PCIE_TX_P",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_4 (passive)"
+   ],
+   "C parts": [
+    "C154 100n to PCIE_TXC_P"
+   ]
+  },
+  "/REFCLKPCIE_N": {
+   "net": "REFCLKPCIE_N",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_3 (passive)"
+   ],
+   "C parts": [
+    "C153 100n to REFCLKPCIEC_N"
+   ]
+  },
+  "/REFCLKPCIE_P": {
+   "net": "REFCLKPCIE_P",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_1 (passive)"
+   ],
+   "C parts": [
+    "C152 100n to REFCLKPCIEC_P"
+   ]
+  },
+  "/Regulators/LX_0V9": {
+   "net": "LX_0V9",
+   "pads": 4,
+   "pins": [
+    "U14 TPS51375 [q-lab:Regulator_TPS51375]: SW (passive) x2"
+   ],
+   "C parts": [
+    "C156 100n to Net-(U14-BST)"
+   ],
+   "L parts": [
+    "L1 470nH to +0V9"
+   ]
+  },
+  "/Regulators/PG_0V9": {
+   "net": "PG_0V9",
+   "pads": 3,
+   "pins": [
+    "U14 TPS51375 [q-lab:Regulator_TPS51375]: PG (open_collector)",
+    "U8 TPS628302A [q-lab:Regulator_TPS62830x]: EN (input)"
+   ],
+   "R parts": [
+    "R19 10K to +3V3"
+   ]
+  },
+  "/Regulators/PG_1V2": {
+   "net": "PG_1V2",
+   "pads": 4,
+   "pins": [
+    "U16 LP5912-2.5DRV: EN (input)",
+    "U8 TPS628302A [q-lab:Regulator_TPS62830x]: PG (open_collector)",
+    "U9 TPS628302A [q-lab:Regulator_TPS62830x]: EN (input)"
+   ],
+   "R parts": [
+    "R13 10K to +3V3"
+   ]
+  },
+  "/Regulators/PG_1V8": {
+   "net": "PG_1V8",
+   "pads": 2,
+   "pins": [
+    "U9 TPS628302A [q-lab:Regulator_TPS62830x]: PG (open_collector)"
+   ],
+   "R parts": [
+    "R14 10K to +3V3"
+   ]
+  },
+  "/Regulators/PG_3V3": {
+   "net": "PG_3V3",
+   "pads": 3,
+   "pins": [
+    "U14 TPS51375 [q-lab:Regulator_TPS51375]: EN (input)",
+    "U3 TPS54338 [q-lab:Regulator_TPS54x38]: SS/PG (passive)"
+   ],
+   "R parts": [
+    "R18 10K to +3V3"
+   ]
+  },
+  "/S0_RXN": {
+   "net": "S0_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_41 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S0_RXN (input)"
+   ]
+  },
+  "/S0_RXP": {
+   "net": "S0_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_39 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S0_RXP (input)"
+   ]
+  },
+  "/S0_TXN": {
+   "net": "S0_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_40 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S0_TXN (output)"
+   ]
+  },
+  "/S0_TXP": {
+   "net": "S0_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_42 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S0_TXP (output)"
+   ]
+  },
+  "/S1_RXN": {
+   "net": "S1_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_47 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S1_RXN (input)"
+   ]
+  },
+  "/S1_RXP": {
+   "net": "S1_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_45 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S1_RXP (input)"
+   ]
+  },
+  "/S1_TXN": {
+   "net": "S1_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_46 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S1_TXN (output)"
+   ]
+  },
+  "/S1_TXP": {
+   "net": "S1_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_48 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S1_TXP (output)"
+   ]
+  },
+  "/S2_RXN": {
+   "net": "S2_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_53 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S2_RXN (input)"
+   ]
+  },
+  "/S2_RXP": {
+   "net": "S2_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_51 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S2_RXP (input)"
+   ]
+  },
+  "/S2_TXN": {
+   "net": "S2_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_52 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S2_TXN (output)"
+   ]
+  },
+  "/S2_TXP": {
+   "net": "S2_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_54 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S2_TXP (output)"
+   ]
+  },
+  "/S3_RXN": {
+   "net": "S3_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_59 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S3_RXN (input)"
+   ]
+  },
+  "/S3_RXP": {
+   "net": "S3_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_57 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S3_RXP (input)"
+   ]
+  },
+  "/S3_TXN": {
+   "net": "S3_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_58 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S3_TXN (output)"
+   ]
+  },
+  "/S3_TXP": {
+   "net": "S3_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_60 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S3_TXP (output)"
+   ]
+  },
+  "/S4_RXN": {
+   "net": "S4_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_65 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S4_RXN (input)"
+   ]
+  },
+  "/S4_RXP": {
+   "net": "S4_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_63 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S4_RXP (input)"
+   ]
+  },
+  "/S4_TXN": {
+   "net": "S4_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_64 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S4_TXN (output)"
+   ]
+  },
+  "/S4_TXP": {
+   "net": "S4_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_66 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S4_TXP (output)"
+   ]
+  },
+  "/S5_RXN": {
+   "net": "S5_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_71 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S5_RXN (input)"
+   ]
+  },
+  "/S5_RXP": {
+   "net": "S5_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_69 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S5_RXP (input)"
+   ]
+  },
+  "/S5_TXN": {
+   "net": "S5_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_70 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S5_TXN (output)"
+   ]
+  },
+  "/S5_TXP": {
+   "net": "S5_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_72 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S5_TXP (output)"
+   ]
+  },
+  "/S6_RXN": {
+   "net": "S6_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_77 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S6_RXN (input)"
+   ]
+  },
+  "/S6_RXP": {
+   "net": "S6_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_75 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S6_RXP (input)"
+   ]
+  },
+  "/S6_TXN": {
+   "net": "S6_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_76 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S6_TXN (output)"
+   ]
+  },
+  "/S6_TXP": {
+   "net": "S6_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_78 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S6_TXP (output)"
+   ]
+  },
+  "/S7_RXN": {
+   "net": "S7_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_83 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S7_RXN (input)"
+   ]
+  },
+  "/S7_RXP": {
+   "net": "S7_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_81 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S7_RXP (input)"
+   ]
+  },
+  "/S7_TXN": {
+   "net": "S7_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_82 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S7_TXN (output)"
+   ]
+  },
+  "/S7_TXP": {
+   "net": "S7_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_84 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S7_TXP (output)"
+   ]
+  },
+  "/S8_RXN": {
+   "net": "S8_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_89 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S8_RXN (input)"
+   ]
+  },
+  "/S8_RXP": {
+   "net": "S8_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_87 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S8_RXP (input)"
+   ]
+  },
+  "/S8_TXN": {
+   "net": "S8_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_88 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S8_TXN (output)"
+   ]
+  },
+  "/S8_TXP": {
+   "net": "S8_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_90 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S8_TXP (output)"
+   ]
+  },
+  "/S9_RXN": {
+   "net": "S9_RXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_95 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S9_RXN (input)"
+   ]
+  },
+  "/S9_RXP": {
+   "net": "S9_RXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_93 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S9_RXP (input)"
+   ]
+  },
+  "/S9_TXN": {
+   "net": "S9_TXN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_94 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S9_TXN (output)"
+   ]
+  },
+  "/S9_TXP": {
+   "net": "S9_TXP",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_96 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: S9_TXP (output)"
+   ]
+  },
+  "/SGPIO_CK": {
+   "net": "SGPIO_CK",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_101 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_5 (bidirectional)"
+   ]
+  },
+  "/SGPIO_DI": {
+   "net": "SGPIO_DI",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_104 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_8 (bidirectional)"
+   ]
+  },
+  "/SGPIO_DO": {
+   "net": "SGPIO_DO",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_102 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_7 (bidirectional)"
+   ]
+  },
+  "/SGPIO_LD": {
+   "net": "SGPIO_LD",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_100 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_6 (bidirectional)"
+   ]
+  },
+  "/USB0_ID": {
+   "net": "USB0_ID",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_116 (passive)",
+    "U7 USB3343: ID (input)"
+   ]
+  },
+  "/USB0_N": {
+   "net": "USB0_N",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_114 (passive)",
+    "U7 USB3343: DM (bidirectional)"
+   ]
+  },
+  "/USB0_OC_DET": {
+   "net": "USB0_OC_DET",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_106 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_13 (bidirectional)"
+   ]
+  },
+  "/USB0_P": {
+   "net": "USB0_P",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_112 (passive)",
+    "U7 USB3343: DP (bidirectional)"
+   ]
+  },
+  "/USB0_PWR_EN": {
+   "net": "USB0_PWR_EN",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_108 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_1 (bidirectional)"
+   ]
+  },
+  "/USB0_VBUS": {
+   "net": "USB0_VBUS",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_110 (passive)"
+   ],
+   "R parts": [
+    "R21 20K to Net-(U7-VBUS)"
+   ]
+  },
+  "/~{BRDRESET}": {
+   "net": "~{BRDRESET}",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_60 (bidirectional)",
+    "U13 74LVC2G07: pin 3 (input)"
+   ],
+   "R parts": [
+    "R48 10K to +1V8"
+   ]
+  },
+  "/~{ETH_INT0}": {
+   "net": "~{ETH_INT0}",
+   "pads": 4,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_33 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_11 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: ~{INT} (open_collector)"
+   ],
+   "R parts": [
+    "R36 10K to +1V8"
+   ]
+  },
+  "/~{ETH_RST0}": {
+   "net": "~{ETH_RST0}",
+   "pads": 4,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_35 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_62 (bidirectional)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: ~{RESET} (input)"
+   ],
+   "R parts": [
+    "R37 10K to +1V8"
+   ]
+  },
+  "/~{MGMT_LED2}": {
+   "net": "~{MGMT_LED2}",
+   "pads": 3,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_27 (passive)",
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: LED2/CFG_LDO1 (output)"
+   ],
+   "R parts": [
+    "R26 4.7K to +3V3"
+   ]
+  },
+  "/~{MR}": {
+   "net": "~{MR}",
+   "pads": 3,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_99 (passive)",
+    "U13 74LVC2G07: pin 1 (input)"
+   ],
+   "R parts": [
+    "R49 10K to +1V8"
+   ]
+  },
+  "/~{PCIE_PERST}": {
+   "net": "~{PCIE_PERST}",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_5 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_0 (bidirectional)"
+   ]
+  },
+  "/~{RESET}": {
+   "net": "~{RESET}",
+   "pads": 4,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_23 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: nRESET (input)",
+    "U12 TPS3808EG18 [Power_Supervisor:TPS3808DBV]: ~{RESET} (output)"
+   ],
+   "R parts": [
+    "R44 10K to +1V8"
+   ]
+  },
+  "/~{STATUS}": {
+   "net": "~{STATUS}",
+   "pads": 2,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_12 (passive)",
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: GPIO_61 (bidirectional)"
+   ]
+  },
+  "GND": {
+   "net": "GND",
+   "pads": 350,
+   "pins": [
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_37 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_38 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_43 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_44 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_49 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_50 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_55 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_56 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_61 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_62 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_67 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_68 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_73 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_74 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_79 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_80 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_85 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_86 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_91 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_92 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_97 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Pin_98 (passive)",
+    "J1 Connector_02x60_Odd_Even_Shielded: Shield (passive)",
+    "SW1 CHS-04TA [Switch:SW_DIP_x04]: pin 1 (passive)",
+    "... 37 more"
+   ],
+   "C parts": [
+    "C10 1u to +1V2",
+    "C100 1u to +1V2",
+    "C101 1u to +1V2",
+    "C102 1u to +1V2",
+    "C103 1u to +1V2",
+    "C104 1u to +1V2",
+    "... 160 more"
+   ],
+   "H parts": [
+    "H1 M3",
+    "H2 M3"
+   ],
+   "R parts": [
+    "R12 200K to Net-(U8-FB)",
+    "R16 200K to Net-(U9-FB)",
+    "R2 1K to Net-(U2A-TEN)",
+    "R22 8.06K to Net-(U7-RBIAS)",
+    "R23 10K to ULPI0_CLK",
+    "R24 2.49K to Net-(U4-R_SET)",
+    "... 16 more"
+   ],
+   "TP parts": [
+    "TP12 TestPoint"
+   ]
+  },
+  "Net-(U12-CT)": {
+   "net": "Net-(U12-CT)",
+   "pads": 2,
+   "pins": [
+    "U12 TPS3808EG18 [Power_Supervisor:TPS3808DBV]: CT (input)"
+   ],
+   "C parts": [
+    "C158 10n to GND"
+   ]
+  },
+  "Net-(U12-~{MR})": {
+   "net": "Net-(U12-~{MR})",
+   "pads": 4,
+   "pins": [
+    "U12 TPS3808EG18 [Power_Supervisor:TPS3808DBV]: ~{MR} (input)",
+    "U13 74LVC2G07: pin 4 (open_collector)",
+    "U13 74LVC2G07: pin 6 (open_collector)"
+   ],
+   "R parts": [
+    "R47 10K to +1V8"
+   ]
+  },
+  "Net-(U14-BST)": {
+   "net": "Net-(U14-BST)",
+   "pads": 2,
+   "pins": [
+    "U14 TPS51375 [q-lab:Regulator_TPS51375]: BST (passive)"
+   ],
+   "C parts": [
+    "C156 100n to LX_0V9"
+   ]
+  },
+  "Net-(U14-FB)": {
+   "net": "Net-(U14-FB)",
+   "pads": 4,
+   "pins": [
+    "U14 TPS51375 [q-lab:Regulator_TPS51375]: FB (passive)"
+   ],
+   "C parts": [
+    "C105 33p to +0V9"
+   ],
+   "R parts": [
+    "R34 20K to GND",
+    "R35 10K to +0V9"
+   ]
+  },
+  "Net-(U14-VCC)": {
+   "net": "Net-(U14-VCC)",
+   "pads": 3,
+   "pins": [
+    "U14 TPS51375 [q-lab:Regulator_TPS51375]: VCC (power_out)"
+   ],
+   "C parts": [
+    "C161 1u to GND",
+    "C162 1u to GND"
+   ]
+  },
+  "Net-(U1A-RESERVED_5)": {
+   "net": "Net-(U1A-RESERVED_5)",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: RESERVED_5 (power_in)"
+   ],
+   "R parts": [
+    "R42 10K to GND"
+   ]
+  },
+  "Net-(U1A-RESERVED_6)": {
+   "net": "Net-(U1A-RESERVED_6)",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: RESERVED_6 (input)"
+   ],
+   "R parts": [
+    "R43 10K to GND"
+   ]
+  },
+  "Net-(U1A-RESERVED_7)": {
+   "net": "Net-(U1A-RESERVED_7)",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: RESERVED_7 (passive)"
+   ],
+   "TP parts": [
+    "TP1 TestPoint"
+   ]
+  },
+  "Net-(U1D-DDR_RZQ)": {
+   "net": "Net-(U1D-DDR_RZQ)",
+   "pads": 2,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: DDR_RZQ (passive)"
+   ],
+   "R parts": [
+    "R6 240 to GND"
+   ]
+  },
+  "Net-(U1E-VDDPLL)": {
+   "net": "Net-(U1E-VDDPLL)",
+   "pads": 4,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VDDPLL (power_in)"
+   ],
+   "C parts": [
+    "C1 100n to Net-(U1E-VSSPLL)",
+    "C2 1u to Net-(U1E-VSSPLL)"
+   ],
+   "R parts": [
+    "R1 10 to +1V8"
+   ]
+  },
+  "Net-(U1E-VSSPLL)": {
+   "net": "Net-(U1E-VSSPLL)",
+   "pads": 3,
+   "pins": [
+    "U1 LAN969x [q-lab:Ethernet_LAN969x]: VSSPLL (power_in)"
+   ],
+   "C parts": [
+    "C1 100n to Net-(U1E-VDDPLL)",
+    "C2 1u to Net-(U1E-VDDPLL)"
+   ]
+  },
+  "Net-(U2A-TEN)": {
+   "net": "Net-(U2A-TEN)",
+   "pads": 2,
+   "pins": [
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: TEN (input)"
+   ],
+   "R parts": [
+    "R2 1K to GND"
+   ]
+  },
+  "Net-(U2A-ZQ)": {
+   "net": "Net-(U2A-ZQ)",
+   "pads": 2,
+   "pins": [
+    "U2 NT5AD512M16C4-JR [q-lab:DDR4_x16]: ZQ (passive)"
+   ],
+   "R parts": [
+    "R3 240 to GND"
+   ]
+  },
+  "Net-(U3-EN)": {
+   "net": "Net-(U3-EN)",
+   "pads": 3,
+   "pins": [
+    "U3 TPS54338 [q-lab:Regulator_TPS54x38]: EN (input)"
+   ],
+   "R parts": [
+    "R7 174K to +20V0",
+    "R8 33.2K to GND"
+   ]
+  },
+  "Net-(U3-FB)": {
+   "net": "Net-(U3-FB)",
+   "pads": 3,
+   "pins": [
+    "U3 TPS54338 [q-lab:Regulator_TPS54x38]: FB (passive)"
+   ],
+   "R parts": [
+    "R17 21.5K to +3V3",
+    "R38 4.7K to GND"
+   ]
+  },
+  "Net-(U3-MODE)": {
+   "net": "Net-(U3-MODE)",
+   "pads": 2,
+   "pins": [
+    "U3 TPS54338 [q-lab:Regulator_TPS54x38]: MODE (passive)"
+   ],
+   "R parts": [
+    "R9 18K to GND"
+   ]
+  },
+  "Net-(U3-SW)": {
+   "net": "Net-(U3-SW)",
+   "pads": 2,
+   "pins": [
+    "U3 TPS54338 [q-lab:Regulator_TPS54x38]: SW (passive)"
+   ],
+   "L parts": [
+    "L4 4.7uH to +3V3"
+   ]
+  },
+  "Net-(U4-REG_OUT)": {
+   "net": "Net-(U4-REG_OUT)",
+   "pads": 2,
+   "pins": [
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: REG_OUT (power_out)"
+   ],
+   "L parts": [
+    "L5 4.7uH to +1V0_ENET"
+   ]
+  },
+  "Net-(U4-R_SET)": {
+   "net": "Net-(U4-R_SET)",
+   "pads": 2,
+   "pins": [
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: R_SET (output)"
+   ],
+   "R parts": [
+    "R24 2.49K to GND"
+   ]
+  },
+  "Net-(U4-XTAL_OUT)": {
+   "net": "Net-(U4-XTAL_OUT)",
+   "pads": 2,
+   "pins": [
+    "U4 RTL8211F [q-lab:Ethernet_RTL8211F]: XTAL_OUT (bidirectional)",
+    "X2 25MHz [Oscillator:ECS-2520MV-xxx-xx]: OUT (output)"
+   ]
+  },
+  "Net-(U7-RBIAS)": {
+   "net": "Net-(U7-RBIAS)",
+   "pads": 2,
+   "pins": [
+    "U7 USB3343: RBIAS (passive)"
+   ],
+   "R parts": [
+    "R22 8.06K to GND"
+   ]
+  },
+  "Net-(U7-REFCLK{slash}XI)": {
+   "net": "Net-(U7-REFCLK{slash}XI)",
+   "pads": 2,
+   "pins": [
+    "U7 USB3343: REFCLK/XI (input)",
+    "X1 26MHz [Oscillator:ECS-2520MV-xxx-xx]: OUT (output)"
+   ]
+  },
+  "Net-(U7-VBUS)": {
+   "net": "Net-(U7-VBUS)",
+   "pads": 2,
+   "pins": [
+    "U7 USB3343: VBUS (input)"
+   ],
+   "R parts": [
+    "R21 20K to USB0_VBUS"
+   ]
+  },
+  "Net-(U7-VDD18)": {
+   "net": "Net-(U7-VDD18)",
+   "pads": 2,
+   "pins": [
+    "U7 USB3343: VDD18 (power_out)"
+   ],
+   "C parts": [
+    "C135 1u to GND"
+   ]
+  },
+  "Net-(U7-VDD33)": {
+   "net": "Net-(U7-VDD33)",
+   "pads": 2,
+   "pins": [
+    "U7 USB3343: VDD33 (power_out)"
+   ],
+   "C parts": [
+    "C136 1u to GND"
+   ]
+  },
+  "Net-(U8-FB)": {
+   "net": "Net-(U8-FB)",
+   "pads": 3,
+   "pins": [
+    "U8 TPS628302A [q-lab:Regulator_TPS62830x]: FB (input)"
+   ],
+   "R parts": [
+    "R11 280K to +1V2",
+    "R12 200K to GND"
+   ]
+  },
+  "Net-(U8-SW)": {
+   "net": "Net-(U8-SW)",
+   "pads": 2,
+   "pins": [
+    "U8 TPS628302A [q-lab:Regulator_TPS62830x]: SW (power_out)"
+   ],
+   "L parts": [
+    "L2 470nH to +1V2"
+   ]
+  },
+  "Net-(U9-FB)": {
+   "net": "Net-(U9-FB)",
+   "pads": 3,
+   "pins": [
+    "U9 TPS628302A [q-lab:Regulator_TPS62830x]: FB (input)"
+   ],
+   "R parts": [
+    "R15 523K to +1V8",
+    "R16 200K to GND"
+   ]
+  },
+  "Net-(U9-SW)": {
+   "net": "Net-(U9-SW)",
+   "pads": 2,
+   "pins": [
+    "U9 TPS628302A [q-lab:Regulator_TPS62830x]: SW (power_out)"
+   ],
+   "L parts": [
+    "L3 470nH to +1V8"
+   ]
+  }
+ },
+ "parts": {
+  "J1": {
+   "ref": "J1",
+   "value": "Connector_02x60_Odd_Even_Shielded",
+   "library": "q-lab:Connector_02x60_Odd_Even_Shielded",
+   "sheet": "Carrier Connector",
+   "pins": [
+    "Pin_113 (passive), Pin_115 (passive) -> +1V8",
+    "Pin_117 (passive), Pin_119 (passive) -> +20V0",
+    "Pin_118 (passive), Pin_120 (passive) -> +3V3",
+    "Pin_29 (passive) -> ENET_MDC_0",
+    "Pin_31 (passive) -> ENET_MDIO_0",
+    "Pin_30 (passive) -> FC0_RXI",
+    "Pin_32 (passive) -> FC0_TXO",
+    "Pin_34 (passive) -> FC3_SCL",
+    "Pin_36 (passive) -> FC3_SDA",
+    "Pin_10 (passive) -> GPIO_2",
+    "Pin_111 (passive) -> GPIO_25",
+    "Pin_109 (passive) -> GPIO_26",
+    "Pin_107 (passive) -> GPIO_27",
+    "Pin_105 (passive) -> GPIO_28",
+    "Pin_103 (passive) -> GPIO_29",
+    "Pin_14 (passive) -> GPIO_54",
+    "Pin_16 (passive) -> GPIO_57",
+    "Pin_18 (passive) -> GPIO_58",
+    "Pin_20 (passive) -> GPIO_59",
+    "Pin_22 (passive) -> GPIO_63",
+    "Pin_24 (passive) -> GPIO_64",
+    "Pin_26 (passive) -> GPIO_65",
+    "Pin_28 (passive) -> GPIO_66",
+    "Pin_9 (passive) -> MGMT_D0_N",
+    "Pin_7 (passive) -> MGMT_D0_P",
+    "Pin_13 (passive) -> MGMT_D1_N",
+    "Pin_11 (passive) -> MGMT_D1_P",
+    "Pin_17 (passive) -> MGMT_D2_N",
+    "Pin_15 (passive) -> MGMT_D2_P",
+    "Pin_21 (passive) -> MGMT_D3_N",
+    "Pin_19 (passive) -> MGMT_D3_P",
+    "Pin_25 (passive) -> MGMT_LED1",
+    "Pin_8 (passive) -> PCIE_RX_N",
+    "Pin_6 (passive) -> PCIE_RX_P",
+    "Pin_2 (passive) -> PCIE_TX_N",
+    "Pin_4 (passive) -> PCIE_TX_P",
+    "Pin_3 (passive) -> REFCLKPCIE_N",
+    "Pin_1 (passive) -> REFCLKPCIE_P",
+    "Pin_41 (passive) -> S0_RXN",
+    "Pin_39 (passive) -> S0_RXP",
+    "... 56 more nets"
+   ]
+  },
+  "SW1": {
+   "ref": "SW1",
+   "value": "CHS-04TA",
+   "library": "Switch:SW_DIP_x04",
+   "description": "4x DIP Switch, Single Pole Single Throw (SPST) switch, small symbol",
+   "sheet": "LAN969x Misc",
+   "pins": [
+    "5 (passive) -> VCORE_0",
+    "6 (passive) -> VCORE_1",
+    "7 (passive) -> VCORE_2",
+    "8 (passive) -> VCORE_3",
+    "1 (passive), 2 (passive), 3 (passive), 4 (passive) -> GND"
+   ]
+  },
+  "U1": {
+   "ref": "U1",
+   "value": "LAN969x",
+   "library": "q-lab:Ethernet_LAN969x",
+   "sheet": "LAN969x Misc",
+   "pins": [
+    "VDD (power_in), VDD (power_in), VDD (power_in), VDD (power_in), VDD (power_in), VDD (power_in) ... -> +0V9",
+    "VDDIODDR (power_in), VDDIODDR (power_in), VDDIODDR (power_in), VDDIODDR (power_in), VDDIODDR (power_in), VDDIODDR (power_in) ... -> +1V2",
+    "VDDIO (power_in), VDDIO (power_in), VDDIO (power_in), VDDIO (power_in), VDDIO (power_in), VDDIO (power_in) ... -> +1V8",
+    "DDR_A0 (output) -> DDR_A0",
+    "DDR_A1 (output) -> DDR_A1",
+    "DDR_A10 (output) -> DDR_A10",
+    "DDR_A11 (output) -> DDR_A11",
+    "DDR_A12 (output) -> DDR_A12",
+    "DDR_A13 (output) -> DDR_A13",
+    "DDR_A14 (output) -> DDR_A14",
+    "DDR_A15 (output) -> DDR_A15",
+    "DDR_A16_3WE_n (output) -> DDR_A16",
+    "DDR_A2 (output) -> DDR_A2",
+    "DDR_A3 (output) -> DDR_A3",
+    "DDR_A4 (output) -> DDR_A4",
+    "DDR_A5 (output) -> DDR_A5",
+    "DDR_A6 (output) -> DDR_A6",
+    "DDR_A7 (output) -> DDR_A7",
+    "DDR_A8 (output) -> DDR_A8",
+    "DDR_A9 (output) -> DDR_A9",
+    "DDR_BA0 (output) -> DDR_BA0",
+    "DDR_BA1 (output) -> DDR_BA1",
+    "DDR_BG0_3BA2 (output) -> DDR_BG0",
+    "DDR_CKE0 (output) -> DDR_CKE",
+    "DDR_CK_c (output) -> DDR_CK_N",
+    "DDR_CK_t (output) -> DDR_CK_P",
+    "DDR_DM0 (bidirectional) -> DDR_DM0",
+    "DDR_DM1 (bidirectional) -> DDR_DM1",
+    "DDR_DQ0 (bidirectional) -> DDR_DQ0",
+    "DDR_DQ1 (bidirectional) -> DDR_DQ1",
+    "DDR_DQ10 (bidirectional) -> DDR_DQ10",
+    "DDR_DQ11 (bidirectional) -> DDR_DQ11",
+    "DDR_DQ12 (bidirectional) -> DDR_DQ12",
+    "DDR_DQ13 (bidirectional) -> DDR_DQ13",
+    "DDR_DQ14 (bidirectional) -> DDR_DQ14",
+    "DDR_DQ15 (bidirectional) -> DDR_DQ15",
+    "DDR_DQ2 (bidirectional) -> DDR_DQ2",
+    "DDR_DQ3 (bidirectional) -> DDR_DQ3",
+    "DDR_DQ4 (bidirectional) -> DDR_DQ4",
+    "DDR_DQ5 (bidirectional) -> DDR_DQ5",
+    "... 177 more nets"
+   ]
+  },
+  "U11": {
+   "ref": "U11",
+   "value": "AX3PAF1-156.2500T3",
+   "library": "q-lab:OSC_Abracon_AK",
+   "description": "Abracon AK Series LVPECL, LVDS and HSCL Oscillators",
+   "sheet": "LAN969x Misc",
+   "pins": [
+    "EN/NC (input), VDD (power_in) -> +3V3",
+    "~{OUT} (output) -> LAN_CK_N",
+    "OUT (output) -> LAN_CK_P",
+    "GND (power_in) -> GND",
+    "NC/EN (input) -> unconnected-(U11-NC{slash}EN-Pad2)"
+   ]
+  },
+  "U12": {
+   "ref": "U12",
+   "value": "TPS3808EG18",
+   "library": "Power_Supervisor:TPS3808DBV",
+   "description": "Low-Quiescent-Current, Programmable-Delay Supervisory Circuit, SOT-23-6",
+   "sheet": "LAN969x Misc",
+   "pins": [
+    "SENSE (input), VDD (power_in) -> +1V8",
+    "~{RESET} (output) -> ~{RESET}",
+    "GND (power_in) -> GND",
+    "CT (input) -> Net-(U12-CT)",
+    "~{MR} (input) -> Net-(U12-~{MR})"
+   ]
+  },
+  "U13": {
+   "ref": "U13",
+   "value": "74LVC2G07",
+   "library": "74xGxx:74LVC2G07",
+   "description": "Dual Buffer, Open Drain, Low-Voltage CMOS",
+   "sheet": "LAN969x Misc",
+   "pins": [
+    "VCC (power_in) -> +1V8",
+    "3 (input) -> ~{BRDRESET}",
+    "1 (input) -> ~{MR}",
+    "GND (power_in) -> GND",
+    "4 (open_collector), 6 (open_collector) -> Net-(U12-~{MR})"
+   ]
+  },
+  "U14": {
+   "ref": "U14",
+   "value": "TPS51375",
+   "library": "q-lab:Regulator_TPS51375",
+   "description": "4.5V to 24V, 12A Continuous Current, 26A Maximum Current, Synchronous Buck Converter",
+   "sheet": "Regulators",
+   "pins": [
+    "VIN (power_in) -> +20V0",
+    "SW (passive), SW (passive) -> LX_0V9",
+    "PG (open_collector) -> PG_0V9",
+    "EN (input) -> PG_3V3",
+    "PGND (passive), BYP (power_in), GSNS (passive), PGND (passive), PGND (passive), AGND (passive) -> GND",
+    "BST (passive) -> Net-(U14-BST)",
+    "FB (passive) -> Net-(U14-FB)",
+    "VCC (power_out) -> Net-(U14-VCC)",
+    "NC (passive) -> unconnected-(U14-NC-Pad13)",
+    "NC (passive) -> unconnected-(U14-NC-Pad14)",
+    "NC (passive) -> unconnected-(U14-NC-Pad15)",
+    "NC (passive) -> unconnected-(U14-NC-Pad16)",
+    "NC (passive) -> unconnected-(U14-NC-Pad7)"
+   ]
+  },
+  "U16": {
+   "ref": "U16",
+   "value": "LP5912-2.5DRV",
+   "library": "Regulator_Linear:LP5912-2.5DRV",
+   "description": "500-mA Ultra-Low-Noise Low-IQ LDO, 2.5V, WSON-6",
+   "sheet": "Regulators",
+   "pins": [
+    "OUT (power_out) -> +2V5",
+    "IN (power_in) -> +3V3",
+    "EN (input) -> PG_1V2",
+    "PG (open_collector), GND (power_in), EP (passive) -> GND",
+    "NC (no_connect) -> unconnected-(U16-NC-Pad2)"
+   ]
+  },
+  "U2": {
+   "ref": "U2",
+   "value": "NT5AD512M16C4-JR",
+   "library": "q-lab:DDR4_x16",
+   "sheet": "DDR",
+   "pins": [
+    "VDDQ (power_in), VDDQ (power_in), VDD (power_in), VDD (power_in), VDDQ (power_in), VDD (power_in) ... -> +1V2",
+    "VPP (power_in), VPP (power_in) -> +2V5",
+    "A0 (input) -> DDR_A0",
+    "A1 (input) -> DDR_A1",
+    "A10/AP (input) -> DDR_A10",
+    "A11 (input) -> DDR_A11",
+    "A12/BC_n (input) -> DDR_A12",
+    "A13 (input) -> DDR_A13",
+    "A14/WE_n (input) -> DDR_A14",
+    "A15/CAS_n (input) -> DDR_A15",
+    "A16/RAS_n (input) -> DDR_A16",
+    "A2 (input) -> DDR_A2",
+    "A3 (input) -> DDR_A3",
+    "A4 (input) -> DDR_A4",
+    "A5 (input) -> DDR_A5",
+    "A6 (input) -> DDR_A6",
+    "A7 (input) -> DDR_A7",
+    "A8 (input) -> DDR_A8",
+    "A9 (input) -> DDR_A9",
+    "BA0 (input) -> DDR_BA0",
+    "BA1 (input) -> DDR_BA1",
+    "BG0 (input) -> DDR_BG0",
+    "CKE (input) -> DDR_CKE",
+    "CK_c (input) -> DDR_CK_N",
+    "CK_t (input) -> DDR_CK_P",
+    "LDM_n/UDBI_n (input) -> DDR_DM0",
+    "UDM_n/UDBI_n (input) -> DDR_DM1",
+    "DQ0 (bidirectional) -> DDR_DQ0",
+    "DQ1 (bidirectional) -> DDR_DQ1",
+    "DQ10 (bidirectional) -> DDR_DQ10",
+    "DQ11 (bidirectional) -> DDR_DQ11",
+    "DQ12 (bidirectional) -> DDR_DQ12",
+    "DQ13 (bidirectional) -> DDR_DQ13",
+    "DQ14 (bidirectional) -> DDR_DQ14",
+    "DQ15 (bidirectional) -> DDR_DQ15",
+    "DQ2 (bidirectional) -> DDR_DQ2",
+    "DQ3 (bidirectional) -> DDR_DQ3",
+    "DQ4 (bidirectional) -> DDR_DQ4",
+    "DQ5 (bidirectional) -> DDR_DQ5",
+    "DQ6 (bidirectional) -> DDR_DQ6",
+    "... 18 more nets"
+   ]
+  },
+  "U3": {
+   "ref": "U3",
+   "value": "TPS54338",
+   "library": "q-lab:Regulator_TPS54x38",
+   "description": "3.8V to 28V, 5A, 4A, 3A, Synchronous Buck Converter With User Selectable Mode",
+   "sheet": "Regulators",
+   "pins": [
+    "VIN (power_in), VIN (power_in) -> +20V0",
+    "SS/PG (passive) -> PG_3V3",
+    "GND (passive) -> GND",
+    "EN (input) -> Net-(U3-EN)",
+    "FB (passive) -> Net-(U3-FB)",
+    "MODE (passive) -> Net-(U3-MODE)",
+    "SW (passive) -> Net-(U3-SW)",
+    "RT/SYNC (passive) -> unconnected-(U3-RT{slash}SYNC-Pad1)"
+   ]
+  },
+  "U4": {
+   "ref": "U4",
+   "value": "RTL8211F",
+   "library": "q-lab:Ethernet_RTL8211F",
+   "sheet": "Managment Port",
+   "pins": [
+    "DVDD10 (power_in), AVDD10 (power_in), AVDD10 (power_in), AVDD10 (power_in) -> +1V0_ENET",
+    "DVDD_RG (power_out) -> +1V8_ENET",
+    "AVDD33 (power_in), DVDD33 (power_in), AVDD33 (power_in) -> +3V3",
+    "MDC (input) -> ENET_MDC_0",
+    "MDIO (bidirectional) -> ENET_MDIO_0",
+    "LED0/CFG_EXT (output) -> MGMT_LED0",
+    "RXC/PHYAD1 (output) -> RGMII0_RX_CLK",
+    "RXCTL/PHYAD2 (output) -> RGMII0_RX_CTL",
+    "RXD0/RXDLY (output) -> RGMII0_RX_D0",
+    "RXD1/TXDLY (output) -> RGMII0_RX_D1",
+    "RXD2/PLLOFF (output) -> RGMII0_RX_D2",
+    "RXD3/PHYAD0 (output) -> RGMII0_RX_D3",
+    "TXC (input) -> RGMII0_TX_CLK",
+    "TXCTL (input) -> RGMII0_TX_CTL",
+    "TXD0 (input) -> RGMII0_TX_D0",
+    "TXD1 (input) -> RGMII0_TX_D1",
+    "TXD2 (input) -> RGMII0_TX_D2",
+    "TXD3 (input) -> RGMII0_TX_D3",
+    "MDIN0 (bidirectional) -> MGMT_D0_N",
+    "MDIP0 (bidirectional) -> MGMT_D0_P",
+    "MDIN1 (bidirectional) -> MGMT_D1_N",
+    "MDIP1 (bidirectional) -> MGMT_D1_P",
+    "MDIN2 (bidirectional) -> MGMT_D2_N",
+    "MDIP2 (bidirectional) -> MGMT_D2_P",
+    "MDIN3 (bidirectional) -> MGMT_D3_N",
+    "MDIP3 (bidirectional) -> MGMT_D3_P",
+    "LED1/CFG_LDO0 (output) -> MGMT_LED1",
+    "~{INT} (open_collector) -> ~{ETH_INT0}",
+    "~{RESET} (input) -> ~{ETH_RST0}",
+    "LED2/CFG_LDO1 (output) -> ~{MGMT_LED2}",
+    "XTAL_IN (input), GND (power_in) -> GND",
+    "REG_OUT (power_out) -> Net-(U4-REG_OUT)",
+    "R_SET (output) -> Net-(U4-R_SET)",
+    "XTAL_OUT (bidirectional) -> Net-(U4-XTAL_OUT)",
+    "CLKOUT (output) -> unconnected-(U4-CLKOUT-Pad35)"
+   ]
+  },
+  "U5": {
+   "ref": "U5",
+   "value": "Flash_EMMC",
+   "library": "q-lab:Flash_EMMC",
+   "sheet": "eMMC",
+   "pins": [
+    "VCCQ1 (power_in), VCCQ2 (power_in), VCCQ3 (power_in), VCCQ4 (power_in), VCCQ5 (power_in) -> +1V8",
+    "VCC1 (power_in), VCC2 (power_in), VCC3 (power_in), VCC4 (power_in) -> +3V3",
+    "CLK (input) -> EMMC_CLK",
+    "CMD (output) -> EMMC_CMD",
+    "DAT0 (bidirectional) -> EMMC_D0",
+    "DAT1 (bidirectional) -> EMMC_D1",
+    "DAT2 (bidirectional) -> EMMC_D2",
+    "NC11 (passive), DAT3 (bidirectional) -> EMMC_D3",
+    "NC2 (passive), DAT4 (bidirectional) -> EMMC_D4",
+    "DAT5 (bidirectional), NC21 (passive), NC33 (passive) -> EMMC_D5",
+    "DAT6 (bidirectional), NC22 (passive) -> EMMC_D6",
+    "NC4 (passive), DAT7 (bidirectional), NC12 (passive) -> EMMC_D7",
+    "NC20 (passive), VDDI (passive) -> EMMC_VDDI",
+    "~{RST} (input) -> ~{EMMC_RST}",
+    "VSS1 (power_in), VSSQ1 (power_in), VSS2 (power_in), VSS3 (power_in), VSS4 (power_in), VSS5 (power_in) ... -> GND",
+    "DS (input) -> unconnected-(U5A-DS-PadH5)",
+    "NC1 (passive) -> unconnected-(U5B-NC1-PadA1)",
+    "NC10 (passive) -> unconnected-(U5B-NC10-PadA14)",
+    "NC100 (passive) -> unconnected-(U5B-NC100-PadN1)",
+    "NC101 (passive) -> unconnected-(U5B-NC101-PadN3)",
+    "NC102 (passive) -> unconnected-(U5B-NC102-PadN6)",
+    "NC103 (passive) -> unconnected-(U5B-NC103-PadN7)",
+    "NC104 (passive) -> unconnected-(U5B-NC104-PadN8)",
+    "NC105 (passive) -> unconnected-(U5B-NC105-PadN9)",
+    "NC106 (passive) -> unconnected-(U5B-NC106-PadN10)",
+    "NC107 (passive) -> unconnected-(U5B-NC107-PadN11)",
+    "NC108 (passive) -> unconnected-(U5B-NC108-PadN12)",
+    "NC109 (passive) -> unconnected-(U5B-NC109-PadN13)",
+    "NC110 (passive) -> unconnected-(U5B-NC110-PadN14)",
+    "NC111 (passive) -> unconnected-(U5B-NC111-PadP1)",
+    "NC112 (passive) -> unconnected-(U5B-NC112-PadP2)",
+    "NC113 (no_connect) -> unconnected-(U5B-NC113-PadP7)",
+    "NC114 (passive) -> unconnected-(U5B-NC114-PadP8)",
+    "NC115 (passive) -> unconnected-(U5B-NC115-PadP9)",
+    "NC116 (no_connect) -> unconnected-(U5B-NC116-PadP10)",
+    "NC117 (passive) -> unconnected-(U5B-NC117-PadP11)",
+    "NC118 (passive) -> unconnected-(U5B-NC118-PadP12)",
+    "NC119 (passive) -> unconnected-(U5B-NC119-PadP13)",
+    "NC120 (passive) -> unconnected-(U5B-NC120-PadP14)",
+    "NC13 (passive) -> unconnected-(U5B-NC13-PadB8)",
+    "... 88 more nets"
+   ]
+  },
+  "U6": {
+   "ref": "U6",
+   "value": "W25Q32JWZPIQ",
+   "library": "Memory_Flash:W25Q32JVZP",
+   "description": "32Mbit / 4MiB Serial Flash Memory, Standard/Dual/Quad SPI, 2.7-3.6V, WSON-8",
+   "sheet": "LAN969x Misc",
+   "pins": [
+    "VCC (power_in) -> +1V8",
+    "CLK (input) -> QSPI_CLK",
+    "DI/IO_{0} (bidirectional) -> QSPI_D0",
+    "DO/IO_{1} (bidirectional) -> QSPI_D1",
+    "~{WP}/IO_{2} (bidirectional) -> QSPI_D2",
+    "~{HOLD}/~{RESET}/IO_{3} (bidirectional) -> QSPI_D3",
+    "~{CS} (input) -> ~{QSPI_CS}",
+    "GND (power_in), EP (passive) -> GND"
+   ]
+  },
+  "U7": {
+   "ref": "U7",
+   "value": "USB3343",
+   "library": "Interface_USB:USB3343",
+   "description": "Hi-Speed USB ULPI Transceiver, QFN-24",
+   "sheet": "USB",
+   "pins": [
+    "VDDIO (power_in) -> +1V8",
+    "VBAT (power_in) -> +3V3",
+    "CLKOUT (output) -> ULPI0_CLK",
+    "DATA0 (bidirectional) -> ULPI0_D0",
+    "DATA1 (bidirectional) -> ULPI0_D1",
+    "DATA2 (bidirectional) -> ULPI0_D2",
+    "DATA3 (bidirectional) -> ULPI0_D3",
+    "DATA4 (bidirectional) -> ULPI0_D4",
+    "DATA5 (bidirectional) -> ULPI0_D5",
+    "DATA6 (bidirectional) -> ULPI0_D6",
+    "DATA7 (bidirectional) -> ULPI0_D7",
+    "DIR (output) -> ULPI0_DIR",
+    "NXT (output) -> ULPI0_NXT",
+    "STP (input) -> ULPI0_STP",
+    "~{RESETB} (input) -> ~{ULPI0_RESET}",
+    "ID (input) -> USB0_ID",
+    "DM (bidirectional) -> USB0_N",
+    "DP (bidirectional) -> USB0_P",
+    "GND (power_in) -> GND",
+    "RBIAS (passive) -> Net-(U7-RBIAS)",
+    "REFCLK/XI (input) -> Net-(U7-REFCLK{slash}XI)",
+    "VBUS (input) -> Net-(U7-VBUS)",
+    "VDD18 (power_out) -> Net-(U7-VDD18)",
+    "VDD33 (power_out) -> Net-(U7-VDD33)",
+    "XO (output) -> unconnected-(U7-XO-Pad20)"
+   ]
+  },
+  "U8": {
+   "ref": "U8",
+   "value": "TPS628302A",
+   "library": "q-lab:Regulator_TPS62830x",
+   "description": "2.25V to 5.5V Input, 1, 2, 3, 4A Step-Down Converter With 1% Output Accuracy in Small WQFN and SOT583 Packages",
+   "sheet": "Regulators",
+   "pins": [
+    "VOS (input) -> +1V2",
+    "VIN (power_in), MODE (input) -> +3V3",
+    "EN (input) -> PG_0V9",
+    "PG (open_collector) -> PG_1V2",
+    "GND (power_in) -> GND",
+    "FB (input) -> Net-(U8-FB)",
+    "SW (power_out) -> Net-(U8-SW)"
+   ]
+  },
+  "U9": {
+   "ref": "U9",
+   "value": "TPS628302A",
+   "library": "q-lab:Regulator_TPS62830x",
+   "description": "2.25V to 5.5V Input, 1, 2, 3, 4A Step-Down Converter With 1% Output Accuracy in Small WQFN and SOT583 Packages",
+   "sheet": "Regulators",
+   "pins": [
+    "VOS (input) -> +1V8",
+    "VIN (power_in), MODE (input) -> +3V3",
+    "EN (input) -> PG_1V2",
+    "PG (open_collector) -> PG_1V8",
+    "GND (power_in) -> GND",
+    "FB (input) -> Net-(U9-FB)",
+    "SW (power_out) -> Net-(U9-SW)"
+   ]
+  },
+  "X1": {
+   "ref": "X1",
+   "value": "26MHz",
+   "library": "Oscillator:ECS-2520MV-xxx-xx",
+   "description": "HCMOS Crystal Clock Oscillator, 2.5x2.0 mm SMD",
+   "sheet": "USB",
+   "pins": [
+    "VDD (power_in) -> +1V8",
+    "GND (power_in) -> GND",
+    "OUT (output) -> Net-(U7-REFCLK{slash}XI)",
+    "Tri-State (input) -> unconnected-(X1-Tri-State-Pad1)"
+   ]
+  },
+  "X2": {
+   "ref": "X2",
+   "value": "25MHz",
+   "library": "Oscillator:ECS-2520MV-xxx-xx",
+   "description": "HCMOS Crystal Clock Oscillator, 2.5x2.0 mm SMD",
+   "sheet": "Managment Port",
+   "pins": [
+    "VDD (power_in) -> +3V3",
+    "GND (power_in) -> GND",
+    "OUT (output) -> Net-(U4-XTAL_OUT)",
+    "Tri-State (input) -> unconnected-(X2-Tri-State-Pad1)"
+   ]
+  }
+ }
+}

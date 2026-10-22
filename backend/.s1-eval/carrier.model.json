@@ -1,0 +1,5311 @@
+{
+ "seconds": 387.5782289505005,
+ "questions": 333,
+ "nets": [
+  {
+   "subject": "+12V_POE",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.7432199012431886,
+   "probabilities": {
+    "supply_rail": 0.7946,
+    "ground": 0.0088,
+    "switch_node": 0.0088,
+    "power_control": 0.1169,
+    "signal": 0.0709
+   }
+  },
+  {
+   "subject": "+1V5_PD",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8750271963209341,
+   "probabilities": {
+    "supply_rail": 0.9,
+    "ground": 0.0109,
+    "switch_node": 0.0109,
+    "power_control": 0.0487,
+    "signal": 0.0295
+   }
+  },
+  {
+   "subject": "+1V8",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.3737192915882537,
+   "probabilities": {
+    "supply_rail": 0.499,
+    "ground": 0.2784,
+    "switch_node": 0.0071,
+    "power_control": 0.0319,
+    "signal": 0.1836
+   }
+  },
+  {
+   "subject": "+1V8_UART",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.24411574814939996,
+   "probabilities": {
+    "supply_rail": 0.3953,
+    "ground": 0.3346,
+    "switch_node": 0.0101,
+    "power_control": 0.0882,
+    "signal": 0.1718
+   }
+  },
+  {
+   "subject": "+20V_VSYS",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.460276886261002,
+   "probabilities": {
+    "supply_rail": 0.5682,
+    "ground": 0.1378,
+    "switch_node": 0.0145,
+    "power_control": 0.1166,
+    "signal": 0.1628
+   }
+  },
+  {
+   "subject": "+3V3",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.44933678754095974,
+   "probabilities": {
+    "supply_rail": 0.5595,
+    "ground": 0.0102,
+    "switch_node": 0.0057,
+    "power_control": 0.2643,
+    "signal": 0.1603
+   }
+  },
+  {
+   "subject": "+3V3_PD",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.6661972266490026,
+   "probabilities": {
+    "supply_rail": 0.733,
+    "ground": 0.0469,
+    "switch_node": 0.0089,
+    "power_control": 0.084,
+    "signal": 0.1274
+   }
+  },
+  {
+   "subject": "+3V3_SFP",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.7841456563783058,
+   "probabilities": {
+    "supply_rail": 0.8273,
+    "ground": 0.0802,
+    "switch_node": 0.01,
+    "power_control": 0.025,
+    "signal": 0.0575
+   }
+  },
+  {
+   "subject": "+5V0",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.5068880975809068,
+   "probabilities": {
+    "supply_rail": 0.6055,
+    "ground": 0.054,
+    "switch_node": 0.0968,
+    "power_control": 0.1468,
+    "signal": 0.0968
+   }
+  },
+  {
+   "subject": "+5V0_UART",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.20509967709819657,
+   "probabilities": {
+    "supply_rail": 0.3641,
+    "ground": 0.0417,
+    "switch_node": 0.0093,
+    "power_control": 0.3641,
+    "signal": 0.2208
+   }
+  },
+  {
+   "subject": "/FC0_RXI",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5921230715343279,
+   "probabilities": {
+    "supply_rail": 0.0396,
+    "ground": 0.2478,
+    "switch_node": 0.0104,
+    "power_control": 0.0284,
+    "signal": 0.6737
+   }
+  },
+  {
+   "subject": "/FC0_TXO",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7078434307829545,
+   "probabilities": {
+    "supply_rail": 0.0382,
+    "ground": 0.1573,
+    "switch_node": 0.0109,
+    "power_control": 0.0273,
+    "signal": 0.7663
+   }
+  },
+  {
+   "subject": "/FC3_SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9237829448114232,
+   "probabilities": {
+    "supply_rail": 0.0104,
+    "ground": 0.0308,
+    "switch_node": 0.0063,
+    "power_control": 0.0134,
+    "signal": 0.939
+   }
+  },
+  {
+   "subject": "/FC3_SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9543573186145734,
+   "probabilities": {
+    "supply_rail": 0.0091,
+    "ground": 0.0116,
+    "switch_node": 0.006,
+    "power_control": 0.0098,
+    "signal": 0.9635
+   }
+  },
+  {
+   "subject": "/I2C_S0.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9560551164914111,
+   "probabilities": {
+    "supply_rail": 0.0091,
+    "ground": 0.0099,
+    "switch_node": 0.0055,
+    "power_control": 0.0107,
+    "signal": 0.9648
+   }
+  },
+  {
+   "subject": "/I2C_S0.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9579666448136478,
+   "probabilities": {
+    "supply_rail": 0.0099,
+    "ground": 0.0084,
+    "switch_node": 0.0055,
+    "power_control": 0.0099,
+    "signal": 0.9664
+   }
+  },
+  {
+   "subject": "/I2C_S1.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9543573186145734,
+   "probabilities": {
+    "supply_rail": 0.0091,
+    "ground": 0.0098,
+    "switch_node": 0.006,
+    "power_control": 0.0116,
+    "signal": 0.9635
+   }
+  },
+  {
+   "subject": "/I2C_S1.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9550224123812118,
+   "probabilities": {
+    "supply_rail": 0.0107,
+    "ground": 0.0091,
+    "switch_node": 0.0055,
+    "power_control": 0.0107,
+    "signal": 0.964
+   }
+  },
+  {
+   "subject": "/I2C_S2.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9554786131310827,
+   "probabilities": {
+    "supply_rail": 0.0091,
+    "ground": 0.0099,
+    "switch_node": 0.006,
+    "power_control": 0.0107,
+    "signal": 0.9644
+   }
+  },
+  {
+   "subject": "/I2C_S2.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9560551164914111,
+   "probabilities": {
+    "supply_rail": 0.0099,
+    "ground": 0.0091,
+    "switch_node": 0.0055,
+    "power_control": 0.0107,
+    "signal": 0.9648
+   }
+  },
+  {
+   "subject": "/I2C_S3.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9543573186145734,
+   "probabilities": {
+    "supply_rail": 0.0091,
+    "ground": 0.0098,
+    "switch_node": 0.006,
+    "power_control": 0.0116,
+    "signal": 0.9635
+   }
+  },
+  {
+   "subject": "/I2C_S3.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9517416087514776,
+   "probabilities": {
+    "supply_rail": 0.0126,
+    "ground": 0.0098,
+    "switch_node": 0.0055,
+    "power_control": 0.0107,
+    "signal": 0.9614
+   }
+  },
+  {
+   "subject": "/I2C_S4.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9560551164914111,
+   "probabilities": {
+    "supply_rail": 0.0091,
+    "ground": 0.0099,
+    "switch_node": 0.0055,
+    "power_control": 0.0107,
+    "signal": 0.9648
+   }
+  },
+  {
+   "subject": "/I2C_S4.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9550224123812118,
+   "probabilities": {
+    "supply_rail": 0.0107,
+    "ground": 0.0091,
+    "switch_node": 0.0055,
+    "power_control": 0.0107,
+    "signal": 0.964
+   }
+  },
+  {
+   "subject": "/I2C_S5.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9511692208160346,
+   "probabilities": {
+    "supply_rail": 0.0098,
+    "ground": 0.0107,
+    "switch_node": 0.006,
+    "power_control": 0.0126,
+    "signal": 0.9609
+   }
+  },
+  {
+   "subject": "/I2C_S5.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9472097530542928,
+   "probabilities": {
+    "supply_rail": 0.0126,
+    "ground": 0.0106,
+    "switch_node": 0.0065,
+    "power_control": 0.0126,
+    "signal": 0.9578
+   }
+  },
+  {
+   "subject": "/I2C_S6.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9533275187500864,
+   "probabilities": {
+    "supply_rail": 0.0091,
+    "ground": 0.0107,
+    "switch_node": 0.006,
+    "power_control": 0.0116,
+    "signal": 0.9627
+   }
+  },
+  {
+   "subject": "/I2C_S6.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9500559251634446,
+   "probabilities": {
+    "supply_rail": 0.0116,
+    "ground": 0.0098,
+    "switch_node": 0.006,
+    "power_control": 0.0126,
+    "signal": 0.96
+   }
+  },
+  {
+   "subject": "/I2C_S7.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9543573186145734,
+   "probabilities": {
+    "supply_rail": 0.0091,
+    "ground": 0.0098,
+    "switch_node": 0.006,
+    "power_control": 0.0116,
+    "signal": 0.9635
+   }
+  },
+  {
+   "subject": "/I2C_S7.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9512660682797005,
+   "probabilities": {
+    "supply_rail": 0.0116,
+    "ground": 0.0098,
+    "switch_node": 0.006,
+    "power_control": 0.0116,
+    "signal": 0.961
+   }
+  },
+  {
+   "subject": "/I2C_S8.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9512660682797005,
+   "probabilities": {
+    "supply_rail": 0.0098,
+    "ground": 0.0116,
+    "switch_node": 0.006,
+    "power_control": 0.0116,
+    "signal": 0.961
+   }
+  },
+  {
+   "subject": "/I2C_S8.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9512660682797005,
+   "probabilities": {
+    "supply_rail": 0.0116,
+    "ground": 0.0098,
+    "switch_node": 0.006,
+    "power_control": 0.0116,
+    "signal": 0.961
+   }
+  },
+  {
+   "subject": "/I2C_S9.SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9523816114151157,
+   "probabilities": {
+    "supply_rail": 0.0098,
+    "ground": 0.0107,
+    "switch_node": 0.006,
+    "power_control": 0.0116,
+    "signal": 0.9619
+   }
+  },
+  {
+   "subject": "/I2C_S9.SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9550224123812118,
+   "probabilities": {
+    "supply_rail": 0.0107,
+    "ground": 0.0091,
+    "switch_node": 0.0055,
+    "power_control": 0.0107,
+    "signal": 0.964
+   }
+  },
+  {
+   "subject": "/MGMT.D0_N",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.3670657750346654,
+   "probabilities": {
+    "supply_rail": 0.0789,
+    "ground": 0.4937,
+    "switch_node": 0.0162,
+    "power_control": 0.0858,
+    "signal": 0.3254
+   }
+  },
+  {
+   "subject": "/MGMT.D0_P",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.3128205043636413,
+   "probabilities": {
+    "supply_rail": 0.1092,
+    "ground": 0.4503,
+    "switch_node": 0.0175,
+    "power_control": 0.1005,
+    "signal": 0.3226
+   }
+  },
+  {
+   "subject": "/MGMT.D1_N",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.2966982423318668,
+   "probabilities": {
+    "supply_rail": 0.0826,
+    "ground": 0.4374,
+    "switch_node": 0.02,
+    "power_control": 0.0898,
+    "signal": 0.3702
+   }
+  },
+  {
+   "subject": "/MGMT.D1_P",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.17441587503924702,
+   "probabilities": {
+    "supply_rail": 0.1743,
+    "ground": 0.3395,
+    "switch_node": 0.0217,
+    "power_control": 0.1249,
+    "signal": 0.3395
+   }
+  },
+  {
+   "subject": "/MGMT.D2_N",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.33408790431086305,
+   "probabilities": {
+    "supply_rail": 0.0883,
+    "ground": 0.4673,
+    "switch_node": 0.0214,
+    "power_control": 0.0883,
+    "signal": 0.3348
+   }
+  },
+  {
+   "subject": "/MGMT.D2_P",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.30480917324741846,
+   "probabilities": {
+    "supply_rail": 0.0911,
+    "ground": 0.4438,
+    "switch_node": 0.0203,
+    "power_control": 0.099,
+    "signal": 0.3457
+   }
+  },
+  {
+   "subject": "/MGMT.D3_N",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.29280156332396645,
+   "probabilities": {
+    "supply_rail": 0.0891,
+    "ground": 0.4342,
+    "switch_node": 0.0199,
+    "power_control": 0.0891,
+    "signal": 0.3676
+   }
+  },
+  {
+   "subject": "/MGMT.D3_P",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.284519628382644,
+   "probabilities": {
+    "supply_rail": 0.0954,
+    "ground": 0.4276,
+    "switch_node": 0.0196,
+    "power_control": 0.0954,
+    "signal": 0.362
+   }
+  },
+  {
+   "subject": "/MGMT_LED1",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.549545348070679,
+   "probabilities": {
+    "supply_rail": 0.0376,
+    "ground": 0.2558,
+    "switch_node": 0.0099,
+    "power_control": 0.0571,
+    "signal": 0.6396
+   }
+  },
+  {
+   "subject": "/PCIE_RX_N",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7891397895573823,
+   "probabilities": {
+    "supply_rail": 0.0273,
+    "ground": 0.1125,
+    "switch_node": 0.0109,
+    "power_control": 0.018,
+    "signal": 0.8313
+   }
+  },
+  {
+   "subject": "/PCIE_RX_P",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8063837589197126,
+   "probabilities": {
+    "supply_rail": 0.0277,
+    "ground": 0.0968,
+    "switch_node": 0.0121,
+    "power_control": 0.0183,
+    "signal": 0.8451
+   }
+  },
+  {
+   "subject": "/PCIE_TX_N",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7918225683436902,
+   "probabilities": {
+    "supply_rail": 0.0415,
+    "ground": 0.0878,
+    "switch_node": 0.014,
+    "power_control": 0.0232,
+    "signal": 0.8335
+   }
+  },
+  {
+   "subject": "/PCIE_TX_P",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7988912669767934,
+   "probabilities": {
+    "supply_rail": 0.0418,
+    "ground": 0.0749,
+    "switch_node": 0.0167,
+    "power_control": 0.0275,
+    "signal": 0.8391
+   }
+  },
+  {
+   "subject": "/PD_OK",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.5261128299644894,
+   "probabilities": {
+    "supply_rail": 0.0241,
+    "ground": 0.6209,
+    "switch_node": 0.0063,
+    "power_control": 0.1385,
+    "signal": 0.2101
+   }
+  },
+  {
+   "subject": "/POE_TYP1",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.16648920724818342,
+   "probabilities": {
+    "supply_rail": 0.3332,
+    "ground": 0.1226,
+    "switch_node": 0.018,
+    "power_control": 0.3066,
+    "signal": 0.2197
+   }
+  },
+  {
+   "subject": "/POE_TYP2",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.21170887452233597,
+   "probabilities": {
+    "supply_rail": 0.3694,
+    "ground": 0.125,
+    "switch_node": 0.0169,
+    "power_control": 0.2647,
+    "signal": 0.224
+   }
+  },
+  {
+   "subject": "/Power In/DRAIN",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.7809316533898716,
+   "probabilities": {
+    "supply_rail": 0.0271,
+    "ground": 0.8247,
+    "switch_node": 0.0128,
+    "power_control": 0.0677,
+    "signal": 0.0677
+   }
+  },
+  {
+   "subject": "/Power In/I2C_EEP_SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9422661314326819,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0136,
+    "switch_node": 0.0059,
+    "power_control": 0.0161,
+    "signal": 0.9538
+   }
+  },
+  {
+   "subject": "/Power In/I2C_EEP_SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9500495104197215,
+   "probabilities": {
+    "supply_rail": 0.0107,
+    "ground": 0.0076,
+    "switch_node": 0.0055,
+    "power_control": 0.0162,
+    "signal": 0.96
+   }
+  },
+  {
+   "subject": "/Power In/PD_CC1",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5122414538894686,
+   "probabilities": {
+    "supply_rail": 0.1479,
+    "ground": 0.1252,
+    "switch_node": 0.0112,
+    "power_control": 0.106,
+    "signal": 0.6098
+   }
+  },
+  {
+   "subject": "/Power In/PD_CC2",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.48222389591614556,
+   "probabilities": {
+    "supply_rail": 0.1983,
+    "ground": 0.0937,
+    "switch_node": 0.0117,
+    "power_control": 0.1106,
+    "signal": 0.5858
+   }
+  },
+  {
+   "subject": "/Power In/~{I2C_EEP_IRQ}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9200661112993643,
+   "probabilities": {
+    "supply_rail": 0.0104,
+    "ground": 0.0104,
+    "switch_node": 0.0069,
+    "power_control": 0.0363,
+    "signal": 0.9361
+   }
+  },
+  {
+   "subject": "/REFCLKPCIE_N",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8103680705664801,
+   "probabilities": {
+    "supply_rail": 0.0143,
+    "ground": 0.0972,
+    "switch_node": 0.0073,
+    "power_control": 0.0329,
+    "signal": 0.8483
+   }
+  },
+  {
+   "subject": "/REFCLKPCIE_P",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8496158412310278,
+   "probabilities": {
+    "supply_rail": 0.0244,
+    "ground": 0.0438,
+    "switch_node": 0.0083,
+    "power_control": 0.0438,
+    "signal": 0.8797
+   }
+  },
+  {
+   "subject": "/S0.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5605635974510602,
+   "probabilities": {
+    "supply_rail": 0.0743,
+    "ground": 0.1858,
+    "switch_node": 0.0231,
+    "power_control": 0.0683,
+    "signal": 0.6485
+   }
+  },
+  {
+   "subject": "/S0.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5514171874368994,
+   "probabilities": {
+    "supply_rail": 0.1025,
+    "ground": 0.1555,
+    "switch_node": 0.021,
+    "power_control": 0.0798,
+    "signal": 0.6411
+   }
+  },
+  {
+   "subject": "/S0.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4574112581410002,
+   "probabilities": {
+    "supply_rail": 0.0832,
+    "ground": 0.2673,
+    "switch_node": 0.0239,
+    "power_control": 0.0596,
+    "signal": 0.5659
+   }
+  },
+  {
+   "subject": "/S0.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4836099077507804,
+   "probabilities": {
+    "supply_rail": 0.0938,
+    "ground": 0.2347,
+    "switch_node": 0.0228,
+    "power_control": 0.0619,
+    "signal": 0.5869
+   }
+  },
+  {
+   "subject": "/S1.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5589373609020485,
+   "probabilities": {
+    "supply_rail": 0.0682,
+    "ground": 0.1854,
+    "switch_node": 0.0251,
+    "power_control": 0.0741,
+    "signal": 0.6471
+   }
+  },
+  {
+   "subject": "/S1.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5710150784697634,
+   "probabilities": {
+    "supply_rail": 0.105,
+    "ground": 0.1348,
+    "switch_node": 0.0216,
+    "power_control": 0.0818,
+    "signal": 0.6568
+   }
+  },
+  {
+   "subject": "/S1.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.45741125814100037,
+   "probabilities": {
+    "supply_rail": 0.0832,
+    "ground": 0.2673,
+    "switch_node": 0.0239,
+    "power_control": 0.0596,
+    "signal": 0.5659
+   }
+  },
+  {
+   "subject": "/S1.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.47557655879931343,
+   "probabilities": {
+    "supply_rail": 0.0854,
+    "ground": 0.2523,
+    "switch_node": 0.0207,
+    "power_control": 0.0612,
+    "signal": 0.5805
+   }
+  },
+  {
+   "subject": "/S2.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5661991188340619,
+   "probabilities": {
+    "supply_rail": 0.0748,
+    "ground": 0.1721,
+    "switch_node": 0.0253,
+    "power_control": 0.0748,
+    "signal": 0.653
+   }
+  },
+  {
+   "subject": "/S2.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5548040533015972,
+   "probabilities": {
+    "supply_rail": 0.1119,
+    "ground": 0.1322,
+    "switch_node": 0.025,
+    "power_control": 0.0871,
+    "signal": 0.6438
+   }
+  },
+  {
+   "subject": "/S2.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4876854378993848,
+   "probabilities": {
+    "supply_rail": 0.0868,
+    "ground": 0.236,
+    "switch_node": 0.0249,
+    "power_control": 0.0622,
+    "signal": 0.5901
+   }
+  },
+  {
+   "subject": "/S2.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4836099077507804,
+   "probabilities": {
+    "supply_rail": 0.0938,
+    "ground": 0.2347,
+    "switch_node": 0.0228,
+    "power_control": 0.0619,
+    "signal": 0.5869
+   }
+  },
+  {
+   "subject": "/S3.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5505488311641166,
+   "probabilities": {
+    "supply_rail": 0.0734,
+    "ground": 0.1835,
+    "switch_node": 0.0293,
+    "power_control": 0.0734,
+    "signal": 0.6404
+   }
+  },
+  {
+   "subject": "/S3.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5652655574231386,
+   "probabilities": {
+    "supply_rail": 0.1043,
+    "ground": 0.1455,
+    "switch_node": 0.0233,
+    "power_control": 0.0747,
+    "signal": 0.6522
+   }
+  },
+  {
+   "subject": "/S3.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4778119709154969,
+   "probabilities": {
+    "supply_rail": 0.0788,
+    "ground": 0.253,
+    "switch_node": 0.0245,
+    "power_control": 0.0614,
+    "signal": 0.5822
+   }
+  },
+  {
+   "subject": "/S3.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5094683345959425,
+   "probabilities": {
+    "supply_rail": 0.0971,
+    "ground": 0.2056,
+    "switch_node": 0.0256,
+    "power_control": 0.064,
+    "signal": 0.6076
+   }
+  },
+  {
+   "subject": "/S4.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5539774762116888,
+   "probabilities": {
+    "supply_rail": 0.0801,
+    "ground": 0.1695,
+    "switch_node": 0.0271,
+    "power_control": 0.0801,
+    "signal": 0.6432
+   }
+  },
+  {
+   "subject": "/S4.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5667850458409505,
+   "probabilities": {
+    "supply_rail": 0.1045,
+    "ground": 0.1458,
+    "switch_node": 0.0214,
+    "power_control": 0.0749,
+    "signal": 0.6534
+   }
+  },
+  {
+   "subject": "/S4.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.47427318981858346,
+   "probabilities": {
+    "supply_rail": 0.0852,
+    "ground": 0.2518,
+    "switch_node": 0.0225,
+    "power_control": 0.0611,
+    "signal": 0.5794
+   }
+  },
+  {
+   "subject": "/S4.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.46518030005237926,
+   "probabilities": {
+    "supply_rail": 0.0915,
+    "ground": 0.2487,
+    "switch_node": 0.0222,
+    "power_control": 0.0655,
+    "signal": 0.5721
+   }
+  },
+  {
+   "subject": "/S5.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5423038352480751,
+   "probabilities": {
+    "supply_rail": 0.0789,
+    "ground": 0.1816,
+    "switch_node": 0.0267,
+    "power_control": 0.0789,
+    "signal": 0.6338
+   }
+  },
+  {
+   "subject": "/S5.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5694798255896446,
+   "probabilities": {
+    "supply_rail": 0.1048,
+    "ground": 0.1346,
+    "switch_node": 0.0234,
+    "power_control": 0.0816,
+    "signal": 0.6556
+   }
+  },
+  {
+   "subject": "/S5.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.46184663657896063,
+   "probabilities": {
+    "supply_rail": 0.0838,
+    "ground": 0.2475,
+    "switch_node": 0.0284,
+    "power_control": 0.0709,
+    "signal": 0.5695
+   }
+  },
+  {
+   "subject": "/S5.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4651336021811065,
+   "probabilities": {
+    "supply_rail": 0.0994,
+    "ground": 0.2288,
+    "switch_node": 0.0285,
+    "power_control": 0.0712,
+    "signal": 0.5721
+   }
+  },
+  {
+   "subject": "/S6.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5299942043039494,
+   "probabilities": {
+    "supply_rail": 0.0777,
+    "ground": 0.1943,
+    "switch_node": 0.0263,
+    "power_control": 0.0777,
+    "signal": 0.624
+   }
+  },
+  {
+   "subject": "/S6.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5527782197254154,
+   "probabilities": {
+    "supply_rail": 0.1116,
+    "ground": 0.1433,
+    "switch_node": 0.0229,
+    "power_control": 0.08,
+    "signal": 0.6422
+   }
+  },
+  {
+   "subject": "/S6.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.46346402326713376,
+   "probabilities": {
+    "supply_rail": 0.084,
+    "ground": 0.2481,
+    "switch_node": 0.0261,
+    "power_control": 0.0711,
+    "signal": 0.5708
+   }
+  },
+  {
+   "subject": "/S6.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4904667810128855,
+   "probabilities": {
+    "supply_rail": 0.0947,
+    "ground": 0.2179,
+    "switch_node": 0.0271,
+    "power_control": 0.0679,
+    "signal": 0.5924
+   }
+  },
+  {
+   "subject": "/S7.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5423038352480751,
+   "probabilities": {
+    "supply_rail": 0.0789,
+    "ground": 0.1816,
+    "switch_node": 0.0267,
+    "power_control": 0.0789,
+    "signal": 0.6338
+   }
+  },
+  {
+   "subject": "/S7.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5694798255896446,
+   "probabilities": {
+    "supply_rail": 0.1048,
+    "ground": 0.1346,
+    "switch_node": 0.0234,
+    "power_control": 0.0816,
+    "signal": 0.6556
+   }
+  },
+  {
+   "subject": "/S7.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.46346402326713376,
+   "probabilities": {
+    "supply_rail": 0.084,
+    "ground": 0.2481,
+    "switch_node": 0.0261,
+    "power_control": 0.0711,
+    "signal": 0.5708
+   }
+  },
+  {
+   "subject": "/S7.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.49775139368379023,
+   "probabilities": {
+    "supply_rail": 0.088,
+    "ground": 0.2201,
+    "switch_node": 0.0252,
+    "power_control": 0.0685,
+    "signal": 0.5982
+   }
+  },
+  {
+   "subject": "/S8.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5609275871619457,
+   "probabilities": {
+    "supply_rail": 0.0743,
+    "ground": 0.171,
+    "switch_node": 0.0252,
+    "power_control": 0.0808,
+    "signal": 0.6487
+   }
+  },
+  {
+   "subject": "/S8.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.547237918751808,
+   "probabilities": {
+    "supply_rail": 0.1108,
+    "ground": 0.1423,
+    "switch_node": 0.0228,
+    "power_control": 0.0863,
+    "signal": 0.6378
+   }
+  },
+  {
+   "subject": "/S8.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4448673044856422,
+   "probabilities": {
+    "supply_rail": 0.0889,
+    "ground": 0.2626,
+    "switch_node": 0.0234,
+    "power_control": 0.0692,
+    "signal": 0.5559
+   }
+  },
+  {
+   "subject": "/S8.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.48918664559579206,
+   "probabilities": {
+    "supply_rail": 0.0945,
+    "ground": 0.2175,
+    "switch_node": 0.0229,
+    "power_control": 0.0736,
+    "signal": 0.5913
+   }
+  },
+  {
+   "subject": "/S9.RXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.549052735062357,
+   "probabilities": {
+    "supply_rail": 0.0732,
+    "ground": 0.1831,
+    "switch_node": 0.0248,
+    "power_control": 0.0796,
+    "signal": 0.6392
+   }
+  },
+  {
+   "subject": "/S9.RXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5564136970926981,
+   "probabilities": {
+    "supply_rail": 0.1121,
+    "ground": 0.1324,
+    "switch_node": 0.023,
+    "power_control": 0.0873,
+    "signal": 0.6451
+   }
+  },
+  {
+   "subject": "/S9.TXN",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4649585961984801,
+   "probabilities": {
+    "supply_rail": 0.0841,
+    "ground": 0.2486,
+    "switch_node": 0.0241,
+    "power_control": 0.0712,
+    "signal": 0.572
+   }
+  },
+  {
+   "subject": "/S9.TXP",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.49207675384948596,
+   "probabilities": {
+    "supply_rail": 0.0949,
+    "ground": 0.2184,
+    "switch_node": 0.025,
+    "power_control": 0.068,
+    "signal": 0.5937
+   }
+  },
+  {
+   "subject": "/SFP_CTL0.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6361954945933251,
+   "probabilities": {
+    "supply_rail": 0.0493,
+    "ground": 0.1869,
+    "switch_node": 0.0056,
+    "power_control": 0.0493,
+    "signal": 0.709
+   }
+  },
+  {
+   "subject": "/SFP_CTL0.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8559294662720576,
+   "probabilities": {
+    "supply_rail": 0.0226,
+    "ground": 0.029,
+    "switch_node": 0.007,
+    "power_control": 0.0566,
+    "signal": 0.8847
+   }
+  },
+  {
+   "subject": "/SFP_CTL0.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9028137393226184,
+   "probabilities": {
+    "supply_rail": 0.0132,
+    "ground": 0.0358,
+    "switch_node": 0.0053,
+    "power_control": 0.0236,
+    "signal": 0.9223
+   }
+  },
+  {
+   "subject": "/SFP_CTL0.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9410058257523396,
+   "probabilities": {
+    "supply_rail": 0.0059,
+    "ground": 0.0106,
+    "switch_node": 0.0042,
+    "power_control": 0.0265,
+    "signal": 0.9528
+   }
+  },
+  {
+   "subject": "/SFP_CTL0.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9209613543401937,
+   "probabilities": {
+    "supply_rail": 0.0134,
+    "ground": 0.022,
+    "switch_node": 0.0058,
+    "power_control": 0.022,
+    "signal": 0.9368
+   }
+  },
+  {
+   "subject": "/SFP_CTL0.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9393208603110966,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0115,
+    "switch_node": 0.0059,
+    "power_control": 0.0206,
+    "signal": 0.9515
+   }
+  },
+  {
+   "subject": "/SFP_CTL0.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9417864431901992,
+   "probabilities": {
+    "supply_rail": 0.0097,
+    "ground": 0.009,
+    "switch_node": 0.0054,
+    "power_control": 0.0224,
+    "signal": 0.9534
+   }
+  },
+  {
+   "subject": "/SFP_CTL1.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6368194981472713,
+   "probabilities": {
+    "supply_rail": 0.0536,
+    "ground": 0.1721,
+    "switch_node": 0.0067,
+    "power_control": 0.0582,
+    "signal": 0.7095
+   }
+  },
+  {
+   "subject": "/SFP_CTL1.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8394478782190662,
+   "probabilities": {
+    "supply_rail": 0.0242,
+    "ground": 0.0367,
+    "switch_node": 0.0069,
+    "power_control": 0.0606,
+    "signal": 0.8716
+   }
+  },
+  {
+   "subject": "/SFP_CTL1.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8911055041789614,
+   "probabilities": {
+    "supply_rail": 0.013,
+    "ground": 0.0385,
+    "switch_node": 0.0057,
+    "power_control": 0.03,
+    "signal": 0.9129
+   }
+  },
+  {
+   "subject": "/SFP_CTL1.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9343036404708218,
+   "probabilities": {
+    "supply_rail": 0.0069,
+    "ground": 0.0124,
+    "switch_node": 0.0046,
+    "power_control": 0.0286,
+    "signal": 0.9474
+   }
+  },
+  {
+   "subject": "/SFP_CTL1.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9090775933717185,
+   "probabilities": {
+    "supply_rail": 0.0132,
+    "ground": 0.028,
+    "switch_node": 0.0057,
+    "power_control": 0.0258,
+    "signal": 0.9273
+   }
+  },
+  {
+   "subject": "/SFP_CTL1.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9393208603110966,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0115,
+    "switch_node": 0.0059,
+    "power_control": 0.0206,
+    "signal": 0.9515
+   }
+  },
+  {
+   "subject": "/SFP_CTL1.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9369824935073042,
+   "probabilities": {
+    "supply_rail": 0.0105,
+    "ground": 0.0097,
+    "switch_node": 0.0059,
+    "power_control": 0.0243,
+    "signal": 0.9496
+   }
+  },
+  {
+   "subject": "/SFP_CTL2.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6239675511780071,
+   "probabilities": {
+    "supply_rail": 0.0486,
+    "ground": 0.1843,
+    "switch_node": 0.0056,
+    "power_control": 0.0624,
+    "signal": 0.6992
+   }
+  },
+  {
+   "subject": "/SFP_CTL2.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8412483986715169,
+   "probabilities": {
+    "supply_rail": 0.0243,
+    "ground": 0.04,
+    "switch_node": 0.0069,
+    "power_control": 0.0558,
+    "signal": 0.873
+   }
+  },
+  {
+   "subject": "/SFP_CTL2.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9011400032494032,
+   "probabilities": {
+    "supply_rail": 0.0121,
+    "ground": 0.0357,
+    "switch_node": 0.0057,
+    "power_control": 0.0256,
+    "signal": 0.9209
+   }
+  },
+  {
+   "subject": "/SFP_CTL2.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9325390743399689,
+   "probabilities": {
+    "supply_rail": 0.0069,
+    "ground": 0.0114,
+    "switch_node": 0.0046,
+    "power_control": 0.0311,
+    "signal": 0.946
+   }
+  },
+  {
+   "subject": "/SFP_CTL2.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9187237663024297,
+   "probabilities": {
+    "supply_rail": 0.0133,
+    "ground": 0.0239,
+    "switch_node": 0.0058,
+    "power_control": 0.022,
+    "signal": 0.935
+   }
+  },
+  {
+   "subject": "/SFP_CTL2.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9393208603110964,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0115,
+    "switch_node": 0.0059,
+    "power_control": 0.0206,
+    "signal": 0.9515
+   }
+  },
+  {
+   "subject": "/SFP_CTL2.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9417864431901992,
+   "probabilities": {
+    "supply_rail": 0.0097,
+    "ground": 0.009,
+    "switch_node": 0.0054,
+    "power_control": 0.0224,
+    "signal": 0.9534
+   }
+  },
+  {
+   "subject": "/SFP_CTL3.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6014817685705994,
+   "probabilities": {
+    "supply_rail": 0.0559,
+    "ground": 0.1952,
+    "switch_node": 0.007,
+    "power_control": 0.0608,
+    "signal": 0.6812
+   }
+  },
+  {
+   "subject": "/SFP_CTL3.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8084940231405779,
+   "probabilities": {
+    "supply_rail": 0.0278,
+    "ground": 0.0541,
+    "switch_node": 0.0073,
+    "power_control": 0.064,
+    "signal": 0.8468
+   }
+  },
+  {
+   "subject": "/SFP_CTL3.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8905445796269448,
+   "probabilities": {
+    "supply_rail": 0.013,
+    "ground": 0.0385,
+    "switch_node": 0.0061,
+    "power_control": 0.0299,
+    "signal": 0.9124
+   }
+  },
+  {
+   "subject": "/SFP_CTL3.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9289190177550932,
+   "probabilities": {
+    "supply_rail": 0.0075,
+    "ground": 0.0135,
+    "switch_node": 0.0049,
+    "power_control": 0.031,
+    "signal": 0.9431
+   }
+  },
+  {
+   "subject": "/SFP_CTL3.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.911678390809921,
+   "probabilities": {
+    "supply_rail": 0.0133,
+    "ground": 0.0258,
+    "switch_node": 0.0058,
+    "power_control": 0.0258,
+    "signal": 0.9293
+   }
+  },
+  {
+   "subject": "/SFP_CTL3.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.942995729112426,
+   "probabilities": {
+    "supply_rail": 0.0098,
+    "ground": 0.0098,
+    "switch_node": 0.0054,
+    "power_control": 0.0207,
+    "signal": 0.9544
+   }
+  },
+  {
+   "subject": "/SFP_CTL3.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9392906114550067,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0097,
+    "switch_node": 0.0059,
+    "power_control": 0.0224,
+    "signal": 0.9514
+   }
+  },
+  {
+   "subject": "/SFP_CTL4.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6202932706063412,
+   "probabilities": {
+    "supply_rail": 0.0526,
+    "ground": 0.1835,
+    "switch_node": 0.0055,
+    "power_control": 0.0621,
+    "signal": 0.6962
+   }
+  },
+  {
+   "subject": "/SFP_CTL4.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8071943641245433,
+   "probabilities": {
+    "supply_rail": 0.0278,
+    "ground": 0.0497,
+    "switch_node": 0.0073,
+    "power_control": 0.0694,
+    "signal": 0.8458
+   }
+  },
+  {
+   "subject": "/SFP_CTL4.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8963785853201863,
+   "probabilities": {
+    "supply_rail": 0.0131,
+    "ground": 0.0387,
+    "switch_node": 0.0057,
+    "power_control": 0.0255,
+    "signal": 0.9171
+   }
+  },
+  {
+   "subject": "/SFP_CTL4.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9209760669094837,
+   "probabilities": {
+    "supply_rail": 0.0075,
+    "ground": 0.0145,
+    "switch_node": 0.0049,
+    "power_control": 0.0363,
+    "signal": 0.9368
+   }
+  },
+  {
+   "subject": "/SFP_CTL4.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9207821315852671,
+   "probabilities": {
+    "supply_rail": 0.0134,
+    "ground": 0.0203,
+    "switch_node": 0.0058,
+    "power_control": 0.0239,
+    "signal": 0.9366
+   }
+  },
+  {
+   "subject": "/SFP_CTL4.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9404143180700969,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0106,
+    "switch_node": 0.0059,
+    "power_control": 0.0206,
+    "signal": 0.9523
+   }
+  },
+  {
+   "subject": "/SFP_CTL4.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9417864431901992,
+   "probabilities": {
+    "supply_rail": 0.0097,
+    "ground": 0.009,
+    "switch_node": 0.0054,
+    "power_control": 0.0224,
+    "signal": 0.9534
+   }
+  },
+  {
+   "subject": "/SFP_CTL5.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6095008893596047,
+   "probabilities": {
+    "supply_rail": 0.0519,
+    "ground": 0.197,
+    "switch_node": 0.007,
+    "power_control": 0.0564,
+    "signal": 0.6876
+   }
+  },
+  {
+   "subject": "/SFP_CTL5.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.816102042265637,
+   "probabilities": {
+    "supply_rail": 0.0258,
+    "ground": 0.0502,
+    "switch_node": 0.0068,
+    "power_control": 0.0644,
+    "signal": 0.8529
+   }
+  },
+  {
+   "subject": "/SFP_CTL5.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8905445796269448,
+   "probabilities": {
+    "supply_rail": 0.013,
+    "ground": 0.0385,
+    "switch_node": 0.0061,
+    "power_control": 0.0299,
+    "signal": 0.9124
+   }
+  },
+  {
+   "subject": "/SFP_CTL5.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9313663494701832,
+   "probabilities": {
+    "supply_rail": 0.0069,
+    "ground": 0.0124,
+    "switch_node": 0.0046,
+    "power_control": 0.031,
+    "signal": 0.9451
+   }
+  },
+  {
+   "subject": "/SFP_CTL5.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9164947135608481,
+   "probabilities": {
+    "supply_rail": 0.0133,
+    "ground": 0.0239,
+    "switch_node": 0.0058,
+    "power_control": 0.0239,
+    "signal": 0.9332
+   }
+  },
+  {
+   "subject": "/SFP_CTL5.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9404143180700969,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0106,
+    "switch_node": 0.0059,
+    "power_control": 0.0206,
+    "signal": 0.9523
+   }
+  },
+  {
+   "subject": "/SFP_CTL5.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9408585861827381,
+   "probabilities": {
+    "supply_rail": 0.0097,
+    "ground": 0.0097,
+    "switch_node": 0.0054,
+    "power_control": 0.0224,
+    "signal": 0.9527
+   }
+  },
+  {
+   "subject": "/SFP_CTL6.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.649737381768879,
+   "probabilities": {
+    "supply_rail": 0.046,
+    "ground": 0.1746,
+    "switch_node": 0.0053,
+    "power_control": 0.0544,
+    "signal": 0.7198
+   }
+  },
+  {
+   "subject": "/SFP_CTL6.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8177179656996819,
+   "probabilities": {
+    "supply_rail": 0.0258,
+    "ground": 0.0425,
+    "switch_node": 0.0074,
+    "power_control": 0.0701,
+    "signal": 0.8542
+   }
+  },
+  {
+   "subject": "/SFP_CTL6.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8999322237978091,
+   "probabilities": {
+    "supply_rail": 0.0131,
+    "ground": 0.0357,
+    "switch_node": 0.0057,
+    "power_control": 0.0256,
+    "signal": 0.9199
+   }
+  },
+  {
+   "subject": "/SFP_CTL6.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9313663494701829,
+   "probabilities": {
+    "supply_rail": 0.0069,
+    "ground": 0.0124,
+    "switch_node": 0.0046,
+    "power_control": 0.031,
+    "signal": 0.9451
+   }
+  },
+  {
+   "subject": "/SFP_CTL6.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9164947135608481,
+   "probabilities": {
+    "supply_rail": 0.0133,
+    "ground": 0.0239,
+    "switch_node": 0.0058,
+    "power_control": 0.0239,
+    "signal": 0.9332
+   }
+  },
+  {
+   "subject": "/SFP_CTL6.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.941985259170602,
+   "probabilities": {
+    "supply_rail": 0.0097,
+    "ground": 0.0106,
+    "switch_node": 0.0054,
+    "power_control": 0.0206,
+    "signal": 0.9536
+   }
+  },
+  {
+   "subject": "/SFP_CTL6.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9417864431901992,
+   "probabilities": {
+    "supply_rail": 0.0097,
+    "ground": 0.009,
+    "switch_node": 0.0054,
+    "power_control": 0.0224,
+    "signal": 0.9534
+   }
+  },
+  {
+   "subject": "/SFP_CTL7.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6315195444691565,
+   "probabilities": {
+    "supply_rail": 0.049,
+    "ground": 0.1859,
+    "switch_node": 0.0066,
+    "power_control": 0.0533,
+    "signal": 0.7052
+   }
+  },
+  {
+   "subject": "/SFP_CTL7.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8259587777682204,
+   "probabilities": {
+    "supply_rail": 0.026,
+    "ground": 0.0466,
+    "switch_node": 0.0069,
+    "power_control": 0.0598,
+    "signal": 0.8608
+   }
+  },
+  {
+   "subject": "/SFP_CTL7.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8973836980433461,
+   "probabilities": {
+    "supply_rail": 0.0131,
+    "ground": 0.0356,
+    "switch_node": 0.0057,
+    "power_control": 0.0277,
+    "signal": 0.9179
+   }
+  },
+  {
+   "subject": "/SFP_CTL7.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.935482207109721,
+   "probabilities": {
+    "supply_rail": 0.0069,
+    "ground": 0.0115,
+    "switch_node": 0.0046,
+    "power_control": 0.0286,
+    "signal": 0.9484
+   }
+  },
+  {
+   "subject": "/SFP_CTL7.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9177375536919424,
+   "probabilities": {
+    "supply_rail": 0.0123,
+    "ground": 0.0239,
+    "switch_node": 0.0058,
+    "power_control": 0.0239,
+    "signal": 0.9342
+   }
+  },
+  {
+   "subject": "/SFP_CTL7.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.941985259170602,
+   "probabilities": {
+    "supply_rail": 0.0097,
+    "ground": 0.0106,
+    "switch_node": 0.0054,
+    "power_control": 0.0206,
+    "signal": 0.9536
+   }
+  },
+  {
+   "subject": "/SFP_CTL7.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9392906114550067,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0097,
+    "switch_node": 0.0059,
+    "power_control": 0.0224,
+    "signal": 0.9514
+   }
+  },
+  {
+   "subject": "/SFP_CTL8.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6455069245990188,
+   "probabilities": {
+    "supply_rail": 0.0458,
+    "ground": 0.1737,
+    "switch_node": 0.0052,
+    "power_control": 0.0588,
+    "signal": 0.7164
+   }
+  },
+  {
+   "subject": "/SFP_CTL8.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8281995767446628,
+   "probabilities": {
+    "supply_rail": 0.024,
+    "ground": 0.0467,
+    "switch_node": 0.0069,
+    "power_control": 0.0599,
+    "signal": 0.8626
+   }
+  },
+  {
+   "subject": "/SFP_CTL8.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9011400032494032,
+   "probabilities": {
+    "supply_rail": 0.0121,
+    "ground": 0.0357,
+    "switch_node": 0.0057,
+    "power_control": 0.0256,
+    "signal": 0.9209
+   }
+  },
+  {
+   "subject": "/SFP_CTL8.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9313663494701829,
+   "probabilities": {
+    "supply_rail": 0.0069,
+    "ground": 0.0124,
+    "switch_node": 0.0046,
+    "power_control": 0.031,
+    "signal": 0.9451
+   }
+  },
+  {
+   "subject": "/SFP_CTL8.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9222137357554311,
+   "probabilities": {
+    "supply_rail": 0.0123,
+    "ground": 0.0221,
+    "switch_node": 0.0058,
+    "power_control": 0.0221,
+    "signal": 0.9378
+   }
+  },
+  {
+   "subject": "/SFP_CTL8.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9393208603110964,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0115,
+    "switch_node": 0.0059,
+    "power_control": 0.0206,
+    "signal": 0.9515
+   }
+  },
+  {
+   "subject": "/SFP_CTL8.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9408585861827381,
+   "probabilities": {
+    "supply_rail": 0.0097,
+    "ground": 0.0097,
+    "switch_node": 0.0054,
+    "power_control": 0.0224,
+    "signal": 0.9527
+   }
+  },
+  {
+   "subject": "/SFP_CTL9.MODDET",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5909781860768315,
+   "probabilities": {
+    "supply_rail": 0.0508,
+    "ground": 0.2095,
+    "switch_node": 0.0069,
+    "power_control": 0.06,
+    "signal": 0.6728
+   }
+  },
+  {
+   "subject": "/SFP_CTL9.RATESEL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8035377107528954,
+   "probabilities": {
+    "supply_rail": 0.0277,
+    "ground": 0.0586,
+    "switch_node": 0.0073,
+    "power_control": 0.0637,
+    "signal": 0.8428
+   }
+  },
+  {
+   "subject": "/SFP_CTL9.RX_LOS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8905445796269448,
+   "probabilities": {
+    "supply_rail": 0.013,
+    "ground": 0.0385,
+    "switch_node": 0.0061,
+    "power_control": 0.0299,
+    "signal": 0.9124
+   }
+  },
+  {
+   "subject": "/SFP_CTL9.TXDIS",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9269250982885737,
+   "probabilities": {
+    "supply_rail": 0.0069,
+    "ground": 0.0134,
+    "switch_node": 0.0045,
+    "power_control": 0.0336,
+    "signal": 0.9415
+   }
+  },
+  {
+   "subject": "/SFP_CTL9.TX_FAULT",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.911678390809921,
+   "probabilities": {
+    "supply_rail": 0.0133,
+    "ground": 0.0258,
+    "switch_node": 0.0058,
+    "power_control": 0.0258,
+    "signal": 0.9293
+   }
+  },
+  {
+   "subject": "/SFP_CTL9.~{LED0}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9404143180700969,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0106,
+    "switch_node": 0.0059,
+    "power_control": 0.0206,
+    "signal": 0.9523
+   }
+  },
+  {
+   "subject": "/SFP_CTL9.~{LED1}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9392906114550067,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.0097,
+    "switch_node": 0.0059,
+    "power_control": 0.0224,
+    "signal": 0.9514
+   }
+  },
+  {
+   "subject": "/SGPIO.CK",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7525145428011382,
+   "probabilities": {
+    "supply_rail": 0.0513,
+    "ground": 0.0919,
+    "switch_node": 0.0114,
+    "power_control": 0.0434,
+    "signal": 0.802
+   }
+  },
+  {
+   "subject": "/SGPIO.DI",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7919886080477184,
+   "probabilities": {
+    "supply_rail": 0.049,
+    "ground": 0.063,
+    "switch_node": 0.0129,
+    "power_control": 0.0415,
+    "signal": 0.8336
+   }
+  },
+  {
+   "subject": "/SGPIO.DO",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7676940368386653,
+   "probabilities": {
+    "supply_rail": 0.0479,
+    "ground": 0.0858,
+    "switch_node": 0.0116,
+    "power_control": 0.0405,
+    "signal": 0.8142
+   }
+  },
+  {
+   "subject": "/SGPIO.LD",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7592387709075793,
+   "probabilities": {
+    "supply_rail": 0.0516,
+    "ground": 0.0925,
+    "switch_node": 0.0115,
+    "power_control": 0.037,
+    "signal": 0.8074
+   }
+  },
+  {
+   "subject": "/SGPIO/CK_3V3",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8573731224885813,
+   "probabilities": {
+    "supply_rail": 0.0406,
+    "ground": 0.0521,
+    "switch_node": 0.0065,
+    "power_control": 0.0149,
+    "signal": 0.8859
+   }
+  },
+  {
+   "subject": "/SGPIO/DI_3V3",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8649279773924736,
+   "probabilities": {
+    "supply_rail": 0.0483,
+    "ground": 0.0293,
+    "switch_node": 0.0077,
+    "power_control": 0.0228,
+    "signal": 0.8919
+   }
+  },
+  {
+   "subject": "/SGPIO/DO_3V3",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8857166030005711,
+   "probabilities": {
+    "supply_rail": 0.0383,
+    "ground": 0.0214,
+    "switch_node": 0.0085,
+    "power_control": 0.0232,
+    "signal": 0.9086
+   }
+  },
+  {
+   "subject": "/SGPIO/LD_3V3",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7880987077202878,
+   "probabilities": {
+    "supply_rail": 0.035,
+    "ground": 0.1124,
+    "switch_node": 0.0056,
+    "power_control": 0.0165,
+    "signal": 0.8305
+   }
+  },
+  {
+   "subject": "/SOM/ENET_MDC_0",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.3516603605021621,
+   "probabilities": {
+    "supply_rail": 0.1074,
+    "ground": 0.4813,
+    "switch_node": 0.0158,
+    "power_control": 0.1269,
+    "signal": 0.2686
+   }
+  },
+  {
+   "subject": "/SOM/FAN_PWM",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7528155473924455,
+   "probabilities": {
+    "supply_rail": 0.0286,
+    "ground": 0.0434,
+    "switch_node": 0.0338,
+    "power_control": 0.0919,
+    "signal": 0.8023
+   }
+  },
+  {
+   "subject": "/SOM/FAN_PWM_3V3",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5628109679695672,
+   "probabilities": {
+    "supply_rail": 0.1451,
+    "ground": 0.0298,
+    "switch_node": 0.0298,
+    "power_control": 0.1451,
+    "signal": 0.6502
+   }
+  },
+  {
+   "subject": "/SOM/FAN_TACH",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7900400174595612,
+   "probabilities": {
+    "supply_rail": 0.0532,
+    "ground": 0.0532,
+    "switch_node": 0.0166,
+    "power_control": 0.045,
+    "signal": 0.832
+   }
+  },
+  {
+   "subject": "/SOM/FAN_TACH_3V3",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.46794287179993915,
+   "probabilities": {
+    "supply_rail": 0.2113,
+    "ground": 0.0715,
+    "switch_node": 0.0147,
+    "power_control": 0.1282,
+    "signal": 0.5744
+   }
+  },
+  {
+   "subject": "/SOM/FC2_SCL",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8756748980412923,
+   "probabilities": {
+    "supply_rail": 0.0272,
+    "ground": 0.0296,
+    "switch_node": 0.0078,
+    "power_control": 0.0349,
+    "signal": 0.9005
+   }
+  },
+  {
+   "subject": "/SOM/FC2_SDA",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8725252323869717,
+   "probabilities": {
+    "supply_rail": 0.032,
+    "ground": 0.0249,
+    "switch_node": 0.0071,
+    "power_control": 0.0378,
+    "signal": 0.898
+   }
+  },
+  {
+   "subject": "/SOM/IO/FC2_SCL_3V3",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8672365161296836,
+   "probabilities": {
+    "supply_rail": 0.0484,
+    "ground": 0.027,
+    "switch_node": 0.006,
+    "power_control": 0.0248,
+    "signal": 0.8938
+   }
+  },
+  {
+   "subject": "/SOM/IO/FC2_SDA_3V3",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.45701585883835816,
+   "probabilities": {
+    "supply_rail": 0.2904,
+    "ground": 0.0704,
+    "switch_node": 0.0088,
+    "power_control": 0.0648,
+    "signal": 0.5656
+   }
+  },
+  {
+   "subject": "/SOM/~{MR}",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.6622903385519715,
+   "probabilities": {
+    "supply_rail": 0.0308,
+    "ground": 0.7298,
+    "switch_node": 0.0467,
+    "power_control": 0.0429,
+    "signal": 0.1498
+   }
+  },
+  {
+   "subject": "/SOM/~{PCIE_PERST}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6984981806992069,
+   "probabilities": {
+    "supply_rail": 0.0527,
+    "ground": 0.1116,
+    "switch_node": 0.0092,
+    "power_control": 0.0677,
+    "signal": 0.7588
+   }
+  },
+  {
+   "subject": "/SOM/~{RESET}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7784734578725313,
+   "probabilities": {
+    "supply_rail": 0.0484,
+    "ground": 0.0867,
+    "switch_node": 0.0128,
+    "power_control": 0.0294,
+    "signal": 0.8228
+   }
+  },
+  {
+   "subject": "/SOM/~{STATUS}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8263497590049853,
+   "probabilities": {
+    "supply_rail": 0.0283,
+    "ground": 0.0429,
+    "switch_node": 0.0171,
+    "power_control": 0.0506,
+    "signal": 0.8611
+   }
+  },
+  {
+   "subject": "/USB UART/USB_D_N",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7188510672368311,
+   "probabilities": {
+    "supply_rail": 0.0752,
+    "ground": 0.1049,
+    "switch_node": 0.0094,
+    "power_control": 0.0355,
+    "signal": 0.7751
+   }
+  },
+  {
+   "subject": "/USB UART/USB_D_P",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7691817300612144,
+   "probabilities": {
+    "supply_rail": 0.1103,
+    "ground": 0.0316,
+    "switch_node": 0.0083,
+    "power_control": 0.0344,
+    "signal": 0.8153
+   }
+  },
+  {
+   "subject": "/USB/USB0_CC1",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.612174692066624,
+   "probabilities": {
+    "supply_rail": 0.1103,
+    "ground": 0.1103,
+    "switch_node": 0.0107,
+    "power_control": 0.079,
+    "signal": 0.6897
+   }
+  },
+  {
+   "subject": "/USB/USB0_CC2",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.634613848401421,
+   "probabilities": {
+    "supply_rail": 0.1131,
+    "ground": 0.1041,
+    "switch_node": 0.0119,
+    "power_control": 0.0631,
+    "signal": 0.7077
+   }
+  },
+  {
+   "subject": "/USB0_ID",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7446456904031762,
+   "probabilities": {
+    "supply_rail": 0.0187,
+    "ground": 0.1272,
+    "switch_node": 0.0075,
+    "power_control": 0.0509,
+    "signal": 0.7957
+   }
+  },
+  {
+   "subject": "/USB0_N",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4279008002654546,
+   "probabilities": {
+    "supply_rail": 0.1315,
+    "ground": 0.2168,
+    "switch_node": 0.0151,
+    "power_control": 0.0942,
+    "signal": 0.5423
+   }
+  },
+  {
+   "subject": "/USB0_OC_DET",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.40934922776885074,
+   "probabilities": {
+    "supply_rail": 0.0398,
+    "ground": 0.1279,
+    "switch_node": 0.0556,
+    "power_control": 0.5275,
+    "signal": 0.2492
+   }
+  },
+  {
+   "subject": "/USB0_P",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.624310237328855,
+   "probabilities": {
+    "supply_rail": 0.1215,
+    "ground": 0.0871,
+    "switch_node": 0.0118,
+    "power_control": 0.0801,
+    "signal": 0.6994
+   }
+  },
+  {
+   "subject": "/USB0_PWR_EN",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.9254388312022477,
+   "probabilities": {
+    "supply_rail": 0.0146,
+    "ground": 0.0088,
+    "switch_node": 0.0054,
+    "power_control": 0.9404,
+    "signal": 0.0309
+   }
+  },
+  {
+   "subject": "/USB0_VBUS",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.7733065316587953,
+   "probabilities": {
+    "supply_rail": 0.8186,
+    "ground": 0.0107,
+    "switch_node": 0.0127,
+    "power_control": 0.1204,
+    "signal": 0.0375
+   }
+  },
+  {
+   "subject": "/~{MGMT_LED2}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5094774501892034,
+   "probabilities": {
+    "supply_rail": 0.0302,
+    "ground": 0.287,
+    "switch_node": 0.0111,
+    "power_control": 0.064,
+    "signal": 0.6076
+   }
+  },
+  {
+   "subject": "/~{PCIE_PERST_3V3}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7541288876143944,
+   "probabilities": {
+    "supply_rail": 0.0607,
+    "ground": 0.0125,
+    "switch_node": 0.0054,
+    "power_control": 0.1182,
+    "signal": 0.8033
+   }
+  },
+  {
+   "subject": "/~{RESET_3V3}",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5924875684364591,
+   "probabilities": {
+    "supply_rail": 0.2695,
+    "ground": 0.024,
+    "switch_node": 0.0063,
+    "power_control": 0.0261,
+    "signal": 0.674
+   }
+  },
+  {
+   "subject": "GND",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.9478194272063373,
+   "probabilities": {
+    "supply_rail": 0.0106,
+    "ground": 0.9583,
+    "switch_node": 0.0059,
+    "power_control": 0.009,
+    "signal": 0.0161
+   }
+  },
+  {
+   "subject": "Net-(D701-A)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5695434793614098,
+   "probabilities": {
+    "supply_rail": 0.0386,
+    "ground": 0.1878,
+    "switch_node": 0.0215,
+    "power_control": 0.0964,
+    "signal": 0.6556
+   }
+  },
+  {
+   "subject": "Net-(D702-A)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5461174455011457,
+   "probabilities": {
+    "supply_rail": 0.0292,
+    "ground": 0.2156,
+    "switch_node": 0.0077,
+    "power_control": 0.1107,
+    "signal": 0.6369
+   }
+  },
+  {
+   "subject": "Net-(J1001-BPTYPE{slash}VSP)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.5313549295268594,
+   "probabilities": {
+    "supply_rail": 0.0338,
+    "ground": 0.2953,
+    "switch_node": 0.0147,
+    "power_control": 0.0311,
+    "signal": 0.6251
+   }
+  },
+  {
+   "subject": "Net-(J1001-~{CPRSNT(VSP)})",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.46314763725479396,
+   "probabilities": {
+    "supply_rail": 0.0336,
+    "ground": 0.5705,
+    "switch_node": 0.0134,
+    "power_control": 0.0365,
+    "signal": 0.346
+   }
+  },
+  {
+   "subject": "Net-(J1001-~{CWAKE},OBFF{slash}VSP)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7411541575953878,
+   "probabilities": {
+    "supply_rail": 0.0769,
+    "ground": 0.0334,
+    "switch_node": 0.026,
+    "power_control": 0.0707,
+    "signal": 0.7929
+   }
+  },
+  {
+   "subject": "Net-(J401-CT0)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.6321428906715029,
+   "probabilities": {
+    "supply_rail": 0.0297,
+    "ground": 0.7057,
+    "switch_node": 0.0252,
+    "power_control": 0.0196,
+    "signal": 0.2198
+   }
+  },
+  {
+   "subject": "Net-(J401-CT1)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.5683549501809824,
+   "probabilities": {
+    "supply_rail": 0.0326,
+    "ground": 0.6547,
+    "switch_node": 0.0276,
+    "power_control": 0.0234,
+    "signal": 0.2618
+   }
+  },
+  {
+   "subject": "Net-(J401-CT2)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.5704932671573815,
+   "probabilities": {
+    "supply_rail": 0.0301,
+    "ground": 0.6564,
+    "switch_node": 0.0277,
+    "power_control": 0.0234,
+    "signal": 0.2625
+   }
+  },
+  {
+   "subject": "Net-(J401-CT3)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.5485672664637412,
+   "probabilities": {
+    "supply_rail": 0.0318,
+    "ground": 0.6389,
+    "switch_node": 0.0269,
+    "power_control": 0.0248,
+    "signal": 0.2776
+   }
+  },
+  {
+   "subject": "Net-(J401-LEDG_A)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.3001538891085372,
+   "probabilities": {
+    "supply_rail": 0.0982,
+    "ground": 0.4401,
+    "switch_node": 0.0104,
+    "power_control": 0.0464,
+    "signal": 0.4049
+   }
+  },
+  {
+   "subject": "Net-(J401-LEDY_K)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.7677972251007487,
+   "probabilities": {
+    "supply_rail": 0.0316,
+    "ground": 0.8142,
+    "switch_node": 0.0098,
+    "power_control": 0.0246,
+    "signal": 0.1198
+   }
+  },
+  {
+   "subject": "Net-(J401-P13)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.2833320535571536,
+   "probabilities": {
+    "supply_rail": 0.1329,
+    "ground": 0.4267,
+    "switch_node": 0.0165,
+    "power_control": 0.0628,
+    "signal": 0.3612
+   }
+  },
+  {
+   "subject": "Net-(J401-P14)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.2750647640743144,
+   "probabilities": {
+    "supply_rail": 0.1203,
+    "ground": 0.4201,
+    "switch_node": 0.0163,
+    "power_control": 0.0568,
+    "signal": 0.3865
+   }
+  },
+  {
+   "subject": "Net-(J401-P15)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.30204369937029074,
+   "probabilities": {
+    "supply_rail": 0.1375,
+    "ground": 0.4416,
+    "switch_node": 0.0171,
+    "power_control": 0.0598,
+    "signal": 0.3439
+   }
+  },
+  {
+   "subject": "Net-(J401-P16)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.3023367113487691,
+   "probabilities": {
+    "supply_rail": 0.1072,
+    "ground": 0.4419,
+    "switch_node": 0.0171,
+    "power_control": 0.0598,
+    "signal": 0.374
+   }
+  },
+  {
+   "subject": "Net-(J601-CC1)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.5408104908284452,
+   "probabilities": {
+    "supply_rail": 0.0404,
+    "ground": 0.6326,
+    "switch_node": 0.0126,
+    "power_control": 0.0613,
+    "signal": 0.253
+   }
+  },
+  {
+   "subject": "Net-(J601-CC2)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.5649695467982188,
+   "probabilities": {
+    "supply_rail": 0.0417,
+    "ground": 0.652,
+    "switch_node": 0.013,
+    "power_control": 0.0535,
+    "signal": 0.2398
+   }
+  },
+  {
+   "subject": "Net-(J801A-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8714235969191902,
+   "probabilities": {
+    "supply_rail": 0.0294,
+    "ground": 0.0164,
+    "switch_node": 0.0084,
+    "power_control": 0.0485,
+    "signal": 0.8971
+   }
+  },
+  {
+   "subject": "Net-(J801A-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8728988658627259,
+   "probabilities": {
+    "supply_rail": 0.0295,
+    "ground": 0.0151,
+    "switch_node": 0.0084,
+    "power_control": 0.0486,
+    "signal": 0.8983
+   }
+  },
+  {
+   "subject": "Net-(J801A-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8231162639423634,
+   "probabilities": {
+    "supply_rail": 0.8585,
+    "ground": 0.0186,
+    "switch_node": 0.0219,
+    "power_control": 0.0505,
+    "signal": 0.0505
+   }
+  },
+  {
+   "subject": "Net-(J801A-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.840015160522701,
+   "probabilities": {
+    "supply_rail": 0.872,
+    "ground": 0.0189,
+    "switch_node": 0.0223,
+    "power_control": 0.0434,
+    "signal": 0.0434
+   }
+  },
+  {
+   "subject": "Net-(J801B-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8630856921372873,
+   "probabilities": {
+    "supply_rail": 0.0292,
+    "ground": 0.015,
+    "switch_node": 0.0084,
+    "power_control": 0.0569,
+    "signal": 0.8905
+   }
+  },
+  {
+   "subject": "Net-(J801B-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8636113980050616,
+   "probabilities": {
+    "supply_rail": 0.0292,
+    "ground": 0.0138,
+    "switch_node": 0.0091,
+    "power_control": 0.057,
+    "signal": 0.8909
+   }
+  },
+  {
+   "subject": "Net-(J801B-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.815449017015539,
+   "probabilities": {
+    "supply_rail": 0.8524,
+    "ground": 0.017,
+    "switch_node": 0.0304,
+    "power_control": 0.0501,
+    "signal": 0.0501
+   }
+  },
+  {
+   "subject": "Net-(J801B-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8146951237147948,
+   "probabilities": {
+    "supply_rail": 0.8518,
+    "ground": 0.02,
+    "switch_node": 0.0237,
+    "power_control": 0.0501,
+    "signal": 0.0545
+   }
+  },
+  {
+   "subject": "Net-(J801C-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.870602028922407,
+   "probabilities": {
+    "supply_rail": 0.0294,
+    "ground": 0.0164,
+    "switch_node": 0.0092,
+    "power_control": 0.0485,
+    "signal": 0.8965
+   }
+  },
+  {
+   "subject": "Net-(J801C-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8708062155102794,
+   "probabilities": {
+    "supply_rail": 0.0271,
+    "ground": 0.0151,
+    "switch_node": 0.0084,
+    "power_control": 0.0527,
+    "signal": 0.8966
+   }
+  },
+  {
+   "subject": "Net-(J801C-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8368989471042682,
+   "probabilities": {
+    "supply_rail": 0.8695,
+    "ground": 0.0159,
+    "switch_node": 0.0204,
+    "power_control": 0.0471,
+    "signal": 0.0471
+   }
+  },
+  {
+   "subject": "Net-(J801C-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8314997031351647,
+   "probabilities": {
+    "supply_rail": 0.8652,
+    "ground": 0.0187,
+    "switch_node": 0.0221,
+    "power_control": 0.0431,
+    "signal": 0.0509
+   }
+  },
+  {
+   "subject": "Net-(J801D-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8572600516132197,
+   "probabilities": {
+    "supply_rail": 0.0316,
+    "ground": 0.0176,
+    "switch_node": 0.0083,
+    "power_control": 0.0566,
+    "signal": 0.8858
+   }
+  },
+  {
+   "subject": "Net-(J801D-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8588234299834127,
+   "probabilities": {
+    "supply_rail": 0.0316,
+    "ground": 0.0162,
+    "switch_node": 0.0083,
+    "power_control": 0.0567,
+    "signal": 0.8871
+   }
+  },
+  {
+   "subject": "Net-(J801D-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8375525857872346,
+   "probabilities": {
+    "supply_rail": 0.87,
+    "ground": 0.0173,
+    "switch_node": 0.0222,
+    "power_control": 0.0433,
+    "signal": 0.0471
+   }
+  },
+  {
+   "subject": "Net-(J801D-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8297756968220595,
+   "probabilities": {
+    "supply_rail": 0.8638,
+    "ground": 0.0187,
+    "switch_node": 0.024,
+    "power_control": 0.0467,
+    "signal": 0.0467
+   }
+  },
+  {
+   "subject": "Net-(J801E-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8763148131737769,
+   "probabilities": {
+    "supply_rail": 0.0272,
+    "ground": 0.0152,
+    "switch_node": 0.0078,
+    "power_control": 0.0488,
+    "signal": 0.9011
+   }
+  },
+  {
+   "subject": "Net-(J801E-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8548139579368205,
+   "probabilities": {
+    "supply_rail": 0.0315,
+    "ground": 0.0149,
+    "switch_node": 0.0083,
+    "power_control": 0.0614,
+    "signal": 0.8839
+   }
+  },
+  {
+   "subject": "Net-(J801E-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8334739465468313,
+   "probabilities": {
+    "supply_rail": 0.8668,
+    "ground": 0.0173,
+    "switch_node": 0.0222,
+    "power_control": 0.0469,
+    "signal": 0.0469
+   }
+  },
+  {
+   "subject": "Net-(J801E-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8436140401682876,
+   "probabilities": {
+    "supply_rail": 0.8749,
+    "ground": 0.0174,
+    "switch_node": 0.0206,
+    "power_control": 0.0436,
+    "signal": 0.0436
+   }
+  },
+  {
+   "subject": "Net-(J801F-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8616360790522576,
+   "probabilities": {
+    "supply_rail": 0.0292,
+    "ground": 0.0163,
+    "switch_node": 0.0084,
+    "power_control": 0.0569,
+    "signal": 0.8893
+   }
+  },
+  {
+   "subject": "Net-(J801F-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.84815984406371,
+   "probabilities": {
+    "supply_rail": 0.0313,
+    "ground": 0.0148,
+    "switch_node": 0.009,
+    "power_control": 0.0663,
+    "signal": 0.8785
+   }
+  },
+  {
+   "subject": "Net-(J801F-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.841003462151152,
+   "probabilities": {
+    "supply_rail": 0.8728,
+    "ground": 0.016,
+    "switch_node": 0.0205,
+    "power_control": 0.0472,
+    "signal": 0.0435
+   }
+  },
+  {
+   "subject": "Net-(J801F-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.841662048393166,
+   "probabilities": {
+    "supply_rail": 0.8733,
+    "ground": 0.0174,
+    "switch_node": 0.0223,
+    "power_control": 0.0435,
+    "signal": 0.0435
+   }
+  },
+  {
+   "subject": "Net-(J801G-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8638738485265662,
+   "probabilities": {
+    "supply_rail": 0.0318,
+    "ground": 0.0163,
+    "switch_node": 0.0084,
+    "power_control": 0.0524,
+    "signal": 0.8911
+   }
+  },
+  {
+   "subject": "Net-(J801G-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8503745265159596,
+   "probabilities": {
+    "supply_rail": 0.0341,
+    "ground": 0.0161,
+    "switch_node": 0.0083,
+    "power_control": 0.0612,
+    "signal": 0.8803
+   }
+  },
+  {
+   "subject": "Net-(J801G-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8228903516026694,
+   "probabilities": {
+    "supply_rail": 0.8583,
+    "ground": 0.0202,
+    "switch_node": 0.0202,
+    "power_control": 0.0464,
+    "signal": 0.0549
+   }
+  },
+  {
+   "subject": "Net-(J801G-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8231105993329232,
+   "probabilities": {
+    "supply_rail": 0.8585,
+    "ground": 0.0219,
+    "switch_node": 0.0219,
+    "power_control": 0.0427,
+    "signal": 0.0549
+   }
+  },
+  {
+   "subject": "Net-(J801H-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8630633013628422,
+   "probabilities": {
+    "supply_rail": 0.0318,
+    "ground": 0.0163,
+    "switch_node": 0.0091,
+    "power_control": 0.0524,
+    "signal": 0.8905
+   }
+  },
+  {
+   "subject": "Net-(J801H-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8467488226572734,
+   "probabilities": {
+    "supply_rail": 0.0313,
+    "ground": 0.0161,
+    "switch_node": 0.009,
+    "power_control": 0.0663,
+    "signal": 0.8774
+   }
+  },
+  {
+   "subject": "Net-(J801H-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8378495505213329,
+   "probabilities": {
+    "supply_rail": 0.8703,
+    "ground": 0.0188,
+    "switch_node": 0.0205,
+    "power_control": 0.0433,
+    "signal": 0.0471
+   }
+  },
+  {
+   "subject": "Net-(J801H-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8297430690049686,
+   "probabilities": {
+    "supply_rail": 0.8638,
+    "ground": 0.0221,
+    "switch_node": 0.0203,
+    "power_control": 0.043,
+    "signal": 0.0508
+   }
+  },
+  {
+   "subject": "Net-(J801I-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8608287842109238,
+   "probabilities": {
+    "supply_rail": 0.0292,
+    "ground": 0.0163,
+    "switch_node": 0.0091,
+    "power_control": 0.0568,
+    "signal": 0.8887
+   }
+  },
+  {
+   "subject": "Net-(J801I-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8589301897384285,
+   "probabilities": {
+    "supply_rail": 0.0291,
+    "ground": 0.0138,
+    "switch_node": 0.0083,
+    "power_control": 0.0616,
+    "signal": 0.8871
+   }
+  },
+  {
+   "subject": "Net-(J801I-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8509762578505888,
+   "probabilities": {
+    "supply_rail": 0.8808,
+    "ground": 0.0175,
+    "switch_node": 0.0207,
+    "power_control": 0.0439,
+    "signal": 0.0371
+   }
+  },
+  {
+   "subject": "Net-(J801I-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8602895956845247,
+   "probabilities": {
+    "supply_rail": 0.8882,
+    "ground": 0.0177,
+    "switch_node": 0.0192,
+    "power_control": 0.0374,
+    "signal": 0.0374
+   }
+  },
+  {
+   "subject": "Net-(J801J-RS0)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8638738485265662,
+   "probabilities": {
+    "supply_rail": 0.0318,
+    "ground": 0.0163,
+    "switch_node": 0.0084,
+    "power_control": 0.0524,
+    "signal": 0.8911
+   }
+  },
+  {
+   "subject": "Net-(J801J-RS1)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.8602657120005541,
+   "probabilities": {
+    "supply_rail": 0.0317,
+    "ground": 0.015,
+    "switch_node": 0.0084,
+    "power_control": 0.0568,
+    "signal": 0.8882
+   }
+  },
+  {
+   "subject": "Net-(J801J-VccR)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.858586068897268,
+   "probabilities": {
+    "supply_rail": 0.8869,
+    "ground": 0.0192,
+    "switch_node": 0.0192,
+    "power_control": 0.0374,
+    "signal": 0.0374
+   }
+  },
+  {
+   "subject": "Net-(J801J-VccT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8548500529281152,
+   "probabilities": {
+    "supply_rail": 0.8839,
+    "ground": 0.0208,
+    "switch_node": 0.0176,
+    "power_control": 0.0373,
+    "signal": 0.0405
+   }
+  },
+  {
+   "subject": "Net-(U302-VBUS)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.8222372576151321,
+   "probabilities": {
+    "supply_rail": 0.8578,
+    "ground": 0.0282,
+    "switch_node": 0.0088,
+    "power_control": 0.0548,
+    "signal": 0.0505
+   }
+  },
+  {
+   "subject": "Net-(U304-D2+)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.30230185846204416,
+   "probabilities": {
+    "supply_rail": 0.0706,
+    "ground": 0.4418,
+    "switch_node": 0.026,
+    "power_control": 0.055,
+    "signal": 0.4065
+   }
+  },
+  {
+   "subject": "Net-(U304-D2-)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.456492829515289,
+   "probabilities": {
+    "supply_rail": 0.0548,
+    "ground": 0.5652,
+    "switch_node": 0.0219,
+    "power_control": 0.0427,
+    "signal": 0.3154
+   }
+  },
+  {
+   "subject": "Net-(U305-EN{slash}UVLO)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.6933522800633396,
+   "probabilities": {
+    "supply_rail": 0.0482,
+    "ground": 0.021,
+    "switch_node": 0.0077,
+    "power_control": 0.7547,
+    "signal": 0.1684
+   }
+  },
+  {
+   "subject": "Net-(U501-CAP)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.7506731493685717,
+   "probabilities": {
+    "supply_rail": 0.0471,
+    "ground": 0.8005,
+    "switch_node": 0.0657,
+    "power_control": 0.031,
+    "signal": 0.0556
+   }
+  },
+  {
+   "subject": "Net-(U501-ILIM)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.6910203054266939,
+   "probabilities": {
+    "supply_rail": 0.0269,
+    "ground": 0.0937,
+    "switch_node": 0.0247,
+    "power_control": 0.7528,
+    "signal": 0.1019
+   }
+  },
+  {
+   "subject": "Net-(U502-VBUS_DET)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6846600821914123,
+   "probabilities": {
+    "supply_rail": 0.0614,
+    "ground": 0.0176,
+    "switch_node": 0.0065,
+    "power_control": 0.1668,
+    "signal": 0.7477
+   }
+  },
+  {
+   "subject": "Net-(U602-UART_RXD)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9029702757812405,
+   "probabilities": {
+    "supply_rail": 0.0169,
+    "ground": 0.0423,
+    "switch_node": 0.0073,
+    "power_control": 0.0111,
+    "signal": 0.9224
+   }
+  },
+  {
+   "subject": "Net-(U602-UART_TXD)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9257636438913397,
+   "probabilities": {
+    "supply_rail": 0.0159,
+    "ground": 0.024,
+    "switch_node": 0.0081,
+    "power_control": 0.0114,
+    "signal": 0.9406
+   }
+  },
+  {
+   "subject": "Net-(U602-V3)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.6283141886391899,
+   "probabilities": {
+    "supply_rail": 0.7027,
+    "ground": 0.0875,
+    "switch_node": 0.0251,
+    "power_control": 0.0627,
+    "signal": 0.1221
+   }
+  },
+  {
+   "subject": "Net-(U602-~{ACT})",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6391014349788682,
+   "probabilities": {
+    "supply_rail": 0.0167,
+    "ground": 0.2407,
+    "switch_node": 0.0079,
+    "power_control": 0.0233,
+    "signal": 0.7113
+   }
+  },
+  {
+   "subject": "Net-(U603-D2+)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.2888060287391617,
+   "probabilities": {
+    "supply_rail": 0.0814,
+    "ground": 0.431,
+    "switch_node": 0.0276,
+    "power_control": 0.0634,
+    "signal": 0.3966
+   }
+  },
+  {
+   "subject": "Net-(U603-D2-)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.4720223724116052,
+   "probabilities": {
+    "supply_rail": 0.056,
+    "ground": 0.5776,
+    "switch_node": 0.0224,
+    "power_control": 0.0474,
+    "signal": 0.2966
+   }
+  },
+  {
+   "subject": "Net-(U701-BST)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.8184382511117572,
+   "probabilities": {
+    "supply_rail": 0.0258,
+    "ground": 0.0503,
+    "switch_node": 0.036,
+    "power_control": 0.8548,
+    "signal": 0.0331
+   }
+  },
+  {
+   "subject": "Net-(U701-FB)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.8154324201884788,
+   "probabilities": {
+    "supply_rail": 0.0218,
+    "ground": 0.0898,
+    "switch_node": 0.0103,
+    "power_control": 0.8523,
+    "signal": 0.0257
+   }
+  },
+  {
+   "subject": "Net-(U701-SW)",
+   "question": "role",
+   "answer": "switch_node",
+   "confidence": 0.6804526775070715,
+   "probabilities": {
+    "supply_rail": 0.1661,
+    "ground": 0.009,
+    "switch_node": 0.7444,
+    "power_control": 0.0403,
+    "signal": 0.0403
+   }
+  },
+  {
+   "subject": "Net-(U702-CBOOT)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.696347024071022,
+   "probabilities": {
+    "supply_rail": 0.0734,
+    "ground": 0.0294,
+    "switch_node": 0.0377,
+    "power_control": 0.7571,
+    "signal": 0.1025
+   }
+  },
+  {
+   "subject": "Net-(U702-FB)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.9274068240028668,
+   "probabilities": {
+    "supply_rail": 0.0114,
+    "ground": 0.0241,
+    "switch_node": 0.0054,
+    "power_control": 0.9419,
+    "signal": 0.0173
+   }
+  },
+  {
+   "subject": "Net-(U702-RT)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.7453191489836671,
+   "probabilities": {
+    "supply_rail": 0.7963,
+    "ground": 0.0396,
+    "switch_node": 0.0134,
+    "power_control": 0.1171,
+    "signal": 0.0336
+   }
+  },
+  {
+   "subject": "Net-(U702-SPSP)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.5863270968569558,
+   "probabilities": {
+    "supply_rail": 0.1264,
+    "ground": 0.6691,
+    "switch_node": 0.0133,
+    "power_control": 0.1264,
+    "signal": 0.0649
+   }
+  },
+  {
+   "subject": "Net-(U702-SW)",
+   "question": "role",
+   "answer": "switch_node",
+   "confidence": 0.5105248750855993,
+   "probabilities": {
+    "supply_rail": 0.1057,
+    "ground": 0.0256,
+    "switch_node": 0.6084,
+    "power_control": 0.2059,
+    "signal": 0.0543
+   }
+  },
+  {
+   "subject": "Net-(U902-Q7S)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9128817046790338,
+   "probabilities": {
+    "supply_rail": 0.0185,
+    "ground": 0.0281,
+    "switch_node": 0.0074,
+    "power_control": 0.0157,
+    "signal": 0.9303
+   }
+  },
+  {
+   "subject": "Net-(U903-QH)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9267204292925931,
+   "probabilities": {
+    "supply_rail": 0.0159,
+    "ground": 0.0241,
+    "switch_node": 0.0063,
+    "power_control": 0.0124,
+    "signal": 0.9414
+   }
+  },
+  {
+   "subject": "Net-(U903-SER)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9381077640537555,
+   "probabilities": {
+    "supply_rail": 0.0147,
+    "ground": 0.0174,
+    "switch_node": 0.0059,
+    "power_control": 0.0115,
+    "signal": 0.9505
+   }
+  },
+  {
+   "subject": "Net-(U904-Q7S)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9015777349843481,
+   "probabilities": {
+    "supply_rail": 0.0217,
+    "ground": 0.0329,
+    "switch_node": 0.0073,
+    "power_control": 0.0169,
+    "signal": 0.9213
+   }
+  },
+  {
+   "subject": "Net-(U905-Q7S)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9094360588530367,
+   "probabilities": {
+    "supply_rail": 0.0201,
+    "ground": 0.028,
+    "switch_node": 0.0074,
+    "power_control": 0.017,
+    "signal": 0.9275
+   }
+  },
+  {
+   "subject": "Net-(U906-Q7S)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9088734550958396,
+   "probabilities": {
+    "supply_rail": 0.0201,
+    "ground": 0.0304,
+    "switch_node": 0.0068,
+    "power_control": 0.0156,
+    "signal": 0.9271
+   }
+  },
+  {
+   "subject": "Net-(U908-SER)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9325527029924918,
+   "probabilities": {
+    "supply_rail": 0.0173,
+    "ground": 0.0188,
+    "switch_node": 0.0064,
+    "power_control": 0.0114,
+    "signal": 0.946
+   }
+  },
+  {
+   "subject": "Net-(U910-QH)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.9190130968585405,
+   "probabilities": {
+    "supply_rail": 0.0186,
+    "ground": 0.026,
+    "switch_node": 0.0068,
+    "power_control": 0.0133,
+    "signal": 0.9352
+   }
+  }
+ ],
+ "parts": [
+  {
+   "subject": "J1001",
+   "question": "role",
+   "answer": "power_input",
+   "confidence": 0.6319520884646066,
+   "probabilities": {
+    "switching_regulator": 0.0059,
+    "linear_regulator": 0.0046,
+    "power_switch": 0.0161,
+    "power_input": 0.6845,
+    "load": 0.1405,
+    "signal_connector": 0.1293,
+    "other": 0.019
+   }
+  },
+  {
+   "subject": "J201",
+   "question": "role",
+   "answer": "signal_connector",
+   "confidence": 0.6736610857004495,
+   "probabilities": {
+    "switching_regulator": 0.0049,
+    "linear_regulator": 0.008,
+    "power_switch": 0.0103,
+    "power_input": 0.0359,
+    "load": 0.046,
+    "signal_connector": 0.7203,
+    "other": 0.1747
+   }
+  },
+  {
+   "subject": "J202",
+   "question": "role",
+   "answer": "signal_connector",
+   "confidence": 0.5353250345281829,
+   "probabilities": {
+    "switching_regulator": 0.0079,
+    "linear_regulator": 0.0079,
+    "power_switch": 0.0167,
+    "power_input": 0.3089,
+    "load": 0.0215,
+    "signal_connector": 0.6017,
+    "other": 0.0354
+   }
+  },
+  {
+   "subject": "J203",
+   "question": "role",
+   "answer": "signal_connector",
+   "confidence": 0.460539695575703,
+   "probabilities": {
+    "switching_regulator": 0.0047,
+    "linear_regulator": 0.006,
+    "power_switch": 0.0268,
+    "power_input": 0.0107,
+    "load": 0.0291,
+    "signal_connector": 0.5376,
+    "other": 0.3852
+   }
+  },
+  {
+   "subject": "J2201",
+   "question": "role",
+   "answer": "signal_connector",
+   "confidence": 0.5472694748792611,
+   "probabilities": {
+    "switching_regulator": 0.0038,
+    "linear_regulator": 0.0053,
+    "power_switch": 0.0185,
+    "power_input": 0.0103,
+    "load": 0.036,
+    "signal_connector": 0.6119,
+    "other": 0.3142
+   }
+  },
+  {
+   "subject": "J301",
+   "question": "role",
+   "answer": "power_input",
+   "confidence": 0.8427939834978693,
+   "probabilities": {
+    "switching_regulator": 0.0033,
+    "linear_regulator": 0.0038,
+    "power_switch": 0.0123,
+    "power_input": 0.8653,
+    "load": 0.0069,
+    "signal_connector": 0.0912,
+    "other": 0.0172
+   }
+  },
+  {
+   "subject": "J302",
+   "question": "role",
+   "answer": "power_input",
+   "confidence": 0.5463472704988389,
+   "probabilities": {
+    "switching_regulator": 0.0049,
+    "linear_regulator": 0.0053,
+    "power_switch": 0.0132,
+    "power_input": 0.6112,
+    "load": 0.0237,
+    "signal_connector": 0.3138,
+    "other": 0.028
+   }
+  },
+  {
+   "subject": "J401",
+   "question": "role",
+   "answer": "signal_connector",
+   "confidence": 0.7723024281177926,
+   "probabilities": {
+    "switching_regulator": 0.0339,
+    "linear_regulator": 0.0054,
+    "power_switch": 0.0115,
+    "power_input": 0.0559,
+    "load": 0.0224,
+    "signal_connector": 0.8048,
+    "other": 0.0661
+   }
+  },
+  {
+   "subject": "J501",
+   "question": "role",
+   "answer": "power_input",
+   "confidence": 0.5267936967919161,
+   "probabilities": {
+    "switching_regulator": 0.0031,
+    "linear_regulator": 0.004,
+    "power_switch": 0.0165,
+    "power_input": 0.5944,
+    "load": 0.0272,
+    "signal_connector": 0.3317,
+    "other": 0.023
+   }
+  },
+  {
+   "subject": "J601",
+   "question": "role",
+   "answer": "signal_connector",
+   "confidence": 0.41402216590915,
+   "probabilities": {
+    "switching_regulator": 0.0043,
+    "linear_regulator": 0.0055,
+    "power_switch": 0.0376,
+    "power_input": 0.3876,
+    "load": 0.0444,
+    "signal_connector": 0.4977,
+    "other": 0.0228
+   }
+  },
+  {
+   "subject": "J801",
+   "question": "role",
+   "answer": "signal_connector",
+   "confidence": 0.6105435928969339,
+   "probabilities": {
+    "switching_regulator": 0.008,
+    "linear_regulator": 0.0058,
+    "power_switch": 0.0103,
+    "power_input": 0.0041,
+    "load": 0.2664,
+    "signal_connector": 0.6662,
+    "other": 0.0392
+   }
+  },
+  {
+   "subject": "PS401",
+   "question": "role",
+   "answer": "switching_regulator",
+   "confidence": 0.1832355515420571,
+   "probabilities": {
+    "switching_regulator": 0.2999,
+    "linear_regulator": 0.0162,
+    "power_switch": 0.2999,
+    "power_input": 0.0126,
+    "load": 0.0791,
+    "signal_connector": 0.1819,
+    "other": 0.1103
+   }
+  },
+  {
+   "subject": "SW201",
+   "question": "role",
+   "answer": "other",
+   "confidence": 0.4079822840934717,
+   "probabilities": {
+    "switching_regulator": 0.0059,
+    "linear_regulator": 0.0059,
+    "power_switch": 0.2529,
+    "power_input": 0.005,
+    "load": 0.0564,
+    "signal_connector": 0.1812,
+    "other": 0.4926
+   }
+  },
+  {
+   "subject": "U202",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9007597391081962,
+   "probabilities": {
+    "switching_regulator": 0.0182,
+    "linear_regulator": 0.0182,
+    "power_switch": 0.0215,
+    "power_input": 0.0044,
+    "load": 0.9149,
+    "signal_connector": 0.0073,
+    "other": 0.0154
+   }
+  },
+  {
+   "subject": "U203",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9320679127071204,
+   "probabilities": {
+    "switching_regulator": 0.0058,
+    "linear_regulator": 0.0075,
+    "power_switch": 0.0114,
+    "power_input": 0.0096,
+    "load": 0.9418,
+    "signal_connector": 0.0105,
+    "other": 0.0134
+   }
+  },
+  {
+   "subject": "U204",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9140287784543839,
+   "probabilities": {
+    "switching_regulator": 0.0095,
+    "linear_regulator": 0.0184,
+    "power_switch": 0.028,
+    "power_input": 0.0057,
+    "load": 0.9263,
+    "signal_connector": 0.0068,
+    "other": 0.0053
+   }
+  },
+  {
+   "subject": "U2101",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.8560246054921439,
+   "probabilities": {
+    "switching_regulator": 0.0082,
+    "linear_regulator": 0.019,
+    "power_switch": 0.0516,
+    "power_input": 0.0265,
+    "load": 0.8766,
+    "signal_connector": 0.0106,
+    "other": 0.0076
+   }
+  },
+  {
+   "subject": "U2102",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.8291082485671379,
+   "probabilities": {
+    "switching_regulator": 0.008,
+    "linear_regulator": 0.017,
+    "power_switch": 0.0502,
+    "power_input": 0.0425,
+    "load": 0.8535,
+    "signal_connector": 0.0144,
+    "other": 0.0144
+   }
+  },
+  {
+   "subject": "U301",
+   "question": "role",
+   "answer": "other",
+   "confidence": 0.9220016089465904,
+   "probabilities": {
+    "switching_regulator": 0.0068,
+    "linear_regulator": 0.0058,
+    "power_switch": 0.0186,
+    "power_input": 0.0074,
+    "load": 0.0219,
+    "signal_connector": 0.0063,
+    "other": 0.9331
+   }
+  },
+  {
+   "subject": "U302",
+   "question": "role",
+   "answer": "power_switch",
+   "confidence": 0.4411537420671922,
+   "probabilities": {
+    "switching_regulator": 0.1622,
+    "linear_regulator": 0.1373,
+    "power_switch": 0.521,
+    "power_input": 0.0186,
+    "load": 0.1373,
+    "signal_connector": 0.0123,
+    "other": 0.0113
+   }
+  },
+  {
+   "subject": "U303",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.8959773623018654,
+   "probabilities": {
+    "switching_regulator": 0.0086,
+    "linear_regulator": 0.0086,
+    "power_switch": 0.0233,
+    "power_input": 0.0233,
+    "load": 0.9108,
+    "signal_connector": 0.0153,
+    "other": 0.0101
+   }
+  },
+  {
+   "subject": "U304",
+   "question": "role",
+   "answer": "other",
+   "confidence": 0.7821414928246027,
+   "probabilities": {
+    "switching_regulator": 0.0065,
+    "linear_regulator": 0.006,
+    "power_switch": 0.0315,
+    "power_input": 0.0565,
+    "load": 0.052,
+    "signal_connector": 0.0343,
+    "other": 0.8133
+   }
+  },
+  {
+   "subject": "U305",
+   "question": "role",
+   "answer": "power_switch",
+   "confidence": 0.8595838763502145,
+   "probabilities": {
+    "switching_regulator": 0.0927,
+    "linear_regulator": 0.0136,
+    "power_switch": 0.8796,
+    "power_input": 0.0042,
+    "load": 0.003,
+    "signal_connector": 0.0017,
+    "other": 0.005
+   }
+  },
+  {
+   "subject": "U401",
+   "question": "role",
+   "answer": "other",
+   "confidence": 0.5834629465387974,
+   "probabilities": {
+    "switching_regulator": 0.0066,
+    "linear_regulator": 0.0047,
+    "power_switch": 0.0447,
+    "power_input": 0.0623,
+    "load": 0.2176,
+    "signal_connector": 0.0211,
+    "other": 0.643
+   }
+  },
+  {
+   "subject": "U402",
+   "question": "role",
+   "answer": "other",
+   "confidence": 0.5645761166689047,
+   "probabilities": {
+    "switching_regulator": 0.0076,
+    "linear_regulator": 0.0054,
+    "power_switch": 0.0559,
+    "power_input": 0.0848,
+    "load": 0.1952,
+    "signal_connector": 0.0243,
+    "other": 0.6268
+   }
+  },
+  {
+   "subject": "U501",
+   "question": "role",
+   "answer": "power_switch",
+   "confidence": 0.9561266644331493,
+   "probabilities": {
+    "switching_regulator": 0.0107,
+    "linear_regulator": 0.0098,
+    "power_switch": 0.9624,
+    "power_input": 0.0043,
+    "load": 0.0039,
+    "signal_connector": 0.0024,
+    "other": 0.0065
+   }
+  },
+  {
+   "subject": "U502",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.813467561721124,
+   "probabilities": {
+    "switching_regulator": 0.0101,
+    "linear_regulator": 0.0079,
+    "power_switch": 0.0455,
+    "power_input": 0.075,
+    "load": 0.8401,
+    "signal_connector": 0.0142,
+    "other": 0.0073
+   }
+  },
+  {
+   "subject": "U503",
+   "question": "role",
+   "answer": "other",
+   "confidence": 0.7970630947231613,
+   "probabilities": {
+    "switching_regulator": 0.0056,
+    "linear_regulator": 0.0043,
+    "power_switch": 0.0211,
+    "power_input": 0.0151,
+    "load": 0.1029,
+    "signal_connector": 0.0249,
+    "other": 0.8261
+   }
+  },
+  {
+   "subject": "U601",
+   "question": "role",
+   "answer": "linear_regulator",
+   "confidence": 0.9510562629029834,
+   "probabilities": {
+    "switching_regulator": 0.0149,
+    "linear_regulator": 0.958,
+    "power_switch": 0.007,
+    "power_input": 0.0039,
+    "load": 0.0076,
+    "signal_connector": 0.0039,
+    "other": 0.0046
+   }
+  },
+  {
+   "subject": "U602",
+   "question": "role",
+   "answer": "power_input",
+   "confidence": 0.2730552758876703,
+   "probabilities": {
+    "switching_regulator": 0.0655,
+    "linear_regulator": 0.0914,
+    "power_switch": 0.051,
+    "power_input": 0.3769,
+    "load": 0.3468,
+    "signal_connector": 0.0603,
+    "other": 0.0082
+   }
+  },
+  {
+   "subject": "U603",
+   "question": "role",
+   "answer": "other",
+   "confidence": 0.6402346409305669,
+   "probabilities": {
+    "switching_regulator": 0.0055,
+    "linear_regulator": 0.0051,
+    "power_switch": 0.0374,
+    "power_input": 0.0792,
+    "load": 0.1543,
+    "signal_connector": 0.0268,
+    "other": 0.6916
+   }
+  },
+  {
+   "subject": "U701",
+   "question": "role",
+   "answer": "switching_regulator",
+   "confidence": 0.9607489575112957,
+   "probabilities": {
+    "switching_regulator": 0.9664,
+    "linear_regulator": 0.0071,
+    "power_switch": 0.0051,
+    "power_input": 0.0039,
+    "load": 0.0077,
+    "signal_connector": 0.0033,
+    "other": 0.0065
+   }
+  },
+  {
+   "subject": "U702",
+   "question": "role",
+   "answer": "switching_regulator",
+   "confidence": 0.9457970811815105,
+   "probabilities": {
+    "switching_regulator": 0.9535,
+    "linear_regulator": 0.0097,
+    "power_switch": 0.007,
+    "power_input": 0.0042,
+    "load": 0.0097,
+    "signal_connector": 0.0042,
+    "other": 0.0115
+   }
+  },
+  {
+   "subject": "U901",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.87238514723834,
+   "probabilities": {
+    "switching_regulator": 0.0269,
+    "linear_regulator": 0.0318,
+    "power_switch": 0.0247,
+    "power_input": 0.0077,
+    "load": 0.8906,
+    "signal_connector": 0.0084,
+    "other": 0.0099
+   }
+  },
+  {
+   "subject": "U902",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9125646126378353,
+   "probabilities": {
+    "switching_regulator": 0.0053,
+    "linear_regulator": 0.0057,
+    "power_switch": 0.0184,
+    "power_input": 0.0156,
+    "load": 0.9251,
+    "signal_connector": 0.0143,
+    "other": 0.0156
+   }
+  },
+  {
+   "subject": "U903",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9457365704715389,
+   "probabilities": {
+    "switching_regulator": 0.0042,
+    "linear_regulator": 0.0046,
+    "power_switch": 0.0106,
+    "power_input": 0.0076,
+    "load": 0.9535,
+    "signal_connector": 0.0097,
+    "other": 0.0097
+   }
+  },
+  {
+   "subject": "U904",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9137458630750567,
+   "probabilities": {
+    "switching_regulator": 0.0053,
+    "linear_regulator": 0.0062,
+    "power_switch": 0.0184,
+    "power_input": 0.0184,
+    "load": 0.9261,
+    "signal_connector": 0.0112,
+    "other": 0.0144
+   }
+  },
+  {
+   "subject": "U905",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9142851570381034,
+   "probabilities": {
+    "switching_regulator": 0.0053,
+    "linear_regulator": 0.0057,
+    "power_switch": 0.0184,
+    "power_input": 0.0184,
+    "load": 0.9265,
+    "signal_connector": 0.0112,
+    "other": 0.0144
+   }
+  },
+  {
+   "subject": "U906",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9113532273516801,
+   "probabilities": {
+    "switching_regulator": 0.0053,
+    "linear_regulator": 0.0062,
+    "power_switch": 0.0184,
+    "power_input": 0.0184,
+    "load": 0.924,
+    "signal_connector": 0.0121,
+    "other": 0.0156
+   }
+  },
+  {
+   "subject": "U907",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9155860335842868,
+   "probabilities": {
+    "switching_regulator": 0.0053,
+    "linear_regulator": 0.0063,
+    "power_switch": 0.017,
+    "power_input": 0.017,
+    "load": 0.9276,
+    "signal_connector": 0.0112,
+    "other": 0.0156
+   }
+  },
+  {
+   "subject": "U908",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9462916758137855,
+   "probabilities": {
+    "switching_regulator": 0.0042,
+    "linear_regulator": 0.005,
+    "power_switch": 0.0106,
+    "power_input": 0.0083,
+    "load": 0.954,
+    "signal_connector": 0.009,
+    "other": 0.009
+   }
+  },
+  {
+   "subject": "U909",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9432687540552239,
+   "probabilities": {
+    "switching_regulator": 0.0042,
+    "linear_regulator": 0.0046,
+    "power_switch": 0.0106,
+    "power_input": 0.0089,
+    "load": 0.9514,
+    "signal_connector": 0.0097,
+    "other": 0.0106
+   }
+  },
+  {
+   "subject": "U910",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.945304040210414,
+   "probabilities": {
+    "switching_regulator": 0.005,
+    "linear_regulator": 0.005,
+    "power_switch": 0.0106,
+    "power_input": 0.0076,
+    "load": 0.9531,
+    "signal_connector": 0.009,
+    "other": 0.0097
+   }
+  },
+  {
+   "subject": "U911",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.9391019689770668,
+   "probabilities": {
+    "switching_regulator": 0.0046,
+    "linear_regulator": 0.005,
+    "power_switch": 0.0135,
+    "power_input": 0.0105,
+    "load": 0.9478,
+    "signal_connector": 0.0089,
+    "other": 0.0097
+   }
+  }
+ ],
+ "voltages": [
+  {
+   "subject": "/POE_TYP1",
+   "question": "volts",
+   "answer": "1.2",
+   "confidence": 0.3082021559423134,
+   "probabilities": {
+    "0.75": 0.0275,
+    "0.8": 0.0214,
+    "0.85": 0.0141,
+    "0.9": 0.0214,
+    "1.0": 0.0492,
+    "1.05": 0.0181,
+    "1.1": 0.0253,
+    "1.2": 0.3348,
+    "1.35": 0.0101,
+    "1.5": 0.0167,
+    "1.8": 0.0325,
+    "2.5": 0.0153,
+    "2.8": 0.0067,
+    "3.0": 0.0061,
+    "3.3": 0.0167,
+    "3.6": 0.0086,
+    "4.2": 0.0072,
+    "5.0": 0.0883,
+    "9.0": 0.0061,
+    "12": 0.1582,
+    "15": 0.0061,
+    "19": 0.0052,
+    "20": 0.0029,
+    "24": 0.0025,
+    "48": 0.0031,
+    "unknown": 0.0959
+   }
+  },
+  {
+   "subject": "/POE_TYP2",
+   "question": "volts",
+   "answer": "1.2",
+   "confidence": 0.3077524060331862,
+   "probabilities": {
+    "0.75": 0.0232,
+    "0.8": 0.0214,
+    "0.85": 0.0141,
+    "0.9": 0.0197,
+    "1.0": 0.0492,
+    "1.05": 0.0181,
+    "1.1": 0.0253,
+    "1.2": 0.3344,
+    "1.35": 0.0101,
+    "1.5": 0.0166,
+    "1.8": 0.0352,
+    "2.5": 0.0153,
+    "2.8": 0.0067,
+    "3.0": 0.0061,
+    "3.3": 0.0141,
+    "3.6": 0.0085,
+    "4.2": 0.0072,
+    "5.0": 0.0958,
+    "9.0": 0.0061,
+    "12": 0.1717,
+    "15": 0.0061,
+    "19": 0.0052,
+    "20": 0.0029,
+    "24": 0.0024,
+    "48": 0.0034,
+    "unknown": 0.0811
+   }
+  },
+  {
+   "subject": "/USB0_VBUS",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.3881218668841762,
+   "probabilities": {
+    "0.75": 0.0135,
+    "0.8": 0.0286,
+    "0.85": 0.016,
+    "0.9": 0.0173,
+    "1.0": 0.0242,
+    "1.05": 0.0114,
+    "1.1": 0.0135,
+    "1.2": 0.0606,
+    "1.35": 0.0075,
+    "1.5": 0.0173,
+    "1.8": 0.0173,
+    "2.5": 0.0147,
+    "2.8": 0.0064,
+    "3.0": 0.0105,
+    "3.3": 0.1393,
+    "3.6": 0.016,
+    "4.2": 0.0205,
+    "5.0": 0.1085,
+    "9.0": 0.0059,
+    "12": 0.0069,
+    "15": 0.0082,
+    "19": 0.0147,
+    "20": 0.0036,
+    "24": 0.0026,
+    "48": 0.0033,
+    "unknown": 0.4117
+   }
+  },
+  {
+   "subject": "Net-(J801A-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6855128350294198,
+   "probabilities": {
+    "0.75": 0.0056,
+    "0.8": 0.0071,
+    "0.85": 0.0056,
+    "0.9": 0.006,
+    "1.0": 0.0108,
+    "1.05": 0.0051,
+    "1.1": 0.0051,
+    "1.2": 0.01,
+    "1.35": 0.004,
+    "1.5": 0.006,
+    "1.8": 0.0084,
+    "2.5": 0.0249,
+    "2.8": 0.0071,
+    "3.0": 0.0139,
+    "3.3": 0.1212,
+    "3.6": 0.0056,
+    "4.2": 0.0047,
+    "5.0": 0.0229,
+    "9.0": 0.0034,
+    "12": 0.004,
+    "15": 0.0056,
+    "19": 0.0092,
+    "20": 0.0024,
+    "24": 0.0022,
+    "48": 0.0017,
+    "unknown": 0.6976
+   }
+  },
+  {
+   "subject": "Net-(J801A-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6555682077152909,
+   "probabilities": {
+    "0.75": 0.0058,
+    "0.8": 0.0081,
+    "0.85": 0.0063,
+    "0.9": 0.0068,
+    "1.0": 0.0133,
+    "1.05": 0.0063,
+    "1.1": 0.0063,
+    "1.2": 0.0171,
+    "1.35": 0.0045,
+    "1.5": 0.0074,
+    "1.8": 0.0088,
+    "2.5": 0.0259,
+    "2.8": 0.0081,
+    "3.0": 0.0145,
+    "3.3": 0.1263,
+    "3.6": 0.0068,
+    "4.2": 0.0049,
+    "5.0": 0.022,
+    "9.0": 0.0041,
+    "12": 0.0063,
+    "15": 0.0063,
+    "19": 0.0081,
+    "20": 0.0027,
+    "24": 0.0025,
+    "48": 0.002,
+    "unknown": 0.6688
+   }
+  },
+  {
+   "subject": "Net-(J801B-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.5478779940325834,
+   "probabilities": {
+    "0.75": 0.0049,
+    "0.8": 0.0074,
+    "0.85": 0.0053,
+    "0.9": 0.0058,
+    "1.0": 0.0104,
+    "1.05": 0.0049,
+    "1.1": 0.0049,
+    "1.2": 0.0088,
+    "1.35": 0.0038,
+    "1.5": 0.0068,
+    "1.8": 0.0088,
+    "2.5": 0.0361,
+    "2.8": 0.0074,
+    "3.0": 0.0186,
+    "3.3": 0.2457,
+    "3.6": 0.0058,
+    "4.2": 0.0049,
+    "5.0": 0.0171,
+    "9.0": 0.003,
+    "12": 0.0038,
+    "15": 0.0058,
+    "19": 0.0095,
+    "20": 0.0021,
+    "24": 0.0018,
+    "48": 0.0015,
+    "unknown": 0.5653
+   }
+  },
+  {
+   "subject": "Net-(J801B-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6161373718506966,
+   "probabilities": {
+    "0.75": 0.005,
+    "0.8": 0.0083,
+    "0.85": 0.0055,
+    "0.9": 0.0059,
+    "1.0": 0.0116,
+    "1.05": 0.005,
+    "1.1": 0.0055,
+    "1.2": 0.0126,
+    "1.35": 0.0036,
+    "1.5": 0.007,
+    "1.8": 0.0083,
+    "2.5": 0.0289,
+    "2.8": 0.0076,
+    "3.0": 0.0207,
+    "3.3": 0.1808,
+    "3.6": 0.0059,
+    "4.2": 0.0043,
+    "5.0": 0.0161,
+    "9.0": 0.003,
+    "12": 0.0046,
+    "15": 0.0055,
+    "19": 0.0076,
+    "20": 0.0022,
+    "24": 0.002,
+    "48": 0.0017,
+    "unknown": 0.6309
+   }
+  },
+  {
+   "subject": "Net-(J801C-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6480988197003922,
+   "probabilities": {
+    "0.75": 0.0053,
+    "0.8": 0.0068,
+    "0.85": 0.0057,
+    "0.9": 0.0057,
+    "1.0": 0.0111,
+    "1.05": 0.0048,
+    "1.1": 0.0048,
+    "1.2": 0.0094,
+    "1.35": 0.0035,
+    "1.5": 0.0062,
+    "1.8": 0.008,
+    "2.5": 0.0279,
+    "2.8": 0.0068,
+    "3.0": 0.0184,
+    "3.3": 0.1605,
+    "3.6": 0.0057,
+    "4.2": 0.0045,
+    "5.0": 0.0169,
+    "9.0": 0.0029,
+    "12": 0.0038,
+    "15": 0.0053,
+    "19": 0.0087,
+    "20": 0.0021,
+    "24": 0.0019,
+    "48": 0.0016,
+    "unknown": 0.6616
+   }
+  },
+  {
+   "subject": "Net-(J801C-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.663127035471919,
+   "probabilities": {
+    "0.75": 0.005,
+    "0.8": 0.0075,
+    "0.85": 0.0058,
+    "0.9": 0.0058,
+    "1.0": 0.0124,
+    "1.05": 0.0054,
+    "1.1": 0.0054,
+    "1.2": 0.0146,
+    "1.35": 0.0035,
+    "1.5": 0.0069,
+    "1.8": 0.0075,
+    "2.5": 0.0262,
+    "2.8": 0.0069,
+    "3.0": 0.0204,
+    "3.3": 0.1388,
+    "3.6": 0.0064,
+    "4.2": 0.0042,
+    "5.0": 0.0146,
+    "9.0": 0.0033,
+    "12": 0.005,
+    "15": 0.0054,
+    "19": 0.0069,
+    "20": 0.0023,
+    "24": 0.002,
+    "48": 0.0017,
+    "unknown": 0.6761
+   }
+  },
+  {
+   "subject": "Net-(J801D-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6536707831491642,
+   "probabilities": {
+    "0.75": 0.0045,
+    "0.8": 0.0063,
+    "0.85": 0.0049,
+    "0.9": 0.0058,
+    "1.0": 0.0103,
+    "1.05": 0.0049,
+    "1.1": 0.0049,
+    "1.2": 0.0088,
+    "1.35": 0.0035,
+    "1.5": 0.0058,
+    "1.8": 0.0074,
+    "2.5": 0.0281,
+    "2.8": 0.0068,
+    "3.0": 0.017,
+    "3.3": 0.1618,
+    "3.6": 0.0058,
+    "4.2": 0.0049,
+    "5.0": 0.0157,
+    "9.0": 0.003,
+    "12": 0.0035,
+    "15": 0.0053,
+    "19": 0.0088,
+    "20": 0.0021,
+    "24": 0.0018,
+    "48": 0.0015,
+    "unknown": 0.667
+   }
+  },
+  {
+   "subject": "Net-(J801D-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6774528270012572,
+   "probabilities": {
+    "0.75": 0.0051,
+    "0.8": 0.0071,
+    "0.85": 0.0055,
+    "0.9": 0.006,
+    "1.0": 0.0116,
+    "1.05": 0.0055,
+    "1.1": 0.0055,
+    "1.2": 0.0126,
+    "1.35": 0.0036,
+    "1.5": 0.0065,
+    "1.8": 0.0077,
+    "2.5": 0.0267,
+    "2.8": 0.0071,
+    "3.0": 0.0192,
+    "3.3": 0.1303,
+    "3.6": 0.006,
+    "4.2": 0.0043,
+    "5.0": 0.0137,
+    "9.0": 0.0031,
+    "12": 0.0043,
+    "15": 0.0055,
+    "19": 0.0071,
+    "20": 0.0024,
+    "24": 0.0022,
+    "48": 0.0019,
+    "unknown": 0.6899
+   }
+  },
+  {
+   "subject": "Net-(J801E-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.5732385984590956,
+   "probabilities": {
+    "0.75": 0.0047,
+    "0.8": 0.0066,
+    "0.85": 0.0055,
+    "0.9": 0.0055,
+    "1.0": 0.0117,
+    "1.05": 0.0051,
+    "1.1": 0.0051,
+    "1.2": 0.0091,
+    "1.35": 0.0037,
+    "1.5": 0.0066,
+    "1.8": 0.0084,
+    "2.5": 0.0294,
+    "2.8": 0.0071,
+    "3.0": 0.0229,
+    "3.3": 0.2169,
+    "3.6": 0.006,
+    "4.2": 0.0051,
+    "5.0": 0.0229,
+    "9.0": 0.0034,
+    "12": 0.004,
+    "15": 0.0055,
+    "19": 0.0091,
+    "20": 0.0024,
+    "24": 0.002,
+    "48": 0.0016,
+    "unknown": 0.5897
+   }
+  },
+  {
+   "subject": "Net-(J801E-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.5985323687400549,
+   "probabilities": {
+    "0.75": 0.0049,
+    "0.8": 0.0074,
+    "0.85": 0.0063,
+    "0.9": 0.0063,
+    "1.0": 0.0144,
+    "1.05": 0.0063,
+    "1.1": 0.0063,
+    "1.2": 0.0133,
+    "1.35": 0.0041,
+    "1.5": 0.0074,
+    "1.8": 0.0088,
+    "2.5": 0.0281,
+    "2.8": 0.0081,
+    "3.0": 0.0219,
+    "3.3": 0.1759,
+    "3.6": 0.0068,
+    "4.2": 0.0053,
+    "5.0": 0.0238,
+    "9.0": 0.0035,
+    "12": 0.0053,
+    "15": 0.0063,
+    "19": 0.0088,
+    "20": 0.0025,
+    "24": 0.0025,
+    "48": 0.0018,
+    "unknown": 0.614
+   }
+  },
+  {
+   "subject": "Net-(J801F-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6774188027915152,
+   "probabilities": {
+    "0.75": 0.0051,
+    "0.8": 0.0077,
+    "0.85": 0.0055,
+    "0.9": 0.006,
+    "1.0": 0.0116,
+    "1.05": 0.0055,
+    "1.1": 0.0051,
+    "1.2": 0.0098,
+    "1.35": 0.0036,
+    "1.5": 0.0065,
+    "1.8": 0.0077,
+    "2.5": 0.0267,
+    "2.8": 0.0065,
+    "3.0": 0.0176,
+    "3.3": 0.1303,
+    "3.6": 0.0055,
+    "4.2": 0.0043,
+    "5.0": 0.0192,
+    "9.0": 0.0031,
+    "12": 0.0036,
+    "15": 0.0055,
+    "19": 0.0083,
+    "20": 0.0022,
+    "24": 0.0019,
+    "48": 0.0016,
+    "unknown": 0.6898
+   }
+  },
+  {
+   "subject": "Net-(J801F-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6807126777193201,
+   "probabilities": {
+    "0.75": 0.0055,
+    "0.8": 0.0084,
+    "0.85": 0.006,
+    "0.9": 0.006,
+    "1.0": 0.0127,
+    "1.05": 0.006,
+    "1.1": 0.0055,
+    "1.2": 0.015,
+    "1.35": 0.004,
+    "1.5": 0.0071,
+    "1.8": 0.0077,
+    "2.5": 0.0247,
+    "2.8": 0.0071,
+    "3.0": 0.0163,
+    "3.3": 0.1204,
+    "3.6": 0.006,
+    "4.2": 0.0043,
+    "5.0": 0.0177,
+    "9.0": 0.0031,
+    "12": 0.0047,
+    "15": 0.0055,
+    "19": 0.0071,
+    "20": 0.0024,
+    "24": 0.0022,
+    "48": 0.0017,
+    "unknown": 0.693
+   }
+  },
+  {
+   "subject": "Net-(J801G-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6935452315654751,
+   "probabilities": {
+    "0.75": 0.0048,
+    "0.8": 0.0066,
+    "0.85": 0.0052,
+    "0.9": 0.0052,
+    "1.0": 0.0093,
+    "1.05": 0.0044,
+    "1.1": 0.0048,
+    "1.2": 0.0078,
+    "1.35": 0.0031,
+    "1.5": 0.0052,
+    "1.8": 0.0072,
+    "2.5": 0.0252,
+    "2.8": 0.0061,
+    "3.0": 0.0166,
+    "3.3": 0.1332,
+    "3.6": 0.0056,
+    "4.2": 0.0044,
+    "5.0": 0.0129,
+    "9.0": 0.0031,
+    "12": 0.0037,
+    "15": 0.0048,
+    "19": 0.0101,
+    "20": 0.0022,
+    "24": 0.0017,
+    "48": 0.0016,
+    "unknown": 0.7053
+   }
+  },
+  {
+   "subject": "Net-(J801G-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.671884988868538,
+   "probabilities": {
+    "0.75": 0.0046,
+    "0.8": 0.007,
+    "0.85": 0.005,
+    "0.9": 0.0059,
+    "1.0": 0.0115,
+    "1.05": 0.005,
+    "1.1": 0.005,
+    "1.2": 0.0115,
+    "1.35": 0.0033,
+    "1.5": 0.0059,
+    "1.8": 0.0076,
+    "2.5": 0.0265,
+    "2.8": 0.007,
+    "3.0": 0.019,
+    "3.3": 0.1405,
+    "3.6": 0.0059,
+    "4.2": 0.0046,
+    "5.0": 0.0125,
+    "9.0": 0.003,
+    "12": 0.0042,
+    "15": 0.0054,
+    "19": 0.0083,
+    "20": 0.0022,
+    "24": 0.002,
+    "48": 0.0017,
+    "unknown": 0.6845
+   }
+  },
+  {
+   "subject": "Net-(J801H-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6984328653484366,
+   "probabilities": {
+    "0.75": 0.0044,
+    "0.8": 0.0061,
+    "0.85": 0.0048,
+    "0.9": 0.0048,
+    "1.0": 0.0093,
+    "1.05": 0.0044,
+    "1.1": 0.0044,
+    "1.2": 0.0079,
+    "1.35": 0.0032,
+    "1.5": 0.0057,
+    "1.8": 0.0073,
+    "2.5": 0.0253,
+    "2.8": 0.0061,
+    "3.0": 0.0167,
+    "3.3": 0.1234,
+    "3.6": 0.0057,
+    "4.2": 0.0048,
+    "5.0": 0.0181,
+    "9.0": 0.0032,
+    "12": 0.0037,
+    "15": 0.0057,
+    "19": 0.0093,
+    "20": 0.0023,
+    "24": 0.0019,
+    "48": 0.0016,
+    "unknown": 0.71
+   }
+  },
+  {
+   "subject": "Net-(J801H-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6897945079924159,
+   "probabilities": {
+    "0.75": 0.0051,
+    "0.8": 0.0072,
+    "0.85": 0.0056,
+    "0.9": 0.0056,
+    "1.0": 0.0118,
+    "1.05": 0.0051,
+    "1.1": 0.0051,
+    "1.2": 0.014,
+    "1.35": 0.0037,
+    "1.5": 0.0066,
+    "1.8": 0.0078,
+    "2.5": 0.025,
+    "2.8": 0.0072,
+    "3.0": 0.0179,
+    "3.3": 0.1122,
+    "3.6": 0.0066,
+    "4.2": 0.0051,
+    "5.0": 0.0165,
+    "9.0": 0.0034,
+    "12": 0.0051,
+    "15": 0.0056,
+    "19": 0.0092,
+    "20": 0.0024,
+    "24": 0.0024,
+    "48": 0.0019,
+    "unknown": 0.7017
+   }
+  },
+  {
+   "subject": "Net-(J801I-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6532435083328376,
+   "probabilities": {
+    "0.75": 0.0049,
+    "0.8": 0.0068,
+    "0.85": 0.0053,
+    "0.9": 0.0058,
+    "1.0": 0.0112,
+    "1.05": 0.0053,
+    "1.1": 0.0049,
+    "1.2": 0.0103,
+    "1.35": 0.0038,
+    "1.5": 0.0068,
+    "1.8": 0.0087,
+    "2.5": 0.0281,
+    "2.8": 0.0074,
+    "3.0": 0.0185,
+    "3.3": 0.1487,
+    "3.6": 0.0058,
+    "4.2": 0.0049,
+    "5.0": 0.0185,
+    "9.0": 0.0032,
+    "12": 0.0038,
+    "15": 0.0058,
+    "19": 0.0087,
+    "20": 0.0023,
+    "24": 0.0021,
+    "48": 0.0017,
+    "unknown": 0.6666
+   }
+  },
+  {
+   "subject": "Net-(J801I-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6604281089919729,
+   "probabilities": {
+    "0.75": 0.0054,
+    "0.8": 0.0075,
+    "0.85": 0.0058,
+    "0.9": 0.0058,
+    "1.0": 0.0123,
+    "1.05": 0.0054,
+    "1.1": 0.0058,
+    "1.2": 0.0172,
+    "1.35": 0.0042,
+    "1.5": 0.0075,
+    "1.8": 0.0088,
+    "2.5": 0.0284,
+    "2.8": 0.0075,
+    "3.0": 0.0187,
+    "3.3": 0.1272,
+    "3.6": 0.0063,
+    "4.2": 0.0049,
+    "5.0": 0.0187,
+    "9.0": 0.0033,
+    "12": 0.0049,
+    "15": 0.0058,
+    "19": 0.0081,
+    "20": 0.0025,
+    "24": 0.0025,
+    "48": 0.0018,
+    "unknown": 0.6735
+   }
+  },
+  {
+   "subject": "Net-(J801J-VccR)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6334963971340042,
+   "probabilities": {
+    "0.75": 0.0056,
+    "0.8": 0.0078,
+    "0.85": 0.0061,
+    "0.9": 0.0061,
+    "1.0": 0.0129,
+    "1.05": 0.0061,
+    "1.1": 0.0056,
+    "1.2": 0.014,
+    "1.35": 0.004,
+    "1.5": 0.0078,
+    "1.8": 0.01,
+    "2.5": 0.0273,
+    "2.8": 0.0072,
+    "3.0": 0.0152,
+    "3.3": 0.1571,
+    "3.6": 0.0061,
+    "4.2": 0.0047,
+    "5.0": 0.0196,
+    "9.0": 0.0034,
+    "12": 0.0044,
+    "15": 0.0061,
+    "19": 0.0085,
+    "20": 0.0026,
+    "24": 0.0024,
+    "48": 0.0017,
+    "unknown": 0.6476
+   }
+  },
+  {
+   "subject": "Net-(J801J-VccT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.6657995089209535,
+   "probabilities": {
+    "0.75": 0.0054,
+    "0.8": 0.0082,
+    "0.85": 0.0064,
+    "0.9": 0.0069,
+    "1.0": 0.0147,
+    "1.05": 0.0064,
+    "1.1": 0.0064,
+    "1.2": 0.0189,
+    "1.35": 0.0042,
+    "1.5": 0.0082,
+    "1.8": 0.0097,
+    "2.5": 0.0263,
+    "2.8": 0.0075,
+    "3.0": 0.0147,
+    "3.3": 0.1179,
+    "3.6": 0.0064,
+    "4.2": 0.0046,
+    "5.0": 0.0173,
+    "9.0": 0.0036,
+    "12": 0.0054,
+    "15": 0.0059,
+    "19": 0.0089,
+    "20": 0.0028,
+    "24": 0.0028,
+    "48": 0.002,
+    "unknown": 0.6787
+   }
+  },
+  {
+   "subject": "Net-(U302-VBUS)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.3801826892997597,
+   "probabilities": {
+    "0.75": 0.017,
+    "0.8": 0.0392,
+    "0.85": 0.0144,
+    "0.9": 0.0258,
+    "1.0": 0.0463,
+    "1.05": 0.0122,
+    "1.1": 0.0144,
+    "1.2": 0.1367,
+    "1.35": 0.0063,
+    "1.5": 0.0157,
+    "1.8": 0.017,
+    "2.5": 0.0219,
+    "2.8": 0.0063,
+    "3.0": 0.0087,
+    "3.3": 0.0763,
+    "3.6": 0.0133,
+    "4.2": 0.0122,
+    "5.0": 0.0702,
+    "9.0": 0.0045,
+    "12": 0.0063,
+    "15": 0.0063,
+    "19": 0.017,
+    "20": 0.003,
+    "24": 0.0021,
+    "48": 0.003,
+    "unknown": 0.404
+   }
+  },
+  {
+   "subject": "Net-(U602-V3)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.605030311941449,
+   "probabilities": {
+    "0.75": 0.0146,
+    "0.8": 0.0146,
+    "0.85": 0.0114,
+    "0.9": 0.0146,
+    "1.0": 0.0284,
+    "1.05": 0.0088,
+    "1.1": 0.0105,
+    "1.2": 0.024,
+    "1.35": 0.0045,
+    "1.5": 0.0114,
+    "1.8": 0.0146,
+    "2.5": 0.0261,
+    "2.8": 0.0088,
+    "3.0": 0.0114,
+    "3.3": 0.1171,
+    "3.6": 0.0146,
+    "4.2": 0.0069,
+    "5.0": 0.0172,
+    "9.0": 0.003,
+    "12": 0.0038,
+    "15": 0.0038,
+    "19": 0.0042,
+    "20": 0.0021,
+    "24": 0.0017,
+    "48": 0.0015,
+    "unknown": 0.6202
+   }
+  },
+  {
+   "subject": "Net-(U702-RT)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.40704701375133534,
+   "probabilities": {
+    "0.75": 0.0141,
+    "0.8": 0.0325,
+    "0.85": 0.0214,
+    "0.9": 0.0197,
+    "1.0": 0.0417,
+    "1.05": 0.0253,
+    "1.1": 0.0253,
+    "1.2": 0.1133,
+    "1.35": 0.0119,
+    "1.5": 0.0197,
+    "1.8": 0.013,
+    "2.5": 0.0353,
+    "2.8": 0.0101,
+    "3.0": 0.0086,
+    "3.3": 0.1232,
+    "3.6": 0.011,
+    "4.2": 0.0072,
+    "5.0": 0.0141,
+    "9.0": 0.0037,
+    "12": 0.0037,
+    "15": 0.004,
+    "19": 0.0044,
+    "20": 0.0027,
+    "24": 0.0023,
+    "48": 0.0021,
+    "unknown": 0.4299
+   }
+  }
+ ]
+}

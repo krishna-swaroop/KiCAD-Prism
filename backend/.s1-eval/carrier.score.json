@@ -1,0 +1,326 @@
+{
+ "nets": [
+  {
+   "who": "regex",
+   "n": 289,
+   "accuracy": 0.938,
+   "per_role": {
+    "ground": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_control": {
+     "n": 14,
+     "precision": 1.0,
+     "recall": 0.071
+    },
+    "signal": {
+     "n": 234,
+     "precision": 0.932,
+     "recall": 1.0
+    },
+    "supply_rail": {
+     "n": 38,
+     "precision": 1.0,
+     "recall": 0.868
+    },
+    "switch_node": {
+     "n": 2,
+     "precision": 0.667,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "/PD_OK: power_control -> signal",
+    "/Power In/DRAIN: supply_rail -> signal",
+    "/USB0_OC_DET: power_control -> signal",
+    "Net-(D701-A): power_control -> signal",
+    "Net-(D702-A): power_control -> signal",
+    "Net-(J401-P13): supply_rail -> signal",
+    "Net-(J401-P14): supply_rail -> signal",
+    "Net-(J401-P15): supply_rail -> signal",
+    "Net-(J401-P16): supply_rail -> signal",
+    "Net-(U305-EN{slash}UVLO): power_control -> signal",
+    "Net-(U501-CAP): power_control -> signal",
+    "Net-(U501-ILIM): power_control -> signal",
+    "Net-(U701-BST): power_control -> signal",
+    "Net-(U701-FB): power_control -> signal",
+    "Net-(U702-CBOOT): power_control -> signal",
+    "Net-(U702-FB): power_control -> signal",
+    "Net-(U702-RT): power_control -> switch_node",
+    "Net-(U702-SPSP): power_control -> signal"
+   ]
+  },
+  {
+   "who": "model",
+   "n": 289,
+   "accuracy": 0.875,
+   "per_role": {
+    "ground": {
+     "n": 1,
+     "precision": 0.031,
+     "recall": 1.0
+    },
+    "power_control": {
+     "n": 14,
+     "precision": 1.0,
+     "recall": 0.571
+    },
+    "signal": {
+     "n": 234,
+     "precision": 0.991,
+     "recall": 0.893
+    },
+    "supply_rail": {
+     "n": 38,
+     "precision": 0.917,
+     "recall": 0.868
+    },
+    "switch_node": {
+     "n": 2,
+     "precision": 1.0,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "/MGMT.D0_N: signal -> ground",
+    "/MGMT.D0_P: signal -> ground",
+    "/MGMT.D1_N: signal -> ground",
+    "/MGMT.D1_P: signal -> ground",
+    "/MGMT.D2_N: signal -> ground",
+    "/MGMT.D2_P: signal -> ground",
+    "/MGMT.D3_N: signal -> ground",
+    "/MGMT.D3_P: signal -> ground",
+    "/PD_OK: power_control -> ground",
+    "/POE_TYP1: signal -> supply_rail",
+    "/POE_TYP2: signal -> supply_rail",
+    "/Power In/DRAIN: supply_rail -> ground",
+    "/SOM/ENET_MDC_0: signal -> ground",
+    "/SOM/~{MR}: signal -> ground",
+    "Net-(D701-A): power_control -> signal",
+    "Net-(D702-A): power_control -> signal",
+    "Net-(J1001-~{CPRSNT(VSP)}): signal -> ground",
+    "Net-(J401-CT0): signal -> ground",
+    "Net-(J401-CT1): signal -> ground",
+    "Net-(J401-CT2): signal -> ground",
+    "Net-(J401-CT3): signal -> ground",
+    "Net-(J401-LEDG_A): signal -> ground",
+    "Net-(J401-LEDY_K): signal -> ground",
+    "Net-(J401-P13): supply_rail -> ground",
+    "Net-(J401-P14): supply_rail -> ground",
+    "Net-(J401-P15): supply_rail -> ground",
+    "Net-(J401-P16): supply_rail -> ground",
+    "Net-(J601-CC1): signal -> ground",
+    "Net-(J601-CC2): signal -> ground",
+    "Net-(U304-D2+): signal -> ground",
+    "Net-(U304-D2-): signal -> ground",
+    "Net-(U501-CAP): power_control -> ground",
+    "Net-(U603-D2+): signal -> ground",
+    "Net-(U603-D2-): signal -> ground",
+    "Net-(U702-RT): power_control -> supply_rail",
+    "Net-(U702-SPSP): power_control -> ground"
+   ],
+   "auto@0.5": {
+    "share": 0.827,
+    "accuracy": 0.937
+   },
+   "auto@0.7": {
+    "share": 0.609,
+    "accuracy": 0.977
+   },
+   "auto@0.9": {
+    "share": 0.28,
+    "accuracy": 1.0
+   }
+  }
+ ],
+ "parts": [
+  {
+   "who": "regex",
+   "n": 44,
+   "accuracy": 0.773,
+   "per_role": {
+    "linear_regulator": {
+     "n": 1,
+     "precision": 0.333,
+     "recall": 1.0
+    },
+    "load": {
+     "n": 19,
+     "precision": 1.0,
+     "recall": 0.947
+    },
+    "other": {
+     "n": 7,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_input": {
+     "n": 4,
+     "precision": 0.375,
+     "recall": 0.75
+    },
+    "power_switch": {
+     "n": 3,
+     "precision": null,
+     "recall": 0.0
+    },
+    "signal_connector": {
+     "n": 7,
+     "precision": 0.667,
+     "recall": 0.286
+    },
+    "switching_regulator": {
+     "n": 3,
+     "precision": 0.6,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "J1001: signal_connector -> power_input",
+    "J201: signal_connector -> power_input",
+    "J203: signal_connector -> power_input",
+    "J401: power_input -> signal_connector",
+    "J501: signal_connector -> power_input",
+    "J801: signal_connector -> power_input",
+    "U302: power_switch -> linear_regulator",
+    "U305: power_switch -> linear_regulator",
+    "U501: power_switch -> switching_regulator",
+    "U602: load -> switching_regulator"
+   ]
+  },
+  {
+   "who": "model",
+   "n": 44,
+   "accuracy": 0.841,
+   "per_role": {
+    "linear_regulator": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "load": {
+     "n": 19,
+     "precision": 1.0,
+     "recall": 0.947
+    },
+    "other": {
+     "n": 7,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_input": {
+     "n": 4,
+     "precision": 0.2,
+     "recall": 0.25
+    },
+    "power_switch": {
+     "n": 3,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "signal_connector": {
+     "n": 7,
+     "precision": 0.571,
+     "recall": 0.571
+    },
+    "switching_regulator": {
+     "n": 3,
+     "precision": 1.0,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "J1001: signal_connector -> power_input",
+    "J202: power_input -> signal_connector",
+    "J302: signal_connector -> power_input",
+    "J401: power_input -> signal_connector",
+    "J501: signal_connector -> power_input",
+    "J601: power_input -> signal_connector",
+    "U602: load -> power_input"
+   ],
+   "auto@0.5": {
+    "share": 0.864,
+    "accuracy": 0.868
+   },
+   "auto@0.7": {
+    "share": 0.636,
+    "accuracy": 0.964
+   },
+   "auto@0.9": {
+    "share": 0.409,
+    "accuracy": 1.0
+   }
+  }
+ ],
+ "unnamed_rail_voltages": {
+  "who": "model",
+  "n": 23,
+  "accuracy": 0.043,
+  "per_role": {
+   "3.3": {
+    "n": 21,
+    "precision": null,
+    "recall": 0.0
+   },
+   "48": {
+    "n": 0,
+    "precision": null,
+    "recall": null
+   },
+   "5.0": {
+    "n": 1,
+    "precision": null,
+    "recall": 0.0
+   },
+   "unknown": {
+    "n": 1,
+    "precision": 0.043,
+    "recall": 1.0
+   }
+  },
+  "errors": [
+   "/USB0_VBUS: 5.0 -> unknown",
+   "Net-(J801A-VccR): 3.3 -> unknown",
+   "Net-(J801A-VccT): 3.3 -> unknown",
+   "Net-(J801B-VccR): 3.3 -> unknown",
+   "Net-(J801B-VccT): 3.3 -> unknown",
+   "Net-(J801C-VccR): 3.3 -> unknown",
+   "Net-(J801C-VccT): 3.3 -> unknown",
+   "Net-(J801D-VccR): 3.3 -> unknown",
+   "Net-(J801D-VccT): 3.3 -> unknown",
+   "Net-(J801E-VccR): 3.3 -> unknown",
+   "Net-(J801E-VccT): 3.3 -> unknown",
+   "Net-(J801F-VccR): 3.3 -> unknown",
+   "Net-(J801F-VccT): 3.3 -> unknown",
+   "Net-(J801G-VccR): 3.3 -> unknown",
+   "Net-(J801G-VccT): 3.3 -> unknown",
+   "Net-(J801H-VccR): 3.3 -> unknown",
+   "Net-(J801H-VccT): 3.3 -> unknown",
+   "Net-(J801I-VccR): 3.3 -> unknown",
+   "Net-(J801I-VccT): 3.3 -> unknown",
+   "Net-(J801J-VccR): 3.3 -> unknown",
+   "Net-(J801J-VccT): 3.3 -> unknown",
+   "Net-(U602-V3): 3.3 -> unknown"
+  ]
+ },
+ "label_mix": {
+  "nets": {
+   "supply_rail": 38,
+   "signal": 234,
+   "power_control": 14,
+   "ground": 1,
+   "switch_node": 2
+  },
+  "parts": {
+   "load": 19,
+   "other": 7,
+   "power_switch": 3,
+   "linear_regulator": 1,
+   "switching_regulator": 3,
+   "power_input": 4,
+   "signal_connector": 7
+  }
+ }
+}

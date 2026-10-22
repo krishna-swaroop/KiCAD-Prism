@@ -1,0 +1,4023 @@
+{
+ "nets": {
+  "+12V_POE": {
+   "net": "+12V_POE",
+   "pads": 5,
+   "pins": [
+    "PS401 poe-bt12v50w-sip [q-lab:PSU_poe-bt12v50w-sip]: +12V (passive)",
+    "PS401 poe-bt12v50w-sip [q-lab:PSU_poe-bt12v50w-sip]: +12V (power_out)",
+    "U305 LM73100 [q-lab:Ideal_Diode_LM73100]: IN (power_in)"
+   ],
+   "C parts": [
+    "C310 100n to GND"
+   ],
+   "R parts": [
+    "R304 52.3K to Net-(U305-EN{slash}UVLO)"
+   ]
+  },
+  "+1V5_PD": {
+   "net": "+1V5_PD",
+   "pads": 2,
+   "pins": [
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: LDO_1V5 (power_out)"
+   ],
+   "C parts": [
+    "C307 10u to GND"
+   ]
+  },
+  "+1V8": {
+   "net": "+1V8",
+   "pads": 28,
+   "pins": [
+    "J201 TC2030 [Connector_Generic:Conn_02x03_Odd_Even]: Pin_1 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_113 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_115 (passive)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: VCCA (power_in)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: OE (input)",
+    "U203 CAT24M01DWDLT3G [Memory_EEPROM:CAT24M01W]: A1 (input)",
+    "U203 CAT24M01DWDLT3G [Memory_EEPROM:CAT24M01W]: VCC (power_in)",
+    "U204 TCA9801: VCCA (power_in)",
+    "U204 TCA9801: EN (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: VCC (power_in)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: ~{RESET} (input)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: VCC (power_in)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: A0 (input)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: ~{RESET} (input)",
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: VCCA (power_in)",
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: OE (input)"
+   ],
+   "C parts": [
+    "C201 100n to GND",
+    "C203 100n to GND",
+    "C2101 100n to GND",
+    "C2102 100n to GND",
+    "C2202 100n to GND",
+    "C901 100n to GND"
+   ],
+   "R parts": [
+    "R202 330 to ENET_MDC_0",
+    "R2202 2.2K to FC2_SCL",
+    "R2203 2.2K to FC2_SDA",
+    "R403 100K to POE_TYP1",
+    "R404 100K to POE_TYP2",
+    "R501 10K to USB0_OC_DET"
+   ]
+  },
+  "+1V8_UART": {
+   "net": "+1V8_UART",
+   "pads": 4,
+   "pins": [
+    "U601 LP5912-1.8DRV: OUT (power_out)",
+    "U602 CH343P [q-lab:USB_UART_CH343P]: VDDIO (power_in)"
+   ],
+   "C parts": [
+    "C602 1u to GND",
+    "C604 100n to GND"
+   ]
+  },
+  "+20V_VSYS": {
+   "net": "+20V_VSYS",
+   "pads": 18,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_117 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_119 (passive)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: PPHV (power_out)",
+    "U305 LM73100 [q-lab:Ideal_Diode_LM73100]: OUT (power_out)",
+    "U701 TPS62933P: VIN (power_in)",
+    "U702 LM61495 [q-lab:Regulator_LM61480]: VIN1 (power_in)",
+    "U702 LM61495 [q-lab:Regulator_LM61480]: VIN2 (power_in)"
+   ],
+   "C parts": [
+    "C302 22u to GND",
+    "C303 22u to GND",
+    "C702 100n to GND",
+    "C704 4.7u to GND",
+    "C705 4.7u to GND",
+    "C715 100n to GND",
+    "... 5 more"
+   ]
+  },
+  "+3V3": {
+   "net": "+3V3",
+   "pads": 17,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_118 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_120 (passive)",
+    "J203 BM04B-SRSS-TB [Connector_Generic_MountingPin:Conn_01x04_MountingPin]: Pin_2 (passive)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: VCCB (power_in)",
+    "U204 TCA9801: VCCB (power_in)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: VIN_3V3 (power_in)",
+    "U502 TUSB320LAI [Interface_USB:TUSB320]: VDD (power_in)",
+    "U702 LM61495 [q-lab:Regulator_LM61480]: EN (input)"
+   ],
+   "C parts": [
+    "C204 100n to GND",
+    "C2201 100n to GND",
+    "C308 10u to GND",
+    "C505 100n to GND"
+   ],
+   "R parts": [
+    "R1001 10K to ~{PCIE_PERST_3V3}",
+    "R1004 10K to Net-(J1001-~{CWAKE},OBFF{slash}VSP)",
+    "R201 2.2K to Net-(D201-A)",
+    "R2201 10K to FAN_TACH_3V3",
+    "R402 470 to Net-(J401-LEDG_A)"
+   ]
+  },
+  "+3V3_PD": {
+   "net": "+3V3_PD",
+   "pads": 8,
+   "pins": [
+    "J302 TC2030 [Connector_Generic:Conn_02x03_Odd_Even]: Pin_1 (passive)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: LDO_3V3 (power_out)",
+    "U303 CAT24C256 [q-lab:EEPROM_CAT24]: VCC (power_in)"
+   ],
+   "C parts": [
+    "C306 10u to GND",
+    "C309 100n to GND"
+   ],
+   "R parts": [
+    "R301 10K to ~{I2C_EEP_IRQ}",
+    "R302 2.2K to I2C_EEP_SDA",
+    "R303 2.2K to I2C_EEP_SCL"
+   ]
+  },
+  "+3V3_SFP": {
+   "net": "+3V3_SFP",
+   "pads": 119,
+   "pins": [
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: VCCB (power_in)",
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: VCC (power_in)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: VCC (power_in)",
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: VCC (power_in)",
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: VCC (power_in)",
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: VCC (power_in)",
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: VCC (power_in)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: VCC (power_in)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: VCC (power_in)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: VCC (power_in)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: VCC (power_in)"
+   ],
+   "C parts": [
+    "C1 100n to GND",
+    "C10 100n to GND",
+    "C2 100n to GND",
+    "C3 100n to GND",
+    "C4 100n to GND",
+    "C5 100n to GND",
+    "... 9 more"
+   ],
+   "L parts": [
+    "L1201 1uH to Net-(J801A-VccT)",
+    "L1202 1uH to Net-(J801A-VccR)",
+    "L1301 1uH to Net-(J801C-VccT)",
+    "L1302 1uH to Net-(J801C-VccR)",
+    "L1401 1uH to Net-(J801D-VccT)",
+    "L1402 1uH to Net-(J801D-VccR)",
+    "... 15 more"
+   ],
+   "R parts": [
+    "R1201 10K to SFP_CTL0.MODDET",
+    "R1204 10K to SFP_CTL0.RX_LOS",
+    "R1205 10K to SFP_CTL0.TX_FAULT",
+    "R1207 330 to Net-(D1201-A)",
+    "R1208 1K to Net-(D1202-A)",
+    "R1301 10K to SFP_CTL2.MODDET",
+    "... 66 more"
+   ]
+  },
+  "+5V0": {
+   "net": "+5V0",
+   "pads": 11,
+   "pins": [
+    "J2201 BM04B-SRSS-TB [Connector_Generic_MountingPin:Conn_01x04_MountingPin]: Pin_2 (passive)",
+    "U501 NX5P3363 [q-lab:Load_Switch_NX5P3363]: VIN (power_in) x2",
+    "U702 LM61495 [q-lab:Regulator_LM61480]: BIAS (power_in)"
+   ],
+   "C parts": [
+    "C503 100n to GND",
+    "C709 100u to GND",
+    "C710 100u to GND",
+    "C714 100n to GND"
+   ],
+   "L parts": [
+    "L701 4.7uH to Net-(U701-SW)"
+   ],
+   "R parts": [
+    "R702 52.3K to Net-(U701-FB)",
+    "R707 5.1K to Net-(D701-A)"
+   ]
+  },
+  "+5V0_UART": {
+   "net": "+5V0_UART",
+   "pads": 11,
+   "pins": [
+    "J601 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: VBUS (passive) x4",
+    "U601 LP5912-1.8DRV: EN (input)",
+    "U601 LP5912-1.8DRV: IN (power_in)",
+    "U602 CH343P [q-lab:USB_UART_CH343P]: VDD5 (power_in)",
+    "U602 CH343P [q-lab:USB_UART_CH343P]: USB_VBUS (input)"
+   ],
+   "C parts": [
+    "C601 1u to GND",
+    "C603 1u to GND",
+    "C606 1u to GND"
+   ]
+  },
+  "/FC0_RXI": {
+   "net": "FC0_RXI",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_30 (passive)"
+   ],
+   "R parts": [
+    "R601 1K to Net-(U602-UART_TXD)"
+   ]
+  },
+  "/FC0_TXO": {
+   "net": "FC0_TXO",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_32 (passive)"
+   ],
+   "R parts": [
+    "R602 1K to Net-(U602-UART_RXD)"
+   ]
+  },
+  "/FC3_SCL": {
+   "net": "FC3_SCL",
+   "pads": 5,
+   "pins": [
+    "J201 TC2030 [Connector_Generic:Conn_02x03_Odd_Even]: Pin_4 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_34 (passive)",
+    "U203 CAT24M01DWDLT3G [Memory_EEPROM:CAT24M01W]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SCL (input)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SCL (input)"
+   ]
+  },
+  "/FC3_SDA": {
+   "net": "FC3_SDA",
+   "pads": 5,
+   "pins": [
+    "J201 TC2030 [Connector_Generic:Conn_02x03_Odd_Even]: Pin_2 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_36 (passive)",
+    "U203 CAT24M01DWDLT3G [Memory_EEPROM:CAT24M01W]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SDA (bidirectional)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SDA (bidirectional)"
+   ]
+  },
+  "/I2C_S0.SCL": {
+   "net": "I2C_S0.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC0 (output)"
+   ],
+   "R parts": [
+    "R2101 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S0.SDA": {
+   "net": "I2C_S0.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD0 (bidirectional)"
+   ],
+   "R parts": [
+    "R2102 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S1.SCL": {
+   "net": "I2C_S1.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC1 (output)"
+   ],
+   "R parts": [
+    "R2103 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S1.SDA": {
+   "net": "I2C_S1.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD1 (bidirectional)"
+   ],
+   "R parts": [
+    "R2104 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S2.SCL": {
+   "net": "I2C_S2.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC2 (output)"
+   ],
+   "R parts": [
+    "R2105 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S2.SDA": {
+   "net": "I2C_S2.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD2 (bidirectional)"
+   ],
+   "R parts": [
+    "R2106 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S3.SCL": {
+   "net": "I2C_S3.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC3 (output)"
+   ],
+   "R parts": [
+    "R2107 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S3.SDA": {
+   "net": "I2C_S3.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD3 (bidirectional)"
+   ],
+   "R parts": [
+    "R2108 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S4.SCL": {
+   "net": "I2C_S4.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC4 (output)"
+   ],
+   "R parts": [
+    "R2109 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S4.SDA": {
+   "net": "I2C_S4.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD4 (bidirectional)"
+   ],
+   "R parts": [
+    "R2110 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S5.SCL": {
+   "net": "I2C_S5.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC5 (output)"
+   ],
+   "R parts": [
+    "R2111 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S5.SDA": {
+   "net": "I2C_S5.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD5 (bidirectional)"
+   ],
+   "R parts": [
+    "R2112 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S6.SCL": {
+   "net": "I2C_S6.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC6 (output)"
+   ],
+   "R parts": [
+    "R2113 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S6.SDA": {
+   "net": "I2C_S6.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD6 (bidirectional)"
+   ],
+   "R parts": [
+    "R2114 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S7.SCL": {
+   "net": "I2C_S7.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC7 (output)"
+   ],
+   "R parts": [
+    "R2115 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S7.SDA": {
+   "net": "I2C_S7.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2101 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD7 (bidirectional)"
+   ],
+   "R parts": [
+    "R2116 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S8.SCL": {
+   "net": "I2C_S8.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC0 (output)"
+   ],
+   "R parts": [
+    "R2117 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S8.SDA": {
+   "net": "I2C_S8.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD0 (bidirectional)"
+   ],
+   "R parts": [
+    "R2118 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S9.SCL": {
+   "net": "I2C_S9.SCL",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SCL (input)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SC1 (output)"
+   ],
+   "R parts": [
+    "R2119 2.2K to +3V3_SFP"
+   ]
+  },
+  "/I2C_S9.SDA": {
+   "net": "I2C_S9.SDA",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: SDA (bidirectional)",
+    "U2102 TCA9548ARGER [q-lab:Interface_I2C_TCA9548A]: SD1 (bidirectional)"
+   ],
+   "R parts": [
+    "R2120 2.2K to +3V3_SFP"
+   ]
+  },
+  "/MGMT.D0_N": {
+   "net": "MGMT.D0_N",
+   "pads": 4,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_9 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: TRD0- (passive)",
+    "U401 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2+ (passive)",
+    "U401 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 7 (passive)"
+   ]
+  },
+  "/MGMT.D0_P": {
+   "net": "MGMT.D0_P",
+   "pads": 4,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_7 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: TRD0+ (passive)",
+    "U401 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2- (passive)",
+    "U401 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 6 (passive)"
+   ]
+  },
+  "/MGMT.D1_N": {
+   "net": "MGMT.D1_N",
+   "pads": 4,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_13 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: TRD1- (passive)",
+    "U401 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1- (passive)",
+    "U401 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 9 (passive)"
+   ]
+  },
+  "/MGMT.D1_P": {
+   "net": "MGMT.D1_P",
+   "pads": 4,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_11 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: TRD1+ (passive)",
+    "U401 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1+ (passive)",
+    "U401 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 10 (passive)"
+   ]
+  },
+  "/MGMT.D2_N": {
+   "net": "MGMT.D2_N",
+   "pads": 4,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_17 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: TRD2- (passive)",
+    "U402 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2+ (passive)",
+    "U402 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 7 (passive)"
+   ]
+  },
+  "/MGMT.D2_P": {
+   "net": "MGMT.D2_P",
+   "pads": 4,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_15 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: TRD2+ (passive)",
+    "U402 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2- (passive)",
+    "U402 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 6 (passive)"
+   ]
+  },
+  "/MGMT.D3_N": {
+   "net": "MGMT.D3_N",
+   "pads": 4,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_21 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: TRD3- (passive)",
+    "U402 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1- (passive)",
+    "U402 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 9 (passive)"
+   ]
+  },
+  "/MGMT.D3_P": {
+   "net": "MGMT.D3_P",
+   "pads": 4,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_19 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: TRD3+ (passive)",
+    "U402 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1+ (passive)",
+    "U402 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 10 (passive)"
+   ]
+  },
+  "/MGMT_LED1": {
+   "net": "MGMT_LED1",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_25 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: LEDY_A (passive)"
+   ]
+  },
+  "/PCIE_RX_N": {
+   "net": "PCIE_RX_N",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: PERn0 (bidirectional)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_8 (passive)"
+   ]
+  },
+  "/PCIE_RX_P": {
+   "net": "PCIE_RX_P",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: PERp0 (bidirectional)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_6 (passive)"
+   ]
+  },
+  "/PCIE_TX_N": {
+   "net": "PCIE_TX_N",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: PETn0 (bidirectional)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_2 (passive)"
+   ]
+  },
+  "/PCIE_TX_P": {
+   "net": "PCIE_TX_P",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: PETp0 (bidirectional)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_4 (passive)"
+   ]
+  },
+  "/PD_OK": {
+   "net": "PD_OK",
+   "pads": 3,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_18 (passive)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: GPIO11 (output)"
+   ],
+   "R parts": [
+    "R306 100K to GND"
+   ]
+  },
+  "/POE_TYP1": {
+   "net": "POE_TYP1",
+   "pads": 3,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_14 (passive)",
+    "PS401 poe-bt12v50w-sip [q-lab:PSU_poe-bt12v50w-sip]: TYP1 (open_collector)"
+   ],
+   "R parts": [
+    "R403 100K to +1V8"
+   ]
+  },
+  "/POE_TYP2": {
+   "net": "POE_TYP2",
+   "pads": 3,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_16 (passive)",
+    "PS401 poe-bt12v50w-sip [q-lab:PSU_poe-bt12v50w-sip]: TYP2 (open_collector)"
+   ],
+   "R parts": [
+    "R404 100K to +1V8"
+   ]
+  },
+  "/Power In/DRAIN": {
+   "net": "DRAIN",
+   "pads": 3,
+   "pins": [
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: DRAIN (passive) x3"
+   ]
+  },
+  "/Power In/I2C_EEP_SCL": {
+   "net": "I2C_EEP_SCL",
+   "pads": 4,
+   "pins": [
+    "J302 TC2030 [Connector_Generic:Conn_02x03_Odd_Even]: Pin_4 (passive)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: I2Cm_SCL (input)",
+    "U303 CAT24C256 [q-lab:EEPROM_CAT24]: SCL (input)"
+   ],
+   "R parts": [
+    "R303 2.2K to +3V3_PD"
+   ]
+  },
+  "/Power In/I2C_EEP_SDA": {
+   "net": "I2C_EEP_SDA",
+   "pads": 4,
+   "pins": [
+    "J302 TC2030 [Connector_Generic:Conn_02x03_Odd_Even]: Pin_2 (passive)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: I2Cm_SDA (bidirectional)",
+    "U303 CAT24C256 [q-lab:EEPROM_CAT24]: SDA (bidirectional)"
+   ],
+   "R parts": [
+    "R302 2.2K to +3V3_PD"
+   ]
+  },
+  "/Power In/PD_CC1": {
+   "net": "PD_CC1",
+   "pads": 4,
+   "pins": [
+    "J301 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: CC1 (bidirectional)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: CC1 (bidirectional)",
+    "U304 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1- (passive)",
+    "U304 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 9 (passive)"
+   ]
+  },
+  "/Power In/PD_CC2": {
+   "net": "PD_CC2",
+   "pads": 4,
+   "pins": [
+    "J301 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: CC2 (bidirectional)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: CC2 (bidirectional)",
+    "U304 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1+ (passive)",
+    "U304 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 10 (passive)"
+   ]
+  },
+  "/Power In/~{I2C_EEP_IRQ}": {
+   "net": "~{I2C_EEP_IRQ}",
+   "pads": 2,
+   "pins": [
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: ~{I2Cm_IRQ} (input)"
+   ],
+   "R parts": [
+    "R301 10K to +3V3_PD"
+   ]
+  },
+  "/REFCLKPCIE_N": {
+   "net": "REFCLKPCIE_N",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: VSP/REFCLK- (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_3 (passive)"
+   ]
+  },
+  "/REFCLKPCIE_P": {
+   "net": "REFCLKPCIE_P",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: VSP/REFCLK+ (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_1 (passive)"
+   ]
+  },
+  "/S0.RXN": {
+   "net": "S0.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_41 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S0.RXP": {
+   "net": "S0.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_39 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S0.TXN": {
+   "net": "S0.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_40 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S0.TXP": {
+   "net": "S0.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_42 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S1.RXN": {
+   "net": "S1.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_47 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S1.RXP": {
+   "net": "S1.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_45 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S1.TXN": {
+   "net": "S1.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_46 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S1.TXP": {
+   "net": "S1.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_48 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S2.RXN": {
+   "net": "S2.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_53 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S2.RXP": {
+   "net": "S2.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_51 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S2.TXN": {
+   "net": "S2.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_52 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S2.TXP": {
+   "net": "S2.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_54 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S3.RXN": {
+   "net": "S3.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_59 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S3.RXP": {
+   "net": "S3.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_57 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S3.TXN": {
+   "net": "S3.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_58 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S3.TXP": {
+   "net": "S3.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_60 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S4.RXN": {
+   "net": "S4.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_65 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S4.RXP": {
+   "net": "S4.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_63 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S4.TXN": {
+   "net": "S4.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_64 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S4.TXP": {
+   "net": "S4.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_66 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S5.RXN": {
+   "net": "S5.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_71 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S5.RXP": {
+   "net": "S5.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_69 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S5.TXN": {
+   "net": "S5.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_70 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S5.TXP": {
+   "net": "S5.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_72 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S6.RXN": {
+   "net": "S6.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_77 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S6.RXP": {
+   "net": "S6.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_75 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S6.TXN": {
+   "net": "S6.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_76 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S6.TXP": {
+   "net": "S6.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_78 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S7.RXN": {
+   "net": "S7.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_83 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S7.RXP": {
+   "net": "S7.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_81 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S7.TXN": {
+   "net": "S7.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_82 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S7.TXP": {
+   "net": "S7.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_84 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S8.RXN": {
+   "net": "S8.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_89 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S8.RXP": {
+   "net": "S8.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_87 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S8.TXN": {
+   "net": "S8.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_88 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S8.TXP": {
+   "net": "S8.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_90 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/S9.RXN": {
+   "net": "S9.RXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_95 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD- (output)"
+   ]
+  },
+  "/S9.RXP": {
+   "net": "S9.RXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_93 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RD+ (output)"
+   ]
+  },
+  "/S9.TXN": {
+   "net": "S9.TXN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_94 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD- (input)"
+   ]
+  },
+  "/S9.TXP": {
+   "net": "S9.TXP",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_96 (passive)",
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TD+ (input)"
+   ]
+  },
+  "/SFP_CTL0.MODDET": {
+   "net": "SFP_CTL0.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: G (input)"
+   ],
+   "R parts": [
+    "R1201 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL0.RATESEL": {
+   "net": "SFP_CTL0.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q3 (output)"
+   ],
+   "R parts": [
+    "R1202 1K to Net-(J801A-RS0)",
+    "R1203 1K to Net-(J801A-RS1)"
+   ]
+  },
+  "/SFP_CTL0.RX_LOS": {
+   "net": "SFP_CTL0.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: H (input)"
+   ],
+   "R parts": [
+    "R1204 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL0.TXDIS": {
+   "net": "SFP_CTL0.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q2 (output)"
+   ]
+  },
+  "/SFP_CTL0.TX_FAULT": {
+   "net": "SFP_CTL0.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: F (input)"
+   ],
+   "R parts": [
+    "R1205 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL0.~{LED0}": {
+   "net": "SFP_CTL0.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q0 (output)"
+   ],
+   "D parts": [
+    "D1201 LED_Green to Net-(D1201-A)"
+   ]
+  },
+  "/SFP_CTL0.~{LED1}": {
+   "net": "SFP_CTL0.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q1 (output)"
+   ],
+   "D parts": [
+    "D1202 LED_Orange to Net-(D1202-A)"
+   ]
+  },
+  "/SFP_CTL1.MODDET": {
+   "net": "SFP_CTL1.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: C (input)"
+   ],
+   "R parts": [
+    "R801 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL1.RATESEL": {
+   "net": "SFP_CTL1.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7 (output)"
+   ],
+   "R parts": [
+    "R802 1K to Net-(J801B-RS0)",
+    "R803 1K to Net-(J801B-RS1)"
+   ]
+  },
+  "/SFP_CTL1.RX_LOS": {
+   "net": "SFP_CTL1.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: D (input)"
+   ],
+   "R parts": [
+    "R804 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL1.TXDIS": {
+   "net": "SFP_CTL1.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q6 (output)"
+   ]
+  },
+  "/SFP_CTL1.TX_FAULT": {
+   "net": "SFP_CTL1.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: B (input)"
+   ],
+   "R parts": [
+    "R805 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL1.~{LED0}": {
+   "net": "SFP_CTL1.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q4 (output)"
+   ],
+   "D parts": [
+    "D801 LED_Green to Net-(D801-A)"
+   ]
+  },
+  "/SFP_CTL1.~{LED1}": {
+   "net": "SFP_CTL1.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q5 (output)"
+   ],
+   "D parts": [
+    "D802 LED_Orange to Net-(D802-A)"
+   ]
+  },
+  "/SFP_CTL2.MODDET": {
+   "net": "SFP_CTL2.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: G (input)"
+   ],
+   "R parts": [
+    "R1301 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL2.RATESEL": {
+   "net": "SFP_CTL2.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q3 (output)"
+   ],
+   "R parts": [
+    "R1302 1K to Net-(J801C-RS0)",
+    "R1303 1K to Net-(J801C-RS1)"
+   ]
+  },
+  "/SFP_CTL2.RX_LOS": {
+   "net": "SFP_CTL2.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: H (input)"
+   ],
+   "R parts": [
+    "R1304 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL2.TXDIS": {
+   "net": "SFP_CTL2.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q2 (output)"
+   ]
+  },
+  "/SFP_CTL2.TX_FAULT": {
+   "net": "SFP_CTL2.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: F (input)"
+   ],
+   "R parts": [
+    "R1305 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL2.~{LED0}": {
+   "net": "SFP_CTL2.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q0 (output)"
+   ],
+   "D parts": [
+    "D1301 LED_Green to Net-(D1301-A)"
+   ]
+  },
+  "/SFP_CTL2.~{LED1}": {
+   "net": "SFP_CTL2.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q1 (output)"
+   ],
+   "D parts": [
+    "D1302 LED_Orange to Net-(D1302-A)"
+   ]
+  },
+  "/SFP_CTL3.MODDET": {
+   "net": "SFP_CTL3.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: C (input)"
+   ],
+   "R parts": [
+    "R1401 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL3.RATESEL": {
+   "net": "SFP_CTL3.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7 (output)"
+   ],
+   "R parts": [
+    "R1402 1K to Net-(J801D-RS0)",
+    "R1403 1K to Net-(J801D-RS1)"
+   ]
+  },
+  "/SFP_CTL3.RX_LOS": {
+   "net": "SFP_CTL3.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: D (input)"
+   ],
+   "R parts": [
+    "R1404 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL3.TXDIS": {
+   "net": "SFP_CTL3.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q6 (output)"
+   ]
+  },
+  "/SFP_CTL3.TX_FAULT": {
+   "net": "SFP_CTL3.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: B (input)"
+   ],
+   "R parts": [
+    "R1405 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL3.~{LED0}": {
+   "net": "SFP_CTL3.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q4 (output)"
+   ],
+   "D parts": [
+    "D1401 LED_Green to Net-(D1401-A)"
+   ]
+  },
+  "/SFP_CTL3.~{LED1}": {
+   "net": "SFP_CTL3.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q5 (output)"
+   ],
+   "D parts": [
+    "D1402 LED_Orange to Net-(D1402-A)"
+   ]
+  },
+  "/SFP_CTL4.MODDET": {
+   "net": "SFP_CTL4.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: G (input)"
+   ],
+   "R parts": [
+    "R1901 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL4.RATESEL": {
+   "net": "SFP_CTL4.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q3 (output)"
+   ],
+   "R parts": [
+    "R1902 1K to Net-(J801E-RS0)",
+    "R1903 1K to Net-(J801E-RS1)"
+   ]
+  },
+  "/SFP_CTL4.RX_LOS": {
+   "net": "SFP_CTL4.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: H (input)"
+   ],
+   "R parts": [
+    "R1904 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL4.TXDIS": {
+   "net": "SFP_CTL4.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q2 (output)"
+   ]
+  },
+  "/SFP_CTL4.TX_FAULT": {
+   "net": "SFP_CTL4.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: F (input)"
+   ],
+   "R parts": [
+    "R1905 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL4.~{LED0}": {
+   "net": "SFP_CTL4.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q0 (output)"
+   ],
+   "D parts": [
+    "D1901 LED_Green to Net-(D1901-A)"
+   ]
+  },
+  "/SFP_CTL4.~{LED1}": {
+   "net": "SFP_CTL4.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q1 (output)"
+   ],
+   "D parts": [
+    "D1902 LED_Orange to Net-(D1902-A)"
+   ]
+  },
+  "/SFP_CTL5.MODDET": {
+   "net": "SFP_CTL5.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: C (input)"
+   ],
+   "R parts": [
+    "R1501 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL5.RATESEL": {
+   "net": "SFP_CTL5.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7 (output)"
+   ],
+   "R parts": [
+    "R1502 1K to Net-(J801F-RS0)",
+    "R1503 1K to Net-(J801F-RS1)"
+   ]
+  },
+  "/SFP_CTL5.RX_LOS": {
+   "net": "SFP_CTL5.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: D (input)"
+   ],
+   "R parts": [
+    "R1504 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL5.TXDIS": {
+   "net": "SFP_CTL5.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q6 (output)"
+   ]
+  },
+  "/SFP_CTL5.TX_FAULT": {
+   "net": "SFP_CTL5.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: B (input)"
+   ],
+   "R parts": [
+    "R1505 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL5.~{LED0}": {
+   "net": "SFP_CTL5.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q4 (output)"
+   ],
+   "D parts": [
+    "D1501 LED_Green to Net-(D1501-A)"
+   ]
+  },
+  "/SFP_CTL5.~{LED1}": {
+   "net": "SFP_CTL5.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q5 (output)"
+   ],
+   "D parts": [
+    "D1502 LED_Orange to Net-(D1502-A)"
+   ]
+  },
+  "/SFP_CTL6.MODDET": {
+   "net": "SFP_CTL6.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: G (input)"
+   ],
+   "R parts": [
+    "R1601 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL6.RATESEL": {
+   "net": "SFP_CTL6.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q3 (output)"
+   ],
+   "R parts": [
+    "R1602 1K to Net-(J801G-RS0)",
+    "R1603 1K to Net-(J801G-RS1)"
+   ]
+  },
+  "/SFP_CTL6.RX_LOS": {
+   "net": "SFP_CTL6.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: H (input)"
+   ],
+   "R parts": [
+    "R1604 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL6.TXDIS": {
+   "net": "SFP_CTL6.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q2 (output)"
+   ]
+  },
+  "/SFP_CTL6.TX_FAULT": {
+   "net": "SFP_CTL6.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: F (input)"
+   ],
+   "R parts": [
+    "R1605 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL6.~{LED0}": {
+   "net": "SFP_CTL6.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q0 (output)"
+   ],
+   "D parts": [
+    "D1601 LED_Green to Net-(D1601-A)"
+   ]
+  },
+  "/SFP_CTL6.~{LED1}": {
+   "net": "SFP_CTL6.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q1 (output)"
+   ],
+   "D parts": [
+    "D1602 LED_Orange to Net-(D1602-A)"
+   ]
+  },
+  "/SFP_CTL7.MODDET": {
+   "net": "SFP_CTL7.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: C (input)"
+   ],
+   "R parts": [
+    "R1701 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL7.RATESEL": {
+   "net": "SFP_CTL7.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7 (output)"
+   ],
+   "R parts": [
+    "R1702 1K to Net-(J801H-RS0)",
+    "R1703 1K to Net-(J801H-RS1)"
+   ]
+  },
+  "/SFP_CTL7.RX_LOS": {
+   "net": "SFP_CTL7.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: D (input)"
+   ],
+   "R parts": [
+    "R1704 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL7.TXDIS": {
+   "net": "SFP_CTL7.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q6 (output)"
+   ]
+  },
+  "/SFP_CTL7.TX_FAULT": {
+   "net": "SFP_CTL7.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: B (input)"
+   ],
+   "R parts": [
+    "R1705 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL7.~{LED0}": {
+   "net": "SFP_CTL7.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q4 (output)"
+   ],
+   "D parts": [
+    "D1701 LED_Green to Net-(D1701-A)"
+   ]
+  },
+  "/SFP_CTL7.~{LED1}": {
+   "net": "SFP_CTL7.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q5 (output)"
+   ],
+   "D parts": [
+    "D1702 LED_Orange to Net-(D1702-A)"
+   ]
+  },
+  "/SFP_CTL8.MODDET": {
+   "net": "SFP_CTL8.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: G (input)"
+   ],
+   "R parts": [
+    "R1801 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL8.RATESEL": {
+   "net": "SFP_CTL8.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q3 (output)"
+   ],
+   "R parts": [
+    "R1802 1K to Net-(J801I-RS0)",
+    "R1803 1K to Net-(J801I-RS1)"
+   ]
+  },
+  "/SFP_CTL8.RX_LOS": {
+   "net": "SFP_CTL8.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: H (input)"
+   ],
+   "R parts": [
+    "R1804 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL8.TXDIS": {
+   "net": "SFP_CTL8.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q2 (output)"
+   ]
+  },
+  "/SFP_CTL8.TX_FAULT": {
+   "net": "SFP_CTL8.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: F (input)"
+   ],
+   "R parts": [
+    "R1805 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL8.~{LED0}": {
+   "net": "SFP_CTL8.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q0 (output)"
+   ],
+   "D parts": [
+    "D1801 LED_Green to Net-(D1801-A)"
+   ]
+  },
+  "/SFP_CTL8.~{LED1}": {
+   "net": "SFP_CTL8.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q1 (output)"
+   ],
+   "D parts": [
+    "D1802 LED_Orange to Net-(D1802-A)"
+   ]
+  },
+  "/SFP_CTL9.MODDET": {
+   "net": "SFP_CTL9.MODDET",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: MOD_ABS (passive)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: C (input)"
+   ],
+   "R parts": [
+    "R2001 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL9.RATESEL": {
+   "net": "SFP_CTL9.RATESEL",
+   "pads": 3,
+   "pins": [
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7 (output)"
+   ],
+   "R parts": [
+    "R2002 1K to Net-(J801J-RS0)",
+    "R2003 1K to Net-(J801J-RS1)"
+   ]
+  },
+  "/SFP_CTL9.RX_LOS": {
+   "net": "SFP_CTL9.RX_LOS",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RX_LOS (open_collector)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: D (input)"
+   ],
+   "R parts": [
+    "R2004 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL9.TXDIS": {
+   "net": "SFP_CTL9.TXDIS",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_DISABLE (input)",
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q6 (output)"
+   ]
+  },
+  "/SFP_CTL9.TX_FAULT": {
+   "net": "SFP_CTL9.TX_FAULT",
+   "pads": 3,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: TX_FAULT (open_collector)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: B (input)"
+   ],
+   "R parts": [
+    "R2005 10K to +3V3_SFP"
+   ]
+  },
+  "/SFP_CTL9.~{LED0}": {
+   "net": "SFP_CTL9.~{LED0}",
+   "pads": 2,
+   "pins": [
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q4 (output)"
+   ],
+   "D parts": [
+    "D2001 LED_Green to Net-(D2001-A)"
+   ]
+  },
+  "/SFP_CTL9.~{LED1}": {
+   "net": "SFP_CTL9.~{LED1}",
+   "pads": 2,
+   "pins": [
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q5 (output)"
+   ],
+   "D parts": [
+    "D2002 LED_Orange to Net-(D2002-A)"
+   ]
+  },
+  "/SGPIO.CK": {
+   "net": "SGPIO.CK",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_101 (passive)",
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: A1 (input)"
+   ]
+  },
+  "/SGPIO.DI": {
+   "net": "SGPIO.DI",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_104 (passive)",
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: A4Y (output)"
+   ]
+  },
+  "/SGPIO.DO": {
+   "net": "SGPIO.DO",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_102 (passive)",
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: A3 (input)"
+   ]
+  },
+  "/SGPIO.LD": {
+   "net": "SGPIO.LD",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_100 (passive)",
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: A2 (input)"
+   ]
+  },
+  "/SGPIO/CK_3V3": {
+   "net": "CK_3V3",
+   "pads": 11,
+   "pins": [
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: B1Y (output)",
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: SHCP (input)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: CLK (input)",
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: SHCP (input)",
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: SHCP (input)",
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: SHCP (input)",
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: SHCP (input)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: CLK (input)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: CLK (input)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: CLK (input)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: CLK (input)"
+   ]
+  },
+  "/SGPIO/DI_3V3": {
+   "net": "DI_3V3",
+   "pads": 2,
+   "pins": [
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: B4 (input)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: QH (output)"
+   ]
+  },
+  "/SGPIO/DO_3V3": {
+   "net": "DO_3V3",
+   "pads": 2,
+   "pins": [
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: B3Y (output)",
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: DS (input)"
+   ]
+  },
+  "/SGPIO/LD_3V3": {
+   "net": "LD_3V3",
+   "pads": 11,
+   "pins": [
+    "U901 TXU0304BQA [q-lab:Level_Shifter_TXU0304BQA]: B2Y (output)",
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: STCP (input)",
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SH/~{LD} (input)",
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: STCP (input)",
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: STCP (input)",
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: STCP (input)",
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: STCP (input)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SH/~{LD} (input)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SH/~{LD} (input)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SH/~{LD} (input)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SH/~{LD} (input)"
+   ]
+  },
+  "/SOM/ENET_MDC_0": {
+   "net": "ENET_MDC_0",
+   "pads": 3,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_29 (passive)"
+   ],
+   "R parts": [
+    "R202 330 to +1V8",
+    "R203 330 to GND"
+   ]
+  },
+  "/SOM/FAN_PWM": {
+   "net": "FAN_PWM",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_111 (passive)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: A1 (input)"
+   ]
+  },
+  "/SOM/FAN_PWM_3V3": {
+   "net": "FAN_PWM_3V3",
+   "pads": 2,
+   "pins": [
+    "J2201 BM04B-SRSS-TB [Connector_Generic_MountingPin:Conn_01x04_MountingPin]: Pin_4 (passive)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: B1Y (output)"
+   ]
+  },
+  "/SOM/FAN_TACH": {
+   "net": "FAN_TACH",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_109 (passive)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: A4Y (output)"
+   ]
+  },
+  "/SOM/FAN_TACH_3V3": {
+   "net": "FAN_TACH_3V3",
+   "pads": 3,
+   "pins": [
+    "J2201 BM04B-SRSS-TB [Connector_Generic_MountingPin:Conn_01x04_MountingPin]: Pin_3 (passive)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: B4 (input)"
+   ],
+   "R parts": [
+    "R2201 10K to +3V3"
+   ]
+  },
+  "/SOM/FC2_SCL": {
+   "net": "FC2_SCL",
+   "pads": 3,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_26 (passive)",
+    "U204 TCA9801: SCLA (bidirectional)"
+   ],
+   "R parts": [
+    "R2202 2.2K to +1V8"
+   ]
+  },
+  "/SOM/FC2_SDA": {
+   "net": "FC2_SDA",
+   "pads": 3,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_28 (passive)",
+    "U204 TCA9801: SDAA (bidirectional)"
+   ],
+   "R parts": [
+    "R2203 2.2K to +1V8"
+   ]
+  },
+  "/SOM/IO/FC2_SCL_3V3": {
+   "net": "FC2_SCL_3V3",
+   "pads": 2,
+   "pins": [
+    "J203 BM04B-SRSS-TB [Connector_Generic_MountingPin:Conn_01x04_MountingPin]: Pin_3 (passive)",
+    "U204 TCA9801: SCLB (bidirectional)"
+   ]
+  },
+  "/SOM/IO/FC2_SDA_3V3": {
+   "net": "FC2_SDA_3V3",
+   "pads": 2,
+   "pins": [
+    "J203 BM04B-SRSS-TB [Connector_Generic_MountingPin:Conn_01x04_MountingPin]: Pin_4 (passive)",
+    "U204 TCA9801: SDAB (bidirectional)"
+   ]
+  },
+  "/SOM/~{MR}": {
+   "net": "~{MR}",
+   "pads": 4,
+   "pins": [
+    "J201 TC2030 [Connector_Generic:Conn_02x03_Odd_Even]: Pin_3 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_99 (passive)",
+    "SW201 SW_Push: pin 2 (passive)"
+   ],
+   "C parts": [
+    "C202 100n to GND"
+   ]
+  },
+  "/SOM/~{PCIE_PERST}": {
+   "net": "~{PCIE_PERST}",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_5 (passive)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: A3Y (output)"
+   ]
+  },
+  "/SOM/~{RESET}": {
+   "net": "~{RESET}",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_23 (passive)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: A2 (input)"
+   ]
+  },
+  "/SOM/~{STATUS}": {
+   "net": "~{STATUS}",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_12 (passive)"
+   ],
+   "D parts": [
+    "D201 LED_Green to Net-(D201-A)"
+   ]
+  },
+  "/USB UART/USB_D_N": {
+   "net": "USB_D_N",
+   "pads": 5,
+   "pins": [
+    "J601 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: D- (bidirectional) x2",
+    "U602 CH343P [q-lab:USB_UART_CH343P]: USB_DN (bidirectional)",
+    "U603 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1- (passive)",
+    "U603 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 9 (passive)"
+   ]
+  },
+  "/USB UART/USB_D_P": {
+   "net": "USB_D_P",
+   "pads": 5,
+   "pins": [
+    "J601 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: D+ (bidirectional) x2",
+    "U602 CH343P [q-lab:USB_UART_CH343P]: USB_DP (bidirectional)",
+    "U603 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1+ (passive)",
+    "U603 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 10 (passive)"
+   ]
+  },
+  "/USB/USB0_CC1": {
+   "net": "USB0_CC1",
+   "pads": 4,
+   "pins": [
+    "J501 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: CC1 (bidirectional)",
+    "U502 TUSB320LAI [Interface_USB:TUSB320]: CC1 (bidirectional)",
+    "U503 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2- (passive)",
+    "U503 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 6 (passive)"
+   ]
+  },
+  "/USB/USB0_CC2": {
+   "net": "USB0_CC2",
+   "pads": 4,
+   "pins": [
+    "J501 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: CC2 (bidirectional)",
+    "U502 TUSB320LAI [Interface_USB:TUSB320]: CC2 (bidirectional)",
+    "U503 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2+ (passive)",
+    "U503 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 7 (passive)"
+   ]
+  },
+  "/USB0_ID": {
+   "net": "USB0_ID",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_116 (passive)",
+    "U502 TUSB320LAI [Interface_USB:TUSB320]: ID (open_collector)"
+   ]
+  },
+  "/USB0_N": {
+   "net": "USB0_N",
+   "pads": 5,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_114 (passive)",
+    "J501 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: D- (bidirectional) x2",
+    "U503 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1- (passive)",
+    "U503 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 9 (passive)"
+   ]
+  },
+  "/USB0_OC_DET": {
+   "net": "USB0_OC_DET",
+   "pads": 3,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_106 (passive)",
+    "U501 NX5P3363 [q-lab:Load_Switch_NX5P3363]: ~{FLT} (open_collector)"
+   ],
+   "R parts": [
+    "R501 10K to +1V8"
+   ]
+  },
+  "/USB0_P": {
+   "net": "USB0_P",
+   "pads": 5,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_112 (passive)",
+    "J501 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: D+ (bidirectional) x2",
+    "U503 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D1+ (passive)",
+    "U503 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 10 (passive)"
+   ]
+  },
+  "/USB0_PWR_EN": {
+   "net": "USB0_PWR_EN",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_108 (passive)",
+    "U501 NX5P3363 [q-lab:Load_Switch_NX5P3363]: EN (input)"
+   ]
+  },
+  "/USB0_VBUS": {
+   "net": "USB0_VBUS",
+   "pads": 11,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_110 (passive)",
+    "J501 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: VBUS (passive) x4",
+    "U501 NX5P3363 [q-lab:Load_Switch_NX5P3363]: VBUS (power_out)",
+    "U501 NX5P3363 [q-lab:Load_Switch_NX5P3363]: VBUS (passive) x2"
+   ],
+   "C parts": [
+    "C501 4.7u to GND",
+    "C502 4.7u to GND"
+   ],
+   "R parts": [
+    "R503 1M to Net-(U502-VBUS_DET)"
+   ]
+  },
+  "/~{MGMT_LED2}": {
+   "net": "~{MGMT_LED2}",
+   "pads": 2,
+   "pins": [
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_27 (passive)",
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: LEDG_K (passive)"
+   ]
+  },
+  "/~{PCIE_PERST_3V3}": {
+   "net": "~{PCIE_PERST_3V3}",
+   "pads": 3,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: ~{PERST(VSP)} (bidirectional)",
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: B3 (input)"
+   ],
+   "R parts": [
+    "R1001 10K to +3V3"
+   ]
+  },
+  "/~{RESET_3V3}": {
+   "net": "~{RESET_3V3}",
+   "pads": 11,
+   "pins": [
+    "U202 TXU0204BQA [q-lab:Level_Shifter_TXU0204BQA]: B2Y (output)",
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{SHR} (input)",
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{STR} (input)",
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{SHR} (input)",
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{STR} (input)",
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{SHR} (input)",
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{STR} (input)",
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{SHR} (input)",
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{STR} (input)",
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{SHR} (input)",
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: ~{STR} (input)"
+   ]
+  },
+  "GND": {
+   "net": "GND",
+   "pads": 341,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: GROUND (power_in) x14",
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: pin MP (passive)",
+    "J201 TC2030 [Connector_Generic:Conn_02x03_Odd_Even]: Pin_5 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_37 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_38 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_43 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_44 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_49 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_50 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_55 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_56 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_61 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_62 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_67 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_68 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_73 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_74 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_79 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_80 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_85 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_86 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_91 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_92 (passive)",
+    "J202 Connector_02x60_Odd_Even_Shielded: Pin_97 (passive)",
+    "... 106 more"
+   ],
+   "C parts": [
+    "C1 100n to +3V3_SFP",
+    "C10 100n to +3V3_SFP",
+    "C1201 100n to Net-(J801A-VccT)",
+    "C1202 100n to Net-(J801A-VccR)",
+    "C1203 4.7u to Net-(J801A-VccT)",
+    "C1204 4.7u to Net-(J801A-VccR)",
+    "... 95 more"
+   ],
+   "D parts": [
+    "D701 LED_Green to Net-(D701-A)",
+    "D702 LED_Green to Net-(D702-A)"
+   ],
+   "H parts": [
+    "H101 M3",
+    "H102 M3",
+    "H103 M3",
+    "H104 M3",
+    "H201 9774050360",
+    "H202 9774050360"
+   ],
+   "R parts": [
+    "R1002 1K to Net-(J1001-~{CPRSNT(VSP)})",
+    "R1003 10K to Net-(J1001-BPTYPE{slash}VSP)",
+    "R203 330 to ENET_MDC_0",
+    "R305 10K to Net-(U305-EN{slash}UVLO)",
+    "R306 100K to PD_OK",
+    "R401 470 to Net-(J401-LEDY_K)",
+    "... 7 more"
+   ]
+  },
+  "Net-(D701-A)": {
+   "net": "Net-(D701-A)",
+   "pads": 3,
+   "pins": [
+    "U701 TPS62933P: PG (open_collector)"
+   ],
+   "D parts": [
+    "D701 LED_Green to GND"
+   ],
+   "R parts": [
+    "R707 5.1K to +5V0"
+   ]
+  },
+  "Net-(D702-A)": {
+   "net": "Net-(D702-A)",
+   "pads": 3,
+   "pins": [
+    "U702 LM61495 [q-lab:Regulator_LM61480]: ~{RESET} (open_collector)"
+   ],
+   "D parts": [
+    "D702 LED_Green to GND"
+   ],
+   "R parts": [
+    "R714 2.2K to +3V3_SFP"
+   ]
+  },
+  "Net-(J1001-BPTYPE{slash}VSP)": {
+   "net": "Net-(J1001-BPTYPE{slash}VSP)",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: BPTYPE/VSP (bidirectional)"
+   ],
+   "R parts": [
+    "R1003 10K to GND"
+   ]
+  },
+  "Net-(J1001-~{CPRSNT(VSP)})": {
+   "net": "Net-(J1001-~{CPRSNT(VSP)})",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: ~{CPRSNT(VSP)} (bidirectional)"
+   ],
+   "R parts": [
+    "R1002 1K to GND"
+   ]
+  },
+  "Net-(J1001-~{CWAKE},OBFF{slash}VSP)": {
+   "net": "Net-(J1001-~{CWAKE},OBFF{slash}VSP)",
+   "pads": 2,
+   "pins": [
+    "J1001 OCuLink_42Position [q-lab:Connector_OCuLink_42Position]: ~{CWAKE},OBFF/VSP (bidirectional)"
+   ],
+   "R parts": [
+    "R1004 10K to +3V3"
+   ]
+  },
+  "Net-(J401-CT0)": {
+   "net": "Net-(J401-CT0)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: CT0 (passive)"
+   ],
+   "C parts": [
+    "C401 100n to GND"
+   ]
+  },
+  "Net-(J401-CT1)": {
+   "net": "Net-(J401-CT1)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: CT1 (passive)"
+   ],
+   "C parts": [
+    "C402 100n to GND"
+   ]
+  },
+  "Net-(J401-CT2)": {
+   "net": "Net-(J401-CT2)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: CT2 (passive)"
+   ],
+   "C parts": [
+    "C403 100n to GND"
+   ]
+  },
+  "Net-(J401-CT3)": {
+   "net": "Net-(J401-CT3)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: CT3 (passive)"
+   ],
+   "C parts": [
+    "C404 100n to GND"
+   ]
+  },
+  "Net-(J401-LEDG_A)": {
+   "net": "Net-(J401-LEDG_A)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: LEDG_A (passive)"
+   ],
+   "R parts": [
+    "R402 470 to +3V3"
+   ]
+  },
+  "Net-(J401-LEDY_K)": {
+   "net": "Net-(J401-LEDY_K)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: LEDY_K (passive)"
+   ],
+   "R parts": [
+    "R401 470 to GND"
+   ]
+  },
+  "Net-(J401-P13)": {
+   "net": "Net-(J401-P13)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: P13 (passive)",
+    "PS401 poe-bt12v50w-sip [q-lab:PSU_poe-bt12v50w-sip]: P0 (passive)"
+   ]
+  },
+  "Net-(J401-P14)": {
+   "net": "Net-(J401-P14)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: P14 (passive)",
+    "PS401 poe-bt12v50w-sip [q-lab:PSU_poe-bt12v50w-sip]: P1 (passive)"
+   ]
+  },
+  "Net-(J401-P15)": {
+   "net": "Net-(J401-P15)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: P15 (passive)",
+    "PS401 poe-bt12v50w-sip [q-lab:PSU_poe-bt12v50w-sip]: P2 (passive)"
+   ]
+  },
+  "Net-(J401-P16)": {
+   "net": "Net-(J401-P16)",
+   "pads": 2,
+   "pins": [
+    "J401 ARJ-139 [q-lab:Connector_RJ45_ARJ-139]: P16 (passive)",
+    "PS401 poe-bt12v50w-sip [q-lab:PSU_poe-bt12v50w-sip]: P3 (passive)"
+   ]
+  },
+  "Net-(J601-CC1)": {
+   "net": "Net-(J601-CC1)",
+   "pads": 2,
+   "pins": [
+    "J601 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: CC1 (bidirectional)"
+   ],
+   "R parts": [
+    "R603 5.1K to GND"
+   ]
+  },
+  "Net-(J601-CC2)": {
+   "net": "Net-(J601-CC2)",
+   "pads": 2,
+   "pins": [
+    "J601 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: CC2 (bidirectional)"
+   ],
+   "R parts": [
+    "R604 5.1K to GND"
+   ]
+  },
+  "Net-(J801A-RS0)": {
+   "net": "Net-(J801A-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R1202 1K to SFP_CTL0.RATESEL"
+   ]
+  },
+  "Net-(J801A-RS1)": {
+   "net": "Net-(J801A-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R1203 1K to SFP_CTL0.RATESEL"
+   ]
+  },
+  "Net-(J801A-VccR)": {
+   "net": "Net-(J801A-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C1202 100n to GND",
+    "C1204 4.7u to GND"
+   ],
+   "L parts": [
+    "L1202 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801A-VccT)": {
+   "net": "Net-(J801A-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C1201 100n to GND",
+    "C1203 4.7u to GND"
+   ],
+   "L parts": [
+    "L1201 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801B-RS0)": {
+   "net": "Net-(J801B-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R802 1K to SFP_CTL1.RATESEL"
+   ]
+  },
+  "Net-(J801B-RS1)": {
+   "net": "Net-(J801B-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R803 1K to SFP_CTL1.RATESEL"
+   ]
+  },
+  "Net-(J801B-VccR)": {
+   "net": "Net-(J801B-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C802 100n to GND",
+    "C804 4.7u to GND"
+   ],
+   "L parts": [
+    "L802 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801B-VccT)": {
+   "net": "Net-(J801B-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C801 100n to GND",
+    "C803 4.7u to GND"
+   ],
+   "L parts": [
+    "L801 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801C-RS0)": {
+   "net": "Net-(J801C-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R1302 1K to SFP_CTL2.RATESEL"
+   ]
+  },
+  "Net-(J801C-RS1)": {
+   "net": "Net-(J801C-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R1303 1K to SFP_CTL2.RATESEL"
+   ]
+  },
+  "Net-(J801C-VccR)": {
+   "net": "Net-(J801C-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C1302 100n to GND",
+    "C1304 4.7u to GND"
+   ],
+   "L parts": [
+    "L1302 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801C-VccT)": {
+   "net": "Net-(J801C-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C1301 100n to GND",
+    "C1303 4.7u to GND"
+   ],
+   "L parts": [
+    "L1301 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801D-RS0)": {
+   "net": "Net-(J801D-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R1402 1K to SFP_CTL3.RATESEL"
+   ]
+  },
+  "Net-(J801D-RS1)": {
+   "net": "Net-(J801D-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R1403 1K to SFP_CTL3.RATESEL"
+   ]
+  },
+  "Net-(J801D-VccR)": {
+   "net": "Net-(J801D-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C1402 100n to GND",
+    "C1404 4.7u to GND"
+   ],
+   "L parts": [
+    "L1402 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801D-VccT)": {
+   "net": "Net-(J801D-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C1401 100n to GND",
+    "C1403 4.7u to GND"
+   ],
+   "L parts": [
+    "L1401 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801E-RS0)": {
+   "net": "Net-(J801E-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R1902 1K to SFP_CTL4.RATESEL"
+   ]
+  },
+  "Net-(J801E-RS1)": {
+   "net": "Net-(J801E-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R1903 1K to SFP_CTL4.RATESEL"
+   ]
+  },
+  "Net-(J801E-VccR)": {
+   "net": "Net-(J801E-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C1902 100n to GND",
+    "C1904 4.7u to GND"
+   ],
+   "L parts": [
+    "L1902 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801E-VccT)": {
+   "net": "Net-(J801E-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C1901 100n to GND",
+    "C1903 4.7u to GND"
+   ],
+   "L parts": [
+    "L1901 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801F-RS0)": {
+   "net": "Net-(J801F-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R1502 1K to SFP_CTL5.RATESEL"
+   ]
+  },
+  "Net-(J801F-RS1)": {
+   "net": "Net-(J801F-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R1503 1K to SFP_CTL5.RATESEL"
+   ]
+  },
+  "Net-(J801F-VccR)": {
+   "net": "Net-(J801F-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C1502 100n to GND",
+    "C1504 4.7u to GND"
+   ],
+   "L parts": [
+    "L1502 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801F-VccT)": {
+   "net": "Net-(J801F-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C1501 100n to GND",
+    "C1503 4.7u to GND"
+   ],
+   "L parts": [
+    "L1501 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801G-RS0)": {
+   "net": "Net-(J801G-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R1602 1K to SFP_CTL6.RATESEL"
+   ]
+  },
+  "Net-(J801G-RS1)": {
+   "net": "Net-(J801G-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R1603 1K to SFP_CTL6.RATESEL"
+   ]
+  },
+  "Net-(J801G-VccR)": {
+   "net": "Net-(J801G-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C1602 100n to GND",
+    "C1604 4.7u to GND"
+   ],
+   "L parts": [
+    "L1602 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801G-VccT)": {
+   "net": "Net-(J801G-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C1601 100n to GND",
+    "C1603 4.7u to GND"
+   ],
+   "L parts": [
+    "L1601 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801H-RS0)": {
+   "net": "Net-(J801H-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R1702 1K to SFP_CTL7.RATESEL"
+   ]
+  },
+  "Net-(J801H-RS1)": {
+   "net": "Net-(J801H-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R1703 1K to SFP_CTL7.RATESEL"
+   ]
+  },
+  "Net-(J801H-VccR)": {
+   "net": "Net-(J801H-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C1702 100n to GND",
+    "C1704 4.7u to GND"
+   ],
+   "L parts": [
+    "L1702 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801H-VccT)": {
+   "net": "Net-(J801H-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C1701 100n to GND",
+    "C1703 4.7u to GND"
+   ],
+   "L parts": [
+    "L1701 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801I-RS0)": {
+   "net": "Net-(J801I-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R1802 1K to SFP_CTL8.RATESEL"
+   ]
+  },
+  "Net-(J801I-RS1)": {
+   "net": "Net-(J801I-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R1803 1K to SFP_CTL8.RATESEL"
+   ]
+  },
+  "Net-(J801I-VccR)": {
+   "net": "Net-(J801I-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C1802 100n to GND",
+    "C1804 4.7u to GND"
+   ],
+   "L parts": [
+    "L1802 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801I-VccT)": {
+   "net": "Net-(J801I-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C1801 100n to GND",
+    "C1803 4.7u to GND"
+   ],
+   "L parts": [
+    "L1801 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801J-RS0)": {
+   "net": "Net-(J801J-RS0)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS0 (input)"
+   ],
+   "R parts": [
+    "R2002 1K to SFP_CTL9.RATESEL"
+   ]
+  },
+  "Net-(J801J-RS1)": {
+   "net": "Net-(J801J-RS1)",
+   "pads": 2,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: RS1 (input)"
+   ],
+   "R parts": [
+    "R2003 1K to SFP_CTL9.RATESEL"
+   ]
+  },
+  "Net-(J801J-VccR)": {
+   "net": "Net-(J801J-VccR)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccR (power_in)"
+   ],
+   "C parts": [
+    "C2002 100n to GND",
+    "C2004 4.7u to GND"
+   ],
+   "L parts": [
+    "L2002 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(J801J-VccT)": {
+   "net": "Net-(J801J-VccT)",
+   "pads": 4,
+   "pins": [
+    "J801 1-2132403-5 [q-lab:SFP+_Cage_2x5]: VccT (power_in)"
+   ],
+   "C parts": [
+    "C2001 100n to GND",
+    "C2003 4.7u to GND"
+   ],
+   "L parts": [
+    "L2001 1uH to +3V3_SFP"
+   ]
+  },
+  "Net-(U302-VBUS)": {
+   "net": "Net-(U302-VBUS)",
+   "pads": 12,
+   "pins": [
+    "J301 USB4105 [Connector:USB_C_Receptacle_USB2.0_16P]: VBUS (passive) x4",
+    "U301 TVS2200DRV: IN (passive) x3",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: VBUS_IN (power_in)",
+    "U302 TPS25751D [q-lab:USB_C_DRP_TPS25750D]: VBUS (power_out)"
+   ],
+   "C parts": [
+    "C301 4.7u to GND",
+    "C304 10n to GND",
+    "C305 10n to GND"
+   ]
+  },
+  "Net-(U304-D2+)": {
+   "net": "Net-(U304-D2+)",
+   "pads": 2,
+   "pins": [
+    "U304 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2+ (passive)",
+    "U304 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 7 (passive)"
+   ]
+  },
+  "Net-(U304-D2-)": {
+   "net": "Net-(U304-D2-)",
+   "pads": 2,
+   "pins": [
+    "U304 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2- (passive)",
+    "U304 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 6 (passive)"
+   ]
+  },
+  "Net-(U305-EN{slash}UVLO)": {
+   "net": "Net-(U305-EN{slash}UVLO)",
+   "pads": 3,
+   "pins": [
+    "U305 LM73100 [q-lab:Ideal_Diode_LM73100]: EN/UVLO (input)"
+   ],
+   "R parts": [
+    "R304 52.3K to +12V_POE",
+    "R305 10K to GND"
+   ]
+  },
+  "Net-(U501-CAP)": {
+   "net": "Net-(U501-CAP)",
+   "pads": 2,
+   "pins": [
+    "U501 NX5P3363 [q-lab:Load_Switch_NX5P3363]: CAP (passive)"
+   ],
+   "C parts": [
+    "C504 1n to GND"
+   ]
+  },
+  "Net-(U501-ILIM)": {
+   "net": "Net-(U501-ILIM)",
+   "pads": 2,
+   "pins": [
+    "U501 NX5P3363 [q-lab:Load_Switch_NX5P3363]: ILIM (input)"
+   ],
+   "R parts": [
+    "R502 30K to GND"
+   ]
+  },
+  "Net-(U502-VBUS_DET)": {
+   "net": "Net-(U502-VBUS_DET)",
+   "pads": 2,
+   "pins": [
+    "U502 TUSB320LAI [Interface_USB:TUSB320]: VBUS_DET (input)"
+   ],
+   "R parts": [
+    "R503 1M to USB0_VBUS"
+   ]
+  },
+  "Net-(U602-UART_RXD)": {
+   "net": "Net-(U602-UART_RXD)",
+   "pads": 2,
+   "pins": [
+    "U602 CH343P [q-lab:USB_UART_CH343P]: UART_RXD (input)"
+   ],
+   "R parts": [
+    "R602 1K to FC0_TXO"
+   ]
+  },
+  "Net-(U602-UART_TXD)": {
+   "net": "Net-(U602-UART_TXD)",
+   "pads": 2,
+   "pins": [
+    "U602 CH343P [q-lab:USB_UART_CH343P]: UART_TXD (output)"
+   ],
+   "R parts": [
+    "R601 1K to FC0_RXI"
+   ]
+  },
+  "Net-(U602-V3)": {
+   "net": "Net-(U602-V3)",
+   "pads": 2,
+   "pins": [
+    "U602 CH343P [q-lab:USB_UART_CH343P]: V3 (power_out)"
+   ],
+   "C parts": [
+    "C605 1u to GND"
+   ]
+  },
+  "Net-(U602-~{ACT})": {
+   "net": "Net-(U602-~{ACT})",
+   "pads": 2,
+   "pins": [
+    "U602 CH343P [q-lab:USB_UART_CH343P]: ~{ACT} (output)"
+   ],
+   "R parts": [
+    "R605 10K to GND"
+   ]
+  },
+  "Net-(U603-D2+)": {
+   "net": "Net-(U603-D2+)",
+   "pads": 2,
+   "pins": [
+    "U603 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2+ (passive)",
+    "U603 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 7 (passive)"
+   ]
+  },
+  "Net-(U603-D2-)": {
+   "net": "Net-(U603-D2-)",
+   "pads": 2,
+   "pins": [
+    "U603 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: D2- (passive)",
+    "U603 TPD4E02B04 [q-lab:TVS_TPD4E02B04]: pin 6 (passive)"
+   ]
+  },
+  "Net-(U701-BST)": {
+   "net": "Net-(U701-BST)",
+   "pads": 2,
+   "pins": [
+    "U701 TPS62933P: BST (passive)"
+   ],
+   "C parts": [
+    "C701 100n to Net-(U701-SW)"
+   ]
+  },
+  "Net-(U701-FB)": {
+   "net": "Net-(U701-FB)",
+   "pads": 3,
+   "pins": [
+    "U701 TPS62933P: FB (input)"
+   ],
+   "R parts": [
+    "R701 10K to GND",
+    "R702 52.3K to +5V0"
+   ]
+  },
+  "Net-(U701-SW)": {
+   "net": "Net-(U701-SW)",
+   "pads": 3,
+   "pins": [
+    "U701 TPS62933P: SW (output)"
+   ],
+   "C parts": [
+    "C701 100n to Net-(U701-BST)"
+   ],
+   "L parts": [
+    "L701 4.7uH to +5V0"
+   ]
+  },
+  "Net-(U702-CBOOT)": {
+   "net": "Net-(U702-CBOOT)",
+   "pads": 3,
+   "pins": [
+    "U702 LM61495 [q-lab:Regulator_LM61480]: RBOOT (passive)",
+    "U702 LM61495 [q-lab:Regulator_LM61480]: CBOOT (passive)"
+   ],
+   "C parts": [
+    "C721 100n to Net-(U702-SW)"
+   ]
+  },
+  "Net-(U702-FB)": {
+   "net": "Net-(U702-FB)",
+   "pads": 4,
+   "pins": [
+    "U702 LM61495 [q-lab:Regulator_LM61480]: FB (passive)"
+   ],
+   "R parts": [
+    "R709 100K to +3V3_SFP",
+    "R710 4.99K to Net-(C725-Pad2)",
+    "R712 43.2K to GND"
+   ]
+  },
+  "Net-(U702-RT)": {
+   "net": "Net-(U702-RT)",
+   "pads": 3,
+   "pins": [
+    "U702 LM61495 [q-lab:Regulator_LM61480]: VCC (power_out)",
+    "U702 LM61495 [q-lab:Regulator_LM61480]: RT (passive)"
+   ],
+   "C parts": [
+    "C726 1u to GND"
+   ]
+  },
+  "Net-(U702-SPSP)": {
+   "net": "Net-(U702-SPSP)",
+   "pads": 2,
+   "pins": [
+    "U702 LM61495 [q-lab:Regulator_LM61480]: SPSP (passive)"
+   ],
+   "R parts": [
+    "R713 28K to GND"
+   ]
+  },
+  "Net-(U702-SW)": {
+   "net": "Net-(U702-SW)",
+   "pads": 3,
+   "pins": [
+    "U702 LM61495 [q-lab:Regulator_LM61480]: SW (passive)"
+   ],
+   "C parts": [
+    "C721 100n to Net-(U702-CBOOT)"
+   ],
+   "L parts": [
+    "L702 2.2uH to +3V3_SFP"
+   ]
+  },
+  "Net-(U902-Q7S)": {
+   "net": "Net-(U902-Q7S)",
+   "pads": 2,
+   "pins": [
+    "U902 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7S (output)",
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: DS (input)"
+   ]
+  },
+  "Net-(U903-QH)": {
+   "net": "Net-(U903-QH)",
+   "pads": 2,
+   "pins": [
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: QH (output)",
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SER (input)"
+   ]
+  },
+  "Net-(U903-SER)": {
+   "net": "Net-(U903-SER)",
+   "pads": 2,
+   "pins": [
+    "U903 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SER (input)",
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: QH (output)"
+   ]
+  },
+  "Net-(U904-Q7S)": {
+   "net": "Net-(U904-Q7S)",
+   "pads": 2,
+   "pins": [
+    "U904 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7S (output)",
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: DS (input)"
+   ]
+  },
+  "Net-(U905-Q7S)": {
+   "net": "Net-(U905-Q7S)",
+   "pads": 2,
+   "pins": [
+    "U905 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7S (output)",
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: DS (input)"
+   ]
+  },
+  "Net-(U906-Q7S)": {
+   "net": "Net-(U906-Q7S)",
+   "pads": 2,
+   "pins": [
+    "U906 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: Q7S (output)",
+    "U907 74LVC594ABQ [q-lab:Shift_Register_74LVC594ABQ]: DS (input)"
+   ]
+  },
+  "Net-(U908-SER)": {
+   "net": "Net-(U908-SER)",
+   "pads": 2,
+   "pins": [
+    "U908 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SER (input)",
+    "U909 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: QH (output)"
+   ]
+  },
+  "Net-(U910-QH)": {
+   "net": "Net-(U910-QH)",
+   "pads": 2,
+   "pins": [
+    "U910 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: QH (output)",
+    "U911 SN74LVC165ABQB [q-lab:Shift_Register_SN74LVC165ABQB]: SER (input)"
+   ]
+  }
+ },
+ "parts": {
+  "J1001": {
+   "ref": "J1001",
+   "value": "OCuLink_42Position",
+   "library": "q-lab:Connector_OCuLink_42Position",
+   "sheet": "PCIe",
+   "pins": [
+    "PERn0 (bidirectional) -> PCIE_RX_N",
+    "PERp0 (bidirectional) -> PCIE_RX_P",
+    "PETn0 (bidirectional) -> PCIE_TX_N",
+    "PETp0 (bidirectional) -> PCIE_TX_P",
+    "VSP/REFCLK- (passive) -> REFCLKPCIE_N",
+    "VSP/REFCLK+ (passive) -> REFCLKPCIE_P",
+    "~{PERST(VSP)} (bidirectional) -> ~{PCIE_PERST_3V3}",
+    "GROUND (power_in), GROUND (power_in), GROUND (power_in), GROUND (power_in), GROUND (power_in), GROUND (power_in) ... -> GND",
+    "BPTYPE/VSP (bidirectional) -> Net-(J1001-BPTYPE{slash}VSP)",
+    "~{CPRSNT(VSP)} (bidirectional) -> Net-(J1001-~{CPRSNT(VSP)})",
+    "~{CWAKE},OBFF/VSP (bidirectional) -> Net-(J1001-~{CWAKE},OBFF{slash}VSP)",
+    "2W-CLK (bidirectional) -> unconnected-(J1001-2W-CLK-PadA9)",
+    "2W-DATA (bidirectional) -> unconnected-(J1001-2W-DATA-PadA10)",
+    "3.3Vact_RX (power_in) -> unconnected-(J1001-3.3Vact_RX-PadA1)",
+    "3.3Vact_TX (power_in) -> unconnected-(J1001-3.3Vact_TX-PadB21)",
+    "5V (power_in) -> unconnected-(J1001-5V-PadA21)",
+    "5V (power_in) -> unconnected-(J1001-5V-PadB1)",
+    "PERn1 (bidirectional) -> unconnected-(J1001-PERn1-PadA7)",
+    "PERn2 (bidirectional) -> unconnected-(J1001-PERn2-PadA16)",
+    "PERn3 (bidirectional) -> unconnected-(J1001-PERn3-PadA19)",
+    "PERp1 (bidirectional) -> unconnected-(J1001-PERp1-PadA6)",
+    "PERp2 (bidirectional) -> unconnected-(J1001-PERp2-PadA15)",
+    "PERp3 (bidirectional) -> unconnected-(J1001-PERp3-PadA18)",
+    "PETn1 (bidirectional) -> unconnected-(J1001-PETn1-PadB7)",
+    "PETn2 (bidirectional) -> unconnected-(J1001-PETn2-PadB16)",
+    "PETn3 (bidirectional) -> unconnected-(J1001-PETn3-PadB19)",
+    "PETp1 (bidirectional) -> unconnected-(J1001-PETp1-PadB6)",
+    "PETp2 (bidirectional) -> unconnected-(J1001-PETp2-PadB15)",
+    "PETp3 (bidirectional) -> unconnected-(J1001-PETp3-PadB18)"
+   ]
+  },
+  "J201": {
+   "ref": "J201",
+   "value": "TC2030",
+   "library": "Connector_Generic:Conn_02x03_Odd_Even",
+   "description": "Generic connector, double row, 02x03, odd/even pin numbering scheme (row 1 odd numbers, row 2 even numbers), script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "sheet": "SOM",
+   "pins": [
+    "Pin_1 (passive) -> +1V8",
+    "Pin_4 (passive) -> FC3_SCL",
+    "Pin_2 (passive) -> FC3_SDA",
+    "Pin_3 (passive) -> ~{MR}",
+    "Pin_5 (passive) -> GND",
+    "Pin_6 (passive) -> unconnected-(J201-Pin_6-Pad6)"
+   ]
+  },
+  "J202": {
+   "ref": "J202",
+   "value": "Connector_02x60_Odd_Even_Shielded",
+   "library": "q-lab:Connector_02x60_Odd_Even_Shielded",
+   "sheet": "SOM",
+   "pins": [
+    "Pin_113 (passive), Pin_115 (passive) -> +1V8",
+    "Pin_117 (passive), Pin_119 (passive) -> +20V_VSYS",
+    "Pin_118 (passive), Pin_120 (passive) -> +3V3",
+    "Pin_30 (passive) -> FC0_RXI",
+    "Pin_32 (passive) -> FC0_TXO",
+    "Pin_34 (passive) -> FC3_SCL",
+    "Pin_36 (passive) -> FC3_SDA",
+    "Pin_9 (passive) -> MGMT.D0_N",
+    "Pin_7 (passive) -> MGMT.D0_P",
+    "Pin_13 (passive) -> MGMT.D1_N",
+    "Pin_11 (passive) -> MGMT.D1_P",
+    "Pin_17 (passive) -> MGMT.D2_N",
+    "Pin_15 (passive) -> MGMT.D2_P",
+    "Pin_21 (passive) -> MGMT.D3_N",
+    "Pin_19 (passive) -> MGMT.D3_P",
+    "Pin_25 (passive) -> MGMT_LED1",
+    "Pin_8 (passive) -> PCIE_RX_N",
+    "Pin_6 (passive) -> PCIE_RX_P",
+    "Pin_2 (passive) -> PCIE_TX_N",
+    "Pin_4 (passive) -> PCIE_TX_P",
+    "Pin_18 (passive) -> PD_OK",
+    "Pin_14 (passive) -> POE_TYP1",
+    "Pin_16 (passive) -> POE_TYP2",
+    "Pin_3 (passive) -> REFCLKPCIE_N",
+    "Pin_1 (passive) -> REFCLKPCIE_P",
+    "Pin_41 (passive) -> S0.RXN",
+    "Pin_39 (passive) -> S0.RXP",
+    "Pin_40 (passive) -> S0.TXN",
+    "Pin_42 (passive) -> S0.TXP",
+    "Pin_47 (passive) -> S1.RXN",
+    "Pin_45 (passive) -> S1.RXP",
+    "Pin_46 (passive) -> S1.TXN",
+    "Pin_48 (passive) -> S1.TXP",
+    "Pin_53 (passive) -> S2.RXN",
+    "Pin_51 (passive) -> S2.RXP",
+    "Pin_52 (passive) -> S2.TXN",
+    "Pin_54 (passive) -> S2.TXP",
+    "Pin_59 (passive) -> S3.RXN",
+    "Pin_57 (passive) -> S3.RXP",
+    "Pin_58 (passive) -> S3.TXN",
+    "... 56 more nets"
+   ]
+  },
+  "J203": {
+   "ref": "J203",
+   "value": "BM04B-SRSS-TB",
+   "library": "Connector_Generic_MountingPin:Conn_01x04_MountingPin",
+   "description": "Generic connectable mounting pin connector, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "sheet": "IO",
+   "pins": [
+    "Pin_2 (passive) -> +3V3",
+    "Pin_3 (passive) -> FC2_SCL_3V3",
+    "Pin_4 (passive) -> FC2_SDA_3V3",
+    "Pin_1 (passive), MountPin (passive) -> GND"
+   ]
+  },
+  "J2201": {
+   "ref": "J2201",
+   "value": "BM04B-SRSS-TB",
+   "library": "Connector_Generic_MountingPin:Conn_01x04_MountingPin",
+   "description": "Generic connectable mounting pin connector, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "sheet": "IO",
+   "pins": [
+    "Pin_2 (passive) -> +5V0",
+    "Pin_4 (passive) -> FAN_PWM_3V3",
+    "Pin_3 (passive) -> FAN_TACH_3V3",
+    "Pin_1 (passive), MountPin (passive) -> GND"
+   ]
+  },
+  "J301": {
+   "ref": "J301",
+   "value": "USB4105",
+   "library": "Connector:USB_C_Receptacle_USB2.0_16P",
+   "description": "USB 2.0-only 16P Type-C Receptacle connector",
+   "sheet": "Power In",
+   "pins": [
+    "CC1 (bidirectional) -> PD_CC1",
+    "CC2 (bidirectional) -> PD_CC2",
+    "GND (passive), GND (passive), GND (passive), GND (passive), SHIELD (passive) -> GND",
+    "VBUS (passive), VBUS (passive), VBUS (passive), VBUS (passive) -> Net-(U302-VBUS)",
+    "D+ (bidirectional) -> unconnected-(J301-D+-PadA6)",
+    "D+ (bidirectional) -> unconnected-(J301-D+-PadB6)",
+    "D- (bidirectional) -> unconnected-(J301-D--PadA7)",
+    "D- (bidirectional) -> unconnected-(J301-D--PadB7)",
+    "SBU1 (bidirectional) -> unconnected-(J301-SBU1-PadA8)",
+    "SBU2 (bidirectional) -> unconnected-(J301-SBU2-PadB8)"
+   ]
+  },
+  "J302": {
+   "ref": "J302",
+   "value": "TC2030",
+   "library": "Connector_Generic:Conn_02x03_Odd_Even",
+   "description": "Generic connector, double row, 02x03, odd/even pin numbering scheme (row 1 odd numbers, row 2 even numbers), script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "sheet": "Power In",
+   "pins": [
+    "Pin_1 (passive) -> +3V3_PD",
+    "Pin_4 (passive) -> I2C_EEP_SCL",
+    "Pin_2 (passive) -> I2C_EEP_SDA",
+    "Pin_5 (passive) -> GND",
+    "Pin_3 (passive) -> unconnected-(J302-Pin_3-Pad3)",
+    "Pin_6 (passive) -> unconnected-(J302-Pin_6-Pad6)"
+   ]
+  },
+  "J401": {
+   "ref": "J401",
+   "value": "ARJ-139",
+   "library": "q-lab:Connector_RJ45_ARJ-139",
+   "description": "RJ45 1000 Base-T Single Port, PoE++, w/ LEDs, Extend Temp",
+   "sheet": "Managment Port",
+   "pins": [
+    "TRD0- (passive) -> MGMT.D0_N",
+    "TRD0+ (passive) -> MGMT.D0_P",
+    "TRD1- (passive) -> MGMT.D1_N",
+    "TRD1+ (passive) -> MGMT.D1_P",
+    "TRD2- (passive) -> MGMT.D2_N",
+    "TRD2+ (passive) -> MGMT.D2_P",
+    "TRD3- (passive) -> MGMT.D3_N",
+    "TRD3+ (passive) -> MGMT.D3_P",
+    "LEDY_A (passive) -> MGMT_LED1",
+    "LEDG_K (passive) -> ~{MGMT_LED2}",
+    "SHIELD (passive), SHIELD (passive) -> GND",
+    "CT0 (passive) -> Net-(J401-CT0)",
+    "CT1 (passive) -> Net-(J401-CT1)",
+    "CT2 (passive) -> Net-(J401-CT2)",
+    "CT3 (passive) -> Net-(J401-CT3)",
+    "LEDG_A (passive) -> Net-(J401-LEDG_A)",
+    "LEDY_K (passive) -> Net-(J401-LEDY_K)",
+    "P13 (passive) -> Net-(J401-P13)",
+    "P14 (passive) -> Net-(J401-P14)",
+    "P15 (passive) -> Net-(J401-P15)",
+    "P16 (passive) -> Net-(J401-P16)"
+   ]
+  },
+  "J501": {
+   "ref": "J501",
+   "value": "USB4105",
+   "library": "Connector:USB_C_Receptacle_USB2.0_16P",
+   "description": "USB 2.0-only 16P Type-C Receptacle connector",
+   "sheet": "USB",
+   "pins": [
+    "CC1 (bidirectional) -> USB0_CC1",
+    "CC2 (bidirectional) -> USB0_CC2",
+    "D- (bidirectional), D- (bidirectional) -> USB0_N",
+    "D+ (bidirectional), D+ (bidirectional) -> USB0_P",
+    "VBUS (passive), VBUS (passive), VBUS (passive), VBUS (passive) -> USB0_VBUS",
+    "GND (passive), GND (passive), GND (passive), GND (passive), SHIELD (passive) -> GND",
+    "SBU1 (bidirectional) -> unconnected-(J501-SBU1-PadA8)",
+    "SBU2 (bidirectional) -> unconnected-(J501-SBU2-PadB8)"
+   ]
+  },
+  "J601": {
+   "ref": "J601",
+   "value": "USB4105",
+   "library": "Connector:USB_C_Receptacle_USB2.0_16P",
+   "description": "USB 2.0-only 16P Type-C Receptacle connector",
+   "sheet": "USB UART",
+   "pins": [
+    "VBUS (passive), VBUS (passive), VBUS (passive), VBUS (passive) -> +5V0_UART",
+    "D- (bidirectional), D- (bidirectional) -> USB_D_N",
+    "D+ (bidirectional), D+ (bidirectional) -> USB_D_P",
+    "GND (passive), GND (passive), GND (passive), GND (passive), SHIELD (passive) -> GND",
+    "CC1 (bidirectional) -> Net-(J601-CC1)",
+    "CC2 (bidirectional) -> Net-(J601-CC2)",
+    "SBU1 (bidirectional) -> unconnected-(J601-SBU1-PadA8)",
+    "SBU2 (bidirectional) -> unconnected-(J601-SBU2-PadB8)"
+   ]
+  },
+  "J801": {
+   "ref": "J801",
+   "value": "1-2132403-5",
+   "library": "q-lab:SFP+_Cage_2x5",
+   "sheet": "SFP5",
+   "pins": [
+    "SCL (input) -> I2C_S0.SCL",
+    "SDA (bidirectional) -> I2C_S0.SDA",
+    "SCL (input) -> I2C_S1.SCL",
+    "SDA (bidirectional) -> I2C_S1.SDA",
+    "SCL (input) -> I2C_S2.SCL",
+    "SDA (bidirectional) -> I2C_S2.SDA",
+    "SCL (input) -> I2C_S3.SCL",
+    "SDA (bidirectional) -> I2C_S3.SDA",
+    "SCL (input) -> I2C_S4.SCL",
+    "SDA (bidirectional) -> I2C_S4.SDA",
+    "SCL (input) -> I2C_S5.SCL",
+    "SDA (bidirectional) -> I2C_S5.SDA",
+    "SCL (input) -> I2C_S6.SCL",
+    "SDA (bidirectional) -> I2C_S6.SDA",
+    "SCL (input) -> I2C_S7.SCL",
+    "SDA (bidirectional) -> I2C_S7.SDA",
+    "SCL (input) -> I2C_S8.SCL",
+    "SDA (bidirectional) -> I2C_S8.SDA",
+    "SCL (input) -> I2C_S9.SCL",
+    "SDA (bidirectional) -> I2C_S9.SDA",
+    "RD- (output) -> S0.RXN",
+    "RD+ (output) -> S0.RXP",
+    "TD- (input) -> S0.TXN",
+    "TD+ (input) -> S0.TXP",
+    "RD- (output) -> S1.RXN",
+    "RD+ (output) -> S1.RXP",
+    "TD- (input) -> S1.TXN",
+    "TD+ (input) -> S1.TXP",
+    "RD- (output) -> S2.RXN",
+    "RD+ (output) -> S2.RXP",
+    "TD- (input) -> S2.TXN",
+    "TD+ (input) -> S2.TXP",
+    "RD- (output) -> S3.RXN",
+    "RD+ (output) -> S3.RXP",
+    "TD- (input) -> S3.TXN",
+    "TD+ (input) -> S3.TXP",
+    "RD- (output) -> S4.RXN",
+    "RD+ (output) -> S4.RXP",
+    "TD- (input) -> S4.TXN",
+    "TD+ (input) -> S4.TXP",
+    "... 101 more nets"
+   ]
+  },
+  "PS401": {
+   "ref": "PS401",
+   "value": "poe-bt12v50w-sip",
+   "library": "q-lab:PSU_poe-bt12v50w-sip",
+   "sheet": "Managment Port",
+   "pins": [
+    "+12V (passive), +12V (power_out) -> +12V_POE",
+    "TYP1 (open_collector) -> POE_TYP1",
+    "TYP2 (open_collector) -> POE_TYP2",
+    "GND (passive), GND (passive) -> GND",
+    "P0 (passive) -> Net-(J401-P13)",
+    "P1 (passive) -> Net-(J401-P14)",
+    "P2 (passive) -> Net-(J401-P15)",
+    "P3 (passive) -> Net-(J401-P16)",
+    "AUX (power_in) -> unconnected-(PS401-AUX-Pad5)",
+    "GNDP (passive) -> unconnected-(PS401-GNDP-Pad6)"
+   ]
+  },
+  "SW201": {
+   "ref": "SW201",
+   "value": "SW_Push",
+   "library": "Switch:SW_Push",
+   "description": "Push button switch, generic, two pins",
+   "sheet": "SOM",
+   "pins": [
+    "2 (passive) -> ~{MR}",
+    "1 (passive) -> GND"
+   ]
+  },
+  "U202": {
+   "ref": "U202",
+   "value": "TXU0204BQA",
+   "library": "q-lab:Level_Shifter_TXU0204BQA",
+   "description": "4-Bit Fixed Direction Voltage-Level Translator with Schmitt-Trigger Inputs and 3-State Outputs",
+   "sheet": "SOM",
+   "pins": [
+    "VCCA (power_in), OE (input) -> +1V8",
+    "VCCB (power_in) -> +3V3",
+    "A1 (input) -> FAN_PWM",
+    "B1Y (output) -> FAN_PWM_3V3",
+    "A4Y (output) -> FAN_TACH",
+    "B4 (input) -> FAN_TACH_3V3",
+    "A3Y (output) -> ~{PCIE_PERST}",
+    "A2 (input) -> ~{RESET}",
+    "B3 (input) -> ~{PCIE_PERST_3V3}",
+    "B2Y (output) -> ~{RESET_3V3}",
+    "EPAD (passive), GND (passive) -> GND",
+    "NC (passive) -> unconnected-(U202-NC-Pad6)",
+    "NC (passive) -> unconnected-(U202-NC-Pad9)"
+   ]
+  },
+  "U203": {
+   "ref": "U203",
+   "value": "CAT24M01DWDLT3G",
+   "library": "Memory_EEPROM:CAT24M01W",
+   "description": "1 Mb I2C CMOS Serial EEPROM, SOIC-8 (150 mil)",
+   "sheet": "SOM",
+   "pins": [
+    "A1 (input), VCC (power_in) -> +1V8",
+    "SCL (input) -> FC3_SCL",
+    "SDA (bidirectional) -> FC3_SDA",
+    "A2 (input), GND (power_in), WP (input) -> GND",
+    "NC (no_connect) -> unconnected-(U203-NC-Pad1)"
+   ]
+  },
+  "U204": {
+   "ref": "U204",
+   "value": "TCA9801",
+   "library": "Interface:TCA9801",
+   "description": "Level-Translating I2C Bus Buffer/Repeater 1.1mA Current Source, VSSOP-8",
+   "sheet": "IO",
+   "pins": [
+    "VCCA (power_in), EN (input) -> +1V8",
+    "VCCB (power_in) -> +3V3",
+    "SCLA (bidirectional) -> FC2_SCL",
+    "SDAA (bidirectional) -> FC2_SDA",
+    "SCLB (bidirectional) -> FC2_SCL_3V3",
+    "SDAB (bidirectional) -> FC2_SDA_3V3",
+    "GND (power_in) -> GND"
+   ]
+  },
+  "U2101": {
+   "ref": "U2101",
+   "value": "TCA9548ARGER",
+   "library": "q-lab:Interface_I2C_TCA9548A",
+   "description": "Low voltage 8-channel I2C switch with reset, VQFN-24",
+   "sheet": "I2C Mux",
+   "pins": [
+    "VCC (power_in), ~{RESET} (input) -> +1V8",
+    "SCL (input) -> FC3_SCL",
+    "SDA (bidirectional) -> FC3_SDA",
+    "SC0 (output) -> I2C_S0.SCL",
+    "SD0 (bidirectional) -> I2C_S0.SDA",
+    "SC1 (output) -> I2C_S1.SCL",
+    "SD1 (bidirectional) -> I2C_S1.SDA",
+    "SC2 (output) -> I2C_S2.SCL",
+    "SD2 (bidirectional) -> I2C_S2.SDA",
+    "SC3 (output) -> I2C_S3.SCL",
+    "SD3 (bidirectional) -> I2C_S3.SDA",
+    "SC4 (output) -> I2C_S4.SCL",
+    "SD4 (bidirectional) -> I2C_S4.SDA",
+    "SC5 (output) -> I2C_S5.SCL",
+    "SD5 (bidirectional) -> I2C_S5.SDA",
+    "SC6 (output) -> I2C_S6.SCL",
+    "SD6 (bidirectional) -> I2C_S6.SDA",
+    "SC7 (output) -> I2C_S7.SCL",
+    "SD7 (bidirectional) -> I2C_S7.SDA",
+    "A2 (input), A0 (input), A1 (input), EP (power_in), GND (power_in) -> GND"
+   ]
+  },
+  "U2102": {
+   "ref": "U2102",
+   "value": "TCA9548ARGER",
+   "library": "q-lab:Interface_I2C_TCA9548A",
+   "description": "Low voltage 8-channel I2C switch with reset, VQFN-24",
+   "sheet": "I2C Mux",
+   "pins": [
+    "VCC (power_in), A0 (input), ~{RESET} (input) -> +1V8",
+    "SCL (input) -> FC3_SCL",
+    "SDA (bidirectional) -> FC3_SDA",
+    "SC0 (output) -> I2C_S8.SCL",
+    "SD0 (bidirectional) -> I2C_S8.SDA",
+    "SC1 (output) -> I2C_S9.SCL",
+    "SD1 (bidirectional) -> I2C_S9.SDA",
+    "A2 (input), A1 (input), EP (power_in), GND (power_in) -> GND",
+    "SC2 (output) -> unconnected-(U2102-SC2-Pad6)",
+    "SC3 (output) -> unconnected-(U2102-SC3-Pad8)",
+    "SC4 (output) -> unconnected-(U2102-SC4-Pad11)",
+    "SC5 (output) -> unconnected-(U2102-SC5-Pad13)",
+    "SC6 (output) -> unconnected-(U2102-SC6-Pad15)",
+    "SC7 (output) -> unconnected-(U2102-SC7-Pad17)",
+    "SD2 (bidirectional) -> unconnected-(U2102-SD2-Pad5)",
+    "SD3 (bidirectional) -> unconnected-(U2102-SD3-Pad7)",
+    "SD4 (bidirectional) -> unconnected-(U2102-SD4-Pad10)",
+    "SD5 (bidirectional) -> unconnected-(U2102-SD5-Pad12)",
+    "SD6 (bidirectional) -> unconnected-(U2102-SD6-Pad14)",
+    "SD7 (bidirectional) -> unconnected-(U2102-SD7-Pad16)"
+   ]
+  },
+  "U301": {
+   "ref": "U301",
+   "value": "TVS2200DRV",
+   "library": "Power_Protection:TVS2200DRV",
+   "description": "Flat-Clamp Surge Protection Device. 22Vrwm, WSON-6",
+   "sheet": "Power In",
+   "pins": [
+    "GND (power_in), GND (passive), GND (passive), GND (passive) -> GND",
+    "IN (passive), IN (passive), IN (passive) -> Net-(U302-VBUS)"
+   ]
+  },
+  "U302": {
+   "ref": "U302",
+   "value": "TPS25751D",
+   "library": "q-lab:USB_C_DRP_TPS25750D",
+   "description": "USB Type-C and USB PD Controller with Integrated Power Switches",
+   "sheet": "Power In",
+   "pins": [
+    "LDO_1V5 (power_out) -> +1V5_PD",
+    "PPHV (power_out) -> +20V_VSYS",
+    "VIN_3V3 (power_in) -> +3V3",
+    "LDO_3V3 (power_out) -> +3V3_PD",
+    "GPIO11 (output) -> PD_OK",
+    "DRAIN (passive), DRAIN (passive), DRAIN (passive) -> DRAIN",
+    "I2Cm_SCL (input) -> I2C_EEP_SCL",
+    "I2Cm_SDA (bidirectional) -> I2C_EEP_SDA",
+    "CC1 (bidirectional) -> PD_CC1",
+    "CC2 (bidirectional) -> PD_CC2",
+    "~{I2Cm_IRQ} (input) -> ~{I2C_EEP_IRQ}",
+    "~{I2Cs_IRQ} (open_collector), GND (power_in), GND (power_in), GND (power_in), ADCIN1 (input), ADCIN2 (input) ... -> GND",
+    "VBUS_IN (power_in), VBUS (power_out) -> Net-(U302-VBUS)",
+    "GPIO0 (bidirectional) -> unconnected-(U302-GPIO0-Pad5)",
+    "GPIO1 (bidirectional) -> unconnected-(U302-GPIO1-Pad6)",
+    "GPIO2 (output) -> unconnected-(U302-GPIO2-Pad7)",
+    "GPIO3 (output) -> unconnected-(U302-GPIO3-Pad19)",
+    "GPIO4/USB_P (bidirectional) -> unconnected-(U302-GPIO4{slash}USB_P-Pad26)",
+    "GPIO5/USB_N (bidirectional) -> unconnected-(U302-GPIO5{slash}USB_N-Pad27)",
+    "GPIO6 (output) -> unconnected-(U302-GPIO6-Pad37)",
+    "GPIO7 (output) -> unconnected-(U302-GPIO7-Pad36)"
+   ]
+  },
+  "U303": {
+   "ref": "U303",
+   "value": "CAT24C256",
+   "library": "q-lab:EEPROM_CAT24",
+   "description": "I2C Serial EEPROM, 16Kb, DIP-8/SOIC-8/TSSOP-8/DFN-8",
+   "sheet": "Power In",
+   "pins": [
+    "VCC (power_in) -> +3V3_PD",
+    "SCL (input) -> I2C_EEP_SCL",
+    "SDA (bidirectional) -> I2C_EEP_SDA",
+    "A0 (input), A1 (input), A2 (input), GND (power_in), WP (input), GND (power_in) -> GND"
+   ]
+  },
+  "U304": {
+   "ref": "U304",
+   "value": "TPD4E02B04",
+   "library": "q-lab:TVS_TPD4E02B04",
+   "description": "4-Channel ESD Protection for Super-Speed USB 3.0 Interface, USON-10",
+   "sheet": "Power In",
+   "pins": [
+    "D1- (passive), 9 (passive) -> PD_CC1",
+    "D1+ (passive), 10 (passive) -> PD_CC2",
+    "GND (power_in), GND (passive) -> GND",
+    "D2+ (passive), 7 (passive) -> Net-(U304-D2+)",
+    "D2- (passive), 6 (passive) -> Net-(U304-D2-)"
+   ]
+  },
+  "U305": {
+   "ref": "U305",
+   "value": "LM73100",
+   "library": "q-lab:Ideal_Diode_LM73100",
+   "description": "2.7 - 23 V, 5.5 A Integrated Ideal Diode with Input Reverse Polarity and Overvoltage Protection",
+   "sheet": "Power In",
+   "pins": [
+    "IN (power_in) -> +12V_POE",
+    "OUT (power_out) -> +20V_VSYS",
+    "OVLO (passive), PGTH (passive), GND (passive), IMON (output) -> GND",
+    "EN/UVLO (input) -> Net-(U305-EN{slash}UVLO)",
+    "DNC (passive) -> unconnected-(U305-DNC-Pad10)",
+    "DVDT (passive) -> unconnected-(U305-DVDT-Pad7)",
+    "PG (open_collector) -> unconnected-(U305-PG-Pad3)"
+   ]
+  },
+  "U401": {
+   "ref": "U401",
+   "value": "TPD4E02B04",
+   "library": "q-lab:TVS_TPD4E02B04",
+   "description": "4-Channel ESD Protection for Super-Speed USB 3.0 Interface, USON-10",
+   "sheet": "Managment Port",
+   "pins": [
+    "D2+ (passive), 7 (passive) -> MGMT.D0_N",
+    "D2- (passive), 6 (passive) -> MGMT.D0_P",
+    "D1- (passive), 9 (passive) -> MGMT.D1_N",
+    "D1+ (passive), 10 (passive) -> MGMT.D1_P",
+    "GND (power_in), GND (passive) -> GND"
+   ]
+  },
+  "U402": {
+   "ref": "U402",
+   "value": "TPD4E02B04",
+   "library": "q-lab:TVS_TPD4E02B04",
+   "description": "4-Channel ESD Protection for Super-Speed USB 3.0 Interface, USON-10",
+   "sheet": "Managment Port",
+   "pins": [
+    "D2+ (passive), 7 (passive) -> MGMT.D2_N",
+    "D2- (passive), 6 (passive) -> MGMT.D2_P",
+    "D1- (passive), 9 (passive) -> MGMT.D3_N",
+    "D1+ (passive), 10 (passive) -> MGMT.D3_P",
+    "GND (power_in), GND (passive) -> GND"
+   ]
+  },
+  "U501": {
+   "ref": "U501",
+   "value": "NX5P3363",
+   "library": "q-lab:Load_Switch_NX5P3363",
+   "description": "USB PD and Type-C current-limited power switch",
+   "sheet": "USB",
+   "pins": [
+    "VIN (power_in), VIN (power_in) -> +5V0",
+    "~{FLT} (open_collector) -> USB0_OC_DET",
+    "EN (input) -> USB0_PWR_EN",
+    "VBUS (power_out), VBUS (passive), VBUS (passive) -> USB0_VBUS",
+    "GND (power_in), GND (power_in), GND (power_in) -> GND",
+    "CAP (passive) -> Net-(U501-CAP)",
+    "ILIM (input) -> Net-(U501-ILIM)",
+    "FO (input) -> unconnected-(U501-FO-PadC4)",
+    "VCP (passive) -> unconnected-(U501-VCP-PadB1)",
+    "VCP (passive) -> unconnected-(U501-VCP-PadB2)",
+    "VCP (passive) -> unconnected-(U501-VCP-PadC1)"
+   ]
+  },
+  "U502": {
+   "ref": "U502",
+   "value": "TUSB320LAI",
+   "library": "Interface_USB:TUSB320",
+   "description": "USB Type-C Configuration Channel Logic and Port Control, X2QFN-12",
+   "sheet": "USB",
+   "pins": [
+    "VDD (power_in) -> +3V3",
+    "CC1 (bidirectional) -> USB0_CC1",
+    "CC2 (bidirectional) -> USB0_CC2",
+    "ID (open_collector) -> USB0_ID",
+    "GND (power_in), ~{EN} (input) -> GND",
+    "VBUS_DET (input) -> Net-(U502-VBUS_DET)",
+    "ADDR (input) -> unconnected-(U502-ADDR-Pad5)",
+    "PORT (input) -> unconnected-(U502-PORT-Pad3)",
+    "SCL/OUT2 (bidirectional) -> unconnected-(U502-SCL{slash}OUT2-Pad8)",
+    "SDA/OUT1 (bidirectional) -> unconnected-(U502-SDA{slash}OUT1-Pad7)",
+    "~{INT}/OUT3 (open_collector) -> unconnected-(U502-~{INT}{slash}OUT3-Pad6)"
+   ]
+  },
+  "U503": {
+   "ref": "U503",
+   "value": "TPD4E02B04",
+   "library": "q-lab:TVS_TPD4E02B04",
+   "description": "4-Channel ESD Protection for Super-Speed USB 3.0 Interface, USON-10",
+   "sheet": "USB",
+   "pins": [
+    "D2- (passive), 6 (passive) -> USB0_CC1",
+    "D2+ (passive), 7 (passive) -> USB0_CC2",
+    "D1- (passive), 9 (passive) -> USB0_N",
+    "D1+ (passive), 10 (passive) -> USB0_P",
+    "GND (power_in), GND (passive) -> GND"
+   ]
+  },
+  "U601": {
+   "ref": "U601",
+   "value": "LP5912-1.8DRV",
+   "library": "Regulator_Linear:LP5912-1.8DRV",
+   "description": "500-mA Ultra-Low-Noise Low-IQ LDO, 1.8V, WSON-6",
+   "sheet": "USB UART",
+   "pins": [
+    "OUT (power_out) -> +1V8_UART",
+    "EN (input), IN (power_in) -> +5V0_UART",
+    "PG (open_collector), GND (power_in), EP (passive) -> GND",
+    "NC (no_connect) -> unconnected-(U601-NC-Pad2)"
+   ]
+  },
+  "U602": {
+   "ref": "U602",
+   "value": "CH343P",
+   "library": "q-lab:USB_UART_CH343P",
+   "sheet": "USB UART",
+   "pins": [
+    "VDDIO (power_in) -> +1V8_UART",
+    "VDD5 (power_in), USB_VBUS (input) -> +5V0_UART",
+    "USB_DN (bidirectional) -> USB_D_N",
+    "USB_DP (bidirectional) -> USB_D_P",
+    "EPAD (power_in), GND (power_in) -> GND",
+    "UART_RXD (input) -> Net-(U602-UART_RXD)",
+    "UART_TXD (output) -> Net-(U602-UART_TXD)",
+    "V3 (power_out) -> Net-(U602-V3)",
+    "~{ACT} (output) -> Net-(U602-~{ACT})",
+    "UART_CTS (input) -> unconnected-(U602-UART_CTS-Pad15)",
+    "UART_DCD (input) -> unconnected-(U602-UART_DCD-Pad11)",
+    "UART_DSR (input) -> unconnected-(U602-UART_DSR-Pad14)",
+    "UART_DTR/TNOW (output) -> unconnected-(U602-UART_DTR{slash}TNOW-Pad12)",
+    "UART_RI (input) -> unconnected-(U602-UART_RI-Pad16)",
+    "UART_RTS (output) -> unconnected-(U602-UART_RTS-Pad13)"
+   ]
+  },
+  "U603": {
+   "ref": "U603",
+   "value": "TPD4E02B04",
+   "library": "q-lab:TVS_TPD4E02B04",
+   "description": "4-Channel ESD Protection for Super-Speed USB 3.0 Interface, USON-10",
+   "sheet": "USB UART",
+   "pins": [
+    "D1- (passive), 9 (passive) -> USB_D_N",
+    "D1+ (passive), 10 (passive) -> USB_D_P",
+    "GND (power_in), GND (passive) -> GND",
+    "D2+ (passive), 7 (passive) -> Net-(U603-D2+)",
+    "D2- (passive), 6 (passive) -> Net-(U603-D2-)"
+   ]
+  },
+  "U701": {
+   "ref": "U701",
+   "value": "TPS62933P",
+   "library": "Regulator_Switching:TPS62933P",
+   "description": "3.8-30V, 3A Synchronous Buck Converters with pulse frequency modulation (PFM) and power good, SOT583-8",
+   "sheet": "System Rails",
+   "pins": [
+    "VIN (power_in) -> +20V_VSYS",
+    "RT (passive), GND (power_in) -> GND",
+    "PG (open_collector) -> Net-(D701-A)",
+    "BST (passive) -> Net-(U701-BST)",
+    "FB (input) -> Net-(U701-FB)",
+    "SW (output) -> Net-(U701-SW)",
+    "EN (input) -> unconnected-(U701-EN-Pad2)"
+   ]
+  },
+  "U702": {
+   "ref": "U702",
+   "value": "LM61495",
+   "library": "q-lab:Regulator_LM61480",
+   "description": "LM62460, LM61480, and LM61495 Pin-Compatible 6-A/8-A/10-A Buck Converter Optimized for Power Density and Low EMI",
+   "sheet": "System Rails",
+   "pins": [
+    "VIN1 (power_in), VIN2 (power_in) -> +20V_VSYS",
+    "EN (input) -> +3V3",
+    "BIAS (power_in) -> +5V0",
+    "PGND2 (power_in), SYNC/MODE (input), PGND1 (power_in), AGND (power_in) -> GND",
+    "~{RESET} (open_collector) -> Net-(D702-A)",
+    "RBOOT (passive), CBOOT (passive) -> Net-(U702-CBOOT)",
+    "FB (passive) -> Net-(U702-FB)",
+    "VCC (power_out), RT (passive) -> Net-(U702-RT)",
+    "SPSP (passive) -> Net-(U702-SPSP)",
+    "SW (passive) -> Net-(U702-SW)"
+   ]
+  },
+  "U901": {
+   "ref": "U901",
+   "value": "TXU0304BQA",
+   "library": "q-lab:Level_Shifter_TXU0304BQA",
+   "description": "4-Bit Fixed Direction Voltage-Level Translator with Schmitt-Trigger Inputs and 3-State Outputs",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCCA (power_in), OE (input) -> +1V8",
+    "VCCB (power_in) -> +3V3_SFP",
+    "A1 (input) -> SGPIO.CK",
+    "A4Y (output) -> SGPIO.DI",
+    "A3 (input) -> SGPIO.DO",
+    "A2 (input) -> SGPIO.LD",
+    "B1Y (output) -> CK_3V3",
+    "B4 (input) -> DI_3V3",
+    "B3Y (output) -> DO_3V3",
+    "B2Y (output) -> LD_3V3",
+    "EPAD (power_in), GND (power_in) -> GND",
+    "NC (passive) -> unconnected-(U901-NC-Pad6)",
+    "NC (passive) -> unconnected-(U901-NC-Pad9)"
+   ]
+  },
+  "U902": {
+   "ref": "U902",
+   "value": "74LVC594ABQ",
+   "library": "q-lab:Shift_Register_74LVC594ABQ",
+   "description": "8-bit shift register with output register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "Q3 (output) -> SFP_CTL0.RATESEL",
+    "Q2 (output) -> SFP_CTL0.TXDIS",
+    "Q0 (output) -> SFP_CTL0.~{LED0}",
+    "Q1 (output) -> SFP_CTL0.~{LED1}",
+    "Q7 (output) -> SFP_CTL1.RATESEL",
+    "Q6 (output) -> SFP_CTL1.TXDIS",
+    "Q4 (output) -> SFP_CTL1.~{LED0}",
+    "Q5 (output) -> SFP_CTL1.~{LED1}",
+    "SHCP (input) -> CK_3V3",
+    "DS (input) -> DO_3V3",
+    "STCP (input) -> LD_3V3",
+    "~{SHR} (input), ~{STR} (input) -> ~{RESET_3V3}",
+    "EPAD (passive), GND (power_in) -> GND",
+    "Q7S (output) -> Net-(U902-Q7S)"
+   ]
+  },
+  "U903": {
+   "ref": "U903",
+   "value": "SN74LVC165ABQB",
+   "library": "q-lab:Shift_Register_SN74LVC165ABQB",
+   "description": "8-Bit Parallel-Load Shift Register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "G (input) -> SFP_CTL4.MODDET",
+    "H (input) -> SFP_CTL4.RX_LOS",
+    "F (input) -> SFP_CTL4.TX_FAULT",
+    "C (input) -> SFP_CTL5.MODDET",
+    "D (input) -> SFP_CTL5.RX_LOS",
+    "B (input) -> SFP_CTL5.TX_FAULT",
+    "CLK (input) -> CK_3V3",
+    "SH/~{LD} (input) -> LD_3V3",
+    "CLK_INH (input), EPAD (passive), GND (power_in) -> GND",
+    "QH (output) -> Net-(U903-QH)",
+    "SER (input) -> Net-(U903-SER)",
+    "A (input) -> unconnected-(U903-A-Pad11)",
+    "E (input) -> unconnected-(U903-E-Pad3)",
+    "~{QH} (output) -> unconnected-(U903-~{QH}-Pad7)"
+   ]
+  },
+  "U904": {
+   "ref": "U904",
+   "value": "74LVC594ABQ",
+   "library": "q-lab:Shift_Register_74LVC594ABQ",
+   "description": "8-bit shift register with output register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "Q3 (output) -> SFP_CTL2.RATESEL",
+    "Q2 (output) -> SFP_CTL2.TXDIS",
+    "Q0 (output) -> SFP_CTL2.~{LED0}",
+    "Q1 (output) -> SFP_CTL2.~{LED1}",
+    "Q7 (output) -> SFP_CTL3.RATESEL",
+    "Q6 (output) -> SFP_CTL3.TXDIS",
+    "Q4 (output) -> SFP_CTL3.~{LED0}",
+    "Q5 (output) -> SFP_CTL3.~{LED1}",
+    "SHCP (input) -> CK_3V3",
+    "STCP (input) -> LD_3V3",
+    "~{SHR} (input), ~{STR} (input) -> ~{RESET_3V3}",
+    "EPAD (passive), GND (power_in) -> GND",
+    "DS (input) -> Net-(U902-Q7S)",
+    "Q7S (output) -> Net-(U904-Q7S)"
+   ]
+  },
+  "U905": {
+   "ref": "U905",
+   "value": "74LVC594ABQ",
+   "library": "q-lab:Shift_Register_74LVC594ABQ",
+   "description": "8-bit shift register with output register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "Q3 (output) -> SFP_CTL4.RATESEL",
+    "Q2 (output) -> SFP_CTL4.TXDIS",
+    "Q0 (output) -> SFP_CTL4.~{LED0}",
+    "Q1 (output) -> SFP_CTL4.~{LED1}",
+    "Q7 (output) -> SFP_CTL5.RATESEL",
+    "Q6 (output) -> SFP_CTL5.TXDIS",
+    "Q4 (output) -> SFP_CTL5.~{LED0}",
+    "Q5 (output) -> SFP_CTL5.~{LED1}",
+    "SHCP (input) -> CK_3V3",
+    "STCP (input) -> LD_3V3",
+    "~{SHR} (input), ~{STR} (input) -> ~{RESET_3V3}",
+    "EPAD (passive), GND (power_in) -> GND",
+    "DS (input) -> Net-(U904-Q7S)",
+    "Q7S (output) -> Net-(U905-Q7S)"
+   ]
+  },
+  "U906": {
+   "ref": "U906",
+   "value": "74LVC594ABQ",
+   "library": "q-lab:Shift_Register_74LVC594ABQ",
+   "description": "8-bit shift register with output register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "Q3 (output) -> SFP_CTL6.RATESEL",
+    "Q2 (output) -> SFP_CTL6.TXDIS",
+    "Q0 (output) -> SFP_CTL6.~{LED0}",
+    "Q1 (output) -> SFP_CTL6.~{LED1}",
+    "Q7 (output) -> SFP_CTL7.RATESEL",
+    "Q6 (output) -> SFP_CTL7.TXDIS",
+    "Q4 (output) -> SFP_CTL7.~{LED0}",
+    "Q5 (output) -> SFP_CTL7.~{LED1}",
+    "SHCP (input) -> CK_3V3",
+    "STCP (input) -> LD_3V3",
+    "~{SHR} (input), ~{STR} (input) -> ~{RESET_3V3}",
+    "EPAD (passive), GND (power_in) -> GND",
+    "DS (input) -> Net-(U905-Q7S)",
+    "Q7S (output) -> Net-(U906-Q7S)"
+   ]
+  },
+  "U907": {
+   "ref": "U907",
+   "value": "74LVC594ABQ",
+   "library": "q-lab:Shift_Register_74LVC594ABQ",
+   "description": "8-bit shift register with output register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "Q3 (output) -> SFP_CTL8.RATESEL",
+    "Q2 (output) -> SFP_CTL8.TXDIS",
+    "Q0 (output) -> SFP_CTL8.~{LED0}",
+    "Q1 (output) -> SFP_CTL8.~{LED1}",
+    "Q7 (output) -> SFP_CTL9.RATESEL",
+    "Q6 (output) -> SFP_CTL9.TXDIS",
+    "Q4 (output) -> SFP_CTL9.~{LED0}",
+    "Q5 (output) -> SFP_CTL9.~{LED1}",
+    "SHCP (input) -> CK_3V3",
+    "STCP (input) -> LD_3V3",
+    "~{SHR} (input), ~{STR} (input) -> ~{RESET_3V3}",
+    "EPAD (passive), GND (power_in) -> GND",
+    "DS (input) -> Net-(U906-Q7S)",
+    "Q7S (output) -> unconnected-(U907-Q7S-Pad9)"
+   ]
+  },
+  "U908": {
+   "ref": "U908",
+   "value": "SN74LVC165ABQB",
+   "library": "q-lab:Shift_Register_SN74LVC165ABQB",
+   "description": "8-Bit Parallel-Load Shift Register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "G (input) -> SFP_CTL6.MODDET",
+    "H (input) -> SFP_CTL6.RX_LOS",
+    "F (input) -> SFP_CTL6.TX_FAULT",
+    "C (input) -> SFP_CTL7.MODDET",
+    "D (input) -> SFP_CTL7.RX_LOS",
+    "B (input) -> SFP_CTL7.TX_FAULT",
+    "CLK (input) -> CK_3V3",
+    "SH/~{LD} (input) -> LD_3V3",
+    "CLK_INH (input), EPAD (passive), GND (power_in) -> GND",
+    "QH (output) -> Net-(U903-SER)",
+    "SER (input) -> Net-(U908-SER)",
+    "A (input) -> unconnected-(U908-A-Pad11)",
+    "E (input) -> unconnected-(U908-E-Pad3)",
+    "~{QH} (output) -> unconnected-(U908-~{QH}-Pad7)"
+   ]
+  },
+  "U909": {
+   "ref": "U909",
+   "value": "SN74LVC165ABQB",
+   "library": "q-lab:Shift_Register_SN74LVC165ABQB",
+   "description": "8-Bit Parallel-Load Shift Register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "G (input) -> SFP_CTL8.MODDET",
+    "H (input) -> SFP_CTL8.RX_LOS",
+    "F (input) -> SFP_CTL8.TX_FAULT",
+    "C (input) -> SFP_CTL9.MODDET",
+    "D (input) -> SFP_CTL9.RX_LOS",
+    "B (input) -> SFP_CTL9.TX_FAULT",
+    "CLK (input) -> CK_3V3",
+    "SH/~{LD} (input) -> LD_3V3",
+    "SER (input), CLK_INH (input), EPAD (passive), GND (power_in) -> GND",
+    "QH (output) -> Net-(U908-SER)",
+    "A (input) -> unconnected-(U909-A-Pad11)",
+    "E (input) -> unconnected-(U909-E-Pad3)",
+    "~{QH} (output) -> unconnected-(U909-~{QH}-Pad7)"
+   ]
+  },
+  "U910": {
+   "ref": "U910",
+   "value": "SN74LVC165ABQB",
+   "library": "q-lab:Shift_Register_SN74LVC165ABQB",
+   "description": "8-Bit Parallel-Load Shift Register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "G (input) -> SFP_CTL2.MODDET",
+    "H (input) -> SFP_CTL2.RX_LOS",
+    "F (input) -> SFP_CTL2.TX_FAULT",
+    "C (input) -> SFP_CTL3.MODDET",
+    "D (input) -> SFP_CTL3.RX_LOS",
+    "B (input) -> SFP_CTL3.TX_FAULT",
+    "CLK (input) -> CK_3V3",
+    "SH/~{LD} (input) -> LD_3V3",
+    "CLK_INH (input), EPAD (passive), GND (power_in) -> GND",
+    "SER (input) -> Net-(U903-QH)",
+    "QH (output) -> Net-(U910-QH)",
+    "A (input) -> unconnected-(U910-A-Pad11)",
+    "E (input) -> unconnected-(U910-E-Pad3)",
+    "~{QH} (output) -> unconnected-(U910-~{QH}-Pad7)"
+   ]
+  },
+  "U911": {
+   "ref": "U911",
+   "value": "SN74LVC165ABQB",
+   "library": "q-lab:Shift_Register_SN74LVC165ABQB",
+   "description": "8-Bit Parallel-Load Shift Register",
+   "sheet": "SGPIO",
+   "pins": [
+    "VCC (power_in) -> +3V3_SFP",
+    "G (input) -> SFP_CTL0.MODDET",
+    "H (input) -> SFP_CTL0.RX_LOS",
+    "F (input) -> SFP_CTL0.TX_FAULT",
+    "C (input) -> SFP_CTL1.MODDET",
+    "D (input) -> SFP_CTL1.RX_LOS",
+    "B (input) -> SFP_CTL1.TX_FAULT",
+    "CLK (input) -> CK_3V3",
+    "QH (output) -> DI_3V3",
+    "SH/~{LD} (input) -> LD_3V3",
+    "CLK_INH (input), EPAD (passive), GND (power_in) -> GND",
+    "SER (input) -> Net-(U910-QH)",
+    "A (input) -> unconnected-(U911-A-Pad11)",
+    "E (input) -> unconnected-(U911-E-Pad3)",
+    "~{QH} (output) -> unconnected-(U911-~{QH}-Pad7)"
+   ]
+  }
+ }
+}

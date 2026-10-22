@@ -1,0 +1,394 @@
+{
+ "nets": {
+  "GND": {
+   "net": "GND",
+   "pads": 27,
+   "pins": [
+    "J1 USB4056-03-A_REVA2 [Pixxel_Connectors:USB4056-03-A]: GND_A (passive) x2",
+    "J1 USB4056-03-A_REVA2 [Pixxel_Connectors:USB4056-03-A]: GND_B (passive) x2",
+    "J1 USB4056-03-A_REVA2 [Pixxel_Connectors:USB4056-03-A]: SHELL_GND (unspecified) x4",
+    "J2 796638-2: pin 2 (passive)",
+    "Q2 2N7002: S (passive)",
+    "U1 CYPD3177-24LQ: GND (power_in)",
+    "U1 CYPD3177-24LQ: GND (passive) x2"
+   ],
+   "C parts": [
+    "C1 10uF_50V_1210 to VCC_USB_PD_IN",
+    "C3 1uF_50V_0805 to Net-(U1-VCCD)",
+    "C4 0.1uF_50V_0603 to V3P3",
+    "C5 0.1uF_50V_0603 to V3P3",
+    "C7 1uF_50V_0805 to V3P3",
+    "C8 10uF_50V_1210 to VCC_USB_PD_OUT"
+   ],
+   "R parts": [
+    "R1 5.1k_0.1W_0603 to Net-(J1-CC2)",
+    "R12 2.4k_0.1W_0603 to Net-(U1-VBUS_MAX)",
+    "R14 5.1k_0.1W_0603 to Net-(U1-VBUS_MIN)",
+    "R16 49.9k_0.1W_0603 to Net-(Q2-G)",
+    "R19 150R_0.1W_0603 to Net-(D3-K)",
+    "R2 5.1k_0.1W_0603 to Net-(J1-CC1)",
+    "... 2 more"
+   ]
+  },
+  "Net-(D1-A)": {
+   "net": "Net-(D1-A)",
+   "pads": 8,
+   "pins": [
+    "Q1 IRF9358TRPBF: G2 (passive)",
+    "Q1 IRF9358TRPBF: G1 (passive)"
+   ],
+   "C parts": [
+    "C2 1uF_50V_0805 to VCC_USB_PD_IN",
+    "C6 1uF_50V_0805 to VCC_USB_PD_OUT"
+   ],
+   "D parts": [
+    "D1 MMSZ10T1G to Net-(D1-K)"
+   ],
+   "R parts": [
+    "R10 49.9k_0.1W_0603 to Net-(D1-K)",
+    "R4 10k_0.1W_0603 to VCC_USB_PD_IN",
+    "R9 1k_0.1W_0603 to Net-(U1-VBUS_FET_EN)"
+   ]
+  },
+  "Net-(D1-K)": {
+   "net": "Net-(D1-K)",
+   "pads": 4,
+   "pins": [
+    "Q1 IRF9358TRPBF: S2 (passive)",
+    "Q1 IRF9358TRPBF: S1 (passive)"
+   ],
+   "D parts": [
+    "D1 MMSZ10T1G to Net-(D1-A)"
+   ],
+   "R parts": [
+    "R10 49.9k_0.1W_0603 to Net-(D1-A)"
+   ]
+  },
+  "Net-(J1-CC1)": {
+   "net": "Net-(J1-CC1)",
+   "pads": 3,
+   "pins": [
+    "J1 USB4056-03-A_REVA2 [Pixxel_Connectors:USB4056-03-A]: CC1 (passive)",
+    "U1 CYPD3177-24LQ: CC1 (bidirectional)"
+   ],
+   "R parts": [
+    "R2 5.1k_0.1W_0603 to GND"
+   ]
+  },
+  "Net-(J1-CC2)": {
+   "net": "Net-(J1-CC2)",
+   "pads": 3,
+   "pins": [
+    "J1 USB4056-03-A_REVA2 [Pixxel_Connectors:USB4056-03-A]: CC2 (passive)",
+    "U1 CYPD3177-24LQ: CC2 (bidirectional)"
+   ],
+   "R parts": [
+    "R1 5.1k_0.1W_0603 to GND"
+   ]
+  },
+  "Net-(Q2-D)": {
+   "net": "Net-(Q2-D)",
+   "pads": 2,
+   "pins": [
+    "Q2 2N7002: D (passive)"
+   ],
+   "R parts": [
+    "R17 1k_0.1W_0603 to Net-(D2-K)"
+   ]
+  },
+  "Net-(Q2-G)": {
+   "net": "Net-(Q2-G)",
+   "pads": 3,
+   "pins": [
+    "Q2 2N7002: G (input)",
+    "U1 CYPD3177-24LQ: FAULT (output)"
+   ],
+   "R parts": [
+    "R16 49.9k_0.1W_0603 to GND"
+   ]
+  },
+  "Net-(Q3A-D1)": {
+   "net": "Net-(Q3A-D1)",
+   "pads": 2,
+   "pins": [
+    "Q3 BSL308PE: S2 (passive)",
+    "Q3 BSL308PE: D1 (passive)"
+   ]
+  },
+  "Net-(Q3A-G1)": {
+   "net": "Net-(Q3A-G1)",
+   "pads": 4,
+   "pins": [
+    "Q3 BSL308PE: G1 (passive)",
+    "Q3 BSL308PE: G2 (passive)"
+   ],
+   "R parts": [
+    "R15 1k_0.1W_0603 to Net-(U1-SAFE_PWR_EN)",
+    "R18 49.9k_0.1W_0603 to VCC_USB_PD_IN"
+   ]
+  },
+  "Net-(U1-FLIP)": {
+   "net": "Net-(U1-FLIP)",
+   "pads": 2,
+   "pins": [
+    "U1 CYPD3177-24LQ: FLIP (output)"
+   ],
+   "R parts": [
+    "R3 5.1k_0.1W_0603 to V3P3"
+   ]
+  },
+  "Net-(U1-ISNK_COARSE)": {
+   "net": "Net-(U1-ISNK_COARSE)",
+   "pads": 3,
+   "pins": [
+    "U1 CYPD3177-24LQ: ISNK_COARSE (input)"
+   ],
+   "R parts": [
+    "R5 2.4k_0.1W_0603 to V3P3",
+    "R6 5.1k_0.1W_0603 to GND"
+   ]
+  },
+  "Net-(U1-ISNK_FINE)": {
+   "net": "Net-(U1-ISNK_FINE)",
+   "pads": 3,
+   "pins": [
+    "U1 CYPD3177-24LQ: ISNK_FINE (input)"
+   ],
+   "R parts": [
+    "R7 5.1k_0.1W_0603 to V3P3",
+    "R8 5.1k_0.1W_0603 to GND"
+   ]
+  },
+  "Net-(U1-SAFE_PWR_EN)": {
+   "net": "Net-(U1-SAFE_PWR_EN)",
+   "pads": 2,
+   "pins": [
+    "U1 CYPD3177-24LQ: SAFE_PWR_EN (output)"
+   ],
+   "R parts": [
+    "R15 1k_0.1W_0603 to Net-(Q3A-G1)"
+   ]
+  },
+  "Net-(U1-VBUS_FET_EN)": {
+   "net": "Net-(U1-VBUS_FET_EN)",
+   "pads": 2,
+   "pins": [
+    "U1 CYPD3177-24LQ: VBUS_FET_EN (output)"
+   ],
+   "R parts": [
+    "R9 1k_0.1W_0603 to Net-(D1-A)"
+   ]
+  },
+  "Net-(U1-VBUS_MAX)": {
+   "net": "Net-(U1-VBUS_MAX)",
+   "pads": 3,
+   "pins": [
+    "U1 CYPD3177-24LQ: VBUS_MAX (input)"
+   ],
+   "R parts": [
+    "R11 5k_0.1W_0603 to V3P3",
+    "R12 2.4k_0.1W_0603 to GND"
+   ]
+  },
+  "Net-(U1-VBUS_MIN)": {
+   "net": "Net-(U1-VBUS_MIN)",
+   "pads": 3,
+   "pins": [
+    "U1 CYPD3177-24LQ: VBUS_MIN (input)"
+   ],
+   "R parts": [
+    "R13 5.1k_0.1W_0603 to V3P3",
+    "R14 5.1k_0.1W_0603 to GND"
+   ]
+  },
+  "Net-(U1-VCCD)": {
+   "net": "Net-(U1-VCCD)",
+   "pads": 2,
+   "pins": [
+    "U1 CYPD3177-24LQ: VCCD (power_out)"
+   ],
+   "C parts": [
+    "C3 1uF_50V_0805 to GND"
+   ]
+  },
+  "V3P3": {
+   "net": "V3P3",
+   "pads": 9,
+   "pins": [
+    "U1 CYPD3177-24LQ: VDDD (power_out)"
+   ],
+   "C parts": [
+    "C4 0.1uF_50V_0603 to GND",
+    "C5 0.1uF_50V_0603 to GND",
+    "C7 1uF_50V_0805 to GND"
+   ],
+   "R parts": [
+    "R11 5k_0.1W_0603 to Net-(U1-VBUS_MAX)",
+    "R13 5.1k_0.1W_0603 to Net-(U1-VBUS_MIN)",
+    "R3 5.1k_0.1W_0603 to Net-(U1-FLIP)",
+    "R5 2.4k_0.1W_0603 to Net-(U1-ISNK_COARSE)",
+    "R7 5.1k_0.1W_0603 to Net-(U1-ISNK_FINE)"
+   ]
+  },
+  "VCC_USB_PD_IN": {
+   "net": "VCC_USB_PD_IN",
+   "pads": 14,
+   "pins": [
+    "J1 USB4056-03-A_REVA2 [Pixxel_Connectors:USB4056-03-A]: VBUS_A (passive) x2",
+    "J1 USB4056-03-A_REVA2 [Pixxel_Connectors:USB4056-03-A]: VBUS_B (passive) x2",
+    "Q1 IRF9358TRPBF: D1_1 (passive)",
+    "Q1 IRF9358TRPBF: D1_2 (passive)",
+    "Q3 BSL308PE: S1 (passive)",
+    "U1 CYPD3177-24LQ: VBUS_IN (power_in)"
+   ],
+   "C parts": [
+    "C1 10uF_50V_1210 to GND",
+    "C2 1uF_50V_0805 to Net-(D1-A)"
+   ],
+   "D parts": [
+    "D2 LED_R to Net-(D2-K)"
+   ],
+   "R parts": [
+    "R18 49.9k_0.1W_0603 to Net-(Q3A-G1)",
+    "R4 10k_0.1W_0603 to Net-(D1-A)"
+   ],
+   "TP parts": [
+    "TP1 VIN"
+   ]
+  },
+  "VCC_USB_PD_OUT": {
+   "net": "VCC_USB_PD_OUT",
+   "pads": 6,
+   "pins": [
+    "J2 796638-2: pin 1 (passive)",
+    "Q1 IRF9358TRPBF: D2_1 (passive)",
+    "Q1 IRF9358TRPBF: D2_2 (passive)",
+    "U1 CYPD3177-24LQ: VDC_OUT (output)"
+   ],
+   "C parts": [
+    "C6 1uF_50V_0805 to Net-(D1-A)",
+    "C8 10uF_50V_1210 to GND"
+   ]
+  },
+  "VCC_USB_SAFE_5V": {
+   "net": "VCC_USB_SAFE_5V",
+   "pads": 2,
+   "pins": [
+    "Q3 BSL308PE: D2 (passive)"
+   ],
+   "D parts": [
+    "D3 LED_R to Net-(D3-K)"
+   ]
+  }
+ },
+ "parts": {
+  "J1": {
+   "ref": "J1",
+   "value": "USB4056-03-A_REVA2",
+   "library": "Pixxel_Connectors:USB4056-03-A",
+   "description": "USB C 3.2 REC, HORZ, HYBRID PCB",
+   "sheet": "USB-PD-Trigger-Board",
+   "pins": [
+    "GND_A (passive), GND_A (passive), GND_B (passive), GND_B (passive), SHELL_GND (unspecified), SHELL_GND (unspecified) ... -> GND",
+    "CC1 (passive) -> Net-(J1-CC1)",
+    "CC2 (passive) -> Net-(J1-CC2)",
+    "VBUS_A (passive), VBUS_A (passive), VBUS_B (passive), VBUS_B (passive) -> VCC_USB_PD_IN",
+    "DN1 (passive) -> unconnected-(J1-DN1-PadA7)",
+    "DN2 (passive) -> unconnected-(J1-DN2-PadB7)",
+    "DP1 (passive) -> unconnected-(J1-DP1-PadA6)",
+    "DP2 (passive) -> unconnected-(J1-DP2-PadB6)",
+    "SBU1 (passive) -> unconnected-(J1-SBU1-PadA8)",
+    "SBU2 (passive) -> unconnected-(J1-SBU2-PadB8)",
+    "SSRXN1 (passive) -> unconnected-(J1-SSRXN1-PadB10)",
+    "SSRXN2 (passive) -> unconnected-(J1-SSRXN2-PadA10)",
+    "SSRXP1 (passive) -> unconnected-(J1-SSRXP1-PadB11)",
+    "SSRXP2 (passive) -> unconnected-(J1-SSRXP2-PadA11)",
+    "SSTXN1 (passive) -> unconnected-(J1-SSTXN1-PadA3)",
+    "SSTXN2 (passive) -> unconnected-(J1-SSTXN2-PadB3)",
+    "SSTXP1 (passive) -> unconnected-(J1-SSTXP1-PadA2)",
+    "SSTXP2 (passive) -> unconnected-(J1-SSTXP2-PadB2)"
+   ]
+  },
+  "J2": {
+   "ref": "J2",
+   "value": "796638-2",
+   "library": "Pixxel_Connectors:796638-2",
+   "description": "2 Position Terminal Block Header, Male Pins, Shrouded (4 Side) 0.200\" (5.08mm) 90\u00b0, Right Angle Through Hole",
+   "sheet": "Output Connector",
+   "pins": [
+    "2 (passive) -> GND",
+    "1 (passive) -> VCC_USB_PD_OUT"
+   ]
+  },
+  "Q1": {
+   "ref": "Q1",
+   "value": "IRF9358TRPBF",
+   "library": "Pixxel_MOSFETs:IRF9358TRPBF",
+   "description": "Infineon IRF9358TRPBF Dual P-channel MOSFET, 9.2 A, 30 V HEXFET, 8-Pin SOIC",
+   "sheet": "USB-PD-Trigger-Board",
+   "pins": [
+    "G2 (passive), G1 (passive) -> Net-(D1-A)",
+    "S2 (passive), S1 (passive) -> Net-(D1-K)",
+    "D1_1 (passive), D1_2 (passive) -> VCC_USB_PD_IN",
+    "D2_1 (passive), D2_2 (passive) -> VCC_USB_PD_OUT"
+   ]
+  },
+  "Q2": {
+   "ref": "Q2",
+   "value": "2N7002",
+   "library": "Transistor_FET:2N7002",
+   "description": "0.115A Id, 60V Vds, N-Channel MOSFET, SOT-23",
+   "sheet": "USB-PD-Trigger-Board",
+   "pins": [
+    "S (passive) -> GND",
+    "D (passive) -> Net-(Q2-D)",
+    "G (input) -> Net-(Q2-G)"
+   ]
+  },
+  "Q3": {
+   "ref": "Q3",
+   "value": "BSL308PE",
+   "library": "Pixxel_MOSFETs:BSL308PE",
+   "description": "Infineon BSL308PE Dual P-channel MOSFET Transistor, -2 A, -30 V, 6-Pin TSOP",
+   "sheet": "USB-PD-Trigger-Board",
+   "pins": [
+    "S2 (passive), D1 (passive) -> Net-(Q3A-D1)",
+    "G1 (passive), G2 (passive) -> Net-(Q3A-G1)",
+    "S1 (passive) -> VCC_USB_PD_IN",
+    "D2 (passive) -> VCC_USB_SAFE_5V"
+   ]
+  },
+  "U1": {
+   "ref": "U1",
+   "value": "CYPD3177-24LQ",
+   "library": "Interface_USB:CYPD3177-24LQ",
+   "description": "Stand-alone USB PD controller (with sink Auto-run mode), QFN-24",
+   "sheet": "USB-PD-Trigger-Board",
+   "pins": [
+    "GND (power_in), GND (passive), GND (passive) -> GND",
+    "CC1 (bidirectional) -> Net-(J1-CC1)",
+    "CC2 (bidirectional) -> Net-(J1-CC2)",
+    "FAULT (output) -> Net-(Q2-G)",
+    "FLIP (output) -> Net-(U1-FLIP)",
+    "ISNK_COARSE (input) -> Net-(U1-ISNK_COARSE)",
+    "ISNK_FINE (input) -> Net-(U1-ISNK_FINE)",
+    "SAFE_PWR_EN (output) -> Net-(U1-SAFE_PWR_EN)",
+    "VBUS_FET_EN (output) -> Net-(U1-VBUS_FET_EN)",
+    "VBUS_MAX (input) -> Net-(U1-VBUS_MAX)",
+    "VBUS_MIN (input) -> Net-(U1-VBUS_MIN)",
+    "VCCD (power_out) -> Net-(U1-VCCD)",
+    "VDDD (power_out) -> V3P3",
+    "VBUS_IN (power_in) -> VCC_USB_PD_IN",
+    "VDC_OUT (output) -> VCC_USB_PD_OUT",
+    "D+ (no_connect) -> unconnected-(U1-D+-Pad17)",
+    "D- (no_connect) -> unconnected-(U1-D--Pad16)",
+    "GPIO_1 (bidirectional) -> unconnected-(U1-GPIO_1-Pad8)",
+    "HPI_SCL (bidirectional) -> unconnected-(U1-HPI_SCL-Pad13)",
+    "HPI_SDA (bidirectional) -> unconnected-(U1-HPI_SDA-Pad12)",
+    "NC (no_connect) -> unconnected-(U1-NC-Pad20)",
+    "NC (no_connect) -> unconnected-(U1-NC-Pad21)",
+    "~{HPI_INT} (input) -> unconnected-(U1-~{HPI_INT}-Pad7)"
+   ]
+  }
+ }
+}

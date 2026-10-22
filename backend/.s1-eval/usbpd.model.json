@@ -1,0 +1,475 @@
+{
+ "seconds": 33.63994026184082,
+ "questions": 27,
+ "nets": [
+  {
+   "subject": "GND",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.9567017482081697,
+   "probabilities": {
+    "supply_rail": 0.0107,
+    "ground": 0.9654,
+    "switch_node": 0.0055,
+    "power_control": 0.0077,
+    "signal": 0.0107
+   }
+  },
+  {
+   "subject": "Net-(D1-A)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.32962683054509206,
+   "probabilities": {
+    "supply_rail": 0.1444,
+    "ground": 0.1125,
+    "switch_node": 0.0414,
+    "power_control": 0.4637,
+    "signal": 0.2381
+   }
+  },
+  {
+   "subject": "Net-(D1-K)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.13794914655643828,
+   "probabilities": {
+    "supply_rail": 0.0693,
+    "ground": 0.2855,
+    "switch_node": 0.1466,
+    "power_control": 0.1882,
+    "signal": 0.3104
+   }
+  },
+  {
+   "subject": "Net-(J1-CC1)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.3338863282100332,
+   "probabilities": {
+    "supply_rail": 0.0535,
+    "ground": 0.4671,
+    "switch_node": 0.0093,
+    "power_control": 0.0747,
+    "signal": 0.3954
+   }
+  },
+  {
+   "subject": "Net-(J1-CC2)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.3399329799489645,
+   "probabilities": {
+    "supply_rail": 0.0497,
+    "ground": 0.4719,
+    "switch_node": 0.0094,
+    "power_control": 0.0694,
+    "signal": 0.3995
+   }
+  },
+  {
+   "subject": "Net-(Q2-D)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.26430276322080754,
+   "probabilities": {
+    "supply_rail": 0.0658,
+    "ground": 0.3204,
+    "switch_node": 0.0845,
+    "power_control": 0.1179,
+    "signal": 0.4114
+   }
+  },
+  {
+   "subject": "Net-(Q2-G)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.6238055573445791,
+   "probabilities": {
+    "supply_rail": 0.0194,
+    "ground": 0.1695,
+    "switch_node": 0.0092,
+    "power_control": 0.1028,
+    "signal": 0.699
+   }
+  },
+  {
+   "subject": "Net-(Q3A-D1)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.31405503882471264,
+   "probabilities": {
+    "supply_rail": 0.0926,
+    "ground": 0.4512,
+    "switch_node": 0.0476,
+    "power_control": 0.0852,
+    "signal": 0.3233
+   }
+  },
+  {
+   "subject": "Net-(Q3A-G1)",
+   "question": "role",
+   "answer": "ground",
+   "confidence": 0.23799174077414156,
+   "probabilities": {
+    "supply_rail": 0.0871,
+    "ground": 0.3904,
+    "switch_node": 0.0078,
+    "power_control": 0.2574,
+    "signal": 0.2574
+   }
+  },
+  {
+   "subject": "Net-(U1-FLIP)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.7664761312855201,
+   "probabilities": {
+    "supply_rail": 0.052,
+    "ground": 0.0176,
+    "switch_node": 0.0315,
+    "power_control": 0.0857,
+    "signal": 0.8132
+   }
+  },
+  {
+   "subject": "Net-(U1-ISNK_COARSE)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.76394837198371,
+   "probabilities": {
+    "supply_rail": 0.0564,
+    "ground": 0.0613,
+    "switch_node": 0.0149,
+    "power_control": 0.0564,
+    "signal": 0.8112
+   }
+  },
+  {
+   "subject": "Net-(U1-ISNK_FINE)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.792293398653123,
+   "probabilities": {
+    "supply_rail": 0.0274,
+    "ground": 0.0323,
+    "switch_node": 0.0109,
+    "power_control": 0.0955,
+    "signal": 0.8338
+   }
+  },
+  {
+   "subject": "Net-(U1-SAFE_PWR_EN)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.4571752729093465,
+   "probabilities": {
+    "supply_rail": 0.0145,
+    "ground": 0.0095,
+    "switch_node": 0.0049,
+    "power_control": 0.5657,
+    "signal": 0.4054
+   }
+  },
+  {
+   "subject": "Net-(U1-VBUS_FET_EN)",
+   "question": "role",
+   "answer": "power_control",
+   "confidence": 0.6590744845569648,
+   "probabilities": {
+    "supply_rail": 0.0104,
+    "ground": 0.0074,
+    "switch_node": 0.0088,
+    "power_control": 0.7273,
+    "signal": 0.2462
+   }
+  },
+  {
+   "subject": "Net-(U1-VBUS_MAX)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.4519194886947201,
+   "probabilities": {
+    "supply_rail": 0.0898,
+    "ground": 0.0501,
+    "switch_node": 0.0103,
+    "power_control": 0.2883,
+    "signal": 0.5615
+   }
+  },
+  {
+   "subject": "Net-(U1-VBUS_MIN)",
+   "question": "role",
+   "answer": "signal",
+   "confidence": 0.3978480821907209,
+   "probabilities": {
+    "supply_rail": 0.0546,
+    "ground": 0.0462,
+    "switch_node": 0.0095,
+    "power_control": 0.3714,
+    "signal": 0.5183
+   }
+  },
+  {
+   "subject": "Net-(U1-VCCD)",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.6763198919780056,
+   "probabilities": {
+    "supply_rail": 0.7411,
+    "ground": 0.0312,
+    "switch_node": 0.0148,
+    "power_control": 0.1521,
+    "signal": 0.0608
+   }
+  },
+  {
+   "subject": "V3P3",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.16373483030119748,
+   "probabilities": {
+    "supply_rail": 0.331,
+    "ground": 0.0872,
+    "switch_node": 0.0195,
+    "power_control": 0.3045,
+    "signal": 0.2578
+   }
+  },
+  {
+   "subject": "VCC_USB_PD_IN",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.5983171970755385,
+   "probabilities": {
+    "supply_rail": 0.6787,
+    "ground": 0.0605,
+    "switch_node": 0.0147,
+    "power_control": 0.1179,
+    "signal": 0.1282
+   }
+  },
+  {
+   "subject": "VCC_USB_PD_OUT",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.750739129094497,
+   "probabilities": {
+    "supply_rail": 0.8006,
+    "ground": 0.0173,
+    "switch_node": 0.0263,
+    "power_control": 0.0844,
+    "signal": 0.0714
+   }
+  },
+  {
+   "subject": "VCC_USB_SAFE_5V",
+   "question": "role",
+   "answer": "supply_rail",
+   "confidence": 0.5976113308321607,
+   "probabilities": {
+    "supply_rail": 0.6781,
+    "ground": 0.0205,
+    "switch_node": 0.0114,
+    "power_control": 0.0605,
+    "signal": 0.2295
+   }
+  }
+ ],
+ "parts": [
+  {
+   "subject": "J1",
+   "question": "role",
+   "answer": "power_input",
+   "confidence": 0.4288740300233973,
+   "probabilities": {
+    "switching_regulator": 0.0041,
+    "linear_regulator": 0.0052,
+    "power_switch": 0.03,
+    "power_input": 0.5105,
+    "load": 0.0419,
+    "signal_connector": 0.2621,
+    "other": 0.1463
+   }
+  },
+  {
+   "subject": "J2",
+   "question": "role",
+   "answer": "signal_connector",
+   "confidence": 0.8047831926006531,
+   "probabilities": {
+    "switching_regulator": 0.0052,
+    "linear_regulator": 0.0061,
+    "power_switch": 0.0251,
+    "power_input": 0.018,
+    "load": 0.0251,
+    "signal_connector": 0.8327,
+    "other": 0.0878
+   }
+  },
+  {
+   "subject": "Q1",
+   "question": "role",
+   "answer": "power_switch",
+   "confidence": 0.7587777611538036,
+   "probabilities": {
+    "switching_regulator": 0.0599,
+    "linear_regulator": 0.0104,
+    "power_switch": 0.7932,
+    "power_input": 0.0081,
+    "load": 0.0651,
+    "signal_connector": 0.0081,
+    "other": 0.0551
+   }
+  },
+  {
+   "subject": "Q2",
+   "question": "role",
+   "answer": "power_switch",
+   "confidence": 0.8915129172620284,
+   "probabilities": {
+    "switching_regulator": 0.0298,
+    "linear_regulator": 0.0093,
+    "power_switch": 0.907,
+    "power_input": 0.0056,
+    "load": 0.0232,
+    "signal_connector": 0.0085,
+    "other": 0.0166
+   }
+  },
+  {
+   "subject": "Q3",
+   "question": "role",
+   "answer": "power_switch",
+   "confidence": 0.7737195877765758,
+   "probabilities": {
+    "switching_regulator": 0.0369,
+    "linear_regulator": 0.0106,
+    "power_switch": 0.806,
+    "power_input": 0.0082,
+    "load": 0.0923,
+    "signal_connector": 0.009,
+    "other": 0.0369
+   }
+  },
+  {
+   "subject": "U1",
+   "question": "role",
+   "answer": "load",
+   "confidence": 0.3829465451349095,
+   "probabilities": {
+    "switching_regulator": 0.2419,
+    "linear_regulator": 0.0199,
+    "power_switch": 0.2419,
+    "power_input": 0.0094,
+    "load": 0.4711,
+    "signal_connector": 0.0086,
+    "other": 0.0073
+   }
+  }
+ ],
+ "voltages": [
+  {
+   "subject": "Net-(U1-VCCD)",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.5215739821302269,
+   "probabilities": {
+    "0.75": 0.0117,
+    "0.8": 0.0177,
+    "0.85": 0.0138,
+    "0.9": 0.0193,
+    "1.0": 0.0292,
+    "1.05": 0.0117,
+    "1.1": 0.015,
+    "1.2": 0.0247,
+    "1.35": 0.0055,
+    "1.5": 0.0099,
+    "1.8": 0.0138,
+    "2.5": 0.0375,
+    "2.8": 0.0117,
+    "3.0": 0.0107,
+    "3.3": 0.1423,
+    "3.6": 0.015,
+    "4.2": 0.0071,
+    "5.0": 0.0228,
+    "9.0": 0.0026,
+    "12": 0.0028,
+    "15": 0.004,
+    "19": 0.006,
+    "20": 0.0022,
+    "24": 0.0209,
+    "48": 0.002,
+    "unknown": 0.54
+   }
+  },
+  {
+   "subject": "VCC_USB_PD_IN",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.4949962089299728,
+   "probabilities": {
+    "0.75": 0.0073,
+    "0.8": 0.0102,
+    "0.85": 0.0087,
+    "0.9": 0.0073,
+    "1.0": 0.0143,
+    "1.05": 0.0073,
+    "1.1": 0.0068,
+    "1.2": 0.0131,
+    "1.35": 0.0053,
+    "1.5": 0.008,
+    "1.8": 0.0121,
+    "2.5": 0.0388,
+    "2.8": 0.0094,
+    "3.0": 0.0094,
+    "3.3": 0.0542,
+    "3.6": 0.0121,
+    "4.2": 0.0184,
+    "5.0": 0.0236,
+    "9.0": 0.0068,
+    "12": 0.0143,
+    "15": 0.0199,
+    "19": 0.0094,
+    "20": 0.0038,
+    "24": 0.1602,
+    "48": 0.0048,
+    "unknown": 0.5144
+   }
+  },
+  {
+   "subject": "VCC_USB_PD_OUT",
+   "question": "volts",
+   "answer": "unknown",
+   "confidence": 0.5305364218231012,
+   "probabilities": {
+    "0.75": 0.0078,
+    "0.8": 0.0085,
+    "0.85": 0.0078,
+    "0.9": 0.0092,
+    "1.0": 0.018,
+    "1.05": 0.0092,
+    "1.1": 0.0092,
+    "1.2": 0.014,
+    "1.35": 0.0072,
+    "1.5": 0.0119,
+    "1.8": 0.018,
+    "2.5": 0.0877,
+    "2.8": 0.0109,
+    "3.0": 0.014,
+    "3.3": 0.1036,
+    "3.6": 0.01,
+    "4.2": 0.0119,
+    "5.0": 0.0166,
+    "9.0": 0.0044,
+    "12": 0.0066,
+    "15": 0.0085,
+    "19": 0.0056,
+    "20": 0.0026,
+    "24": 0.045,
+    "48": 0.0029,
+    "unknown": 0.5486
+   }
+  }
+ ]
+}

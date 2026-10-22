@@ -1,0 +1,257 @@
+{
+ "nets": [
+  {
+   "who": "regex",
+   "n": 262,
+   "accuracy": 0.95,
+   "per_role": {
+    "ground": {
+     "n": 2,
+     "precision": 1.0,
+     "recall": 0.5
+    },
+    "power_control": {
+     "n": 13,
+     "precision": 1.0,
+     "recall": 0.385
+    },
+    "signal": {
+     "n": 221,
+     "precision": 0.957,
+     "recall": 0.995
+    },
+    "supply_rail": {
+     "n": 21,
+     "precision": 0.9,
+     "recall": 0.857
+    },
+    "switch_node": {
+     "n": 5,
+     "precision": 0.833,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "/LAN969x GPIO/eMMC/EMMC_VDDI: supply_rail -> signal",
+    "/USB0_OC_DET: power_control -> signal",
+    "/USB0_VBUS: supply_rail -> signal",
+    "Net-(U14-BST): power_control -> signal",
+    "Net-(U14-FB): power_control -> signal",
+    "Net-(U14-VCC): supply_rail -> switch_node",
+    "Net-(U1A-RESERVED_5): signal -> supply_rail",
+    "Net-(U1E-VSSPLL): ground -> supply_rail",
+    "Net-(U3-EN): power_control -> signal",
+    "Net-(U3-FB): power_control -> signal",
+    "Net-(U3-MODE): power_control -> signal",
+    "Net-(U8-FB): power_control -> signal",
+    "Net-(U9-FB): power_control -> signal"
+   ]
+  },
+  {
+   "who": "model",
+   "n": 262,
+   "accuracy": 0.927,
+   "per_role": {
+    "ground": {
+     "n": 2,
+     "precision": 0.222,
+     "recall": 1.0
+    },
+    "power_control": {
+     "n": 13,
+     "precision": 0.75,
+     "recall": 0.923
+    },
+    "signal": {
+     "n": 221,
+     "precision": 0.995,
+     "recall": 0.95
+    },
+    "supply_rail": {
+     "n": 21,
+     "precision": 0.708,
+     "recall": 0.81
+    },
+    "switch_node": {
+     "n": 5,
+     "precision": 1.0,
+     "recall": 0.4
+    }
+   },
+   "errors": [
+    "+1V0_ENET: supply_rail -> ground",
+    "+1V2: supply_rail -> power_control",
+    "+20V0: supply_rail -> power_control",
+    "/LAN969x GPIO/eMMC/EMMC_VDDI: supply_rail -> ground",
+    "/MGMT_LED1: signal -> supply_rail",
+    "/USB0_OC_DET: power_control -> signal",
+    "/~{MGMT_LED2}: signal -> supply_rail",
+    "Net-(U12-CT): signal -> power_control",
+    "Net-(U12-~{MR}): signal -> power_control",
+    "Net-(U1A-RESERVED_5): signal -> supply_rail",
+    "Net-(U1A-RESERVED_6): signal -> ground",
+    "Net-(U1A-RESERVED_7): signal -> ground",
+    "Net-(U1D-DDR_RZQ): signal -> ground",
+    "Net-(U2A-ZQ): signal -> ground",
+    "Net-(U4-REG_OUT): switch_node -> supply_rail",
+    "Net-(U7-RBIAS): signal -> ground",
+    "Net-(U7-VBUS): signal -> supply_rail",
+    "Net-(U8-SW): switch_node -> supply_rail",
+    "Net-(U9-SW): switch_node -> supply_rail"
+   ],
+   "auto@0.5": {
+    "share": 0.939,
+    "accuracy": 0.959
+   },
+   "auto@0.7": {
+    "share": 0.855,
+    "accuracy": 0.973
+   },
+   "auto@0.9": {
+    "share": 0.328,
+    "accuracy": 1.0
+   }
+  }
+ ],
+ "parts": [
+  {
+   "who": "regex",
+   "n": 18,
+   "accuracy": 0.889,
+   "per_role": {
+    "linear_regulator": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "load": {
+     "n": 11,
+     "precision": 1.0,
+     "recall": 0.818
+    },
+    "other": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_input": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "switching_regulator": {
+     "n": 4,
+     "precision": 0.667,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "U4: load -> switching_regulator",
+    "U7: load -> switching_regulator"
+   ]
+  },
+  {
+   "who": "model",
+   "n": 18,
+   "accuracy": 0.944,
+   "per_role": {
+    "linear_regulator": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "load": {
+     "n": 11,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "other": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_input": {
+     "n": 1,
+     "precision": null,
+     "recall": 0.0
+    },
+    "switching_regulator": {
+     "n": 4,
+     "precision": 1.0,
+     "recall": 1.0
+    }
+   },
+   "errors": [
+    "J1: power_input -> signal_connector"
+   ],
+   "auto@0.5": {
+    "share": 0.944,
+    "accuracy": 0.941
+   },
+   "auto@0.7": {
+    "share": 0.889,
+    "accuracy": 0.938
+   },
+   "auto@0.9": {
+    "share": 0.5,
+    "accuracy": 1.0
+   }
+  }
+ ],
+ "unnamed_rail_voltages": {
+  "who": "model",
+  "n": 12,
+  "accuracy": 0.5,
+  "per_role": {
+   "0.9": {
+    "n": 4,
+    "precision": null,
+    "recall": 0.0
+   },
+   "1.8": {
+    "n": 5,
+    "precision": 1.0,
+    "recall": 0.8
+   },
+   "3.3": {
+    "n": 1,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "5.0": {
+    "n": 1,
+    "precision": null,
+    "recall": 0.0
+   },
+   "unknown": {
+    "n": 1,
+    "precision": 0.143,
+    "recall": 1.0
+   }
+  },
+  "errors": [
+   "/LAN969x Power/VDDHS: 0.9 -> unknown",
+   "/LAN969x Power/VDDHS_PCIE: 0.9 -> unknown",
+   "/LAN969x Power/VDDHV: 0.9 -> unknown",
+   "/LAN969x Power/VDDHV_PCIE: 0.9 -> unknown",
+   "/USB0_VBUS: 5.0 -> unknown",
+   "Net-(U1E-VDDPLL): 1.8 -> unknown"
+  ]
+ },
+ "label_mix": {
+  "nets": {
+   "supply_rail": 21,
+   "signal": 221,
+   "switch_node": 5,
+   "power_control": 13,
+   "ground": 2
+  },
+  "parts": {
+   "power_input": 1,
+   "other": 1,
+   "load": 11,
+   "switching_regulator": 4,
+   "linear_regulator": 1
+  }
+ }
+}

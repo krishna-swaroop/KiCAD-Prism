@@ -24,7 +24,7 @@ class BoardFacts:
     net_pads: dict[str, tuple[str, ...]] = field(default_factory=dict)
     #: "REF.PAD" -> (pin name, electrical type), from the schematic symbol
     pins: dict[str, tuple[str, str]] = field(default_factory=dict)
-    #: refdes -> {"value", "library_ref", "description"}
+    #: refdes -> {"value", "library_ref", "description", "sheet"}
     parts: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def pin_ref(self, refdes: str, pad: str) -> str:
@@ -60,6 +60,7 @@ def from_semantic_index(index: dict[str, Any], board_id: str = BOARD_ID) -> Boar
             "value": str(component.get("value") or ""),
             "library_ref": str(component.get("libraryRef") or ""),
             "description": str((component.get("fields") or {}).get("Description") or ""),
+            "sheet": str((component.get("fields") or {}).get("Sheetname") or ""),
         }
         for component in index.get("components") or ()
         if component.get("reference") and component.get("pcbRefs")

@@ -1,0 +1,4378 @@
+{
+ "nets": {
+  "+1V1": {
+   "net": "+1V1",
+   "pads": 17,
+   "pins": [
+    "IC1 ECP5-BGA256: VCC_1 (power_in)",
+    "IC1 ECP5-BGA256: VCC_2 (power_in)",
+    "IC1 ECP5-BGA256: VCC_3 (power_in)",
+    "IC1 ECP5-BGA256: VCC_6 (power_in)",
+    "IC1 ECP5-BGA256: VCC_4 (power_in)",
+    "IC1 ECP5-BGA256: VCC_5 (power_in)",
+    "U4 1V15REG [Regulator_Linear:MIC5504-1.8YM5]: VOUT (power_out)"
+   ],
+   "C parts": [
+    "C1 2.2uF to GND",
+    "C11 0.1uF to GND",
+    "C13 1uF to GND",
+    "C15 0.1uF to GND",
+    "C17 1uF to GND",
+    "C29 1uF to GND",
+    "... 3 more"
+   ],
+   "TP parts": [
+    "TP4 TestPoint"
+   ]
+  },
+  "+2V5": {
+   "net": "+2V5",
+   "pads": 8,
+   "pins": [
+    "IC1 ECP5-BGA256: VCCAUX_1 (power_in)",
+    "IC1 ECP5-BGA256: VCCAUX_2 (power_in)",
+    "U5 2V5REG [Regulator_Linear:MIC5504-2.5YM5]: VOUT (power_out)"
+   ],
+   "C parts": [
+    "C22 1uF to GND",
+    "C24 0.1uF to GND",
+    "C26 0.1uF to GND",
+    "C30 1uF to GND"
+   ],
+   "TP parts": [
+    "TP5 TestPoint"
+   ]
+  },
+  "+3V3": {
+   "net": "+3V3",
+   "pads": 155,
+   "pins": [
+    "IC1 ECP5-BGA256: PT47A (bidirectional)",
+    "IC1 ECP5-BGA256: PT47B (bidirectional)",
+    "IC1 ECP5-BGA256: PT51B (bidirectional)",
+    "IC1 ECP5-BGA256: PT20A (bidirectional)",
+    "IC1 ECP5-BGA256: PT24A (bidirectional)",
+    "IC1 ECP5-BGA256: VCCIO1_1 (power_in)",
+    "IC1 ECP5-BGA256: VCCIO1_2 (power_in)",
+    "IC1 ECP5-BGA256: PR8D (bidirectional)",
+    "IC1 ECP5-BGA256: VCCIO0_1 (power_in)",
+    "IC1 ECP5-BGA256: VCCIO0_2 (power_in)",
+    "IC1 ECP5-BGA256: VCCIO2_1 (power_in)",
+    "IC1 ECP5-BGA256: VCCIO2_2 (power_in)",
+    "IC1 ECP5-BGA256: PR17D (bidirectional)",
+    "IC1 ECP5-BGA256: VCCIO6_1 (power_in)",
+    "IC1 ECP5-BGA256: VCCIO6_2 (power_in)",
+    "IC1 ECP5-BGA256: VCCIO3_1 (power_in)",
+    "IC1 ECP5-BGA256: PR29B (bidirectional)",
+    "IC1 ECP5-BGA256: VCCIO3_2 (power_in)",
+    "IC1 ECP5-BGA256: PR29D (bidirectional)",
+    "IC1 ECP5-BGA256: PL29C (bidirectional)",
+    "IC1 ECP5-BGA256: VCCIO8 (power_in)",
+    "IC1 ECP5-BGA256: PR47A (bidirectional)",
+    "IC1 ECP5-BGA256: PL35C (bidirectional)",
+    "IC1 ECP5-BGA256: PL44C (bidirectional)",
+    "... 49 more"
+   ],
+   "C parts": [
+    "C10 0.1uF to GND",
+    "C12 0.1uF to GND",
+    "C14 0.1uF to GND",
+    "C16 1uF to GND",
+    "C18 1uF to GND",
+    "C2 2.2uF to GND",
+    "... 30 more"
+   ],
+   "D parts": [
+    "D2 RED to Net-(D2-K)",
+    "D3 ORANGE to Net-(D3-K)",
+    "D4 YELLOW to Net-(D4-K)",
+    "D5 GREEN to Net-(D5-K)",
+    "D6 BLUE to Net-(D6-K)",
+    "D7 PURPLE to Net-(D7-K)"
+   ],
+   "R parts": [
+    "R10 2.2k to Net-(D13-A)",
+    "R100 10k to TARGET_C.~{FAULT}",
+    "R101 8.06k\u00b11% to Net-(R101-Pad2)",
+    "R106 10k to Net-(R106-Pad2)",
+    "R109 5.1k to FPGA_FLASH_CLK",
+    "R11 5.1k to Net-(D14-A)",
+    "... 28 more"
+   ],
+   "TP parts": [
+    "TP2 TestPoint",
+    "TP26 TestPoint",
+    "TP3 TestPoint",
+    "TP9 TestPoint"
+   ],
+   "Y parts": [
+    "Y1 Osc60MHz"
+   ]
+  },
+  "+5V": {
+   "net": "+5V",
+   "pads": 9,
+   "pins": [
+    "U3 3V3REG [support_hardware:AP7361EA-XXFGE-7]: EN (input)",
+    "U3 3V3REG [support_hardware:AP7361EA-XXFGE-7]: IN (power_in)"
+   ],
+   "C parts": [
+    "C6 1uF to GND"
+   ],
+   "D parts": [
+    "D1 D to Net-(D1-A)",
+    "D19 6.2\u00b12% to GND",
+    "D8 D to Net-(D8-A)",
+    "D9 SCHOTTKY to Net-(D9-A)"
+   ],
+   "TP parts": [
+    "TP30 TestPoint",
+    "TP49 TestPoint"
+   ]
+  },
+  "/AUX Port/AUX PHY/CLK": {
+   "net": "CLK",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: REFCLK/XI (input)"
+   ],
+   "RN parts": [
+    "RN8 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DATA0": {
+   "net": "DATA0",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DATA0 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN9 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DATA1": {
+   "net": "DATA1",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DATA1 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN9 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DATA2": {
+   "net": "DATA2",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DATA2 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN9 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DATA3": {
+   "net": "DATA3",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DATA3 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN9 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DATA4": {
+   "net": "DATA4",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DATA4 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN10 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DATA5": {
+   "net": "DATA5",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DATA5 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN10 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DATA6": {
+   "net": "DATA6",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DATA6 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN10 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DATA7": {
+   "net": "DATA7",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DATA7 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN10 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/DIR": {
+   "net": "DIR",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: DIR (output)"
+   ],
+   "RN parts": [
+    "RN8 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/NXT": {
+   "net": "NXT",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: NXT (output)"
+   ],
+   "RN parts": [
+    "RN8 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/PHY_D+": {
+   "net": "PHY_D+",
+   "pads": 2,
+   "pins": [
+    "FL1 Filter_EMI_CommonMode: pin 1 (passive)",
+    "U11 USB3343-CP [usb:USB3343]: D+ (bidirectional)"
+   ]
+  },
+  "/AUX Port/AUX PHY/PHY_D-": {
+   "net": "PHY_D-",
+   "pads": 2,
+   "pins": [
+    "FL1 Filter_EMI_CommonMode: pin 3 (passive)",
+    "U11 USB3343-CP [usb:USB3343]: D- (bidirectional)"
+   ]
+  },
+  "/AUX Port/AUX PHY/RBIAS": {
+   "net": "RBIAS",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: RBIAS (input)"
+   ],
+   "R parts": [
+    "R20 8.06k\u00b11% to GND"
+   ]
+  },
+  "/AUX Port/AUX PHY/STP": {
+   "net": "STP",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: STP (input)"
+   ],
+   "RN parts": [
+    "RN8 0"
+   ]
+  },
+  "/AUX Port/AUX PHY/VBUS_CLAMPED": {
+   "net": "VBUS_CLAMPED",
+   "pads": 4,
+   "pins": [
+    "U12 FUSB302B [Interface_USB:FUSB302BMPX]: VBUS (input)"
+   ],
+   "D parts": [
+    "D15 24\u00b12% to GND"
+   ],
+   "R parts": [
+    "R21 20k to VBUS_SENSE",
+    "R44 5.1k to AUX_VBUS_IN"
+   ]
+  },
+  "/AUX Port/AUX PHY/VBUS_SENSE": {
+   "net": "VBUS_SENSE",
+   "pads": 2,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: VBUS (bidirectional)"
+   ],
+   "R parts": [
+    "R21 20k to VBUS_CLAMPED"
+   ]
+  },
+  "/AUX Port/AUX PHY/VDD18": {
+   "net": "VDD18",
+   "pads": 3,
+   "pins": [
+    "U11 USB3343-CP [usb:USB3343]: VDD18 (passive)"
+   ],
+   "C parts": [
+    "C50 1uF to GND"
+   ],
+   "TP parts": [
+    "TP35 TestPoint"
+   ]
+  },
+  "/AUX Port/AUX Type C Controller/CC1": {
+   "net": "CC1",
+   "pads": 3,
+   "pins": [
+    "J1 USB_C [Connector:USB_C_Receptacle_USB2.0]: CC1 (bidirectional)",
+    "U14 DPO2036: CC1C (bidirectional)"
+   ],
+   "C parts": [
+    "C52 330pF to GND"
+   ]
+  },
+  "/AUX Port/AUX Type C Controller/CC1S": {
+   "net": "CC1S",
+   "pads": 3,
+   "pins": [
+    "U12 FUSB302B [Interface_USB:FUSB302BMPX]: CC1 (bidirectional) x2",
+    "U14 DPO2036: CC1S (bidirectional)"
+   ]
+  },
+  "/AUX Port/AUX Type C Controller/CC2": {
+   "net": "CC2",
+   "pads": 3,
+   "pins": [
+    "J1 USB_C [Connector:USB_C_Receptacle_USB2.0]: CC2 (bidirectional)",
+    "U14 DPO2036: CC2C (bidirectional)"
+   ],
+   "C parts": [
+    "C53 330pF to GND"
+   ]
+  },
+  "/AUX Port/AUX Type C Controller/CC2S": {
+   "net": "CC2S",
+   "pads": 3,
+   "pins": [
+    "U12 FUSB302B [Interface_USB:FUSB302BMPX]: CC2 (bidirectional) x2",
+    "U14 DPO2036: CC2S (bidirectional)"
+   ]
+  },
+  "/AUX Port/AUX Type C Controller/VCONN": {
+   "net": "VCONN",
+   "pads": 5,
+   "pins": [
+    "U12 FUSB302B [Interface_USB:FUSB302BMPX]: VCONN (power_in) x2"
+   ],
+   "C parts": [
+    "C51 0.1uF to GND"
+   ],
+   "R parts": [
+    "R32 0 to +3V3"
+   ],
+   "TP parts": [
+    "TP37 TestPoint"
+   ]
+  },
+  "/AUX Port/AUX_D+": {
+   "net": "AUX_D+",
+   "pads": 3,
+   "pins": [
+    "FL1 Filter_EMI_CommonMode: pin 2 (passive)",
+    "J1 USB_C [Connector:USB_C_Receptacle_USB2.0]: D+ (bidirectional) x2"
+   ]
+  },
+  "/AUX Port/AUX_D-": {
+   "net": "AUX_D-",
+   "pads": 3,
+   "pins": [
+    "FL1 Filter_EMI_CommonMode: pin 4 (passive)",
+    "J1 USB_C [Connector:USB_C_Receptacle_USB2.0]: D- (bidirectional) x2"
+   ]
+  },
+  "/AUX Port/AUX_PHY.CLK": {
+   "net": "AUX_PHY.CLK",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR8A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN8 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DATA0": {
+   "net": "AUX_PHY.DATA0",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR14A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN9 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DATA1": {
+   "net": "AUX_PHY.DATA1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR14B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN9 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DATA2": {
+   "net": "AUX_PHY.DATA2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR20A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN9 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DATA3": {
+   "net": "AUX_PHY.DATA3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR20B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN9 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DATA4": {
+   "net": "AUX_PHY.DATA4",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR23B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN10 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DATA5": {
+   "net": "AUX_PHY.DATA5",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR23A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN10 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DATA6": {
+   "net": "AUX_PHY.DATA6",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR23D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN10 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DATA7": {
+   "net": "AUX_PHY.DATA7",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR23C (bidirectional)"
+   ],
+   "RN parts": [
+    "RN10 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.DIR": {
+   "net": "AUX_PHY.DIR",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR11D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN8 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.NXT": {
+   "net": "AUX_PHY.NXT",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR11C (bidirectional)"
+   ],
+   "RN parts": [
+    "RN8 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.STP": {
+   "net": "AUX_PHY.STP",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR8B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN8 0"
+   ]
+  },
+  "/AUX Port/AUX_PHY.~{RESET}": {
+   "net": "AUX_PHY.~{RESET}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PR17C (bidirectional)",
+    "U11 USB3343-CP [usb:USB3343]: ~{RESET} (input)"
+   ],
+   "R parts": [
+    "R24 10k to GND"
+   ]
+  },
+  "/AUX Port/AUX_SBU1": {
+   "net": "AUX_SBU1",
+   "pads": 2,
+   "pins": [
+    "J1 USB_C [Connector:USB_C_Receptacle_USB2.0]: SBU1 (bidirectional)",
+    "U14 DPO2036: SBU2C (bidirectional)"
+   ]
+  },
+  "/AUX Port/AUX_SBU2": {
+   "net": "AUX_SBU2",
+   "pads": 2,
+   "pins": [
+    "J1 USB_C [Connector:USB_C_Receptacle_USB2.0]: SBU2 (bidirectional)",
+    "U14 DPO2036: SBU1C (bidirectional)"
+   ]
+  },
+  "/AUX Port/AUX_TYPE_C.SBU1S": {
+   "net": "AUX_TYPE_C.SBU1S",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR17B (bidirectional)",
+    "U14 DPO2036: SBU2S (bidirectional)"
+   ]
+  },
+  "/AUX Port/AUX_TYPE_C.SBU2S": {
+   "net": "AUX_TYPE_C.SBU2S",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR20D (bidirectional)",
+    "U14 DPO2036: SBU1S (bidirectional)"
+   ]
+  },
+  "/AUX Port/AUX_TYPE_C.SCL": {
+   "net": "AUX_TYPE_C.SCL",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PR17A (bidirectional)",
+    "U12 FUSB302B [Interface_USB:FUSB302BMPX]: SCL (input)"
+   ],
+   "R parts": [
+    "R38 2.2k to +3V3"
+   ]
+  },
+  "/AUX Port/AUX_TYPE_C.SDA": {
+   "net": "AUX_TYPE_C.SDA",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PR14C (bidirectional)",
+    "U12 FUSB302B [Interface_USB:FUSB302BMPX]: SDA (bidirectional)"
+   ],
+   "R parts": [
+    "R33 2.2k to +3V3"
+   ]
+  },
+  "/AUX Port/AUX_TYPE_C.~{FAULT}": {
+   "net": "AUX_TYPE_C.~{FAULT}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PR20C (bidirectional)",
+    "U14 DPO2036: FAULTB (open_collector)"
+   ],
+   "R parts": [
+    "R99 10k to +3V3"
+   ]
+  },
+  "/AUX Port/AUX_TYPE_C.~{INT}": {
+   "net": "AUX_TYPE_C.~{INT}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PR14D (bidirectional)",
+    "U12 FUSB302B [Interface_USB:FUSB302BMPX]: INT_N (open_collector)"
+   ],
+   "R parts": [
+    "R39 10k to +3V3"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/CLK": {
+   "net": "CLK",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: REFCLK/XI (input)"
+   ],
+   "RN parts": [
+    "RN5 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DATA0": {
+   "net": "DATA0",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DATA0 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN6 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DATA1": {
+   "net": "DATA1",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DATA1 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN6 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DATA2": {
+   "net": "DATA2",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DATA2 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN6 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DATA3": {
+   "net": "DATA3",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DATA3 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN6 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DATA4": {
+   "net": "DATA4",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DATA4 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN7 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DATA5": {
+   "net": "DATA5",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DATA5 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN7 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DATA6": {
+   "net": "DATA6",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DATA6 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN7 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DATA7": {
+   "net": "DATA7",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DATA7 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN7 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/DIR": {
+   "net": "DIR",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: DIR (output)"
+   ],
+   "RN parts": [
+    "RN5 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/NXT": {
+   "net": "NXT",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: NXT (output)"
+   ],
+   "RN parts": [
+    "RN5 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/PHY_D+": {
+   "net": "PHY_D+",
+   "pads": 2,
+   "pins": [
+    "FL3 Filter_EMI_CommonMode: pin 1 (passive)",
+    "U8 USB3343-CP [usb:USB3343]: D+ (bidirectional)"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/PHY_D-": {
+   "net": "PHY_D-",
+   "pads": 2,
+   "pins": [
+    "FL3 Filter_EMI_CommonMode: pin 3 (passive)",
+    "U8 USB3343-CP [usb:USB3343]: D- (bidirectional)"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/RBIAS": {
+   "net": "RBIAS",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: RBIAS (input)"
+   ],
+   "R parts": [
+    "R16 8.06k\u00b11% to GND"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/STP": {
+   "net": "STP",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: STP (input)"
+   ],
+   "RN parts": [
+    "RN5 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/VBUS_SENSE": {
+   "net": "VBUS_SENSE",
+   "pads": 2,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: VBUS (bidirectional)"
+   ],
+   "R parts": [
+    "R17 20k to VBUS_CLAMPED"
+   ]
+  },
+  "/CONTROL Port/CONTROL PHY/VDD18": {
+   "net": "VDD18",
+   "pads": 3,
+   "pins": [
+    "U8 USB3343-CP [usb:USB3343]: VDD18 (passive)"
+   ],
+   "C parts": [
+    "C37 1uF to GND"
+   ],
+   "TP parts": [
+    "TP17 TestPoint"
+   ]
+  },
+  "/CONTROL Port/CONTROL_CC1": {
+   "net": "CONTROL_CC1",
+   "pads": 3,
+   "pins": [
+    "J2 USB_C [Connector:USB_C_Receptacle_USB2.0]: CC1 (bidirectional)"
+   ],
+   "C parts": [
+    "C25 330pF to GND"
+   ],
+   "R parts": [
+    "R34 5.1k to GND"
+   ]
+  },
+  "/CONTROL Port/CONTROL_CC2": {
+   "net": "CONTROL_CC2",
+   "pads": 3,
+   "pins": [
+    "J2 USB_C [Connector:USB_C_Receptacle_USB2.0]: CC2 (bidirectional)"
+   ],
+   "C parts": [
+    "C47 330pF to GND"
+   ],
+   "R parts": [
+    "R35 5.1k to GND"
+   ]
+  },
+  "/CONTROL Port/CONTROL_D+": {
+   "net": "CONTROL_D+",
+   "pads": 4,
+   "pins": [
+    "J2 USB_C [Connector:USB_C_Receptacle_USB2.0]: D+ (bidirectional) x2",
+    "U16 PI3USB102G [TC7USB42MU_1]: D- (bidirectional)"
+   ],
+   "R parts": [
+    "R56 820k to CONTROL_RESET_DETECT"
+   ]
+  },
+  "/CONTROL Port/CONTROL_D-": {
+   "net": "CONTROL_D-",
+   "pads": 4,
+   "pins": [
+    "J2 USB_C [Connector:USB_C_Receptacle_USB2.0]: D- (bidirectional) x2",
+    "U16 PI3USB102G [TC7USB42MU_1]: D+ (bidirectional)"
+   ],
+   "R parts": [
+    "R55 820k to CONTROL_RESET_DETECT"
+   ]
+  },
+  "/CONTROL Port/CONTROL_MCU_D+": {
+   "net": "CONTROL_MCU_D+",
+   "pads": 2,
+   "pins": [
+    "U16 PI3USB102G [TC7USB42MU_1]: 2D- (bidirectional)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA25 (bidirectional)"
+   ]
+  },
+  "/CONTROL Port/CONTROL_MCU_D-": {
+   "net": "CONTROL_MCU_D-",
+   "pads": 2,
+   "pins": [
+    "U16 PI3USB102G [TC7USB42MU_1]: 2D+ (bidirectional)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA24 (bidirectional)"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.CLK": {
+   "net": "CONTROL_PHY.CLK",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR32C (bidirectional)"
+   ],
+   "RN parts": [
+    "RN5 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DATA0": {
+   "net": "CONTROL_PHY.DATA0",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR32A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN6 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DATA1": {
+   "net": "CONTROL_PHY.DATA1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR35D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN6 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DATA2": {
+   "net": "CONTROL_PHY.DATA2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR35A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN6 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DATA3": {
+   "net": "CONTROL_PHY.DATA3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR32B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN6 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DATA4": {
+   "net": "CONTROL_PHY.DATA4",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR35B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN7 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DATA5": {
+   "net": "CONTROL_PHY.DATA5",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR38C (bidirectional)"
+   ],
+   "RN parts": [
+    "RN7 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DATA6": {
+   "net": "CONTROL_PHY.DATA6",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR38D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN7 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DATA7": {
+   "net": "CONTROL_PHY.DATA7",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR38B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN7 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.DIR": {
+   "net": "CONTROL_PHY.DIR",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR26C (bidirectional)"
+   ],
+   "RN parts": [
+    "RN5 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.NXT": {
+   "net": "CONTROL_PHY.NXT",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR26D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN5 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.STP": {
+   "net": "CONTROL_PHY.STP",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR26B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN5 0"
+   ]
+  },
+  "/CONTROL Port/CONTROL_PHY.~{RESET}": {
+   "net": "CONTROL_PHY.~{RESET}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PR26A (bidirectional)",
+    "U8 USB3343-CP [usb:USB3343]: ~{RESET} (input)"
+   ],
+   "R parts": [
+    "R22 10k to GND"
+   ]
+  },
+  "/CONTROL Port/CONTROL_RESET_DETECT": {
+   "net": "CONTROL_RESET_DETECT",
+   "pads": 4,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA05 (bidirectional)"
+   ],
+   "C parts": [
+    "C62 1nF to GND"
+   ],
+   "R parts": [
+    "R55 820k to CONTROL_D-",
+    "R56 820k to CONTROL_D+"
+   ]
+  },
+  "/CONTROL Port/CONTROL_SWITCH": {
+   "net": "CONTROL_SWITCH",
+   "pads": 3,
+   "pins": [
+    "U16 PI3USB102G [TC7USB42MU_1]: S (input)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA06 (bidirectional)"
+   ],
+   "R parts": [
+    "R15 10k to +3V3"
+   ]
+  },
+  "/Clock and Miscellaneous/CLOCK_60MHZ": {
+   "net": "CLOCK_60MHZ",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT29B (bidirectional)"
+   ],
+   "R parts": [
+    "R108 330 to Net-(Y1-OUT)"
+   ],
+   "TP parts": [
+    "TP1 TestPoint"
+   ]
+  },
+  "/Debugger/FPGA_ADV": {
+   "net": "FPGA_ADV",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: D7/PB4A (bidirectional)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA09/XOUT (bidirectional)"
+   ]
+  },
+  "/Debugger/FPGA_CONFIG.DONE": {
+   "net": "FPGA_CONFIG.DONE",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: DONE (bidirectional)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA04 (bidirectional)"
+   ],
+   "TP parts": [
+    "TP12 TestPoint"
+   ]
+  },
+  "/Debugger/FPGA_CONFIG.~{INIT}": {
+   "net": "FPGA_CONFIG.~{INIT}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: ~{INIT} (bidirectional)"
+   ],
+   "R parts": [
+    "R102 5.1k to GND",
+    "R118 1k to Net-(U6-PA03)"
+   ]
+  },
+  "/Debugger/FPGA_CONFIG.~{PROGRAM}": {
+   "net": "FPGA_CONFIG.~{PROGRAM}",
+   "pads": 5,
+   "pins": [
+    "IC1 ECP5-BGA256: ~{PROGRAM} (bidirectional)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA08/XIN (bidirectional)"
+   ],
+   "R parts": [
+    "R5 2.2k to ~{FPGA_SELF_PROGRAM}",
+    "R6 5.1k to +3V3"
+   ],
+   "TP parts": [
+    "TP14 TestPoint"
+   ]
+  },
+  "/Debugger/FPGA_JTAG.TCK": {
+   "net": "FPGA_JTAG.TCK",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: TCK (input)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA15 (bidirectional)"
+   ],
+   "TP parts": [
+    "TP21 TestPoint"
+   ]
+  },
+  "/Debugger/FPGA_JTAG.TDI": {
+   "net": "FPGA_JTAG.TDI",
+   "pads": 4,
+   "pins": [
+    "IC1 ECP5-BGA256: TDI (input)",
+    "IC1 ECP5-BGA256: PR41B (bidirectional)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA14 (bidirectional)"
+   ],
+   "TP parts": [
+    "TP24 TestPoint"
+   ]
+  },
+  "/Debugger/FPGA_JTAG.TDO": {
+   "net": "FPGA_JTAG.TDO",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: TDO (output)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA10 (bidirectional)"
+   ],
+   "TP parts": [
+    "TP23 TestPoint"
+   ]
+  },
+  "/Debugger/FPGA_JTAG.TMS": {
+   "net": "FPGA_JTAG.TMS",
+   "pads": 4,
+   "pins": [
+    "IC1 ECP5-BGA256: TMS (input)",
+    "IC1 ECP5-BGA256: PR41D (bidirectional)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA11 (bidirectional)"
+   ],
+   "TP parts": [
+    "TP22 TestPoint"
+   ]
+  },
+  "/Debugger/LED10": {
+   "net": "LED10",
+   "pads": 2,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA16 (bidirectional)"
+   ],
+   "D parts": [
+    "D10 ICE BLUE to Net-(D10-A)"
+   ]
+  },
+  "/Debugger/LED11": {
+   "net": "LED11",
+   "pads": 2,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA17 (bidirectional)"
+   ],
+   "D parts": [
+    "D11 PINK to Net-(D11-A)"
+   ]
+  },
+  "/Debugger/LED12": {
+   "net": "LED12",
+   "pads": 2,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA22 (bidirectional)"
+   ],
+   "D parts": [
+    "D12 WHITE to Net-(D12-A)"
+   ]
+  },
+  "/Debugger/LED13": {
+   "net": "LED13",
+   "pads": 2,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA23 (bidirectional)"
+   ],
+   "D parts": [
+    "D13 PINK to Net-(D13-A)"
+   ]
+  },
+  "/Debugger/LED14": {
+   "net": "LED14",
+   "pads": 2,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA27 (bidirectional)"
+   ],
+   "D parts": [
+    "D14 ICE BLUE to Net-(D14-A)"
+   ]
+  },
+  "/Debugger/MCU_SWCLK": {
+   "net": "MCU_SWCLK",
+   "pads": 5,
+   "pins": [
+    "J10 TC_SWD [Connector_Generic:Conn_02x03_Odd_Even]: Pin_4 (passive)",
+    "J6 MCU_SWD [Connector:Conn_ARM_JTAG_SWD_10]: SWCLK/TCK (output)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA30/SWCLK (bidirectional)"
+   ],
+   "R parts": [
+    "R111 10k to +3V3"
+   ],
+   "TP parts": [
+    "TP19 TestPoint"
+   ]
+  },
+  "/Debugger/MCU_SWDIO": {
+   "net": "MCU_SWDIO",
+   "pads": 4,
+   "pins": [
+    "J10 TC_SWD [Connector_Generic:Conn_02x03_Odd_Even]: Pin_2 (passive)",
+    "J6 MCU_SWD [Connector:Conn_ARM_JTAG_SWD_10]: SWDIO/TMS (bidirectional)",
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA31/SWDIO (bidirectional)"
+   ],
+   "TP parts": [
+    "TP20 TestPoint"
+   ]
+  },
+  "/Debugger/~{BTN_PROGRAM}": {
+   "net": "~{BTN_PROGRAM}",
+   "pads": 3,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA02 (bidirectional)"
+   ],
+   "C parts": [
+    "C76 1uF to GND"
+   ],
+   "R parts": [
+    "R104 18.7k\u00b11% to Net-(R101-Pad2)"
+   ]
+  },
+  "/Debugger/~{BTN_RESET}": {
+   "net": "~{BTN_RESET}",
+   "pads": 6,
+   "pins": [
+    "J10 TC_SWD [Connector_Generic:Conn_02x03_Odd_Even]: Pin_3 (passive)",
+    "J6 MCU_SWD [Connector:Conn_ARM_JTAG_SWD_10]: ~{RESET} (open_collector)",
+    "SW2 BTN_RESET [support_hardware:SW_SPST_shielded]: pin 1 (passive)"
+   ],
+   "R parts": [
+    "R105 8.06k\u00b11% to Net-(U6-PA28{slash}~{RST})",
+    "R25 820k to +3V3"
+   ],
+   "TP parts": [
+    "TP18 TestPoint"
+   ]
+  },
+  "/Expansion Interfaces/A1": {
+   "net": "A1",
+   "pads": 2,
+   "pins": [
+    "J7 PMOD_A [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_1 (passive)"
+   ],
+   "RN parts": [
+    "RN1 33"
+   ]
+  },
+  "/Expansion Interfaces/A10": {
+   "net": "A10",
+   "pads": 2,
+   "pins": [
+    "J7 PMOD_A [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_10 (passive)"
+   ],
+   "RN parts": [
+    "RN2 33"
+   ]
+  },
+  "/Expansion Interfaces/A2": {
+   "net": "A2",
+   "pads": 2,
+   "pins": [
+    "J7 PMOD_A [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_2 (passive)"
+   ],
+   "RN parts": [
+    "RN1 33"
+   ]
+  },
+  "/Expansion Interfaces/A3": {
+   "net": "A3",
+   "pads": 2,
+   "pins": [
+    "J7 PMOD_A [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_3 (passive)"
+   ],
+   "RN parts": [
+    "RN2 33"
+   ]
+  },
+  "/Expansion Interfaces/A4": {
+   "net": "A4",
+   "pads": 2,
+   "pins": [
+    "J7 PMOD_A [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_4 (passive)"
+   ],
+   "RN parts": [
+    "RN2 33"
+   ]
+  },
+  "/Expansion Interfaces/A7": {
+   "net": "A7",
+   "pads": 2,
+   "pins": [
+    "J7 PMOD_A [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_7 (passive)"
+   ],
+   "RN parts": [
+    "RN1 33"
+   ]
+  },
+  "/Expansion Interfaces/A8": {
+   "net": "A8",
+   "pads": 2,
+   "pins": [
+    "J7 PMOD_A [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_8 (passive)"
+   ],
+   "RN parts": [
+    "RN1 33"
+   ]
+  },
+  "/Expansion Interfaces/A9": {
+   "net": "A9",
+   "pads": 2,
+   "pins": [
+    "J7 PMOD_A [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_9 (passive)"
+   ],
+   "RN parts": [
+    "RN2 33"
+   ]
+  },
+  "/Expansion Interfaces/B1": {
+   "net": "B1",
+   "pads": 2,
+   "pins": [
+    "J8 PMOD_B [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_1 (passive)"
+   ],
+   "RN parts": [
+    "RN4 33"
+   ]
+  },
+  "/Expansion Interfaces/B10": {
+   "net": "B10",
+   "pads": 2,
+   "pins": [
+    "J8 PMOD_B [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_10 (passive)"
+   ],
+   "RN parts": [
+    "RN3 33"
+   ]
+  },
+  "/Expansion Interfaces/B2": {
+   "net": "B2",
+   "pads": 2,
+   "pins": [
+    "J8 PMOD_B [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_2 (passive)"
+   ],
+   "RN parts": [
+    "RN4 33"
+   ]
+  },
+  "/Expansion Interfaces/B3": {
+   "net": "B3",
+   "pads": 2,
+   "pins": [
+    "J8 PMOD_B [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_3 (passive)"
+   ],
+   "RN parts": [
+    "RN3 33"
+   ]
+  },
+  "/Expansion Interfaces/B4": {
+   "net": "B4",
+   "pads": 2,
+   "pins": [
+    "J8 PMOD_B [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_4 (passive)"
+   ],
+   "RN parts": [
+    "RN3 33"
+   ]
+  },
+  "/Expansion Interfaces/B7": {
+   "net": "B7",
+   "pads": 2,
+   "pins": [
+    "J8 PMOD_B [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_7 (passive)"
+   ],
+   "RN parts": [
+    "RN4 33"
+   ]
+  },
+  "/Expansion Interfaces/B8": {
+   "net": "B8",
+   "pads": 2,
+   "pins": [
+    "J8 PMOD_B [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_8 (passive)"
+   ],
+   "RN parts": [
+    "RN4 33"
+   ]
+  },
+  "/Expansion Interfaces/B9": {
+   "net": "B9",
+   "pads": 2,
+   "pins": [
+    "J8 PMOD_B [Connector_Generic:Conn_02x06_Top_Bottom]: Pin_9 (passive)"
+   ],
+   "RN parts": [
+    "RN3 33"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE10": {
+   "net": "MEZZANINE10",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR5D (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_10 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE11": {
+   "net": "MEZZANINE11",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR5C (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_11 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE12": {
+   "net": "MEZZANINE12",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR11B (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_12 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE13": {
+   "net": "MEZZANINE13",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR11A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_13 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE18": {
+   "net": "MEZZANINE18",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR5A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_18 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE19": {
+   "net": "MEZZANINE19",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR5B (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_19 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE20": {
+   "net": "MEZZANINE20",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR2A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_20 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE21": {
+   "net": "MEZZANINE21",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR2B (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_21 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE22": {
+   "net": "MEZZANINE22",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT65B (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_22 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE23": {
+   "net": "MEZZANINE23",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT60A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_23 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE24": {
+   "net": "MEZZANINE24",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT65A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_24 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE25": {
+   "net": "MEZZANINE25",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT62A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_25 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE26": {
+   "net": "MEZZANINE26",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT53B (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_26 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE27": {
+   "net": "MEZZANINE27",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT56A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_27 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE28": {
+   "net": "MEZZANINE28",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT53A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_28 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE3": {
+   "net": "MEZZANINE3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT35B (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_3 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE4": {
+   "net": "MEZZANINE4",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT42A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_4 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE5": {
+   "net": "MEZZANINE5",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT44A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_5 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE6": {
+   "net": "MEZZANINE6",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT42B (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_6 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE7": {
+   "net": "MEZZANINE7",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT49A (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_7 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE8": {
+   "net": "MEZZANINE8",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR2D (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_8 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/MEZZANINE9": {
+   "net": "MEZZANINE9",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR2C (bidirectional)",
+    "J5 MEZZANINE [Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin]: Pin_9 (passive)"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_A1": {
+   "net": "PMOD_A1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT38B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN1 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_A10": {
+   "net": "PMOD_A10",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT44B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN2 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_A2": {
+   "net": "PMOD_A2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT38A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN1 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_A3": {
+   "net": "PMOD_A3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT51A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN2 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_A4": {
+   "net": "PMOD_A4",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT56B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN2 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_A7": {
+   "net": "PMOD_A7",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT35A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN1 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_A8": {
+   "net": "PMOD_A8",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT33B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN1 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_A9": {
+   "net": "PMOD_A9",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT40A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN2 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_B1": {
+   "net": "PMOD_B1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT11B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN4 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_B10": {
+   "net": "PMOD_B10",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT29A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN3 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_B2": {
+   "net": "PMOD_B2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT15B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN4 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_B3": {
+   "net": "PMOD_B3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT22B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN3 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_B4": {
+   "net": "PMOD_B4",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT27B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN3 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_B7": {
+   "net": "PMOD_B7",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT15A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN4 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_B8": {
+   "net": "PMOD_B8",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT18A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN4 33"
+   ]
+  },
+  "/Expansion Interfaces/PMOD_B9": {
+   "net": "PMOD_B9",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT18B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN3 33"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/FPGA_CFG0": {
+   "net": "FPGA_CFG0",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: CFG0 (input)"
+   ],
+   "R parts": [
+    "R12 330 to GND"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/FPGA_CFG1": {
+   "net": "FPGA_CFG1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: CFG1 (input)"
+   ],
+   "R parts": [
+    "R13 5.1k to +3V3"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/FPGA_CFG2": {
+   "net": "FPGA_CFG2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: CFG2 (input)"
+   ],
+   "R parts": [
+    "R14 330 to GND"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/FPGA_FLASH_CLK": {
+   "net": "FPGA_FLASH_CLK",
+   "pads": 4,
+   "pins": [
+    "IC1 ECP5-BGA256: MCLK/CCLK (bidirectional)",
+    "U7 W25Q32JVSS: CLK (input)"
+   ],
+   "R parts": [
+    "R109 5.1k to +3V3"
+   ],
+   "TP parts": [
+    "TP10 TestPoint"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/IO0": {
+   "net": "IO0",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: D0/PICO/IO0/PB11B (bidirectional)",
+    "U7 W25Q32JVSS: DI(IO0) (bidirectional)"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/IO1": {
+   "net": "IO1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: D1/POCI/IO1/PB11A (bidirectional)",
+    "U7 W25Q32JVSS: DO(IO1) (bidirectional)"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/IO2": {
+   "net": "IO2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: D2/IO2/PB9B (bidirectional)",
+    "U7 W25Q32JVSS: IO2 (bidirectional)"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/IO3": {
+   "net": "IO3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: D3/IO3/PB9A (bidirectional)",
+    "U7 W25Q32JVSS: IO3 (bidirectional)"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/~{CS}": {
+   "net": "~{CS}",
+   "pads": 4,
+   "pins": [
+    "IC1 ECP5-BGA256: ~{HOLD}/DI/BUSY/~{CSSPI}/PB15A (bidirectional)",
+    "U7 W25Q32JVSS: ~{CS} (input)"
+   ],
+   "R parts": [
+    "R110 5.1k to +3V3"
+   ],
+   "TP parts": [
+    "TP11 TestPoint"
+   ]
+  },
+  "/FPGA Bank 8 and Configuration Flash/~{FPGA_SELF_PROGRAM}": {
+   "net": "~{FPGA_SELF_PROGRAM}",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR44B (bidirectional)"
+   ],
+   "R parts": [
+    "R5 2.2k to FPGA_CONFIG.~{PROGRAM}"
+   ]
+  },
+  "/FPGA Banks 0 and 1/LED0": {
+   "net": "LED0",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT62B (bidirectional)"
+   ],
+   "R parts": [
+    "R31 2.2k to Net-(D7-K)"
+   ]
+  },
+  "/FPGA Banks 0 and 1/LED1": {
+   "net": "LED1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT60B (bidirectional)"
+   ],
+   "R parts": [
+    "R30 2.2k to Net-(D6-K)"
+   ]
+  },
+  "/FPGA Banks 0 and 1/LED2": {
+   "net": "LED2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT67A (bidirectional)"
+   ],
+   "R parts": [
+    "R29 10k to Net-(D5-K)"
+   ]
+  },
+  "/FPGA Banks 0 and 1/LED3": {
+   "net": "LED3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT67B (bidirectional)"
+   ],
+   "R parts": [
+    "R28 1k to Net-(D4-K)"
+   ]
+  },
+  "/FPGA Banks 0 and 1/LED4": {
+   "net": "LED4",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT58A (bidirectional)"
+   ],
+   "R parts": [
+    "R27 1k to Net-(D3-K)"
+   ]
+  },
+  "/FPGA Banks 0 and 1/LED5": {
+   "net": "LED5",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT49B (bidirectional)"
+   ],
+   "R parts": [
+    "R26 1k to Net-(D2-K)"
+   ]
+  },
+  "/FPGA Banks 0 and 1/MON.GPIO": {
+   "net": "MON.GPIO",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT20B (bidirectional)",
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: GPIO/~{ALERT2} (bidirectional)"
+   ],
+   "R parts": [
+    "R86 10k to +3V3"
+   ]
+  },
+  "/FPGA Banks 0 and 1/MON.SCL": {
+   "net": "MON.SCL",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT24B (bidirectional)",
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SCL (input)"
+   ],
+   "R parts": [
+    "R83 2.2k to +3V3"
+   ]
+  },
+  "/FPGA Banks 0 and 1/MON.SDA": {
+   "net": "MON.SDA",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT27A (bidirectional)",
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SDA (bidirectional)"
+   ],
+   "R parts": [
+    "R84 2.2k to +3V3"
+   ]
+  },
+  "/FPGA Banks 0 and 1/MON.SLOW": {
+   "net": "MON.SLOW",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT22A (bidirectional)",
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SLOW/~{ALERT} (bidirectional)"
+   ],
+   "R parts": [
+    "R85 10k to +3V3"
+   ]
+  },
+  "/FPGA Banks 0 and 1/MON.~{PWRDN}": {
+   "net": "MON.~{PWRDN}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT13B (bidirectional)",
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: ~{PWRDN} (input)"
+   ],
+   "R parts": [
+    "R87 5.1k to +3V3"
+   ]
+  },
+  "/FPGA Banks 0 and 1/TARGET_C.SBU1S": {
+   "net": "TARGET_C.SBU1S",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT4A (bidirectional)",
+    "U13 DPO2036: SBU1S (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 0 and 1/TARGET_C.SBU2S": {
+   "net": "TARGET_C.SBU2S",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PT9A (bidirectional)",
+    "U13 DPO2036: SBU2S (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 0 and 1/TARGET_C.SCL": {
+   "net": "TARGET_C.SCL",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT6B (bidirectional)",
+    "U2 FUSB302B [Interface_USB:FUSB302BMPX]: SCL (input)"
+   ],
+   "R parts": [
+    "R98 2.2k to +3V3"
+   ]
+  },
+  "/FPGA Banks 0 and 1/TARGET_C.SDA": {
+   "net": "TARGET_C.SDA",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT11A (bidirectional)",
+    "U2 FUSB302B [Interface_USB:FUSB302BMPX]: SDA (bidirectional)"
+   ],
+   "R parts": [
+    "R97 2.2k to +3V3"
+   ]
+  },
+  "/FPGA Banks 0 and 1/TARGET_C.~{FAULT}": {
+   "net": "TARGET_C.~{FAULT}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT9B (bidirectional)",
+    "U13 DPO2036: FAULTB (open_collector)"
+   ],
+   "R parts": [
+    "R100 10k to +3V3"
+   ]
+  },
+  "/FPGA Banks 0 and 1/TARGET_C.~{INT}": {
+   "net": "TARGET_C.~{INT}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PT6A (bidirectional)",
+    "U2 FUSB302B [Interface_USB:FUSB302BMPX]: INT_N (open_collector)"
+   ],
+   "R parts": [
+    "R37 10k to +3V3"
+   ]
+  },
+  "/FPGA Banks 2 and 3/~{AUX_VBUS_IN_EN}": {
+   "net": "~{AUX_VBUS_IN_EN}",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR29C (bidirectional)"
+   ],
+   "R parts": [
+    "R78 2.2k to Net-(Q11B-B2)"
+   ]
+  },
+  "/FPGA Banks 2 and 3/~{BTN_USER}": {
+   "net": "~{BTN_USER}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PR32D (bidirectional)"
+   ],
+   "C parts": [
+    "C78 1uF to GND"
+   ],
+   "R parts": [
+    "R107 33k to Net-(R106-Pad2)"
+   ]
+  },
+  "/FPGA Banks 2 and 3/~{CONTROL_VBUS_IN_EN}": {
+   "net": "~{CONTROL_VBUS_IN_EN}",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PR29A (bidirectional)"
+   ],
+   "R parts": [
+    "R71 2.2k to Net-(Q11A-B1)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/AUX_VBUS_EN": {
+   "net": "AUX_VBUS_EN",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL26B (bidirectional)"
+   ],
+   "R parts": [
+    "R63 2.2k to Net-(Q3B-B2)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/CONTROL_VBUS_EN": {
+   "net": "CONTROL_VBUS_EN",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL26A (bidirectional)"
+   ],
+   "R parts": [
+    "R40 2.2k to Net-(Q3A-B1)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.CK": {
+   "net": "RAM.CK",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL2C (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: CK (input)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.DQ0": {
+   "net": "RAM.DQ0",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL11C (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: DQ0 (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.DQ1": {
+   "net": "RAM.DQ1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL2A (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: DQ1 (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.DQ2": {
+   "net": "RAM.DQ2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL5B (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: DQ2 (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.DQ3": {
+   "net": "RAM.DQ3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL11D (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: DQ3 (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.DQ4": {
+   "net": "RAM.DQ4",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL5C (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: DQ4 (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.DQ5": {
+   "net": "RAM.DQ5",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL8B (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: DQ5 (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.DQ6": {
+   "net": "RAM.DQ6",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL5D (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: DQ6 (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.DQ7": {
+   "net": "RAM.DQ7",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL11B (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: DQ7 (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.RWDS": {
+   "net": "RAM.RWDS",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL8A (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: RWDS (bidirectional)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.~{CK}": {
+   "net": "RAM.~{CK}",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL2D (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: ~{CK} (input)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.~{CS}": {
+   "net": "RAM.~{CS}",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL2B (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: ~{CS} (input)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/RAM.~{RESET}": {
+   "net": "RAM.~{RESET}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PL5A (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: ~{RESET} (input)"
+   ],
+   "R parts": [
+    "R119 5.1k to GND"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_A_DISCHARGE": {
+   "net": "TARGET_A_DISCHARGE",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL29A (bidirectional)"
+   ],
+   "R parts": [
+    "R88 2.2k to Net-(Q8B-B2)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_C_VBUS_EN": {
+   "net": "TARGET_C_VBUS_EN",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL29B (bidirectional)"
+   ],
+   "R parts": [
+    "R65 2.2k to Net-(Q8A-B1)"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_FS_MONITOR_D+": {
+   "net": "TARGET_FS_MONITOR_D+",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL38A (bidirectional)"
+   ],
+   "R parts": [
+    "R58 1k to TARGET_A_D+"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_FS_MONITOR_D-": {
+   "net": "TARGET_FS_MONITOR_D-",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL38B (bidirectional)"
+   ],
+   "R parts": [
+    "R57 1k to TARGET_A_D-"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.CLK": {
+   "net": "TARGET_PHY.CLK",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL44B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN11 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DATA0": {
+   "net": "TARGET_PHY.DATA0",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL38C (bidirectional)"
+   ],
+   "RN parts": [
+    "RN12 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DATA1": {
+   "net": "TARGET_PHY.DATA1",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL35B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN12 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DATA2": {
+   "net": "TARGET_PHY.DATA2",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL32B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN12 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DATA3": {
+   "net": "TARGET_PHY.DATA3",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL35A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN12 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DATA4": {
+   "net": "TARGET_PHY.DATA4",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL35D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN13 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DATA5": {
+   "net": "TARGET_PHY.DATA5",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL32A (bidirectional)"
+   ],
+   "RN parts": [
+    "RN13 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DATA6": {
+   "net": "TARGET_PHY.DATA6",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL26D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN13 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DATA7": {
+   "net": "TARGET_PHY.DATA7",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL26C (bidirectional)"
+   ],
+   "RN parts": [
+    "RN13 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.DIR": {
+   "net": "TARGET_PHY.DIR",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL41B (bidirectional)"
+   ],
+   "RN parts": [
+    "RN11 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.NXT": {
+   "net": "TARGET_PHY.NXT",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL38D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN11 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.STP": {
+   "net": "TARGET_PHY.STP",
+   "pads": 2,
+   "pins": [
+    "IC1 ECP5-BGA256: PL41D (bidirectional)"
+   ],
+   "RN parts": [
+    "RN11 0"
+   ]
+  },
+  "/FPGA Banks 6 and 7/TARGET_PHY.~{RESET}": {
+   "net": "TARGET_PHY.~{RESET}",
+   "pads": 3,
+   "pins": [
+    "IC1 ECP5-BGA256: PL41C (bidirectional)",
+    "U9 USB3343-CP [usb:USB3343]: ~{RESET} (input)"
+   ],
+   "R parts": [
+    "R23 10k to GND"
+   ]
+  },
+  "/Power Distribution and Monitoring/~{POWER_GOOD}": {
+   "net": "~{POWER_GOOD}",
+   "pads": 10,
+   "pins": [
+    "Q16 2NPN [Transistor_BJT:BC847BS]: C1 (passive)"
+   ],
+   "R parts": [
+    "R103 0 to Net-(Q8B-E2)",
+    "R112 0 to Net-(Q3A-E1)",
+    "R113 0 to Net-(Q11A-E1)",
+    "R114 0 to Net-(Q8A-E1)",
+    "R115 0 to Net-(Q3B-E2)",
+    "R116 0 to Net-(Q11B-E2)",
+    "... 2 more"
+   ],
+   "TP parts": [
+    "TP8 TestPoint"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/CLK": {
+   "net": "CLK",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: REFCLK/XI (input)"
+   ],
+   "RN parts": [
+    "RN11 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DATA0": {
+   "net": "DATA0",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DATA0 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN12 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DATA1": {
+   "net": "DATA1",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DATA1 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN12 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DATA2": {
+   "net": "DATA2",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DATA2 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN12 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DATA3": {
+   "net": "DATA3",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DATA3 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN12 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DATA4": {
+   "net": "DATA4",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DATA4 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN13 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DATA5": {
+   "net": "DATA5",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DATA5 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN13 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DATA6": {
+   "net": "DATA6",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DATA6 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN13 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DATA7": {
+   "net": "DATA7",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DATA7 (bidirectional)"
+   ],
+   "RN parts": [
+    "RN13 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/DIR": {
+   "net": "DIR",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: DIR (output)"
+   ],
+   "RN parts": [
+    "RN11 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/NXT": {
+   "net": "NXT",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: NXT (output)"
+   ],
+   "RN parts": [
+    "RN11 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/PHY_D+": {
+   "net": "PHY_D+",
+   "pads": 3,
+   "pins": [
+    "FL2 Filter_EMI_CommonMode: pin 1 (passive)",
+    "FL4 Filter_EMI_CommonMode: pin 1 (passive)",
+    "U9 USB3343-CP [usb:USB3343]: D+ (bidirectional)"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/PHY_D-": {
+   "net": "PHY_D-",
+   "pads": 3,
+   "pins": [
+    "FL2 Filter_EMI_CommonMode: pin 3 (passive)",
+    "FL4 Filter_EMI_CommonMode: pin 3 (passive)",
+    "U9 USB3343-CP [usb:USB3343]: D- (bidirectional)"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/RBIAS": {
+   "net": "RBIAS",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: RBIAS (input)"
+   ],
+   "R parts": [
+    "R18 8.06k\u00b11% to GND"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/STP": {
+   "net": "STP",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: STP (input)"
+   ],
+   "RN parts": [
+    "RN11 0"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/VBUS_CLAMPED": {
+   "net": "VBUS_CLAMPED",
+   "pads": 4,
+   "pins": [
+    "U2 FUSB302B [Interface_USB:FUSB302BMPX]: VBUS (input)"
+   ],
+   "D parts": [
+    "D18 24\u00b12% to GND"
+   ],
+   "R parts": [
+    "R19 20k to VBUS_SENSE",
+    "R45 5.1k to TARGET_C_VBUS_IN"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/VBUS_SENSE": {
+   "net": "VBUS_SENSE",
+   "pads": 2,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: VBUS (bidirectional)"
+   ],
+   "R parts": [
+    "R19 20k to VBUS_CLAMPED"
+   ]
+  },
+  "/TARGET Port/TARGET PHY/VDD18": {
+   "net": "VDD18",
+   "pads": 3,
+   "pins": [
+    "U9 USB3343-CP [usb:USB3343]: VDD18 (passive)"
+   ],
+   "C parts": [
+    "C43 1uF to GND"
+   ],
+   "TP parts": [
+    "TP27 TestPoint"
+   ]
+  },
+  "/TARGET Port/TARGET Type C Controller/CC1": {
+   "net": "CC1",
+   "pads": 3,
+   "pins": [
+    "J4 USB_C [Connector:USB_C_Receptacle_USB2.0]: CC1 (bidirectional)",
+    "U13 DPO2036: CC1C (bidirectional)"
+   ],
+   "C parts": [
+    "C54 330pF to GND"
+   ]
+  },
+  "/TARGET Port/TARGET Type C Controller/CC1S": {
+   "net": "CC1S",
+   "pads": 3,
+   "pins": [
+    "U13 DPO2036: CC1S (bidirectional)",
+    "U2 FUSB302B [Interface_USB:FUSB302BMPX]: CC1 (bidirectional) x2"
+   ]
+  },
+  "/TARGET Port/TARGET Type C Controller/CC2": {
+   "net": "CC2",
+   "pads": 3,
+   "pins": [
+    "J4 USB_C [Connector:USB_C_Receptacle_USB2.0]: CC2 (bidirectional)",
+    "U13 DPO2036: CC2C (bidirectional)"
+   ],
+   "C parts": [
+    "C55 330pF to GND"
+   ]
+  },
+  "/TARGET Port/TARGET Type C Controller/CC2S": {
+   "net": "CC2S",
+   "pads": 3,
+   "pins": [
+    "U13 DPO2036: CC2S (bidirectional)",
+    "U2 FUSB302B [Interface_USB:FUSB302BMPX]: CC2 (bidirectional) x2"
+   ]
+  },
+  "/TARGET Port/TARGET Type C Controller/SBU1": {
+   "net": "SBU1",
+   "pads": 2,
+   "pins": [
+    "J4 USB_C [Connector:USB_C_Receptacle_USB2.0]: SBU1 (bidirectional)",
+    "U13 DPO2036: SBU1C (bidirectional)"
+   ]
+  },
+  "/TARGET Port/TARGET Type C Controller/SBU2": {
+   "net": "SBU2",
+   "pads": 2,
+   "pins": [
+    "J4 USB_C [Connector:USB_C_Receptacle_USB2.0]: SBU2 (bidirectional)",
+    "U13 DPO2036: SBU2C (bidirectional)"
+   ]
+  },
+  "/TARGET Port/TARGET Type C Controller/VCONN": {
+   "net": "VCONN",
+   "pads": 5,
+   "pins": [
+    "U2 FUSB302B [Interface_USB:FUSB302BMPX]: VCONN (power_in) x2"
+   ],
+   "C parts": [
+    "C45 0.1uF to GND"
+   ],
+   "R parts": [
+    "R36 0 to +3V3"
+   ],
+   "TP parts": [
+    "TP36 TestPoint"
+   ]
+  },
+  "/TARGET Port/TARGET_A_D+": {
+   "net": "TARGET_A_D+",
+   "pads": 3,
+   "pins": [
+    "FL2 Filter_EMI_CommonMode: pin 2 (passive)",
+    "J3 USB_A: D+ (bidirectional)"
+   ],
+   "R parts": [
+    "R58 1k to TARGET_FS_MONITOR_D+"
+   ]
+  },
+  "/TARGET Port/TARGET_A_D-": {
+   "net": "TARGET_A_D-",
+   "pads": 3,
+   "pins": [
+    "FL2 Filter_EMI_CommonMode: pin 4 (passive)",
+    "J3 USB_A: D- (bidirectional)"
+   ],
+   "R parts": [
+    "R57 1k to TARGET_FS_MONITOR_D-"
+   ]
+  },
+  "/TARGET Port/TARGET_C_D+": {
+   "net": "TARGET_C_D+",
+   "pads": 3,
+   "pins": [
+    "FL4 Filter_EMI_CommonMode: pin 2 (passive)",
+    "J4 USB_C [Connector:USB_C_Receptacle_USB2.0]: D+ (bidirectional) x2"
+   ]
+  },
+  "/TARGET Port/TARGET_C_D-": {
+   "net": "TARGET_C_D-",
+   "pads": 3,
+   "pins": [
+    "FL4 Filter_EMI_CommonMode: pin 4 (passive)",
+    "J4 USB_C [Connector:USB_C_Receptacle_USB2.0]: D- (bidirectional) x2"
+   ]
+  },
+  "AUX_SENSE+": {
+   "net": "AUX_SENSE+",
+   "pads": 2,
+   "pins": [
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SENSE3+ (input)"
+   ],
+   "R parts": [
+    "R42 0.02\u00b11%"
+   ]
+  },
+  "AUX_SENSE-": {
+   "net": "AUX_SENSE-",
+   "pads": 2,
+   "pins": [
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SENSE3- (input)"
+   ],
+   "R parts": [
+    "R42 0.02\u00b11%"
+   ]
+  },
+  "AUX_VBUS": {
+   "net": "AUX_VBUS",
+   "pads": 7,
+   "pins": [
+    "J1 USB_C [Connector:USB_C_Receptacle_USB2.0]: VBUS (passive) x4"
+   ],
+   "D parts": [
+    "D25 TVS to GND"
+   ],
+   "R parts": [
+    "R42 0.02\u00b11%"
+   ],
+   "TP parts": [
+    "TP34 TestPoint"
+   ]
+  },
+  "AUX_VBUS_IN": {
+   "net": "AUX_VBUS_IN",
+   "pads": 8,
+   "pins": [
+    "Q10 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: E2 (passive)",
+    "Q12 PMOS [Device:Q_PMOS_GSD]: S (passive)",
+    "Q4 PMOS [Transistor_FET:SiA449DJ]: D (passive)"
+   ],
+   "D parts": [
+    "D20 6.2\u00b12% to Net-(D20-A)"
+   ],
+   "R parts": [
+    "R42 0.02\u00b11%",
+    "R44 5.1k to VBUS_CLAMPED",
+    "R74 18.7k\u00b11% to Net-(D21-K)",
+    "R75 820k to Net-(D20-A)"
+   ]
+  },
+  "CONTROL_SENSE+": {
+   "net": "CONTROL_SENSE+",
+   "pads": 2,
+   "pins": [
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SENSE4+ (input)"
+   ],
+   "R parts": [
+    "R1 0.02\u00b11%"
+   ]
+  },
+  "CONTROL_SENSE-": {
+   "net": "CONTROL_SENSE-",
+   "pads": 2,
+   "pins": [
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SENSE4- (input)"
+   ],
+   "R parts": [
+    "R1 0.02\u00b11%"
+   ]
+  },
+  "CONTROL_VBUS": {
+   "net": "CONTROL_VBUS",
+   "pads": 7,
+   "pins": [
+    "J2 USB_C [Connector:USB_C_Receptacle_USB2.0]: VBUS (passive) x4"
+   ],
+   "D parts": [
+    "D23 TVS to GND"
+   ],
+   "R parts": [
+    "R1 0.02\u00b11%"
+   ],
+   "TP parts": [
+    "TP16 TestPoint"
+   ]
+  },
+  "CONTROL_VBUS_IN": {
+   "net": "CONTROL_VBUS_IN",
+   "pads": 8,
+   "pins": [
+    "Q1 PMOS [Transistor_FET:SiA449DJ]: D (passive)",
+    "Q10 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: E1 (passive)",
+    "Q9 PMOS [Device:Q_PMOS_GSD]: S (passive)"
+   ],
+   "D parts": [
+    "D16 6.2\u00b12% to Net-(D16-A)"
+   ],
+   "R parts": [
+    "R1 0.02\u00b11%",
+    "R46 5.1k to VBUS_CLAMPED",
+    "R67 18.7k\u00b11% to Net-(D17-K)",
+    "R68 820k to Net-(D16-A)"
+   ]
+  },
+  "GND": {
+   "net": "GND",
+   "pads": 241,
+   "pins": [
+    "IC1 ECP5-BGA256: GND_1 (power_in)",
+    "IC1 ECP5-BGA256: GND_2 (power_in)",
+    "IC1 ECP5-BGA256: GND_4 (power_in)",
+    "IC1 ECP5-BGA256: GND_3 (power_in)",
+    "IC1 ECP5-BGA256: PT58B (bidirectional)",
+    "IC1 ECP5-BGA256: PT13A (bidirectional)",
+    "IC1 ECP5-BGA256: PT33A (bidirectional)",
+    "IC1 ECP5-BGA256: PT40B (bidirectional)",
+    "IC1 ECP5-BGA256: PR8C (bidirectional)",
+    "IC1 ECP5-BGA256: PL8C (bidirectional)",
+    "IC1 ECP5-BGA256: GND_5 (power_in)",
+    "IC1 ECP5-BGA256: GND_6 (power_in)",
+    "IC1 ECP5-BGA256: GND_8 (power_in)",
+    "IC1 ECP5-BGA256: PL14B (bidirectional)",
+    "IC1 ECP5-BGA256: PL14C (bidirectional)",
+    "IC1 ECP5-BGA256: GND_7 (power_in)",
+    "IC1 ECP5-BGA256: GND_9 (power_in)",
+    "IC1 ECP5-BGA256: GND_12 (power_in)",
+    "IC1 ECP5-BGA256: GND_13 (power_in)",
+    "IC1 ECP5-BGA256: PL20B (bidirectional)",
+    "IC1 ECP5-BGA256: PL14D (bidirectional)",
+    "IC1 ECP5-BGA256: GND_10 (power_in)",
+    "IC1 ECP5-BGA256: GND_11 (power_in)",
+    "IC1 ECP5-BGA256: GND_16 (power_in)",
+    "... 78 more"
+   ],
+   "C parts": [
+    "C1 2.2uF to +1V1",
+    "C10 0.1uF to +3V3",
+    "C11 0.1uF to +1V1",
+    "C12 0.1uF to +3V3",
+    "C13 1uF to +1V1",
+    "C14 0.1uF to +3V3",
+    "... 71 more"
+   ],
+   "D parts": [
+    "D15 24\u00b12% to VBUS_CLAMPED",
+    "D18 24\u00b12% to VBUS_CLAMPED",
+    "D19 6.2\u00b12% to +5V",
+    "D22 24\u00b12% to VBUS_CLAMPED",
+    "D23 TVS to CONTROL_VBUS",
+    "D24 TVS to TARGET_A_VBUS",
+    "... 2 more"
+   ],
+   "H parts": [
+    "H1 MountingHole",
+    "H2 MountingHole",
+    "H3 MountingHole",
+    "H4 MountingHole"
+   ],
+   "R parts": [
+    "R102 5.1k to FPGA_CONFIG.~{INIT}",
+    "R117 0 to ~{POWER_GOOD}",
+    "R119 5.1k to RAM.~{RESET}",
+    "R12 330 to FPGA_CFG0",
+    "R120 100k to Net-(Q15A-B1)",
+    "R14 330 to FPGA_CFG2",
+    "... 26 more"
+   ],
+   "TP parts": [
+    "TP28 TestPoint"
+   ],
+   "Y parts": [
+    "Y1 Osc60MHz"
+   ]
+  },
+  "Net-(D1-A)": {
+   "net": "Net-(D1-A)",
+   "pads": 2,
+   "pins": [
+    "Q12 PMOS [Device:Q_PMOS_GSD]: D (passive)"
+   ],
+   "D parts": [
+    "D1 D to +5V"
+   ]
+  },
+  "Net-(D16-A)": {
+   "net": "Net-(D16-A)",
+   "pads": 5,
+   "pins": [
+    "Q10 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: C1 (passive)",
+    "Q9 PMOS [Device:Q_PMOS_GSD]: G (input)"
+   ],
+   "D parts": [
+    "D16 6.2\u00b12% to CONTROL_VBUS_IN"
+   ],
+   "R parts": [
+    "R68 820k to CONTROL_VBUS_IN",
+    "R70 33k to GND"
+   ]
+  },
+  "Net-(D20-A)": {
+   "net": "Net-(D20-A)",
+   "pads": 5,
+   "pins": [
+    "Q10 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: C2 (passive)",
+    "Q12 PMOS [Device:Q_PMOS_GSD]: G (input)"
+   ],
+   "D parts": [
+    "D20 6.2\u00b12% to AUX_VBUS_IN"
+   ],
+   "R parts": [
+    "R75 820k to AUX_VBUS_IN",
+    "R77 33k to GND"
+   ]
+  },
+  "Net-(D27-A)": {
+   "net": "Net-(D27-A)",
+   "pads": 5,
+   "pins": [
+    "Q1 PMOS [Transistor_FET:SiA449DJ]: G (passive)",
+    "Q13 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: C1 (passive)",
+    "Q2 PMOS [Transistor_FET:SiA449DJ]: G (passive)"
+   ],
+   "D parts": [
+    "D27 6.2\u00b12% to Net-(D27-K)"
+   ],
+   "R parts": [
+    "R90 100k to GND"
+   ]
+  },
+  "Net-(D27-K)": {
+   "net": "Net-(D27-K)",
+   "pads": 6,
+   "pins": [
+    "Q1 PMOS [Transistor_FET:SiA449DJ]: S (passive)",
+    "Q13 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: E1 (passive)",
+    "Q13 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: E2 (passive)",
+    "Q2 PMOS [Transistor_FET:SiA449DJ]: S (passive)"
+   ],
+   "D parts": [
+    "D27 6.2\u00b12% to Net-(D27-A)"
+   ],
+   "R parts": [
+    "R3 33k to Net-(Q3A-C1)"
+   ]
+  },
+  "Net-(D28-A)": {
+   "net": "Net-(D28-A)",
+   "pads": 5,
+   "pins": [
+    "Q14 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: C1 (passive)",
+    "Q4 PMOS [Transistor_FET:SiA449DJ]: G (passive)",
+    "Q5 PMOS [Transistor_FET:SiA449DJ]: G (passive)"
+   ],
+   "D parts": [
+    "D28 6.2\u00b12% to Net-(D28-K)"
+   ],
+   "R parts": [
+    "R94 100k to GND"
+   ]
+  },
+  "Net-(D28-K)": {
+   "net": "Net-(D28-K)",
+   "pads": 6,
+   "pins": [
+    "Q14 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: E1 (passive)",
+    "Q14 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: E2 (passive)",
+    "Q4 PMOS [Transistor_FET:SiA449DJ]: S (passive)",
+    "Q5 PMOS [Transistor_FET:SiA449DJ]: S (passive)"
+   ],
+   "D parts": [
+    "D28 6.2\u00b12% to Net-(D28-A)"
+   ],
+   "R parts": [
+    "R60 33k to Net-(Q3B-C2)"
+   ]
+  },
+  "Net-(D29-A)": {
+   "net": "Net-(D29-A)",
+   "pads": 5,
+   "pins": [
+    "Q15 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: C1 (passive)",
+    "Q6 PMOS [Transistor_FET:SiA449DJ]: G (passive)",
+    "Q7 PMOS [Transistor_FET:SiA449DJ]: G (passive)"
+   ],
+   "D parts": [
+    "D29 6.2\u00b12% to Net-(D29-K)"
+   ],
+   "R parts": [
+    "R96 100k to GND"
+   ]
+  },
+  "Net-(D29-K)": {
+   "net": "Net-(D29-K)",
+   "pads": 6,
+   "pins": [
+    "Q15 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: E1 (passive)",
+    "Q15 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: E2 (passive)",
+    "Q6 PMOS [Transistor_FET:SiA449DJ]: S (passive)",
+    "Q7 PMOS [Transistor_FET:SiA449DJ]: S (passive)"
+   ],
+   "D parts": [
+    "D29 6.2\u00b12% to Net-(D29-A)"
+   ],
+   "R parts": [
+    "R61 33k to Net-(Q8A-C1)"
+   ]
+  },
+  "Net-(D8-A)": {
+   "net": "Net-(D8-A)",
+   "pads": 2,
+   "pins": [
+    "Q9 PMOS [Device:Q_PMOS_GSD]: D (passive)"
+   ],
+   "D parts": [
+    "D8 D to +5V"
+   ]
+  },
+  "Net-(D9-A)": {
+   "net": "Net-(D9-A)",
+   "pads": 2,
+   "pins": [
+    "J10 TC_SWD [Connector_Generic:Conn_02x03_Odd_Even]: Pin_6 (passive)"
+   ],
+   "D parts": [
+    "D9 SCHOTTKY to +5V"
+   ]
+  },
+  "Net-(Q10A-B1)": {
+   "net": "Net-(Q10A-B1)",
+   "pads": 2,
+   "pins": [
+    "Q10 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: B1 (input)"
+   ],
+   "R parts": [
+    "R47 33k to Net-(D17-K)"
+   ]
+  },
+  "Net-(Q10B-B2)": {
+   "net": "Net-(Q10B-B2)",
+   "pads": 2,
+   "pins": [
+    "Q10 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: B2 (input)"
+   ],
+   "R parts": [
+    "R48 33k to Net-(D21-K)"
+   ]
+  },
+  "Net-(Q11A-B1)": {
+   "net": "Net-(Q11A-B1)",
+   "pads": 3,
+   "pins": [
+    "Q11 2NPN [Transistor_BJT:BC847BS]: B1 (input)"
+   ],
+   "R parts": [
+    "R71 2.2k to ~{CONTROL_VBUS_IN_EN}",
+    "R72 10k to GND"
+   ]
+  },
+  "Net-(Q11A-C1)": {
+   "net": "Net-(Q11A-C1)",
+   "pads": 2,
+   "pins": [
+    "Q11 2NPN [Transistor_BJT:BC847BS]: C1 (passive)"
+   ],
+   "R parts": [
+    "R69 33k to Net-(D17-K)"
+   ]
+  },
+  "Net-(Q11A-E1)": {
+   "net": "Net-(Q11A-E1)",
+   "pads": 2,
+   "pins": [
+    "Q11 2NPN [Transistor_BJT:BC847BS]: E1 (passive)"
+   ],
+   "R parts": [
+    "R113 0 to ~{POWER_GOOD}"
+   ]
+  },
+  "Net-(Q11B-B2)": {
+   "net": "Net-(Q11B-B2)",
+   "pads": 3,
+   "pins": [
+    "Q11 2NPN [Transistor_BJT:BC847BS]: B2 (input)"
+   ],
+   "R parts": [
+    "R78 2.2k to ~{AUX_VBUS_IN_EN}",
+    "R79 10k to GND"
+   ]
+  },
+  "Net-(Q11B-C2)": {
+   "net": "Net-(Q11B-C2)",
+   "pads": 2,
+   "pins": [
+    "Q11 2NPN [Transistor_BJT:BC847BS]: C2 (passive)"
+   ],
+   "R parts": [
+    "R76 33k to Net-(D21-K)"
+   ]
+  },
+  "Net-(Q11B-E2)": {
+   "net": "Net-(Q11B-E2)",
+   "pads": 2,
+   "pins": [
+    "Q11 2NPN [Transistor_BJT:BC847BS]: E2 (passive)"
+   ],
+   "R parts": [
+    "R116 0 to ~{POWER_GOOD}"
+   ]
+  },
+  "Net-(Q13A-B1)": {
+   "net": "Net-(Q13A-B1)",
+   "pads": 3,
+   "pins": [
+    "Q13 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: B1 (input)",
+    "Q13 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: C2 (passive)"
+   ],
+   "R parts": [
+    "R91 100k to GND"
+   ]
+  },
+  "Net-(Q13B-B2)": {
+   "net": "Net-(Q13B-B2)",
+   "pads": 2,
+   "pins": [
+    "Q13 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: B2 (input)"
+   ],
+   "R parts": [
+    "R62 100k to Net-(Q3A-C1)"
+   ]
+  },
+  "Net-(Q14A-B1)": {
+   "net": "Net-(Q14A-B1)",
+   "pads": 3,
+   "pins": [
+    "Q14 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: B1 (input)",
+    "Q14 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: C2 (passive)"
+   ],
+   "R parts": [
+    "R95 100k to GND"
+   ]
+  },
+  "Net-(Q14B-B2)": {
+   "net": "Net-(Q14B-B2)",
+   "pads": 2,
+   "pins": [
+    "Q14 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: B2 (input)"
+   ],
+   "R parts": [
+    "R92 100k to Net-(Q3B-C2)"
+   ]
+  },
+  "Net-(Q15A-B1)": {
+   "net": "Net-(Q15A-B1)",
+   "pads": 3,
+   "pins": [
+    "Q15 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: B1 (input)",
+    "Q15 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: C2 (passive)"
+   ],
+   "R parts": [
+    "R120 100k to GND"
+   ]
+  },
+  "Net-(Q15B-B2)": {
+   "net": "Net-(Q15B-B2)",
+   "pads": 2,
+   "pins": [
+    "Q15 2PNP [Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1]: B2 (input)"
+   ],
+   "R parts": [
+    "R93 100k to Net-(Q8A-C1)"
+   ]
+  },
+  "Net-(Q16A-B1)": {
+   "net": "Net-(Q16A-B1)",
+   "pads": 2,
+   "pins": [
+    "Q16 2NPN [Transistor_BJT:BC847BS]: B1 (input)"
+   ],
+   "R parts": [
+    "R50 0 to Net-(D30-A)"
+   ]
+  },
+  "Net-(Q3A-B1)": {
+   "net": "Net-(Q3A-B1)",
+   "pads": 3,
+   "pins": [
+    "Q3 2NPN [Transistor_BJT:BC847BS]: B1 (input)"
+   ],
+   "R parts": [
+    "R40 2.2k to CONTROL_VBUS_EN",
+    "R41 10k to GND"
+   ]
+  },
+  "Net-(Q3A-C1)": {
+   "net": "Net-(Q3A-C1)",
+   "pads": 3,
+   "pins": [
+    "Q3 2NPN [Transistor_BJT:BC847BS]: C1 (passive)"
+   ],
+   "R parts": [
+    "R3 33k to Net-(D27-K)",
+    "R62 100k to Net-(Q13B-B2)"
+   ]
+  },
+  "Net-(Q3A-E1)": {
+   "net": "Net-(Q3A-E1)",
+   "pads": 2,
+   "pins": [
+    "Q3 2NPN [Transistor_BJT:BC847BS]: E1 (passive)"
+   ],
+   "R parts": [
+    "R112 0 to ~{POWER_GOOD}"
+   ]
+  },
+  "Net-(Q3B-B2)": {
+   "net": "Net-(Q3B-B2)",
+   "pads": 3,
+   "pins": [
+    "Q3 2NPN [Transistor_BJT:BC847BS]: B2 (input)"
+   ],
+   "R parts": [
+    "R63 2.2k to AUX_VBUS_EN",
+    "R64 10k to GND"
+   ]
+  },
+  "Net-(Q3B-C2)": {
+   "net": "Net-(Q3B-C2)",
+   "pads": 3,
+   "pins": [
+    "Q3 2NPN [Transistor_BJT:BC847BS]: C2 (passive)"
+   ],
+   "R parts": [
+    "R60 33k to Net-(D28-K)",
+    "R92 100k to Net-(Q14B-B2)"
+   ]
+  },
+  "Net-(Q3B-E2)": {
+   "net": "Net-(Q3B-E2)",
+   "pads": 2,
+   "pins": [
+    "Q3 2NPN [Transistor_BJT:BC847BS]: E2 (passive)"
+   ],
+   "R parts": [
+    "R115 0 to ~{POWER_GOOD}"
+   ]
+  },
+  "Net-(Q8A-B1)": {
+   "net": "Net-(Q8A-B1)",
+   "pads": 3,
+   "pins": [
+    "Q8 2NPN [Transistor_BJT:BC847BS]: B1 (input)"
+   ],
+   "R parts": [
+    "R65 2.2k to TARGET_C_VBUS_EN",
+    "R66 10k to GND"
+   ]
+  },
+  "Net-(Q8A-C1)": {
+   "net": "Net-(Q8A-C1)",
+   "pads": 3,
+   "pins": [
+    "Q8 2NPN [Transistor_BJT:BC847BS]: C1 (passive)"
+   ],
+   "R parts": [
+    "R61 33k to Net-(D29-K)",
+    "R93 100k to Net-(Q15B-B2)"
+   ]
+  },
+  "Net-(Q8A-E1)": {
+   "net": "Net-(Q8A-E1)",
+   "pads": 2,
+   "pins": [
+    "Q8 2NPN [Transistor_BJT:BC847BS]: E1 (passive)"
+   ],
+   "R parts": [
+    "R114 0 to ~{POWER_GOOD}"
+   ]
+  },
+  "Net-(Q8B-B2)": {
+   "net": "Net-(Q8B-B2)",
+   "pads": 3,
+   "pins": [
+    "Q8 2NPN [Transistor_BJT:BC847BS]: B2 (input)"
+   ],
+   "R parts": [
+    "R88 2.2k to TARGET_A_DISCHARGE",
+    "R89 10k to GND"
+   ]
+  },
+  "Net-(Q8B-C2)": {
+   "net": "Net-(Q8B-C2)",
+   "pads": 2,
+   "pins": [
+    "Q8 2NPN [Transistor_BJT:BC847BS]: C2 (passive)"
+   ],
+   "R parts": [
+    "R49 33k to TARGET_A_VBUS_IN"
+   ]
+  },
+  "Net-(Q8B-E2)": {
+   "net": "Net-(Q8B-E2)",
+   "pads": 2,
+   "pins": [
+    "Q8 2NPN [Transistor_BJT:BC847BS]: E2 (passive)"
+   ],
+   "R parts": [
+    "R103 0 to ~{POWER_GOOD}"
+   ]
+  },
+  "Net-(R101-Pad2)": {
+   "net": "Net-(R101-Pad2)",
+   "pads": 4,
+   "pins": [
+    "SW1 BTN_PROGRAM [support_hardware:SW_SPST_shielded]: pin 1 (passive)"
+   ],
+   "R parts": [
+    "R101 8.06k\u00b11% to +3V3",
+    "R104 18.7k\u00b11% to ~{BTN_PROGRAM}"
+   ],
+   "TP parts": [
+    "TP15 TestPoint"
+   ]
+  },
+  "Net-(R106-Pad2)": {
+   "net": "Net-(R106-Pad2)",
+   "pads": 3,
+   "pins": [
+    "SW3 BTN_USER [support_hardware:SW_SPST_shielded]: pin 1 (passive)"
+   ],
+   "R parts": [
+    "R106 10k to +3V3",
+    "R107 33k to ~{BTN_USER}"
+   ]
+  },
+  "Net-(U13-CB)": {
+   "net": "Net-(U13-CB)",
+   "pads": 2,
+   "pins": [
+    "U13 DPO2036: CB (passive)"
+   ],
+   "C parts": [
+    "C57 0.1uF to GND"
+   ]
+  },
+  "Net-(U14-CB)": {
+   "net": "Net-(U14-CB)",
+   "pads": 2,
+   "pins": [
+    "U14 DPO2036: CB (passive)"
+   ],
+   "C parts": [
+    "C63 0.1uF to GND"
+   ]
+  },
+  "Net-(U16-1D+)": {
+   "net": "Net-(U16-1D+)",
+   "pads": 2,
+   "pins": [
+    "FL3 Filter_EMI_CommonMode: pin 4 (passive)",
+    "U16 PI3USB102G [TC7USB42MU_1]: 1D+ (bidirectional)"
+   ]
+  },
+  "Net-(U16-1D-)": {
+   "net": "Net-(U16-1D-)",
+   "pads": 2,
+   "pins": [
+    "FL3 Filter_EMI_CommonMode: pin 2 (passive)",
+    "U16 PI3USB102G [TC7USB42MU_1]: 1D- (bidirectional)"
+   ]
+  },
+  "Net-(U3-ADJ{slash}NC)": {
+   "net": "Net-(U3-ADJ{slash}NC)",
+   "pads": 3,
+   "pins": [
+    "U3 3V3REG [support_hardware:AP7361EA-XXFGE-7]: ADJ/NC (passive)"
+   ],
+   "R parts": [
+    "R81 57.6k\u00b11% to +3V3",
+    "R82 18.7k\u00b11% to GND"
+   ]
+  },
+  "Net-(U6-PA03)": {
+   "net": "Net-(U6-PA03)",
+   "pads": 2,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA03 (bidirectional)"
+   ],
+   "R parts": [
+    "R118 1k to FPGA_CONFIG.~{INIT}"
+   ]
+  },
+  "Net-(U6-PA07)": {
+   "net": "Net-(U6-PA07)",
+   "pads": 3,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA07 (bidirectional)"
+   ],
+   "R parts": [
+    "R52 29.4k\u00b11% to +3V3",
+    "R53 8.06k\u00b11% to GND"
+   ]
+  },
+  "Net-(U6-PA28{slash}~{RST})": {
+   "net": "Net-(U6-PA28{slash}~{RST})",
+   "pads": 3,
+   "pins": [
+    "U6 ATSAMD11 [MCU_Microchip_SAMD:ATSAMD11D14A-M]: PA28/~{RST} (bidirectional)"
+   ],
+   "C parts": [
+    "C77 1uF to GND"
+   ],
+   "R parts": [
+    "R105 8.06k\u00b11% to ~{BTN_RESET}"
+   ]
+  },
+  "TARGET_A_SENSE+": {
+   "net": "TARGET_A_SENSE+",
+   "pads": 2,
+   "pins": [
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SENSE1+ (input)"
+   ],
+   "R parts": [
+    "R2 0.02\u00b11%"
+   ]
+  },
+  "TARGET_A_SENSE-": {
+   "net": "TARGET_A_SENSE-",
+   "pads": 2,
+   "pins": [
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SENSE1- (input)"
+   ],
+   "R parts": [
+    "R2 0.02\u00b11%"
+   ]
+  },
+  "TARGET_A_VBUS": {
+   "net": "TARGET_A_VBUS",
+   "pads": 4,
+   "pins": [
+    "J3 USB_A: VBUS (power_in)"
+   ],
+   "D parts": [
+    "D24 TVS to GND"
+   ],
+   "R parts": [
+    "R2 0.02\u00b11%"
+   ],
+   "TP parts": [
+    "TP7 TestPoint"
+   ]
+  },
+  "TARGET_A_VBUS_IN": {
+   "net": "TARGET_A_VBUS_IN",
+   "pads": 5,
+   "pins": [
+    "Q2 PMOS [Transistor_FET:SiA449DJ]: D (passive)",
+    "Q5 PMOS [Transistor_FET:SiA449DJ]: D (passive)",
+    "Q6 PMOS [Transistor_FET:SiA449DJ]: D (passive)"
+   ],
+   "R parts": [
+    "R2 0.02\u00b11%",
+    "R49 33k to Net-(Q8B-C2)"
+   ]
+  },
+  "TARGET_C_SENSE+": {
+   "net": "TARGET_C_SENSE+",
+   "pads": 2,
+   "pins": [
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SENSE2+ (input)"
+   ],
+   "R parts": [
+    "R59 0.02\u00b11%"
+   ]
+  },
+  "TARGET_C_SENSE-": {
+   "net": "TARGET_C_SENSE-",
+   "pads": 2,
+   "pins": [
+    "U1 PAC1954 [support_hardware:PAC195X-1-VQFN]: SENSE2- (input)"
+   ],
+   "R parts": [
+    "R59 0.02\u00b11%"
+   ]
+  },
+  "TARGET_C_VBUS": {
+   "net": "TARGET_C_VBUS",
+   "pads": 7,
+   "pins": [
+    "J4 USB_C [Connector:USB_C_Receptacle_USB2.0]: VBUS (passive) x4"
+   ],
+   "D parts": [
+    "D26 TVS to GND"
+   ],
+   "R parts": [
+    "R59 0.02\u00b11%"
+   ],
+   "TP parts": [
+    "TP40 TestPoint"
+   ]
+  },
+  "TARGET_C_VBUS_IN": {
+   "net": "TARGET_C_VBUS_IN",
+   "pads": 3,
+   "pins": [
+    "Q7 PMOS [Transistor_FET:SiA449DJ]: D (passive)"
+   ],
+   "R parts": [
+    "R45 5.1k to VBUS_CLAMPED",
+    "R59 0.02\u00b11%"
+   ]
+  },
+  "VCCRAM": {
+   "net": "VCCRAM",
+   "pads": 27,
+   "pins": [
+    "IC1 ECP5-BGA256: PL8D (bidirectional)",
+    "IC1 ECP5-BGA256: PL11A (bidirectional)",
+    "IC1 ECP5-BGA256: PL17B (bidirectional)",
+    "IC1 ECP5-BGA256: PL17A (bidirectional)",
+    "IC1 ECP5-BGA256: VCCIO7_1 (power_in)",
+    "IC1 ECP5-BGA256: VCCIO7_2 (power_in)",
+    "IC1 ECP5-BGA256: PL23A (bidirectional)",
+    "IC1 ECP5-BGA256: PL23B (bidirectional)",
+    "IC1 ECP5-BGA256: PL20C (bidirectional)",
+    "IC1 ECP5-BGA256: PL17C (bidirectional)",
+    "IC1 ECP5-BGA256: PL17D (bidirectional)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: VCC (power_in)",
+    "U10 HyperRAM [support_hardware:S27KS0641]: VCCQ (power_in) x2",
+    "U15 1V8REG [Regulator_Linear:MIC5504-1.8YM5]: VOUT (power_out)"
+   ],
+   "C parts": [
+    "C19 1uF to GND",
+    "C21 1uF to GND",
+    "C31 0.1uF to GND",
+    "C32 0.1uF to GND",
+    "C5 1uF to GND",
+    "C60 1uF to GND",
+    "... 4 more"
+   ],
+   "R parts": [
+    "R54 0 to +3V3"
+   ],
+   "TP parts": [
+    "TP6 TestPoint"
+   ]
+  }
+ },
+ "parts": {
+  "FL1": {
+   "ref": "FL1",
+   "value": "Filter_EMI_CommonMode",
+   "library": "Device:Filter_EMI_CommonMode",
+   "description": "EMI 2-inductor common mode filter",
+   "sheet": "AUX Port",
+   "pins": [
+    "1 (passive) -> PHY_D+",
+    "3 (passive) -> PHY_D-",
+    "2 (passive) -> AUX_D+",
+    "4 (passive) -> AUX_D-"
+   ]
+  },
+  "FL2": {
+   "ref": "FL2",
+   "value": "Filter_EMI_CommonMode",
+   "library": "Device:Filter_EMI_CommonMode",
+   "description": "EMI 2-inductor common mode filter",
+   "sheet": "TARGET Port",
+   "pins": [
+    "1 (passive) -> PHY_D+",
+    "3 (passive) -> PHY_D-",
+    "2 (passive) -> TARGET_A_D+",
+    "4 (passive) -> TARGET_A_D-"
+   ]
+  },
+  "FL3": {
+   "ref": "FL3",
+   "value": "Filter_EMI_CommonMode",
+   "library": "Device:Filter_EMI_CommonMode",
+   "description": "EMI 2-inductor common mode filter",
+   "sheet": "CONTROL Port",
+   "pins": [
+    "1 (passive) -> PHY_D+",
+    "3 (passive) -> PHY_D-",
+    "4 (passive) -> Net-(U16-1D+)",
+    "2 (passive) -> Net-(U16-1D-)"
+   ]
+  },
+  "FL4": {
+   "ref": "FL4",
+   "value": "Filter_EMI_CommonMode",
+   "library": "Device:Filter_EMI_CommonMode",
+   "description": "EMI 2-inductor common mode filter",
+   "sheet": "TARGET Port",
+   "pins": [
+    "1 (passive) -> PHY_D+",
+    "3 (passive) -> PHY_D-",
+    "2 (passive) -> TARGET_C_D+",
+    "4 (passive) -> TARGET_C_D-"
+   ]
+  },
+  "IC1": {
+   "ref": "IC1",
+   "value": "ECP5-BGA256",
+   "library": "fpgas_and_processors:ECP5-BGA256",
+   "description": "FPGA - Field Programmable Gate Array ECP5; 12k LUTs; 1.1V",
+   "sheet": "Power Supplies",
+   "pins": [
+    "VCC_1 (power_in), VCC_2 (power_in), VCC_3 (power_in), VCC_6 (power_in), VCC_4 (power_in), VCC_5 (power_in) -> +1V1",
+    "VCCAUX_1 (power_in), VCCAUX_2 (power_in) -> +2V5",
+    "PT47A (bidirectional), PT47B (bidirectional), PT51B (bidirectional), PT20A (bidirectional), PT24A (bidirectional), VCCIO1_1 (power_in) ... -> +3V3",
+    "PR8A (bidirectional) -> AUX_PHY.CLK",
+    "PR14A (bidirectional) -> AUX_PHY.DATA0",
+    "PR14B (bidirectional) -> AUX_PHY.DATA1",
+    "PR20A (bidirectional) -> AUX_PHY.DATA2",
+    "PR20B (bidirectional) -> AUX_PHY.DATA3",
+    "PR23B (bidirectional) -> AUX_PHY.DATA4",
+    "PR23A (bidirectional) -> AUX_PHY.DATA5",
+    "PR23D (bidirectional) -> AUX_PHY.DATA6",
+    "PR23C (bidirectional) -> AUX_PHY.DATA7",
+    "PR11D (bidirectional) -> AUX_PHY.DIR",
+    "PR11C (bidirectional) -> AUX_PHY.NXT",
+    "PR8B (bidirectional) -> AUX_PHY.STP",
+    "PR17C (bidirectional) -> AUX_PHY.~{RESET}",
+    "PR17B (bidirectional) -> AUX_TYPE_C.SBU1S",
+    "PR20D (bidirectional) -> AUX_TYPE_C.SBU2S",
+    "PR17A (bidirectional) -> AUX_TYPE_C.SCL",
+    "PR14C (bidirectional) -> AUX_TYPE_C.SDA",
+    "PR20C (bidirectional) -> AUX_TYPE_C.~{FAULT}",
+    "PR14D (bidirectional) -> AUX_TYPE_C.~{INT}",
+    "PR32C (bidirectional) -> CONTROL_PHY.CLK",
+    "PR32A (bidirectional) -> CONTROL_PHY.DATA0",
+    "PR35D (bidirectional) -> CONTROL_PHY.DATA1",
+    "PR35A (bidirectional) -> CONTROL_PHY.DATA2",
+    "PR32B (bidirectional) -> CONTROL_PHY.DATA3",
+    "PR35B (bidirectional) -> CONTROL_PHY.DATA4",
+    "PR38C (bidirectional) -> CONTROL_PHY.DATA5",
+    "PR38D (bidirectional) -> CONTROL_PHY.DATA6",
+    "PR38B (bidirectional) -> CONTROL_PHY.DATA7",
+    "PR26C (bidirectional) -> CONTROL_PHY.DIR",
+    "PR26D (bidirectional) -> CONTROL_PHY.NXT",
+    "PR26B (bidirectional) -> CONTROL_PHY.STP",
+    "PR26A (bidirectional) -> CONTROL_PHY.~{RESET}",
+    "PT29B (bidirectional) -> CLOCK_60MHZ",
+    "D7/PB4A (bidirectional) -> FPGA_ADV",
+    "DONE (bidirectional) -> FPGA_CONFIG.DONE",
+    "~{INIT} (bidirectional) -> FPGA_CONFIG.~{INIT}",
+    "~{PROGRAM} (bidirectional) -> FPGA_CONFIG.~{PROGRAM}",
+    "... 120 more nets"
+   ]
+  },
+  "J1": {
+   "ref": "J1",
+   "value": "USB_C",
+   "library": "Connector:USB_C_Receptacle_USB2.0",
+   "description": "USB 2.0-only Type-C Receptacle connector",
+   "sheet": "AUX Port",
+   "pins": [
+    "CC1 (bidirectional) -> CC1",
+    "CC2 (bidirectional) -> CC2",
+    "D+ (bidirectional), D+ (bidirectional) -> AUX_D+",
+    "D- (bidirectional), D- (bidirectional) -> AUX_D-",
+    "SBU1 (bidirectional) -> AUX_SBU1",
+    "SBU2 (bidirectional) -> AUX_SBU2",
+    "VBUS (passive), VBUS (passive), VBUS (passive), VBUS (passive) -> AUX_VBUS",
+    "GND (passive), GND (passive), GND (passive), GND (passive), SHIELD (passive) -> GND"
+   ]
+  },
+  "J10": {
+   "ref": "J10",
+   "value": "TC_SWD",
+   "library": "Connector_Generic:Conn_02x03_Odd_Even",
+   "description": "Generic connector, double row, 02x03, odd/even pin numbering scheme (row 1 odd numbers, row 2 even numbers), script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "sheet": "Debugger",
+   "pins": [
+    "Pin_1 (passive) -> +3V3",
+    "Pin_4 (passive) -> MCU_SWCLK",
+    "Pin_2 (passive) -> MCU_SWDIO",
+    "Pin_3 (passive) -> ~{BTN_RESET}",
+    "Pin_5 (passive) -> GND",
+    "Pin_6 (passive) -> Net-(D9-A)"
+   ]
+  },
+  "J11": {
+   "ref": "J11",
+   "value": "SPRING_CONTACT",
+   "library": "Connector:Conn_01x01_Pin",
+   "description": "Generic connector, single row, 01x01, script generated",
+   "sheet": "Clock and Miscellaneous",
+   "pins": [
+    "Pin_1 (passive) -> GND"
+   ]
+  },
+  "J12": {
+   "ref": "J12",
+   "value": "SPRING_CONTACT",
+   "library": "Connector:Conn_01x01_Pin",
+   "description": "Generic connector, single row, 01x01, script generated",
+   "sheet": "Clock and Miscellaneous",
+   "pins": [
+    "Pin_1 (passive) -> GND"
+   ]
+  },
+  "J13": {
+   "ref": "J13",
+   "value": "SPRING_CONTACT",
+   "library": "Connector:Conn_01x01_Pin",
+   "description": "Generic connector, single row, 01x01, script generated",
+   "sheet": "Clock and Miscellaneous",
+   "pins": [
+    "Pin_1 (passive) -> GND"
+   ]
+  },
+  "J14": {
+   "ref": "J14",
+   "value": "SPRING_CONTACT",
+   "library": "Connector:Conn_01x01_Pin",
+   "description": "Generic connector, single row, 01x01, script generated",
+   "sheet": "Clock and Miscellaneous",
+   "pins": [
+    "Pin_1 (passive) -> GND"
+   ]
+  },
+  "J15": {
+   "ref": "J15",
+   "value": "SPRING_CONTACT",
+   "library": "Connector:Conn_01x01_Pin",
+   "description": "Generic connector, single row, 01x01, script generated",
+   "sheet": "Clock and Miscellaneous",
+   "pins": [
+    "Pin_1 (passive) -> GND"
+   ]
+  },
+  "J16": {
+   "ref": "J16",
+   "value": "SPRING_CONTACT",
+   "library": "Connector:Conn_01x01_Pin",
+   "description": "Generic connector, single row, 01x01, script generated",
+   "sheet": "Clock and Miscellaneous",
+   "pins": [
+    "Pin_1 (passive) -> GND"
+   ]
+  },
+  "J2": {
+   "ref": "J2",
+   "value": "USB_C",
+   "library": "Connector:USB_C_Receptacle_USB2.0",
+   "description": "USB 2.0-only Type-C Receptacle connector",
+   "sheet": "CONTROL Port",
+   "pins": [
+    "CC1 (bidirectional) -> CONTROL_CC1",
+    "CC2 (bidirectional) -> CONTROL_CC2",
+    "D+ (bidirectional), D+ (bidirectional) -> CONTROL_D+",
+    "D- (bidirectional), D- (bidirectional) -> CONTROL_D-",
+    "VBUS (passive), VBUS (passive), VBUS (passive), VBUS (passive) -> CONTROL_VBUS",
+    "GND (passive), GND (passive), GND (passive), GND (passive), SHIELD (passive) -> GND",
+    "SBU1 (bidirectional) -> unconnected-(J2-SBU1-PadA8)",
+    "SBU2 (bidirectional) -> unconnected-(J2-SBU2-PadB8)"
+   ]
+  },
+  "J3": {
+   "ref": "J3",
+   "value": "USB_A",
+   "library": "Connector:USB_A",
+   "description": "USB Type A connector",
+   "sheet": "TARGET Port",
+   "pins": [
+    "D+ (bidirectional) -> TARGET_A_D+",
+    "D- (bidirectional) -> TARGET_A_D-",
+    "GND (power_in), Shield (passive) -> GND",
+    "VBUS (power_in) -> TARGET_A_VBUS"
+   ]
+  },
+  "J4": {
+   "ref": "J4",
+   "value": "USB_C",
+   "library": "Connector:USB_C_Receptacle_USB2.0",
+   "description": "USB 2.0-only Type-C Receptacle connector",
+   "sheet": "TARGET Port",
+   "pins": [
+    "CC1 (bidirectional) -> CC1",
+    "CC2 (bidirectional) -> CC2",
+    "SBU1 (bidirectional) -> SBU1",
+    "SBU2 (bidirectional) -> SBU2",
+    "D+ (bidirectional), D+ (bidirectional) -> TARGET_C_D+",
+    "D- (bidirectional), D- (bidirectional) -> TARGET_C_D-",
+    "GND (passive), GND (passive), GND (passive), GND (passive), SHIELD (passive) -> GND",
+    "VBUS (passive), VBUS (passive), VBUS (passive), VBUS (passive) -> TARGET_C_VBUS"
+   ]
+  },
+  "J5": {
+   "ref": "J5",
+   "value": "MEZZANINE",
+   "library": "Connector_Generic_MountingPin:Conn_02x15_Counter_Clockwise_MountingPin",
+   "description": "Generic connectable mounting pin connector, double row, 02x15, counter clockwise pin numbering scheme (similar to DIP package numbering), script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "sheet": "Expansion Interfaces",
+   "pins": [
+    "Pin_15 (passive), Pin_16 (passive) -> +3V3",
+    "Pin_10 (passive) -> MEZZANINE10",
+    "Pin_11 (passive) -> MEZZANINE11",
+    "Pin_12 (passive) -> MEZZANINE12",
+    "Pin_13 (passive) -> MEZZANINE13",
+    "Pin_18 (passive) -> MEZZANINE18",
+    "Pin_19 (passive) -> MEZZANINE19",
+    "Pin_20 (passive) -> MEZZANINE20",
+    "Pin_21 (passive) -> MEZZANINE21",
+    "Pin_22 (passive) -> MEZZANINE22",
+    "Pin_23 (passive) -> MEZZANINE23",
+    "Pin_24 (passive) -> MEZZANINE24",
+    "Pin_25 (passive) -> MEZZANINE25",
+    "Pin_26 (passive) -> MEZZANINE26",
+    "Pin_27 (passive) -> MEZZANINE27",
+    "Pin_28 (passive) -> MEZZANINE28",
+    "Pin_3 (passive) -> MEZZANINE3",
+    "Pin_4 (passive) -> MEZZANINE4",
+    "Pin_5 (passive) -> MEZZANINE5",
+    "Pin_6 (passive) -> MEZZANINE6",
+    "Pin_7 (passive) -> MEZZANINE7",
+    "Pin_8 (passive) -> MEZZANINE8",
+    "Pin_9 (passive) -> MEZZANINE9",
+    "Pin_14 (passive), Pin_17 (passive), Pin_2 (passive), Pin_29 (passive), MountPin (passive) -> GND",
+    "Pin_1 (passive) -> unconnected-(J5-Pin_1-Pad1)",
+    "Pin_30 (passive) -> unconnected-(J5-Pin_30-Pad30)"
+   ]
+  },
+  "J6": {
+   "ref": "J6",
+   "value": "MCU_SWD",
+   "library": "Connector:Conn_ARM_JTAG_SWD_10",
+   "description": "Cortex Debug Connector, standard ARM Cortex-M SWD and JTAG interface",
+   "sheet": "Debugger",
+   "pins": [
+    "VTref (power_in) -> +3V3",
+    "SWCLK/TCK (output) -> MCU_SWCLK",
+    "SWDIO/TMS (bidirectional) -> MCU_SWDIO",
+    "~{RESET} (open_collector) -> ~{BTN_RESET}",
+    "GND (power_in), GND (passive), GNDDetect (passive) -> GND",
+    "KEY (no_connect) -> unconnected-(J6-KEY-Pad7)",
+    "NC/TDI (output) -> unconnected-(J6-NC{slash}TDI-Pad8)",
+    "SWO/TDO (input) -> unconnected-(J6-SWO{slash}TDO-Pad6)"
+   ]
+  },
+  "J7": {
+   "ref": "J7",
+   "value": "PMOD_A",
+   "library": "Connector_Generic:Conn_02x06_Top_Bottom",
+   "description": "Generic connector, double row, 02x06, top/bottom pin numbering scheme (row 1: 1...pins_per_row, row2: pins_per_row+1 ... num_pins), script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "sheet": "Expansion Interfaces",
+   "pins": [
+    "Pin_12 (passive), Pin_6 (passive) -> +3V3",
+    "Pin_1 (passive) -> A1",
+    "Pin_10 (passive) -> A10",
+    "Pin_2 (passive) -> A2",
+    "Pin_3 (passive) -> A3",
+    "Pin_4 (passive) -> A4",
+    "Pin_7 (passive) -> A7",
+    "Pin_8 (passive) -> A8",
+    "Pin_9 (passive) -> A9",
+    "Pin_11 (passive), Pin_5 (passive) -> GND"
+   ]
+  },
+  "J8": {
+   "ref": "J8",
+   "value": "PMOD_B",
+   "library": "Connector_Generic:Conn_02x06_Top_Bottom",
+   "description": "Generic connector, double row, 02x06, top/bottom pin numbering scheme (row 1: 1...pins_per_row, row2: pins_per_row+1 ... num_pins), script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "sheet": "Expansion Interfaces",
+   "pins": [
+    "Pin_12 (passive), Pin_6 (passive) -> +3V3",
+    "Pin_1 (passive) -> B1",
+    "Pin_10 (passive) -> B10",
+    "Pin_2 (passive) -> B2",
+    "Pin_3 (passive) -> B3",
+    "Pin_4 (passive) -> B4",
+    "Pin_7 (passive) -> B7",
+    "Pin_8 (passive) -> B8",
+    "Pin_9 (passive) -> B9",
+    "Pin_11 (passive), Pin_5 (passive) -> GND"
+   ]
+  },
+  "Q1": {
+   "ref": "Q1",
+   "value": "PMOS",
+   "library": "Transistor_FET:SiA449DJ",
+   "description": "-12A Id, -30V Vds, P-Channel MOSFET, PowerPAK SC70-6",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "D (passive) -> CONTROL_VBUS_IN",
+    "G (passive) -> Net-(D27-A)",
+    "S (passive) -> Net-(D27-K)"
+   ]
+  },
+  "Q10": {
+   "ref": "Q10",
+   "value": "2PNP",
+   "library": "Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1",
+   "description": "Dual PNP transistor, 6 pin package",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "E2 (passive) -> AUX_VBUS_IN",
+    "E1 (passive) -> CONTROL_VBUS_IN",
+    "C1 (passive) -> Net-(D16-A)",
+    "C2 (passive) -> Net-(D20-A)",
+    "B1 (input) -> Net-(Q10A-B1)",
+    "B2 (input) -> Net-(Q10B-B2)"
+   ]
+  },
+  "Q11": {
+   "ref": "Q11",
+   "value": "2NPN",
+   "library": "Transistor_BJT:BC847BS",
+   "description": "100mA IC, 45V Vce, Dual NPN/NPN Transistors, SOT-363",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "B1 (input) -> Net-(Q11A-B1)",
+    "C1 (passive) -> Net-(Q11A-C1)",
+    "E1 (passive) -> Net-(Q11A-E1)",
+    "B2 (input) -> Net-(Q11B-B2)",
+    "C2 (passive) -> Net-(Q11B-C2)",
+    "E2 (passive) -> Net-(Q11B-E2)"
+   ]
+  },
+  "Q12": {
+   "ref": "Q12",
+   "value": "PMOS",
+   "library": "Device:Q_PMOS_GSD",
+   "description": "P-MOSFET transistor, gate/source/drain",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "S (passive) -> AUX_VBUS_IN",
+    "D (passive) -> Net-(D1-A)",
+    "G (input) -> Net-(D20-A)"
+   ]
+  },
+  "Q13": {
+   "ref": "Q13",
+   "value": "2PNP",
+   "library": "Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1",
+   "description": "Dual PNP transistor, 6 pin package",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "C1 (passive) -> Net-(D27-A)",
+    "E1 (passive), E2 (passive) -> Net-(D27-K)",
+    "B1 (input), C2 (passive) -> Net-(Q13A-B1)",
+    "B2 (input) -> Net-(Q13B-B2)"
+   ]
+  },
+  "Q14": {
+   "ref": "Q14",
+   "value": "2PNP",
+   "library": "Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1",
+   "description": "Dual PNP transistor, 6 pin package",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "C1 (passive) -> Net-(D28-A)",
+    "E1 (passive), E2 (passive) -> Net-(D28-K)",
+    "B1 (input), C2 (passive) -> Net-(Q14A-B1)",
+    "B2 (input) -> Net-(Q14B-B2)"
+   ]
+  },
+  "Q15": {
+   "ref": "Q15",
+   "value": "2PNP",
+   "library": "Device:Q_Dual_PNP_PNP_E1B1C2E2B2C1",
+   "description": "Dual PNP transistor, 6 pin package",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "C1 (passive) -> Net-(D29-A)",
+    "E1 (passive), E2 (passive) -> Net-(D29-K)",
+    "B1 (input), C2 (passive) -> Net-(Q15A-B1)",
+    "B2 (input) -> Net-(Q15B-B2)"
+   ]
+  },
+  "Q16": {
+   "ref": "Q16",
+   "value": "2NPN",
+   "library": "Transistor_BJT:BC847BS",
+   "description": "100mA IC, 45V Vce, Dual NPN/NPN Transistors, SOT-363",
+   "sheet": "Power Supplies",
+   "pins": [
+    "C1 (passive) -> ~{POWER_GOOD}",
+    "E1 (passive) -> GND",
+    "B1 (input) -> Net-(Q16A-B1)",
+    "B2 (input) -> unconnected-(Q16B-B2-Pad5)",
+    "C2 (passive) -> unconnected-(Q16B-C2-Pad3)",
+    "E2 (passive) -> unconnected-(Q16B-E2-Pad4)"
+   ]
+  },
+  "Q2": {
+   "ref": "Q2",
+   "value": "PMOS",
+   "library": "Transistor_FET:SiA449DJ",
+   "description": "-12A Id, -30V Vds, P-Channel MOSFET, PowerPAK SC70-6",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "G (passive) -> Net-(D27-A)",
+    "S (passive) -> Net-(D27-K)",
+    "D (passive) -> TARGET_A_VBUS_IN"
+   ]
+  },
+  "Q3": {
+   "ref": "Q3",
+   "value": "2NPN",
+   "library": "Transistor_BJT:BC847BS",
+   "description": "100mA IC, 45V Vce, Dual NPN/NPN Transistors, SOT-363",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "B1 (input) -> Net-(Q3A-B1)",
+    "C1 (passive) -> Net-(Q3A-C1)",
+    "E1 (passive) -> Net-(Q3A-E1)",
+    "B2 (input) -> Net-(Q3B-B2)",
+    "C2 (passive) -> Net-(Q3B-C2)",
+    "E2 (passive) -> Net-(Q3B-E2)"
+   ]
+  },
+  "Q4": {
+   "ref": "Q4",
+   "value": "PMOS",
+   "library": "Transistor_FET:SiA449DJ",
+   "description": "-12A Id, -30V Vds, P-Channel MOSFET, PowerPAK SC70-6",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "D (passive) -> AUX_VBUS_IN",
+    "G (passive) -> Net-(D28-A)",
+    "S (passive) -> Net-(D28-K)"
+   ]
+  },
+  "Q5": {
+   "ref": "Q5",
+   "value": "PMOS",
+   "library": "Transistor_FET:SiA449DJ",
+   "description": "-12A Id, -30V Vds, P-Channel MOSFET, PowerPAK SC70-6",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "G (passive) -> Net-(D28-A)",
+    "S (passive) -> Net-(D28-K)",
+    "D (passive) -> TARGET_A_VBUS_IN"
+   ]
+  },
+  "Q6": {
+   "ref": "Q6",
+   "value": "PMOS",
+   "library": "Transistor_FET:SiA449DJ",
+   "description": "-12A Id, -30V Vds, P-Channel MOSFET, PowerPAK SC70-6",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "G (passive) -> Net-(D29-A)",
+    "S (passive) -> Net-(D29-K)",
+    "D (passive) -> TARGET_A_VBUS_IN"
+   ]
+  },
+  "Q7": {
+   "ref": "Q7",
+   "value": "PMOS",
+   "library": "Transistor_FET:SiA449DJ",
+   "description": "-12A Id, -30V Vds, P-Channel MOSFET, PowerPAK SC70-6",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "G (passive) -> Net-(D29-A)",
+    "S (passive) -> Net-(D29-K)",
+    "D (passive) -> TARGET_C_VBUS_IN"
+   ]
+  },
+  "Q8": {
+   "ref": "Q8",
+   "value": "2NPN",
+   "library": "Transistor_BJT:BC847BS",
+   "description": "100mA IC, 45V Vce, Dual NPN/NPN Transistors, SOT-363",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "B1 (input) -> Net-(Q8A-B1)",
+    "C1 (passive) -> Net-(Q8A-C1)",
+    "E1 (passive) -> Net-(Q8A-E1)",
+    "B2 (input) -> Net-(Q8B-B2)",
+    "C2 (passive) -> Net-(Q8B-C2)",
+    "E2 (passive) -> Net-(Q8B-E2)"
+   ]
+  },
+  "Q9": {
+   "ref": "Q9",
+   "value": "PMOS",
+   "library": "Device:Q_PMOS_GSD",
+   "description": "P-MOSFET transistor, gate/source/drain",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "S (passive) -> CONTROL_VBUS_IN",
+    "G (input) -> Net-(D16-A)",
+    "D (passive) -> Net-(D8-A)"
+   ]
+  },
+  "SW1": {
+   "ref": "SW1",
+   "value": "BTN_PROGRAM",
+   "library": "support_hardware:SW_SPST_shielded",
+   "description": "Single Pole Single Throw (SPST) switch with shield",
+   "sheet": "LEDs and Buttons",
+   "pins": [
+    "2 (passive), SHIELD (passive) -> GND",
+    "1 (passive) -> Net-(R101-Pad2)"
+   ]
+  },
+  "SW2": {
+   "ref": "SW2",
+   "value": "BTN_RESET",
+   "library": "support_hardware:SW_SPST_shielded",
+   "description": "Single Pole Single Throw (SPST) switch with shield",
+   "sheet": "LEDs and Buttons",
+   "pins": [
+    "1 (passive) -> ~{BTN_RESET}",
+    "2 (passive), SHIELD (passive) -> GND"
+   ]
+  },
+  "SW3": {
+   "ref": "SW3",
+   "value": "BTN_USER",
+   "library": "support_hardware:SW_SPST_shielded",
+   "description": "Single Pole Single Throw (SPST) switch with shield",
+   "sheet": "LEDs and Buttons",
+   "pins": [
+    "2 (passive), SHIELD (passive) -> GND",
+    "1 (passive) -> Net-(R106-Pad2)"
+   ]
+  },
+  "U1": {
+   "ref": "U1",
+   "value": "PAC1954",
+   "library": "support_hardware:PAC195X-1-VQFN",
+   "description": "Single/Multi-Channel Power Monitor with Accumulator, 32V Full-Scale Range",
+   "sheet": "Power Distribution and Monitoring",
+   "pins": [
+    "VDD (power_in) -> +3V3",
+    "GPIO/~{ALERT2} (bidirectional) -> MON.GPIO",
+    "SCL (input) -> MON.SCL",
+    "SDA (bidirectional) -> MON.SDA",
+    "SLOW/~{ALERT} (bidirectional) -> MON.SLOW",
+    "~{PWRDN} (input) -> MON.~{PWRDN}",
+    "SENSE3+ (input) -> AUX_SENSE+",
+    "SENSE3- (input) -> AUX_SENSE-",
+    "SENSE4+ (input) -> CONTROL_SENSE+",
+    "SENSE4- (input) -> CONTROL_SENSE-",
+    "GND (power_in), GND (power_in), ADDRSEL (passive) -> GND",
+    "SENSE1+ (input) -> TARGET_A_SENSE+",
+    "SENSE1- (input) -> TARGET_A_SENSE-",
+    "SENSE2+ (input) -> TARGET_C_SENSE+",
+    "SENSE2- (input) -> TARGET_C_SENSE-"
+   ]
+  },
+  "U10": {
+   "ref": "U10",
+   "value": "HyperRAM",
+   "library": "support_hardware:S27KS0641",
+   "description": "DRAM 64Mb HyperRAM x8, 166MHz, Ind temp, 3.0V",
+   "sheet": "RAM",
+   "pins": [
+    "CK (input) -> RAM.CK",
+    "DQ0 (bidirectional) -> RAM.DQ0",
+    "DQ1 (bidirectional) -> RAM.DQ1",
+    "DQ2 (bidirectional) -> RAM.DQ2",
+    "DQ3 (bidirectional) -> RAM.DQ3",
+    "DQ4 (bidirectional) -> RAM.DQ4",
+    "DQ5 (bidirectional) -> RAM.DQ5",
+    "DQ6 (bidirectional) -> RAM.DQ6",
+    "DQ7 (bidirectional) -> RAM.DQ7",
+    "RWDS (bidirectional) -> RAM.RWDS",
+    "~{CK} (input) -> RAM.~{CK}",
+    "~{CS} (input) -> RAM.~{CS}",
+    "~{RESET} (input) -> RAM.~{RESET}",
+    "VSS (power_in), VSSQ (power_in), VSSQ (power_in) -> GND",
+    "VCC (power_in), VCCQ (power_in), VCCQ (power_in) -> VCCRAM",
+    "RFU (passive) -> unconnected-(U10-RFU-PadA2)",
+    "RFU (passive) -> unconnected-(U10-RFU-PadA5)",
+    "RFU (passive) -> unconnected-(U10-RFU-PadC2)",
+    "RFU/PSC (input) -> unconnected-(U10-RFU{slash}PSC-PadB5)",
+    "RFU/~{PSC} (input) -> unconnected-(U10-RFU{slash}~{PSC}-PadC5)"
+   ]
+  },
+  "U11": {
+   "ref": "U11",
+   "value": "USB3343-CP",
+   "library": "usb:USB3343",
+   "description": "ULPI USB Transciever (PHY)",
+   "sheet": "AUX PHY",
+   "pins": [
+    "VDD33 (passive), VBAT (power_in), ID (input), CLKOUT (passive), VDDIO (power_in) -> +3V3",
+    "REFCLK/XI (input) -> CLK",
+    "DATA0 (bidirectional) -> DATA0",
+    "DATA1 (bidirectional) -> DATA1",
+    "DATA2 (bidirectional) -> DATA2",
+    "DATA3 (bidirectional) -> DATA3",
+    "DATA4 (bidirectional) -> DATA4",
+    "DATA5 (bidirectional) -> DATA5",
+    "DATA6 (bidirectional) -> DATA6",
+    "DATA7 (bidirectional) -> DATA7",
+    "DIR (output) -> DIR",
+    "NXT (output) -> NXT",
+    "D+ (bidirectional) -> PHY_D+",
+    "D- (bidirectional) -> PHY_D-",
+    "RBIAS (input) -> RBIAS",
+    "STP (input) -> STP",
+    "VBUS (bidirectional) -> VBUS_SENSE",
+    "VDD18 (passive) -> VDD18",
+    "~{RESET} (input) -> AUX_PHY.~{RESET}",
+    "GND (power_in) -> GND",
+    "XO (output) -> unconnected-(U11-XO-Pad20)"
+   ]
+  },
+  "U12": {
+   "ref": "U12",
+   "value": "FUSB302B",
+   "library": "Interface_USB:FUSB302BMPX",
+   "description": "Programmable USB Type-C Controller w/PD, I2C address 0x22, WQFN-14",
+   "sheet": "AUX Type C Controller",
+   "pins": [
+    "VDD (power_in), VDD (passive) -> +3V3",
+    "VBUS (input) -> VBUS_CLAMPED",
+    "CC1 (bidirectional), CC1 (bidirectional) -> CC1S",
+    "CC2 (bidirectional), CC2 (bidirectional) -> CC2S",
+    "VCONN (power_in), VCONN (power_in) -> VCONN",
+    "SCL (input) -> AUX_TYPE_C.SCL",
+    "SDA (bidirectional) -> AUX_TYPE_C.SDA",
+    "INT_N (open_collector) -> AUX_TYPE_C.~{INT}",
+    "GND (passive), GND (power_in), GND (passive) -> GND"
+   ]
+  },
+  "U13": {
+   "ref": "U13",
+   "value": "DPO2036",
+   "library": "usb:DPO2036",
+   "description": "4-CH OVER-VOLTAGE PROTECTION FOR CC/SBU PINS ON USB TYPE-C",
+   "sheet": "TARGET Type C Controller",
+   "pins": [
+    "VSYS (power_in) -> +3V3",
+    "SBU1S (bidirectional) -> TARGET_C.SBU1S",
+    "SBU2S (bidirectional) -> TARGET_C.SBU2S",
+    "FAULTB (open_collector) -> TARGET_C.~{FAULT}",
+    "CC1C (bidirectional) -> CC1",
+    "CC1S (bidirectional) -> CC1S",
+    "CC2C (bidirectional) -> CC2",
+    "CC2S (bidirectional) -> CC2S",
+    "SBU1C (bidirectional) -> SBU1",
+    "SBU2C (bidirectional) -> SBU2",
+    "GND (power_in), GND (power_in) -> GND",
+    "CB (passive) -> Net-(U13-CB)"
+   ]
+  },
+  "U14": {
+   "ref": "U14",
+   "value": "DPO2036",
+   "library": "usb:DPO2036",
+   "description": "4-CH OVER-VOLTAGE PROTECTION FOR CC/SBU PINS ON USB TYPE-C",
+   "sheet": "AUX Type C Controller",
+   "pins": [
+    "VSYS (power_in) -> +3V3",
+    "CC1C (bidirectional) -> CC1",
+    "CC1S (bidirectional) -> CC1S",
+    "CC2C (bidirectional) -> CC2",
+    "CC2S (bidirectional) -> CC2S",
+    "SBU2C (bidirectional) -> AUX_SBU1",
+    "SBU1C (bidirectional) -> AUX_SBU2",
+    "SBU2S (bidirectional) -> AUX_TYPE_C.SBU1S",
+    "SBU1S (bidirectional) -> AUX_TYPE_C.SBU2S",
+    "FAULTB (open_collector) -> AUX_TYPE_C.~{FAULT}",
+    "GND (power_in), GND (power_in) -> GND",
+    "CB (passive) -> Net-(U14-CB)"
+   ]
+  },
+  "U15": {
+   "ref": "U15",
+   "value": "1V8REG",
+   "library": "Regulator_Linear:MIC5504-1.8YM5",
+   "description": "300mA Low-dropout Voltage Regulator, Vout 1.8V, Vin up to 5.5V, SOT-23",
+   "sheet": "Power Supplies",
+   "pins": [
+    "VIN (power_in), EN (input) -> +3V3",
+    "GND (power_in) -> GND",
+    "VOUT (power_out) -> VCCRAM",
+    "NC (no_connect) -> unconnected-(U15-NC-Pad4)"
+   ]
+  },
+  "U16": {
+   "ref": "U16",
+   "value": "PI3USB102G",
+   "library": "TC7USB42MU_1",
+   "description": "USB 2.0 SPDT switch",
+   "sheet": "CONTROL Port",
+   "pins": [
+    "VCC (power_in) -> +3V3",
+    "D- (bidirectional) -> CONTROL_D+",
+    "D+ (bidirectional) -> CONTROL_D-",
+    "2D- (bidirectional) -> CONTROL_MCU_D+",
+    "2D+ (bidirectional) -> CONTROL_MCU_D-",
+    "S (input) -> CONTROL_SWITCH",
+    "GND (power_in), ~{OE} (input) -> GND",
+    "1D+ (bidirectional) -> Net-(U16-1D+)",
+    "1D- (bidirectional) -> Net-(U16-1D-)"
+   ]
+  },
+  "U2": {
+   "ref": "U2",
+   "value": "FUSB302B",
+   "library": "Interface_USB:FUSB302BMPX",
+   "description": "Programmable USB Type-C Controller w/PD, I2C address 0x22, WQFN-14",
+   "sheet": "TARGET Type C Controller",
+   "pins": [
+    "VDD (power_in), VDD (passive) -> +3V3",
+    "SCL (input) -> TARGET_C.SCL",
+    "SDA (bidirectional) -> TARGET_C.SDA",
+    "INT_N (open_collector) -> TARGET_C.~{INT}",
+    "VBUS (input) -> VBUS_CLAMPED",
+    "CC1 (bidirectional), CC1 (bidirectional) -> CC1S",
+    "CC2 (bidirectional), CC2 (bidirectional) -> CC2S",
+    "VCONN (power_in), VCONN (power_in) -> VCONN",
+    "GND (passive), GND (power_in), GND (passive) -> GND"
+   ]
+  },
+  "U3": {
+   "ref": "U3",
+   "value": "3V3REG",
+   "library": "support_hardware:AP7361EA-XXFGE-7",
+   "description": "low dropout regulator",
+   "sheet": "Power Supplies",
+   "pins": [
+    "OUT (power_out) -> +3V3",
+    "EN (input), IN (power_in) -> +5V",
+    "GND (power_in), GND (power_in) -> GND",
+    "ADJ/NC (passive) -> Net-(U3-ADJ{slash}NC)",
+    "NC (no_connect) -> unconnected-(U3-NC-Pad2)",
+    "NC (no_connect) -> unconnected-(U3-NC-Pad6)",
+    "NC (no_connect) -> unconnected-(U3-NC-Pad7)"
+   ]
+  },
+  "U4": {
+   "ref": "U4",
+   "value": "1V15REG",
+   "library": "Regulator_Linear:MIC5504-1.8YM5",
+   "description": "300mA Low-dropout Voltage Regulator, Vout 1.8V, Vin up to 5.5V, SOT-23",
+   "sheet": "Power Supplies",
+   "pins": [
+    "VOUT (power_out) -> +1V1",
+    "VIN (power_in), EN (input) -> +3V3",
+    "GND (power_in) -> GND",
+    "NC (no_connect) -> unconnected-(U4-NC-Pad4)"
+   ]
+  },
+  "U5": {
+   "ref": "U5",
+   "value": "2V5REG",
+   "library": "Regulator_Linear:MIC5504-2.5YM5",
+   "description": "300mA Low-dropout Voltage Regulator, Vout 2.5V, Vin up to 5.5V, SOT-23",
+   "sheet": "Power Supplies",
+   "pins": [
+    "VOUT (power_out) -> +2V5",
+    "VIN (power_in), EN (input) -> +3V3",
+    "GND (power_in) -> GND",
+    "NC (no_connect) -> unconnected-(U5-NC-Pad4)"
+   ]
+  },
+  "U6": {
+   "ref": "U6",
+   "value": "ATSAMD11",
+   "library": "MCU_Microchip_SAMD:ATSAMD11D14A-M",
+   "description": "ARM Cortex-M0+ MCU, 48MHz, 16KB Flash, 4KB RAM, 1.6-3.6V, 22 GPIO, QFN-24",
+   "sheet": "Debugger",
+   "pins": [
+    "25 (unknown) -> (no net)",
+    "VDD (power_in) -> +3V3",
+    "PA25 (bidirectional) -> CONTROL_MCU_D+",
+    "PA24 (bidirectional) -> CONTROL_MCU_D-",
+    "PA05 (bidirectional) -> CONTROL_RESET_DETECT",
+    "PA06 (bidirectional) -> CONTROL_SWITCH",
+    "PA09/XOUT (bidirectional) -> FPGA_ADV",
+    "PA04 (bidirectional) -> FPGA_CONFIG.DONE",
+    "PA08/XIN (bidirectional) -> FPGA_CONFIG.~{PROGRAM}",
+    "PA15 (bidirectional) -> FPGA_JTAG.TCK",
+    "PA14 (bidirectional) -> FPGA_JTAG.TDI",
+    "PA10 (bidirectional) -> FPGA_JTAG.TDO",
+    "PA11 (bidirectional) -> FPGA_JTAG.TMS",
+    "PA16 (bidirectional) -> LED10",
+    "PA17 (bidirectional) -> LED11",
+    "PA22 (bidirectional) -> LED12",
+    "PA23 (bidirectional) -> LED13",
+    "PA27 (bidirectional) -> LED14",
+    "PA30/SWCLK (bidirectional) -> MCU_SWCLK",
+    "PA31/SWDIO (bidirectional) -> MCU_SWDIO",
+    "PA02 (bidirectional) -> ~{BTN_PROGRAM}",
+    "GND (power_in) -> GND",
+    "PA03 (bidirectional) -> Net-(U6-PA03)",
+    "PA07 (bidirectional) -> Net-(U6-PA07)",
+    "PA28/~{RST} (bidirectional) -> Net-(U6-PA28{slash}~{RST})"
+   ]
+  },
+  "U7": {
+   "ref": "U7",
+   "value": "W25Q32JVSS",
+   "library": "Memory_Flash:W25Q32JVSS",
+   "description": "32Mb Serial Flash Memory, Standard/Dual/Quad SPI, SOIC-8",
+   "sheet": "FPGA Bank 8 and Configuration Flash",
+   "pins": [
+    "VCC (power_in) -> +3V3",
+    "CLK (input) -> FPGA_FLASH_CLK",
+    "DI(IO0) (bidirectional) -> IO0",
+    "DO(IO1) (bidirectional) -> IO1",
+    "IO2 (bidirectional) -> IO2",
+    "IO3 (bidirectional) -> IO3",
+    "~{CS} (input) -> ~{CS}",
+    "GND (power_in) -> GND"
+   ]
+  },
+  "U8": {
+   "ref": "U8",
+   "value": "USB3343-CP",
+   "library": "usb:USB3343",
+   "description": "ULPI USB Transciever (PHY)",
+   "sheet": "CONTROL PHY",
+   "pins": [
+    "VDD33 (passive), VBAT (power_in), ID (input), CLKOUT (passive), VDDIO (power_in) -> +3V3",
+    "REFCLK/XI (input) -> CLK",
+    "DATA0 (bidirectional) -> DATA0",
+    "DATA1 (bidirectional) -> DATA1",
+    "DATA2 (bidirectional) -> DATA2",
+    "DATA3 (bidirectional) -> DATA3",
+    "DATA4 (bidirectional) -> DATA4",
+    "DATA5 (bidirectional) -> DATA5",
+    "DATA6 (bidirectional) -> DATA6",
+    "DATA7 (bidirectional) -> DATA7",
+    "DIR (output) -> DIR",
+    "NXT (output) -> NXT",
+    "D+ (bidirectional) -> PHY_D+",
+    "D- (bidirectional) -> PHY_D-",
+    "RBIAS (input) -> RBIAS",
+    "STP (input) -> STP",
+    "VBUS (bidirectional) -> VBUS_SENSE",
+    "VDD18 (passive) -> VDD18",
+    "~{RESET} (input) -> CONTROL_PHY.~{RESET}",
+    "GND (power_in) -> GND",
+    "XO (output) -> unconnected-(U8-XO-Pad20)"
+   ]
+  },
+  "U9": {
+   "ref": "U9",
+   "value": "USB3343-CP",
+   "library": "usb:USB3343",
+   "description": "ULPI USB Transciever (PHY)",
+   "sheet": "TARGET PHY",
+   "pins": [
+    "VDD33 (passive), VBAT (power_in), ID (input), CLKOUT (passive), VDDIO (power_in) -> +3V3",
+    "~{RESET} (input) -> TARGET_PHY.~{RESET}",
+    "REFCLK/XI (input) -> CLK",
+    "DATA0 (bidirectional) -> DATA0",
+    "DATA1 (bidirectional) -> DATA1",
+    "DATA2 (bidirectional) -> DATA2",
+    "DATA3 (bidirectional) -> DATA3",
+    "DATA4 (bidirectional) -> DATA4",
+    "DATA5 (bidirectional) -> DATA5",
+    "DATA6 (bidirectional) -> DATA6",
+    "DATA7 (bidirectional) -> DATA7",
+    "DIR (output) -> DIR",
+    "NXT (output) -> NXT",
+    "D+ (bidirectional) -> PHY_D+",
+    "D- (bidirectional) -> PHY_D-",
+    "RBIAS (input) -> RBIAS",
+    "STP (input) -> STP",
+    "VBUS (bidirectional) -> VBUS_SENSE",
+    "VDD18 (passive) -> VDD18",
+    "GND (power_in) -> GND",
+    "XO (output) -> unconnected-(U9-XO-Pad20)"
+   ]
+  }
+ }
+}

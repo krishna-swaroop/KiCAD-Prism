@@ -1,0 +1,356 @@
+{
+ "nets": [
+  {
+   "who": "regex",
+   "n": 318,
+   "accuracy": 0.808,
+   "per_role": {
+    "ground": {
+     "n": 1,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "power_control": {
+     "n": 55,
+     "precision": 1.0,
+     "recall": 0.182
+    },
+    "signal": {
+     "n": 238,
+     "precision": 0.796,
+     "recall": 1.0
+    },
+    "supply_rail": {
+     "n": 24,
+     "precision": 1.0,
+     "recall": 0.333
+    }
+   },
+   "errors": [
+    "/AUX Port/AUX PHY/VBUS_CLAMPED: power_control -> signal",
+    "/AUX Port/AUX PHY/VDD18: supply_rail -> signal",
+    "/CONTROL Port/CONTROL PHY/VDD18: supply_rail -> signal",
+    "/FPGA Banks 2 and 3/~{AUX_VBUS_IN_EN}: power_control -> signal",
+    "/FPGA Banks 2 and 3/~{CONTROL_VBUS_IN_EN}: power_control -> signal",
+    "/FPGA Banks 6 and 7/TARGET_A_DISCHARGE: power_control -> signal",
+    "/Power Distribution and Monitoring/~{POWER_GOOD}: power_control -> signal",
+    "/TARGET Port/TARGET PHY/VBUS_CLAMPED: power_control -> signal",
+    "/TARGET Port/TARGET PHY/VDD18: supply_rail -> signal",
+    "AUX_SENSE+: power_control -> signal",
+    "AUX_VBUS: supply_rail -> signal",
+    "AUX_VBUS_IN: supply_rail -> signal",
+    "CONTROL_SENSE+: power_control -> signal",
+    "CONTROL_VBUS: supply_rail -> signal",
+    "CONTROL_VBUS_IN: supply_rail -> signal",
+    "Net-(D1-A): supply_rail -> signal",
+    "Net-(D16-A): power_control -> signal",
+    "Net-(D20-A): power_control -> signal",
+    "Net-(D27-A): power_control -> signal",
+    "Net-(D27-K): supply_rail -> signal",
+    "Net-(D28-A): power_control -> signal",
+    "Net-(D28-K): supply_rail -> signal",
+    "Net-(D29-A): power_control -> signal",
+    "Net-(D29-K): supply_rail -> signal",
+    "Net-(D8-A): supply_rail -> signal",
+    "Net-(D9-A): supply_rail -> signal",
+    "Net-(Q10A-B1): power_control -> signal",
+    "Net-(Q10B-B2): power_control -> signal",
+    "Net-(Q11A-B1): power_control -> signal",
+    "Net-(Q11A-C1): power_control -> signal",
+    "Net-(Q11A-E1): power_control -> signal",
+    "Net-(Q11B-B2): power_control -> signal",
+    "Net-(Q11B-C2): power_control -> signal",
+    "Net-(Q11B-E2): power_control -> signal",
+    "Net-(Q13A-B1): power_control -> signal",
+    "Net-(Q13B-B2): power_control -> signal",
+    "Net-(Q14A-B1): power_control -> signal",
+    "Net-(Q14B-B2): power_control -> signal",
+    "Net-(Q15A-B1): power_control -> signal",
+    "Net-(Q15B-B2): power_control -> signal",
+    "Net-(Q16A-B1): power_control -> signal",
+    "Net-(Q3A-B1): power_control -> signal",
+    "Net-(Q3A-C1): power_control -> signal",
+    "Net-(Q3A-E1): power_control -> signal",
+    "Net-(Q3B-B2): power_control -> signal",
+    "Net-(Q3B-C2): power_control -> signal",
+    "Net-(Q3B-E2): power_control -> signal",
+    "Net-(Q8A-B1): power_control -> signal",
+    "Net-(Q8A-C1): power_control -> signal",
+    "Net-(Q8A-E1): power_control -> signal",
+    "Net-(Q8B-B2): power_control -> signal",
+    "Net-(Q8B-C2): power_control -> signal",
+    "Net-(Q8B-E2): power_control -> signal",
+    "Net-(U13-CB): power_control -> signal",
+    "Net-(U14-CB): power_control -> signal",
+    "Net-(U3-ADJ{slash}NC): power_control -> signal",
+    "TARGET_A_SENSE+: power_control -> signal",
+    "TARGET_A_VBUS_IN: supply_rail -> signal",
+    "TARGET_C_SENSE+: power_control -> signal",
+    "TARGET_C_VBUS: supply_rail -> signal",
+    "TARGET_C_VBUS_IN: supply_rail -> signal"
+   ]
+  },
+  {
+   "who": "model",
+   "n": 318,
+   "accuracy": 0.874,
+   "per_role": {
+    "ground": {
+     "n": 1,
+     "precision": 0.062,
+     "recall": 1.0
+    },
+    "power_control": {
+     "n": 55,
+     "precision": 0.9,
+     "recall": 0.491
+    },
+    "signal": {
+     "n": 238,
+     "precision": 0.928,
+     "recall": 0.971
+    },
+    "supply_rail": {
+     "n": 24,
+     "precision": 0.864,
+     "recall": 0.792
+    }
+   },
+   "errors": [
+    "/AUX Port/AUX PHY/VBUS_CLAMPED: power_control -> supply_rail",
+    "/CONTROL Port/CONTROL_CC1: signal -> power_control",
+    "/CONTROL Port/CONTROL_CC2: signal -> ground",
+    "/Expansion Interfaces/A1: signal -> ground",
+    "/Expansion Interfaces/B1: signal -> ground",
+    "/Expansion Interfaces/B2: signal -> ground",
+    "/FPGA Banks 0 and 1/MON.~{PWRDN}: signal -> power_control",
+    "/FPGA Banks 6 and 7/TARGET_A_DISCHARGE: power_control -> signal",
+    "/FPGA Banks 6 and 7/TARGET_PHY.~{RESET}: signal -> ground",
+    "/Power Distribution and Monitoring/~{POWER_GOOD}: power_control -> ground",
+    "/TARGET Port/TARGET PHY/VBUS_CLAMPED: power_control -> supply_rail",
+    "AUX_SENSE-: power_control -> signal",
+    "CONTROL_VBUS_IN: supply_rail -> power_control",
+    "Net-(D20-A): power_control -> supply_rail",
+    "Net-(D27-A): power_control -> ground",
+    "Net-(D27-K): supply_rail -> signal",
+    "Net-(D28-A): power_control -> ground",
+    "Net-(D28-K): supply_rail -> signal",
+    "Net-(D29-A): power_control -> ground",
+    "Net-(D29-K): supply_rail -> switch_node",
+    "Net-(Q10A-B1): power_control -> signal",
+    "Net-(Q10B-B2): power_control -> signal",
+    "Net-(Q11A-C1): power_control -> signal",
+    "Net-(Q11B-B2): power_control -> signal",
+    "Net-(Q11B-C2): power_control -> signal",
+    "Net-(Q13A-B1): power_control -> ground",
+    "Net-(Q13B-B2): power_control -> signal",
+    "Net-(Q14A-B1): power_control -> ground",
+    "Net-(Q14B-B2): power_control -> signal",
+    "Net-(Q15A-B1): power_control -> ground",
+    "Net-(Q15B-B2): power_control -> signal",
+    "Net-(Q16A-B1): power_control -> signal",
+    "Net-(Q3A-C1): power_control -> signal",
+    "Net-(Q3B-C2): power_control -> signal",
+    "Net-(Q8A-C1): power_control -> signal",
+    "Net-(Q8B-B2): power_control -> signal",
+    "Net-(Q8B-C2): power_control -> signal",
+    "Net-(U13-CB): power_control -> ground",
+    "Net-(U14-CB): power_control -> ground",
+    "VCCRAM: supply_rail -> ground"
+   ],
+   "auto@0.5": {
+    "share": 0.777,
+    "accuracy": 0.951
+   },
+   "auto@0.7": {
+    "share": 0.588,
+    "accuracy": 0.973
+   },
+   "auto@0.9": {
+    "share": 0.157,
+    "accuracy": 1.0
+   }
+  }
+ ],
+ "parts": [
+  {
+   "who": "regex",
+   "n": 55,
+   "accuracy": 0.655,
+   "per_role": {
+    "linear_regulator": {
+     "n": 4,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "load": {
+     "n": 13,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "other": {
+     "n": 21,
+     "precision": 0.652,
+     "recall": 0.714
+    },
+    "power_input": {
+     "n": 4,
+     "precision": 0.0,
+     "recall": 0.0
+    },
+    "power_switch": {
+     "n": 8,
+     "precision": null,
+     "recall": 0.0
+    },
+    "signal_connector": {
+     "n": 5,
+     "precision": 0.286,
+     "recall": 0.8
+    }
+   },
+   "errors": [
+    "J10: power_input -> signal_connector",
+    "J11: other -> signal_connector",
+    "J12: other -> signal_connector",
+    "J13: other -> signal_connector",
+    "J14: other -> signal_connector",
+    "J15: other -> signal_connector",
+    "J16: other -> signal_connector",
+    "J1: power_input -> signal_connector",
+    "J2: power_input -> signal_connector",
+    "J3: signal_connector -> power_input",
+    "J4: power_input -> signal_connector",
+    "Q12: power_switch -> other",
+    "Q1: power_switch -> other",
+    "Q2: power_switch -> other",
+    "Q4: power_switch -> other",
+    "Q5: power_switch -> other",
+    "Q6: power_switch -> other",
+    "Q7: power_switch -> other",
+    "Q9: power_switch -> other"
+   ]
+  },
+  {
+   "who": "model",
+   "n": 55,
+   "accuracy": 0.6,
+   "per_role": {
+    "linear_regulator": {
+     "n": 4,
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "load": {
+     "n": 13,
+     "precision": 1.0,
+     "recall": 0.769
+    },
+    "other": {
+     "n": 21,
+     "precision": 0.778,
+     "recall": 0.333
+    },
+    "power_input": {
+     "n": 4,
+     "precision": 0.4,
+     "recall": 0.5
+    },
+    "power_switch": {
+     "n": 8,
+     "precision": 0.471,
+     "recall": 1.0
+    },
+    "signal_connector": {
+     "n": 5,
+     "precision": 0.2,
+     "recall": 0.4
+    }
+   },
+   "errors": [
+    "J10: power_input -> signal_connector",
+    "J11: other -> signal_connector",
+    "J12: other -> signal_connector",
+    "J13: other -> signal_connector",
+    "J14: other -> signal_connector",
+    "J15: other -> signal_connector",
+    "J16: other -> signal_connector",
+    "J1: power_input -> signal_connector",
+    "J3: signal_connector -> power_input",
+    "J6: signal_connector -> power_input",
+    "J7: signal_connector -> power_input",
+    "Q10: other -> power_switch",
+    "Q11: other -> power_switch",
+    "Q13: other -> power_switch",
+    "Q14: other -> power_switch",
+    "Q15: other -> power_switch",
+    "Q16: other -> power_switch",
+    "Q3: other -> power_switch",
+    "Q8: other -> power_switch",
+    "U13: load -> other",
+    "U14: load -> other",
+    "U16: load -> power_switch"
+   ],
+   "auto@0.5": {
+    "share": 0.8,
+    "accuracy": 0.659
+   },
+   "auto@0.7": {
+    "share": 0.564,
+    "accuracy": 0.839
+   },
+   "auto@0.9": {
+    "share": 0.255,
+    "accuracy": 1.0
+   }
+  }
+ ],
+ "unnamed_rail_voltages": {
+  "who": "model",
+  "n": 15,
+  "accuracy": 0.8,
+  "per_role": {
+   "1.8": {
+    "n": 3,
+    "precision": 1.0,
+    "recall": 1.0
+   },
+   "3.3": {
+    "n": 2,
+    "precision": null,
+    "recall": 0.0
+   },
+   "5.0": {
+    "n": 4,
+    "precision": 1.0,
+    "recall": 0.75
+   },
+   "unknown": {
+    "n": 6,
+    "precision": 0.667,
+    "recall": 1.0
+   }
+  },
+  "errors": [
+   "/AUX Port/AUX Type C Controller/VCONN: 3.3 -> unknown",
+   "/TARGET Port/TARGET Type C Controller/VCONN: 3.3 -> unknown",
+   "CONTROL_VBUS: 5.0 -> unknown"
+  ]
+ },
+ "label_mix": {
+  "nets": {
+   "supply_rail": 24,
+   "signal": 238,
+   "power_control": 55,
+   "ground": 1
+  },
+  "parts": {
+   "other": 21,
+   "load": 13,
+   "power_input": 4,
+   "signal_connector": 5,
+   "power_switch": 8,
+   "linear_regulator": 4
+  }
+ }
+}
