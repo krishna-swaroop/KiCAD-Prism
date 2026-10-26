@@ -13276,6 +13276,35 @@
         "title": "OAuthBeginResponse",
         "type": "object"
       },
+      "OpsStatus": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "scopes",
+          "tools"
+        ],
+        "title": "OpsStatus",
+        "type": "object"
+      },
       "PartManifest": {
         "additionalProperties": true,
         "properties": {
@@ -26465,6 +26494,27 @@
         "summary": "Exchange client credentials for a service token",
         "tags": [
           "oauth"
+        ]
+      }
+    },
+    "/api/v1/ops/status": {
+      "get": {
+        "operationId": "ops_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Whether ops diagnostics are on, and for whom",
+        "tags": [
+          "ops"
         ]
       }
     },

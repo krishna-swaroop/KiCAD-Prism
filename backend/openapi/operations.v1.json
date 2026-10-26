@@ -1174,6 +1174,11 @@
     "path": "/api/v1/trackers/oauth/callback",
     "typed": true
   },
+  "ops_status": {
+    "method": "GET",
+    "path": "/api/v1/ops/status",
+    "typed": true
+  },
   "patch_setup": {
     "method": "PATCH",
     "path": "/api/v1/projects/{project_id}/sim/a0/setups/{setup_id}",

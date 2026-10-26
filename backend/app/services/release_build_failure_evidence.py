@@ -8,53 +8,19 @@ text redacted before it reaches immutable storage.
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any, Mapping, Sequence
 
 from app.release_studio.canonical import write_deterministic_archive
 from app.release_studio.canonical.json import canonical_json_bytes
+from app.core import redaction
 from app.services.job_artifact_service import JobArtifactService
 from app.services.job_runtime import JobContext
 
 logger = logging.getLogger(__name__)
 
-_FAILURE_SECRET = re.compile(
-    r"(?i)\b(password|passwd|secret|token|api[_-]?key|authorization|cookie)"
-    r"(\s*[:=]\s*)([^\s,;]+)"
-)
-_FAILURE_SECRET_KEY = re.compile(
-    r"(?i)(password|passwd|secret|token|api[_-]?key|authorization|cookie)"
-)
-_AUTH_HEADER = re.compile(r"(?im)\b(authorization|cookie)(\s*[:=]\s*)[^\r\n]+")
-_URL_CREDENTIAL = re.compile(r"://([^/\s:@]+):([^@\s/]+)@")
-
-
-def redact_text(value: object) -> str:
-    """Keep operator diagnostics useful without preserving credential-shaped text."""
-
-    text = str(value).replace("\x00", " ")[:4000]
-    text = _URL_CREDENTIAL.sub("://[REDACTED]@", text)
-    text = _AUTH_HEADER.sub(r"\1\2[REDACTED]", text)
-    return _FAILURE_SECRET.sub(r"\1\2[REDACTED]", text)
-
-
-def _redact_value(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {
-            str(key): (
-                "[REDACTED]"
-                if _FAILURE_SECRET_KEY.search(str(key))
-                else _redact_value(item)
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_value(item) for item in value]
-    if isinstance(value, tuple):
-        return [_redact_value(item) for item in value]
-    if isinstance(value, str):
-        return redact_text(value)
-    return value
+# The shared redactor (ADR scripting-and-mcp §11, D22); kept under the old names.
+redact_text = redaction.redact_text
+_redact_value = redaction.redact_value
 
 
 def publish(

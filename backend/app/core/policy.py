@@ -54,6 +54,8 @@ Action = Literal[
     "catalog_qa",
     "catalog_admin",
     "remote_symbols",
+    "ops_read",
+    "ops_act",
 ]
 
 PROVIDER_AUTH_TYPE = "kicad_provider"
@@ -111,6 +113,10 @@ RULES: dict[Action, Rule] = {
         frozenset({"admin"}), "Administrator access required", ("admin",), _PROVIDER_CATALOG, human_only=True
     ),
     "remote_symbols": Rule(ALL_ROLES, scopes=("remote_symbols.read", "api:read"), provider_refusal=None),
+    # Diagnostics (ADR scripting-and-mcp §11, D20/D21): admin reads and a few
+    # bounded actions. Not human-only: they inspect and unstick, they sign nothing off.
+    "ops_read": Rule(frozenset({"admin"}), "Admin role required", ("ops:read",), _PROVIDER_ADMIN),
+    "ops_act": Rule(frozenset({"admin"}), "Admin role required", ("ops:act",), _PROVIDER_ADMIN),
 }
 
 
@@ -124,12 +130,18 @@ AREA_WRITE_SCOPES: tuple[str, ...] = (
     "catalog:qa",
     "admin",
 )
-KNOWN_SCOPES: frozenset[str] = frozenset({"api:read", "api:write", "remote_symbols.read", *AREA_WRITE_SCOPES})
+# Ops scopes stand apart: ``api:write`` does not imply them (D20).
+OPS_SCOPES: tuple[str, ...] = ("ops:read", "ops:act")
+KNOWN_SCOPES: frozenset[str] = frozenset(
+    {"api:read", "api:write", "remote_symbols.read", *AREA_WRITE_SCOPES, *OPS_SCOPES}
+)
 
 # A held scope that grants others: a client allowed to write may always read.
 IMPLIED_SCOPES: dict[str, tuple[str, ...]] = {
     "api:write": ("api:read", *AREA_WRITE_SCOPES),
     **{scope: ("api:read",) for scope in AREA_WRITE_SCOPES},
+    "ops:read": ("api:read",),
+    "ops:act": ("ops:read", "api:read"),
 }
 
 

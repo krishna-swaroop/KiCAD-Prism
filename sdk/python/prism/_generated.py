@@ -2465,6 +2465,12 @@ class OAuthBeginResponse(TypedDict, total=True):
     authorizeUrl: str
 
 
+class OpsStatus(TypedDict, total=True):
+    enabled: bool
+    scopes: list[str]
+    tools: list[str]
+
+
 class PartManifest(TypedDict, total=True):
     assets: list[ManifestAsset]
     display_name: str
@@ -5637,6 +5643,13 @@ class GeneratedClient:
             "GET",
             "/api/v1/trackers/oauth/callback",
             query={"code": code, "state": state},
+        )
+
+    def ops_status(self) -> OpsStatus:
+        """Whether ops diagnostics are on, and for whom"""
+        return self._request(
+            "GET",
+            "/api/v1/ops/status",
         )
 
     def patch_setup(self, project_id: str, setup_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:

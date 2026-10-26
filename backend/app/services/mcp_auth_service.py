@@ -41,6 +41,27 @@ HUMAN_ONLY_SCOPES: frozenset[str] = frozenset(
     {"release:approve", "catalog:qa", "admin", "api:write"}
 )
 DEFAULT_SCOPE = "api:read"
+# Diagnostics (ADR §11, D20): offered only while ops is on, granted only to admins.
+OPS_SCOPES: tuple[str, ...] = ("ops:read", "ops:act")
+
+
+def scopes_supported() -> tuple[str, ...]:
+    """The scopes this server advertises and accepts right now."""
+    if settings.PRISM_MCP_OPS_ENABLED:
+        return (*SCOPES_SUPPORTED, *OPS_SCOPES)
+    return SCOPES_SUPPORTED
+
+
+def scope_for_user(scope: str, role: str) -> tuple[str, list[str]]:
+    """The scope a user may grant, and the requested scopes it leaves out.
+
+    Ops scopes need an admin. A client asking for them on someone else's
+    behalf still gets the rest; the consent page names what was dropped.
+    """
+    requested = [value for value in (scope or "").split() if value]
+    dropped = [value for value in requested if value in OPS_SCOPES and role != "admin"]
+    kept = [value for value in requested if value not in dropped]
+    return (" ".join(sorted(set(kept))) or DEFAULT_SCOPE), dropped
 
 ACCESS_TOKEN_TTL_SECONDS = 3600
 AUTHORIZATION_CODE_TTL_SECONDS = 600
@@ -95,7 +116,7 @@ def normalize_scope(scope: str) -> str:
     for value in requested:
         if value in HUMAN_ONLY_SCOPES:
             raise OAuthError("invalid_scope", f"{value} is reserved for people signed in to Prism")
-        if value not in SCOPES_SUPPORTED:
+        if value not in scopes_supported():
             raise OAuthError("invalid_scope", f"Unsupported scope: {value}")
     return " ".join(sorted(set(requested)))
 
@@ -126,7 +147,9 @@ def issue_authorization_code(
     base_url: str,
 ) -> str:
     """Store a single-use code bound to the validated request (10 minutes)."""
-    normalized_scope = normalize_scope(scope)
+    # Enforced here as well as on the consent page: an ops scope reaches a
+    # grant only for an admin.
+    normalized_scope, _dropped = scope_for_user(normalize_scope(scope), str(getattr(user, "role", "")))
     resource = resource_for(base_url)
     code = secrets.token_urlsafe(32)
     payload = {

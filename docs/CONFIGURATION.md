@@ -219,13 +219,17 @@ and general workers. See [Tracker integration](TRACKER_INTEGRATION.md) for
 
 Connecting clients and what they can do: [Automating Prism](AUTOMATING_PRISM.md).
 
-`PRISM_MCP_ENABLED` is `false` by default. While false, the read-only MCP
+`PRISM_MCP_ENABLED` is `false` by default. While false, the MCP
 server at `/mcp` and its OAuth metadata
 (`/.well-known/oauth-protected-resource`,
 `/.well-known/oauth-authorization-server/oauth/mcp`) answer 404. Set it to
 `true` to let agents connect with a personal access token or an OAuth client.
-Every tool is a read through the caller's `/api/v1` routes, so their role and
-folder visibility decide what they see; the server offers no write tools.
+Every tool runs through the caller's `/api/v1` routes, so their role, scopes and
+folder visibility decide what they see and do.
+
+`PRISM_MCP_OPS_ENABLED` is `false` by default. Set it to `true` to turn on admin
+diagnostics: the `/api/ops` routes, the ops MCP tools, and the `ops:read` and
+`ops:act` scopes. Only admins can hold or grant those scopes.
 `PUBLIC_BASE_URL` should name the deployment's public origin: it is the allowed
 `Origin`, the source of every result's link, and the OAuth resource.
 

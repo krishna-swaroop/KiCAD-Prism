@@ -60,7 +60,7 @@ def _protected_resource(base: str) -> dict[str, Any]:
     return {
         "resource": mcp_auth_service.resource_for(base),
         "authorization_servers": [_issuer(base)],
-        "scopes_supported": list(mcp_auth_service.SCOPES_SUPPORTED),
+        "scopes_supported": list(mcp_auth_service.scopes_supported()),
         "bearer_methods_supported": ["header"],
     }
 
@@ -76,7 +76,7 @@ def _authorization_server(base: str) -> dict[str, Any]:
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": ["none"],
-        "scopes_supported": list(mcp_auth_service.SCOPES_SUPPORTED),
+        "scopes_supported": list(mcp_auth_service.scopes_supported()),
         "client_id_metadata_document_supported": True,
         "authorization_response_iss_parameter_supported": True,
     }
@@ -188,18 +188,20 @@ async def authorize(
     if user.auth_type == "guest":
         return _oauth_error("invalid_request", "Sign-in is not required on this server")
 
+    granted_scope, dropped = mcp_auth_service.scope_for_user(normalized_scope, str(user.role))
     return HTMLResponse(
         _consent_page(
             user=user,
             client_name=document["client_name"],
             client_host=mcp_clients.host_of(client_id),
-            scope=normalized_scope,
+            scope=granted_scope,
+            not_granted=dropped,
             fields={
                 "response_type": response_type,
                 "client_id": client_id,
                 "redirect_uri": redirect_uri,
                 "state": state,
-                "scope": normalized_scope,
+                "scope": granted_scope,
                 "code_challenge": code_challenge,
                 "code_challenge_method": code_challenge_method,
                 "resource": resource,
@@ -354,6 +356,7 @@ def _consent_page(
     client_host: str,
     scope: str,
     fields: dict[str, str],
+    not_granted: list[str] | None = None,
 ) -> str:
     hidden = "\n    ".join(
         f'<input type="hidden" name="{escape(name)}" value="{escape(value)}">'
@@ -365,6 +368,11 @@ def _consent_page(
         name=escape(user.name or user.email),
         email=escape(user.email),
         scopes=escape(scope),
+        not_granted=(
+            f'<div class="scopes">Not granted (admins only): {escape(" ".join(not_granted))}</div>'
+            if not_granted
+            else ""
+        ),
         hidden=hidden,
     )
 
@@ -436,6 +444,7 @@ _CONSENT_TEMPLATE = """<!doctype html>
   <p>Signed in as <span class="who">{name}</span> ({email}). Approving lets this
      client act on Prism as you until you revoke it.</p>
   <div class="scopes">Access: {scopes}</div>
+  {not_granted}
   <form method="post" action="">
     {hidden}
     <div class="row">

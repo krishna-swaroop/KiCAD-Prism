@@ -29,6 +29,16 @@ READ_ONLY_ANNOTATIONS: dict[str, bool] = {
     "openWorldHint": False,
 }
 
+#: Policy actions of the ops tools (ADR §11, D20).
+OPS_ACTIONS = frozenset({"ops_read", "ops_act"})
+
+
+def ops_enabled() -> bool:
+    from app.core.config import settings  # registry stays import-light
+
+    return bool(settings.PRISM_MCP_OPS_ENABLED)
+
+
 #: The argument every write tool accepts (D13). Invoke sends it as the route's
 #: ``Idempotency-Key`` header, so a client that retries a write with the same
 #: key gets the first answer back instead of a second comment.
@@ -84,7 +94,13 @@ class Tool:
 
     @property
     def write(self) -> bool:
-        return self.action is not None
+        # An ops read declares its action (for the scope check) but changes nothing.
+        return self.action is not None and not self.annotations.get("readOnlyHint", False)
+
+    @property
+    def ops(self) -> bool:
+        """An ops diagnostic or action (ADR §11), listed only while ops is on."""
+        return self.action in OPS_ACTIONS
 
     def advertised_input_schema(self) -> dict[str, Any]:
         """``input_schema``, plus ``idempotencyKey`` on a write tool."""
@@ -112,13 +128,14 @@ def register(tool: Tool) -> Tool:
 
 
 def tools() -> tuple[Tool, ...]:
-    """Every registered tool, in registration order."""
+    """Every available tool, in registration order (ops tools only while ops is on)."""
 
-    return tuple(_TOOLS)
+    enabled = ops_enabled()
+    return tuple(tool for tool in _TOOLS if enabled or not tool.ops)
 
 
 def tool_named(name: str) -> Tool | None:
-    for tool in _TOOLS:
+    for tool in tools():
         if tool.name == name:
             return tool
     return None
@@ -215,7 +232,7 @@ def tool_definition(tool: Tool, app: Any | None = None) -> dict[str, Any]:
 
 
 def tool_definitions(app: Any | None = None) -> list[dict[str, Any]]:
-    return [tool_definition(tool, app) for tool in _TOOLS]
+    return [tool_definition(tool, app) for tool in tools()]
 
 
 __all__ = [

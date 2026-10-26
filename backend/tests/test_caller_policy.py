@@ -65,6 +65,9 @@ EXPECTED: dict[str, tuple[set[str], frozenset[str]]] = {
     "catalog_qa": (WRITERS, frozenset({"qa", "admin"})),
     "catalog_admin": (WRITERS, frozenset({"admin"})),
     "remote_symbols": (READERS | {"provider"}, ALL),
+    # Ops (ADR §11, D20): admins only, and api:write does not imply ops scopes.
+    "ops_read": ({"session", "wildcard"}, frozenset({"admin"})),
+    "ops_act": ({"session", "wildcard"}, frozenset({"admin"})),
 }
 
 # Area-scoped actions: (the scope its rule names, a role the role half allows).

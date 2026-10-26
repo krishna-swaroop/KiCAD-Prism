@@ -329,6 +329,13 @@ class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings):
             "default: agents reach Prism only when an administrator turns it on."
         ),
     )
+    PRISM_MCP_OPS_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "Admin diagnostics (ADR scripting-and-mcp §11): the /api/ops routes, "
+            "the ops MCP tools and the ops:read/ops:act scopes. Off by default."
+        ),
+    )
 
     PRISM_EVENT_RETENTION_DAYS: int = Field(
         default=30,

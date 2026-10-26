@@ -70,6 +70,11 @@ async def create_personal_token(
             code="session_required",
         )
 
+    # Ops scopes are for admins (ADR scripting-and-mcp D20); the policy check at
+    # call time would refuse anyone else anyway, so refuse the token up front.
+    if set(body.scopes) & set(policy.OPS_SCOPES) and not policy.role_allows(user.role, "ops_read"):
+        raise Forbidden("Ops scopes need the admin role", code="ops-admin-only")
+
     row, token = await asyncio.to_thread(
         personal_tokens.create,
         user.email,

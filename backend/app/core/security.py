@@ -277,6 +277,22 @@ async def require_admin(user: AuthenticatedUser = Depends(get_current_user)) -> 
     return policy.authorize(user, "admin")
 
 
+def _require_ops_enabled() -> None:
+    # While ops is off its routes don't exist (ADR scripting-and-mcp D20).
+    if not settings.PRISM_MCP_OPS_ENABLED:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+async def require_ops_reader(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    _require_ops_enabled()
+    return policy.authorize(user, "ops_read")
+
+
+async def require_ops_actor(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    _require_ops_enabled()
+    return policy.authorize(user, "ops_act")
+
+
 async def require_project_release_actor(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> AuthenticatedUser:

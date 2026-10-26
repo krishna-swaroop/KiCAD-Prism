@@ -18,6 +18,8 @@ export const PERSONAL_TOKEN_SCOPES = [
     "release:approve",
     "catalog:qa",
     "admin",
+    "ops:read",
+    "ops:act",
 ] as const;
 
 export interface PersonalAccessToken {
