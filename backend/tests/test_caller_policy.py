@@ -63,6 +63,7 @@ EXPECTED: dict[str, tuple[set[str], frozenset[str]]] = {
     "catalog_read": (READERS, frozenset({"designer", "qa", "admin"})),
     "catalog_write": (WRITERS, frozenset({"designer", "admin"})),
     "catalog_qa": (WRITERS, frozenset({"qa", "admin"})),
+    "run_status": (WRITERS, frozenset({"qa", "admin"})),
     "catalog_admin": (WRITERS, frozenset({"admin"})),
     "remote_symbols": (READERS | {"provider"}, ALL),
     # Ops (ADR §11, D20): admins only, and api:write does not imply ops scopes.

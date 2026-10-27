@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
 import { useSimStudioAvailable } from "@/components/sim-studio/use-sim-studio-available";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical } from "lucide-react";
+import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical, Factory } from "lucide-react";
 import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
@@ -54,6 +54,9 @@ const Visualizer = lazy(() =>
 );
 const MarkdownContent = lazy(() =>
     import("@/components/markdown-content").then((module) => ({ default: module.MarkdownContent }))
+);
+const ProjectManufacturing = lazy(() =>
+    import("@/components/manufacturing/project-manufacturing").then((module) => ({ default: module.ProjectManufacturing }))
 );
 
 interface Project {
@@ -105,6 +108,7 @@ function sectionFromSearchParams(searchParams: URLSearchParams): ProjectSection 
         || section === "documentation"
         || section === "workflows"
         || section === "release-studio"
+        || section === "manufacturing"
         || section === "simulation-studio"
     ) {
         return section;
@@ -119,6 +123,7 @@ const NAV_ITEMS = [
     { id: "visualizers" as ProjectSection, label: "Visualizers", icon: Box },
     { id: "workflows" as ProjectSection, label: "Workflows", icon: PlayCircle },
     { id: "release-studio" as ProjectSection, label: "Release Studio", icon: ShieldCheck },
+    { id: "manufacturing" as ProjectSection, label: "Manufacturing", icon: Factory },
     { id: "assets" as ProjectSection, label: "Assets Portal", icon: FolderOpen },
     { id: "documentation" as ProjectSection, label: "Documentation", icon: FileText },
 ];
@@ -773,6 +778,29 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                     </Suspense>
                                 )}
                             </ErrorBoundary>
+                        </ProjectSectionPanel>
+                    )}
+
+                    {visitedSections.has("manufacturing") && (
+                        <ProjectSectionPanel
+                            key={`${projectId}:manufacturing`}
+                            active={activeSection === "manufacturing"}
+                            className="themed-scrollbar"
+                        >
+                            <h2 className="mb-6 text-2xl font-bold">Manufacturing</h2>
+                            {projectId && (
+                                <ErrorBoundary label="the manufacturing panel" resetKeys={[projectId, refreshKey]}>
+                                    <Suspense fallback={<div className="text-sm text-muted-foreground">Loading manufacturing...</div>}>
+                                        <ProjectManufacturing
+                                            projectId={projectId}
+                                            canEdit={canMutateProject}
+                                            canLogDefects={canMutateProject || user?.role === "qa"}
+                                            canChangeStatus={user?.role === "qa" || user?.role === "admin"}
+                                            projectName={project ? getDisplayName(project) : undefined}
+                                        />
+                                    </Suspense>
+                                </ErrorBoundary>
+                            )}
                         </ProjectSectionPanel>
                     )}
 

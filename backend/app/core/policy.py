@@ -52,6 +52,7 @@ Action = Literal[
     "catalog_read",
     "catalog_write",
     "catalog_qa",
+    "run_status",
     "catalog_admin",
     "remote_symbols",
     "ops_read",
@@ -108,6 +109,13 @@ RULES: dict[Action, Rule] = {
     "catalog_read": Rule(CATALOG_READ_ROLES, "Catalog read access required", ("api:read",)),
     "catalog_write": Rule(CATALOG_WRITE_ROLES, "Catalog write access required", ("catalog:write",), _PROVIDER_CATALOG),
     "catalog_qa": Rule(CATALOG_QA_ROLES, "Catalog QA access required", ("catalog:qa",), _PROVIDER_CATALOG, human_only=True),
+    # Advance a manufacturing run through its lifecycle (ordered, received, closed): QA and Admin, not every writer.
+    "run_status": Rule(
+        CATALOG_QA_ROLES,
+        "QA or Admin role required to change run status",
+        ("api:write",),
+        _PROVIDER_MODIFY,
+    ),
     # Metadata field definitions, artifact maintenance, the same-person approval override.
     "catalog_admin": Rule(
         frozenset({"admin"}), "Administrator access required", ("admin",), _PROVIDER_CATALOG, human_only=True

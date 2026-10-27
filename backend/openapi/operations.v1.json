@@ -54,6 +54,16 @@
     "path": "/api/v1/catalog/metadata/batches/{batch_id}/apply",
     "typed": true
   },
+  "apply_template": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/projects/{project_id}/spec-config/apply-template",
+    "typed": true
+  },
+  "apply_template_to_spec": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/specs/{spec_id}/apply-template",
+    "typed": true
+  },
   "approve_build": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/release-studio/builds/{build_id}/approvals",
@@ -67,6 +77,11 @@
   "archive_metadata_field": {
     "method": "POST",
     "path": "/api/v1/catalog/metadata/fields/{field_id}/archive",
+    "typed": true
+  },
+  "attach_manufacturer": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/projects/{project_id}/manufacturers",
     "typed": true
   },
   "begin_oauth": {
@@ -204,6 +219,11 @@
     "path": "/api/v1/catalog/import-snapshots/folders",
     "typed": true
   },
+  "create_manufacturer": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/manufacturers",
+    "typed": true
+  },
   "create_metadata_batch": {
     "method": "POST",
     "path": "/api/v1/catalog/metadata/batches",
@@ -224,6 +244,16 @@
     "path": "/api/v1/catalog/import-sessions/projects",
     "typed": true
   },
+  "create_project_spec": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/projects/{project_id}/specs",
+    "typed": true
+  },
+  "create_run": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/runs",
+    "typed": true
+  },
   "create_server_folder_snapshot": {
     "method": "POST",
     "path": "/api/v1/catalog/import-snapshots/folders/server",
@@ -232,6 +262,11 @@
   "create_service_client": {
     "method": "POST",
     "path": "/api/v1/admin/service-clients",
+    "typed": true
+  },
+  "create_template": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/manufacturers/{mfr_id}/templates",
     "typed": true
   },
   "create_webhook": {
@@ -264,14 +299,29 @@
     "path": "/api/v1/admin/trackers/connectors/{connector_id}",
     "typed": true
   },
+  "delete_defect": {
+    "method": "DELETE",
+    "path": "/api/v1/manufacturing/defects/{defect_id}",
+    "typed": true
+  },
   "delete_design_compare": {
     "method": "DELETE",
     "path": "/api/v1/projects/{project_id}/design-compare/{job_id}",
     "typed": true
   },
+  "delete_evidence": {
+    "method": "DELETE",
+    "path": "/api/v1/manufacturing/defects/{defect_id}/evidence/{digest}",
+    "typed": true
+  },
   "delete_folder": {
     "method": "DELETE",
     "path": "/api/v1/folders/{folder_id}",
+    "typed": true
+  },
+  "delete_manufacturer": {
+    "method": "DELETE",
+    "path": "/api/v1/manufacturing/manufacturers/{mfr_id}",
     "typed": true
   },
   "delete_project_endpoint": {
@@ -284,9 +334,19 @@
     "path": "/api/v1/catalog/import-sessions/{session_id}",
     "typed": true
   },
+  "delete_project_spec": {
+    "method": "DELETE",
+    "path": "/api/v1/manufacturing/specs/{spec_id}",
+    "typed": true
+  },
   "delete_reply": {
     "method": "DELETE",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/replies/{reply_id}",
+    "typed": true
+  },
+  "delete_run": {
+    "method": "DELETE",
+    "path": "/api/v1/manufacturing/runs/{run_id}",
     "typed": true
   },
   "delete_service_client": {
@@ -297,6 +357,11 @@
   "delete_setup": {
     "method": "DELETE",
     "path": "/api/v1/projects/{project_id}/sim/a0/setups/{setup_id}",
+    "typed": true
+  },
+  "delete_template": {
+    "method": "DELETE",
+    "path": "/api/v1/manufacturing/templates/{template_id}",
     "typed": true
   },
   "delete_user_password": {
@@ -327,6 +392,11 @@
   "detach_component_asset_by_id": {
     "method": "DELETE",
     "path": "/api/v1/catalog/components/{component_id}/assets/id/{asset_id}",
+    "typed": true
+  },
+  "detach_manufacturer": {
+    "method": "DELETE",
+    "path": "/api/v1/manufacturing/projects/{project_id}/manufacturers/{mfr_id}",
     "typed": true
   },
   "detect_project_paths": {
@@ -379,6 +449,16 @@
     "path": "/api/v1/remote-provider/previews/{preview_id}",
     "typed": true
   },
+  "download_run_report": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/runs/{run_id}/report.pdf",
+    "typed": true
+  },
+  "download_spec_sheet": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/projects/{project_id}/spec-sheet.pdf",
+    "typed": true
+  },
   "draft_setup": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/sim/a0/setups",
@@ -407,6 +487,16 @@
   "export_metadata_csv": {
     "method": "GET",
     "path": "/api/v1/catalog/metadata/export.csv",
+    "typed": true
+  },
+  "extract_board_spec": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/projects/{project_id}/board-spec/extract",
+    "typed": true
+  },
+  "extract_pcb_rules": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/projects/{project_id}/pcb-rules/extract",
     "typed": true
   },
   "forget_git_host_key": {
@@ -442,6 +532,11 @@
   "get_auth_config": {
     "method": "GET",
     "path": "/api/v1/auth/config",
+    "typed": true
+  },
+  "get_board_spec": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/projects/{project_id}/board-spec",
     "typed": true
   },
   "get_build": {
@@ -579,6 +674,11 @@
     "path": "/api/v1/projects/{project_id}/docs",
     "typed": true
   },
+  "get_evidence": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/runs/{run_id}/evidence/{digest}",
+    "typed": true
+  },
   "get_fabrication_layer": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/release-studio/builds/{build_id}/fabrication-view/layers/{layer_id}.svg",
@@ -682,6 +782,11 @@
   "get_part_manifest": {
     "method": "GET",
     "path": "/api/v1/remote-provider/parts/{part_id}",
+    "typed": true
+  },
+  "get_pcb_rule_fields": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/pcb-rule-fields",
     "typed": true
   },
   "get_preview_job": {
@@ -804,6 +909,16 @@
     "path": "/api/v1/projects/{project_id}/schematic",
     "typed": true
   },
+  "get_project_spec": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/specs/{spec_id}",
+    "typed": true
+  },
+  "get_project_spec_for_manufacturer": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/projects/{project_id}/manufacturers/{mfr_id}/spec",
+    "typed": true
+  },
   "get_project_subsheets": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/schematic/subsheets",
@@ -844,6 +959,11 @@
     "path": "/api/v1/ops/route-latency",
     "typed": true
   },
+  "get_run": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/runs/{run_id}",
+    "typed": true
+  },
   "get_semantic_index_identity": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/semantic-index/identity",
@@ -869,9 +989,19 @@
     "path": "/api/v1/projects/{project_id}/release-studio/source",
     "typed": true
   },
+  "get_spec_config": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/projects/{project_id}/spec-config",
+    "typed": true
+  },
   "get_ssh_key": {
     "method": "GET",
     "path": "/api/v1/settings/ssh-key",
+    "typed": true
+  },
+  "get_template": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/templates/{template_id}",
     "typed": true
   },
   "get_validation_job": {
@@ -1064,6 +1194,16 @@
     "path": "/api/v1/trackers/linkable-connectors",
     "typed": true
   },
+  "list_manufacturers": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/manufacturers",
+    "typed": true
+  },
+  "list_manufacturing_runs": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/runs",
+    "typed": true
+  },
   "list_mates_with": {
     "method": "GET",
     "path": "/api/v1/catalog/components/{component_id}/mates-with",
@@ -1119,6 +1259,16 @@
     "path": "/api/v1/catalog/import-sessions",
     "typed": true
   },
+  "list_project_manufacturers": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/projects/{project_id}/manufacturers",
+    "typed": true
+  },
+  "list_project_specs": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/projects/{project_id}/specs",
+    "typed": true
+  },
   "list_projects": {
     "method": "GET",
     "path": "/api/v1/projects/",
@@ -1144,6 +1294,11 @@
     "path": "/api/v1/projects/{project_id}/sim/a0/setups",
     "typed": true
   },
+  "list_templates": {
+    "method": "GET",
+    "path": "/api/v1/manufacturing/templates",
+    "typed": true
+  },
   "list_tokens": {
     "method": "GET",
     "path": "/api/v1/agent/tokens",
@@ -1167,6 +1322,11 @@
   "live": {
     "method": "GET",
     "path": "/api/v1/health/live",
+    "typed": true
+  },
+  "log_defect": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/runs/{run_id}/defects",
     "typed": true
   },
   "login": {
@@ -1292,6 +1452,11 @@
   "preview_metadata_csv": {
     "method": "POST",
     "path": "/api/v1/catalog/metadata/import-csv/preview",
+    "typed": true
+  },
+  "preview_spec_config": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/spec-config/preview",
     "typed": true
   },
   "project_tracker_health": {
@@ -1494,6 +1659,11 @@
     "path": "/api/v1/catalog/artifacts/maintenance",
     "typed": true
   },
+  "save_board_spec": {
+    "method": "PUT",
+    "path": "/api/v1/manufacturing/projects/{project_id}/board-spec",
+    "typed": true
+  },
   "save_import_proposal_drafts": {
     "method": "PUT",
     "path": "/api/v1/catalog/import-sessions/{session_id}/proposals/drafts",
@@ -1507,6 +1677,11 @@
   "save_source_defaults": {
     "method": "PUT",
     "path": "/api/v1/projects/{project_id}/release-studio/source/defaults",
+    "typed": true
+  },
+  "save_spec_config": {
+    "method": "PUT",
+    "path": "/api/v1/manufacturing/projects/{project_id}/spec-config",
     "typed": true
   },
   "scan_catalog_usage": {
@@ -1664,9 +1839,19 @@
     "path": "/api/v1/admin/trackers/connectors/{connector_id}",
     "typed": true
   },
+  "update_defect": {
+    "method": "PATCH",
+    "path": "/api/v1/manufacturing/defects/{defect_id}",
+    "typed": true
+  },
   "update_folder": {
     "method": "PATCH",
     "path": "/api/v1/folders/{folder_id}",
+    "typed": true
+  },
+  "update_manufacturer": {
+    "method": "PATCH",
+    "path": "/api/v1/manufacturing/manufacturers/{mfr_id}",
     "typed": true
   },
   "update_metadata_field": {
@@ -1689,6 +1874,11 @@
     "path": "/api/v1/projects/{project_id}/name",
     "typed": true
   },
+  "update_project_spec": {
+    "method": "PATCH",
+    "path": "/api/v1/manufacturing/specs/{spec_id}",
+    "typed": true
+  },
   "update_project_tracker": {
     "method": "PUT",
     "path": "/api/v1/projects/{project_id}/tracker",
@@ -1699,6 +1889,21 @@
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/replies/{reply_id}",
     "typed": true
   },
+  "update_run": {
+    "method": "PATCH",
+    "path": "/api/v1/manufacturing/runs/{run_id}",
+    "typed": true
+  },
+  "update_run_status": {
+    "method": "PATCH",
+    "path": "/api/v1/manufacturing/runs/{run_id}/status",
+    "typed": true
+  },
+  "update_template": {
+    "method": "PATCH",
+    "path": "/api/v1/manufacturing/templates/{template_id}",
+    "typed": true
+  },
   "update_webhook": {
     "method": "PATCH",
     "path": "/api/v1/settings/webhooks/{webhook_id}",
@@ -1707,6 +1912,11 @@
   "upload_comment_attachment": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/comment-attachments",
+    "typed": true
+  },
+  "upload_evidence": {
+    "method": "POST",
+    "path": "/api/v1/manufacturing/defects/{defect_id}/evidence",
     "typed": true
   },
   "upload_folder_snapshot_file": {

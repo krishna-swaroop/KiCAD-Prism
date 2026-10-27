@@ -23,7 +23,9 @@ cffi==2.1.1
     #   cairocffi
     #   cryptography
 charset-normalizer==3.5.1
-    # via requests
+    # via
+    #   reportlab
+    #   requests
 click==8.5.0
     # via uvicorn
 colorama==0.4.6
@@ -74,6 +76,7 @@ pillow==12.3.0
     #   -r requirements/runtime.in
     #   cairosvg
     #   pikepdf
+    #   reportlab
 psycopg==3.3.6
     # via -r requirements/runtime.in
 psycopg-binary==3.3.6 ; implementation_name != 'pypy'
@@ -107,6 +110,8 @@ referencing==0.37.0
     # via
     #   jsonschema
     #   jsonschema-specifications
+reportlab==4.5.1
+    # via -r requirements/runtime.in
 requests==2.34.2
     # via -r requirements/runtime.in
 rpds-py==2026.9.1

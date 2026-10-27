@@ -71,6 +71,10 @@ class ApplyMetadataBatchRequest(TypedDict, total=False):
     item_ids: list[str]
 
 
+class ApplyTemplateRequest(TypedDict, total=True):
+    template_id: str
+
+
 class ApprovalDecision(TypedDict, total=True):
     approvals: ApprovalState
 
@@ -114,6 +118,10 @@ class AssetSearchItem(TypedDict, total=True):
 
 class AssetSearchPage(TypedDict, total=True):
     items: list[AssetSearchItem]
+
+
+class AttachManufacturerRequest(TypedDict, total=True):
+    manufacturer_id: str
 
 
 class AuditEvent(TypedDict, total=True):
@@ -184,6 +192,12 @@ class BoardSize(TypedDict, total=True):
     width: float
 
 
+class BoardSpecRequest(TypedDict, total=False):
+    active_sections: list[str] | None
+    source: dict[str, Any]
+    specs: dict[str, Any]
+
+
 class Body_agent_token(TypedDict, total=True):
     code: str
     code_verifier: str
@@ -230,6 +244,10 @@ class Body_token(TypedDict, total=False):
 
 
 class Body_upload_comment_attachment(TypedDict, total=True):
+    file: str
+
+
+class Body_upload_evidence(TypedDict, total=True):
     file: str
 
 
@@ -1377,6 +1395,22 @@ class DebugLoggingWindow(TypedDict, total=True):
     until: str
 
 
+class DefectRequest(TypedDict, total=False):
+    category: str
+    description: str
+    quantity_affected: int
+    severity: str
+
+
+class DefectUpdateRequest(TypedDict, total=False):
+    category: str | None
+    description: str | None
+    quantity_affected: int | None
+    resolution_note: str | None
+    severity: str | None
+    status: str | None
+
+
 class DeleteDesignCompareResponse(TypedDict, total=True):
     status: str
 
@@ -2372,6 +2406,13 @@ class ManifestAsset(TypedDict, total=True):
     target_name: str
 
 
+class ManufacturerRequest(TypedDict, total=False):
+    contact: str
+    name: str
+    notes: str
+    website: str
+
+
 class MateOut(TypedDict, total=True):
     componentId: str
     createdAt: str
@@ -3094,6 +3135,21 @@ class ProjectSearchResults(TypedDict, total=True):
     results: list[ProjectSearchHit]
 
 
+class ProjectSpecCreateRequest(TypedDict, total=False):
+    manufacturer_id: str
+    name: str
+    spec_config: str
+    template_id: str | None
+
+
+class ProjectSpecUpdateRequest(TypedDict, total=False):
+    active_sections: list[str] | None
+    name: str | None
+    source: dict[str, Any] | None
+    spec_config: str | None
+    specs: dict[str, Any] | None
+
+
 class ProjectVariantCatalog(TypedDict, total=True):
     """The revision's variant catalog and its diagnostics."""
     commit: str | None
@@ -3427,6 +3483,29 @@ class RouteLatencyRow(TypedDict, total=True):
     status5xx: int
 
 
+class RunRequest(TypedDict, total=False):
+    commit_sha: str
+    manufacturer_id: str | None
+    notes: str
+    project_id: str
+    quantity_ordered: int
+    release_tag: str
+    spec_id: str | None
+    spec_snapshot: dict[str, Any]
+
+
+class RunStatusRequest(TypedDict, total=True):
+    status: str
+
+
+class RunUpdateRequest(TypedDict, total=False):
+    commit_sha: str | None
+    manufacturer_id: str | None
+    notes: str | None
+    quantity_good: int | None
+    quantity_ordered: int | None
+
+
 class SSHKeyResponse(TypedDict, total=False):
     comment: str | None
     created_at: str | None
@@ -3599,6 +3678,10 @@ class SourceResponse(TypedDict, total=True):
     source: SourceDiscovery
 
 
+class SpecConfigRequest(TypedDict, total=False):
+    spec_config: str
+
+
 class StageRunOut(TypedDict, total=False):
     ended_at: str | None
     seconds: float | None
@@ -3665,6 +3748,22 @@ class SyncQueued(TypedDict, total=True):
     job_id: str
     message: str
     status: str
+
+
+class TemplateRequest(TypedDict, total=False):
+    capabilities: dict[str, Any]
+    capability_config: str
+    capability_meta: dict[str, Any]
+    name: str
+    spec_config: str
+
+
+class TemplateUpdateRequest(TypedDict, total=False):
+    capabilities: dict[str, Any] | None
+    capability_config: str | None
+    capability_meta: dict[str, Any] | None
+    name: str | None
+    spec_config: str | None
 
 
 class ThreadPoolMetrics(TypedDict, total=True):
@@ -4251,6 +4350,24 @@ class GeneratedClient:
             body=body,
         )
 
+    def apply_template(self, project_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Apply Template"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/projects/{project_id}/spec-config/apply-template",
+            path_params={"project_id": project_id},
+            body=body,
+        )
+
+    def apply_template_to_spec(self, spec_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Apply Template To Spec"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/specs/{spec_id}/apply-template",
+            path_params={"spec_id": spec_id},
+            body=body,
+        )
+
     def approve_build(self, project_id: str, build_id: str, *, body: dict[str, Any] | None = None) -> ApprovalDecision:
         """Record a designer or QA approval on a build"""
         return self._request(
@@ -4274,6 +4391,15 @@ class GeneratedClient:
             "POST",
             "/api/v1/catalog/metadata/fields/{field_id}/archive",
             path_params={"field_id": field_id},
+        )
+
+    def attach_manufacturer(self, project_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Attach Manufacturer"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/projects/{project_id}/manufacturers",
+            path_params={"project_id": project_id},
+            body=body,
         )
 
     def begin_oauth(self, connector_id: str, *, returnTo: str = '/') -> OAuthBeginResponse:
@@ -4501,6 +4627,14 @@ class GeneratedClient:
             body=body,
         )
 
+    def create_manufacturer(self, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Create Manufacturer"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/manufacturers",
+            body=body,
+        )
+
     def create_metadata_batch(self, *, body: dict[str, Any] | None = None) -> MetadataBatch:
         """Stage a metadata batch"""
         return self._request(
@@ -4533,6 +4667,23 @@ class GeneratedClient:
             body=body,
         )
 
+    def create_project_spec(self, project_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Create Project Spec"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/projects/{project_id}/specs",
+            path_params={"project_id": project_id},
+            body=body,
+        )
+
+    def create_run(self, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Create Run"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/runs",
+            body=body,
+        )
+
     def create_server_folder_snapshot(self, *, body: dict[str, Any] | None = None) -> ImportSessionCreated:
         """Import a server folder"""
         return self._request(
@@ -4546,6 +4697,15 @@ class GeneratedClient:
         return self._request(
             "POST",
             "/api/v1/admin/service-clients",
+            body=body,
+        )
+
+    def create_template(self, mfr_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Create Template"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/manufacturers/{mfr_id}/templates",
+            path_params={"mfr_id": mfr_id},
             body=body,
         )
 
@@ -4597,12 +4757,28 @@ class GeneratedClient:
             path_params={"connector_id": connector_id},
         )
 
+    def delete_defect(self, defect_id: str) -> dict[str, Any]:
+        """Delete Defect"""
+        return self._request(
+            "DELETE",
+            "/api/v1/manufacturing/defects/{defect_id}",
+            path_params={"defect_id": defect_id},
+        )
+
     def delete_design_compare(self, project_id: str, job_id: str) -> DeleteDesignCompareResponse:
         """Cancel a comparison or forget its finished result"""
         return self._request(
             "DELETE",
             "/api/v1/projects/{project_id}/design-compare/{job_id}",
             path_params={"project_id": project_id, "job_id": job_id},
+        )
+
+    def delete_evidence(self, defect_id: str, digest: str) -> dict[str, Any]:
+        """Delete Evidence"""
+        return self._request(
+            "DELETE",
+            "/api/v1/manufacturing/defects/{defect_id}/evidence/{digest}",
+            path_params={"defect_id": defect_id, "digest": digest},
         )
 
     def delete_folder(self, folder_id: str, *, cascade: bool = True) -> FolderDeleted:
@@ -4612,6 +4788,14 @@ class GeneratedClient:
             "/api/v1/folders/{folder_id}",
             path_params={"folder_id": folder_id},
             query={"cascade": cascade},
+        )
+
+    def delete_manufacturer(self, mfr_id: str) -> dict[str, Any]:
+        """Delete Manufacturer"""
+        return self._request(
+            "DELETE",
+            "/api/v1/manufacturing/manufacturers/{mfr_id}",
+            path_params={"mfr_id": mfr_id},
         )
 
     def delete_project_endpoint(self, project_id: str) -> ProjectDeleted:
@@ -4630,12 +4814,28 @@ class GeneratedClient:
             path_params={"session_id": session_id},
         )
 
+    def delete_project_spec(self, spec_id: str) -> dict[str, Any]:
+        """Delete Project Spec"""
+        return self._request(
+            "DELETE",
+            "/api/v1/manufacturing/specs/{spec_id}",
+            path_params={"spec_id": spec_id},
+        )
+
     def delete_reply(self, project_id: str, comment_id: str, reply_id: str) -> CommentView:
         """Delete a reply"""
         return self._request(
             "DELETE",
             "/api/v1/projects/{project_id}/comments/{comment_id}/replies/{reply_id}",
             path_params={"project_id": project_id, "comment_id": comment_id, "reply_id": reply_id},
+        )
+
+    def delete_run(self, run_id: str) -> dict[str, Any]:
+        """Delete Run"""
+        return self._request(
+            "DELETE",
+            "/api/v1/manufacturing/runs/{run_id}",
+            path_params={"run_id": run_id},
         )
 
     def delete_service_client(self, client_id: str) -> ServiceClientDeleted:
@@ -4652,6 +4852,14 @@ class GeneratedClient:
             "DELETE",
             "/api/v1/projects/{project_id}/sim/a0/setups/{setup_id}",
             path_params={"project_id": project_id, "setup_id": setup_id},
+        )
+
+    def delete_template(self, template_id: str) -> dict[str, Any]:
+        """Delete Template"""
+        return self._request(
+            "DELETE",
+            "/api/v1/manufacturing/templates/{template_id}",
+            path_params={"template_id": template_id},
         )
 
     def delete_user_password(self, email: str) -> UserPasswordDeletedResponse:
@@ -4700,6 +4908,14 @@ class GeneratedClient:
             "DELETE",
             "/api/v1/catalog/components/{component_id}/assets/id/{asset_id}",
             path_params={"component_id": component_id, "asset_id": asset_id},
+        )
+
+    def detach_manufacturer(self, project_id: str, mfr_id: str) -> dict[str, Any]:
+        """Detach Manufacturer"""
+        return self._request(
+            "DELETE",
+            "/api/v1/manufacturing/projects/{project_id}/manufacturers/{mfr_id}",
+            path_params={"project_id": project_id, "mfr_id": mfr_id},
         )
 
     def detect_project_paths(self, project_id: str) -> DetectedPaths:
@@ -4786,6 +5002,23 @@ class GeneratedClient:
             path_params={"preview_id": preview_id},
         )
 
+    def download_run_report(self, run_id: str) -> Any:
+        """Download Run Report"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/runs/{run_id}/report.pdf",
+            path_params={"run_id": run_id},
+        )
+
+    def download_spec_sheet(self, project_id: str, *, spec_id: str | None = None) -> Any:
+        """Download Spec Sheet"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/projects/{project_id}/spec-sheet.pdf",
+            path_params={"project_id": project_id},
+            query={"spec_id": spec_id},
+        )
+
     def draft_setup(self, project_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
         """Draft Setup"""
         return self._request(
@@ -4830,6 +5063,22 @@ class GeneratedClient:
             "GET",
             "/api/v1/catalog/metadata/export.csv",
             query={"field": field},
+        )
+
+    def extract_board_spec(self, project_id: str) -> dict[str, Any]:
+        """Extract Board Spec"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/projects/{project_id}/board-spec/extract",
+            path_params={"project_id": project_id},
+        )
+
+    def extract_pcb_rules(self, project_id: str) -> dict[str, Any]:
+        """Extract Pcb Rules"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/projects/{project_id}/pcb-rules/extract",
+            path_params={"project_id": project_id},
         )
 
     def forget_git_host_key(self, host: str) -> HostKeyForgetResponse:
@@ -4886,6 +5135,14 @@ class GeneratedClient:
         return self._request(
             "GET",
             "/api/v1/auth/config",
+        )
+
+    def get_board_spec(self, project_id: str) -> dict[str, Any] | None:
+        """Get Board Spec"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/projects/{project_id}/board-spec",
+            path_params={"project_id": project_id},
         )
 
     def get_build(self, project_id: str, build_id: str) -> BuildDetail:
@@ -5117,6 +5374,14 @@ class GeneratedClient:
             query={"commit": commit},
         )
 
+    def get_evidence(self, run_id: str, digest: str) -> Any:
+        """Get Evidence"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/runs/{run_id}/evidence/{digest}",
+            path_params={"run_id": run_id, "digest": digest},
+        )
+
     def get_fabrication_layer(self, project_id: str, build_id: str, layer_id: str) -> Any:
         """One layer of a build's fabrication package as SVG"""
         return self._request(
@@ -5287,6 +5552,13 @@ class GeneratedClient:
             "/api/v1/remote-provider/parts/{part_id}",
             path_params={"part_id": part_id},
             query={"representation": representation, "revision": revision},
+        )
+
+    def get_pcb_rule_fields(self) -> dict[str, Any]:
+        """Get Pcb Rule Fields"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/pcb-rule-fields",
         )
 
     def get_preview_job(self, job_id: str) -> CatalogJob:
@@ -5495,6 +5767,22 @@ class GeneratedClient:
             query={"commit": commit},
         )
 
+    def get_project_spec(self, spec_id: str) -> dict[str, Any]:
+        """Get Project Spec"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/specs/{spec_id}",
+            path_params={"spec_id": spec_id},
+        )
+
+    def get_project_spec_for_manufacturer(self, project_id: str, mfr_id: str) -> dict[str, Any]:
+        """Get Project Spec For Manufacturer"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/projects/{project_id}/manufacturers/{mfr_id}/spec",
+            path_params={"project_id": project_id, "mfr_id": mfr_id},
+        )
+
     def get_project_subsheets(self, project_id: str, *, commit: str | None = None, include: str | None = None) -> Subsheets:
         """The schematics below the root, optionally with their text"""
         return self._request(
@@ -5562,6 +5850,14 @@ class GeneratedClient:
             query={"window_minutes": window_minutes, "route_prefix": route_prefix, "limit": limit},
         )
 
+    def get_run(self, run_id: str) -> dict[str, Any] | None:
+        """Get Run"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/runs/{run_id}",
+            path_params={"run_id": run_id},
+        )
+
     def get_semantic_index_identity(self, project_id: str, *, commit: str | None = None) -> dict[str, Any]:
         """The revision's semantic-index document"""
         return self._request(
@@ -5606,11 +5902,27 @@ class GeneratedClient:
             query={"commit_sha": commit_sha},
         )
 
+    def get_spec_config(self, project_id: str) -> dict[str, Any]:
+        """Get Spec Config"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/projects/{project_id}/spec-config",
+            path_params={"project_id": project_id},
+        )
+
     def get_ssh_key(self) -> SSHKeyResponse:
         """Get Ssh Key"""
         return self._request(
             "GET",
             "/api/v1/settings/ssh-key",
+        )
+
+    def get_template(self, template_id: str) -> dict[str, Any] | None:
+        """Get Template"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/templates/{template_id}",
+            path_params={"template_id": template_id},
         )
 
     def get_validation_job(self, job_id: str) -> CatalogJob:
@@ -5911,6 +6223,21 @@ class GeneratedClient:
             "/api/v1/trackers/linkable-connectors",
         )
 
+    def list_manufacturers(self) -> list[dict[str, Any]]:
+        """List Manufacturers"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/manufacturers",
+        )
+
+    def list_manufacturing_runs(self, *, project_id: str | None = None) -> list[dict[str, Any]]:
+        """List Manufacturing Runs"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/runs",
+            query={"project_id": project_id},
+        )
+
     def list_mates_with(self, component_id: str) -> MatePage:
         """List the parts this part mates with"""
         return self._request(
@@ -5995,6 +6322,23 @@ class GeneratedClient:
             "/api/v1/catalog/import-sessions",
         )
 
+    def list_project_manufacturers(self, project_id: str) -> list[dict[str, Any]]:
+        """List Project Manufacturers"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/projects/{project_id}/manufacturers",
+            path_params={"project_id": project_id},
+        )
+
+    def list_project_specs(self, project_id: str, *, manufacturer_id: str | None = None) -> list[dict[str, Any]]:
+        """List Project Specs"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/projects/{project_id}/specs",
+            path_params={"project_id": project_id},
+            query={"manufacturer_id": manufacturer_id},
+        )
+
     def list_projects(self) -> list[Project]:
         """List Projects"""
         return self._request(
@@ -6033,6 +6377,14 @@ class GeneratedClient:
             path_params={"project_id": project_id},
         )
 
+    def list_templates(self, *, manufacturer_id: str | None = None) -> list[dict[str, Any]]:
+        """List Templates"""
+        return self._request(
+            "GET",
+            "/api/v1/manufacturing/templates",
+            query={"manufacturer_id": manufacturer_id},
+        )
+
     def list_tokens(self, *, all_users: bool = False) -> list[AgentTokenView]:
         """List Tokens"""
         return self._request(
@@ -6069,6 +6421,15 @@ class GeneratedClient:
         return self._request(
             "GET",
             "/api/v1/health/live",
+        )
+
+    def log_defect(self, run_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Log Defect"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/runs/{run_id}/defects",
+            path_params={"run_id": run_id},
+            body=body,
         )
 
     def login(self, *, body: dict[str, Any] | None = None) -> UserSession:
@@ -6267,6 +6628,14 @@ class GeneratedClient:
         return self._request(
             "POST",
             "/api/v1/catalog/metadata/import-csv/preview",
+        )
+
+    def preview_spec_config(self, *, body: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        """Preview Spec Config"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/spec-config/preview",
+            body=body,
         )
 
     def project_tracker_health(self, project_id: str) -> dict[str, Any]:
@@ -6590,6 +6959,15 @@ class GeneratedClient:
             "/api/v1/catalog/artifacts/maintenance",
         )
 
+    def save_board_spec(self, project_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        """Save Board Spec"""
+        return self._request(
+            "PUT",
+            "/api/v1/manufacturing/projects/{project_id}/board-spec",
+            path_params={"project_id": project_id},
+            body=body,
+        )
+
     def save_import_proposal_drafts(self, session_id: str, *, body: dict[str, Any] | None = None) -> SavedImportDrafts:
         """Save import proposal drafts"""
         return self._request(
@@ -6612,6 +6990,15 @@ class GeneratedClient:
         return self._request(
             "PUT",
             "/api/v1/projects/{project_id}/release-studio/source/defaults",
+            path_params={"project_id": project_id},
+            body=body,
+        )
+
+    def save_spec_config(self, project_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Save Spec Config"""
+        return self._request(
+            "PUT",
+            "/api/v1/manufacturing/projects/{project_id}/spec-config",
             path_params={"project_id": project_id},
             body=body,
         )
@@ -6876,12 +7263,30 @@ class GeneratedClient:
             body=body,
         )
 
+    def update_defect(self, defect_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Update Defect"""
+        return self._request(
+            "PATCH",
+            "/api/v1/manufacturing/defects/{defect_id}",
+            path_params={"defect_id": defect_id},
+            body=body,
+        )
+
     def update_folder(self, folder_id: str, *, body: dict[str, Any] | None = None) -> FolderRecord:
         """Rename or reparent a folder"""
         return self._request(
             "PATCH",
             "/api/v1/folders/{folder_id}",
             path_params={"folder_id": folder_id},
+            body=body,
+        )
+
+    def update_manufacturer(self, mfr_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Update Manufacturer"""
+        return self._request(
+            "PATCH",
+            "/api/v1/manufacturing/manufacturers/{mfr_id}",
+            path_params={"mfr_id": mfr_id},
             body=body,
         )
 
@@ -6921,6 +7326,15 @@ class GeneratedClient:
             body=body,
         )
 
+    def update_project_spec(self, spec_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Update Project Spec"""
+        return self._request(
+            "PATCH",
+            "/api/v1/manufacturing/specs/{spec_id}",
+            path_params={"spec_id": spec_id},
+            body=body,
+        )
+
     def update_project_tracker(self, project_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
         """Update Project Tracker"""
         return self._request(
@@ -6939,6 +7353,33 @@ class GeneratedClient:
             body=body,
         )
 
+    def update_run(self, run_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Update Run"""
+        return self._request(
+            "PATCH",
+            "/api/v1/manufacturing/runs/{run_id}",
+            path_params={"run_id": run_id},
+            body=body,
+        )
+
+    def update_run_status(self, run_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Update Run Status"""
+        return self._request(
+            "PATCH",
+            "/api/v1/manufacturing/runs/{run_id}/status",
+            path_params={"run_id": run_id},
+            body=body,
+        )
+
+    def update_template(self, template_id: str, *, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Update Template"""
+        return self._request(
+            "PATCH",
+            "/api/v1/manufacturing/templates/{template_id}",
+            path_params={"template_id": template_id},
+            body=body,
+        )
+
     def update_webhook(self, webhook_id: str, *, body: dict[str, Any] | None = None) -> WebhookView:
         """Edit an outbound webhook"""
         return self._request(
@@ -6954,6 +7395,14 @@ class GeneratedClient:
             "POST",
             "/api/v1/projects/{project_id}/comment-attachments",
             path_params={"project_id": project_id},
+        )
+
+    def upload_evidence(self, defect_id: str) -> dict[str, Any] | None:
+        """Upload Evidence"""
+        return self._request(
+            "POST",
+            "/api/v1/manufacturing/defects/{defect_id}/evidence",
+            path_params={"defect_id": defect_id},
         )
 
     def upload_folder_snapshot_file(self, snapshot_id: str) -> FolderSnapshotFile:
