@@ -10,13 +10,33 @@
         {
           "id": "inspect",
           "label": "Inspect context",
-          "url": "http://127.0.0.1:8765/",
+          "url": "http://127.0.0.1:8765/context-bridge/",
           "kind": "panel"
         },
         {
           "id": "open",
           "label": "Open context bridge",
-          "url": "http://127.0.0.1:8765/",
+          "url": "http://127.0.0.1:8765/context-bridge/",
+          "kind": "link"
+        }
+      ]
+    },
+    {
+      "id": "quick-pi-lite",
+      "name": "Quick PI Lite",
+      "version": "1.0.0",
+      "description": "Manual DC path screening: trace/via resistance, voltage drop and power loss.",
+      "actions": [
+        {
+          "id": "screen",
+          "label": "Open DC path screen",
+          "url": "http://127.0.0.1:8765/quick-pi/",
+          "kind": "panel"
+        },
+        {
+          "id": "open",
+          "label": "Open Quick PI in new tab",
+          "url": "http://127.0.0.1:8765/quick-pi/",
           "kind": "link"
         }
       ]

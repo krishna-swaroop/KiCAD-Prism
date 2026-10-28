@@ -18,7 +18,7 @@ panel. It cannot load Python or JavaScript into Prism's backend or host page.
 1. Start the example from a repository checkout:
 
    ```bash
-   python -m http.server 8765 --bind 127.0.0.1 --directory examples/extensions/context-bridge
+   python -m http.server 8765 --bind 127.0.0.1 --directory examples/extensions
    ```
 
 2. Set `PRISM_EXTENSIONS_FILE` in the backend environment to the absolute path
@@ -34,6 +34,31 @@ design-data requests. **Open context bridge** opens the same app in another
 tab. The loopback address refers to the computer running your browser, so run
 the example on that computer. If Prism itself uses `127.0.0.1`, open Prism on
 `localhost` instead so the example has a separate hostname.
+
+## Try Quick PI Lite
+
+The same example server and registry include **Quick PI Lite**, a manual DC
+path screen inspired by WayriCAD Quick PI.
+
+1. Open **Project → Extensions → Open DC path screen**.
+2. Enter the source voltage, constant load current, copper resistivity at your
+   operating temperature, and voltage-drop budget.
+3. Add trace, via-group or resistor stages, including the return path. Via
+   diameter means the finished hole diameter. Parallel paths must be identical.
+4. Click **Calculate** to inspect path resistance, drop, load voltage, I²R loss
+   and per-stage average current density.
+5. Expand **Study report JSON** and select the text to copy the inputs, units,
+   assumptions, results and current project/revision identifiers.
+
+Editing an input hides the old result until you calculate again. Copy the
+report before leaving: reloading the extension or changing revision resets
+the study. All geometry is entered manually; the project/revision identifies
+the study context and does not establish that the geometry came from that board.
+
+This extension uses fixed resistivity, an ideal voltage source and one constant
+current load. It does not extract copper, mesh a PCB, solve temperature rise,
+or perform AC/transient analysis. A voltage-drop budget result and average
+current density do not qualify board current capacity or thermal safety.
 
 ## Write a manifest
 
