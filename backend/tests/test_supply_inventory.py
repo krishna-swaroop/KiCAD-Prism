@@ -62,7 +62,7 @@ class FakeServer:
 
 
 class VisionServer(FakeServer):
-    """Vision's subset of InvenTree (PRISM_API.md §3): any filter it does not list is answered with 400."""
+    """Vision's subset of InvenTree: any filter outside its documented set is answered with 400."""
 
     FILTERS = {
         "": set(),
@@ -122,10 +122,10 @@ class InvenTreeClientTests(unittest.TestCase):
                 {"pk": 1, "part": 1, "MPN": "TNPW060310K0BEEA", "manufacturer": 1,
                  "manufacturer_detail": {"pk": 1, "name": "Unknown manufacturer"}},
             ],
-            "stock/location/": [{"pk": 5, "name": "EXT4", "pathstring": "4200/EXT4", "external": True}],
+            "stock/location/": [{"pk": 5, "name": "VENDOR", "pathstring": "Main/VENDOR", "external": True}],
             "stock/": [{"pk": 3, "part": 1, "quantity": 4.0, "allocated": 4.0, "status": 75, "status_custom_key": 1001,
                         "status_text": "On hold", "location": 5}],
-        }, api={"server": "Vision", "apiVersion": 566, "instance": "Pixxel"})
+        }, api={"server": "Vision", "apiVersion": 566, "instance": "Test"})
         found = sync.read(_client(server), 1)
         self.assertEqual((found.server, found.parts[1].mpns), ("Vision", (("Unknown manufacturer", "TNPW060310K0BEEA"),)))
         self.assertEqual((found.stock[0].status_text, found.locations[5].external), ("On hold", True))

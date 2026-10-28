@@ -204,10 +204,10 @@ class EgressTests(unittest.TestCase):
         self._blocked("https://api.example.com/", resolve=_resolver(PUBLIC, "169.254.169.254"))
 
     def test_a_listed_private_host_may_resolve_to_a_private_network(self) -> None:
-        client, transport = _client(_response(200, {}), private_hosts=("api.example.com",), resolve=_resolver("172.16.8.66"))
+        client, transport = _client(_response(200, {}), private_hosts=("api.example.com",), resolve=_resolver("10.20.30.40"))
         client.request("GET", "https://api.example.com/api/")
-        self.assertEqual(transport.calls[0]["addresses"], ("172.16.8.66",))
-        self._blocked("https://api.example.com/", private_hosts=("other.example.com",), resolve=_resolver("172.16.8.66"))
+        self.assertEqual(transport.calls[0]["addresses"], ("10.20.30.40",))
+        self._blocked("https://api.example.com/", private_hosts=("other.example.com",), resolve=_resolver("10.20.30.40"))
         for address in ("169.254.169.254", "0.0.0.0", "224.0.0.1", "fe80::1"):
             self._blocked("https://api.example.com/", private_hosts=("api.example.com",), resolve=_resolver(address))
 
