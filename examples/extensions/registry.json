@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "extensions": [
+    {
+      "id": "context-bridge",
+      "name": "Context bridge",
+      "version": "1.0.0",
+      "description": "Inspect the project and revision context passed to an independent tool.",
+      "actions": [
+        {
+          "id": "inspect",
+          "label": "Inspect context",
+          "url": "http://127.0.0.1:8765/",
+          "kind": "panel"
+        },
+        {
+          "id": "open",
+          "label": "Open context bridge",
+          "url": "http://127.0.0.1:8765/",
+          "kind": "link"
+        }
+      ]
+    }
+  ]
+}

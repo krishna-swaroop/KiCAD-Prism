@@ -1,0 +1,24 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body { margin: 0; background: Canvas; color: CanvasText; }
+main { max-width: 52rem; margin: 0 auto; padding: 1.5rem; }
+h1 { margin: .25rem 0; font-size: 1.5rem; }
+h2 { font-size: 1rem; margin-top: 1.75rem; }
+p { margin: .75rem 0; }
+.eyebrow, .hint { font-size: .8rem; }
+.eyebrow { text-transform: uppercase; letter-spacing: .08em; }
+dl { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: .75rem; padding: 1rem 0; border-block: 1px solid GrayText; }
+dt { font-weight: 600; }
+dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: .85rem; }
+label { display: block; font-weight: 600; margin-bottom: .5rem; }
+textarea { box-sizing: border-box; width: 100%; padding: .75rem; border: 1px solid GrayText; background: Canvas; color: CanvasText; font: .85rem/1.5 ui-monospace, monospace; resize: vertical; }
+textarea:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+@media (max-width: 30rem) {
+  main { padding: 1rem; }
+  dl { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+  dd { margin-bottom: .75rem; }
+}

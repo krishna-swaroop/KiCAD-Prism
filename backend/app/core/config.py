@@ -45,6 +45,11 @@ class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings):
     are declared in `app.core.pipeline_config` and inherited here.
     """
     
+    PRISM_EXTENSIONS_FILE: str = Field(
+        default="",
+        description="Path to an operator-managed extension manifest; empty disables extensions.",
+    )
+
     # ===========================================
     # OIDC / OAuth Configuration
     # ===========================================

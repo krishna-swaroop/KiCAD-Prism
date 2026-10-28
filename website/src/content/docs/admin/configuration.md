@@ -453,6 +453,18 @@ Simulation Studio is experimental and off by default.
 | `PRISM_SIM_MESHES_KEPT` | `4` | Meshes kept per project for re-runs that change only values. |
 | `PRISM_SIM_SUCCEEDED_RUNS_KEPT` | `3` | Newest successful runs kept per setup. Failed and cancelled runs are deleted, except a setup's latest run. |
 
+## Extensions
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `PRISM_EXTENSIONS_FILE` | empty | Path to an operator-managed JSON extension registry, readable by the backend. Empty installs no extensions. The backend validates the file on every extension-list request; file changes take effect on the next request, while changing this setting requires a backend restart. |
+
+The registry is limited to 256 KiB, with at most 32 extensions and eight actions
+per extension. Invalid or unreadable registries refuse extension reads rather
+than serving stale entries. Keep it free of credentials. For manifest fields,
+independent hosting and read-only Docker mounts, see
+[Add an extension](/KiCAD-Prism/automate/extensions/).
+
 ## Automation and MCP
 
 | Setting | Default | What it does |

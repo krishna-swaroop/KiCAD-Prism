@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
 import { useSimStudioAvailable } from "@/components/sim-studio/use-sim-studio-available";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical } from "lucide-react";
+import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical, Puzzle } from "lucide-react";
 import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
@@ -31,6 +31,9 @@ import { LibraryUsageButton } from "@/features/library-usage/library-usage-butto
 
 const AssetsPortal = lazy(() =>
     import("@/components/assets-portal").then((module) => ({ default: module.AssetsPortal }))
+);
+const ProjectExtensions = lazy(() =>
+    import("@/features/extensions/project-extensions").then((module) => ({ default: module.ProjectExtensions }))
 );
 const PathConfigDialog = lazy(() =>
     import("@/components/path-config-dialog").then((module) => ({ default: module.PathConfigDialog }))
@@ -106,6 +109,7 @@ function sectionFromSearchParams(searchParams: URLSearchParams): ProjectSection 
         || section === "workflows"
         || section === "release-studio"
         || section === "simulation-studio"
+        || section === "extensions"
     ) {
         return section;
     }
@@ -121,6 +125,7 @@ const NAV_ITEMS = [
     { id: "release-studio" as ProjectSection, label: "Release Studio", icon: ShieldCheck },
     { id: "assets" as ProjectSection, label: "Assets Portal", icon: FolderOpen },
     { id: "documentation" as ProjectSection, label: "Documentation", icon: FileText },
+    { id: "extensions" as ProjectSection, label: "Extensions", icon: Puzzle },
 ];
 
 // Shown only when the backend serves Simulation Studio (PRISM_SIM_STUDIO_ENABLED).
@@ -853,6 +858,16 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                     canMutate={canMutateProject}
                                     userRole={user?.role}
                                 />
+                            </ErrorBoundary>
+                        </ProjectSectionPanel>
+                    )}
+
+                    {visitedSections.has("extensions") && (
+                        <ProjectSectionPanel key={`${projectId}:extensions`} active={activeSection === "extensions"} fill>
+                            <ErrorBoundary label="the extensions panel" resetKeys={[projectId]}>
+                                <Suspense fallback={null}>
+                                    <ProjectExtensions projectId={projectId!} commit={activeCommit} branch={activeBranchRef} active={activeSection === "extensions"} />
+                                </Suspense>
                             </ErrorBoundary>
                         </ProjectSectionPanel>
                     )}
