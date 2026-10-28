@@ -131,19 +131,37 @@ def _source_file(project: Any, commit: Optional[str], context: str) -> Optional[
         entries = semantic_index_service._source_entries_in_commit(
             repo_root, commit, project_dir
         )
-        suffix = ".kicad_pcb" if context.upper() == "PCB" else ".kicad_sch"
-        candidates = [path for path, _ in entries if path.endswith(suffix)]
-        if not candidates:
-            return None
-        anchor = path_config_service.anchor_for_project(project) or ""
-        stem = PurePosixPath(anchor).stem if anchor else ""
-        if stem:
-            for path in sorted(candidates):
-                if PurePosixPath(path).stem == stem:
-                    return path
-        return sorted(candidates)[0]
+        return _pick_source_file(project, [path for path, _ in entries], context)
     except (ValueError, OSError):
         return None
+
+
+def _pick_source_file(project: Any, paths: list[str], context: str) -> Optional[str]:
+    """The board, or the root sheet, among a revision's project-relative paths."""
+    suffix = ".kicad_pcb" if context.upper() == "PCB" else ".kicad_sch"
+    candidates = sorted(path for path in paths if path.endswith(suffix))
+    if not candidates:
+        return None
+    anchor = path_config_service.anchor_for_project(project) or ""
+    stem = PurePosixPath(anchor).stem if anchor else ""
+    if stem:
+        for path in candidates:
+            if PurePosixPath(path).stem == stem:
+                return path
+    return candidates[0]
+
+
+def _drawn_on(project: Any, binding: dict, context: str, paths: list[str]) -> Optional[str]:
+    """The one file an area was drawn on: its schematic page, else the board or root sheet.
+
+    A schematic page id is the sheet's project-relative path, followed by
+    ``:<instance path>`` for a sheet placed more than once.
+    """
+    page = str((binding.get("location") or {}).get("page") or "")
+    page = page.split(":", 1)[0].replace("\\", "/")
+    if page and context.upper() != "PCB":
+        return page
+    return _pick_source_file(project, paths, context)
 
 
 def resolve_canvas_anchor(
@@ -284,7 +302,8 @@ def resolve_displayed_bindings(
     if not sha:
         raise AnchorValidationError("revision is required", code="invalid_commit")
     _identity(project, sha)
-    repo = Repo(_project_dir_in_repo(project)[0])
+    repo_root, project_dir = _project_dir_in_repo(project)
+    repo = Repo(repo_root)
     ancestry: dict[tuple[str, str], bool] = {}
 
     def is_ancestor(older: str, newer: str) -> bool:
@@ -313,6 +332,25 @@ def resolve_displayed_bindings(
         older_key = design_key(older)
         return older_key is not None and older_key == design_key(newer)
 
+    blobs: dict[str, dict[str, str]] = {}
+
+    def blobs_at(commit: str) -> dict[str, str]:
+        if commit not in blobs:
+            try:
+                blobs[commit] = dict(
+                    semantic_index_service._source_entries_in_commit(repo_root, commit, project_dir)
+                )
+            except ValueError:
+                blobs[commit] = {}
+        return blobs[commit]
+
+    def same_file_for(context: str) -> Callable[[dict, str], bool]:
+        def same_file(binding: dict, newer: str) -> bool:
+            older = blobs_at(binding["commit"])
+            path = _drawn_on(project, binding, context, list(older))
+            return path is not None and path in older and older[path] == blobs_at(newer).get(path)
+        return same_file
+
     result: list[dict] = []
     for comment in comments:
         resolved = dict(comment)
@@ -330,7 +368,7 @@ def resolve_displayed_bindings(
             resolved["anchorResolution"] = {"state": "unresolved", "reason": "unpinned"}
         else:
             resolved["anchorResolution"] = comment_anchor_bindings.select_binding(
-                bindings, sha, is_ancestor, same_design,
+                bindings, sha, is_ancestor, same_design, same_file_for(str(comment.get("context") or "")),
             )
         result.append(resolved)
     found = {
