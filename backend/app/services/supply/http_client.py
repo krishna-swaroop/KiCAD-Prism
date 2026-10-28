@@ -243,8 +243,10 @@ class SafeHttpClient:
         timeout: tuple[float, float] = DEFAULT_TIMEOUT,
         max_redirects: int = MAX_REDIRECTS,
         host_denied: Callable[[str], bool] | None = None,
+        private_hosts: Collection[str] = (),
     ) -> None:
         self._host_denied = host_denied
+        self._private_hosts = tuple(private_hosts)
         self._allowed = None if allowed_hosts is None else tuple(allowed_hosts)
         if transport is None:
             from app.core.config import settings
@@ -324,6 +326,7 @@ class SafeHttpClient:
             target = validate_url(
                 url, allowed_hosts=self._allowed, resolve=self._resolve,
                 check_addresses=not getattr(self._transport, "proxied", False),
+                private_hosts=self._private_hosts,
             )
         except EgressDenied as exc:
             raise EgressBlocked(str(exc)) from None

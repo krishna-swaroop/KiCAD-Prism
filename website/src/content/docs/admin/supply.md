@@ -96,8 +96,10 @@ InvenTree itself. It only reads; it never changes your inventory.
 5. Choose **Read now** on the source's card for the first read.
 
 :::note
-The server must be reachable over HTTPS at a public address. Prism refuses
-private and local addresses for inventory sources.
+The server must be reachable over HTTPS. Prism refuses private and local
+addresses unless the server's host name is listed in
+`SUPPLY_INVENTORY_PRIVATE_HOSTS_STR`, for an inventory on your own network. See
+the [Configuration reference](/KiCAD-Prism/admin/configuration/#supply).
 :::
 
 Each part on the server is matched to one library component, first match

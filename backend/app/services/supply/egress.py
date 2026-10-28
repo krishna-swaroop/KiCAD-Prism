@@ -59,12 +59,24 @@ def _is_public(address: str) -> bool:
     return ip.is_global and not ip.is_multicast
 
 
+def _is_private_network(address: str) -> bool:
+    """A private or loopback address, never link-local (cloud metadata), multicast, reserved or unspecified."""
+
+    ip = ipaddress.ip_address(address)
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+        return False
+    return ip.is_private or ip.is_loopback
+
+
 def validate_url(
     url: str,
     *,
     allowed_hosts: Collection[str] | None = None,
     resolve: Resolver = system_resolver,
     check_addresses: bool = True,
+    private_hosts: Collection[str] = (),
 ) -> ValidatedTarget:
     """Check ``url`` and return the addresses it resolved to.
 
@@ -73,6 +85,9 @@ def validate_url(
 
     ``check_addresses=False`` is for traffic that goes through a configured proxy:
     the proxy resolves the name, so there are no addresses to check here.
+
+    A host in ``private_hosts`` (an operator's own inventory server) may also
+    resolve to a private network address.
     """
 
     parts = urlsplit(url.strip())
@@ -103,7 +118,8 @@ def validate_url(
     addresses = resolve(host)
     if not addresses:
         raise EgressDenied(f"cannot resolve {host}")
+    private_ok = bool(private_hosts) and host_allowed(host, private_hosts)
     for address in addresses:
-        if not _is_public(address):
+        if not (_is_public(address) or (private_ok and _is_private_network(address))):
             raise EgressDenied(f"{host} resolves to a non-public address")
     return ValidatedTarget(url=url.strip(), host=host, addresses=tuple(addresses))

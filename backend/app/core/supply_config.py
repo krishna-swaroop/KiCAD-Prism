@@ -24,6 +24,15 @@ class SupplySettings(BaseSettings):
         ),
     )
 
+    SUPPLY_INVENTORY_PRIVATE_HOSTS_STR: str = Field(
+        default="",
+        description=(
+            "Comma-separated host names of inventory servers on your own network, for example "
+            "vision.example.internal. Only these may resolve to private addresses; HTTPS and certificate "
+            "checks still apply, and link-local addresses stay refused. Empty allows public addresses only."
+        ),
+    )
+
     SUPPLY_OAUTH_BASE_URL: str = Field(
         default="",
         description=(
@@ -32,3 +41,7 @@ class SupplySettings(BaseSettings):
             "Must be HTTPS. Empty uses PUBLIC_BASE_URL."
         ),
     )
+
+    @property
+    def SUPPLY_INVENTORY_PRIVATE_HOSTS(self) -> list[str]:
+        return [host.strip().lower().rstrip(".") for host in self.SUPPLY_INVENTORY_PRIVATE_HOSTS_STR.split(",") if host.strip()]

@@ -4,8 +4,11 @@ It reads what a stock sync needs: the server's identity, the category tree, the 
 manufacturer part numbers, the stock records of that category, and the location tree. Shapes follow InvenTree's
 schema (v566): ``Authorization: Token <key>``, ``limit``/``offset`` paging with ``{count, results}``.
 
-Requests go through ``SafeHttpClient``: HTTPS only, to the source's own host, at public addresses. The client never
-writes and never logs the token. Errors are the providers' ``ProviderError`` subclasses.
+Requests go through ``SafeHttpClient``: HTTPS only, to the source's own host, at public addresses, or at private ones for
+a host the operator lists in ``SUPPLY_INVENTORY_PRIVATE_HOSTS``. The client never writes and never logs the token. Errors
+are the providers' ``ProviderError`` subclasses.
+
+Only the filters InvenTree and Vision both serve are sent: Vision answers any other with ``400``.
 """
 
 from __future__ import annotations
@@ -118,7 +121,11 @@ class InvenTreeClient:
     def __init__(self, url: str, token: str, *, client: SafeHttpClient | None = None) -> None:
         self._root = base_url(url)
         self._headers = {"Authorization": f"Token {token}"}
-        self._client = client or SafeHttpClient((urlsplit(self._root).hostname or "",))
+        if client is None:
+            from app.core.config import settings
+
+            client = SafeHttpClient((urlsplit(self._root).hostname or "",), private_hosts=settings.SUPPLY_INVENTORY_PRIVATE_HOSTS)
+        self._client = client
 
     def close(self) -> None:
         self._client.close()
@@ -165,7 +172,8 @@ class InvenTreeClient:
             if pk is not None:
                 parts[pk] = Part(pk=pk, name=_text(row.get("full_name")) or _text(row.get("name")), ipn=_text(row.get("IPN")), units=_text(row.get("units")))
         mpns: dict[int, list[tuple[str, str]]] = {}
-        for row in self._pages("company/part/manufacturer/", {"manufacturer_detail": "true"}):
+        # No manufacturer_detail filter: Vision refuses it, and serves the detail anyway. The maker is only a hint.
+        for row in self._pages("company/part/manufacturer/", {}):
             part = _pk(row.get("part"))
             mpn = _text(row.get("MPN"))
             if part in parts and mpn:

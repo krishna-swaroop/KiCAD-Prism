@@ -203,6 +203,20 @@ class EgressTests(unittest.TestCase):
         self._blocked("https://api.example.com/", resolve=_resolver("10.0.0.5"))
         self._blocked("https://api.example.com/", resolve=_resolver(PUBLIC, "169.254.169.254"))
 
+    def test_a_listed_private_host_may_resolve_to_a_private_network(self) -> None:
+        client, transport = _client(_response(200, {}), private_hosts=("api.example.com",), resolve=_resolver("172.16.8.66"))
+        client.request("GET", "https://api.example.com/api/")
+        self.assertEqual(transport.calls[0]["addresses"], ("172.16.8.66",))
+        self._blocked("https://api.example.com/", private_hosts=("other.example.com",), resolve=_resolver("172.16.8.66"))
+        for address in ("169.254.169.254", "0.0.0.0", "224.0.0.1", "fe80::1"):
+            self._blocked("https://api.example.com/", private_hosts=("api.example.com",), resolve=_resolver(address))
+
+    def test_the_private_host_setting_is_a_comma_list(self) -> None:
+        from app.core.supply_config import SupplySettings
+
+        listed = SupplySettings(SUPPLY_INVENTORY_PRIVATE_HOSTS_STR=" Vision.Example.Internal. , ,stock.example.com")
+        self.assertEqual(listed.SUPPLY_INVENTORY_PRIVATE_HOSTS, ["vision.example.internal", "stock.example.com"])
+
     def test_no_allowlist_means_any_public_host(self) -> None:
         client, transport = _client(_response(200, {}), allowed=None)
         client.request("GET", "https://anything.example.org/file.pdf")

@@ -436,6 +436,7 @@ credentials are encrypted with `TRACKER_CREDENTIAL_ROOT_KEY`
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `SUPPLY_HTTPS_PROXY` | empty | HTTPS proxy for distributor calls, for example `http://proxy.example.com:3128`. The environment's proxy variables are ignored for these calls. With a proxy, the proxy resolves host names, so Prism checks the host but not its address. |
+| `SUPPLY_INVENTORY_PRIVATE_HOSTS_STR` | empty | Comma-separated host names of inventory servers on your own network, for example `vision.example.internal`. Only these may resolve to a private address; HTTPS and certificate checks still apply, and link-local addresses stay refused. Empty allows public addresses only. |
 | `SUPPLY_OAUTH_BASE_URL` | empty | Address a DigiKey sign-in returns to, when it must differ from `PUBLIC_BASE_URL`. Must be HTTPS. Empty uses `PUBLIC_BASE_URL`. |
 | `SUPPLY_ENABLE_SIMULATED_PROVIDER` | `false` | Allows connectors for a simulated distributor. For development, tests and demos only. |
 

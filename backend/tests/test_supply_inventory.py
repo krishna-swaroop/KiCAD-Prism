@@ -35,6 +35,9 @@ def _token() -> str:
 class FakeServer:
     """Answers InvenTree's list endpoints from tables, paging by limit and offset as InvenTree does."""
 
+    def refused(self, path: str, query: dict) -> str:
+        return ""
+
     def __init__(self, tables: dict[str, list[dict]], *, api: dict | None = None) -> None:
         self.tables = tables
         self.api = api if api is not None else {"server": "InvenTree", "apiVersion": 566, "instance": "Test"}
@@ -46,6 +49,9 @@ class FakeServer:
         url = urlsplit(target.url)
         query = dict(parse_qsl(url.query))
         self.sent.append({"method": method, "path": url.path, "query": query, "headers": dict(headers)})
+        refused = self.refused(url.path.removeprefix("/api/"), query)
+        if refused:
+            return HttpResponse(400, {"content-type": "application/json"}, json.dumps({"detail": f"Unsupported filter: {refused}"}).encode())
         if url.path == "/api/":
             answer = self.api
         else:
@@ -53,6 +59,26 @@ class FakeServer:
             offset, limit = int(query.get("offset", 0)), int(query.get("limit", 100))
             answer = {"count": len(rows), "next": None, "previous": None, "results": rows[offset:offset + limit]}
         return HttpResponse(200, {"content-type": "application/json"}, json.dumps(answer).encode())
+
+
+class VisionServer(FakeServer):
+    """Vision's subset of InvenTree (PRISM_API.md §3): any filter it does not list is answered with 400."""
+
+    FILTERS = {
+        "": set(),
+        "part/category/": {"parent", "search"},
+        "part/": {"category", "cascade", "IPN", "search", "active", "has_stock"},
+        "company/part/manufacturer/": {"part", "MPN", "manufacturer", "search"},
+        "stock/": {
+            "category", "cascade", "part", "IPN", "in_stock", "available", "status", "location",
+            "part_detail", "location_detail", "updated_after", "search",
+        },
+        "stock/location/": {"parent", "external", "search"},
+    }
+
+    def refused(self, path: str, query: dict) -> str:
+        unknown = set(query) - self.FILTERS[path] - {"limit", "offset", "ordering"}
+        return ", ".join(sorted(unknown))
 
 
 def _client(server: FakeServer, token: str = "unused"):
@@ -86,6 +112,23 @@ class InvenTreeClientTests(unittest.TestCase):
         parts = _client(server).parts(7)
         self.assertEqual(parts[1].mpns, (("Vishay", "TNPW060310K0BEEA"),))
         self.assertEqual((parts[2].ipn, parts[2].mpns), ("", ()), "a part outside the category's list is ignored")
+
+    def test_a_whole_read_sends_only_the_filters_vision_serves(self) -> None:
+        from app.services.supply.inventory import sync
+
+        server = VisionServer({
+            "part/": [{"pk": 1, "name": "RES 10K", "IPN": "13970"}],
+            "company/part/manufacturer/": [
+                {"pk": 1, "part": 1, "MPN": "TNPW060310K0BEEA", "manufacturer": 1,
+                 "manufacturer_detail": {"pk": 1, "name": "Unknown manufacturer"}},
+            ],
+            "stock/location/": [{"pk": 5, "name": "EXT4", "pathstring": "4200/EXT4", "external": True}],
+            "stock/": [{"pk": 3, "part": 1, "quantity": 4.0, "allocated": 4.0, "status": 75, "status_custom_key": 1001,
+                        "status_text": "On hold", "location": 5}],
+        }, api={"server": "Vision", "apiVersion": 566, "instance": "Pixxel"})
+        found = sync.read(_client(server), 1)
+        self.assertEqual((found.server, found.parts[1].mpns), ("Vision", (("Unknown manufacturer", "TNPW060310K0BEEA"),)))
+        self.assertEqual((found.stock[0].status_text, found.locations[5].external), ("On hold", True))
 
     def test_a_server_that_is_not_inventree_is_refused(self) -> None:
         from app.services.supply.inventory.inventree import InvenTreeError, base_url
