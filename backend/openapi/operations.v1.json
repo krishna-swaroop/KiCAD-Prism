@@ -1059,6 +1059,11 @@
     "path": "/api/v1/events",
     "typed": true
   },
+  "list_extensions": {
+    "method": "GET",
+    "path": "/api/v1/extensions",
+    "typed": true
+  },
   "list_folder_import_roots": {
     "method": "GET",
     "path": "/api/v1/catalog/import-sources/folder-roots",
@@ -1117,6 +1122,11 @@
   "list_personal_tokens": {
     "method": "GET",
     "path": "/api/v1/auth/tokens",
+    "typed": true
+  },
+  "list_project_extensions": {
+    "method": "GET",
+    "path": "/api/v1/projects/{project_id}/extensions",
     "typed": true
   },
   "list_project_import_proposals": {

@@ -1,0 +1,29 @@
+:root { color-scheme: light dark; font: 14px/1.5 system-ui, sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; background: Canvas; color: CanvasText; }
+main { max-width: 70rem; margin: auto; padding: 1.5rem; }
+h1 { margin: .25rem 0; font-size: 1.6rem; } h2 { font-size: 1.15rem; }
+p { margin: .6rem 0; } .eyebrow { text-transform: uppercase; letter-spacing: .08em; font-size: .75rem; }
+.hint, .context, .limits { font-size: .85rem; } .context { overflow-wrap: anywhere; }
+fieldset { margin: 1.25rem 0; padding: 1rem; border: 1px solid GrayText; min-width: 0; }
+legend, label, th, dt { font-weight: 600; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .75rem; }
+label { display: block; font-size: .85rem; }
+input, textarea, button { font: inherit; color: CanvasText; background: Canvas; border: 1px solid GrayText; border-radius: 0; padding: .45rem .6rem; }
+input, textarea { display: block; width: 100%; margin-top: .25rem; }
+input:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+button, summary { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
+.primary { background: Highlight; color: HighlightText; border-color: Highlight; }
+.actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .75rem; }
+.stage { border-top: 1px solid GrayText; padding: .8rem 0; } .stage:first-child { border-top: 0; }
+.stage-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .6rem; }
+.stage-header h3 { margin: 0; font-size: 1rem; }
+[role="alert"] { border: 1px solid CanvasText; padding: .8rem; }
+#results { margin-top: 1.5rem; } #status { font-weight: 600; }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); border: 1px solid GrayText; margin: 1rem 0; }
+.summary div { padding: .8rem; } dt { font-size: .8rem; } dd { margin: .2rem 0 0; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.table-scroll { overflow-x: auto; } table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+caption { text-align: left; padding-bottom: .5rem; font-size: .85rem; } th, td { padding: .6rem; text-align: right; border-bottom: 1px solid GrayText; } th:first-child, td:first-child { text-align: left; overflow-wrap: anywhere; }
+details { margin: 1.25rem 0; } textarea { font-family: ui-monospace, monospace; resize: vertical; }
+.limits { border-top: 1px solid GrayText; margin-top: 1.5rem; padding-top: .5rem; }
+@media (max-width: 32rem) { main { padding: 1rem; } fieldset { padding: .75rem; } .fields { grid-template-columns: 1fr; } }
