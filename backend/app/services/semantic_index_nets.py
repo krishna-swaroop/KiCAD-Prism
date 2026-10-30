@@ -19,6 +19,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _leaf(name: str) -> str:
+    return name.rsplit("/", 1)[-1]
+
+
 def _string(value: object) -> str:
     if value is None:
         return ""
@@ -88,7 +92,9 @@ def reconcile_split_nets(
     the schematic names become aliases; the schematic refs, sheets, class and
     pin terminals move over; every name resolves to the one record. A
     schematic net with pins on several board nets is left alone rather than
-    guessed at.
+    guessed at. A board net several schematic nets claim absorbs only those
+    with its leaf name: a board that is behind its schematic puts distinct
+    nets on one stale net, and folding them would make them one.
 
     Returns the board names that absorbed something, each with the schematic
     names it took, so the caller can report that the netlister and the board
@@ -117,6 +123,7 @@ def reconcile_split_nets(
                 schematic_index is None
                 or schematic_index in absorbed
                 or len(boards_by_schematic.get(schematic_name, ())) != 1
+                or (len(schematic_names) > 1 and _leaf(schematic_name) != _leaf(board_name))
             ):
                 continue
             schematic = nets[schematic_index]
