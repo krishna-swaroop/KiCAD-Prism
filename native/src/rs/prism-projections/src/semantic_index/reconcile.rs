@@ -157,6 +157,7 @@ fn absorb_claims(
                     .get(schematic_name.as_str())
                     .map_or(0, HashSet::len)
                     != 1
+                || (schematic_names.len() > 1 && leaf(schematic_name) != leaf(board_name))
             {
                 continue;
             }
@@ -166,6 +167,11 @@ fn absorb_claims(
             absorb(state, board_index, schematic_index, schematic_name);
         }
     }
+}
+
+/// `_leaf` (semantic_index_nets.py): a net name without its sheet path.
+fn leaf(name: &str) -> &str {
+    name.rsplit('/').next().unwrap_or(name)
 }
 
 /// Drop the absorbed records and return every old net index's new position
@@ -418,5 +424,50 @@ mod tests {
         claims.reconcile(&mut state);
         assert_eq!(state.nets.len(), 3);
         assert_eq!(state.nets[0]["name"], "A");
+    }
+
+    #[test]
+    fn distinct_schematic_nets_on_one_stale_board_net_stay_apart() {
+        // A board behind its schematic puts two distinct nets on one stale
+        // board net; only claimants with the board net's leaf name fold in.
+        let mut state = State {
+            nets: vec![
+                schematic_net("/P/GND_A", &stable_uid("net", &["/P/GND_A"])),
+                schematic_net("/P/GND_B", &stable_uid("net", &["/P/GND_B"])),
+            ],
+            ..Default::default()
+        };
+        state.net_index_by_name.insert("/P/GND_A".to_owned(), 0);
+        state.net_index_by_name.insert("/P/GND_B".to_owned(), 1);
+        let mut claims = SplitNetClaims::new(&state);
+        state.nets.push(board_only_net("STALE"));
+        state.net_index_by_name.insert("STALE".to_owned(), 2);
+        claims.note_pad("STALE", "/P/GND_A");
+        claims.note_pad("STALE", "/P/GND_B");
+        claims.reconcile(&mut state);
+        assert_eq!(state.nets.len(), 3);
+        assert_eq!(state.nets[0]["name"], "/P/GND_A");
+        assert_eq!(state.nets[1]["name"], "/P/GND_B");
+    }
+
+    #[test]
+    fn a_bus_member_split_at_sheet_pins_still_folds() {
+        let mut state = State {
+            nets: vec![
+                schematic_net("/Port/D0", &stable_uid("net", &["/Port/D0"])),
+                schematic_net("/SOM/D0", &stable_uid("net", &["/SOM/D0"])),
+            ],
+            ..Default::default()
+        };
+        state.net_index_by_name.insert("/Port/D0".to_owned(), 0);
+        state.net_index_by_name.insert("/SOM/D0".to_owned(), 1);
+        let mut claims = SplitNetClaims::new(&state);
+        state.nets.push(board_only_net("/D0"));
+        state.net_index_by_name.insert("/D0".to_owned(), 2);
+        claims.note_pad("/D0", "/Port/D0");
+        claims.note_pad("/D0", "/SOM/D0");
+        claims.reconcile(&mut state);
+        assert_eq!(state.nets.len(), 1);
+        assert_eq!(state.nets[0]["name"], "/D0");
     }
 }
