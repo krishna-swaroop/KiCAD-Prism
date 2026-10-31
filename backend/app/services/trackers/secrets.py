@@ -9,6 +9,8 @@ plaintext fallback: missing or invalid root keys raise ``SecretStoreLocked``.
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import os
 from typing import Any, Mapping, Optional
@@ -79,6 +81,15 @@ class CredentialKeyring:
 
     def __str__(self) -> str:
         return repr(self)
+
+    def fingerprint(self, text: str, purpose: str) -> str:
+        """A keyed hash of ``text`` that is stable while the current key is, and says nothing of ``text`` without the key.
+
+        Used to tell that two records hold the same secret without keeping the secret. ``purpose`` separates uses.
+        """
+
+        subkey = hmac.new(self._keys[self.current_kid], f"prism.fingerprint.{purpose}".encode("utf-8"), hashlib.sha256).digest()
+        return hmac.new(subkey, text.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
 
     def encrypt(self, plaintext: bytes | str, context: Mapping[str, str]) -> str:
         data = plaintext.encode("utf-8") if isinstance(plaintext, str) else bytes(plaintext)

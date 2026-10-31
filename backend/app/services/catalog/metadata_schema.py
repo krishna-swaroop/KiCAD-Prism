@@ -200,7 +200,7 @@ class CatalogMetadataSchema:
         actor: str,
     ) -> None:
         reserved = {
-            "reference", "footprint", "lib_id", "ki_keywords", "ki_description",
+            "reference", "footprint", "lib_id", "ki_keywords", "ki_description", "prism id",
             *(str(field["key"]).casefold() for field in BUILTIN_METADATA_FIELDS),
             *(str(label).casefold() for label in SYMBOL_METADATA_LABEL_TO_KEY),
         }

@@ -87,6 +87,10 @@ variant leaves out some of them.
 The BOM never drops a part: a part that is excluded or not fitted in the
 selected variant stays in **All components** with its flags.
 
+At the latest revision, people who read supply also see **Supply**, **Stock**,
+**Unit price**, **Extended** and **Lead time** columns; see
+[Track supply](/KiCAD-Prism/use/supply/#supply-columns-in-the-bom).
+
 If the revision's part data is not ready, the tab shows **BOM metadata is not
 available**; see [Design data](/KiCAD-Prism/use/design-data/).
 

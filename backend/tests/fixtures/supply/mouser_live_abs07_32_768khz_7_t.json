@@ -1,0 +1,471 @@
+{
+  "provider": "mouser",
+  "mpn": "ABS07-32.768KHZ-7-T",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/api/v1/search/partnumber",
+      "params": {},
+      "answer": {
+        "Errors": [],
+        "SearchResults": {
+          "NumberOfResult": 1,
+          "Parts": [
+            {
+              "Availability": "74665 A magazzino",
+              "DataSheetUrl": "https://www.mouser.com/datasheet/3/184/1/ABS07.pdf",
+              "Description": "Cristalli 32.768 KHZ  7.0PF 20PPM -40+85",
+              "FactoryStock": "0",
+              "ImagePath": "https://www.mouser.com/images/abracon/images/ABS07_series_SPL.jpg",
+              "Category": "Cristalli",
+              "LeadTime": "140 Giorni",
+              "LifecycleStatus": null,
+              "Manufacturer": "ABRACON",
+              "ManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "Min": "1",
+              "Mult": "1",
+              "MouserPartNumber": "815-ABS07-32.768K7T",
+              "ProductAttributes": [
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Reel"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Cut Tape"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "MouseReel",
+                  "AttributeCost": "La commissione 5,00 € MouseReel™ verrà aggiunta e calcolata nel carrello. Nessuno degli ordini di articoli MouseReel™ può essere annullato o reso."
+                },
+                {
+                  "AttributeName": "Quantità collo standard",
+                  "AttributeValue": "3000"
+                }
+              ],
+              "PriceBreaks": [
+                {
+                  "Quantity": 1,
+                  "Price": "0,74 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 10,
+                  "Price": "0,642 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 25,
+                  "Price": "0,583 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 100,
+                  "Price": "0,559 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 250,
+                  "Price": "0,529 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 500,
+                  "Price": "0,507 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 1000,
+                  "Price": "0,486 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 3000,
+                  "Price": "0,453 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 6000,
+                  "Price": "0,435 €",
+                  "Currency": "EUR"
+                }
+              ],
+              "AlternatePackagings": null,
+              "ProductDetailUrl": "https://www.mouser.it/it/ProductDetail/ABRACON/ABS07-32.768KHZ-7-T?qs=2nyfZ6BV3oibNEFok2qBLA%3D%3D",
+              "Reeling": true,
+              "ROHSStatus": "RoHS Compliant",
+              "SuggestedReplacement": "",
+              "MultiSimBlue": 0,
+              "UnitWeightKg": {
+                "UnitWeight": 1.6e-05
+              },
+              "AvailabilityInStock": "74665",
+              "AvailabilityOnOrder": [],
+              "InfoMessages": [],
+              "SurchargeMessages": null,
+              "ProductCompliance": [
+                {
+                  "ComplianceName": "TARIC",
+                  "ComplianceValue": "8541600000"
+                },
+                {
+                  "ComplianceName": "CNHTS",
+                  "ComplianceValue": "8541600000"
+                },
+                {
+                  "ComplianceName": "CAHTS",
+                  "ComplianceValue": "8541600010"
+                },
+                {
+                  "ComplianceName": "USHTS",
+                  "ComplianceValue": "8541600010"
+                },
+                {
+                  "ComplianceName": "JPHTS",
+                  "ComplianceValue": "854160010"
+                },
+                {
+                  "ComplianceName": "MXHTS",
+                  "ComplianceValue": "8541600100"
+                },
+                {
+                  "ComplianceName": "BRHTS",
+                  "ComplianceValue": "85416090"
+                },
+                {
+                  "ComplianceName": "ECCN",
+                  "ComplianceValue": "EAR99"
+                }
+              ],
+              "TradeCompliance": [
+                {
+                  "ComplianceName": "Paese di origine",
+                  "ComplianceValue": "Cina"
+                },
+                {
+                  "ComplianceName": "Paese di origine dell'assemblaggio",
+                  "ComplianceValue": "Non disponibile"
+                },
+                {
+                  "ComplianceName": "Paese di diffusione",
+                  "ComplianceValue": "Non disponibile"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/partnumber",
+      "params": {},
+      "answer": {
+        "Errors": [],
+        "SearchResults": {
+          "NumberOfResult": 1,
+          "Parts": [
+            {
+              "Availability": "74665 A magazzino",
+              "DataSheetUrl": "https://www.mouser.com/datasheet/3/184/1/ABS07.pdf",
+              "Description": "Cristalli 32.768 KHZ  7.0PF 20PPM -40+85",
+              "FactoryStock": "0",
+              "ImagePath": "https://www.mouser.com/images/abracon/images/ABS07_series_SPL.jpg",
+              "Category": "Cristalli",
+              "LeadTime": "140 Giorni",
+              "LifecycleStatus": null,
+              "Manufacturer": "ABRACON",
+              "ManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "Min": "1",
+              "Mult": "1",
+              "MouserPartNumber": "815-ABS07-32.768K7T",
+              "ProductAttributes": [
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Reel"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Cut Tape"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "MouseReel",
+                  "AttributeCost": "La commissione 5,00 € MouseReel™ verrà aggiunta e calcolata nel carrello. Nessuno degli ordini di articoli MouseReel™ può essere annullato o reso."
+                },
+                {
+                  "AttributeName": "Quantità collo standard",
+                  "AttributeValue": "3000"
+                }
+              ],
+              "PriceBreaks": [
+                {
+                  "Quantity": 1,
+                  "Price": "0,74 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 10,
+                  "Price": "0,642 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 25,
+                  "Price": "0,583 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 100,
+                  "Price": "0,559 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 250,
+                  "Price": "0,529 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 500,
+                  "Price": "0,507 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 1000,
+                  "Price": "0,486 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 3000,
+                  "Price": "0,453 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 6000,
+                  "Price": "0,435 €",
+                  "Currency": "EUR"
+                }
+              ],
+              "AlternatePackagings": null,
+              "ProductDetailUrl": "https://www.mouser.it/it/ProductDetail/ABRACON/ABS07-32.768KHZ-7-T?qs=2nyfZ6BV3oibNEFok2qBLA%3D%3D",
+              "Reeling": true,
+              "ROHSStatus": "RoHS Compliant",
+              "SuggestedReplacement": "",
+              "MultiSimBlue": 0,
+              "UnitWeightKg": {
+                "UnitWeight": 1.6e-05
+              },
+              "AvailabilityInStock": "74665",
+              "AvailabilityOnOrder": [],
+              "InfoMessages": [],
+              "SurchargeMessages": null,
+              "ProductCompliance": [
+                {
+                  "ComplianceName": "TARIC",
+                  "ComplianceValue": "8541600000"
+                },
+                {
+                  "ComplianceName": "CNHTS",
+                  "ComplianceValue": "8541600000"
+                },
+                {
+                  "ComplianceName": "CAHTS",
+                  "ComplianceValue": "8541600010"
+                },
+                {
+                  "ComplianceName": "USHTS",
+                  "ComplianceValue": "8541600010"
+                },
+                {
+                  "ComplianceName": "JPHTS",
+                  "ComplianceValue": "854160010"
+                },
+                {
+                  "ComplianceName": "MXHTS",
+                  "ComplianceValue": "8541600100"
+                },
+                {
+                  "ComplianceName": "BRHTS",
+                  "ComplianceValue": "85416090"
+                },
+                {
+                  "ComplianceName": "ECCN",
+                  "ComplianceValue": "EAR99"
+                }
+              ],
+              "TradeCompliance": [
+                {
+                  "ComplianceName": "Paese di origine",
+                  "ComplianceValue": "Cina"
+                },
+                {
+                  "ComplianceName": "Paese di origine dell'assemblaggio",
+                  "ComplianceValue": "Non disponibile"
+                },
+                {
+                  "ComplianceName": "Paese di diffusione",
+                  "ComplianceValue": "Non disponibile"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/partnumber",
+      "params": {},
+      "answer": {
+        "Errors": [],
+        "SearchResults": {
+          "NumberOfResult": 1,
+          "Parts": [
+            {
+              "Availability": "74665 A magazzino",
+              "DataSheetUrl": "https://www.mouser.com/datasheet/3/184/1/ABS07.pdf",
+              "Description": "Cristalli 32.768 KHZ  7.0PF 20PPM -40+85",
+              "FactoryStock": "0",
+              "ImagePath": "https://www.mouser.com/images/abracon/images/ABS07_series_SPL.jpg",
+              "Category": "Cristalli",
+              "LeadTime": "140 Giorni",
+              "LifecycleStatus": null,
+              "Manufacturer": "ABRACON",
+              "ManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "Min": "1",
+              "Mult": "1",
+              "MouserPartNumber": "815-ABS07-32.768K7T",
+              "ProductAttributes": [
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Reel"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Cut Tape"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "MouseReel",
+                  "AttributeCost": "La commissione 5,00 € MouseReel™ verrà aggiunta e calcolata nel carrello. Nessuno degli ordini di articoli MouseReel™ può essere annullato o reso."
+                },
+                {
+                  "AttributeName": "Quantità collo standard",
+                  "AttributeValue": "3000"
+                }
+              ],
+              "PriceBreaks": [
+                {
+                  "Quantity": 1,
+                  "Price": "0,74 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 10,
+                  "Price": "0,642 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 25,
+                  "Price": "0,583 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 100,
+                  "Price": "0,559 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 250,
+                  "Price": "0,529 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 500,
+                  "Price": "0,507 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 1000,
+                  "Price": "0,486 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 3000,
+                  "Price": "0,453 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 6000,
+                  "Price": "0,435 €",
+                  "Currency": "EUR"
+                }
+              ],
+              "AlternatePackagings": null,
+              "ProductDetailUrl": "https://www.mouser.it/it/ProductDetail/ABRACON/ABS07-32.768KHZ-7-T?qs=2nyfZ6BV3oibNEFok2qBLA%3D%3D",
+              "Reeling": true,
+              "ROHSStatus": "RoHS Compliant",
+              "SuggestedReplacement": "",
+              "MultiSimBlue": 0,
+              "UnitWeightKg": {
+                "UnitWeight": 1.6e-05
+              },
+              "AvailabilityInStock": "74665",
+              "AvailabilityOnOrder": [],
+              "InfoMessages": [],
+              "SurchargeMessages": null,
+              "ProductCompliance": [
+                {
+                  "ComplianceName": "TARIC",
+                  "ComplianceValue": "8541600000"
+                },
+                {
+                  "ComplianceName": "CNHTS",
+                  "ComplianceValue": "8541600000"
+                },
+                {
+                  "ComplianceName": "CAHTS",
+                  "ComplianceValue": "8541600010"
+                },
+                {
+                  "ComplianceName": "USHTS",
+                  "ComplianceValue": "8541600010"
+                },
+                {
+                  "ComplianceName": "JPHTS",
+                  "ComplianceValue": "854160010"
+                },
+                {
+                  "ComplianceName": "MXHTS",
+                  "ComplianceValue": "8541600100"
+                },
+                {
+                  "ComplianceName": "BRHTS",
+                  "ComplianceValue": "85416090"
+                },
+                {
+                  "ComplianceName": "ECCN",
+                  "ComplianceValue": "EAR99"
+                }
+              ],
+              "TradeCompliance": [
+                {
+                  "ComplianceName": "Paese di origine",
+                  "ComplianceValue": "Cina"
+                },
+                {
+                  "ComplianceName": "Paese di origine dell'assemblaggio",
+                  "ComplianceValue": "Non disponibile"
+                },
+                {
+                  "ComplianceName": "Paese di diffusione",
+                  "ComplianceValue": "Non disponibile"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

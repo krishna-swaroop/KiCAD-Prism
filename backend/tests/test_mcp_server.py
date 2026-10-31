@@ -61,6 +61,9 @@ TOOL_ORDER = [
     "list_catalog_fields",
     "search_catalog_assets",
     "check_catalog_asset",
+    "get_project_supply",
+    "get_component_supply",
+    "find_part_alternatives",
     "sync_project",
     "start_release_build",
     "request_release_approval",
@@ -78,6 +81,8 @@ TOOL_ORDER = [
     "remove_catalog_representation",
     "move_catalog_component",
     "request_catalog_approval",
+    "watch_component",
+    "refresh_component_supply",
 ]
 
 #: The one place the client-visible tool order is written down: a change to it

@@ -1,5 +1,6 @@
 import { Ban, Check, Circle, CircleDot, X } from "lucide-react";
 
+import { ReleaseSupplyDot } from "@/features/supply/release-supply-dot";
 import { cn } from "@/lib/utils";
 
 import { RUN_STAGES } from "./flow";
@@ -34,11 +35,14 @@ export function StageRail({
     states,
     summaries,
     onSelect,
+    supply,
 }: {
     stage: RunStage;
     states: Record<RunStage, StageState>;
     summaries: Partial<Record<RunStage, string>>;
     onSelect: (next: RunStage) => void;
+    /** The build whose supply check the Outputs stage shows as a dot, when it has one. */
+    supply?: { projectId: string; buildId: string };
 }) {
     return (
         <nav aria-label="Run stages" className="flex flex-col gap-px">
@@ -68,6 +72,7 @@ export function StageRail({
                         <span className="font-mono text-xs text-muted-foreground">
                             {index + 1}
                         </span>
+                        {item.id === "outputs" && supply ? <ReleaseSupplyDot projectId={supply.projectId} buildId={supply.buildId} /> : null}
                         <span className="min-w-0 flex-1">
                             <span className="block truncate">{item.label}</span>
                             {summaries[item.id] && (

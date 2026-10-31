@@ -1,0 +1,1002 @@
+{
+  "provider": "farnell",
+  "mpn": "LM358DR",
+  "calls": [
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "manuPartNum:LM358DR",
+        "storeInfo.id": "il.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "manufacturerPartNumberSearchReturn": {
+          "numberOfResults": 9,
+          "products": [
+            {
+              "sku": "2102546",
+              "displayName": "ONSEMI - LM358DR2G - Operational Amplifier, Dual, 2 Channels, 1 MHz, 0.6 V/µs, 3V to 32V, SOIC, 8 Pins",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON CUT TAPE)",
+              "id": "pf_IS1_2102546_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (371.25KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3929879.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 49,
+                  "from": 5,
+                  "cost": 0.307
+                },
+                {
+                  "to": 249,
+                  "from": 50,
+                  "cost": 0.186
+                },
+                {
+                  "to": 999,
+                  "from": 250,
+                  "cost": 0.146
+                },
+                {
+                  "to": 2999,
+                  "from": 1000,
+                  "cost": 0.133
+                },
+                {
+                  "to": 999999999,
+                  "from": 3000,
+                  "cost": 0.121
+                }
+              ],
+              "vendorId": "1001931",
+              "vendorName": "ONSEMI",
+              "brandName": "ONSEMI",
+              "translatedManufacturerPartNumber": "LM358DR2G",
+              "translatedMinimumOrderQuality": 5,
+              "stock": {
+                "level": 15774,
+                "leastLeadTime": 373,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 45774,
+                    "region": "UK",
+                    "lead": 373,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 373,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 45774,
+                    "leastLeadTime": 373,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "1831865",
+              "displayName": "ROHM - LM358DR. - Operational Amplifier, Dual, 2 Channels, 700 kHz, 0.3 V/µs, ± 1.5V to ± 16V, SOIC, 8 Pins",
+              "productStatus": "NO_LONGER_MANUFACTURED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH",
+              "id": "pf_IS1_1831865_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (214.48KB) EN",
+                  "url": "http://www.farnell.com/datasheets/614228.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 1,
+                  "cost": 0.39
+                },
+                {
+                  "to": 24,
+                  "from": 10,
+                  "cost": 0.355
+                },
+                {
+                  "to": 49,
+                  "from": 25,
+                  "cost": 0.352
+                },
+                {
+                  "to": 99,
+                  "from": 50,
+                  "cost": 0.348
+                },
+                {
+                  "to": 249,
+                  "from": 100,
+                  "cost": 0.259
+                },
+                {
+                  "to": 499,
+                  "from": 250,
+                  "cost": 0.257
+                },
+                {
+                  "to": 999999999,
+                  "from": 500,
+                  "cost": 0.255
+                }
+              ],
+              "vendorId": "1000052",
+              "vendorName": "ROHM",
+              "brandName": "ROHM",
+              "translatedManufacturerPartNumber": "LM358DR.",
+              "translatedMinimumOrderQuality": 1,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 92,
+                "status": -3
+              },
+              "comingSoon": false,
+              "inventoryCode": 9,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 7,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "3117070RL",
+              "displayName": "TEXAS INSTRUMENTS - LM358DR - Operational Amplifier, 2 Channels, 700 kHz, 0.4 V/µs, ± 1.5V to ± 16V, SOIC, 8 Pins",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON CUT TAPE)",
+              "id": "pf_IS1_3117070RL_0",
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 5,
+                  "cost": 0.272
+                },
+                {
+                  "to": 99,
+                  "from": 10,
+                  "cost": 0.186
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.141
+                },
+                {
+                  "to": 999,
+                  "from": 500,
+                  "cost": 0.121
+                },
+                {
+                  "to": 4999,
+                  "from": 1000,
+                  "cost": 0.116
+                },
+                {
+                  "to": 9999,
+                  "from": 5000,
+                  "cost": 0.106
+                },
+                {
+                  "to": 999999999,
+                  "from": 10000,
+                  "cost": 0.103
+                }
+              ],
+              "vendorId": "1000062",
+              "vendorName": "TEXAS INSTRUMENTS",
+              "brandName": "TEXAS INSTRUMENTS",
+              "translatedManufacturerPartNumber": "LM358DR",
+              "translatedMinimumOrderQuality": 100,
+              "stock": {
+                "level": 20524,
+                "leastLeadTime": 148,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 45524,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 45524,
+                    "leastLeadTime": 148,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": true,
+              "discountReason": 30
+            },
+            {
+              "sku": "2102546RL",
+              "displayName": "ONSEMI - LM358DR2G - Operational Amplifier, Dual, 2 Channels, 1 MHz, 0.6 V/µs, 3V to 32V, SOIC, 8 Pins",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON CUT TAPE)",
+              "id": "pf_IS1_2102546RL_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (371.25KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3929879.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 49,
+                  "from": 5,
+                  "cost": 0.307
+                },
+                {
+                  "to": 249,
+                  "from": 50,
+                  "cost": 0.186
+                },
+                {
+                  "to": 999,
+                  "from": 250,
+                  "cost": 0.146
+                },
+                {
+                  "to": 2999,
+                  "from": 1000,
+                  "cost": 0.133
+                },
+                {
+                  "to": 999999999,
+                  "from": 3000,
+                  "cost": 0.121
+                }
+              ],
+              "vendorId": "1001931",
+              "vendorName": "ONSEMI",
+              "brandName": "ONSEMI",
+              "translatedManufacturerPartNumber": "LM358DR2G",
+              "translatedMinimumOrderQuality": 100,
+              "stock": {
+                "level": 15774,
+                "leastLeadTime": 373,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 45774,
+                    "region": "UK",
+                    "lead": 373,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 373,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 45774,
+                    "leastLeadTime": 373,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": true,
+              "discountReason": 30
+            },
+            {
+              "sku": "2440911",
+              "displayName": "ONSEMI - LM358DR2G - Operational Amplifier, Dual, 2 Channels, 1 MHz, 0.6 V/µs, 3V to 32V, SOIC, 8 Pins",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON FULL REEL)",
+              "id": "pf_IS1_2440911_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (136.53KB) EN",
+                  "url": "http://www.farnell.com/datasheets/2236829.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 14999,
+                  "from": 5000,
+                  "cost": 0.1
+                },
+                {
+                  "to": 999999999,
+                  "from": 15000,
+                  "cost": 0.098
+                }
+              ],
+              "vendorId": "1001931",
+              "vendorName": "ONSEMI",
+              "brandName": "ONSEMI",
+              "translatedManufacturerPartNumber": "LM358DR2G",
+              "translatedMinimumOrderQuality": 5000,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 113,
+                "status": 0
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "3117070",
+              "displayName": "TEXAS INSTRUMENTS - LM358DR - Operational Amplifier, 2 Channels, 700 kHz, 0.4 V/µs, ± 1.5V to ± 16V, SOIC, 8 Pins",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON CUT TAPE)",
+              "id": "pf_IS1_3117070_0",
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 5,
+                  "cost": 0.272
+                },
+                {
+                  "to": 99,
+                  "from": 10,
+                  "cost": 0.186
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.141
+                },
+                {
+                  "to": 999,
+                  "from": 500,
+                  "cost": 0.121
+                },
+                {
+                  "to": 4999,
+                  "from": 1000,
+                  "cost": 0.116
+                },
+                {
+                  "to": 9999,
+                  "from": 5000,
+                  "cost": 0.106
+                },
+                {
+                  "to": 999999999,
+                  "from": 10000,
+                  "cost": 0.103
+                }
+              ],
+              "vendorId": "1000062",
+              "vendorName": "TEXAS INSTRUMENTS",
+              "brandName": "TEXAS INSTRUMENTS",
+              "translatedManufacturerPartNumber": "LM358DR",
+              "translatedMinimumOrderQuality": 5,
+              "stock": {
+                "level": 20524,
+                "leastLeadTime": 148,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 45524,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 45524,
+                    "leastLeadTime": 148,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "2454773",
+              "displayName": "ONSEMI - LM358MX... - Operational Amplifier, Dual, 2 Channels, 3V to 32V, SOP, 8 Pins",
+              "productStatus": "NO_LONGER_MANUFACTURED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON CUT TAPE)",
+              "id": "pf_IS1_2454773_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (255.88KB) EN",
+                  "url": "http://www.farnell.com/datasheets/2304692.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 49,
+                  "from": 5,
+                  "cost": 0.403
+                },
+                {
+                  "to": 99,
+                  "from": 50,
+                  "cost": 0.362
+                },
+                {
+                  "to": 249,
+                  "from": 100,
+                  "cost": 0.193
+                },
+                {
+                  "to": 499,
+                  "from": 250,
+                  "cost": 0.192
+                },
+                {
+                  "to": 999,
+                  "from": 500,
+                  "cost": 0.158
+                },
+                {
+                  "to": 4999,
+                  "from": 1000,
+                  "cost": 0.125
+                },
+                {
+                  "to": 9999,
+                  "from": 5000,
+                  "cost": 0.117
+                },
+                {
+                  "to": 999999999,
+                  "from": 10000,
+                  "cost": 0.114
+                }
+              ],
+              "vendorId": "1001931",
+              "vendorName": "ONSEMI",
+              "brandName": "ONSEMI",
+              "translatedManufacturerPartNumber": "LM358MX...",
+              "translatedMinimumOrderQuality": 5,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 85,
+                "status": -3
+              },
+              "comingSoon": false,
+              "inventoryCode": 9,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 7,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "1211106",
+              "displayName": "ONSEMI - LM358DG. - Operational Amplifier, Dual, 2 Channels, 1 MHz, 0.6 V/µs, 3V to 32V, SOIC, 8 Pins",
+              "productStatus": "NO_LONGER_MANUFACTURED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH",
+              "id": "pf_IS1_1211106_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (136.53KB) EN",
+                  "url": "http://www.farnell.com/datasheets/2236829.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 1,
+                  "cost": 0.446
+                },
+                {
+                  "to": 99,
+                  "from": 10,
+                  "cost": 0.316
+                },
+                {
+                  "to": 999,
+                  "from": 100,
+                  "cost": 0.145
+                },
+                {
+                  "to": 2499,
+                  "from": 1000,
+                  "cost": 0.111
+                },
+                {
+                  "to": 999999999,
+                  "from": 2500,
+                  "cost": 0.096
+                }
+              ],
+              "vendorId": "1001931",
+              "vendorName": "ONSEMI",
+              "brandName": "ONSEMI",
+              "translatedManufacturerPartNumber": "LM358DG.",
+              "translatedMinimumOrderQuality": 1,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 194,
+                "status": -3
+              },
+              "comingSoon": false,
+              "inventoryCode": 9,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 7,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "2450794",
+              "displayName": "ONSEMI - LM358M... - Operational Amplifier, Dual, 2 Channels, 3V to 32V, ± 1.5V to ± 16V, SOP, 8 Pins",
+              "productStatus": "NO_LONGER_MANUFACTURED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH",
+              "id": "pf_IS1_2450794_0",
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 1,
+                  "cost": 0.472
+                },
+                {
+                  "to": 99,
+                  "from": 10,
+                  "cost": 0.391
+                },
+                {
+                  "to": 999,
+                  "from": 100,
+                  "cost": 0.239
+                },
+                {
+                  "to": 2499,
+                  "from": 1000,
+                  "cost": 0.184
+                },
+                {
+                  "to": 999999999,
+                  "from": 2500,
+                  "cost": 0.157
+                }
+              ],
+              "vendorId": "1001931",
+              "vendorName": "ONSEMI",
+              "brandName": "ONSEMI",
+              "translatedManufacturerPartNumber": "LM358M...",
+              "translatedMinimumOrderQuality": 1,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 204,
+                "status": -3
+              },
+              "comingSoon": false,
+              "inventoryCode": 9,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 7,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "id:3117070RL 3117070",
+        "storeInfo.id": "il.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "premierFarnellPartNumberReturn": {
+          "numberOfResults": 2,
+          "products": [
+            {
+              "sku": "3117070RL",
+              "displayName": "TEXAS INSTRUMENTS - LM358DR - Operational Amplifier, 2 Channels, 700 kHz, 0.4 V/µs, ± 1.5V to ± 16V, SOIC, 8 Pins",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON CUT TAPE)",
+              "id": "pf_IS1_3117070RL_0",
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 5,
+                  "cost": 0.272
+                },
+                {
+                  "to": 99,
+                  "from": 10,
+                  "cost": 0.186
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.141
+                },
+                {
+                  "to": 999,
+                  "from": 500,
+                  "cost": 0.121
+                },
+                {
+                  "to": 4999,
+                  "from": 1000,
+                  "cost": 0.116
+                },
+                {
+                  "to": 9999,
+                  "from": 5000,
+                  "cost": 0.106
+                },
+                {
+                  "to": 999999999,
+                  "from": 10000,
+                  "cost": 0.103
+                }
+              ],
+              "vendorId": "1000062",
+              "vendorName": "TEXAS INSTRUMENTS",
+              "brandName": "TEXAS INSTRUMENTS",
+              "translatedManufacturerPartNumber": "LM358DR",
+              "translatedMinimumOrderQuality": 100,
+              "stock": {
+                "level": 20524,
+                "leastLeadTime": 148,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 45524,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 45524,
+                    "leastLeadTime": 148,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": true,
+              "discountReason": 30
+            },
+            {
+              "sku": "3117070",
+              "displayName": "TEXAS INSTRUMENTS - LM358DR - Operational Amplifier, 2 Channels, 700 kHz, 0.4 V/µs, ± 1.5V to ± 16V, SOIC, 8 Pins",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON CUT TAPE)",
+              "id": "pf_IS1_3117070_0",
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 5,
+                  "cost": 0.272
+                },
+                {
+                  "to": 99,
+                  "from": 10,
+                  "cost": 0.186
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.141
+                },
+                {
+                  "to": 999,
+                  "from": 500,
+                  "cost": 0.121
+                },
+                {
+                  "to": 4999,
+                  "from": 1000,
+                  "cost": 0.116
+                },
+                {
+                  "to": 9999,
+                  "from": 5000,
+                  "cost": 0.106
+                },
+                {
+                  "to": 999999999,
+                  "from": 10000,
+                  "cost": 0.103
+                }
+              ],
+              "vendorId": "1000062",
+              "vendorName": "TEXAS INSTRUMENTS",
+              "brandName": "TEXAS INSTRUMENTS",
+              "translatedManufacturerPartNumber": "LM358DR",
+              "translatedMinimumOrderQuality": 5,
+              "stock": {
+                "level": 20524,
+                "leastLeadTime": 148,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 45524,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 45524,
+                    "leastLeadTime": 148,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "id:3117070RL",
+        "storeInfo.id": "il.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "premierFarnellPartNumberReturn": {
+          "numberOfResults": 1,
+          "products": [
+            {
+              "sku": "3117070RL",
+              "displayName": "TEXAS INSTRUMENTS - LM358DR - Operational Amplifier, 2 Channels, 700 kHz, 0.4 V/µs, ± 1.5V to ± 16V, SOIC, 8 Pins",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "EACH (SUPPLIED ON CUT TAPE)",
+              "id": "pf_IS1_3117070RL_0",
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 5,
+                  "cost": 0.272
+                },
+                {
+                  "to": 99,
+                  "from": 10,
+                  "cost": 0.186
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.141
+                },
+                {
+                  "to": 999,
+                  "from": 500,
+                  "cost": 0.121
+                },
+                {
+                  "to": 4999,
+                  "from": 1000,
+                  "cost": 0.116
+                },
+                {
+                  "to": 9999,
+                  "from": 5000,
+                  "cost": 0.106
+                },
+                {
+                  "to": 999999999,
+                  "from": 10000,
+                  "cost": 0.103
+                }
+              ],
+              "vendorId": "1000062",
+              "vendorName": "TEXAS INSTRUMENTS",
+              "brandName": "TEXAS INSTRUMENTS",
+              "translatedManufacturerPartNumber": "LM358DR",
+              "translatedMinimumOrderQuality": 100,
+              "stock": {
+                "level": 20524,
+                "leastLeadTime": 148,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 45524,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 148,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 45524,
+                    "leastLeadTime": 148,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "SLST",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": true,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

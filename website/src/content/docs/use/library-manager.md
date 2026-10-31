@@ -38,7 +38,9 @@ The tabs along the top are:
 - **Bulk Edit**: edit metadata for many components in a spreadsheet.
 - **Import Center**: bring components in from KiCad libraries or projects.
 - **Release Queue**: components waiting for QA or ready to release.
-- **Connectors**: not available yet.
+
+Supply's review queue and its distributor and inventory sources are in
+[Supply](/KiCAD-Prism/use/supply/), under **Review** and **Sources**.
 
 ## How a component moves to release
 
@@ -105,6 +107,18 @@ imported again. Discovery marks those parts **Retired**.
 
 Symbols and footprints from a project are not approved library assets just
 because a project uses them. Review each one before you accept it.
+
+A project import keeps the fields that describe the part and leaves out the
+ones that describe one placement: the reference designator, the sheet and
+sheet file, UUIDs, the DNP, BOM and board flags, and the library the schematic
+copied the symbol from. The same part placed on several sheets is one
+candidate.
+
+A symbol that keeps its part number as **MPN** or **Part Number**, its maker as
+**MFR**, or its datasheet as **Datasheet URL** has the value moved into the
+standard **Manufacturer Part Number**, **Manufacturer** or **Datasheet** field.
+The other field is dropped when it only repeated the value, and kept when it
+says something else.
 
 When you no longer need a finished session, delete it from its row. Its open
 candidates and staged files go; components you already accepted stay.

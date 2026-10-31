@@ -8,6 +8,7 @@ import { inventoryWarnings } from "@/lib/inventory-presentation";
 
 import type { PanelComponent } from "@/panel/lib/panel-api";
 import { getComponentsByCategory, isAuthError, primaryLocalSource } from "@/panel/lib/panel-api";
+import { SupplyDot } from "@/panel/screens/SupplyAvailability";
 import { appendUniquePageItems, formatPanelLoadedCount } from "@/panel/lib/panel-page";
 import type { CategoryBrowseState } from "@/panel/lib/view-state";
 
@@ -154,6 +155,7 @@ export function CategoryListScreen({
                   {comp.manufacturer || "Unknown"} · {comp.package_name || "—"}
                 </span>
               </span>
+              {comp.supply?.summary ? <SupplyDot summary={comp.supply.summary} /> : null}
               <StockBadge
                 quantity={local?.stock ?? 0}
                 known={local !== null}

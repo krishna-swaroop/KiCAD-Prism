@@ -16,6 +16,7 @@ in `docs/architecture/adr-scripting-and-mcp.md`. To add or change a tool, follow
 | `tools.py` | the core read tools; importing it registers every tool module |
 | `tools_render.py`, `tools_compare.py` | multi-step reads (render, start and page a comparison) |
 | `tools_catalog_reads.py`, `tools_catalog_writes.py` | catalog authoring (ADR §12) |
+| `tools_supply.py` | supply: a project's and a component's supply, alternatives, watching and one fresh read (ADR §13) |
 | `tools_writes.py`, `tools_comments.py` | design, release and comment writes (ADR §10) |
 | `tools_ops_*.py` | admin diagnostics, listed only while ops is on (ADR §11) |
 | `governance.py`, `audit.py` | admin tool and project limits; the audit of every call |

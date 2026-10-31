@@ -3,7 +3,7 @@
 Log lines, error messages, query text and URLs can carry credentials. Anything
 an ops tool returns passes through ``redact_text`` or ``redact_value`` first:
 URL userinfo, authorization and cookie headers, bearer tokens, Prism's own
-token shapes (``prism_pat_``, ``prism_mcp_rt_``, ``whsec_``), JWTs and
+token shapes (``prism_pat_``, ``prism_push_``, ``prism_mcp_rt_``, ``whsec_``), JWTs and
 ``key=value`` secrets are replaced with ``[REDACTED]``. It is deliberately
 blunt: a diagnostic that loses a harmless word is fine, one that leaks a token
 is not.
@@ -24,7 +24,7 @@ _SECRET_KEY = re.compile(rf"(?i)({_SECRET_NAMES})")
 _AUTH_HEADER = re.compile(r"(?im)\b(authorization|cookie|set-cookie)(\s*[:=]\s*)[^\r\n]+")
 _URL_CREDENTIAL = re.compile(r"://([^/\s:@]+)(:[^@\s/]*)?@")
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
-_PRISM_TOKEN = re.compile(r"\b(prism_pat_|prism_mcp_rt_|whsec_)[A-Za-z0-9+/=_-]+")
+_PRISM_TOKEN = re.compile(r"\b(prism_pat_|prism_push_|prism_mcp_rt_|whsec_)[A-Za-z0-9+/=_-]+")
 _JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")
 _QUERY_SECRET = re.compile(rf"(?i)([?&](?:{_SECRET_NAMES}|access_token|refresh_token|code)=)[^&\s#]+")
 

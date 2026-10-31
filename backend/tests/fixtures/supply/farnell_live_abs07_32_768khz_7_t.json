@@ -1,0 +1,652 @@
+{
+  "provider": "farnell",
+  "mpn": "ABS07-32.768KHZ-7-T",
+  "calls": [
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "manuPartNum:ABS07-32.768KHZ-7-T",
+        "storeInfo.id": "it.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "manufacturerPartNumberSearchReturn": {
+          "numberOfResults": 3,
+          "products": [
+            {
+              "sku": "3573150",
+              "displayName": "ABRACON - ABS07-32.768KHZ-7-T - Cristallo, ABS07 Series, 32.768 kHz, 20 ppm, 7 pF",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ, FORNITO IN BOBINA COMPLETA",
+              "id": "pf_ITE2_3573150_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (4.45MB) EN",
+                  "url": "http://www.farnell.com/datasheets/2581429.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 8999,
+                  "from": 3000,
+                  "cost": 0.433
+                },
+                {
+                  "to": 999999999,
+                  "from": 9000,
+                  "cost": 0.415
+                }
+              ],
+              "vendorId": "1001326",
+              "vendorName": "ABRACON",
+              "brandName": "ABRACON",
+              "translatedManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "translatedMinimumOrderQuality": 3000,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 148,
+                "status": 0
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "1838935RL",
+              "displayName": "ABRACON - ABS07-32.768KHZ-7-T - CRISTALLO 32.768KHZ, 7PF, SMD, 3.2X1.5MM",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ, FORNITO SU NASTRO TAGLIATO",
+              "id": "pf_ITE2_1838935RL_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (492.17KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3952062.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 49,
+                  "from": 5,
+                  "cost": 0.733
+                },
+                {
+                  "to": 99,
+                  "from": 50,
+                  "cost": 0.579
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.555
+                },
+                {
+                  "to": 1499,
+                  "from": 500,
+                  "cost": 0.503
+                },
+                {
+                  "to": 999999999,
+                  "from": 1500,
+                  "cost": 0.483
+                }
+              ],
+              "vendorId": "1001326",
+              "vendorName": "ABRACON",
+              "brandName": "ABRACON",
+              "translatedManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "translatedMinimumOrderQuality": 100,
+              "stock": {
+                "level": 36162,
+                "leastLeadTime": 97,
+                "status": 1,
+                "shipsFromMultipleWarehouses": true,
+                "breakdown": [
+                  {
+                    "inv": 28708,
+                    "region": "US",
+                    "warehouse": "P1"
+                  },
+                  {
+                    "inv": 13454,
+                    "region": "UK",
+                    "lead": 97,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 97,
+                    "warehouse": "GB1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "-",
+                    "lead": 97,
+                    "warehouse": "PE1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 13454,
+                    "leastLeadTime": 97,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  },
+                  {
+                    "level": 0,
+                    "leastLeadTime": 97,
+                    "status": 1,
+                    "warehouse": "-",
+                    "shipsFromMultipleWarehouses": false
+                  },
+                  {
+                    "level": 28708,
+                    "leastLeadTime": 0,
+                    "status": 1,
+                    "warehouse": "US",
+                    "shipsFromMultipleWarehouses": false
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": true,
+              "discountReason": 30
+            },
+            {
+              "sku": "1838935",
+              "displayName": "ABRACON - ABS07-32.768KHZ-7-T - Cristallo, ABS07 Series, 32.768 kHz, 20 ppm, 7 pF",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ, FORNITO SU NASTRO TAGLIATO",
+              "id": "pf_ITE2_1838935_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (492.17KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3952062.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 49,
+                  "from": 5,
+                  "cost": 0.733
+                },
+                {
+                  "to": 99,
+                  "from": 50,
+                  "cost": 0.579
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.555
+                },
+                {
+                  "to": 1499,
+                  "from": 500,
+                  "cost": 0.503
+                },
+                {
+                  "to": 999999999,
+                  "from": 1500,
+                  "cost": 0.483
+                }
+              ],
+              "vendorId": "1001326",
+              "vendorName": "ABRACON",
+              "brandName": "ABRACON",
+              "translatedManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "translatedMinimumOrderQuality": 5,
+              "stock": {
+                "level": 36162,
+                "leastLeadTime": 97,
+                "status": 1,
+                "shipsFromMultipleWarehouses": true,
+                "breakdown": [
+                  {
+                    "inv": 28708,
+                    "region": "US",
+                    "warehouse": "P1"
+                  },
+                  {
+                    "inv": 13454,
+                    "region": "UK",
+                    "lead": 97,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 97,
+                    "warehouse": "GB1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "-",
+                    "lead": 97,
+                    "warehouse": "PE1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 13454,
+                    "leastLeadTime": 97,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  },
+                  {
+                    "level": 0,
+                    "leastLeadTime": 97,
+                    "status": 1,
+                    "warehouse": "-",
+                    "shipsFromMultipleWarehouses": false
+                  },
+                  {
+                    "level": 28708,
+                    "leastLeadTime": 0,
+                    "status": 1,
+                    "warehouse": "US",
+                    "shipsFromMultipleWarehouses": false
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "id:3573150 1838935RL 1838935",
+        "storeInfo.id": "it.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "premierFarnellPartNumberReturn": {
+          "numberOfResults": 3,
+          "products": [
+            {
+              "sku": "1838935RL",
+              "displayName": "ABRACON - ABS07-32.768KHZ-7-T - CRISTALLO 32.768KHZ, 7PF, SMD, 3.2X1.5MM",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ, FORNITO SU NASTRO TAGLIATO",
+              "id": "pf_ITE2_1838935RL_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (492.17KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3952062.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 49,
+                  "from": 5,
+                  "cost": 0.733
+                },
+                {
+                  "to": 99,
+                  "from": 50,
+                  "cost": 0.579
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.555
+                },
+                {
+                  "to": 1499,
+                  "from": 500,
+                  "cost": 0.503
+                },
+                {
+                  "to": 999999999,
+                  "from": 1500,
+                  "cost": 0.483
+                }
+              ],
+              "vendorId": "1001326",
+              "vendorName": "ABRACON",
+              "brandName": "ABRACON",
+              "translatedManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "translatedMinimumOrderQuality": 100,
+              "stock": {
+                "level": 36162,
+                "leastLeadTime": 97,
+                "status": 1,
+                "shipsFromMultipleWarehouses": true,
+                "breakdown": [
+                  {
+                    "inv": 28708,
+                    "region": "US",
+                    "warehouse": "P1"
+                  },
+                  {
+                    "inv": 13454,
+                    "region": "UK",
+                    "lead": 97,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 97,
+                    "warehouse": "GB1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "-",
+                    "lead": 97,
+                    "warehouse": "PE1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 13454,
+                    "leastLeadTime": 97,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  },
+                  {
+                    "level": 0,
+                    "leastLeadTime": 97,
+                    "status": 1,
+                    "warehouse": "-",
+                    "shipsFromMultipleWarehouses": false
+                  },
+                  {
+                    "level": 28708,
+                    "leastLeadTime": 0,
+                    "status": 1,
+                    "warehouse": "US",
+                    "shipsFromMultipleWarehouses": false
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": true,
+              "discountReason": 30
+            },
+            {
+              "sku": "1838935",
+              "displayName": "ABRACON - ABS07-32.768KHZ-7-T - Cristallo, ABS07 Series, 32.768 kHz, 20 ppm, 7 pF",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ, FORNITO SU NASTRO TAGLIATO",
+              "id": "pf_ITE2_1838935_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (492.17KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3952062.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 49,
+                  "from": 5,
+                  "cost": 0.733
+                },
+                {
+                  "to": 99,
+                  "from": 50,
+                  "cost": 0.579
+                },
+                {
+                  "to": 499,
+                  "from": 100,
+                  "cost": 0.555
+                },
+                {
+                  "to": 1499,
+                  "from": 500,
+                  "cost": 0.503
+                },
+                {
+                  "to": 999999999,
+                  "from": 1500,
+                  "cost": 0.483
+                }
+              ],
+              "vendorId": "1001326",
+              "vendorName": "ABRACON",
+              "brandName": "ABRACON",
+              "translatedManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "translatedMinimumOrderQuality": 5,
+              "stock": {
+                "level": 36162,
+                "leastLeadTime": 97,
+                "status": 1,
+                "shipsFromMultipleWarehouses": true,
+                "breakdown": [
+                  {
+                    "inv": 28708,
+                    "region": "US",
+                    "warehouse": "P1"
+                  },
+                  {
+                    "inv": 13454,
+                    "region": "UK",
+                    "lead": 97,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 97,
+                    "warehouse": "GB1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "-",
+                    "lead": 97,
+                    "warehouse": "PE1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 13454,
+                    "leastLeadTime": 97,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  },
+                  {
+                    "level": 0,
+                    "leastLeadTime": 97,
+                    "status": 1,
+                    "warehouse": "-",
+                    "shipsFromMultipleWarehouses": false
+                  },
+                  {
+                    "level": 28708,
+                    "leastLeadTime": 0,
+                    "status": 1,
+                    "warehouse": "US",
+                    "shipsFromMultipleWarehouses": false
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "3573150",
+              "displayName": "ABRACON - ABS07-32.768KHZ-7-T - Cristallo, ABS07 Series, 32.768 kHz, 20 ppm, 7 pF",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ, FORNITO IN BOBINA COMPLETA",
+              "id": "pf_ITE2_3573150_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (4.45MB) EN",
+                  "url": "http://www.farnell.com/datasheets/2581429.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 8999,
+                  "from": 3000,
+                  "cost": 0.433
+                },
+                {
+                  "to": 999999999,
+                  "from": 9000,
+                  "cost": 0.415
+                }
+              ],
+              "vendorId": "1001326",
+              "vendorName": "ABRACON",
+              "brandName": "ABRACON",
+              "translatedManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "translatedMinimumOrderQuality": 3000,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 148,
+                "status": 0
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "id:3573150",
+        "storeInfo.id": "it.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "premierFarnellPartNumberReturn": {
+          "numberOfResults": 1,
+          "products": [
+            {
+              "sku": "3573150",
+              "displayName": "ABRACON - ABS07-32.768KHZ-7-T - Cristallo, ABS07 Series, 32.768 kHz, 20 ppm, 7 pF",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "YES",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ, FORNITO IN BOBINA COMPLETA",
+              "id": "pf_ITE2_3573150_0",
+              "datasheets": [
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (4.45MB) EN",
+                  "url": "http://www.farnell.com/datasheets/2581429.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 8999,
+                  "from": 3000,
+                  "cost": 0.433
+                },
+                {
+                  "to": 999999999,
+                  "from": 9000,
+                  "cost": 0.415
+                }
+              ],
+              "vendorId": "1001326",
+              "vendorName": "ABRACON",
+              "brandName": "ABRACON",
+              "translatedManufacturerPartNumber": "ABS07-32.768KHZ-7-T",
+              "translatedMinimumOrderQuality": 3000,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 148,
+                "status": 0
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

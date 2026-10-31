@@ -89,7 +89,8 @@ the server enforces on accept, and edit custom field values through
 remediates before acceptance; the grid is the remediation surface.
 
 **Catalog and release** — `library-catalog-workspace.tsx` (its header carries
-`library-catalog-file-check.tsx`, the admin's on-demand released-file disk check),
+`library-catalog-file-check.tsx`, the admin's on-demand released-file disk check, and
+`create-component-dialog.tsx`, the New component dialog the supply BOM drawer also opens),
 `library-manager-workspace.tsx`, `library-bulk-edit-workspace.tsx`,
 `library-release-queue.tsx`. Release transitions are governed on the backend —
 the frontend requests a transition, it does not decide one.

@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { StudioTabsList, StudioTabsTrigger } from "@/components/ui/studio-tabs";
 import { Tabs } from "@/components/ui/tabs";
+import { ReleaseSupplyCheck, ReleaseSupplySummary } from "@/features/supply/release-supply-check";
 import { useServerState } from "@/lib/server-state";
 import { cn } from "@/lib/utils";
 import { FabricationViewer } from "@/components/fabrication-viewer/fabrication-viewer";
@@ -99,6 +100,14 @@ export function InspectOutputsStep({
     return (
         <div className="flex h-full min-h-0 flex-1">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                <details className="shrink-0 border-b px-2 py-1">
+                    <summary className="cursor-pointer list-none">
+                        <ReleaseSupplySummary projectId={projectId} buildId={detail.build.id} />
+                    </summary>
+                    <div className="py-2">
+                        <ReleaseSupplyCheck projectId={projectId} buildId={detail.build.id} />
+                    </div>
+                </details>
                 <Tabs value={outputView} onValueChange={setOutputView} className="min-w-0 shrink-0 gap-0">
                     <div className="flex h-11 min-w-0 items-center gap-2 border-b bg-card px-2">
                         <StudioTabsList className="min-w-0 overflow-x-auto" aria-label="Output views">

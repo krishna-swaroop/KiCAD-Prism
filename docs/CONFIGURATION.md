@@ -217,6 +217,23 @@ project destination. It requires the tracker credential root key on both API
 and general workers. See [Tracker integration](TRACKER_INTEGRATION.md) for
 `TRACKER_CREDENTIAL_ROOT_KEY*`, rotation, webhooks, and recovery.
 
+### Supply chain data
+
+Distributor connector credentials are encrypted with the tracker credential
+root key (`TRACKER_CREDENTIAL_ROOT_KEY`); without it, connectors that need
+credentials cannot be saved. `SUPPLY_ENABLE_SIMULATED_PROVIDER=true` allows a
+simulated distributor for development and demos. Leave it unset in production.
+
+Distributor calls ignore the `HTTPS_PROXY` environment variables on purpose.
+Behind a corporate proxy, set `SUPPLY_HTTPS_PROXY` (for example
+`http://proxy.example.com:3128`). The proxy then resolves host names, so Prism
+still checks each host against the provider's allowlist but cannot check the
+addresses itself.
+
+An inventory server on your own network (a self-hosted InvenTree or a server that serves its API) needs
+its host name in `SUPPLY_INVENTORY_PRIVATE_HOSTS_STR`; only listed hosts may
+resolve to private addresses or use a port other than 443, and link-local addresses stay refused.
+
 ### MCP server
 
 Connecting clients and what they can do: [Automating Prism](AUTOMATING_PRISM.md).

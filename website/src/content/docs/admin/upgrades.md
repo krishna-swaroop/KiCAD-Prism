@@ -2,7 +2,7 @@
 title: Upgrade Prism
 description: Move an installation to a newer release, roll back if it goes wrong, and read the changes each release makes to stored data.
 sidebar:
-  order: 9
+  order: 10
 ---
 
 This page moves a Prism installation to a newer release without losing the

@@ -151,7 +151,9 @@ listens.
 2. Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 
 The KiCad panel for the Remote Symbol Provider is a separate app:
-`npm run dev:panel`.
+`npm run dev:panel`. KiCad opens the panel the API serves, not the dev
+server's; with the backend on your host, build it as in step 7 of
+[Run the backend on your host](#run-the-backend-on-your-host).
 
 ## Run the backend on your host
 
@@ -216,7 +218,31 @@ own key.
    venv/bin/python -m app.prism_worker --pool catalog
    ```
 
-7. Start the frontend dev server as in
+7. Build the Remote Symbols panel the API serves to KiCad, from `frontend/`:
+
+   ```bash
+   npm run build:panel
+   ```
+
+   Then copy the build to where the API serves it from:
+
+   ```bash
+   mkdir -p ../backend/app/static
+   ```
+
+   ```bash
+   rm -rf ../backend/app/static/remote_provider
+   ```
+
+   ```bash
+   cp -R dist/remote_provider ../backend/app/static/remote_provider
+   ```
+
+   The Docker image does this when it is built; a host run doesn't, and
+   `/remote-provider/panel` answers 500 until the folder is there. Git ignores
+   it. Build and copy again after changing the panel.
+
+8. Start the frontend dev server as in
    [Work on the frontend with hot reload](#work-on-the-frontend-with-hot-reload).
 
 On Windows the interpreter is `venv\Scripts\python.exe`.
@@ -437,6 +463,57 @@ python3 -m unittest scripts.test_release_bundle
 ```bash
 POSTGRES_PASSWORD=ci-release-validation PRISM_ENV_FILE=.env.example docker compose --env-file deploy/release/.env.example -f deploy/release/compose.yml config --quiet
 ```
+
+## Benchmark Supply at scale
+
+Build a frozen, synthetic Supply library in its own database, then measure the
+Supply pages and the housekeeping worker against it. The same parameters and
+seed produce the same parts, listings and BOMs, with stock history relative to
+the run day, so two commits can be compared.
+
+1. Create a database whose name starts with `bench_`:
+
+   ```bash
+   psql "postgresql://ci:ci@127.0.0.1:55432/postgres" -c "CREATE DATABASE bench_supply_dev"
+   ```
+
+2. From `backend/`, seed it. The defaults are 20,000 parts and 50 projects;
+   `--parts` and `--projects` make a smaller first run:
+
+   ```bash
+   PYTHONPATH=$PWD python ../scripts/benchmark_supply.py seed --database-url "postgresql://ci:ci@127.0.0.1:55432/bench_supply_dev" --parts 2000 --projects 5
+   ```
+
+3. Run the benchmark. It writes `loadtest/results/supply-benchmark.json` and
+   prints a Markdown table:
+
+   ```bash
+   PYTHONPATH=$PWD python ../scripts/benchmark_supply.py run --database-url "postgresql://ci:ci@127.0.0.1:55432/bench_supply_dev" --repeats 5
+   ```
+
+4. To include browser heap and DOM size, start Prism with sign-in off, then
+   pass its URL and the Chrome executable. The pages show whatever database
+   that Prism reads; point it at the bench database to measure the browser at
+   scale:
+
+   ```bash
+   PYTHONPATH=$PWD python ../scripts/benchmark_supply.py run --database-url "postgresql://ci:ci@127.0.0.1:55432/bench_supply_dev" --browser-url http://localhost:5173 --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+   ```
+
+The report records the fixture parameters, the Git commit, the machine, and for
+each read model the cold latency, the warm p50, p95 and max, the SQL statements
+per run, and the process's peak RSS so far (it only grows, so the scenario that
+raises it is the one that needed the memory). It also records the housekeeping
+worker's wall time and peak RSS, and each Supply page's `JSHeapUsedSize`,
+`Nodes` and `LayoutCount` when a browser URL is given.
+
+Housekeeping writes (it compacts readings and keeps snapshots), so the worker
+runs on a throwaway copy of the bench database (`CREATE DATABASE … TEMPLATE`),
+dropped afterwards. The fixture stays as seeded, run after run.
+
+Both subcommands refuse a database whose name does not start with `bench_`.
+The script never signs in, and it never touches an application database.
+Seeding the same database twice refuses instead of doubling the data.
 
 ## Rules for code changes
 

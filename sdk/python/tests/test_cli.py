@@ -127,6 +127,34 @@ class CommandTests(unittest.TestCase):
 
 
 class CommentCommandTests(unittest.TestCase):
+    def test_supply_push_offers_sends_the_file_s_rows(self) -> None:
+        import tempfile
+
+        rows = [{"sku": "S1", "mpn": "ABC123", "manufacturer": "Acme", "stock": 4}]
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump({"offers": rows}, handle)
+        self.addCleanup(os.unlink, handle.name)
+        transport = FakeTransport({"received": 1, "kept": 1, "recorded": 0, "pushed_at": "2026-10-30T00:00:00Z"})
+        code, stdout, _stderr = run(["supply", "push-offers", "c1", handle.name, "--replace"], transport)
+        self.assertEqual(code, 0)
+        call = transport.calls[0]
+        self.assertEqual((call["method"], call["url"]), ("POST", "https://prism.example/api/v1/supply/connectors/c1/offers"))
+        self.assertEqual(json.loads(call["body"]), {"offers": rows, "replace": True})
+        self.assertIn("Kept", stdout)
+
+    def test_supply_push_levels_reads_a_plain_list(self) -> None:
+        import tempfile
+
+        rows = [{"part": "P1", "mpn": "ABC123", "quantity": 3}]
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump(rows, handle)
+        self.addCleanup(os.unlink, handle.name)
+        transport = FakeTransport({"records": 1, "matched": 1, "unmatched": 0})
+        code, _stdout, _stderr = run(["supply", "push-levels", "s1", handle.name, "--json"], transport)
+        self.assertEqual(code, 0)
+        self.assertEqual(transport.calls[0]["url"], "https://prism.example/api/v1/supply/inventory-sources/s1/levels")
+        self.assertEqual(json.loads(transport.calls[0]["body"]), {"items": rows})
+
     def test_comment_add_posts_an_anchored_comment(self) -> None:
         transport = FakeTransport(COMMENT)
         code, stdout, _stderr = run(

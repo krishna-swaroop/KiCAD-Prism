@@ -386,3 +386,26 @@ Making a library part is the slowest routine job in a hardware team: read the da
 | `request_catalog_approval` | handoff | none (D15, D32) |
 
 The new routes live in `backend/app/api/catalog_drafting.py`; uploads and draft checks in `backend/app/services/catalog/staged_uploads.py` and `draft_checks.py`. KiCad's IPC API gains symbol- and footprint-editor handlers after 10.0; when Prism's worker runs a KiCad with them, a client may drive the editors itself, and nothing here changes.
+
+## 13. Supply: can we build it, and how does a component stand
+
+Supply joins the registry instead of keeping its own MCP endpoint: `POST /api/supply/mcp` (three part-number reads from PR #894) is removed. The supply data model is component-first (a component's main part plus the alternates QA approved), so the tools take a project or a component, never a loose part number.
+
+### 13.1 Decisions
+
+| # | Decision |
+| --- | --- |
+| D34 | **Reads plus two writes.** Agents read a project's supply and a component's supply, and look for alternatives. They may watch a component's part and ask for one fresh distributor read. Connectors, settings, waivers, tiers and alternate approvals stay with people. Proposing an alternate is a designer's step in Prism. |
+| D35 | **Reads never call a distributor.** They answer from what Prism stored. `refresh_component_supply` is the one tool that reaches a distributor, through the same interactive reserve and per-person limit the Refresh button uses. |
+
+### 13.2 Tools
+
+| Tool | Kind | Route |
+| --- | --- | --- |
+| `get_project_supply` | read | `GET /supply/projects/{id}/supply`, shaped to the rollup and the lines that need a look |
+| `get_component_supply` | read | `GET /supply/components/{id}/parts`, then `GET /supply/parts/{part}` for each approved part, `.../local-stock` and `.../watch` |
+| `find_part_alternatives` | read | `GET /supply/components/{id}/parts`, then `GET /supply/parts/{main}/cross-reference` |
+| `watch_component` | write, `supply_follow` | `PUT /supply/tracking/components/{id}` |
+| `refresh_component_supply` | write, `supply_write` | `GET /supply/components/{id}/parts`, then `POST /supply/parts/{main}/refresh` (D35) |
+
+The tools live in `backend/app/services/mcp/tools_supply.py`.

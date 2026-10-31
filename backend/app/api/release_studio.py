@@ -36,6 +36,7 @@ from app.services.release_studio_publish_service import (
 )
 from app.services.job_kinds import JobSubject
 from app.services.release_studio_build_service import RELEASE_BUILD
+from app.services.supply.publish_hook import queue_snapshot
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
 logger = logging.getLogger(__name__)
@@ -79,6 +80,8 @@ class PublishRequest(BaseModel):
     tag: str = Field(..., min_length=1, max_length=100)
     title: str = Field("", max_length=200)
     notes: str = Field("", max_length=8000)
+    # Attach the compliance draft (a working document, not a declaration) to the forge release.
+    attach_compliance_draft: bool = False
     # Keys of the unpinned 3D models (``approvals.unpinned_models``) acknowledged.
     acknowledged_models: list[ModelKey] = Field(default_factory=list, max_length=5000)
 
@@ -627,4 +630,28 @@ def _publish_build(
         notes=request.notes,
         actor=user,
         acknowledged_models=request.acknowledged_models,
+        # The compliance draft (a working document, not a declaration) goes to the forge release when asked for.
+        attach=(lambda filename: _compliance_draft_assets(build_id, filename)) if request.attach_compliance_draft else None,
+        # What supply data said at publish is taken by a worker job and kept beside the record. Evidence only; never part of a digest.
+        after=lambda tag, commit_sha: queue_snapshot(project_id, build_id, tag, commit_sha, user.email),
     )
+
+
+def _compliance_draft_assets(build_id: str, zip_filename: str) -> list[tuple[str, bytes]]:
+    """The RoHS and REACH draft for the build's BOM as a CSV named for the release; none when it cannot be made."""
+
+    try:
+        from app.services.supply import catalog_read, compliance_draft, release_bom, release_source
+        from app.services.supply.store import supply_store
+
+        read = release_bom.lines_from_csv(release_source.build_bom_text(build_id), catalog_read.identities)
+        with supply_store.connection() as conn:
+            draft = compliance_draft.build(conn, [
+                {"key": line.key, "manufacturer": line.manufacturer, "mpn": line.mpn, "quantity": line.quantity,
+                 "references": line.references, "lcsc": line.lcsc}
+                for line in read.lines
+            ])
+        return [(f"{zip_filename.removesuffix('.zip')}-compliance-draft.csv", compliance_draft.to_csv(draft).encode("utf-8"))]
+    except Exception:  # noqa: BLE001 - an attachment that cannot be made must not stop the release
+        logger.warning("Compliance draft not attached to build %s", build_id, exc_info=True)
+        return []

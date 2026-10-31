@@ -50,7 +50,7 @@ describe("AssetsPanel", () => {
     renderPanel();
     expect(within(screen.getByRole("region", { name: "Symbols" })).getAllByText(/sym-[ab]\.file/)).toHaveLength(2);
     expect(within(screen.getByRole("region", { name: "SPICE models" })).getByText("Missing")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download sym-a.file" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Download sym-a.file" })).toBeEnabled();
   });
 
   it("previews the default representation until another is picked", () => {

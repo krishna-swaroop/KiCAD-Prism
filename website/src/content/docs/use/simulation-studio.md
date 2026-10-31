@@ -2,7 +2,7 @@
 title: Simulate DC IR drop (experimental)
 description: Set up a board's power tree in Simulation Studio, run a DC IR drop analysis, and read the voltage drop and current density on the copper.
 sidebar:
-  order: 10
+  order: 11
 ---
 
 Simulation Studio runs board-level simulations on a revision of your project.

@@ -563,6 +563,7 @@ from app.services.mcp import tools_catalog_reads as _tools_catalog_reads  # noqa
 from app.services.mcp import tools_writes as _tools_writes  # noqa: E402, F401
 from app.services.mcp import tools_comments as _tools_comments  # noqa: E402, F401
 from app.services.mcp import tools_catalog_writes as _tools_catalog_writes  # noqa: E402, F401
+from app.services.mcp import tools_supply as _tools_supply  # noqa: E402, F401
 from app.services.mcp import tools_ops_jobs as _tools_ops_jobs  # noqa: E402, F401
 from app.services.mcp import tools_ops_runtime as _tools_ops_runtime  # noqa: E402, F401
 from app.services.mcp import tools_ops_profile as _tools_ops_profile  # noqa: E402, F401

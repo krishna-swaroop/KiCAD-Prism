@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
+from app.core.roles import SUPPLY_READ_ROLES
 from app.api import remote_provider_models as models
 from app.api._helpers import preview_file_response
 from app.core.errors import value_errors_as
@@ -18,6 +20,7 @@ from app.services.component_catalog_service import catalog_service
 from app.services.public_url_service import resolve_public_base_url
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static" / "remote_provider"
 
@@ -111,6 +114,54 @@ def _component_payload(component: dict, origin: str, representation_id: str = ""
             + _placement_query(effective["id"] if effective else "", revision_id)
         ),
     }
+
+
+def _supply_visible(user: AuthenticatedUser) -> bool:
+    return user is not None and user.role in SUPPLY_READ_ROLES
+
+
+def _supply_version(user: AuthenticatedUser) -> str:
+    """Part of the cache key, so a panel refetches a list when supply data has moved on."""
+
+    if not _supply_visible(user):
+        return ""
+    try:
+        from app.services.supply import panel_payload
+        from app.services.supply.store import supply_store
+
+        with supply_store.connection() as conn:
+            return panel_payload.data_version(conn)
+    except Exception:  # noqa: BLE001 - supply data is optional; browsing the catalog must not depend on it
+        logger.warning("Supply data version unavailable for the panel", exc_info=True)
+        return ""
+
+
+def _attach_supply(payloads: list[dict], user: AuthenticatedUser, origin: str, *, full: bool = False) -> None:
+    """Add the supply summary (and on detail the rest) to payloads, in place. Never raises."""
+
+    if not payloads or not _supply_visible(user):
+        return
+    try:
+        from app.services.supply import ending_parts, panel_payload
+        from app.services.supply.store import supply_store
+
+        with supply_store.connection() as conn:
+            marks = ending_parts.restrictions_of(conn, [str(payload["id"]) for payload in payloads])
+            if full:
+                found = {payload["id"]: panel_payload.detail(conn, payload, user.role, origin) for payload in payloads}
+                found = {key: value for key, value in found.items() if value}
+            else:
+                found = {key: {"summary": value} for key, value in panel_payload.summaries(conn, payloads, user.role).items()}
+    except Exception:  # noqa: BLE001 - supply data is optional; browsing the catalog must not depend on it
+        logger.warning("Supply data unavailable for the panel", exc_info=True)
+        return
+    for payload in payloads:
+        extra = found.get(payload["id"])
+        if extra:
+            payload["supply"] = {**payload["supply"], **extra}
+        mark = marks.get(str(payload["id"]))
+        if mark and mark["level"] == "not_for_new_designs":
+            payload["supply"] = {**payload["supply"], "restriction": mark["level"]}
 
 
 def _projection_etag(version: str, **parameters: object) -> str:
@@ -268,8 +319,10 @@ async def search_components(
 ):
     _ = user
     version = await asyncio.to_thread(catalog_service.remote_projection_version)
+    supply_version = await asyncio.to_thread(_supply_version, user)
     etag = _projection_etag(
         version,
+        supply=supply_version,
         endpoint="search",
         q=q,
         page=page,
@@ -286,8 +339,10 @@ async def search_components(
         include_total=include_total,
     )
     origin = _provider_origin(request)
+    items = [_component_payload(c, origin) for c in result["items"]]
+    await asyncio.to_thread(_attach_supply, items, user, origin)
     return JSONResponse({
-        "items": [_component_payload(c, origin) for c in result["items"]],
+        "items": items,
         "total": result["total"],
         "has_more": result["has_more"],
         "page": result["page"],
@@ -332,8 +387,10 @@ async def components_by_category(
 ):
     _ = user
     version = await asyncio.to_thread(catalog_service.remote_projection_version)
+    supply_version = await asyncio.to_thread(_supply_version, user)
     etag = _projection_etag(
         version,
+        supply=supply_version,
         endpoint="category",
         category=category,
         page=page,
@@ -350,8 +407,10 @@ async def components_by_category(
         include_total=include_total,
     )
     origin = _provider_origin(request)
+    items = [_component_payload(c, origin) for c in result["items"]]
+    await asyncio.to_thread(_attach_supply, items, user, origin)
     return JSONResponse({
-        "items": [_component_payload(c, origin) for c in result["items"]],
+        "items": items,
         "total": result["total"],
         "has_more": result["has_more"],
         "page": result["page"],
@@ -377,9 +436,32 @@ async def get_component(
     if not component:
         raise HTTPException(status_code=404, detail="Component not found")
     released = await asyncio.to_thread(provider_revisions.released_revisions, component_id)
+    origin = _provider_origin(request)
     with value_errors_as(400):
-        payload = _component_payload(component, _provider_origin(request), representation, revision)
+        payload = _component_payload(component, origin, representation, revision)
+    await asyncio.to_thread(_attach_supply, [payload], user, origin, full=True)
     return {**payload, "released_revisions": released}
+
+
+@router.post("/api/remote-provider/supply/parts/{part_id}/refresh")
+async def refresh_supply_part(part_id: str, user: AuthenticatedUser = Depends(require_remote_symbol_reader)) -> dict:
+    """Read one tracked part from its distributors now. Allowed under the read scope: it changes nothing a person sees."""
+
+    if not _supply_visible(user):
+        raise HTTPException(status_code=403, detail="Supply data is not available to this account")
+
+    def run() -> dict:
+        from app.api import supply_connectors
+        from app.services.supply import parts, refresh
+
+        try:
+            return refresh.read_now(supply_connectors.service, part_id, user.email)
+        except refresh.TooSoon as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except parts.PartNotFound as exc:
+            raise HTTPException(status_code=404, detail="Part not found") from exc
+
+    return await asyncio.to_thread(run)
 
 
 @router.get(

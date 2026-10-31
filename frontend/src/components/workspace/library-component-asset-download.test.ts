@@ -12,7 +12,6 @@ import {
   ASSET_NOT_IN_MANIFEST_MESSAGE,
   locatePlacementManifestAsset,
   planReleasedAssetDownload,
-  RELEASED_DOWNLOAD_BLOCKED_MESSAGE,
   releasedAssetManifestUrl,
   releasedRevisionDownloadsAllowed,
   resolveReleasedRepresentationForAsset,
@@ -168,12 +167,12 @@ describe("planReleasedAssetDownload", () => {
     );
   });
 
-  it("keeps historical unreleased downloads blocked", () => {
+  it("downloads an unreleased revision's file as stored", () => {
     const current = releasedComponent();
     const historical = releasedComponent({ revision_id: "rev-old" });
     expect(planReleasedAssetDownload("comp-1", current, historical, symbolB)).toEqual({
-      status: "blocked",
-      message: RELEASED_DOWNLOAD_BLOCKED_MESSAGE,
+      status: "stored",
+      url: `/api/catalog/assets/${symbolB.id}/content`,
     });
   });
 });
@@ -268,7 +267,7 @@ describe("useReleasedAssetDownload", () => {
     expect(startDownload).toHaveBeenCalledWith("/signed/alt-symbol", "alt.kicad_sym");
   });
 
-  it("does not request a manifest for historical unreleased content", async () => {
+  it("downloads unreleased content as stored, without a manifest", async () => {
     const fetchManifest = vi.fn();
     const startDownload = vi.fn();
     const current = releasedComponent();
@@ -282,8 +281,7 @@ describe("useReleasedAssetDownload", () => {
     });
 
     expect(fetchManifest).not.toHaveBeenCalled();
-    expect(startDownload).not.toHaveBeenCalled();
-    expect(toast.info).toHaveBeenCalledWith(RELEASED_DOWNLOAD_BLOCKED_MESSAGE);
+    expect(startDownload).toHaveBeenCalledWith(`/api/catalog/assets/${symbolB.id}/content`, symbolB.name);
     expect(toast.error).not.toHaveBeenCalled();
   });
 

@@ -1,0 +1,673 @@
+{
+  "provider": "mouser",
+  "mpn": "LM358DR",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/api/v1/search/partnumber",
+      "params": {},
+      "answer": {
+        "Errors": [],
+        "SearchResults": {
+          "NumberOfResult": 2,
+          "Parts": [
+            {
+              "Availability": "65119 A magazzino",
+              "DataSheetUrl": "",
+              "Description": "Amplificatori operazionali - Amp. op. Dual Op Amp",
+              "FactoryStock": "0",
+              "ImagePath": "https://www.mouser.com/images/texasinstruments/images/ITP_TI_SOIC-8_D_t.jpg",
+              "Category": "Amplificatori operazionali - Amp. op.",
+              "LeadTime": "140 Giorni",
+              "LifecycleStatus": null,
+              "Manufacturer": "Texas Instruments",
+              "ManufacturerPartNumber": "LM358DR",
+              "Min": "1",
+              "Mult": "1",
+              "MouserPartNumber": "595-LM358DR",
+              "ProductAttributes": [
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Reel"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Cut Tape"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "MouseReel",
+                  "AttributeCost": "La commissione 5,00 € MouseReel™ verrà aggiunta e calcolata nel carrello. Nessuno degli ordini di articoli MouseReel™ può essere annullato o reso."
+                },
+                {
+                  "AttributeName": "Quantità collo standard",
+                  "AttributeValue": "2500"
+                }
+              ],
+              "PriceBreaks": [
+                {
+                  "Quantity": 1,
+                  "Price": "0,224 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 10,
+                  "Price": "0,151 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 25,
+                  "Price": "0,133 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 100,
+                  "Price": "0,114 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 250,
+                  "Price": "0,105 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 500,
+                  "Price": "0,10 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 1000,
+                  "Price": "0,095 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 2500,
+                  "Price": "0,089 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 5000,
+                  "Price": "0,086 €",
+                  "Currency": "EUR"
+                }
+              ],
+              "AlternatePackagings": [
+                {
+                  "APMfrPN": "LM358DG4"
+                },
+                {
+                  "APMfrPN": " LM358DRG4"
+                }
+              ],
+              "ProductDetailUrl": "https://www.mouser.it/it/ProductDetail/Texas-Instruments/LM358DR?qs=Zu35EjizYSSY6pJ37yjmHA%3D%3D",
+              "Reeling": true,
+              "ROHSStatus": "RoHS Compliant",
+              "SuggestedReplacement": "",
+              "MultiSimBlue": 0,
+              "UnitWeightKg": {
+                "UnitWeight": 0.00019
+              },
+              "AvailabilityInStock": "65119",
+              "AvailabilityOnOrder": [
+                {
+                  "Quantity": 97500,
+                  "Date": "2027-03-25T00:00:00"
+                }
+              ],
+              "InfoMessages": [],
+              "SurchargeMessages": null,
+              "ProductCompliance": [
+                {
+                  "ComplianceName": "TARIC",
+                  "ComplianceValue": "8542339000"
+                },
+                {
+                  "ComplianceName": "CNHTS",
+                  "ComplianceValue": "8542339000"
+                },
+                {
+                  "ComplianceName": "CAHTS",
+                  "ComplianceValue": "8542330000"
+                },
+                {
+                  "ComplianceName": "USHTS",
+                  "ComplianceValue": "8542330001"
+                },
+                {
+                  "ComplianceName": "JPHTS",
+                  "ComplianceValue": "8542330996"
+                },
+                {
+                  "ComplianceName": "KRHTS",
+                  "ComplianceValue": "8532331000"
+                },
+                {
+                  "ComplianceName": "MXHTS",
+                  "ComplianceValue": "8542330299"
+                },
+                {
+                  "ComplianceName": "ECCN",
+                  "ComplianceValue": "EAR99"
+                }
+              ],
+              "TradeCompliance": [
+                {
+                  "ComplianceName": "Paese di origine",
+                  "ComplianceValue": "Messico"
+                },
+                {
+                  "ComplianceName": "Paese di origine dell'assemblaggio",
+                  "ComplianceValue": "Messico"
+                },
+                {
+                  "ComplianceName": "Paese di diffusione",
+                  "ComplianceValue": "Stati Uniti d'America"
+                }
+              ]
+            },
+            {
+              "DataSheetUrl": "",
+              "Description": "Amplificatori operazionali - Amp. op. 2 circuits; 3 to 32V 0 to +70 Op Temp",
+              "FactoryStock": null,
+              "ImagePath": "https://www.mouser.com/images/mouserelectronics/images/ITP_SOIC_8_new_t.jpg",
+              "Category": "Amplificatori operazionali - Amp. op.",
+              "LeadTime": "49 Giorni",
+              "LifecycleStatus": "Not Recommended for New Designs",
+              "Manufacturer": "ROHM Semiconductor",
+              "ManufacturerPartNumber": "LM358DR",
+              "Min": "2500",
+              "Mult": "2500",
+              "MouserPartNumber": "755-LM358DR",
+              "ProductAttributes": [
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Reel"
+                },
+                {
+                  "AttributeName": "Quantità collo standard",
+                  "AttributeValue": "2500"
+                }
+              ],
+              "PriceBreaks": [],
+              "AlternatePackagings": null,
+              "ProductDetailUrl": "https://www.mouser.it/it/ProductDetail/ROHM-Semiconductor/LM358DR?qs=rew4TcUmwq8k4%252BUaGUH2bg%3D%3D",
+              "Reeling": true,
+              "ROHSStatus": "RoHS Compliant",
+              "SuggestedReplacement": "755-LM358FJ-GE2",
+              "MultiSimBlue": 0,
+              "UnitWeightKg": {
+                "UnitWeight": 0.00054
+              },
+              "AvailabilityInStock": null,
+              "AvailabilityOnOrder": [],
+              "InfoMessages": [],
+              "SurchargeMessages": null,
+              "RestrictionMessage": "Attualmente Mouser non vende questo prodotto nella tua regione.",
+              "ProductCompliance": [
+                {
+                  "ComplianceName": "CNHTS",
+                  "ComplianceValue": "8542319000"
+                },
+                {
+                  "ComplianceName": "CAHTS",
+                  "ComplianceValue": "8542330000"
+                },
+                {
+                  "ComplianceName": "USHTS",
+                  "ComplianceValue": "8542330001"
+                },
+                {
+                  "ComplianceName": "JPHTS",
+                  "ComplianceValue": "8542330996"
+                },
+                {
+                  "ComplianceName": "KRHTS",
+                  "ComplianceValue": "8532331000"
+                },
+                {
+                  "ComplianceName": "MXHTS",
+                  "ComplianceValue": "8542330299"
+                },
+                {
+                  "ComplianceName": "ECCN",
+                  "ComplianceValue": "EAR99"
+                }
+              ],
+              "TradeCompliance": [
+                {
+                  "ComplianceName": "Paese di origine",
+                  "ComplianceValue": "Filippine"
+                },
+                {
+                  "ComplianceName": "Paese di origine dell'assemblaggio",
+                  "ComplianceValue": "Non disponibile"
+                },
+                {
+                  "ComplianceName": "Paese di diffusione",
+                  "ComplianceValue": "Non disponibile"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/partnumber",
+      "params": {},
+      "answer": {
+        "Errors": [],
+        "SearchResults": {
+          "NumberOfResult": 2,
+          "Parts": [
+            {
+              "Availability": "65119 A magazzino",
+              "DataSheetUrl": "",
+              "Description": "Amplificatori operazionali - Amp. op. Dual Op Amp",
+              "FactoryStock": "0",
+              "ImagePath": "https://www.mouser.com/images/texasinstruments/images/ITP_TI_SOIC-8_D_t.jpg",
+              "Category": "Amplificatori operazionali - Amp. op.",
+              "LeadTime": "140 Giorni",
+              "LifecycleStatus": null,
+              "Manufacturer": "Texas Instruments",
+              "ManufacturerPartNumber": "LM358DR",
+              "Min": "1",
+              "Mult": "1",
+              "MouserPartNumber": "595-LM358DR",
+              "ProductAttributes": [
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Reel"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Cut Tape"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "MouseReel",
+                  "AttributeCost": "La commissione 5,00 € MouseReel™ verrà aggiunta e calcolata nel carrello. Nessuno degli ordini di articoli MouseReel™ può essere annullato o reso."
+                },
+                {
+                  "AttributeName": "Quantità collo standard",
+                  "AttributeValue": "2500"
+                }
+              ],
+              "PriceBreaks": [
+                {
+                  "Quantity": 1,
+                  "Price": "0,224 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 10,
+                  "Price": "0,151 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 25,
+                  "Price": "0,133 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 100,
+                  "Price": "0,114 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 250,
+                  "Price": "0,105 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 500,
+                  "Price": "0,10 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 1000,
+                  "Price": "0,095 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 2500,
+                  "Price": "0,089 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 5000,
+                  "Price": "0,086 €",
+                  "Currency": "EUR"
+                }
+              ],
+              "AlternatePackagings": [
+                {
+                  "APMfrPN": "LM358DG4"
+                },
+                {
+                  "APMfrPN": " LM358DRG4"
+                }
+              ],
+              "ProductDetailUrl": "https://www.mouser.it/it/ProductDetail/Texas-Instruments/LM358DR?qs=Zu35EjizYSSY6pJ37yjmHA%3D%3D",
+              "Reeling": true,
+              "ROHSStatus": "RoHS Compliant",
+              "SuggestedReplacement": "",
+              "MultiSimBlue": 0,
+              "UnitWeightKg": {
+                "UnitWeight": 0.00019
+              },
+              "AvailabilityInStock": "65119",
+              "AvailabilityOnOrder": [
+                {
+                  "Quantity": 97500,
+                  "Date": "2027-03-25T00:00:00"
+                }
+              ],
+              "InfoMessages": [],
+              "SurchargeMessages": null,
+              "ProductCompliance": [
+                {
+                  "ComplianceName": "TARIC",
+                  "ComplianceValue": "8542339000"
+                },
+                {
+                  "ComplianceName": "CNHTS",
+                  "ComplianceValue": "8542339000"
+                },
+                {
+                  "ComplianceName": "CAHTS",
+                  "ComplianceValue": "8542330000"
+                },
+                {
+                  "ComplianceName": "USHTS",
+                  "ComplianceValue": "8542330001"
+                },
+                {
+                  "ComplianceName": "JPHTS",
+                  "ComplianceValue": "8542330996"
+                },
+                {
+                  "ComplianceName": "KRHTS",
+                  "ComplianceValue": "8532331000"
+                },
+                {
+                  "ComplianceName": "MXHTS",
+                  "ComplianceValue": "8542330299"
+                },
+                {
+                  "ComplianceName": "ECCN",
+                  "ComplianceValue": "EAR99"
+                }
+              ],
+              "TradeCompliance": [
+                {
+                  "ComplianceName": "Paese di origine",
+                  "ComplianceValue": "Messico"
+                },
+                {
+                  "ComplianceName": "Paese di origine dell'assemblaggio",
+                  "ComplianceValue": "Messico"
+                },
+                {
+                  "ComplianceName": "Paese di diffusione",
+                  "ComplianceValue": "Stati Uniti d'America"
+                }
+              ]
+            },
+            {
+              "DataSheetUrl": "",
+              "Description": "Amplificatori operazionali - Amp. op. 2 circuits; 3 to 32V 0 to +70 Op Temp",
+              "FactoryStock": null,
+              "ImagePath": "https://www.mouser.com/images/mouserelectronics/images/ITP_SOIC_8_new_t.jpg",
+              "Category": "Amplificatori operazionali - Amp. op.",
+              "LeadTime": "49 Giorni",
+              "LifecycleStatus": "Not Recommended for New Designs",
+              "Manufacturer": "ROHM Semiconductor",
+              "ManufacturerPartNumber": "LM358DR",
+              "Min": "2500",
+              "Mult": "2500",
+              "MouserPartNumber": "755-LM358DR",
+              "ProductAttributes": [
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Reel"
+                },
+                {
+                  "AttributeName": "Quantità collo standard",
+                  "AttributeValue": "2500"
+                }
+              ],
+              "PriceBreaks": [],
+              "AlternatePackagings": null,
+              "ProductDetailUrl": "https://www.mouser.it/it/ProductDetail/ROHM-Semiconductor/LM358DR?qs=rew4TcUmwq8k4%252BUaGUH2bg%3D%3D",
+              "Reeling": true,
+              "ROHSStatus": "RoHS Compliant",
+              "SuggestedReplacement": "755-LM358FJ-GE2",
+              "MultiSimBlue": 0,
+              "UnitWeightKg": {
+                "UnitWeight": 0.00054
+              },
+              "AvailabilityInStock": null,
+              "AvailabilityOnOrder": [],
+              "InfoMessages": [],
+              "SurchargeMessages": null,
+              "RestrictionMessage": "Attualmente Mouser non vende questo prodotto nella tua regione.",
+              "ProductCompliance": [
+                {
+                  "ComplianceName": "CNHTS",
+                  "ComplianceValue": "8542319000"
+                },
+                {
+                  "ComplianceName": "CAHTS",
+                  "ComplianceValue": "8542330000"
+                },
+                {
+                  "ComplianceName": "USHTS",
+                  "ComplianceValue": "8542330001"
+                },
+                {
+                  "ComplianceName": "JPHTS",
+                  "ComplianceValue": "8542330996"
+                },
+                {
+                  "ComplianceName": "KRHTS",
+                  "ComplianceValue": "8532331000"
+                },
+                {
+                  "ComplianceName": "MXHTS",
+                  "ComplianceValue": "8542330299"
+                },
+                {
+                  "ComplianceName": "ECCN",
+                  "ComplianceValue": "EAR99"
+                }
+              ],
+              "TradeCompliance": [
+                {
+                  "ComplianceName": "Paese di origine",
+                  "ComplianceValue": "Filippine"
+                },
+                {
+                  "ComplianceName": "Paese di origine dell'assemblaggio",
+                  "ComplianceValue": "Non disponibile"
+                },
+                {
+                  "ComplianceName": "Paese di diffusione",
+                  "ComplianceValue": "Non disponibile"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/partnumber",
+      "params": {},
+      "answer": {
+        "Errors": [],
+        "SearchResults": {
+          "NumberOfResult": 1,
+          "Parts": [
+            {
+              "Availability": "65119 A magazzino",
+              "DataSheetUrl": "",
+              "Description": "Amplificatori operazionali - Amp. op. Dual Op Amp",
+              "FactoryStock": "0",
+              "ImagePath": "https://www.mouser.com/images/texasinstruments/images/ITP_TI_SOIC-8_D_t.jpg",
+              "Category": "Amplificatori operazionali - Amp. op.",
+              "LeadTime": "140 Giorni",
+              "LifecycleStatus": null,
+              "Manufacturer": "Texas Instruments",
+              "ManufacturerPartNumber": "LM358DR",
+              "Min": "1",
+              "Mult": "1",
+              "MouserPartNumber": "595-LM358DR",
+              "ProductAttributes": [
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Reel"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "Cut Tape"
+                },
+                {
+                  "AttributeName": "Confezione",
+                  "AttributeValue": "MouseReel",
+                  "AttributeCost": "La commissione 5,00 € MouseReel™ verrà aggiunta e calcolata nel carrello. Nessuno degli ordini di articoli MouseReel™ può essere annullato o reso."
+                },
+                {
+                  "AttributeName": "Quantità collo standard",
+                  "AttributeValue": "2500"
+                }
+              ],
+              "PriceBreaks": [
+                {
+                  "Quantity": 1,
+                  "Price": "0,224 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 10,
+                  "Price": "0,151 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 25,
+                  "Price": "0,133 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 100,
+                  "Price": "0,114 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 250,
+                  "Price": "0,105 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 500,
+                  "Price": "0,10 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 1000,
+                  "Price": "0,095 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 2500,
+                  "Price": "0,089 €",
+                  "Currency": "EUR"
+                },
+                {
+                  "Quantity": 5000,
+                  "Price": "0,086 €",
+                  "Currency": "EUR"
+                }
+              ],
+              "AlternatePackagings": [
+                {
+                  "APMfrPN": "LM358DG4"
+                },
+                {
+                  "APMfrPN": " LM358DRG4"
+                }
+              ],
+              "ProductDetailUrl": "https://www.mouser.it/it/ProductDetail/Texas-Instruments/LM358DR?qs=Zu35EjizYSSY6pJ37yjmHA%3D%3D",
+              "Reeling": true,
+              "ROHSStatus": "RoHS Compliant",
+              "SuggestedReplacement": "",
+              "MultiSimBlue": 0,
+              "UnitWeightKg": {
+                "UnitWeight": 0.00019
+              },
+              "AvailabilityInStock": "65119",
+              "AvailabilityOnOrder": [
+                {
+                  "Quantity": 97500,
+                  "Date": "2027-03-25T00:00:00"
+                }
+              ],
+              "InfoMessages": [],
+              "SurchargeMessages": null,
+              "ProductCompliance": [
+                {
+                  "ComplianceName": "TARIC",
+                  "ComplianceValue": "8542339000"
+                },
+                {
+                  "ComplianceName": "CNHTS",
+                  "ComplianceValue": "8542339000"
+                },
+                {
+                  "ComplianceName": "CAHTS",
+                  "ComplianceValue": "8542330000"
+                },
+                {
+                  "ComplianceName": "USHTS",
+                  "ComplianceValue": "8542330001"
+                },
+                {
+                  "ComplianceName": "JPHTS",
+                  "ComplianceValue": "8542330996"
+                },
+                {
+                  "ComplianceName": "KRHTS",
+                  "ComplianceValue": "8532331000"
+                },
+                {
+                  "ComplianceName": "MXHTS",
+                  "ComplianceValue": "8542330299"
+                },
+                {
+                  "ComplianceName": "ECCN",
+                  "ComplianceValue": "EAR99"
+                }
+              ],
+              "TradeCompliance": [
+                {
+                  "ComplianceName": "Paese di origine",
+                  "ComplianceValue": "Messico"
+                },
+                {
+                  "ComplianceName": "Paese di origine dell'assemblaggio",
+                  "ComplianceValue": "Messico"
+                },
+                {
+                  "ComplianceName": "Paese di diffusione",
+                  "ComplianceValue": "Stati Uniti d'America"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

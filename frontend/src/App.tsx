@@ -1,16 +1,18 @@
-import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import type { User, AuthConfig } from './types/auth';
 import { Button } from '@/components/ui/button';
 import { Toaster } from 'sonner';
-import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { ApiHttpError, fetchApi } from '@/lib/api';
 import { fetchAuthConfig, fetchCurrentUser, isAuthCallbackPath, stashCurrentLocation } from '@/lib/auth';
 import { IS_APPLE_PLATFORM } from '@/lib/shortcuts';
+import { insideKiCad } from '@/lib/kicad-host';
+import { roleLabel } from '@/lib/roles';
 import { useHotkeys } from '@/hooks/use-hotkeys';
-import { clearWorkspaceDataCache } from '@/hooks/use-workspace-data';
+import { useSignedInUser } from '@/hooks/use-signed-in-user';
 import { CommandPalette } from '@/components/command-palette';
+import { TopSearch } from '@/components/top-search';
 import { KeyboardShortcutsDialog } from '@/components/keyboard-shortcuts-dialog';
 import { RoleAuthorityPopover } from '@/components/role-authority-popover';
 import { SessionExpiredBanner, SESSION_BANNER_HEIGHT } from '@/components/session-expired-banner';
@@ -26,6 +28,9 @@ const AuthCallbackPage = lazy(() =>
 );
 const Workspace = lazy(() =>
     import('./components/workspace').then((module) => ({ default: module.Workspace }))
+);
+const KiCadPartPage = lazy(() =>
+    import('@/features/supply/kicad-part-page').then((module) => ({ default: module.KiCadPartPage }))
 );
 const ProjectDetailPage = lazy(() =>
     import('./pages/ProjectDetailPage').then((module) => ({ default: module.ProjectDetailPage }))
@@ -49,6 +54,19 @@ function FullScreenMessage({ message, isError = false }: { message: string; isEr
 
 /** A lazily loaded page, with the route fallback while its chunk loads. */
 const suspended = (page: ReactNode) => <Suspense fallback={<RouteFallback />}>{page}</Suspense>;
+
+/** The app inside KiCad's Remote Symbols webview: the part the panel opened, alone. */
+function InsideKiCad({ user }: { user: User }) {
+    const params = new URLSearchParams(window.location.search);
+    return (
+        <BrowserRouter useTransitions={false}>
+            <Toaster richColors position="top-right" />
+            <div className="min-h-app-viewport bg-background text-foreground">
+                {suspended(<KiCadPartPage partId={params.get('part')} componentId={params.get('component')} user={user} />)}
+            </div>
+        </BrowserRouter>
+    );
+}
 
 function PasswordChangeGate({
     authConfig,
@@ -75,7 +93,9 @@ function PasswordChangeGate({
 }
 
 function App() {
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useSignedInUser();
+    // The mount effect reads auth once; `setUser` never changes, so it is read through a ref rather than re-running the effect.
+    const signIn = useRef(setUser);
     const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
     const [loading, setLoading] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
@@ -107,27 +127,6 @@ function App() {
         { combo: '/', handler: focusSearchField },
     ]);
 
-    const loadCurrentUser = async (config: AuthConfig, signal?: AbortSignal) => {
-        try {
-            const currentUser = await fetchCurrentUser(signal);
-            if (signal?.aborted) {
-                return;
-            }
-            setUser(currentUser);
-            setAuthError(null);
-        } catch (err) {
-            if (signal?.aborted) {
-                return;
-            }
-            if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
-                setUser(null);
-                setAuthError(config.auth_enabled && err.status === 403 ? err.message : null);
-                return;
-            }
-            throw err;
-        }
-    };
-
     // Fetch auth configuration on mount
     useEffect(() => {
         const controller = new AbortController();
@@ -140,13 +139,30 @@ function App() {
 
                 setAuthConfig(config);
                 setAuthError(null);
-                await loadCurrentUser(config, controller.signal);
+                try {
+                    const currentUser = await fetchCurrentUser(controller.signal);
+                    if (controller.signal.aborted) {
+                        return;
+                    }
+                    signIn.current(currentUser);
+                    setAuthError(null);
+                } catch (err) {
+                    if (controller.signal.aborted) {
+                        return;
+                    }
+                    if (err instanceof ApiHttpError && (err.status === 401 || err.status === 403)) {
+                        signIn.current(null);
+                        setAuthError(config.auth_enabled && err.status === 403 ? err.message : null);
+                        return;
+                    }
+                    throw err;
+                }
             } catch (err) {
                 if (controller.signal.aborted) {
                     return;
                 }
                 console.error('Failed to fetch auth config:', err);
-                setUser(null);
+                signIn.current(null);
                 setAuthError('Failed to initialize authentication');
             } finally {
                 if (!controller.signal.aborted) {
@@ -182,11 +198,10 @@ function App() {
         };
         window.addEventListener('kicad-prism-auth-error', handleAuthError);
         return () => window.removeEventListener('kicad-prism-auth-error', handleAuthError);
-    }, []);
+    }, [setUser]);
 
     const handleLogout = () => {
         void fetchApi('/api/auth/logout', { method: 'POST' }).finally(() => {
-            clearWorkspaceDataCache();
             setUser(null);
             setAuthError(null);
             setSessionExpired(false);
@@ -253,6 +268,12 @@ function App() {
         );
     }
 
+    // Inside KiCad's Remote Symbols webview only the part the panel opened is shown: KiCad keeps every navigation there, and
+    // the workspace has no way back to the panel.
+    if (insideKiCad()) {
+        return <InsideKiCad user={user} />;
+    }
+
     // User is authenticated or auth is disabled - show app
     return (
         /*
@@ -307,19 +328,7 @@ function App() {
                                 </div>
 
                                 <div className="flex justify-center">
-                                    <div className="relative w-full max-w-2xl">
-                                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                        <Input
-                                            data-shortcut-search
-                                            value={workspaceSearchQuery}
-                                            onChange={(event) => setWorkspaceSearchQuery(event.target.value)}
-                                            placeholder="Search projects by name, description, and metadata"
-                                            className="pl-10 pr-10"
-                                        />
-                                        <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 border bg-muted px-1 text-[11px] text-muted-foreground">
-                                            /
-                                        </kbd>
-                                    </div>
+                                    <TopSearch value={workspaceSearchQuery} onChange={setWorkspaceSearchQuery} role={user?.role} />
                                 </div>
 
                                 <div className="flex items-center gap-4">
@@ -347,7 +356,7 @@ function App() {
                                         </>
                                     )}
                                     {user && user.email === 'guest@local' && (
-                                        <span className="text-sm text-muted-foreground">Viewing as Guest</span>
+                                        <span className="text-sm text-muted-foreground">{roleLabel(user.role)} · sign-in off</span>
                                     )}
                                 </div>
                             </div>

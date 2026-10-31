@@ -22,6 +22,9 @@ from app.services.job_kinds import resource_capacities
 from app.services.job_runtime import job_state_root
 from app.services.job_service import jobs
 
+# SIGKILL does not exist on Windows; the stop that cannot be ignored is then a tree kill (see ``_signal_group``).
+FORCE = getattr(signal, "SIGKILL", signal.SIGABRT)
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -102,6 +105,7 @@ class PrismWorker:
         self._next_bundle_retention = 0.0
         self._bundle_upkeep: threading.Thread | None = None
         self._bundle_backfill_state = None
+        self._next_supply_scan = 0.0
         self._next_webhook_delivery = 0.0
         self._webhook_delivery: threading.Thread | None = None
         self._next_worker_heartbeat = 0.0
@@ -309,7 +313,11 @@ class PrismWorker:
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 cwd=str(Path(__file__).resolve().parents[1]),
-                start_new_session=True,
+                # Its own process group, so the worker can stop the job and anything the job started.
+                **(
+                    {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+                    if os.name == "nt" else {"start_new_session": True}
+                ),
             )
         except Exception as error:
             log_handle.close()
@@ -349,6 +357,13 @@ class PrismWorker:
     @staticmethod
     def _signal_group(process: subprocess.Popen[bytes], sig: signal.Signals) -> None:
         if process.poll() is not None:
+            return
+        if os.name == "nt":
+            # No process groups to signal: a polite stop ends the job itself, a forced one ends it and its children.
+            if sig is FORCE:
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True, check=False)
+            else:
+                process.terminate()
             return
         try:
             os.killpg(process.pid, sig)
@@ -492,7 +507,7 @@ class PrismWorker:
                 and now - running.termination_started
                 >= settings.PRISM_JOB_CANCEL_GRACE_SECONDS
             ):
-                self._signal_group(running.process, signal.SIGKILL)
+                self._signal_group(running.process, FORCE)
                 continue
 
             if now - running.last_heartbeat < self.heartbeat_seconds:
@@ -697,6 +712,15 @@ class PrismWorker:
         schedule_due_tracker_jobs()
         self._next_tracker_scan = time.monotonic() + 5
 
+    def schedule_supply_jobs(self) -> None:
+        if self.worker_pool != "prism" or time.monotonic() < self._next_supply_scan:
+            return
+        from app.services.supply.jobs import SCAN_SECONDS, schedule_due_supply_jobs
+
+        # Set the next scan first: a database error below must not make the loop retry every pass.
+        self._next_supply_scan = time.monotonic() + SCAN_SECONDS
+        schedule_due_supply_jobs()
+
     def sweep_job_ends(self) -> None:
         """Settle feature rows whose job's process died before settling them."""
 
@@ -756,6 +780,10 @@ class PrismWorker:
             except Exception:
                 self._log_database_error("schedule tracker jobs")
             try:
+                self.schedule_supply_jobs()
+            except Exception:
+                self._log_database_error("schedule supply jobs")
+            try:
                 self.schedule_design_bundles()
             except Exception:
                 self._log_database_error("schedule design bundle upkeep")
@@ -802,7 +830,7 @@ class PrismWorker:
         kill_deadline = time.monotonic() + 5
         while self.running and time.monotonic() < kill_deadline:
             for running in self.running.values():
-                self._signal_group(running.process, signal.SIGKILL)
+                self._signal_group(running.process, FORCE)
             self.supervise()
             if self.running:
                 time.sleep(0.05)

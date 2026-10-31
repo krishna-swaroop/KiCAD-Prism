@@ -31,6 +31,9 @@ from app.core.roles import (
     PROJECT_RELEASE_ACTOR_ROLES,
     PROJECT_VIEW_ROLES,
     ROLE_ORDER,
+    SUPPLY_APPROVE_ROLES,
+    SUPPLY_READ_ROLES,
+    SUPPLY_WRITE_ROLES,
     Role,
 )
 
@@ -54,6 +57,10 @@ Action = Literal[
     "catalog_qa",
     "catalog_admin",
     "remote_symbols",
+    "supply_read",
+    "supply_write",
+    "supply_follow",
+    "supply_approve",
     "ops_read",
     "ops_act",
 ]
@@ -113,6 +120,13 @@ RULES: dict[Action, Rule] = {
         frozenset({"admin"}), "Administrator access required", ("admin",), _PROVIDER_CATALOG, human_only=True
     ),
     "remote_symbols": Rule(ALL_ROLES, scopes=("remote_symbols.read", "api:read"), provider_refusal=None),
+    # Supply: stock, prices and the matching review queue. Reading it, watching parts, and deciding matches follow the catalog's roles.
+    "supply_read": Rule(SUPPLY_READ_ROLES, "Supply read access required", ("api:read",)),
+    "supply_write": Rule(SUPPLY_WRITE_ROLES, "Supply write access required", ("api:write",), _PROVIDER_MODIFY),
+    # What Prism follows (a project, a part's tier, a packaging pick) and notes on BOM lines: anyone who reads supply, with a token that may write.
+    "supply_follow": Rule(SUPPLY_READ_ROLES, "Supply read access required", ("api:write",), _PROVIDER_MODIFY),
+    # Waivers, accepted matches, new manufacturers: a sign-off, so an agent never gives it.
+    "supply_approve": Rule(SUPPLY_APPROVE_ROLES, "Supply review access required", ("api:write",), _PROVIDER_MODIFY, human_only=True),
     # Diagnostics (ADR scripting-and-mcp §11, D20/D21): admin reads and a few
     # bounded actions. Not human-only: they inspect and unstick, they sign nothing off.
     "ops_read": Rule(frozenset({"admin"}), "Admin role required", ("ops:read",), _PROVIDER_ADMIN),
@@ -320,6 +334,9 @@ ROLE_AUTHORITIES: dict[str, Action] = {
     "edit_catalog": "catalog_write",
     "review_catalog_qa": "catalog_qa",
     "administer_catalog": "catalog_admin",
+    "view_supply": "supply_read",
+    "edit_supply": "supply_write",
+    "review_supply": "supply_approve",
     "administer_workspace": "admin",
 }
 

@@ -1,0 +1,65 @@
+{
+ "_source": "Shaped by the SearchResponseRoot schema of the Mouser Search API V1 Swagger description (api.mouser.com/api/docs/V1, fetched 2026-10-11). The description carries no examples, so the values are illustrative and the text formats (stock, price, lead time) are the ones the adapter must cope with. Replace with a recorded answer when one is available.",
+ "Errors": [],
+ "SearchResults": {
+  "NumberOfResult": 2,
+  "Parts": [
+   {
+    "Availability": "12,480 In Stock",
+    "AvailabilityInStock": "12480",
+    "AvailabilityOnOrder": [
+     {"Quantity": 5000, "Date": "2026-11-20T00:00:00"}
+    ],
+    "DataSheetUrl": "https://www.mouser.com/datasheet/2/405/lm358-example.pdf",
+    "Description": "Operational Amplifiers - Op Amps Dual Op Amp",
+    "Category": "Operational Amplifiers - Op Amps",
+    "LeadTime": "42 Days",
+    "LifecycleStatus": null,
+    "Manufacturer": "Texas Instruments",
+    "ManufacturerPartNumber": "LM358DR",
+    "Min": "1",
+    "Mult": "1",
+    "MouserPartNumber": "595-LM358DR",
+    "ProductAttributes": [
+     {"AttributeName": "Packaging", "AttributeValue": "Reel", "AttributeCost": null},
+     {"AttributeName": "Packaging", "AttributeValue": "Cut Tape", "AttributeCost": null},
+     {"AttributeName": "Packaging", "AttributeValue": "MouseReel", "AttributeCost": null}
+    ],
+    "PriceBreaks": [
+     {"Quantity": 1, "Price": "0,52 €", "Currency": "EUR"},
+     {"Quantity": 10, "Price": "0,331 €", "Currency": "EUR"},
+     {"Quantity": 100, "Price": "0,213 €", "Currency": "EUR"},
+     {"Quantity": 2500, "Price": "0,113 €", "Currency": "EUR"}
+    ],
+    "ProductDetailUrl": "https://www.mouser.com/ProductDetail/Texas-Instruments/LM358DR",
+    "Reeling": true,
+    "ROHSStatus": "RoHS Compliant",
+    "IsDiscontinued": "false",
+    "SuggestedReplacement": ""
+   },
+   {
+    "Availability": "None",
+    "AvailabilityInStock": null,
+    "AvailabilityOnOrder": [],
+    "Description": "Voltage Regulators",
+    "LeadTime": "12 Weeks",
+    "LifecycleStatus": "Not Recommended for New Designs",
+    "Manufacturer": "Texas Instruments",
+    "ManufacturerPartNumber": "TPS62840DLCR",
+    "Min": "3000",
+    "Mult": "3000",
+    "MouserPartNumber": "595-TPS62840DLCR",
+    "ProductAttributes": [
+     {"AttributeName": "Packaging", "AttributeValue": "Reel", "AttributeCost": null}
+    ],
+    "PriceBreaks": [
+     {"Quantity": 3000, "Price": "0,9876 €", "Currency": "EUR"}
+    ],
+    "ProductDetailUrl": "https://www.mouser.com/ProductDetail/Texas-Instruments/TPS62840DLCR",
+    "Reeling": false,
+    "ROHSStatus": "RoHS Compliant",
+    "IsDiscontinued": "true"
+   }
+  ]
+ }
+}

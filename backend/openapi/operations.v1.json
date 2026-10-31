@@ -9,9 +9,19 @@
     "path": "/api/v1/catalog/import-proposals/{proposal_id}/accept",
     "typed": true
   },
+  "acknowledge_alert": {
+    "method": "POST",
+    "path": "/api/v1/supply/alerts/{alert_id}/acknowledge",
+    "typed": true
+  },
   "acknowledge_project_tracker": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/tracker/acknowledge",
+    "typed": true
+  },
+  "add_comment": {
+    "method": "POST",
+    "path": "/api/v1/supply/projects/{project_id}/bom-comments",
     "typed": true
   },
   "add_comment_reaction": {
@@ -19,9 +29,29 @@
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/reactions/{reaction}",
     "typed": true
   },
+  "add_exemption": {
+    "method": "POST",
+    "path": "/api/v1/supply/parts/{part_id}/exemptions",
+    "typed": true
+  },
+  "add_maker_spelling": {
+    "method": "POST",
+    "path": "/api/v1/supply/settings/makers",
+    "typed": true
+  },
   "add_mate": {
     "method": "POST",
     "path": "/api/v1/catalog/components/{component_id}/mates-with",
+    "typed": true
+  },
+  "add_notice": {
+    "method": "POST",
+    "path": "/api/v1/supply/notices",
+    "typed": true
+  },
+  "add_number_ending": {
+    "method": "POST",
+    "path": "/api/v1/supply/settings/number-endings",
     "typed": true
   },
   "add_reply": {
@@ -54,6 +84,16 @@
     "path": "/api/v1/catalog/metadata/batches/{batch_id}/apply",
     "typed": true
   },
+  "apply_proposed": {
+    "method": "POST",
+    "path": "/api/v1/supply/packaging/auto/{part_id}",
+    "typed": true
+  },
+  "apply_similar": {
+    "method": "POST",
+    "path": "/api/v1/supply/packaging/similar",
+    "typed": true
+  },
   "approve_build": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/release-studio/builds/{build_id}/approvals",
@@ -64,9 +104,19 @@
     "path": "/api/v1/catalog/metadata/batches/{batch_id}/approve-fields",
     "typed": true
   },
+  "approve_waiver": {
+    "method": "POST",
+    "path": "/api/v1/supply/waivers/{waiver_id}/approve",
+    "typed": true
+  },
   "archive_metadata_field": {
     "method": "POST",
     "path": "/api/v1/catalog/metadata/fields/{field_id}/archive",
+    "typed": true
+  },
+  "ask_substitutes": {
+    "method": "POST",
+    "path": "/api/v1/supply/parts/{part_id}/ask-substitutes",
     "typed": true
   },
   "attach_catalog_draft": {
@@ -87,6 +137,16 @@
   "browse_library_assets": {
     "method": "GET",
     "path": "/api/v1/catalog/assets/browse",
+    "typed": true
+  },
+  "budget": {
+    "method": "GET",
+    "path": "/api/v1/supply/budget",
+    "typed": true
+  },
+  "build_usage": {
+    "method": "POST",
+    "path": "/api/v1/supply/bom/usage/build",
     "typed": true
   },
   "bulk_accept_project_import_proposals": {
@@ -129,14 +189,59 @@
     "path": "/api/v1/settings/git-access/check",
     "typed": true
   },
+  "check_inventory_source": {
+    "method": "POST",
+    "path": "/api/v1/supply/inventory-sources/{source_id}/check",
+    "typed": true
+  },
+  "check_notices": {
+    "method": "POST",
+    "path": "/api/v1/supply/parts/{part_id}/check-notices",
+    "typed": true
+  },
   "check_release_tag": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/release-studio/tags/{tag}",
     "typed": true
   },
+  "choose_line": {
+    "method": "POST",
+    "path": "/api/v1/supply/tracking/projects/{project_id}/lines/choose",
+    "typed": true
+  },
+  "choose_maker": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/choices/{part_id}/choose",
+    "typed": true
+  },
+  "clear": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/packaging/{part_id}/{connector_id}",
+    "typed": true
+  },
+  "clear_offers_csv": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/connectors/{connector_id}/csv",
+    "typed": true
+  },
+  "clear_preferred": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/parts/{part_id}/preferred",
+    "typed": true
+  },
   "clear_project_thumbnail": {
     "method": "DELETE",
     "path": "/api/v1/projects/{project_id}/thumbnail",
+    "typed": true
+  },
+  "clear_restriction": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/ending/{component_id}/restriction",
+    "typed": true
+  },
+  "clear_trade_mark": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/parts/{part_id}/trade-mark",
     "typed": true
   },
   "compare_component_revisions": {
@@ -149,14 +254,29 @@
     "path": "/api/v1/catalog/import-snapshots/folders/{snapshot_id}/complete",
     "typed": true
   },
+  "component_state": {
+    "method": "GET",
+    "path": "/api/v1/supply/tracking/components/{component_id}",
+    "typed": true
+  },
   "components_by_category": {
     "method": "GET",
     "path": "/api/v1/remote-provider/components-by-category",
     "typed": true
   },
+  "components_status": {
+    "method": "POST",
+    "path": "/api/v1/supply/bom/components-status",
+    "typed": true
+  },
   "config": {
     "method": "GET",
     "path": "/api/v1/agent/config",
+    "typed": true
+  },
+  "confirm_alias": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/aliases/confirm",
     "typed": true
   },
   "connector_health": {
@@ -167,6 +287,16 @@
   "convert_models": {
     "method": "POST",
     "path": "/api/v1/catalog/components/{component_id}/models/convert",
+    "typed": true
+  },
+  "costing_zip": {
+    "method": "GET",
+    "path": "/api/v1/supply/projects/{project_id}/costing.zip",
+    "typed": true
+  },
+  "count_unmatched_parts": {
+    "method": "GET",
+    "path": "/api/v1/supply/inventory-sources/{source_id}/unmatched/counts",
     "typed": true
   },
   "create_anchored_comment": {
@@ -214,6 +344,11 @@
     "path": "/api/v1/catalog/import-snapshots/folders",
     "typed": true
   },
+  "create_inventory_source": {
+    "method": "POST",
+    "path": "/api/v1/supply/inventory-sources",
+    "typed": true
+  },
   "create_metadata_batch": {
     "method": "POST",
     "path": "/api/v1/catalog/metadata/batches",
@@ -244,9 +379,64 @@
     "path": "/api/v1/admin/service-clients",
     "typed": true
   },
+  "create_supply_connector": {
+    "method": "POST",
+    "path": "/api/v1/supply/connectors",
+    "typed": true
+  },
   "create_webhook": {
     "method": "POST",
     "path": "/api/v1/settings/webhooks",
+    "typed": true
+  },
+  "create_work_item": {
+    "method": "POST",
+    "path": "/api/v1/supply/work-items",
+    "typed": true
+  },
+  "cross_reference_of": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/cross-reference",
+    "typed": true
+  },
+  "csv_template": {
+    "method": "GET",
+    "path": "/api/v1/supply/csv-template",
+    "typed": true
+  },
+  "current_rates": {
+    "method": "GET",
+    "path": "/api/v1/supply/fx",
+    "typed": true
+  },
+  "dashboard_figures": {
+    "method": "GET",
+    "path": "/api/v1/supply/dashboard",
+    "typed": true
+  },
+  "decide_alternate": {
+    "method": "POST",
+    "path": "/api/v1/supply/components/{component_id}/alternates/{part_id}/decision",
+    "typed": true
+  },
+  "decide_dismissal": {
+    "method": "POST",
+    "path": "/api/v1/supply/ending/dismissals/{decision_id}/{verdict}",
+    "typed": true
+  },
+  "decide_mute": {
+    "method": "POST",
+    "path": "/api/v1/supply/mutes/{decision_id}/{verdict}",
+    "typed": true
+  },
+  "decide_work_item": {
+    "method": "POST",
+    "path": "/api/v1/supply/work-items/{item_id}/state",
+    "typed": true
+  },
+  "declare_substance": {
+    "method": "POST",
+    "path": "/api/v1/supply/parts/{part_id}/substances",
     "typed": true
   },
   "delete_access_user": {
@@ -284,6 +474,11 @@
     "path": "/api/v1/folders/{folder_id}",
     "typed": true
   },
+  "delete_inventory_source": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/inventory-sources/{source_id}",
+    "typed": true
+  },
   "delete_project_endpoint": {
     "method": "DELETE",
     "path": "/api/v1/projects/{project_id}",
@@ -307,6 +502,11 @@
   "delete_setup": {
     "method": "DELETE",
     "path": "/api/v1/projects/{project_id}/sim/a0/setups/{setup_id}",
+    "typed": true
+  },
+  "delete_supply_connector": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/connectors/{connector_id}",
     "typed": true
   },
   "delete_user_password": {
@@ -339,6 +539,11 @@
     "path": "/api/v1/catalog/components/{component_id}/assets/id/{asset_id}",
     "typed": true
   },
+  "details": {
+    "method": "POST",
+    "path": "/api/v1/supply/fill/details",
+    "typed": true
+  },
   "detect_project_paths": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/detect-paths",
@@ -347,6 +552,11 @@
   "discover_folder_snapshot": {
     "method": "POST",
     "path": "/api/v1/catalog/import-snapshots/folders/{snapshot_id}/discover",
+    "typed": true
+  },
+  "dismiss_ending": {
+    "method": "PUT",
+    "path": "/api/v1/supply/ending/{component_id}/dismissal",
     "typed": true
   },
   "download_asset": {
@@ -394,6 +604,11 @@
     "path": "/api/v1/projects/{project_id}/sim/a0/setups",
     "typed": true
   },
+  "enter_rates": {
+    "method": "POST",
+    "path": "/api/v1/supply/fx/rates",
+    "typed": true
+  },
   "event_and_webhook_health": {
     "method": "GET",
     "path": "/api/v1/ops/event-health",
@@ -419,9 +634,39 @@
     "path": "/api/v1/catalog/metadata/export.csv",
     "typed": true
   },
+  "find_part": {
+    "method": "GET",
+    "path": "/api/v1/supply/part-lookup",
+    "typed": true
+  },
+  "follow_component": {
+    "method": "PUT",
+    "path": "/api/v1/supply/tracking/components/{component_id}",
+    "typed": true
+  },
+  "follow_number": {
+    "method": "POST",
+    "path": "/api/v1/supply/tracking/parts",
+    "typed": true
+  },
+  "follow_part": {
+    "method": "PUT",
+    "path": "/api/v1/supply/tracking/parts/{part_id}",
+    "typed": true
+  },
+  "forecasts_insights": {
+    "method": "GET",
+    "path": "/api/v1/supply/forecasts/insights",
+    "typed": true
+  },
   "forget_git_host_key": {
     "method": "DELETE",
     "path": "/api/v1/settings/git-access/host-keys/{host}",
+    "typed": true
+  },
+  "forget_signin": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/connectors/{connector_id}/signin",
     "typed": true
   },
   "generate_missing_previews": {
@@ -442,6 +687,21 @@
   "generate_webgpu_3d": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/webgpu-3d/generate",
+    "typed": true
+  },
+  "get_alert_rules": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/alert-rules",
+    "typed": true
+  },
+  "get_assessment": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/assessment",
+    "typed": true
+  },
+  "get_assessment_settings": {
+    "method": "GET",
+    "path": "/api/v1/supply/settings/assessment",
     "typed": true
   },
   "get_asset_content": {
@@ -544,6 +804,11 @@
     "path": "/api/v1/remote-provider/components/{component_id}",
     "typed": true
   },
+  "get_component_parts": {
+    "method": "GET",
+    "path": "/api/v1/supply/components/{component_id}/parts",
+    "typed": true
+  },
   "get_component_revision": {
     "method": "GET",
     "path": "/api/v1/catalog/components/{component_id}/revisions/{revision_id}",
@@ -559,9 +824,19 @@
     "path": "/api/v1/admin/trackers/connectors/{connector_id}",
     "typed": true
   },
+  "get_connector_push_token": {
+    "method": "GET",
+    "path": "/api/v1/supply/connectors/{target_id}/push-token",
+    "typed": true
+  },
   "get_current_session_user": {
     "method": "GET",
     "path": "/api/v1/auth/me",
+    "typed": true
+  },
+  "get_datasheet": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/datasheet",
     "typed": true
   },
   "get_design_bundles": {
@@ -619,6 +894,11 @@
     "path": "/api/v1/remote-provider/components/{component_id}/inline",
     "typed": true
   },
+  "get_inventory_source_push_token": {
+    "method": "GET",
+    "path": "/api/v1/supply/inventory-sources/{target_id}/push-token",
+    "typed": true
+  },
   "get_job": {
     "method": "GET",
     "path": "/api/v1/jobs/{job_id}",
@@ -642,6 +922,16 @@
   "get_job_timeline": {
     "method": "GET",
     "path": "/api/v1/ops/jobs/{job_id}/timeline",
+    "typed": true
+  },
+  "get_local_stock": {
+    "method": "GET",
+    "path": "/api/v1/supply/components/{component_id}/local-stock",
+    "typed": true
+  },
+  "get_makers": {
+    "method": "GET",
+    "path": "/api/v1/supply/settings/makers",
     "typed": true
   },
   "get_mcp_governance": {
@@ -669,6 +959,11 @@
     "path": "/api/v1/projects/monorepos/{repo_name}/structure",
     "typed": true
   },
+  "get_number_endings": {
+    "method": "GET",
+    "path": "/api/v1/supply/settings/number-endings",
+    "typed": true
+  },
   "get_oauth_callback_url": {
     "method": "GET",
     "path": "/api/v1/admin/trackers/oauth-callback-url",
@@ -687,6 +982,16 @@
   "get_output_placement": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/placement",
+    "typed": true
+  },
+  "get_part": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}",
+    "typed": true
+  },
+  "get_part_history": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/history",
     "typed": true
   },
   "get_part_manifest": {
@@ -849,9 +1154,19 @@
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/replies/{reply_id}/history",
     "typed": true
   },
+  "get_review_queue": {
+    "method": "GET",
+    "path": "/api/v1/supply/review",
+    "typed": true
+  },
   "get_route_latency": {
     "method": "GET",
     "path": "/api/v1/ops/route-latency",
+    "typed": true
+  },
+  "get_schedule": {
+    "method": "GET",
+    "path": "/api/v1/supply/schedule",
     "typed": true
   },
   "get_semantic_index_identity": {
@@ -919,6 +1234,11 @@
     "path": "/api/v1/workspace/bootstrap",
     "typed": true
   },
+  "ignore_unmatched_parts": {
+    "method": "POST",
+    "path": "/api/v1/supply/inventory-sources/{source_id}/unmatched/ignore",
+    "typed": true
+  },
   "impedance_template": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/release-studio/impedance-template.csv",
@@ -964,14 +1284,54 @@
     "path": "/api/v1/projects/{project_id}/sim/a0/power-tree",
     "typed": true
   },
+  "insights_overview": {
+    "method": "GET",
+    "path": "/api/v1/supply/insights",
+    "typed": true
+  },
+  "insights_risk_csv": {
+    "method": "GET",
+    "path": "/api/v1/supply/insights/risk.csv",
+    "typed": true
+  },
+  "issue_connector_push_token": {
+    "method": "POST",
+    "path": "/api/v1/supply/connectors/{target_id}/push-token",
+    "typed": true
+  },
+  "issue_inventory_source_push_token": {
+    "method": "POST",
+    "path": "/api/v1/supply/inventory-sources/{target_id}/push-token",
+    "typed": true
+  },
+  "keep_usual_build": {
+    "method": "PUT",
+    "path": "/api/v1/supply/tracking/projects/{project_id}/build",
+    "typed": true
+  },
+  "library_component_of": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/library-component",
+    "typed": true
+  },
   "link_library_asset": {
     "method": "POST",
     "path": "/api/v1/catalog/components/{component_id}/assets/{asset_type}/link",
     "typed": true
   },
+  "link_unmatched_part": {
+    "method": "POST",
+    "path": "/api/v1/supply/inventory-sources/{source_id}/unmatched/{remote_part}/link",
+    "typed": true
+  },
   "list_access_users": {
     "method": "GET",
     "path": "/api/v1/settings/access/users",
+    "typed": true
+  },
+  "list_alerts": {
+    "method": "GET",
+    "path": "/api/v1/supply/alerts",
     "typed": true
   },
   "list_all_mcp_clients": {
@@ -1007,6 +1367,11 @@
   "list_categories": {
     "method": "GET",
     "path": "/api/v1/remote-provider/categories",
+    "typed": true
+  },
+  "list_comments": {
+    "method": "GET",
+    "path": "/api/v1/supply/projects/{project_id}/bom-comments",
     "typed": true
   },
   "list_component_audit": {
@@ -1049,6 +1414,11 @@
     "path": "/api/v1/projects/{project_id}/release-studio/builds/{build_id}/sheets",
     "typed": true
   },
+  "list_ending": {
+    "method": "GET",
+    "path": "/api/v1/supply/ending",
+    "typed": true
+  },
   "list_engines": {
     "method": "GET",
     "path": "/api/v1/sim/a0/engines",
@@ -1069,9 +1439,19 @@
     "path": "/api/v1/trackers/identities",
     "typed": true
   },
+  "list_inventory_sources": {
+    "method": "GET",
+    "path": "/api/v1/supply/inventory-sources",
+    "typed": true
+  },
   "list_linkable_connectors": {
     "method": "GET",
     "path": "/api/v1/trackers/linkable-connectors",
+    "typed": true
+  },
+  "list_manufacturers": {
+    "method": "GET",
+    "path": "/api/v1/supply/manufacturers",
     "typed": true
   },
   "list_mates_with": {
@@ -1114,6 +1494,11 @@
     "path": "/api/v1/auth/sessions",
     "typed": true
   },
+  "list_parts": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts",
+    "typed": true
+  },
   "list_personal_tokens": {
     "method": "GET",
     "path": "/api/v1/auth/tokens",
@@ -1132,6 +1517,11 @@
   "list_projects": {
     "method": "GET",
     "path": "/api/v1/projects/",
+    "typed": true
+  },
+  "list_providers": {
+    "method": "GET",
+    "path": "/api/v1/supply/providers",
     "typed": true
   },
   "list_recent_requests": {
@@ -1154,9 +1544,19 @@
     "path": "/api/v1/projects/{project_id}/sim/a0/setups",
     "typed": true
   },
+  "list_supply_connectors": {
+    "method": "GET",
+    "path": "/api/v1/supply/connectors",
+    "typed": true
+  },
   "list_tokens": {
     "method": "GET",
     "path": "/api/v1/agent/tokens",
+    "typed": true
+  },
+  "list_unmatched_parts": {
+    "method": "GET",
+    "path": "/api/v1/supply/inventory-sources/{source_id}/unmatched",
     "typed": true
   },
   "list_vendor_profiles": {
@@ -1174,9 +1574,19 @@
     "path": "/api/v1/settings/webhooks",
     "typed": true
   },
+  "list_work_items": {
+    "method": "GET",
+    "path": "/api/v1/supply/work-items",
+    "typed": true
+  },
   "live": {
     "method": "GET",
     "path": "/api/v1/health/live",
+    "typed": true
+  },
+  "load_svhc_list": {
+    "method": "POST",
+    "path": "/api/v1/supply/compliance/svhc",
     "typed": true
   },
   "login": {
@@ -1192,6 +1602,16 @@
   "logout": {
     "method": "POST",
     "path": "/api/v1/auth/logout",
+    "typed": true
+  },
+  "lookup": {
+    "method": "POST",
+    "path": "/api/v1/supply/bom/lookup",
+    "typed": true
+  },
+  "market_history": {
+    "method": "GET",
+    "path": "/api/v1/supply/market/history",
     "typed": true
   },
   "metadata_batch_report": {
@@ -1269,6 +1689,41 @@
     "path": "/api/v1/ops/status",
     "typed": true
   },
+  "options": {
+    "method": "GET",
+    "path": "/api/v1/supply/packaging/{part_id}/{connector_id}",
+    "typed": true
+  },
+  "other_maker": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/choices/{part_id}/other",
+    "typed": true
+  },
+  "part_compliance": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/compliance",
+    "typed": true
+  },
+  "part_forecast": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/forecast",
+    "typed": true
+  },
+  "part_groups": {
+    "method": "GET",
+    "path": "/api/v1/supply/part-groups",
+    "typed": true
+  },
+  "part_notices": {
+    "method": "GET",
+    "path": "/api/v1/supply/parts/{part_id}/notices",
+    "typed": true
+  },
+  "part_state": {
+    "method": "GET",
+    "path": "/api/v1/supply/tracking/parts/{part_id}",
+    "typed": true
+  },
   "patch_setup": {
     "method": "PATCH",
     "path": "/api/v1/projects/{project_id}/sim/a0/setups/{setup_id}",
@@ -1279,9 +1734,24 @@
     "path": "/api/v1/admin/trackers/connectors/{connector_id}/pause",
     "typed": true
   },
+  "pause_supply_connector": {
+    "method": "POST",
+    "path": "/api/v1/supply/connectors/{connector_id}/pause",
+    "typed": true
+  },
+  "pick": {
+    "method": "PUT",
+    "path": "/api/v1/supply/packaging/{part_id}/{connector_id}",
+    "typed": true
+  },
   "pin_comment": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/pin",
+    "typed": true
+  },
+  "pin_listing": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/listings/{listing_id}/pin",
     "typed": true
   },
   "plugin_version": {
@@ -1309,6 +1779,51 @@
     "path": "/api/v1/catalog/metadata/import-csv/preview",
     "typed": true
   },
+  "preview_part": {
+    "method": "POST",
+    "path": "/api/v1/supply/tracking/parts/{part_id}/preview",
+    "typed": true
+  },
+  "preview_project": {
+    "method": "POST",
+    "path": "/api/v1/supply/tracking/projects/{project_id}/preview",
+    "typed": true
+  },
+  "preview_watch": {
+    "method": "POST",
+    "path": "/api/v1/supply/bom/watch/preview",
+    "typed": true
+  },
+  "progress": {
+    "method": "GET",
+    "path": "/api/v1/supply/checks/{request_id}",
+    "typed": true
+  },
+  "project_open": {
+    "method": "GET",
+    "path": "/api/v1/supply/tracking/projects/{project_id}/open",
+    "typed": true
+  },
+  "project_overview": {
+    "method": "GET",
+    "path": "/api/v1/supply/projects/{project_id}/supply",
+    "typed": true
+  },
+  "project_parts_page": {
+    "method": "GET",
+    "path": "/api/v1/supply/projects/{project_id}/parts",
+    "typed": true
+  },
+  "project_progress": {
+    "method": "GET",
+    "path": "/api/v1/supply/tracking/projects/{project_id}/progress",
+    "typed": true
+  },
+  "project_state": {
+    "method": "GET",
+    "path": "/api/v1/supply/tracking/projects/{project_id}",
+    "typed": true
+  },
   "project_tracker_health": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/tracker/health",
@@ -1317,6 +1832,21 @@
   "promote_comment_to_tracker": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/promote",
+    "typed": true
+  },
+  "propose_alternate": {
+    "method": "POST",
+    "path": "/api/v1/supply/components/{component_id}/alternates",
+    "typed": true
+  },
+  "propose_waiver": {
+    "method": "POST",
+    "path": "/api/v1/supply/parts/{part_id}/waivers",
+    "typed": true
+  },
+  "proposed": {
+    "method": "GET",
+    "path": "/api/v1/supply/packaging/auto/{part_id}",
     "typed": true
   },
   "publish_build": {
@@ -1329,9 +1859,34 @@
     "path": "/api/v1/projects/{project_id}/comments/push",
     "typed": true
   },
+  "push_connector_offers": {
+    "method": "POST",
+    "path": "/api/v1/supply/connectors/{connector_id}/offers",
+    "typed": true
+  },
+  "push_inventory_levels": {
+    "method": "POST",
+    "path": "/api/v1/supply/inventory-sources/{source_id}/levels",
+    "typed": true
+  },
+  "put_alert_rules": {
+    "method": "PUT",
+    "path": "/api/v1/supply/parts/{part_id}/alert-rules",
+    "typed": true
+  },
+  "put_assessment_settings": {
+    "method": "PUT",
+    "path": "/api/v1/supply/settings/assessment",
+    "typed": true
+  },
   "put_mcp_governance": {
     "method": "PUT",
     "path": "/api/v1/settings/mcp",
+    "typed": true
+  },
+  "put_schedule": {
+    "method": "PUT",
+    "path": "/api/v1/supply/schedule",
     "typed": true
   },
   "read_catalog": {
@@ -1342,6 +1897,26 @@
   "read_layout": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/sim/a0/setups/{setup_id}/layout",
+    "typed": true
+  },
+  "read_part_now": {
+    "method": "POST",
+    "path": "/api/v1/supply/parts/{part_id}/refresh",
+    "typed": true
+  },
+  "read_part_on_view": {
+    "method": "POST",
+    "path": "/api/v1/supply/parts/{part_id}/view-read",
+    "typed": true
+  },
+  "read_project_bom": {
+    "method": "POST",
+    "path": "/api/v1/supply/tracking/projects/{project_id}/read",
+    "typed": true
+  },
+  "read_release_bom": {
+    "method": "POST",
+    "path": "/api/v1/supply/projects/{project_id}/release-builds/{build_id}/read-bom",
     "typed": true
   },
   "read_result": {
@@ -1374,6 +1949,11 @@
     "path": "/api/v1/projects/{project_id}/sim/a0/setups/{setup_id}",
     "typed": true
   },
+  "read_sheet": {
+    "method": "POST",
+    "path": "/api/v1/supply/bom/sheet",
+    "typed": true
+  },
   "ready": {
     "method": "GET",
     "path": "/api/v1/health/ready",
@@ -1382,6 +1962,21 @@
   "reattach_comment": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/reattach",
+    "typed": true
+  },
+  "refresh_rates": {
+    "method": "POST",
+    "path": "/api/v1/supply/fx/refresh",
+    "typed": true
+  },
+  "refresh_supply_part": {
+    "method": "POST",
+    "path": "/api/v1/remote-provider/supply/parts/{part_id}/refresh",
+    "typed": true
+  },
+  "refresh_usage": {
+    "method": "POST",
+    "path": "/api/v1/supply/bom/usage/refresh",
     "typed": true
   },
   "regenerate_component_previews": {
@@ -1404,9 +1999,34 @@
     "path": "/api/v1/projects/thumbnails/regenerate",
     "typed": true
   },
+  "reject_listing": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/listings/{listing_id}/reject",
+    "typed": true
+  },
+  "reject_listings": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/listings/reject-many",
+    "typed": true
+  },
   "reject_project_import_proposal": {
     "method": "POST",
     "path": "/api/v1/catalog/import-proposals/{proposal_id}/reject",
+    "typed": true
+  },
+  "reject_waiver": {
+    "method": "POST",
+    "path": "/api/v1/supply/waivers/{waiver_id}/reject",
+    "typed": true
+  },
+  "release_check_for": {
+    "method": "GET",
+    "path": "/api/v1/supply/projects/{project_id}/release-builds/{build_id}/check",
+    "typed": true
+  },
+  "release_compliance": {
+    "method": "GET",
+    "path": "/api/v1/supply/projects/{project_id}/releases/{build_id}/compliance",
     "typed": true
   },
   "release_queue": {
@@ -1414,14 +2034,49 @@
     "path": "/api/v1/catalog/release-queue",
     "typed": true
   },
+  "release_snapshot": {
+    "method": "GET",
+    "path": "/api/v1/supply/projects/{project_id}/releases/{build_id}/supply",
+    "typed": true
+  },
+  "release_snapshot_status": {
+    "method": "GET",
+    "path": "/api/v1/supply/projects/{project_id}/releases/{build_id}/supply-status",
+    "typed": true
+  },
+  "remove_alternate": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/components/{component_id}/alternates/{part_id}",
+    "typed": true
+  },
+  "remove_comment": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/projects/{project_id}/bom-comments/{comment_id}",
+    "typed": true
+  },
   "remove_comment_reaction": {
     "method": "DELETE",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/reactions/{reaction}",
     "typed": true
   },
+  "remove_exemption": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/parts/{part_id}/exemptions/{code}",
+    "typed": true
+  },
+  "remove_maker_spelling": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/settings/makers/{alias_key}",
+    "typed": true
+  },
   "remove_mate": {
     "method": "DELETE",
     "path": "/api/v1/catalog/components/{component_id}/mates-with/{other_id}",
+    "typed": true
+  },
+  "remove_number_ending": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/settings/number-endings/{key}",
     "typed": true
   },
   "render_png": {
@@ -1454,6 +2109,11 @@
     "path": "/api/v1/admin/trackers/connectors/{connector_id}/resume",
     "typed": true
   },
+  "resume_supply_connector": {
+    "method": "POST",
+    "path": "/api/v1/supply/connectors/{connector_id}/resume",
+    "typed": true
+  },
   "retry_comment_sync": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/tracker/retry",
@@ -1472,6 +2132,16 @@
   "revoke_connector": {
     "method": "POST",
     "path": "/api/v1/admin/trackers/connectors/{connector_id}/revoke",
+    "typed": true
+  },
+  "revoke_connector_push_token": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/connectors/{target_id}/push-token",
+    "typed": true
+  },
+  "revoke_inventory_source_push_token": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/inventory-sources/{target_id}/push-token",
     "typed": true
   },
   "revoke_mcp_client": {
@@ -1497,6 +2167,11 @@
   "revoke_user_sessions": {
     "method": "POST",
     "path": "/api/v1/auth/sessions/revoke-user/{email}",
+    "typed": true
+  },
+  "revoke_waiver": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/waivers/{waiver_id}",
     "typed": true
   },
   "rotate_service_client_secret": {
@@ -1539,6 +2214,11 @@
     "path": "/api/v1/settings/git-access/host-keys/scan",
     "typed": true
   },
+  "search": {
+    "method": "POST",
+    "path": "/api/v1/supply/fill/search",
+    "typed": true
+  },
   "search_catalog_assets": {
     "method": "GET",
     "path": "/api/v1/catalog/assets/search",
@@ -1554,9 +2234,19 @@
     "path": "/api/v1/projects/{project_id}/design/search",
     "typed": true
   },
+  "search_parts": {
+    "method": "GET",
+    "path": "/api/v1/search/parts",
+    "typed": true
+  },
   "search_projects": {
     "method": "GET",
     "path": "/api/v1/projects/search",
+    "typed": true
+  },
+  "set_connector_credentials": {
+    "method": "PUT",
+    "path": "/api/v1/supply/connectors/{connector_id}/credentials",
     "typed": true
   },
   "set_model_alignment": {
@@ -1564,9 +2254,29 @@
     "path": "/api/v1/catalog/components/{component_id}/models/{asset_id}/alignment",
     "typed": true
   },
+  "set_preferred": {
+    "method": "PUT",
+    "path": "/api/v1/supply/parts/{part_id}/preferred",
+    "typed": true
+  },
+  "set_price_quantity": {
+    "method": "PUT",
+    "path": "/api/v1/supply/parts/{part_id}/price-quantity",
+    "typed": true
+  },
+  "set_restriction": {
+    "method": "PUT",
+    "path": "/api/v1/supply/ending/{component_id}/restriction",
+    "typed": true
+  },
   "set_service_client_enabled": {
     "method": "PATCH",
     "path": "/api/v1/admin/service-clients/{client_id}",
+    "typed": true
+  },
+  "set_trade_mark": {
+    "method": "PUT",
+    "path": "/api/v1/supply/parts/{part_id}/trade-mark",
     "typed": true
   },
   "set_user_password": {
@@ -1574,9 +2284,24 @@
     "path": "/api/v1/settings/access/users/{email}/password",
     "typed": true
   },
+  "several": {
+    "method": "GET",
+    "path": "/api/v1/supply/packaging/several",
+    "typed": true
+  },
   "share_reply_to_tracker": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/replies/{reply_id}/share",
+    "typed": true
+  },
+  "snooze_alert": {
+    "method": "POST",
+    "path": "/api/v1/supply/alerts/{alert_id}/snooze",
+    "typed": true
+  },
+  "start": {
+    "method": "POST",
+    "path": "/api/v1/supply/checks",
     "typed": true
   },
   "start_design_compare": {
@@ -1594,9 +2319,39 @@
     "path": "/api/v1/projects/{project_id}/renders",
     "typed": true
   },
+  "start_signin": {
+    "method": "POST",
+    "path": "/api/v1/supply/connectors/{connector_id}/signin",
+    "typed": true
+  },
+  "stop_following_component": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/tracking/components/{component_id}",
+    "typed": true
+  },
+  "stop_tracking_part": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/tracking/parts/{part_id}",
+    "typed": true
+  },
   "submit_setup": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/sim/a0/setups/{setup_id}/submit",
+    "typed": true
+  },
+  "supply_health": {
+    "method": "GET",
+    "path": "/api/v1/supply/health",
+    "typed": true
+  },
+  "svhc_list_info": {
+    "method": "GET",
+    "path": "/api/v1/supply/compliance/svhc",
+    "typed": true
+  },
+  "sync_inventory_source": {
+    "method": "POST",
+    "path": "/api/v1/supply/inventory-sources/{source_id}/sync",
     "typed": true
   },
   "sync_project_endpoint": {
@@ -1607,6 +2362,11 @@
   "test_connector": {
     "method": "POST",
     "path": "/api/v1/admin/trackers/connectors/{connector_id}/test",
+    "typed": true
+  },
+  "test_connector_connection": {
+    "method": "POST",
+    "path": "/api/v1/supply/connectors/{connector_id}/test",
     "typed": true
   },
   "test_webhook": {
@@ -1634,9 +2394,19 @@
     "path": "/api/v1/ops/requests/{request_id}",
     "typed": true
   },
+  "track_project": {
+    "method": "PUT",
+    "path": "/api/v1/supply/tracking/projects/{project_id}",
+    "typed": true
+  },
   "tracker_webhook": {
     "method": "POST",
     "path": "/api/v1/trackers/webhooks/{provider}/{connector_id}",
+    "typed": true
+  },
+  "tracking_room": {
+    "method": "GET",
+    "path": "/api/v1/supply/room",
     "typed": true
   },
   "transition_release_status": {
@@ -1654,6 +2424,21 @@
     "path": "/api/v1/settings/git-access/host-keys/trust",
     "typed": true
   },
+  "undeclare_substance": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/parts/{part_id}/substances/{cas}",
+    "typed": true
+  },
+  "undo_alias": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/aliases/{alias_key}/undo",
+    "typed": true
+  },
+  "undo_settled": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/parts/{part_id}/undo",
+    "typed": true
+  },
   "unlink_comment_tracker": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/tracker/unlink",
@@ -1662,6 +2447,11 @@
   "unlink_identity": {
     "method": "DELETE",
     "path": "/api/v1/trackers/identities/{connector_id}",
+    "typed": true
+  },
+  "untrack_project": {
+    "method": "DELETE",
+    "path": "/api/v1/supply/tracking/projects/{project_id}",
     "typed": true
   },
   "update_catalog_component": {
@@ -1687,6 +2477,11 @@
   "update_folder": {
     "method": "PATCH",
     "path": "/api/v1/folders/{folder_id}",
+    "typed": true
+  },
+  "update_inventory_source": {
+    "method": "PATCH",
+    "path": "/api/v1/supply/inventory-sources/{source_id}",
     "typed": true
   },
   "update_metadata_field": {
@@ -1719,9 +2514,19 @@
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/replies/{reply_id}",
     "typed": true
   },
+  "update_supply_connector": {
+    "method": "PATCH",
+    "path": "/api/v1/supply/connectors/{connector_id}",
+    "typed": true
+  },
   "update_webhook": {
     "method": "PATCH",
     "path": "/api/v1/settings/webhooks/{webhook_id}",
+    "typed": true
+  },
+  "update_work_item": {
+    "method": "PATCH",
+    "path": "/api/v1/supply/work-items/{item_id}",
     "typed": true
   },
   "upload_comment_attachment": {
@@ -1734,6 +2539,11 @@
     "path": "/api/v1/catalog/import-snapshots/folders/{snapshot_id}/files",
     "typed": true
   },
+  "upload_offers_csv": {
+    "method": "POST",
+    "path": "/api/v1/supply/connectors/{connector_id}/csv",
+    "typed": true
+  },
   "upload_project_thumbnail": {
     "method": "PUT",
     "path": "/api/v1/projects/{project_id}/thumbnail",
@@ -1742,6 +2552,11 @@
   "upsert_access_user": {
     "method": "PUT",
     "path": "/api/v1/settings/access/users/{email}",
+    "typed": true
+  },
+  "use_numbers": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/choices/{part_id}/numbers",
     "typed": true
   },
   "validate_catalog": {
@@ -1764,9 +2579,19 @@
     "path": "/api/v1/catalog/components/{component_id}/audit/verify",
     "typed": true
   },
+  "watch": {
+    "method": "POST",
+    "path": "/api/v1/supply/bom/watch",
+    "typed": true
+  },
   "withdraw_build_approval": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/release-studio/builds/{build_id}/approvals/withdraw",
+    "typed": true
+  },
+  "work_item_history": {
+    "method": "GET",
+    "path": "/api/v1/supply/work-items/{item_id}/history",
     "typed": true
   },
   "workflow_summary": {

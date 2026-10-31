@@ -128,4 +128,19 @@ describe("ProjectDetailPage branch polling", () => {
         fireEvent.click(offer);
         expect(await screen.findByText("viewer at b2")).toBeInTheDocument();
     });
+
+    it("stays up while it reads the overview again for the branch head, so open sections are not loaded twice", async () => {
+        let release: () => void = () => undefined;
+        const base = vi.mocked(fetchJson).getMockImplementation();
+        vi.mocked(fetchJson).mockImplementation(async (input, ...rest) => {
+            if (String(input).includes("/overview?commit=")) await new Promise<void>((resolve) => { release = resolve; });
+            return base!(input, ...rest);
+        });
+        renderPage();
+        await screen.findAllByText("Board");
+        await waitFor(() => expect(vi.mocked(fetchJson).mock.calls.some(([url]) => String(url).includes("/overview?commit=a1"))).toBe(true));
+        expect(screen.queryByText("Loading...")).toBeNull();
+        expect(screen.getAllByText("Board").length).toBeGreaterThan(0);
+        release();
+    });
 });

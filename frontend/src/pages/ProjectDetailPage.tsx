@@ -1,6 +1,7 @@
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
 import { useSimStudioAvailable } from "@/components/sim-studio/use-sim-studio-available";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -28,6 +29,8 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { projectLastUpdated } from "@/lib/project-dates";
 import { HelpMenu } from "@/features/bug-report/help-menu";
 import { LibraryUsageButton } from "@/features/library-usage/library-usage-button";
+import { SupplyNavIcon } from "@/features/supply/supply-nav-icon";
+import { canOpenSupply } from "@/lib/roles";
 
 const AssetsPortal = lazy(() =>
     import("@/components/assets-portal").then((module) => ({ default: module.AssetsPortal }))
@@ -54,6 +57,9 @@ const Visualizer = lazy(() =>
 );
 const MarkdownContent = lazy(() =>
     import("@/components/markdown-content").then((module) => ({ default: module.MarkdownContent }))
+);
+const ProjectSupplyTab = lazy(() =>
+    import("@/features/supply/project-supply-tab").then((module) => ({ default: module.ProjectSupplyTab }))
 );
 
 interface Project {
@@ -105,6 +111,7 @@ function sectionFromSearchParams(searchParams: URLSearchParams): ProjectSection 
         || section === "documentation"
         || section === "workflows"
         || section === "release-studio"
+        || section === "supply"
         || section === "simulation-studio"
     ) {
         return section;
@@ -122,6 +129,7 @@ const NAV_ITEMS = [
     { id: "assets" as ProjectSection, label: "Assets Portal", icon: FolderOpen },
     { id: "documentation" as ProjectSection, label: "Documentation", icon: FileText },
 ];
+const SUPPLY_NAV_ITEM = { id: "supply" as ProjectSection, label: "Supply", icon: SupplyNavIcon };
 
 // Shown only when the backend serves Simulation Studio (PRISM_SIM_STUDIO_ENABLED).
 const SIM_NAV_ITEM = { id: "simulation-studio" as ProjectSection, label: "Simulation Studio", icon: FlaskConical };
@@ -139,6 +147,8 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
     const [project, setProject] = useState<Project | null>(null);
+    // Where the Supply section puts its buttons: on its title row, a little higher than its own controls.
+    const [supplyActions, setSupplyActions] = useState<HTMLElement | null>(null);
     const [readme, setReadme] = useState<string>("");
     const [loading, setLoading] = useState(true);
     const [activeSection, setActiveSection] = useState<ProjectSection>(() => (
@@ -167,7 +177,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const branchError = branchesRead.error?.message ?? null;
     const canMutateProject = canManageProjects(user?.role);
     const simStudioAvailable = useSimStudioAvailable();
-    const navItems = simStudioAvailable ? NAV_ITEMS_WITH_SIM : NAV_ITEMS;
+    const sectionItems = simStudioAvailable ? NAV_ITEMS_WITH_SIM : NAV_ITEMS;
     const canComment = canCommentOnProjects(user?.role);
 
     // Helper function to get display name
@@ -235,6 +245,12 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     }, [navigate, projectId]);
 
     const visitedSections = useVisitedProjectSections(projectId, activeSection);
+    // Supply sits after Release Studio (and Simulation Studio), for the roles that read supply data.
+    const navItems = useMemo(() => {
+        if (!canOpenSupply(user?.role)) return sectionItems;
+        const at = sectionItems.reduce((last, item, index) => (item.id === "release-studio" || item.id === "simulation-studio" ? index + 1 : last), 0);
+        return [...sectionItems.slice(0, at), SUPPLY_NAV_ITEM, ...sectionItems.slice(at)];
+    }, [user?.role, sectionItems]);
 
     const handleSectionChange = (section: ProjectSection) => {
         if (section === "visualizers" && !currentCommit && activeCommit) {
@@ -414,7 +430,9 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
         return () => controller.abort();
     }, [activeBranchRef, currentCommit, projectId]);
 
-    if (loading) {
+    // Only a project not shown yet blanks the page. Reading the overview again for another commit (the branch head, once it is known)
+    // keeps the page up: blanking it unmounted every open section, which then loaded everything a second time.
+    if (loading && project?.id !== projectId) {
         return <div className="flex items-center justify-center h-app-viewport">Loading...</div>;
     }
 
@@ -819,6 +837,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                             projectId={projectId}
                                             user={user}
                                             commit={viewerCommit}
+                                            supplyAtHead={!currentCommit}
                                             active={!comparisonVisible && activeSection === "visualizers"}
                                         />
                                     </Suspense>
@@ -853,6 +872,26 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                     canMutate={canMutateProject}
                                     userRole={user?.role}
                                 />
+                            </ErrorBoundary>
+                        </ProjectSectionPanel>
+                    )}
+
+                    {visitedSections.has("supply") && canOpenSupply(user?.role) && (
+                        <ProjectSectionPanel
+                            key={`${projectId}:supply`}
+                            active={activeSection === "supply"}
+                            className="themed-scrollbar"
+                        >
+                            <ErrorBoundary label="the project's supply" resetKeys={[projectId]}>
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <h2 className="text-2xl font-bold">Supply</h2>
+                                    <div ref={setSupplyActions} className="flex flex-wrap items-center gap-2" />
+                                </div>
+                                {projectId && (
+                                    <Suspense fallback={<Skeleton className="h-48 w-full" aria-label="Loading the project's supply" />}>
+                                        <ProjectSupplyTab projectId={projectId} user={user} actionsSlot={supplyActions} />
+                                    </Suspense>
+                                )}
                             </ErrorBoundary>
                         </ProjectSectionPanel>
                     )}

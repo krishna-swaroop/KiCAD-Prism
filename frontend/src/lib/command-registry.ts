@@ -10,6 +10,8 @@ export interface PaletteCommand {
   /** Right-aligned hint, e.g. a folder name or a shortcut. */
   detail?: string;
   icon?: LucideIcon;
+  /** A second place to open the same thing, run with Ctrl or Command and Enter. */
+  alt?: { label: string; run: () => void };
 }
 
 /**

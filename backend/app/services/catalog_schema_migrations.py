@@ -498,6 +498,128 @@ def _retire_system_entries(conn: Any) -> None:
     )
     conn.execute("DROP INDEX IF EXISTS idx_components_identity_ipn")
 
+
+def _supply_tables(conn: Any) -> None:
+    """The supply module's tables (stock, prices and their history from distributors), all prefixed ``supply_``."""
+    from app.services.supply.schema import create_supply_tables
+
+    # The supply schema takes a plain psycopg connection (it passes ``prepare=``); the ledger may hand the catalog's wrapper.
+    create_supply_tables(getattr(conn, "_connection", conn))
+
+
+def _component_parts(conn: Any) -> None:
+    """Which manufacturer parts a component may be built with: its main part (from the current revision's
+    manufacturer and MPN) and alternates a designer proposed and QA decided. Kept outside revisions, like stock."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS component_parts (
+            component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+            part_id TEXT NOT NULL REFERENCES supply_parts(id) ON DELETE CASCADE,
+            role TEXT NOT NULL CHECK (role IN ('main', 'alternate')),
+            approval TEXT NOT NULL DEFAULT 'approved' CHECK (approval IN ('pending', 'approved', 'rejected')),
+            created_by TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            decided_by TEXT NOT NULL DEFAULT '',
+            decided_at TIMESTAMPTZ,
+            PRIMARY KEY (component_id, part_id),
+            CHECK (role = 'alternate' OR approval = 'approved')
+        )
+        """
+    )
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_component_parts_main ON component_parts (component_id) WHERE role = 'main'")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_component_parts_part ON component_parts (part_id)")
+
+
+def _inventory_sources(conn: Any) -> None:
+    """Local inventory servers (InvenTree, or any server serving its read API) whose stock fills ``inventory_levels``.
+
+    A sync replaces its source's ``inventory_levels`` rows. Parts it could not match to a component wait in
+    ``inventory_unmatched`` until a person links them (``inventory_links``)."""
+    for column in (
+        "source_id TEXT NOT NULL DEFAULT ''",
+        "allocated DOUBLE PRECISION NOT NULL DEFAULT 0",
+        "location_path TEXT NOT NULL DEFAULT ''",
+        "external BOOLEAN NOT NULL DEFAULT FALSE",
+        "batch TEXT NOT NULL DEFAULT ''",
+        "source_updated_at TEXT NOT NULL DEFAULT ''",
+    ):
+        conn.execute(f"ALTER TABLE inventory_levels ADD COLUMN IF NOT EXISTS {column}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_inventory_levels_source ON inventory_levels (source_id)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_sources (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL CHECK (kind IN ('inventree', 'push')),
+            display_name TEXT NOT NULL,
+            base_url TEXT NOT NULL,
+            category_id INTEGER,
+            credential_envelope TEXT NOT NULL DEFAULT '',
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            interval_hours INTEGER NOT NULL DEFAULT 24 CHECK (interval_hours BETWEEN 1 AND 168),
+            server TEXT NOT NULL DEFAULT '',
+            api_version INTEGER,
+            last_sync_at TIMESTAMPTZ,
+            last_status TEXT NOT NULL DEFAULT '',
+            last_error TEXT NOT NULL DEFAULT '',
+            matched INTEGER NOT NULL DEFAULT 0,
+            unmatched INTEGER NOT NULL DEFAULT 0,
+            created_by TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_links (
+            source_id TEXT NOT NULL REFERENCES inventory_sources(id) ON DELETE CASCADE,
+            remote_part TEXT NOT NULL,
+            component_id TEXT NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+            linked_by TEXT NOT NULL,
+            linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (source_id, remote_part)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_unmatched (
+            source_id TEXT NOT NULL REFERENCES inventory_sources(id) ON DELETE CASCADE,
+            remote_part TEXT NOT NULL,
+            ipn TEXT NOT NULL DEFAULT '',
+            mpn TEXT NOT NULL DEFAULT '',
+            manufacturer TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL DEFAULT '',
+            quantity DOUBLE PRECISION NOT NULL DEFAULT 0,
+            records INTEGER NOT NULL DEFAULT 0,
+            reason TEXT NOT NULL,
+            seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (source_id, remote_part)
+        )
+        """
+    )
+    # Unmatched local stock a person set aside (consumables, tools): kept apart from ``inventory_unmatched``, which every
+    # read replaces, so the choice holds across reads until someone restores it.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_ignored (
+            source_id TEXT NOT NULL REFERENCES inventory_sources(id) ON DELETE CASCADE,
+            remote_part TEXT NOT NULL,
+            ignored_by TEXT NOT NULL,
+            ignored_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (source_id, remote_part)
+        )
+        """
+    )
+
+
+def _supply_catalog_links(conn: Any) -> None:
+    """Supply's foreign keys to components and its rollups' change marks on catalog tables, which exist only from the steps
+    before."""
+    from app.services.supply.schema import create_catalog_links
+
+    create_catalog_links(getattr(conn, "_connection", conn))
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (0, "baseline", _baseline),
     (1, "portable_column_types", _portable_column_types),
@@ -516,6 +638,10 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (14, "system_entries", _system_entries),
     (15, "harness_fields", _harness_fields),
     (16, "retire_system_entries", _retire_system_entries),
+    (17, "supply_tables", _supply_tables),
+    (18, "component_parts", _component_parts),
+    (19, "inventory_sources", _inventory_sources),
+    (20, "supply_catalog_links", _supply_catalog_links),
 )
 
 # Migrations that a long-lived branch database recorded under an earlier number.

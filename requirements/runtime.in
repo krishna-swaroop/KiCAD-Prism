@@ -13,6 +13,10 @@ websockets
 gitpython
 pydantic
 pydantic-settings
+# Forecasts (supply) simulate futures with arrays.
+numpy
+# Supply reads Excel files: uploaded BOMs and the ECHA candidate list (.xlsx).
+openpyxl>=3.1,<4
 python-dotenv
 requests
 # MCP client metadata fetches connect to a pre-checked address (SSRF guard).

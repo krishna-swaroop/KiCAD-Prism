@@ -27,12 +27,45 @@ def _normalized(value: object) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
 
 
+def _key(name: object) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(name).casefold())
+
+
 def _field(fields: dict[str, Any], *names: str) -> str:
-    normalized_names = {re.sub(r"[^a-z0-9]", "", name.casefold()) for name in names}
-    for key, value in fields.items():
-        if re.sub(r"[^a-z0-9]", "", str(key).casefold()) in normalized_names:
-            return str(value or "").strip()
-    return ""
+    """The first non-blank value among ``names``, in that order: a blank standard field does not hide an alias that has the value."""
+
+    by_name = {_key(key): str(value or "").strip() for key, value in fields.items()}
+    return next((by_name[_key(name)] for name in names if by_name.get(_key(name))), "")
+
+
+# The standard symbol field for the maker, the part number and the datasheet, and the other names projects use for them.
+_STANDARD_FIELDS = (
+    ("Manufacturer", ("MFR",)),
+    ("Manufacturer Part Number", ("MPN", "Part Number")),
+    ("Datasheet", ("Data Sheet", "Datasheet URL", "Datasheet Link")),
+)
+
+
+def _standard_fields(fields: dict[str, Any]) -> dict[str, Any]:
+    """Put a value a symbol keeps under another name into the standard field, and drop the other name when it only repeats it.
+
+    A symbol with an empty **Manufacturer Part Number** and the number in **Part Number** becomes a component whose
+    standard field holds the number, with no second copy beside it. An alias that says something else is kept.
+    """
+
+    out = dict(fields)
+    for standard, aliases in _STANDARD_FIELDS:
+        value = _field(out, standard, *aliases)
+        if not value:
+            continue
+        present = {_key(key): key for key in out}
+        standard_key = present.get(_key(standard), standard)
+        out[standard_key] = value
+        for alias in aliases:
+            alias_key = present.get(_key(alias))
+            if alias_key is not None and alias_key != standard_key and str(out[alias_key] or "").strip() in ("", value):
+                del out[alias_key]
+    return out
 
 
 def _is_instance_context_field(name: object) -> bool:
@@ -42,12 +75,14 @@ def _is_instance_context_field(name: object) -> bool:
     candidate.  UUIDs, sheet paths, and sheet names must therefore never become
     catalog metadata or generate a provenance conflict merely because two
     placements are different.  The catalog placement stamp names the revision
-    one placement came from, so it is instance context as well.
+    one placement came from, so it is instance context as well.  So are the
+    reference designator, the sheet file, a placement's DNP / BOM / board flags,
+    and the library the schematic copied the symbol from.
     """
 
     if is_reserved_stamp_key(name):
         return True
-    normalized = re.sub(r"[^a-z0-9]", "", str(name).casefold())
+    normalized = _key(name)
     return normalized in {
         "uuid",
         "symboluuid",
@@ -60,6 +95,20 @@ def _is_instance_context_field(name: object) -> bool:
         "kicadsheetpathnames",
         "kicadsheetpathuuids",
         "hierarchicalsheetpath",
+        "reference",
+        "references",
+        "sheetfile",
+        "dnp",
+        "inbom",
+        "onboard",
+        "excludefrombom",
+        "excludefromboard",
+        "kicaddnp",
+        "kicadinbom",
+        "kicadonboard",
+        "kicadlibsourcelib",
+        "kicadlibsourcepart",
+        "kicadlibsourcedescription",
     }
 
 
@@ -73,11 +122,7 @@ def _dedupe_key(component: dict[str, Any], *, project_id: str) -> str:
         filtered_fields = {
             str(key): value
             for key, value in fields.items()
-            if (
-                _normalized(key) not in {"reference", "references"}
-                and not _is_instance_context_field(key)
-                and not str(key).startswith("_")
-            )
+            if not _is_instance_context_field(key) and not str(key).startswith("_")
         }
         identity = [
             "project-content",
@@ -116,11 +161,11 @@ def _proposal(
     extraction_findings: list[dict[str, str]] | None = None,
     resolved: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    fields = {
+    fields = _standard_fields({
         str(key): value
         for key, value in (component.get("fields") or {}).items()
         if not _is_instance_context_field(key) and not str(key).startswith("_")
-    }
+    })
     reference = str(component.get("reference") or "")
     footprint = str(component.get("footprint") or "")
     findings: list[dict[str, str]] = []
@@ -256,10 +301,10 @@ def _merge_metadata(target: dict[str, Any], incoming: dict[str, Any]) -> list[di
     }
     target_fields = target_metadata.setdefault("fields", {})
     target_fields_by_name = {
-        re.sub(r"[^a-z0-9]", "", str(key).casefold()): key for key in target_fields
+        _key(key): key for key in target_fields
     }
     for incoming_key, incoming_value in (incoming_metadata.get("fields") or {}).items():
-        normalized_key = re.sub(r"[^a-z0-9]", "", str(incoming_key).casefold())
+        normalized_key = _key(incoming_key)
         if (
             normalized_key in excluded_fields
             or _is_instance_context_field(incoming_key)

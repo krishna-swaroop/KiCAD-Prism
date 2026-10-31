@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useWorkspaceData, workspaceSessionKey } from "@/hooks/use-workspace-data";
 import { useWorkspaceSearch } from "@/hooks/use-workspace-search";
-import { canManageProjects as roleCanManageProjects, canOpenLibraryManager } from "@/lib/roles";
+import { canManageProjects as roleCanManageProjects, canOpenLibraryManager, canOpenSupply } from "@/lib/roles";
 import { settingsTabFromParam } from "@/lib/settings-tabs";
 import { registerPaletteCommands, type PaletteCommand } from "@/lib/command-registry";
 import { fetchApi, readApiError } from "@/lib/api";
@@ -51,6 +51,9 @@ const MoveProjectDialog = lazy(() =>
 const RenameFolderDialog = lazy(() =>
   import("./workspace/rename-folder-dialog").then((module) => ({ default: module.RenameFolderDialog }))
 );
+const SupplyWorkspace = lazy(() =>
+  import("@/features/supply/supply-workspace").then((module) => ({ default: module.SupplyWorkspace }))
+);
 
 interface WorkspaceProps {
   searchQuery: string;
@@ -85,7 +88,9 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
   const { projects, folders, loading, error, refreshError, folderById, refresh, createFolder, renameFolder, deleteFolder, moveProjects, deleteProject } =
     useWorkspaceData({ sessionKey: workspaceSessionKey(user) });
 
-  const requestedSection = searchParams.get("section") === "library-manager" ? "library-manager" : "projects";
+  const requestedSectionParam = searchParams.get("section");
+  const requestedSection: WorkspaceSection =
+    requestedSectionParam === "library-manager" || requestedSectionParam === "supply" ? requestedSectionParam : "projects";
   const [section, setSection] = useState<WorkspaceSection>(requestedSection);
   const [viewMode, setViewMode] = useState<ViewMode>("gallery");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -160,11 +165,14 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
     setSection(nextSection);
     setSearchParams((currentParams) => {
       const next = new URLSearchParams(currentParams);
-      if (nextSection === "library-manager") {
+      if (nextSection === "library-manager" || nextSection === "supply") {
         next.set("section", nextSection);
+        // Each section owns its own view parameter; leaving one drops the other's.
+        next.delete(nextSection === "supply" ? "libraryView" : "supplyView");
       } else {
         next.delete("section");
         next.delete("libraryView");
+        next.delete("supplyView");
         next.delete("session");
       }
       return next;
@@ -630,6 +638,7 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
           isCollapsed={isSidebarCollapsed}
           onToggle={() => setIsSidebarCollapsed((previous) => !previous)}
           onSectionChange={handleSectionChange}
+          canOpenSupply={canOpenSupply(user?.role)}
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -669,6 +678,10 @@ export function Workspace({ searchQuery, user }: WorkspaceProps) {
             <ErrorBoundary label="this section" resetKeys={[section]}>
               {loading ? (
                 <WorkspaceLoadingState />
+              ) : section === "supply" ? (
+                <Suspense fallback={<WorkspaceLoadingState />}>
+                  <SupplyWorkspace user={user} />
+                </Suspense>
               ) : section === "library-manager" ? (
                 canOpenLibrary ? (
                   <LibraryManagerWorkspace user={user} projects={projects} />

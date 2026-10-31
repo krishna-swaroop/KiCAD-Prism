@@ -1,5 +1,6 @@
 import { Blocks, Folder, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
+import { SupplyNavIcon } from "@/features/supply/supply-nav-icon";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +11,8 @@ interface WorkspaceSidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
   onSectionChange: (section: WorkspaceSection) => void;
+  /** Whether the signed-in role may open Supply. The entry is hidden otherwise. */
+  canOpenSupply?: boolean;
 }
 
 export function WorkspaceSidebar({
@@ -17,6 +20,7 @@ export function WorkspaceSidebar({
   isCollapsed,
   onToggle,
   onSectionChange,
+  canOpenSupply = false,
 }: WorkspaceSidebarProps) {
   return (
     <aside
@@ -58,6 +62,18 @@ export function WorkspaceSidebar({
           <Blocks className="h-4 w-4" />
           {!isCollapsed && <span>Library Manager</span>}
         </Button>
+
+        {canOpenSupply ? (
+          <Button
+            variant={section === "supply" ? "secondary" : "ghost"}
+            className={cn("w-full justify-start gap-2", isCollapsed && "justify-center px-2")}
+            onClick={() => onSectionChange("supply")}
+            aria-label="Supply"
+          >
+            <SupplyNavIcon className="h-4 w-4" />
+            {!isCollapsed && <span>Supply</span>}
+          </Button>
+        ) : null}
       </div>
     </aside>
   );

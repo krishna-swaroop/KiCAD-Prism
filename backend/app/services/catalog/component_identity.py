@@ -151,4 +151,29 @@ def match_part_identities(
     return [None if key is None else found.get((key.manufacturer, key.part_number)) for key in keys]
 
 
-__all__ = ["ComponentIdentity", "find_identity_holder", "match_part_identities"]
+# Characters a compact part number leaves out: white space, underscores and the hyphen-like dashes
+# (hyphen, non-breaking hyphen, figure dash, en dash, em dash, minus sign), by code point.
+_COMPACT_IGNORED = "[[:space:]_" + "".join(map(chr, (0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2212))) + "-]+"
+
+
+def active_components_by_compact_number(conn: Any, numbers: Sequence[str]) -> list[dict[str, str]]:
+    """Active manufacturer-part components whose part number, upper-cased without white space, underscores or dashes, is one of
+    ``numbers`` (given in that form). Only identities, for callers that compare makers themselves."""
+
+    wanted = sorted({str(item) for item in numbers if item})
+    if not wanted:
+        return []
+    rows = conn.execute(
+        """
+        SELECT component.id, revision.manufacturer, revision.mpn
+        FROM components component
+        JOIN component_revisions revision ON revision.id = component.current_revision_id
+        WHERE component.identity_kind = %s AND component.is_active = 1
+          AND upper(regexp_replace(component.normalized_part_number, %s, '', 'g')) = ANY(%s)
+        """,
+        (IDENTITY_KIND_MPN, _COMPACT_IGNORED, wanted),
+    ).fetchall()
+    return [{"id": str(row["id"]), "manufacturer": str(row["manufacturer"] or ""), "mpn": str(row["mpn"] or "")} for row in rows]
+
+
+__all__ = ["ComponentIdentity", "active_components_by_compact_number", "find_identity_holder", "match_part_identities"]

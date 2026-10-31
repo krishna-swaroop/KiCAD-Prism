@@ -15,7 +15,8 @@ export type ProjectSection =
     | "documentation"
     | "workflows"
     | "release-studio"
-    | "simulation-studio";
+    | "simulation-studio"
+    | "supply";
 
 type VisitedSectionState = {
     projectId: string | undefined;
@@ -62,10 +63,12 @@ export function useVisitedProjectSections(
 export function ProjectSectionPanel({
     active,
     fill = false,
+    className,
     children,
 }: {
     active: boolean;
     fill?: boolean;
+    className?: string;
     children: ReactNode;
 }) {
     return (
@@ -73,9 +76,11 @@ export function ProjectSectionPanel({
             hidden={!active}
             aria-hidden={!active || undefined}
             className={cn(
-                "h-full min-h-0 min-w-0",
+                // Positioned, so a screen-reader-only label inside stays in the panel instead of stretching the page behind it.
+                "relative h-full min-h-0 min-w-0",
                 fill ? "flex flex-col overflow-hidden" : "overflow-auto p-6",
                 !active && "hidden",
+                className,
             )}
         >
             {children}

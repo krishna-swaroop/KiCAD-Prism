@@ -76,8 +76,50 @@ export interface PanelSupplySource {
   product_url?: string;
 }
 
+/** The one-line standing of a component's manufacturer part, from the distributors. Absent when Prism does not track it. */
+export interface PanelSupplySummary {
+  part_id: string;
+  status: "ok" | "warning" | "error" | "fatal" | "unknown";
+  stock: number | null;
+  distributors: number;
+  lifecycle: "active" | "nrnd" | "last_time_buy" | "obsolete" | "unknown";
+  unit_price: string | null;
+  price_quantity: number;
+  currency: string;
+  fetched_at: string | null;
+  watched: boolean;
+}
+
+export interface PanelDistributorOffer {
+  connector: string;
+  /** The connector's provider key, for its colour. */
+  provider?: string;
+  sku: string;
+  stock: number;
+  marketplace: boolean;
+  unit_price: string | null;
+  currency: string;
+  moq: number;
+  lead_time_days: number | null;
+  product_url: string;
+  fetched_at: string | null;
+}
+
 export interface PanelSupply {
+  /** Inventory sources. Distributor offers are in `offers`. */
   sources: PanelSupplySource[];
+  summary?: PanelSupplySummary;
+  /** The library marked this component: do not use it in new designs. */
+  restriction?: "not_for_new_designs";
+  /** Detail only, from here down. */
+  offers?: PanelDistributorOffer[];
+  health?: { score: number; status: PanelSupplySummary["status"] };
+  /** One phrase, rule-based: "No signs of an end", "Warning signs", "Ending"... */
+  outlook?: string;
+  risks?: string[];
+  /** One line on the chance it stays in stock, once Prism's forecasts have earned a place. */
+  forecast?: { tone: "ok" | "warning"; text: string } | null;
+  links?: { component: string; sourcing: string; supply: string };
 }
 
 /** Local inventory row for badges; vendor rows are ignored for on-shelf counts. */
@@ -158,14 +200,14 @@ export function loadPanelAssetText(url: string): Promise<string> {
  * session cookie, and no session-expired event (KiCad hosts the panel).
  * Error bodies are read by the shared parser in `@/lib/api`.
  */
-async function panelFetch<T>(url: string, signal?: AbortSignal): Promise<T> {
+async function panelFetch<T>(url: string, signal?: AbortSignal, method = "GET"): Promise<T> {
   const headers: Record<string, string> = {};
   if (apiToken) {
     headers["Authorization"] = `Bearer ${apiToken}`;
   }
   let response: Response;
   try {
-    response = await fetch(url, { credentials: "include", headers, signal });
+    response = await fetch(url, { credentials: "include", headers, signal, method });
   } catch (err) {
     if ((err as Error).name === "AbortError") throw err;
     throw new PanelApiError(0, `Network error: ${(err as Error).message}`);
@@ -268,6 +310,17 @@ export async function getComponent(
     `/api/remote-provider/components/${componentId}${placementQuery(representationId, revisionId)}`,
     signal
   );
+}
+
+export interface PanelSupplyRefresh {
+  read: number;
+  connectors: number;
+  problems: Array<{ connector: string; reason: string }>;
+}
+
+/** Ask the distributors for a tracked part's stock and price now. Throws a PanelApiError with the reason when it is too soon. */
+export function refreshSupplyPart(partId: string): Promise<PanelSupplyRefresh> {
+  return panelFetch<PanelSupplyRefresh>(`/api/remote-provider/supply/parts/${encodeURIComponent(partId)}/refresh`, undefined, "POST");
 }
 
 export async function getPartManifest(
