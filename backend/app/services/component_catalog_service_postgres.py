@@ -20,6 +20,7 @@ from app.services.catalog.postgres_projections import (
 )
 from app.services.catalog.postgres_schema import CATALOG_SCHEMA_EPOCH
 from app.services.catalog_schema_migrations import CATALOG_LEDGER
+from app.services.supply.schema.frozen import refuse_behind as refuse_supply_behind
 from app.services.component_catalog_domain import ComponentCatalogDomainService
 
 logger = logging.getLogger(__name__)
@@ -73,7 +74,7 @@ class ComponentCatalogPostgresService(ComponentCatalogDomainService):
             self._ensure_storage_dirs()
             CATALOG_LEDGER.migrate(
                 self._connect,
-                before=(self._refuse_or_reset_pre_epoch,),
+                before=(self._refuse_or_reset_pre_epoch, refuse_supply_behind),
                 after=(self._reconcile_projections,),
             )
             self._ensure_postgres_search_indexes()

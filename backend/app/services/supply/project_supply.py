@@ -219,6 +219,8 @@ def _kept_rollups(conn, wanted: Sequence[tuple[str, str]]) -> dict[tuple[str, st
         JOIN unnest(%s::text[], %s::text[]) AS w(project_id, variant) ON r.project_id = w.project_id AND r.variant = w.variant
         WHERE r.computed_at > %s
           AND NOT {stale}
+          -- One kept before rollups counted unchecked lines is worked out again.
+          AND (jsonb_typeof(r.data->'rollup') IS DISTINCT FROM 'object' OR r.data->'rollup' ? 'unchecked')
         """.replace("{stale}", freshness.stale_sql("rollup", "(ARRAY[r.project_id] || r.part_ids)", "r")),
         ([project_id for project_id, _ in wanted], [variant for _, variant in wanted], clock.now() - ROLLUP_MAX_AGE),
     ).fetchall()

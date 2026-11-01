@@ -637,7 +637,7 @@ def _group_stats(group: dict[str, Any], kept: dict[str, dict[str, Any]], known: 
         stats["currency"] = rollup["currency"]
         stats["boards"] = rollup["can_build"]
         stats["build_quantity"] = int(tracked["build_quantity"])
-        stats["unchecked"] = int(rollup["not_tracked"])
+        stats["unchecked"] = int(rollup["unchecked"])
         # A cost over fewer lines than the BOM has is a subtotal: every summary says how many lines it covers.
         stats["lines"] = int(rollup["lines"])
         stats["lines_priced"] = int(rollup["lines_priced"])

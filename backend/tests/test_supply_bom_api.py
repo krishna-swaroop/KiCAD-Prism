@@ -382,6 +382,17 @@ class BomLookupTests(unittest.TestCase):
         self.assertEqual((rollup["lines_priced"], rollup["lines"]), (2, 5), "the cost covers two of five lines")
         self.assertEqual((rollup["currency"], rollup["cost_build"], rollup["cost_per_board"]), ("EUR", "24.00", "2.4000"))
         self.assertEqual((rollup["can_build"], rollup["limited_by"]), (15, "b"), "30 pieces at 2 a board: 15 boards")
+        self.assertEqual(rollup["unchecked"], 3, "the unread part, the unknown part and the line with no number")
+
+    def test_a_line_never_read_leaves_the_board_count_unconfirmed(self) -> None:
+        stocked = self.part("Acme", "PLENTY")
+        self.offer(stocked, "A", stock=5000, price="0.10")
+        self.part("Acme", "NEVERREAD")
+        rollup = self.lookup([
+            {"key": "p", "manufacturer": "Acme", "mpn": "PLENTY", "quantity": 1},
+            {"key": "r", "manufacturer": "Acme", "mpn": "NEVERREAD", "quantity": 1},
+        ], build=100)["rollup"]
+        self.assertEqual((rollup["not_tracked"], rollup["unchecked"]), (0, 1), "tracked, but no stock figure to count")
 
     def test_cost_per_board_leaves_out_what_a_minimum_order_buys_beyond_the_need(self) -> None:
         part_id = self.part("Acme", "CELL")

@@ -77,9 +77,25 @@ def identity_of(fields: Mapping[str, Any]) -> tuple[str, str]:
     return _first(fields, MANUFACTURER_FIELDS), _first(fields, MPN_FIELDS)
 
 
-def is_fitted(fields: Mapping[str, Any]) -> bool:
-    """In the BOM and not marked do-not-place, as the BOM table decides it."""
+# Columns that mark a row not fitted, and the values that mean it, compared without case, spaces or punctuation. KiCad's BOM
+# export writes "DNP" and "Excluded from BOM" in its ${DNP} and ${EXCLUDE_FROM_BOM} columns; the placement check
+# (``placement_service``) reads the same headers.
+_NOT_FITTED_FIELDS = frozenset({"dnp", "donotplace", "donotpopulate", "nostuff", "exclude", "excludefrombom", "excludedfrombom"})
+_MARKED = frozenset({"dnp", "yes", "y", "true", "1", "x", "donotplace", "donotpopulate", "nostuff", "excluded", "excludedfrombom"})
+_IN_BOM_NO = frozenset({"no", "n", "false", "0"})
 
-    in_bom = _text(fields.get("In BOM")).lower()
-    dnp = _text(fields.get("DNP")).lower()
-    return in_bom != "no" and dnp != "yes"
+
+def _key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", _text(value).casefold())
+
+
+def is_fitted(fields: Mapping[str, Any]) -> bool:
+    """In the BOM and not marked do-not-place, from symbol fields or a BOM export's columns."""
+
+    for name, value in fields.items():
+        column, marked = _key(name), _key(value)
+        if column == "inbom" and marked in _IN_BOM_NO:
+            return False
+        if column in _NOT_FITTED_FIELDS and marked in _MARKED:
+            return False
+    return True

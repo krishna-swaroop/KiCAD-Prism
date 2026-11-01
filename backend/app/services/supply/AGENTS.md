@@ -164,7 +164,7 @@ root first.
 | `credentials.py` | The one adapter over the credential keyring. |
 | `connectors.py` | Connector setup, credentials, pause, state. |
 | `backend/app/api/supply_connectors.py` | HTTP API for connectors. Readers are admin, designer and qa; only admin changes anything. Strips request bodies from 422 errors. |
-| `schema/`, `store.py` | Supply tables live in the catalog's schema, each prefixed `supply_`. `schema/` is the whole schema as it stands, one module per area (`sources`, `parts`, `market`, `work`, `derived`: tables, then functions and triggers), plus the seeded spellings and suffixes; the catalog ledger runs `create_supply_tables` as its `supply_tables` step and `create_catalog_links` (foreign keys to components, rollup triggers on catalog tables) as `supply_catalog_links`. `store.py` hands out connections on the catalog schema (or a test's disposable schema). |
+| `schema/`, `store.py` | Supply tables live in the catalog's schema, each prefixed `supply_`. `schema/` is the whole schema as it stands, one module per area (`sources`, `parts`, `market`, `work`, `derived`: tables, then functions and triggers), plus the seeded spellings and suffixes; the catalog ledger runs `create_supply_tables` as its `supply_tables` step and `create_catalog_links` (foreign keys to components, rollup triggers on catalog tables) as `supply_catalog_links`; both are frozen (`schema/frozen.py`). `store.py` hands out connections on the catalog schema (or a test's disposable schema). |
 
 ## Rules
 
@@ -207,9 +207,12 @@ root first.
 - **Audit identity comes from the session**, passed in as `actor`. Never take
   it from a request body.
 - **Supply tables are catalog tables.** Every table, index, trigger and function
-  is prefixed `supply_` (`backend/tests/test_supply_schema_names.py` checks). Until supply is first
-  released, a schema change is an edit to `schema/` (and local databases are rebuilt); from then on it is
-  a new step in `backend/app/services/catalog_schema_migrations.py`, never an edit to `schema/`.
+  is prefixed `supply_` (`backend/tests/test_supply_schema_names.py` checks). The tables steps 17 and 20
+  make are frozen in `schema/frozen.json` (`backend/tests/test_supply_frozen_schema.py` checks): a schema
+  change is a new step in `backend/app/services/catalog_schema_migrations.py`, added to the test-schema setup in
+  `store.py` too, never an edit to what they create. On start, `schema/frozen.refuse_behind` stops a database
+  whose recorded supply steps lack part of that output (a pre-release build) and names
+  `scripts/reset_supply_tables.py`.
 - **Role-aware lookups only** when supply data is joined to projects.
 
 ## Frontend

@@ -42,7 +42,7 @@ def _workspace_projects(ids: Iterable[str]) -> list[tuple[Any, Sequence[str]]]:
     found = []
     for row in workspace.get_all_projects(None):
         if str(row["id"]) in wanted:
-            roles = [role for role in usage.ALL_ROLES if workspace._is_folder_visible(row, role)]  # noqa: SLF001
+            roles = usage.roles_of(row)
             found.append((project_service._workspace_row_to_project(row), roles))  # noqa: SLF001
     return found
 

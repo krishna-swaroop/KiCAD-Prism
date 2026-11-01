@@ -2542,6 +2542,8 @@ export interface SupplyBomRollup {
   short: number;
   test_data: boolean;
   tracked: number;
+  /** Lines with no tracked part or no stock reading; can_build is unconfirmed while any is. */
+  unchecked: number;
   waste_cost: string | null;
   watched: number;
   without_stock_data: number;

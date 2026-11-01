@@ -23,7 +23,7 @@ const mocked = vi.mocked(api);
 
 const rollup = bomRollupFixture({
   lines: 3, tracked: 2, not_tracked: 1, watched: 2, at_risk: 1, short: 1, priced: 2, lines_priced: 2, parts: 2,
-  currency: "EUR", cost_build: "12.50", cost_per_board: "12.50", can_build: 400, limited_by: "k1", without_stock_data: 0,
+  currency: "EUR", cost_build: "12.50", cost_per_board: "12.50", can_build: 400, limited_by: "k1", without_stock_data: 0, unchecked: 1,
   health: 7.4, health_status: "warning",
 });
 
@@ -179,9 +179,9 @@ describe("the project Supply tab", () => {
       rollup: bomRollupFixture({ ...rollup, can_build: 0, limited_by: "k1", at_risk: 1, needs_a_look: 2 }),
     }));
     renderTab();
-    // One of the three lines is not tracked, so the answer stays open.
-    expect(await screen.findByText("Unconfirmed")).toBeTruthy();
-    expect(screen.getByText("0 of 100 boards · 1 unchecked")).toBeTruthy();
+    // Short is short, whatever the unchecked line holds.
+    expect(await screen.findByText("0 of 100 boards")).toBeTruthy();
+    expect(screen.queryByText("Unconfirmed")).toBeNull();
     expect(within(screen.getByLabelText("Headline")).getByRole("button", { name: "FLAKY-1" })).toBeTruthy();
     expect(screen.getByText(/1 at risk, 1 more need a look/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Not priced/ })).toBeNull();
@@ -193,6 +193,13 @@ describe("the project Supply tab", () => {
     expect(within(parts).getByText("FLAKY-1")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Out of stock/ }));
     await waitFor(() => expect(within(parts).getAllByRole("row")).toHaveLength(3));
+  });
+
+  it("leaves the boards unconfirmed while a line is unchecked and the lines read cover the build", async () => {
+    mocked.getProjectSupply.mockResolvedValue(supply({ rollup: bomRollupFixture({ ...rollup, can_build: 400 }) }));
+    renderTab();
+    expect(await screen.findByText("Unconfirmed")).toBeTruthy();
+    expect(screen.getByText("100 of 100 boards · 1 unchecked")).toBeTruthy();
   });
 
   it("opens at the project's usual build and offers to keep another size as the usual one", async () => {

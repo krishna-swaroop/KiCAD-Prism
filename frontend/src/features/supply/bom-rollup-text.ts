@@ -26,9 +26,8 @@ export function rollupSentences(rollup: SupplyBomRollup, build: number, lines: r
 
   if (rollup.can_build === null) {
     sentences.push({ kind: "build", short: "?", text: rollup.tracked > 0 ? "No stock data yet" : "No parts tracked yet", tone: "warn" });
-  } else if (rollup.can_build >= build) {
-    sentences.push({ kind: "build", short: build.toLocaleString(), text: `Stock covers ${plural(build, "board", "boards")}`, tone: "plain" });
-  } else {
+  } else if (rollup.can_build < build) {
+    // Short is short: a line not yet checked can only lower the count.
     const limiting = lines.find((line) => line.key === rollup.limited_by)?.mpn;
     sentences.push({
       kind: "build",
@@ -36,6 +35,15 @@ export function rollupSentences(rollup: SupplyBomRollup, build: number, lines: r
       text: `Can build ${rollup.can_build.toLocaleString()} of ${build.toLocaleString()}${limiting ? `, limited by ${limiting}` : ""}`,
       tone: "bad",
     });
+  } else if (rollup.unchecked > 0) {
+    sentences.push({
+      kind: "build",
+      short: `${build.toLocaleString()}?`,
+      text: `Unconfirmed: ${build.toLocaleString()} of ${build.toLocaleString()}, ${rollup.unchecked.toLocaleString()} unchecked`,
+      tone: "warn",
+    });
+  } else {
+    sentences.push({ kind: "build", short: build.toLocaleString(), text: `Stock covers ${plural(build, "board", "boards")}`, tone: "plain" });
   }
 
   if (rollup.cost_build !== null && rollup.currency) {

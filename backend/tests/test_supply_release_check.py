@@ -201,6 +201,19 @@ class ReleaseCheckTests(unittest.TestCase):
         viewer = _request(self.app, "POST", "/api/supply/projects/prj_5/release-builds/b1/read-bom", user=self.users["viewer"])
         self.assertEqual(viewer.status, 403)
 
+    def test_a_release_bom_read_keeps_the_projects_folder_roles(self) -> None:
+        designers_only = {"id": "prj_6", "visibility_mode": "roles", "allowed_roles": '["designer"]'}
+        with mock.patch("app.api.supply_release.get_project_for_role_or_404", return_value=SimpleNamespace(id="prj_6", name="Six")), \
+                mock.patch("app.api.supply_release._build_of_project"), \
+                mock.patch("app.api.supply_release.release_source.build_bom_text", return_value=self.BOM_CSV), \
+                mock.patch("app.services.workspace_service.workspace.get_all_projects", return_value=[designers_only]):
+            response = _request(self.app, "POST", "/api/supply/projects/prj_6/release-builds/b1/read-bom", user=self.users["designer"])
+        self.assertEqual(response.status, 200, response.text)
+        with self.store.connection() as conn:
+            roles = conn.execute("SELECT visible_roles FROM supply_bom_usage_projects WHERE project_id = 'prj_6'").fetchone()["visible_roles"]
+            self.assertNotIn("qa", roles)
+            self.assertIn("designer", roles)
+
     def test_the_project_page_rolls_up_the_stored_bom_lines(self) -> None:
         from app.services.supply import usage
 

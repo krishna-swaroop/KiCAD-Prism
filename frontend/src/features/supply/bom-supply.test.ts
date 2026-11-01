@@ -128,7 +128,7 @@ describe("a row's supply", () => {
 describe("the rollup in words", () => {
   const rollup = bomRollupFixture({
     lines: 10, tracked: 8, not_tracked: 2, watched: 6, at_risk: 1, short: 2, priced: 7, lines_priced: 7, parts: 8, currency: "EUR",
-    cost_build: "24.00", cost_per_board: "2.4000", can_build: 15, limited_by: "k", without_stock_data: 0, health: 7.5, health_status: "ok",
+    cost_build: "24.00", cost_per_board: "2.4000", can_build: 15, limited_by: "k", without_stock_data: 0, unchecked: 2, health: 7.5, health_status: "ok",
   });
   const lines = [{ key: "k", manufacturer: "Acme", mpn: "B-1", quantity: 2, references: ["U1"] }];
   const text = (sentences: ReturnType<typeof rollupSentences>) => sentences.map((sentence) => sentence.text);
@@ -136,15 +136,16 @@ describe("the rollup in words", () => {
   it("says the stock is enough, what it costs, and what needs a look", () => {
     const sentences = rollupSentences(rollup, 10, lines);
     expect(text(sentences)).toEqual([
-      "Stock covers 10 boards",
+      "Unconfirmed: 10 of 10, 2 unchecked",
       expect.stringMatching(/24\.00.* to buy for 10 boards \(.*2\.40.* a board in use\), covers 7 of 10 lines/),
       "1 at risk",
       "Health 7.5 of 10",
       "2 short for this build",
       "2 not tracked",
     ]);
-    expect(sentences.map((sentence) => sentence.tone)).toEqual(["plain", "warn", "bad", "plain", "bad", "warn"]);
-    const complete = rollupSentences({ ...rollup, lines_priced: 10, not_tracked: 0 }, 10, lines);
+    expect(sentences.map((sentence) => sentence.tone)).toEqual(["warn", "warn", "bad", "plain", "bad", "warn"]);
+    const complete = rollupSentences({ ...rollup, lines_priced: 10, not_tracked: 0, unchecked: 0 }, 10, lines);
+    expect(complete[0].text).toBe("Stock covers 10 boards");
     expect(complete[1].text).not.toContain("covers");
     expect(complete[1].tone).toBe("plain");
   });

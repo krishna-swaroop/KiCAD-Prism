@@ -48,9 +48,10 @@ function BuildTile({ supply, boards, onOpenPart, editor }: { supply: ProjectSupp
     <>limited by{" "}
       {limiting.part_id ? <button type="button" className="text-primary hover:underline" onClick={() => onOpenPart(limiting.part_id as string)}>{limiting.mpn}</button> : limiting.mpn}</>
   ) : null;
-  // A line nobody could check (no part number, an unknown or ambiguous part) leaves the answer open, whatever the rest covers.
-  const unchecked = rollup.not_tracked;
-  if (unchecked > 0) {
+  // A line nobody could check (no part number, an unknown or ambiguous part, no stock reading) leaves the answer open,
+  // unless the build is already short: an unchecked line can only lower the count.
+  const unchecked = rollup.unchecked;
+  if (unchecked > 0 && !short) {
     return (
       <Tile label="Build" bad action={editor}>
         <p className={big(true)}>Unconfirmed</p>
