@@ -184,7 +184,7 @@ describe("supply columns on the BOM", () => {
 
   it("is plain at a commit checked out from History, and looks nothing up", async () => {
     renderTable("designer", undefined, false);
-    expect(screen.getByText("Supply data shows on the latest revision only.")).toBeTruthy();
+    expect(screen.getByText("Supply: latest revision only")).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: /^Supply/ })).toBeNull();
     expect(mocked.lookupSupplyBom).not.toHaveBeenCalled();
   });

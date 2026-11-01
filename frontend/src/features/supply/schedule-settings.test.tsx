@@ -26,7 +26,7 @@ describe("spare work", () => {
     await screen.findByLabelText("Parts waiting for room");
     expect(screen.queryByLabelText("Sat")).toBeNull();
     expect(screen.queryByLabelText("Time zone")).toBeNull();
-    expect(screen.getByText(/background reads/)).toBeTruthy();
+    expect(screen.getByText("Background reads")).toBeTruthy();
   });
 
   it("shows nothing when it cannot be read", async () => {

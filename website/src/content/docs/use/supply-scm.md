@@ -10,38 +10,49 @@ answers "can we build it", "what will it cost" and "what should we buy first",
 and how to get that out of Prism and into your purchasing tools. Prism never
 buys anything: there are no carts and no orders.
 
-You need the **Designer**, **QA** or **Admin** role to open Supply. The
-reference for each screen is [Track supply](/KiCAD-Prism/use/supply/); the
-rules behind each figure are in
-[How supply figures are worked out](/KiCAD-Prism/use/supply-figures/).
+You need the **Designer**, **QA** or **Admin** role to open Supply. Everything
+on this page, including tracking a project and choosing a packaging, is open to
+all three; see [Who can do what](/KiCAD-Prism/use/supply/#who-can-do-what) for
+the decisions that need QA or an administrator. The reference for each screen
+is [Track supply](/KiCAD-Prism/use/supply/); the rules behind each figure are
+in [How supply figures are worked out](/KiCAD-Prism/use/supply-figures/).
 
 ## Can this build go ahead?
 
 Open the project and choose **Supply**. The four tiles answer for the build
 size shown:
 
-- **Build**: how many boards the stock covers and the line that limits it.
-  **Unconfirmed · N unchecked** means some lines can't be checked (no part
-  number, or a part not in the library); the answer is not complete until they
-  are fixed.
-- **Cost**: the cost of the build and of one board.
-- **Health**: the parts by status.
-- **Stock coverage**: the share of BOM lines in stock for the build.
+- **Build**: how many boards the stock covers and the line that limits it. A
+  line short of stock makes the answer final. Otherwise, while some lines
+  can't be checked (no part number, a part Prism doesn't know or can't tell
+  apart, or no stock figure), the tile reads **Unconfirmed** with how many
+  lines are unchecked.
+- **Cost**: the cost of the build and of one board. When some lines have no
+  price it says how many of the lines are priced.
+- **Health**: the health score and the parts by status.
+- **Stock coverage**: the share of BOM lines in stock for the build. A line
+  counts only when its part is tracked and has a stock figure.
 
 To check another build size, use the pencil on **Build** and type the number
-of **Boards**. **Keep N as the usual build** saves it for a tracked project, so
-its card, the Dashboard and the daily cost history use it.
+of **Boards**. On a tracked project, **Keep N as the usual build** saves it, so
+its card, the Dashboard, the daily cost history and the next release snapshot
+use it. A project with no usual build is shown for 100 boards.
 
-Stock that counts toward the build is distributor stock plus what your own
-inventory holds as available. Stock on hold, in quarantine or at a vendor's
-location is shown but not counted.
+Stock that counts toward the build is distributor stock, the stock of the
+component's approved alternates, and what your own inventory holds as
+available. Stock on hold, in quarantine or at a vendor's location is shown but
+not counted.
 
-Narrow the parts with the chips: **Short for this build**, **Limiting the
-build**, **Out of stock**, **Not priced**, **End of life**, **Unchecked**,
-**Open alerts**. Sort with **Runs out first**.
+Narrow the parts with the chips: **Unchecked**, **Out of stock**, **Short for
+this build**, **Limiting the build**, **Not priced**, **End of life**, **Open
+alerts**. Sort with **Runs out first**.
 
-The **Projects** page in Supply lists every tracked project with the same
-answer.
+**Supply → Projects** lists every project, tracked ones first, with its cost
+per board, the boards it can build and its open alerts.
+
+When a figure on screen comes from an earlier read because the latest one
+failed, an **Out of date** button shows in the Supply header and on the
+project's Supply tab. Choose it to read everything again.
 
 ## What does it cost?
 
@@ -51,12 +62,17 @@ applied, and what they force you to buy beyond the need is shown as left over.
 
 - **Cost per board by build size** shows how the cost falls from 1 to 10,000
   boards.
-- **Cost allocation** shows which lines the money goes to.
+- **Cost allocation** shows which lines the money goes to. It is left out when
+  the prices are in several currencies and there is no rate to add them up.
 - **Cost over time** shows the daily cost of the usual build.
 
 Prices are list prices without VAT or shipping, converted to the workspace
-currency with the European Central Bank's daily rates. An administrator sets
-the currency, the spares and the preferred distributors in **Supply settings**.
+currency with the European Central Bank's daily rates or rates an
+administrator enters (see
+[Currency](/KiCAD-Prism/use/supply-figures/#currency)). An administrator sets
+the currency, the price quantity, the spares and the preferred distributors in
+[Supply settings](/KiCAD-Prism/admin/supply/#supply-settings); a tracked
+project can set its own spares.
 
 ### Take the costing to purchasing
 
@@ -74,15 +90,16 @@ the distributor yourself.
 
 ### Check a BOM file that isn't a project
 
-**Supply → Tracking → Upload BOM** checks an Excel or CSV BOM (a customer's,
-a quote) without saving anything. Map the part number column (or an LCSC
-number column) and the quantity, set **Boards to build**, and choose **Check
-N distinct parts**. The check uses the figures Prism already holds and makes
-no distributor calls, so a part Prism doesn't read yet comes back without stock
-or price.
+**Supply → Tracking → Upload BOM** checks an XLSX or CSV BOM (a customer's,
+a quote) of up to 2 MB without saving anything. Map the **Manufacturer part
+number** or **LCSC number** column and the **Quantity per board**, set
+**Boards to build**, and choose **Check N distinct parts**. The check uses the
+figures Prism already holds and makes no distributor calls, so a part Prism
+doesn't read yet comes back without stock or price.
 
-**Check once** on a project's BOM tab reads the parts nobody reads yet, once,
-without tracking them.
+**Check once** on a project's BOM tab, and in the release supply check, reads
+the parts nobody reads yet, once, without tracking them. Lines that need a
+maker or a part number first are counted as **to settle first** and left out.
 
 ## What should we buy first?
 
@@ -95,9 +112,9 @@ without tracking them.
 - **Tracking**, sorted by **Runs out first**.
 
 **Insights → Export** downloads every tracked part with its risk figures
-(status, lifecycle, when it may end, stock, distributors holding it, days to
-zero, lead time, price change and findings) as a CSV, for planning outside
-Prism.
+(status, lifecycle, outlook, stock, distributors holding it, days to zero, lead
+time, chance it is out in four weeks, price change and findings) as a CSV, for
+planning outside Prism.
 
 ## Watch lead times, prices and distributors
 
@@ -110,28 +127,43 @@ once it has data:
   restocks first and whether quoted arrivals are kept.
 - **Lead times and prices**: parts by quoted lead time, and the biggest price
   moves of the last 30 days.
+- **Stock risk**: stock left against lead time, and the parts behind each
+  finding.
 - **Market**: your parts as a group, by maker and by category: share out of
   stock, share ending, share dropped by distributors, median lead time and a
   price index, over time.
-- **Forecasts**: lead times by family three months ahead, early warnings and
-  prices ahead, shown only once each forecast has a good record.
+- **Forecasts**: lead times ahead, early warnings and prices ahead, shown
+  only once each forecast has a good record.
 - **Trade** and **Compliance**: country of origin, export control, lifecycle
   and RoHS/REACH.
 
 Every bar and count opens the parts behind it.
 
+## Compare with what was released
+
+When a release is published, Prism records the supply of the BOM it shipped,
+for the project's usual build and spares. The project's Supply tab lists them
+under **Releases** with their health, the parts that needed a look and a
+**Compliance CSV**. **Since then** names the parts that were fine at release
+and are not now; it is shown only for a release recorded at the build size the
+tab shows. Publishing is described in
+[Release Studio](/KiCAD-Prism/use/release-studio/).
+
 ## Get warned
 
 Alerts appear on the Dashboard; Prism sends no email or chat messages. The
-bell on a watched part's sheet sets what it raises, including a **Price
-rises** threshold and a **Target price**. The workspace defaults are in
-**Supply settings → Alerts**.
+bell on a watched part's sheet sets what it raises: its stock threshold, the
+price rise that counts, the chance of running out that counts and a **Target
+price**. Switching an alert off is for QA and administrators; anyone else's
+request waits in **Supply → Review → To approve**. The workspace defaults are
+in **Supply settings → Alerts**.
 
 ## Distributor call limits
 
 Distributors limit how many calls Prism may make a day. Prism spends the day
 on tracked parts first and keeps a share for people's lookups. When tracking
 asks for more than fits, the extra parts wait as **Queued for calls**: the
-Dashboard tile counts them. An administrator can raise a connector's budget, or
-you can pick one packaging per distributor (**Pick a packaging**) so fewer
-listings are read.
+Dashboard tile counts them. An administrator can raise a connector's budget.
+You can also pick one packaging per distributor so fewer listings are read:
+choose **Pick** on a part's read schedule (the clock on its sheet), or
+**Choose** under **Supply → Review → Several listings at a distributor**.

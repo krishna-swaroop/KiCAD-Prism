@@ -19,8 +19,39 @@ Set `TRACKER_CREDENTIAL_ROOT_KEY`. Prism encrypts distributor credentials and
 inventory tokens with it, and refuses to store them without it. See the
 [Configuration reference](/KiCAD-Prism/admin/configuration/#supply).
 
-If distributor calls must go through a proxy, set `SUPPLY_HTTPS_PROXY`. Prism
-ignores the environment's proxy variables for these calls.
+If Supply's outbound calls must go through a proxy, set `SUPPLY_HTTPS_PROXY`.
+Prism ignores the environment's proxy variables for these calls.
+
+## If the server refuses to start
+
+A database that ran a pre-release development build of Supply can hold supply
+tables in an older shape. Prism then refuses to start, and the backend log
+names what the tables lack:
+
+```text
+The supply tables were created by a pre-release build of Prism and lack …
+```
+
+Rebuilding the tables deletes all supply data: history, tracking, settings,
+connectors and their credentials, push tokens, and approved alternates.
+Components, their revisions and files, and inventory sources and their stock
+are kept.
+
+1. Take and verify a [backup](/KiCAD-Prism/admin/operations/#back-up).
+2. Stop the application, leaving PostgreSQL running:
+
+   ```bash
+   docker compose stop frontend backend prism-worker catalog-worker
+   ```
+
+3. Drop the supply tables:
+
+   ```bash
+   docker compose run --rm --no-deps backend python scripts/reset_supply_tables.py --confirm RESET-PRISM-SUPPLY-TABLES
+   ```
+
+4. Start Prism. It creates the supply tables again.
+5. Add the connectors again, as below, and create new push tokens.
 
 ## Add a distributor
 
@@ -57,8 +88,9 @@ developer portal.
 For LCSC, JLCPCB and CSV connectors, choose **Upload CSV** in the connector's
 menu. The file needs `sku`, `mpn`, `manufacturer` and `stock` columns, with
 prices in columns named for their quantity (`price_1`, `price_10`,
-`price_100`); **Download a template** in the dialog gives a starting file. The
-limit is 5 MB. Each upload replaces the previous one, and if any row is wrong
+`price_100`); **Download a template** in the dialog gives a starting file. A
+file may be at most 5 MB and 50,000 rows, and a `product_url` must start with
+`https://`. Each upload replaces the previous one, and if any row is wrong
 nothing is imported: the dialog lists each problem by line and column.
 
 A script, an ERP export or a scraper can send the same offers itself instead:
@@ -71,16 +103,20 @@ Instead of uploading a file, a JLCPCB connector can read
 [jlcparts](https://github.com/yaqwsx/jlcparts), a community copy of JLCPCB's
 assembly parts library that is rebuilt three times a day. Turn on **Read the
 jlcparts catalogue** in the connector's **Edit settings**.
-- Prism reads the catalogue twice a day and keeps only the parts it already
-  knows: library parts, followed parts and checked parts.
+
+- Prism reads the catalogue every 12 hours and keeps only the parts it already
+  knows.
 - Prices are in US dollars. Each part keeps its Basic, Extended or Preferred
   class.
 - Each read replaces the offers, just like an upload.
-- If a read fails, the connector card shows the error and the last offers
-  stay.
+- If a read fails, the connector card shows **Last call failed** and the last
+  offers stay. The next try is 12 hours later.
+- A catalogue file larger than 32 MB to download, or 256 MB unpacked, is
+  refused.
 
 jlcparts is not JLCPCB's own service. Check that its use fits your terms with
 JLCPCB before you turn it on.
+
 **Remove uploaded data** deletes the offers; stock history already collected
 stays.
 
@@ -109,15 +145,43 @@ and a pool for people's reads, first searches and one-off checks. The
 connector card shows today's spending, what waits for room and how many more
 parts fit. Choose **Edit settings** on a connector to set its daily budget, the
 share kept for people, and the hour and time zone its day starts; set these to
-the provider's.
+the provider's. Calls the scheduled reads don't need go to the **Background
+reads** chosen in **Supply settings → Reading**.
 
-A connector that hits a rate limit slows down for the day. One that answers
-with a web page or a challenge where data was expected is paused for 12 hours;
-the card says why, and **Resume** restarts it.
+A provider that reports its own limits, such as DigiKey, lets Prism work out
+when its day resets. The card then shows **Day seems to reset** with a time
+window, and **Use** followed by a time sets it. Once set, Prism also counts
+calls made with the same key outside Prism, except in the first hour after the
+reset.
+
+### When a distributor refuses calls
+
+A refused call puts the whole account (every connector on the same
+credentials) to rest. The card shows **Resting until** a time, and the
+**Last call** row says why.
+
+| What the distributor did | What Prism does |
+| --- | --- |
+| Rate-limited the call, or answered `403` that its call quota is used up | Rests until the time the distributor gives, or 15 minutes when it gives none (at most 24 hours), and slows its calls for a day (**Pacing** on the card) |
+| Answered a web page or a challenge where data was expected | Rests 12 hours and slows its calls for a day |
+| Rejected the credentials | Pauses the connector (**Paused**) until you replace the credentials and **Resume** it |
+| Failed in any other way | Rests 5 minutes, doubling with each failure in a row up to 6 hours, plus up to half again at random |
+
+A rest ends early on a call that works (including **Test connection**), on
+**Replace credentials**, or on **Resume** after **Pause**.
+
+### Refresh from KiCad
+
+**Refresh availability** in the KiCad panel reads one tracked part from its
+distributors at once, spending the pool kept for people. It shows only on
+tracked parts, and a person can refresh the same part once every 15 minutes.
+It needs a designer, QA or administrator role and either a signed-in session or
+a token that may write. KiCad provider tokens and read-only tokens are refused:
+the panel logs **No access** and hides the button.
 
 ## Supply settings
 
-The gear (**Supply settings**) on the Connectors page opens the workspace's
+The gear (**Supply settings**) on **Supply → Sources** opens the workspace's
 supply settings: **Costing** (currency, price quantity, spares, preferred
 distributors), **Health checks**, **Alerts**, **Reading**, **Matching** and
 **Reference data** (exchange rates and the REACH Candidate List). Everyone who
@@ -145,7 +209,7 @@ InvenTree itself. It only reads; it never changes your inventory.
 3. Give each part the numbers Prism matches on: its **IPN** set to the library
    component's Prism id or SAP code, its manufacturer parts (maker and MPN),
    or its supplier parts with the distributor's part number (**SKU**).
-5. Mark locations that hold stock outside your premises, such as at a
+4. Mark locations that hold stock outside your premises, such as at a
    contract manufacturer, as **external**.
 
 ### Add the source
@@ -207,11 +271,12 @@ stale on each component. See
 | --- | --- |
 | A connector shows **Needs credentials** or **Last call failed** | **Test connection** shows the distributor's answer. Rejected credentials pause the connector: replace them, then **Resume**. |
 | **Credentials locked** or **Credential key changed** | `TRACKER_CREDENTIAL_ROOT_KEY` is missing or differs from the key the credentials were saved with. Restore the key, or replace the credentials. |
-| **Resting until** a time | The distributor rate-limited Prism. It resumes by itself. |
-| **Paused** with a reason | Prism got a web page or a challenge where it expected data, or someone paused it. Check the proxy (`SUPPLY_HTTPS_PROXY`) and the distributor's status, then **Resume**. |
+| **Resting until** a time | The distributor refused calls (see [When a distributor refuses calls](#when-a-distributor-refuses-calls)). It resumes by itself. After **Refused**, check the proxy (`SUPPLY_HTTPS_PROXY`) and the distributor's status. |
+| **Paused** with a reason | The distributor rejected the credentials, or someone paused it. Replace the credentials if needed, then **Resume**. |
 | Farnell or element14 offers have no price | Set the connector's **Currency** to the store's. |
 | Calls run out before the day ends | Raise the **Daily call budget** to what the distributor allows, check **Provider's day begins at** and **Time zone** match its reset, or pick one packaging per distributor so fewer listings are read. |
-| An inventory source shows **No token** or **No category** | Edit it and set the token, or choose **Category** in its menu. |
+| An inventory source shows **No token** | Choose **Edit** in its menu and set the token. |
+| **Refresh availability** is missing in the KiCad panel | The part is not tracked, or the panel's sign-in cannot refresh (see [Refresh from KiCad](#refresh-from-kicad)). |
 | An inventory source shows **Read failed** | The card shows the error. Check the server address (no `/api`), that the token's user can read the category, and that the server is reachable over HTTPS from Prism. |
 | Stock is on the server but not on the component | The part is unmatched (see **Review**), its stock is not OK status, it is allocated, or it is at an external location. |
 
@@ -220,7 +285,16 @@ stale on each component. See
 - `GET /api/supply/health` (administrators) lists calls against budget,
   errors, late reads and the oldest read per connector, and when each periodic
   task (exchange rates, inventory reads, retention and the rest) last ran, last
-  worked and last failed, with its error.
+  worked and last failed, with its error. A task that fails again is tried
+  less often: twice the time since its last failure, up to every 6 hours,
+  until it works. A task whose run has neither worked nor failed an hour after
+  it started (or three of its intervals, if longer) is marked `stuck`: its
+  worker most likely died, so check the `prism-worker` log.
+- Exchange rates come from the European Central Bank once a day, unless
+  `SUPPLY_FETCH_EXCHANGE_RATES` is off. In **Supply settings → Reference
+  data**, administrators can also enter rates or choose **Refresh from the
+  ECB**. Without a rate for a currency, prices in it are not converted. See the
+  [Configuration reference](/KiCAD-Prism/admin/configuration/#supply).
 - Readings older than 60 days are rolled into one row per listing per day.
   Set **Keep raw samples (days)** in a connector's **Edit settings** to change
   that (1 to 365 days). For a provider whose terms limit how long its data may

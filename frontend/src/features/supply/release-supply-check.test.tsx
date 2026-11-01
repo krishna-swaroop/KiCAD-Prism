@@ -30,7 +30,7 @@ describe("the supply check on a release", () => {
     expect(await screen.findByText("BOM health 5.4 of 10")).toBeTruthy();
     expect(mocked.getReleaseCheck).toHaveBeenCalledWith("prj_1", "bld_1", expect.anything());
     expect(screen.getByText(/38 of 40 parts tracked, 2 not yet/)).toBeTruthy();
-    expect(screen.getByText(/does not block publishing/)).toBeTruthy();
+    expect(screen.queryByText(/does not block publishing/)).toBeNull();
     const list = screen.getByRole("list", { name: "Parts that need a look" });
     expect(within(list).getByText("OBS-1, Acme")).toBeTruthy();
     expect(within(list).getByText("The manufacturer lists this part as obsolete.")).toBeTruthy();

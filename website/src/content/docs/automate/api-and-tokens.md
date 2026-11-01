@@ -40,7 +40,7 @@ A token's scopes limit what it may do. Its owner's role limits it further: a tok
 | `release:approve` | approving and publishing releases |
 | `catalog:qa` | catalog QA decisions |
 | `admin` | administrator changes |
-| `api:write` | every scope from `comments:write` to `admin` above |
+| `api:write` | every scope from `comments:write` to `admin` above, and the Supply writes no narrower scope allows, such as watching a part or reading it from its distributors now |
 | `ops:read` | the [ops diagnostics](/KiCAD-Prism/automate/ops-diagnostics/) reads |
 | `ops:act` | the ops actions, and everything `ops:read` allows |
 

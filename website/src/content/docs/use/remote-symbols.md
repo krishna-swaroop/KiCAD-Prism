@@ -68,6 +68,10 @@ If **Place** fails, check the message in the panel log before trying again;
 Prism sends each placement only once. **More actions** → **Inline Fallback**
 places the same part by a second route if the normal one fails.
 
+**Refresh availability** under **Availability** reads a tracked part from its
+distributors now. Who may use it and how often is in
+[Supply administration](/KiCAD-Prism/admin/supply/#refresh-from-kicad).
+
 The open-in-Prism button under **Availability** shows the part's supply page
 inside the panel; closing it returns to the part. KiCad keeps every link inside
 the panel, so **Datasheet** and a distributor's product link copy their address
