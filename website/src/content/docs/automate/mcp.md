@@ -113,7 +113,7 @@ To review a change, an assistant calls `compare_revisions`, polls `get_job` unti
 | `reply_to_comment` | replies in an existing thread | `comments:write` |
 | `resolve_comment` | changes nothing: returns the Prism page where you resolve the thread yourself | `comments:write` |
 | `watch_component` | puts a component's main part on watch, in the packaging you choose, so Prism reads its stock and price on a schedule. Watching again changes only the packaging. | `api:write` |
-| `refresh_component_supply` | reads a component's main part from its distributors now. It needs the designer or administrator role, and runs once every 15 minutes per person and part. | `api:write` |
+| `refresh_component_supply` | reads a component's main part from its distributors now. It needs a supply role (designer, QA or administrator), and runs once every 15 minutes per person and part. | `api:write` |
 
 :::note
 A client signed in with OAuth can't be granted `api:write`, so `watch_component` and `refresh_component_supply` work only for a client that sends a personal access token with `api:write`.

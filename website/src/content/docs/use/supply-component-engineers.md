@@ -130,7 +130,7 @@ Any part row opens the part's sheet. Read it top to bottom:
 
 - **In stock**: total distributor stock, its history per distributor and the
   trend. **Read now** asks every distributor again (once every 15 minutes per
-  part; designers and administrators).
+  part; designers, QA and administrators).
 - **Price**: the price at the part's price quantity, its history, and the
   pencil to change the quantity it is priced at.
 - **Forecast** (folded), once the part has one.

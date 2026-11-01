@@ -228,7 +228,7 @@ register(
         execute=_refresh,
         annotations=write_annotations(),
         output_schema=_object({}) | {"additionalProperties": True},
-        action="supply_write",
+        action="supply_follow",
     )
 )
 

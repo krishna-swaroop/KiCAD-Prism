@@ -261,8 +261,8 @@ class SupplyPartsApiTests(unittest.TestCase):
 
     def test_who_may_read_now_and_an_unknown_part_is_not_found(self) -> None:
         watch = self.watch_via_api("ABC-123")
-        for role in ("qa", "viewer"):
-            self.assertEqual(self.call("POST", f"/api/supply/parts/{watch['part_id']}/refresh", role=role).status, 403, role)
+        self.assertEqual(self.call("POST", f"/api/supply/parts/{watch['part_id']}/refresh", role="viewer").status, 403)
+        self.assertEqual(self.call("POST", f"/api/supply/parts/{watch['part_id']}/refresh", role="qa").status, 200, "QA reads now, as from the KiCad panel")
         self.assertEqual(self.call("POST", "/api/supply/parts/nope/refresh", role="designer").status, 404)
 
     def test_opening_a_part_nothing_follows_reads_it_once_while_its_prices_have_aged_out(self) -> None:

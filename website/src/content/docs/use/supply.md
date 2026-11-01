@@ -26,8 +26,8 @@ behind every figure are in
 | Role | In Supply |
 | --- | --- |
 | Viewer | Nothing. Supply is hidden. |
-| Designer | Read everything; track projects, parts and components; pick packaging and distributors; set a part's alert rules, price quantity and trade marks; open work items; propose waivers. Also read a part now, propose alternates, acknowledge and snooze alerts, and ask QA to dismiss an ending part or switch an alert off. |
-| QA | Everything a designer does except reading a part now, proposing alternates and acknowledging alerts. Also approve alternates, waivers, dismissals, manufacturer spellings and listings; switch alerts off; link or ignore unmatched local stock; accept, reject or reopen work items; and decide about components whose part is ending (retiring only where the catalog workflow lets QA archive the component). |
+| Designer | Read everything; track projects, parts and components; pick packaging and distributors; set a part's alert rules, price quantity and trade marks; open work items; propose waivers; read a part now. Also propose alternates, acknowledge and snooze alerts, and ask QA to dismiss an ending part or switch an alert off. |
+| QA | Everything a designer does except proposing alternates and acknowledging alerts. Also approve alternates, waivers, dismissals, manufacturer spellings and listings; switch alerts off; link or ignore unmatched local stock; accept, reject or reopen work items; and decide about components whose part is ending (retiring only where the catalog workflow lets QA archive the component). |
 | Admin | Everything above, plus distributor connectors, inventory sources and Supply settings. |
 
 ## Where supply shows
