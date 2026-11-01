@@ -78,10 +78,10 @@ function PartBody({ partId, user, onWatchChanged }: { partId: string; user: User
       </>
     );
   }
-  return <PartDetail detail={data} canEdit={canEditSupply(user?.role)} role={user?.role} onChanged={changed} />;
+  return <PartDetail detail={data} canEdit={canEditSupply(user?.role)} role={user?.role} me={user?.email} onChanged={changed} />;
 }
 
-function PartDetail({ detail, canEdit, role, onChanged }: { detail: SupplyPartDetail; canEdit: boolean; role: User["role"] | undefined; onChanged: () => Promise<void> }) {
+function PartDetail({ detail, canEdit, role, me, onChanged }: { detail: SupplyPartDetail; canEdit: boolean; role: User["role"] | undefined; me?: string; onChanged: () => Promise<void> }) {
   return (
     <div className="space-y-6">
       <SheetHeader>
@@ -91,7 +91,7 @@ function PartDetail({ detail, canEdit, role, onChanged }: { detail: SupplyPartDe
               <span className="flex items-center gap-2"><StatusDot status={detail.status} />{detail.part.mpn}</span>
               <span className="text-sm font-normal text-muted-foreground">{detail.part.manufacturer}</span>
               <Badge variant={LIFECYCLE_BADGE[detail.lifecycle]}>{LIFECYCLE_LABEL[detail.lifecycle]}</Badge>
-              <TradeTag show="tag" partId={detail.part.id} trade={detail.trade} canEdit={canEdit} onChanged={onChanged} />
+              <TradeTag show="tag" partId={detail.part.id} trade={detail.trade} canEdit={canFollowSupply(role)} onChanged={onChanged} />
               <JlcIcon jlc={detail.jlc} />
             </SheetTitle>
             <UsedInLinks uses={detail.used_in} />
@@ -104,7 +104,7 @@ function PartDetail({ detail, canEdit, role, onChanged }: { detail: SupplyPartDe
         <SheetDescription className="sr-only">{detail.part.manufacturer} {detail.part.mpn}</SheetDescription>
       </SheetHeader>
 
-      <PartDetailSections detail={detail} canEdit={canEdit} role={role} onChanged={onChanged} />
+      <PartDetailSections detail={detail} canEdit={canEdit} role={role} me={me} onChanged={onChanged} />
     </div>
   );
 }

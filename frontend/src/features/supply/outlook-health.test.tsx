@@ -42,8 +42,8 @@ const OUTLOOK: SupplyOutlook = {
   band: "no_signs", label: "No signs of an end", method: "rule-based", signals: [],
 };
 
-function renderIt(role: UserRole = "designer") {
-  render(<OutlookSection outlook={OUTLOOK} partId="p1" role={role} />);
+function renderIt(role: UserRole = "designer", me = "") {
+  render(<OutlookSection outlook={OUTLOOK} partId="p1" role={role} me={me} />);
 }
 
 /** The scores and findings open from the info icon; a click holds them open. */
@@ -131,11 +131,18 @@ describe("the outlook and health line", () => {
     await waitFor(() => expect(mocked.decideWaiver).toHaveBeenCalledWith("w1", true));
     cleanup();
     forgetServerState([]);
-    renderIt("designer");
+    renderIt("designer", "a@example.com");
     await openDetails();
     await screen.findByText(/Waiting for QA/);
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     expect(screen.getByRole("button", { name: "Withdraw" })).toBeTruthy();
+    cleanup();
+    forgetServerState([]);
+    // Another designer's proposal is not theirs to withdraw, and an approved waiver only an approver revokes.
+    renderIt("designer", "b@example.com");
+    await openDetails();
+    await screen.findByText(/Waiting for QA/);
+    expect(screen.queryByRole("button", { name: "Withdraw" })).toBeNull();
   });
 
   it("shows a waiver that holds as accepted, and one for an earlier condition as needing a look", async () => {

@@ -83,7 +83,7 @@ export function CrossReferenceSection({ partId, canEdit }: { partId: string; can
               ))}
             </ul>
           )}
-          <p className="text-xs text-muted-foreground">Compared on {found.judged_on.map(label).join(", ") || "nothing"} as distributors list them. Footprint and pins are not compared: check them before using one.</p>
+          <p className="text-xs text-muted-foreground">Compared on {found.judged_on.map(label).join(", ") || "nothing"} · footprint and pins unchecked</p>
         </>
       ) : <p className="text-xs text-muted-foreground">Nothing looked up yet.</p>}
     </FoldSection>

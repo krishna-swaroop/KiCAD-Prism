@@ -35,7 +35,13 @@ export function CheckOnceButton({
     setBusy(true);
     startCheck("bom", projectId, lines)
       .then((made) => {
-        if (made.parts === 0) { setOpen(false); toast.success("Nothing to check", { description: "Every part is already tracked." }); return; }
+        if (made.parts === 0) {
+          // Nothing was asked for: every line is tracked already, or the lines left need a maker or a number first.
+          setOpen(false);
+          if (made.skipped.length > 0) toast.warning("Nothing to check", { description: `${made.skipped.length} to settle first` });
+          else toast.success("Nothing to check", { description: "All tracked" });
+          return;
+        }
         setRequestId(made.id);
         setStarted(made.progress);
         setSkipped(made.skipped.length);
@@ -45,6 +51,11 @@ export function CheckOnceButton({
   };
 
   const running = progress !== null && !finished;
+  // A finished check is put away when the button is used again, so a new one can start.
+  const openNew = () => {
+    if (finished) { setRequestId(""); setStarted(null); setSkipped(0); }
+    setOpen(true);
+  };
   const share = progress && progress.total > 0 ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
   if (lines.length === 0 && !running) return null;
   return (
@@ -56,7 +67,7 @@ export function CheckOnceButton({
           </button>
         </span>
       ) : (
-        <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => setOpen(true)}>
+        <Button type="button" size="sm" variant="outline" className="h-7" onClick={openNew}>
           <ScanSearch className="h-3.5 w-3.5" />Check once ({lines.length})
         </Button>
       )}

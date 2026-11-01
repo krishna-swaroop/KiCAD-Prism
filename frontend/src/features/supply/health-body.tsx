@@ -7,11 +7,12 @@ const SCORE_LABEL: Record<SupplySubScore["name"], string> = {
 };
 
 /** The five scores and every finding behind a part's health, with the waivers people have asked for or approved. */
-export function HealthBody({ partId, data, canPropose, canApprove, act }: {
+export function HealthBody({ partId, data, canPropose, canApprove, me, act }: {
   partId: string;
   data: SupplyAssessment;
   canPropose: boolean;
   canApprove: boolean;
+  me?: string;
   act: (action: () => Promise<unknown>) => Promise<void>;
 }) {
   return (
@@ -34,6 +35,7 @@ export function HealthBody({ partId, data, canPropose, canApprove, act }: {
               finding={finding}
               canPropose={canPropose}
               canApprove={canApprove}
+              me={me}
               onPropose={(reason) => act(() => proposeWaiver(partId, finding.check, reason))}
               onDecide={(waiverId, approve) => void act(() => decideWaiver(waiverId, approve))}
               onRevoke={(waiverId) => void act(() => revokeWaiver(waiverId))}

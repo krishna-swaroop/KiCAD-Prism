@@ -65,7 +65,7 @@ function BuildTile({ supply, boards, onOpenPart, editor }: { supply: ProjectSupp
     <Tile label="Build" bad={short} action={editor}>
       <p className={big(short)}>{covered === null ? "Not known" : `${Math.min(covered, boards).toLocaleString()} of ${boards.toLocaleString()} boards`}</p>
       <p className="text-xs text-muted-foreground">
-        {covered === null ? "No stock figure yet." : limitedBy ?? `The stock covers ${covered.toLocaleString()}.`}
+        {covered === null ? "No stock figure" : limitedBy ?? `Covers ${covered.toLocaleString()}`}
       </p>
     </Tile>
   );
@@ -129,7 +129,8 @@ function HealthTile({ supply }: { supply: ProjectSupply }) {
  *  without a stock figure counts as not covered, so the share is never 100% while a line is unchecked. */
 function CoverageTile({ supply, boards }: { supply: ProjectSupply; boards: number }) {
   const lines = supply.parts ?? [];
-  const known = lines.filter((part) => part.part_id && part.stock !== null);
+  // Known as the build tile's rollup knows it: a tracked part with a stock figure (an untracked part's old reading is unchecked).
+  const known = lines.filter((part) => part.part_id && part.state === "tracked" && part.stock !== null);
   const covered = known.filter((part) => !part.short).length;
   const unknown = lines.length - known.length;
   const share = known.length === 0 ? null : covered / lines.length;
@@ -137,7 +138,7 @@ function CoverageTile({ supply, boards }: { supply: ProjectSupply; boards: numbe
     <Tile label="Stock coverage" bad={share !== null && share < 0.9}>
       <p className={big(share !== null && share < 0.9)}>{share === null ? "No data" : `${Math.round(share * 100)}%`}</p>
       <p className="text-xs text-muted-foreground">
-        {share === null ? "No stock figure yet." : `${covered} of ${lines.length} lines in stock for ${boards.toLocaleString()} boards${known.length > covered ? `, ${known.length - covered} short` : ""}`}
+        {share === null ? "No stock figure" : `${covered} of ${lines.length} lines in stock for ${boards.toLocaleString()} boards${known.length > covered ? `, ${known.length - covered} short` : ""}`}
         {unknown > 0 && share !== null ? `, ${unknown} unknown` : ""}
       </p>
     </Tile>
