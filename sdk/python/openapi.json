@@ -64234,7 +64234,7 @@
     },
     "/api/v1/supply/parts/{part_id}/refresh": {
       "post": {
-        "description": "Read one part from its distributors now, from the interactive reserve. Once every 15 minutes per person and part.",
+        "description": "Read one part from its distributors now, from the interactive reserve. Once every 15 minutes per person and part. Every\nsupply role may, as from the KiCad panel; a token needs to be one that may write.",
         "operationId": "read_part_now",
         "parameters": [
           {

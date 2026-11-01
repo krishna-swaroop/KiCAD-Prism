@@ -61,7 +61,7 @@ export function PartDetailSections({ detail, canEdit, role, me, onChanged, wide 
               </HoverDetails>
             ) : null}
           </div>
-          {canEdit ? <ReadNowButton partId={detail.part.id} onRead={onChanged} /> : null}
+          {canFollowSupply(role) ? <ReadNowButton partId={detail.part.id} onRead={onChanged} /> : null}
         </div>
         {detail.problem_text ? <p role="alert" className="text-sm text-destructive">{detail.problem_text}</p> : null}
         <PartHistoryPanel kind="stock" partId={detail.part.id} history={history} threshold={detail.watch?.threshold ?? null} forecast={forecast.data} />

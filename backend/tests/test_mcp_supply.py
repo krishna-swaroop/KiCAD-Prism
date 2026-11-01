@@ -22,7 +22,7 @@ from test_mcp_catalog import SequenceApp  # noqa: E402
 
 READ_TOOLS = ["get_project_supply", "get_component_supply", "find_part_alternatives"]
 # Following a component is anyone who reads supply (supply_follow); reading now spends the reserve (supply_write).
-WRITE_TOOLS = {"watch_component": "supply_follow", "refresh_component_supply": "supply_write"}
+WRITE_TOOLS = {"watch_component": "supply_follow", "refresh_component_supply": "supply_follow"}
 PARTS = {
     "parts": [
         {"part_id": "p_main", "role": "main", "approval": "approved", "manufacturer": "Acme", "mpn": "LM-1"},

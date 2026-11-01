@@ -617,14 +617,13 @@ describe("the watch settings", () => {
     expect(title.compareDocumentPosition(used) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("offers Read now to the people who can watch parts, and to nobody else", async () => {
+  it("offers Read now to every supply role, QA included", async () => {
     renderView("designer", "/?part=p1");
     expect(await screen.findByRole("button", { name: /Read now/ })).toBeTruthy();
     cleanup();
     forgetServerState([]);
     renderView("qa", "/?part=p1");
-    await screen.findByRole("region", { name: "Stock" });
-    expect(screen.queryByRole("button", { name: /Read now/ })).toBeNull();
+    expect(await screen.findByRole("button", { name: /Read now/ })).toBeTruthy();
   });
 
   it("shows no Used in section for a part no BOM carries", async () => {
