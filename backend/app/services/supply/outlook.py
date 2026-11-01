@@ -102,11 +102,15 @@ def outlook(
 ) -> dict[str, Any]:
     """The band, its label and the signals behind it, for a part with these counted offers."""
 
-    dropped = sum(1 for offer in offers if offer.get("discontinued"))
+    # Distributors, not listings: one that lists three packagings has dropped the part only when all three say so.
+    by_distributor: dict[str, list[bool]] = {}
+    for index, offer in enumerate(offers):
+        by_distributor.setdefault(str(offer.get("connector_id") or offer.get("connector_name") or index), []).append(bool(offer.get("discontinued")))
+    dropped = sum(1 for flags in by_distributor.values() if all(flags))
     found = signals(
         lifecycle,
         dropped_by=dropped,
-        listed_at=len(offers),
+        listed_at=len(by_distributor),
         zero_stock_days=zero_stock_days,
         price_change_percent=price_change_percent,
         notices=notices,

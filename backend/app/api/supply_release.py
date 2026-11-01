@@ -144,7 +144,7 @@ async def release_check_for(
         except (release_source.NoBuildBom, release_bom.BomReadError) as exc:
             return {"available": False, "reason": str(exc)}
         with _store().connection() as conn:
-            return {"available": True, **release_check.check(conn, read_bom.lines, without_number=read_bom.without_number)}
+            return {"available": True, **release_check.check(conn, read_bom.lines, without_number=read_bom.without_number, project_id=project_id)}
 
     return await _run(read)
 

@@ -5165,8 +5165,9 @@ class RejectManyRequest(TypedDict, total=True):
     listing_ids: list[str]
 
 
-class ReleaseAssessment(TypedDict, total=True):
+class ReleaseAssessment(TypedDict, total=False):
     attention: list[ReleaseCheckLine]
+    boards: int | None
     health: int | float | None
     lines: list[ReleaseCheckLine]
     needing_a_look: int
@@ -5197,9 +5198,10 @@ class ReleaseCheckLine(TypedDict, total=True):
     waived: int
 
 
-class ReleaseCheckResult(TypedDict, total=True):
+class ReleaseCheckResult(TypedDict, total=False):
     attention: list[ReleaseCheckLine]
     available: bool
+    boards: int | None
     health: int | float | None
     lines: list[ReleaseCheckLine]
     needing_a_look: int

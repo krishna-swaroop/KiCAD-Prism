@@ -79,7 +79,7 @@ def _events(conn, part_id: str, total: list[list[Any]], first: date) -> list[dic
     return sorted(found, key=lambda item: item["day"])
 
 
-def build(conn, part_id: str, now: datetime | None = None, days: int = DEFAULT_DAYS) -> dict[str, Any]:
+def build(conn, part_id: str, now: datetime | None = None, days: int = DEFAULT_DAYS, *, pools: bool = False) -> dict[str, Any]:
     now = now or clock.now()
     days = max(1, min(int(days), MAX_DAYS))
     listings = _listings(conn, part_id)
@@ -119,6 +119,8 @@ def build(conn, part_id: str, now: datetime | None = None, days: int = DEFAULT_D
     carried: dict[str, dict[str, Any]] = {}
     lines: dict[str, dict[str, Any]] = {
         connector_id: {"connector_id": connector_id, "name": info["name"], "provider": info["provider"], "stock": [], "price": [],
+                       # The account its stock is on: connectors on one account list one shelf (``stock.pool_sql``).
+                       "pool": next((item["pool"] for item in info["listings"] if item.get("pool")), None) or connector_id,
                        "last_read": max((i["fetched_at"] for i in info["listings"] if i["fetched_at"]), default=None)}
         for connector_id, info in by_connector.items()
     }
@@ -157,6 +159,8 @@ def build(conn, part_id: str, now: datetime | None = None, days: int = DEFAULT_D
     events = _events(conn, part_id, total, first)
     ordered = sorted(lines.values(), key=lambda line: line["name"].lower())
     for line in ordered:
+        if not pools:
+            line.pop("pool", None)
         read = line["last_read"]
         # Not read for longer than the part's rate allows: the chart draws the rest of the line dashed.
         line["stale"] = read is not None and (today - read.astimezone(timezone.utc).date()).days > allowed_gap

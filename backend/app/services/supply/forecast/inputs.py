@@ -32,7 +32,7 @@ def holders(conn, part_id: str, now: datetime, days: int = 90, *, borrow: bool =
     """Each distributor's daily stock of the part, with the lead time it quotes. A distributor with too few readings since its last
     restock to have a drain of its own is given the drains of similar parts (``borrow`` False leaves that out)."""
 
-    built = part_history.build(conn, part_id, now, days)
+    built = part_history.build(conn, part_id, now, days, pools=True)
     if not built["connectors"]:
         return []
     quotes = {
@@ -47,7 +47,7 @@ def holders(conn, part_id: str, now: datetime, days: int = 90, *, borrow: bool =
     rate = conn.execute("SELECT rate FROM supply_part_tiers WHERE part_id = %s", (part_id,)).fetchone()
     found = []
     similar: np.ndarray | None | bool = False
-    for line in built["connectors"]:
+    for line in _one_per_pool(built["connectors"]):
         series = [(date.fromisoformat(day), int(stock)) for day, stock in line["stock"]]
         if series:
             holder = models.Holder(line["connector_id"], line["name"], line["provider"], series, quotes.get(line["connector_id"]), bool(rate and rate["rate"] != "daily"))
@@ -57,6 +57,16 @@ def holders(conn, part_id: str, now: datetime, days: int = 90, *, borrow: bool =
                 holder.similar = similar  # type: ignore[assignment]
             found.append(holder)
     return found
+
+
+def _one_per_pool(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One line per stock pool: connectors on one account list the same shelf, so simulating each would count it twice. The line
+    with the most readings stands for the pool."""
+
+    pools: dict[str, list[dict[str, Any]]] = {}
+    for line in lines:
+        pools.setdefault(line.get("pool") or line["connector_id"], []).append(line)
+    return [max(group, key=lambda line: len(line["stock"])) for group in pools.values()]
 
 
 def similar_shares(conn, part_id: str, now: datetime, limit: int = 40) -> np.ndarray | None:

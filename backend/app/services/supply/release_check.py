@@ -1,7 +1,8 @@
 """The supply check on a release's BOM before it is published, and the snapshot taken at publish.
 
 The BOM is the one the release build exported (``release_bom.py``): the run's variant and BOM preset, exactly what
-ships. ``check`` assesses every distinct part on it (never calling a distributor). It reports the BOM's health and the parts with an error or fatal finding nobody has
+ships. ``check`` assesses every distinct part on it (never calling a distributor) for the project's build: its usual build
+size and spares, as the project page prices it, so a snapshot and today's page compare like with like (D2). It reports the BOM's health and the parts with an error or fatal finding nobody has
 waived. It informs the release; it does not block it.
 
 ``freeze`` writes what the check said, with each matched component's approved parts, beside the
@@ -16,7 +17,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
-from app.services.supply import bom_lookup, clock, compliance_draft, usage
+from app.services.supply import attrition, bom_lookup, clock, compliance_draft, usage
+from app.services.supply import settings as supply_settings
 from app.services.supply.assessment import health as health_rules
 from app.services.supply.assessment import service as assessment
 from app.services.supply.audit import write_audit
@@ -38,15 +40,26 @@ def _open(findings: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
     return [f for f in findings if not (f["waiver"] and f["waiver"]["holds"])]
 
 
-def check(conn, lines: Sequence[usage.UsageLine], now: datetime | None = None, without_number: int = 0) -> dict[str, Any]:
-    """Assess the distinct parts on a BOM. ``without_number`` counts rows of the BOM that name no part number."""
+def check(
+    conn, lines: Sequence[usage.UsageLine], now: datetime | None = None, without_number: int = 0, project_id: str = "",
+) -> dict[str, Any]:
+    """Assess the distinct parts on a BOM for the project's build. ``without_number`` counts rows of the BOM that name no part number."""
 
-    result = _assess(conn, lines, now or clock.now())
+    result = _assess(conn, lines, now or clock.now(), project_id)
     result["without_number"] = without_number
     return result
 
 
-def _assess(conn, lines: Sequence[usage.UsageLine], now: datetime) -> dict[str, Any]:
+def _build(conn, project_id: str) -> tuple[int, float | None]:
+    """The boards and spares the project page prices for (``project_supply.build_of``)."""
+
+    from app.services.supply import project_supply
+
+    _tracked, boards, spares = project_supply.build_of(conn, project_id, None, project_supply.DEFAULT)
+    return boards, spares
+
+
+def _assess(conn, lines: Sequence[usage.UsageLine], now: datetime, project_id: str = "") -> dict[str, Any]:
     bom = [
         BomLine(line.key, line.manufacturer, line.mpn, line.quantity, prism_id=line.prism_id, lcsc=line.lcsc, value=line.value, footprint=line.footprint)
         for line in lines
@@ -54,16 +67,25 @@ def _assess(conn, lines: Sequence[usage.UsageLine], now: datetime) -> dict[str, 
     # The lines carry the shipped identity (``release_bom.lines_from_csv``); the library is read only for the components' alternates.
     known = bom_lookup.library_identities(bom, bom_lookup.library_readers(conn).get("identities"))
     resolved = bom_lookup.resolve_lines(bom, conn)
-    needs: dict[str, int] = {}
+    boards, spares = _build(conn, project_id)
+    table = supply_settings.load(conn).spares.table()
+    per_board: dict[str, int] = {}
+    footprint: dict[str, str] = {}
     for line in bom:
         part_id = resolved[line.key][1]
         if part_id:
-            needs[part_id] = needs.get(part_id, 0) + line.quantity
+            per_board[part_id] = per_board.get(part_id, 0) + line.quantity
+            footprint.setdefault(part_id, line.footprint)
+    # As ``bom_lookup.price``: spares by kind of part from the first line's footprint when none are set, else the one figure.
+    needs = {
+        part_id: bom_lookup.needed(count, boards, attrition.percent_for(footprint[part_id], table) if spares is None else spares)
+        for part_id, count in per_board.items()
+    }
     # A line may be built with its component's approved alternates (D2): each is assessed for the line's need, and the best counts.
     alternates = bom_lookup.line_alternates(conn, bom, resolved, known)
     assessed = assessment.assess_parts(
         conn, sorted({*needs, *(other for others in alternates.values() for other in others)}),
-        needs | {other: needs[part_id] for part_id, others in alternates.items() for other in others}, now,
+        bom_lookup.alternate_needs(needs, alternates), now,
     )
 
     rows = []
@@ -95,6 +117,7 @@ def _assess(conn, lines: Sequence[usage.UsageLine], now: datetime) -> dict[str, 
         "health": rolled.score if rolled.status is not Status.UNKNOWN else None,
         "status": rolled.status.value,
         "parts": len(rows),
+        "boards": boards,
         "tracked": sum(1 for r in rows if r["part_id"]),
         "not_tracked": sum(1 for r in rows if not r["part_id"]),
         "needing_a_look": len(blocking),
@@ -116,7 +139,7 @@ def freeze(
 ) -> str | None:
     """Record the BOM check as it stands now. Returns the id, or None if already recorded."""
 
-    result = check(conn, lines, now, without_number)
+    result = check(conn, lines, now, without_number, project_id=project_id)
     snapshot_id = uuid.uuid4().hex
     # The draft RoHS and REACH declaration for this BOM, frozen with it. A draft that cannot be built does not stop the snapshot.
     draft: dict[str, Any] | None

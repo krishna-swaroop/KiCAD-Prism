@@ -25,6 +25,17 @@ def holder(values, name="Mouser", quote=None, weekly=False, cid="m"):
     return Holder(cid, name, "mouser", series(values), quote, weekly)
 
 
+class PoolTests(unittest.TestCase):
+    def test_storefronts_on_one_account_are_one_shelf(self) -> None:
+        lines = [
+            {"connector_id": "tme-eu", "pool": "acct1", "stock": [["2026-10-01", 1000]]},
+            {"connector_id": "tme-pl", "pool": "acct1", "stock": [["2026-10-01", 1000], ["2026-10-02", 990]]},
+            {"connector_id": "mouser", "pool": "acct2", "stock": [["2026-10-01", 50]]},
+        ]
+        kept = inputs._one_per_pool(lines)  # noqa: SLF001
+        self.assertEqual([line["connector_id"] for line in kept], ["tme-pl", "mouser"], "the shelf is simulated once, from its longer series")
+
+
 class WordsTests(unittest.TestCase):
     def test_one_scale_of_words(self) -> None:
         words = [store.chance_word(p) for p in (0.95, 0.9, 0.78, 0.5, 0.2, 0.05)]
