@@ -146,7 +146,7 @@ export function PartsView({ user, headerSlot }: { user: User | null; headerSlot?
         <DialogContent className="w-[min(95vw,72rem)] sm:max-w-none">
           <DialogHeader>
             <DialogTitle>Upload BOM</DialogTitle>
-            <DialogDescription>A CSV with a part number or LCSC number column. Nothing is saved.</DialogDescription>
+            <DialogDescription>CSV · part number or LCSC number column</DialogDescription>
           </DialogHeader>
           <div className="max-h-[75vh] themed-scrollbar overflow-y-auto"><BomFileView /></div>
         </DialogContent>
@@ -170,15 +170,6 @@ function EmptyState({ scope, searching, canEdit, canFollow, onWatch }: { scope: 
     <div className="flex flex-col items-center gap-2 border border-dashed p-10 text-center">
       <PackageSearch className="h-8 w-8 text-muted-foreground" />
       <p className="text-sm font-medium">{searching ? "No parts match" : scope === "watched" || scope === "followed" ? "No tracked parts yet" : scope === "in_use" ? "No parts in use yet" : "No parts yet"}</p>
-      <p className="max-w-md text-sm text-muted-foreground">
-        {searching
-          ? "Try a shorter part number or another manufacturer."
-          : scope === "watched" || scope === "followed"
-            ? "Track a part, or track a project, to have its stock read regularly."
-            : scope === "in_use"
-              ? "No project BOM that Prism has read uses a part it knows. Open a project BOM, then watch its parts."
-              : "Parts appear here once they are watched or matched."}
-      </p>
       {!searching && (scope === "watched" || scope === "followed") && canFollow ? <Button size="sm" onClick={onWatch}>Track a part</Button> : null}
       {!searching && scope === "in_use" && canEdit ? <ReadProjectBomsButton /> : null}
     </div>

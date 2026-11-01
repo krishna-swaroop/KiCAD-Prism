@@ -24,7 +24,7 @@ describe("a release's supply snapshot", () => {
     } as never);
     render(<ReleaseSnapshotCard projectId="prj" buildId="b1" />);
     await flush();
-    expect(screen.getByText("The supply snapshot is being taken.")).toBeTruthy();
+    expect(screen.getByText("Taking snapshot")).toBeTruthy();
     await act(async () => { vi.advanceTimersByTime(QUEUED_POLL_MS); });
     await flush();
     await flush();
@@ -40,6 +40,6 @@ describe("a release's supply snapshot", () => {
     await flush();
     await act(async () => { vi.advanceTimersByTime(QUEUED_POLL_MS); });
     await flush();
-    expect(screen.getByText("No supply snapshot was taken: This build exported no BOM file.")).toBeTruthy();
+    expect(screen.getByText("No snapshot: This build exported no BOM file.")).toBeTruthy();
   });
 });

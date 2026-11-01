@@ -28,7 +28,7 @@ export function MarketHistory({ column }: { column: MarketColumn }) {
           </ul>
         </>
       ) : null}
-      {status === "ready" && days < 1 ? <p className="text-sm text-muted-foreground">Nothing stored yet. One reading is stored a day.</p> : null}
+      {status === "ready" && days < 1 ? <p className="text-sm text-muted-foreground">Nothing stored yet</p> : null}
     </div>
   );
 }

@@ -15,7 +15,7 @@ const RunwayScatter = lazy(() => import("./runway-scatter"));
 function KindList({ kind, onOpen }: { kind: Exclude<PartsFilter, "">; onOpen: (partId: string) => void }) {
   const { status, items, hasMore, loadingMore, moreFailed, loadMore } = useSupplyPartsFeed("watched", "", kind);
   if (status === "loading") return <Skeleton className="h-24 w-full" aria-label="Loading parts" />;
-  if (items.length === 0) return <p className="border border-dashed p-4 text-sm text-muted-foreground">No part has this finding.</p>;
+  if (items.length === 0) return <p className="border border-dashed p-4 text-sm text-muted-foreground">None</p>;
   return (
     <>
       <PartsTable items={items} selectedId={null} onOpen={onOpen} />
@@ -34,7 +34,6 @@ export function RunwaySection({ page, panels, onOpen }: { page: SupplyInsightsPa
       {panels.scatter ? (
         <ChartCard
           title="Stock left against lead time"
-          info="Days of stock left is projected from each part's own readings; lead time is the shortest any distributor quotes. A dot above the line runs out before an order could arrive."
           answer={short.length === 0 ? "No part runs out before an order could arrive" : `${short.length} ${short.length === 1 ? "part runs" : "parts run"} out before an order could arrive`}
         >
           <Suspense fallback={<Skeleton className="h-64 w-full" />}><RunwayScatter points={page.scatter} onOpen={onOpen} /></Suspense>

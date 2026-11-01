@@ -66,7 +66,6 @@ export function SupplyWorkspace({ user }: { user: User | null }) {
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
         <ShieldAlert className="h-8 w-8 text-muted-foreground" />
         <p className="text-sm font-medium">Supply data is not available to your role</p>
-        <p className="max-w-md text-sm text-muted-foreground">Designers, QA and administrators can open it.</p>
       </div>
     );
   }

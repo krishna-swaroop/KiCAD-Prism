@@ -55,7 +55,7 @@ export function OtherNumberPins({ groups, canDecide, onDecided }: { groups: read
   if (groups.length === 0) return null;
   const total = groups.length;
   return (
-    <CollapsibleSection id="review-other-numbers" title="Pinned under another number" count={total} note="their stock counts as the part's">
+    <CollapsibleSection id="review-other-numbers" title="Pinned under another number" count={total}>
       <ul className="divide-y">
         {groups.map((group) => <Group key={group.part_id} group={group} canDecide={canDecide} onDecided={onDecided} />)}
       </ul>

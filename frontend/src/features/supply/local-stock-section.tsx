@@ -35,7 +35,7 @@ export function LocalStockSection({ componentId }: { componentId: string }) {
   return (
     <section className="space-y-2" aria-label="Stores">
       <h3 className="flex items-baseline gap-3 text-sm font-semibold">Stores{stock.stores?.state === "down" ? <StoresCell stores={stock.stores} className="text-sm font-normal" /> : null}</h3>
-      {stock.mixed_units ? <p className="text-xs text-warning">Records use different units, so they are not totalled.</p> : null}
+      {stock.mixed_units ? <p className="text-xs text-warning">Mixed units: not totalled</p> : null}
       <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
         {totals.map((total) => (
           <div key={total.label} className="flex gap-1.5" title={total.title}>

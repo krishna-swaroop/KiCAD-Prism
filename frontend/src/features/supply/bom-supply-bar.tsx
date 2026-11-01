@@ -22,7 +22,7 @@ export function BomSupplyBar({ supply }: { supply: BomSupply }) {
           <button type="button" className="underline" onClick={supply.retry}>Retry</button>
         </span>
       ) : null}
-      {supply.truncated ? <span className="text-warning">Only the first 2,000 distinct parts are looked up.</span> : null}
+      {supply.truncated ? <span className="text-warning">First 2,000 parts only</span> : null}
       {supply.projectId && unread.length > 0 ? (
         <span className="ml-auto"><CheckOnceButton projectId={supply.projectId} lines={unread} onFinished={supply.refresh} /></span>
       ) : null}

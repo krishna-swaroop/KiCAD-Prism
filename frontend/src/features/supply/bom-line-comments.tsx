@@ -38,7 +38,7 @@ export function BomLineComments({ projectId, lineKey, user }: { projectId: strin
   return (
     <div className="space-y-2 border-t pt-2" aria-label="Comments">
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Comments</p>
-      {mine.length === 0 && loaded.status === "ready" ? <p className="text-xs text-muted-foreground">No comments on this part yet.</p> : null}
+      {mine.length === 0 && loaded.status === "ready" ? <p className="text-xs text-muted-foreground">No comments</p> : null}
       <ul className="space-y-1.5">
         {mine.map((comment) => (
           <li key={comment.id} className="flex items-start justify-between gap-2 text-xs">

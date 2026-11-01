@@ -57,7 +57,7 @@ export function PartHistoryPanel({ partId, history, kind, threshold = null, fore
   const [opened, setOpened] = useState<HistoryKind | null>(null);
   const drawn = history ? { ...history, connectors: history.connectors.filter((line) => kind === "stock" || line.price.length > 0) } : null;
   if (!history || !drawn || drawn.connectors.length === 0) {
-    return <p className="text-xs text-muted-foreground">{kind === "stock" ? "History builds up as the part is read." : "Price history builds up as the part is read."}</p>;
+    return <p className="text-xs text-muted-foreground">No history yet</p>;
   }
   return (
     <div className="space-y-2">

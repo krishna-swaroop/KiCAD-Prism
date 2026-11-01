@@ -27,7 +27,6 @@ export function SourcingSection({ page, panels, onOpen }: { page: SupplyInsights
       <div className="grid gap-3 lg:grid-cols-2">
         {panels.coverage ? <ChartCard
           title="Distributor coverage"
-          info="Of the parts you track: how many each distributor lists, how many it holds in stock, and how many it is the cheapest for at 100 pieces."
           answer={`${coverage[0].name} lists ${coverage[0].listed.toLocaleString()} of ${coverage[0].tracked.toLocaleString()} parts`}
         >
           <div className="space-y-1.5 text-xs">
@@ -93,7 +92,6 @@ export function LifecycleSection({ page, panels, onOpen }: { page: SupplyInsight
       </ChartCard>
       <ChartCard
         title="When parts will end"
-        info="From each part's lifecycle, open notices, last dates to buy and distributors dropping it. Rule-based; parts without data are unknown."
       >
         <BarList rows={OUTLOOK.map((item) => ({ key: item.key, label: item.label, value: outlook[item.key], tone: item.tone, onClick: () => onOpen(`outlook_${item.key}`) }))} labelWidth="11rem" />
       </ChartCard>
@@ -152,7 +150,6 @@ export function LeadAndPricesSection({ page, panels, onOpenPart, onOpen }: { pag
     <div className="grid gap-3 lg:grid-cols-3">
       {panels.leadTimes ? <ChartCard
         title="Lead times"
-        info="The shortest lead time any distributor quotes for each part."
         answer={long === 0 ? "No part is quoted over 16 weeks" : `${long.toLocaleString()} ${long === 1 ? "part is" : "parts are"} quoted over 16 weeks`}
       >
         <BarList rows={page.lead_times.map((item) => ({ key: item.bucket, label: BUCKETS[item.bucket], value: item.parts, tone: item.bucket === "none" ? GREY : undefined, onClick: () => onOpen(`lead_${item.bucket}`) }))} labelWidth="8rem" />
@@ -170,7 +167,6 @@ export function TradeSection({ page, panels, onOpenPart, onOpen }: { page: Suppl
     <div className="grid gap-3 lg:grid-cols-2">
       {panels.origins ? <ChartCard
         title="Country of origin"
-        info="What distributors state. A part with several answers is counted as Several."
       >
         <BarList labelWidth="8rem" rows={[
           ...origins.map((item) => ({ key: item.country, label: item.country, value: item.parts, tone: item.country === "Unknown" || item.country === "Several" ? GREY : undefined, onClick: () => onOpen(`origin:${item.country}`) })),
@@ -179,7 +175,6 @@ export function TradeSection({ page, panels, onOpenPart, onOpen }: { page: Suppl
       </ChartCard> : null}
       {panels.control ? <ChartCard
         title="Export control"
-        info="The ECCN distributors give; EAR99 is no control. A mark set on a part's sheet wins."
       >
         <BarList labelWidth="9rem" rows={[
           { key: "controlled", label: "Controlled", value: control.controlled, tone: "bg-destructive/70", onClick: () => onOpen("control_controlled") },

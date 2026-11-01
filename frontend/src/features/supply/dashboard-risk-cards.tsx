@@ -36,7 +36,6 @@ export function RiskGridCard({ grid, onOpen }: { grid: SupplyDashboard["risk_gri
   return (
     <ChartCard
       title="Risk Distribution"
-      info="Manufacturer lifecycle against how many distributors hold stock. Unknown is its own row and column: it is not counted as fine."
       answer={total === 0 ? "No parts tracked yet" : worst === 0 ? "No ending part is low on stock" : `${worst.toLocaleString()} ending ${worst === 1 ? "part is" : "parts are"} out or held by one distributor`}
     >
       <table className="w-full table-fixed border-separate border-spacing-0.5 text-xs">
@@ -88,7 +87,6 @@ export function DeadlinesCard({ deadlines, onOpenPart }: { deadlines: SupplyDash
   return (
     <ChartCard
       title="Deadlines"
-      info="Last-time-buy and last-ship dates from open product change notices, and the last date to buy a distributor gives, in the next 12 months."
       answer={deadlines.length === 0 ? "No dated deadline in the next year" : soon === 0 ? `${deadlines.length} in the next year, none within 90 days` : `${soon} within 90 days`}
     >
       {deadlines.length === 0 ? null : (

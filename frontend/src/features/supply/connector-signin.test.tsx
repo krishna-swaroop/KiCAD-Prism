@@ -31,7 +31,7 @@ describe("the DigiKey sign-in on a connector", () => {
     const assign = vi.fn();
     vi.stubGlobal("location", { ...window.location, assign });
     render(<ConnectorSignin connectorId="dk" status={status} />);
-    expect(await screen.findByText(/Nobody is signed in/)).toBeTruthy();
+    expect(await screen.findByText("Not signed in")).toBeTruthy();
     expect(screen.getByText(/https:\/\/prism\.example\/api\/supply\/oauth\/digikey\/callback/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Sign in at DigiKey" }));
@@ -50,7 +50,7 @@ describe("the DigiKey sign-in on a connector", () => {
   it("asks for a new sign-in when DigiKey refused the old one", async () => {
     const status: SupplySignin = { ...none, state: "refused", granted_by: "admin@example.com" };
     render(<ConnectorSignin connectorId="dk" status={status} />);
-    expect(await screen.findByText(/DigiKey refused the sign-in/)).toBeTruthy();
+    expect(await screen.findByText("Sign-in refused")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
 });

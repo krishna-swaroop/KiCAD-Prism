@@ -42,7 +42,7 @@ export function WatchSettings({ part, watch, canEdit, onChanged }: WatchSettings
   if (!watch) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">Not watched. Watched parts are read regularly and warn before they run out.</p>
+        <p className="text-sm text-muted-foreground">Not watched</p>
         {canEdit ? (
           <Button
             size="sm"
@@ -108,7 +108,6 @@ export function WatchSettings({ part, watch, canEdit, onChanged }: WatchSettings
         >
           {PACKAGINGS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select>
-        <p className="text-xs text-muted-foreground">Stock, price and warnings follow only the packaging you pick. Listings of unknown packaging are left out.</p>
       </div>
       <div className="flex items-center gap-2">
         <Checkbox id="watch-pinned" checked={draft.pinned} onCheckedChange={(checked) => update({ pinned: checked === true })} />
@@ -137,7 +136,7 @@ export function WatchSettings({ part, watch, canEdit, onChanged }: WatchSettings
         )}
       </div>
       {confirmingStop ? (
-        <p className="text-xs text-muted-foreground">Its threshold is lost. The history stays, and the part stops being read.</p>
+        <p className="text-xs text-muted-foreground">History stays.</p>
       ) : null}
       <p className="text-xs text-muted-foreground">Watched by {watch.owner}.</p>
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}

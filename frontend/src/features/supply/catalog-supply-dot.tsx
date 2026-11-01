@@ -16,5 +16,5 @@ export function CatalogSupplyDot({ standing }: { standing: SupplyComponentStandi
 /** "Not for new designs" beside a component the library marked. Nothing for any other. */
 export function RestrictionTag({ standing }: { standing: SupplyComponentStanding | undefined }) {
   if (standing?.restriction !== "not_for_new_designs") return null;
-  return <span className="shrink-0 border border-warning/40 px-1 text-[10px] font-medium uppercase tracking-wide text-warning" title="The library marked this component: do not use it in new designs">Not for new designs</span>;
+  return <span className="shrink-0 border border-warning/40 px-1 text-[10px] font-medium uppercase tracking-wide text-warning">Not for new designs</span>;
 }

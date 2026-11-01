@@ -57,7 +57,7 @@ export function SuggestionsList({ suggestions, canEdit, onTracked }: { suggestio
       <ul className="divide-y border text-sm">
         {suggestions.map((item) => <SuggestionRow key={`${item.mpn}|${item.sku}`} item={item} canEdit={canEdit} onTracked={onTracked} />)}
       </ul>
-      <p className="text-xs text-muted-foreground">Distributors suggest these. Prism has not compared them with the part: check the function, footprint and pins first.</p>
+      <p className="text-xs text-muted-foreground">Unchecked: function, footprint and pins</p>
     </div>
   );
 }

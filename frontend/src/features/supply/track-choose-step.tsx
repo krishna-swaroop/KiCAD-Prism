@@ -88,7 +88,6 @@ export function TrackChooseStep(props: ChooseProps) {
           id="track-build" type="number" min={1} max={1_000_000} className="h-9 w-32" value={props.buildQuantity}
           onChange={(event) => { const next = Math.floor(Number(event.target.value)); if (Number.isFinite(next) && next >= 1 && next <= 1_000_000) props.onBuildQuantity(next); }}
         />
-        <p className="text-xs text-muted-foreground">The project's cost is worked out for this many boards each day, and its page opens on it.</p>
       </section>
 
       <TrackSpares spares={props.spares} onChange={props.onSpares} />

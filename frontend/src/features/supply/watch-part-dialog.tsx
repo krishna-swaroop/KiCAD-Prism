@@ -6,7 +6,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -78,9 +77,6 @@ function WatchForm({ onClose, onWatched }: { onClose: () => void; onWatched: (wa
     >
       <DialogHeader>
         <DialogTitle>Track a Part</DialogTitle>
-        <DialogDescription>
-          Read regularly at your distributors. Prism finds the maker from what they list.
-        </DialogDescription>
       </DialogHeader>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">

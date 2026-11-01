@@ -45,7 +45,7 @@ export function NoticesSection({ part, canEdit }: NoticesSectionProps) {
     setChecking(true);
     try {
       const result = await checkPartNotices(part.id);
-      const found = result.connectors === 0 ? "No distributor lists notices for this part."
+      const found = result.connectors === 0 ? "No distributor lists notices."
         : `Read ${result.read} ${result.read === 1 ? "listing" : "listings"}: ${result.new === 0 ? "no new notices" : `${result.new} new ${result.new === 1 ? "notice" : "notices"}`}.`;
       const message = [found, ...result.problems.map((problem) => problem.reason)].join(" ");
       if (result.problems.length > 0) toast.warning(message);
@@ -68,7 +68,6 @@ export function NoticesSection({ part, canEdit }: NoticesSectionProps) {
         {canEdit ? (
           <Button
             type="button" size="sm" variant="outline" className="ml-auto h-7 px-2 text-xs normal-case tracking-normal" disabled={checking}
-            title="Ask the distributors for this part's notices now"
             onClick={(event) => { event.preventDefault(); void check(); }}
           >
             {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}

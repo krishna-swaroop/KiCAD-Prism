@@ -69,7 +69,6 @@ describe("the review queue", () => {
   it("lets readers look but not decide", async () => {
     render(<ReviewView user={designer} />);
     await screen.findByRole("article", { name: "Spelling TI" });
-    expect(screen.getByText(/QA and administrators decide\./)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Confirm as this part|Reject|Map|Create and map/ })).toBeNull();
     expect(screen.queryByLabelText("Manufacturer for TI")).toBeNull();
   });

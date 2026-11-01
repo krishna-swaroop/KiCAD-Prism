@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ProjectTrackingPreview } from "@/types/supply";
 import { TrackChooseStep } from "./track-choose-step";
 import { TrackLinesStep, type TrackLine } from "./track-lines-step";
@@ -76,9 +76,6 @@ function TrackProjectDialog({ projectId, onClose, onChanged }: { projectId: stri
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{state?.tracked && step === "choose" ? "Tracking Project" : title}</DialogTitle>
-          <DialogDescription>
-            {reading ? "Prism is reading the project's BOM." : step === "choose" ? "Parts are read daily within each call budget." : step === "lines" ? "Pick the part each line means." : "First searches of the project's parts."}
-          </DialogDescription>
         </DialogHeader>
         {track.error ? <Alert variant="destructive"><AlertDescription>{track.error}</AlertDescription></Alert> : null}
 
@@ -87,7 +84,7 @@ function TrackProjectDialog({ projectId, onClose, onChanged }: { projectId: stri
             <div className="h-2 w-full overflow-hidden bg-secondary" role="progressbar" aria-label="Reading the BOM">
               <div className="h-full w-1/3 animate-pulse bg-primary" />
             </div>
-            <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />This can take a minute.</p>
+            <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Reading BOM</p>
           </div>
         ) : null}
 

@@ -63,7 +63,7 @@ export function SettingsGroup({ title, fields, view, readOnly, onSaved, children
     <form className="space-y-4" aria-label={title} onSubmit={(event) => { event.preventDefault(); void send(pick(draft)); }}>
       <fieldset disabled={readOnly || busy} className="space-y-4">{children(draft, setDraft)}</fieldset>
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
-      {readOnly ? <p className="text-xs text-muted-foreground">Only administrators can change these.</p> : (
+      {readOnly ? <p className="text-xs text-muted-foreground">Read-only</p> : (
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" size="sm" disabled={busy || !dirty}>Save</Button>
           <Button type="button" size="sm" variant="ghost" disabled={busy || atDefaults} onClick={() => void send(pick(view.defaults))}>Back to defaults</Button>

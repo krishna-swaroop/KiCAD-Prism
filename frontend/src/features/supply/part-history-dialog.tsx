@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useState } from "react";
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { PartForecast, PartHistory } from "@/types/supply";
 import { HistoryEvents, HistoryLegend } from "./history-legend";
@@ -26,7 +26,6 @@ export function PartHistoryDialog({ partId, threshold, forecast = null, onClose 
       <DialogContent className="w-[min(95vw,64rem)] sm:max-w-none">
         <DialogHeader>
           <DialogTitle>History</DialogTitle>
-          <DialogDescription>Stock and price at each distributor. Readings are kept in full for 60 days and as one a day after that.</DialogDescription>
         </DialogHeader>
         <div role="radiogroup" aria-label="Timeframe" className="flex flex-wrap gap-1">
           {TIMEFRAMES.map((item) => (
@@ -56,7 +55,7 @@ export function PartHistoryDialog({ partId, threshold, forecast = null, onClose 
             </Suspense>
             <HistoryEvents events={data.events} />
           </div>
-        ) : status === "ready" ? <p className="text-sm text-muted-foreground">No readings in this timeframe.</p> : null}
+        ) : status === "ready" ? <p className="text-sm text-muted-foreground">No readings</p> : null}
       </DialogContent>
     </Dialog>
   );

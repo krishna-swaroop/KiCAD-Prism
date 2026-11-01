@@ -23,7 +23,7 @@ export function RohsExemptions({
   if (!canEdit && items.length === 0) return null;
   return (
     <div className="space-y-1" aria-label="RoHS exemptions">
-      <p className="text-xs text-muted-foreground">RoHS exemptions the part relies on</p>
+      <p className="text-xs text-muted-foreground">RoHS exemptions</p>
       {items.length > 0 ? (
         <ul className="flex flex-wrap gap-2 text-sm">
           {items.map((item) => (

@@ -80,7 +80,6 @@ function EditForm({ connector, storefronts = [], onClose, onSaved }: { connector
             >
               {storefronts.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
-            <p className="text-[11px] text-muted-foreground">Listings found so far keep their part numbers; prices and stock are read from this store from the next poll.</p>
           </div>
         ) : null}
         <div className="space-y-1.5">
@@ -96,7 +95,6 @@ function EditForm({ connector, storefronts = [], onClose, onSaved }: { connector
             <div className="space-y-1.5">
               <Label htmlFor="edit-connector-reserve">Held for people and one-off checks (%)</Label>
               <Input id="edit-connector-reserve" inputMode="numeric" value={values.reserve} onChange={(event) => update({ reserve: event.target.value })} />
-              <p className="text-xs text-muted-foreground">The part of the day people can always use. First searches and one-off checks take at most half of it. Calls nothing else needs come on top.</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-connector-reset">Provider's day begins at</Label>
@@ -117,7 +115,6 @@ function EditForm({ connector, storefronts = [], onClose, onSaved }: { connector
             value={values.retention}
             onChange={(event) => update({ retention: event.target.value })}
           />
-          <p className="text-[11px] text-muted-foreground">Older samples are kept as one row per day.</p>
         </div>
         <div className="col-span-2 space-y-1.5">
           <Label htmlFor="edit-connector-keep">Delete all history after (days)</Label>
@@ -128,7 +125,6 @@ function EditForm({ connector, storefronts = [], onClose, onSaved }: { connector
             value={values.keep}
             onChange={(event) => update({ keep: event.target.value })}
           />
-          <p className="text-[11px] text-muted-foreground">Set it if the provider&apos;s terms limit how long its data may be stored.</p>
         </div>
         {connector.catalogue_available ? (
           <div className="col-span-2 flex items-center justify-between gap-3">

@@ -118,7 +118,7 @@ export function PartDetailScreen({
   const refreshAvailability = async () => {
     const partId = load.phase === "ready" ? load.component.supply?.summary?.part_id : undefined;
     if (!partId) {
-      appendLog("Prism does not track this part's availability yet.");
+      appendLog("Not tracked");
       return;
     }
     setRefreshing(true);

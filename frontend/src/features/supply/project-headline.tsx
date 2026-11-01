@@ -30,7 +30,6 @@ function BoardsEditor({ boards, usualBuild, onBoards, onKeepUsual }: { boards: n
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 space-y-2 p-3">
         <BoardCount key={boards} boards={boards} onChange={onBoards} />
-        <p className="text-xs normal-case tracking-normal text-muted-foreground">The costing and the download use it. It is not saved unless you keep it.</p>
         {usualBuild != null && usualBuild !== boards ? (
           <Button size="sm" variant="outline" onClick={onKeepUsual}>Keep {boards.toLocaleString()} as the usual build</Button>
         ) : null}
@@ -76,7 +75,7 @@ function CostTile({ supply, boards }: { supply: ProjectSupply; boards: number })
   const rollup = supply.rollup!;
   const currency = rollup.currency;
   if (!rollup.cost_build || !currency) {
-    return <Tile label="Cost"><p className={big(false)}>No total</p><p className="text-xs text-muted-foreground">Nothing is priced, or the prices cannot be added.</p></Tile>;
+    return <Tile label="Cost"><p className={big(false)}>No total</p></Tile>;
   }
   const waste = rollup.waste_cost && Number(rollup.waste_cost) > 0 ? `${formatPrice(rollup.waste_cost, currency, 2)} left over from minimum orders` : "";
   const spares = supply.attrition_percent === null ? "spares by package" : supply.attrition_percent ? `${supply.attrition_percent}% spares` : "";

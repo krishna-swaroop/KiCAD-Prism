@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -76,7 +75,6 @@ function CreateForm({
     >
       <DialogHeader>
         <DialogTitle>Add Connector</DialogTitle>
-        <DialogDescription>One connector per provider and storefront. Credentials are stored encrypted.</DialogDescription>
       </DialogHeader>
 
       <div className="space-y-1.5">

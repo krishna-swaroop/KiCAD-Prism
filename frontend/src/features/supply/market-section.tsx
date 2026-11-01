@@ -65,7 +65,7 @@ export function MarketSection({ market, trends = {}, onOpenGroup }: { market: Su
           ))}
         </div>
       ) : null}
-      <ChartCard title={`${column.label} over time`} info={`Your own parts, not the market. A group shows with at least ${market.min_sample ?? 3} parts. One reading is stored a day.`}>
+      <ChartCard title={`${column.label} over time`}>
         <MarketHistory column={column} />
       </ChartCard>
       <div className="space-y-2">

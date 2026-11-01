@@ -36,7 +36,7 @@ export function ReleaseSupplySummary({ projectId, buildId }: { projectId: string
  */
 export function ReleaseSupplyCheck({ projectId, buildId }: { projectId: string; buildId: string }) {
   const check = useReleaseCheck(projectId, buildId);
-  if (check.status === "loading") return <p className="text-xs text-muted-foreground">Checking the BOM against supply data...</p>;
+  if (check.status === "loading") return <p className="text-xs text-muted-foreground">Checking...</p>;
   if (check.status === "error" || !check.data) return null;
   const data = check.data;
   if (!data.available) return <p className="text-xs text-muted-foreground">{data.reason}</p>;

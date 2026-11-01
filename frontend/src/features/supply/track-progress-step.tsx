@@ -40,7 +40,7 @@ export function TrackProgressStep({ projectId, result, onFinished }: { projectId
         })}
       </ul>
       {finished ? null : (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Searching continues if you close this.</p>
+        <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Searching</p>
       )}
     </div>
   );

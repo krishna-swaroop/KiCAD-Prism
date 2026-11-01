@@ -14,15 +14,15 @@ function colourOf(name: string): string {
   return vendorColor(name.split(/\s/)[0]) ?? "hsl(var(--primary))";
 }
 
-function Bars({ title, info, empty, rows, filter, onOpen }: {
-  title: string; info?: string; empty: string; rows: Bar[];
+function Bars({ title, empty, rows, filter, onOpen }: {
+  title: string; empty: string; rows: Bar[];
   /** The kind of filter a bar opens, with the distributor's name as its value. */
   filter: "repricing" | "leader" | "restock_first";
   onOpen: (filter: PartsFilter) => void;
 }) {
   const largest = Math.max(1, ...rows.map((row) => row.value));
   return (
-    <ChartCard title={title} info={info}>
+    <ChartCard title={title}>
       {rows.length === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : (
         <ul className="space-y-1">
           {rows.map((row) => (
@@ -48,15 +48,13 @@ export function DistributorsSection({ distributors, onOpen }: { distributors: Su
       {distributors.scorecard ? <ScorecardTable scorecard={distributors.scorecard} /> : null}
       <Bars
         title="Days between price changes"
-        info="The median over the parts each distributor prices. Needs several price changes per part, so a new install shows little."
         empty="Not enough price changes seen yet."
         rows={distributors.repricing.map((item) => ({ name: item.name, value: item.days, label: `${item.days} days` }))}
         filter="repricing" onOpen={onOpen}
       />
       <Bars
         title="Moves price first"
-        info="Parts where this distributor's price change was followed by another's within two weeks."
-        empty="No price change has been followed yet."
+        empty="None yet"
         rows={distributors.leaders.map((item) => ({ name: item.name, value: item.parts, label: `${item.parts} ${item.parts === 1 ? "part" : "parts"}` }))}
         filter="leader" onOpen={onOpen}
       />
@@ -66,10 +64,10 @@ export function DistributorsSection({ distributors, onOpen }: { distributors: Su
         rows={distributors.restock_first.map((item) => ({ name: item.name, value: item.parts, label: `${item.parts} ${item.parts === 1 ? "part" : "parts"}` }))}
         filter="restock_first" onOpen={onOpen}
       />
-      <ChartCard title="Arrivals on time" info="Announced arrival dates that were met within a week.">
+      <ChartCard title="Arrivals on time">
         {arrivals ? (
           <p className="text-2xl font-semibold tabular-nums">{Math.round((arrivals.on_time / arrivals.resolved) * 100)}%<span className="ml-2 text-sm font-normal text-muted-foreground">of {arrivals.resolved} announced arrivals</span></p>
-        ) : <p className="text-sm text-muted-foreground">Needs a few announced arrivals to have come or slipped.</p>}
+        ) : <p className="text-sm text-muted-foreground">Not enough arrivals yet</p>}
       </ChartCard>
     </div>
   );

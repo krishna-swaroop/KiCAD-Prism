@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PackagingChip } from "./packaging-chip";
 import { applyAutoProposals, getAutoProposals } from "./packaging-api";
 import { useLoaded } from "./use-loaded";
@@ -26,10 +26,9 @@ export function OnePerDistributor({ partId, onClose, onDone }: { partId: string;
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>One Listing per Distributor</DialogTitle>
-          <DialogDescription>Only the listing followed is read, and only its stock counts. Prism picks by the packaging this part is bought in.</DialogDescription>
         </DialogHeader>
         {status === "error" || failed ? <Alert variant="destructive"><AlertDescription>{failed || error}</AlertDescription></Alert> : null}
-        {data && data.items.length === 0 ? <p className="text-sm text-muted-foreground">Nothing waits for a pick.</p> : null}
+        {data && data.items.length === 0 ? <p className="text-sm text-muted-foreground">Nothing waiting</p> : null}
         {data && data.items.length > 0 ? (
           <ul className="divide-y border" aria-label="Picks">
             {data.items.map((item) => (

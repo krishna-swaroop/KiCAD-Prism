@@ -60,7 +60,7 @@ function PartBody({ partId, user, onWatchChanged }: { partId: string; user: User
   if (status === "loading") {
     return (
       <>
-        <SheetHeader><SheetTitle>Loading part</SheetTitle><SheetDescription>One moment.</SheetDescription></SheetHeader>
+        <SheetHeader><SheetTitle>Loading part</SheetTitle></SheetHeader>
         <Skeleton className="mt-4 h-40 w-full" aria-label="Loading the part" />
       </>
     );
@@ -68,7 +68,7 @@ function PartBody({ partId, user, onWatchChanged }: { partId: string; user: User
   if (status === "error" || !data) {
     return (
       <>
-        <SheetHeader><SheetTitle>Part</SheetTitle><SheetDescription>It could not be loaded.</SheetDescription></SheetHeader>
+        <SheetHeader><SheetTitle>Part</SheetTitle></SheetHeader>
         <Alert variant="destructive" className="mt-4">
           <AlertDescription className="flex items-center justify-between gap-3">
             {error}

@@ -48,7 +48,7 @@ function renderIt(role: UserRole = "designer") {
 
 /** The scores and findings open from the info icon; a click holds them open. */
 async function openDetails() {
-  fireEvent.click(await screen.findByRole("button", { name: "Show how the outlook and the health are worked out" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Show what the outlook and the health rest on" }));
 }
 
 beforeEach(() => {
@@ -77,16 +77,16 @@ describe("the outlook and health line", () => {
     expect(await screen.findByText("6.4 of 10")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Health" })).toBeNull();
     const section = screen.getByRole("region", { name: "Outlook" });
-    expect(within(section).getAllByRole("button", { name: /Show how the outlook/ })).toHaveLength(1);
+    expect(within(section).getAllByRole("button", { name: /Show what the outlook/ })).toHaveLength(1);
     expect(within(section).getByText("No signs of an end").className).toContain("success");
     await openDetails();
-    expect(screen.getByText(/Nothing found points to an end/)).toBeTruthy();
+    expect(screen.queryByText(/rule-based/)).toBeNull();
     expect(screen.getByRole("list", { name: "Risk" })).toBeTruthy();
   });
 
   it("opens the scores and findings when the info icon is hovered, and closes them again", async () => {
     renderIt();
-    const icon = await screen.findByRole("button", { name: "Show how the outlook and the health are worked out" });
+    const icon = await screen.findByRole("button", { name: "Show what the outlook and the health rest on" });
     fireEvent.mouseEnter(icon);
     expect(await screen.findByRole("list", { name: "Risk" })).toBeTruthy();
     fireEvent.mouseLeave(icon);

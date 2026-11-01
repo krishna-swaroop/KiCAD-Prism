@@ -64,9 +64,7 @@ function UploadForm({ connector, onClose, onUploaded }: { connector: SupplyConne
     >
       <DialogHeader>
         <DialogTitle>Upload offers for {connector.display_name}</DialogTitle>
-        <DialogDescription>
-          A CSV file of stock and prices. It replaces the previous upload. If any row is wrong, nothing is imported.
-        </DialogDescription>
+        <DialogDescription>Replaces the previous upload.</DialogDescription>
       </DialogHeader>
 
       <div className="space-y-1.5">

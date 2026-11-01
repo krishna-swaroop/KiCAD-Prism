@@ -71,8 +71,7 @@ describe("a CSV connector", () => {
     load();
     render(<MemoryRouter><SupplyConnectorsView user={admin} /></MemoryRouter>);
     const card = await screen.findByRole("article", { name: "Price list" });
-    expect(within(card).getByText("No file uploaded")).toBeTruthy();
-    expect(within(card).getByText(/No file uploaded\. Local data/)).toBeTruthy();
+    expect(within(card).getAllByText("No file uploaded")).toHaveLength(1);
   });
 
   it("uploads the chosen file and shows the result", async () => {
@@ -149,7 +148,7 @@ describe("a CSV connector", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
     await waitFor(() => expect(mocked.clearSupplyCsv).toHaveBeenCalledWith("f1"));
     const card = await screen.findByRole("article", { name: "Price list" });
-    expect(await within(card).findByText("No file uploaded")).toBeTruthy();
+    expect(await within(card).findAllByText("No file uploaded")).toHaveLength(1);
   });
 
   it("asks for no budget when adding or editing", async () => {

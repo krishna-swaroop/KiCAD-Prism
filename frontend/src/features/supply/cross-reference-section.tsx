@@ -65,7 +65,7 @@ export function CrossReferenceSection({ partId, canEdit }: { partId: string; can
           {!found.suggestions?.length && found.suggested_by_distributors.length > 0 ? <p className="text-sm">Distributors suggest: {found.suggested_by_distributors.join(", ")}.</p> : null}
           {found.candidates.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {found.judged_on.length === 0 ? "Not enough is listed for this part to compare it." : "No part Prism knows matches it."}
+              {found.judged_on.length === 0 ? "Too little listed to compare" : "No match"}
             </p>
           ) : (
             <ul className="divide-y border text-sm">

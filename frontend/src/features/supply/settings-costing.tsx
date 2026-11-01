@@ -69,7 +69,6 @@ export function SettingsCosting({ view, readOnly, onSaved }: { view: AssessmentS
                   changed={draft.spares_others !== defaults.spares_others} fallback={defaults.spares_others} />
               </div>
             )}
-            <p className="text-xs text-muted-foreground">A tracked project can set its own.</p>
           </fieldset>
           <PreferredDistributors draft={draft} onChange={set} />
         </>

@@ -3,7 +3,7 @@ import { ScanSearch } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { CheckProgress } from "@/types/supply";
 import { getCheck, startCheck } from "./tracking-api";
 import { ReadFailed } from "./read-failed";
@@ -64,7 +64,6 @@ export function CheckOnceButton({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{running ? "Checking Parts" : finished ? "Check Finished" : "Check Once"}</DialogTitle>
-            <DialogDescription>{running || finished ? "Read once at every distributor, not tracked." : "Read the parts nobody reads yet, once, without tracking them."}</DialogDescription>
           </DialogHeader>
           {progress ? (
             <div className="space-y-3">
@@ -77,7 +76,7 @@ export function CheckOnceButton({
                 {skipped > 0 ? <span className="bg-secondary px-2 py-0.5">{skipped} to settle first</span> : null}
               </div>
               {read.status === "error" ? <ReadFailed error={read.error} onRetry={read.retry} className="px-0" /> : null}
-              <p className="text-xs text-muted-foreground">{running ? "Reading continues if you close this." : "Done."}</p>
+              <p className="text-xs text-muted-foreground">{running ? "Reading" : "Done"}</p>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2 text-xs">

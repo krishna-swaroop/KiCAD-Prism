@@ -59,7 +59,7 @@ describe("alternatives to a part", () => {
     { manufacturer: "Globex", mpn: "G-10K", sku: "", notes: [], sources: [{ provider: "lcsc", name: "LCSC" }], asked: false, part_id: "p2", stock: 500, status: "ok" as const, tracked: true },
   ];
 
-  it("lists what distributors suggest first, with who said it, in their words, and says they are not compared", async () => {
+  it("lists what distributors suggest first, with who said it, in their words, and marks them unchecked", async () => {
     vi.mocked(api.getCrossReference).mockResolvedValue({ ...result, suggestions });
     render(<CrossReferenceSection partId="p1" canEdit />);
     fireEvent.click(screen.getByRole("button", { name: "Find alternatives" }));
@@ -67,7 +67,7 @@ describe("alternatives to a part", () => {
     expect(screen.getByText(/DigiKey, LCSC: Direct, SOT-23-5L, asked at DigiKey/)).toBeTruthy();
     expect(screen.getByText(/a distributor number, not a part number/)).toBeTruthy();
     expect(screen.getByText(/500 in stock, tracked/)).toBeTruthy();
-    expect(screen.getByText(/Prism has not compared them with the part/)).toBeTruthy();
+    expect(screen.getByText("Unchecked: function, footprint and pins")).toBeTruthy();
   });
 
   it("tracks a suggested part and proposes it, but offers neither for a distributor number or an already tracked part", async () => {

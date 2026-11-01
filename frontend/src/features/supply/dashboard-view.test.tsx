@@ -168,11 +168,11 @@ describe("the dashboard", () => {
     expect((await screen.findByText(/^Sheet of /)).textContent).toMatch(/^Sheet of \S+/);
   });
 
-  it("tells a new workspace what to do first", async () => {
+  it("says a new workspace has no distributor connected", async () => {
     mocked.getSupplyDashboard.mockResolvedValue(dashboardFixture({ figures: { watched: 0, at_risk: 0, out_of_stock: 0, lifecycle: 0, open_alerts: 0, waiting: 0 }, connectors: 0 }));
     mocked.listSupplyAlerts.mockResolvedValue({ items: [] });
     renderView();
-    expect(await screen.findByText(/No distributor is connected/)).toBeTruthy();
+    expect(await screen.findByText("No distributor connected.")).toBeTruthy();
   });
 
   it("reports a failure and retries", async () => {
