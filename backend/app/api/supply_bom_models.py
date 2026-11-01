@@ -222,6 +222,7 @@ class SupplyBomRollup(SupplyModel):
     can_build: Optional[int]
     limited_by: Optional[str]
     without_stock_data: int
+    unchecked: int = Field(description="Lines with no tracked part or no stock reading; can_build is unconfirmed while any is.")
     parts: int
     health: Optional[Number] = Field(description="0 to 10, weighted by units needed; null when nothing has data.")
     health_status: SupplyStatus

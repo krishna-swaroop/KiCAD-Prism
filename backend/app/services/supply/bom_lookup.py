@@ -564,9 +564,10 @@ def _rollup(
     rates: fx.Rates | None = None,
     base: str = "EUR",
 ) -> dict[str, Any]:
-    """Counts of lines (``lines``, ``tracked``, ``not_tracked``, ``watched``) and of distinct parts
+    """Counts of lines (``lines``, ``tracked``, ``not_tracked``, ``watched``, ``unchecked``) and of distinct parts
     (``at_risk`` is error or fatal, ``needs_a_look`` adds warnings; ``short``, ``priced``, ``without_stock_data``);
-    ``lines_priced`` is how many lines the cost covers, so one part on two lines counts once."""
+    ``lines_priced`` is how many lines the cost covers, so one part on two lines counts once. ``unchecked`` is how many lines
+    ``can_build`` cannot account for (no tracked part, or no stock reading): while any is, the count is not confirmed."""
 
     tracked = [results[line.key] for line in lines if results[line.key]["state"] == TRACKED]
     leaders = [results[key] for key in first_line.values()]
@@ -635,6 +636,10 @@ def _rollup(
         "can_build": can_build,
         "limited_by": limiting,
         "without_stock_data": sum(1 for entry in leaders if entry.get("usable") is None),
+        "unchecked": sum(
+            1 for line in lines
+            if results[line.key]["state"] != TRACKED or results[first_line[results[line.key]["part_id"]]].get("usable") is None
+        ),
         "parts": len(first_line),
     }
 

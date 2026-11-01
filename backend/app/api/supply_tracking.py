@@ -46,7 +46,7 @@ def _read_project_bom(conn, project_id: str) -> str:
     row = next((item for item in workspace.get_all_projects(None) if str(item["id"]) == project_id), None)
     if row is None:
         raise ValueError("This project does not exist.")
-    visible = [role for role in usage.ALL_ROLES if workspace._is_folder_visible(row, role)]
+    visible = usage.roles_of(row)
     return usage.refresh_one(
         conn, project_service._workspace_row_to_project(row), project_bom.existing_index,
         clock.now(), visible, catalog_read.identities,

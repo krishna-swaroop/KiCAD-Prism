@@ -168,7 +168,7 @@ async def read_release_bom(
         with _store().connection() as conn:
             stored = usage.store_project(
                 conn, project_id, project.name or project_id, f"release:{build_id}|u{usage.USAGE_VERSION}", read_bom.lines,
-                clock.now(),
+                clock.now(), usage.project_roles(project_id),
             )
         return {"stored": stored, "parts": len(read_bom.lines), "without_number": read_bom.without_number}
 

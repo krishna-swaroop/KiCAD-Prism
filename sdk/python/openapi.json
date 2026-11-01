@@ -33467,6 +33467,11 @@
             "title": "Tracked",
             "type": "integer"
           },
+          "unchecked": {
+            "description": "Lines with no tracked part or no stock reading; can_build is unconfirmed while any is.",
+            "title": "Unchecked",
+            "type": "integer"
+          },
           "waste_cost": {
             "anyOf": [
               {
@@ -33508,6 +33513,7 @@
           "can_build",
           "limited_by",
           "without_stock_data",
+          "unchecked",
           "parts",
           "health",
           "health_status"

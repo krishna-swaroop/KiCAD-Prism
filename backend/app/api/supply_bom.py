@@ -72,10 +72,7 @@ async def refresh_usage(_user: AuthenticatedUser = Depends(require_supply_reader
         # Every project, whatever its folder allows: usage is a cache, and reads filter by the caller's role.
         rows = workspace.get_all_projects(None)
         projects = [project_service._workspace_row_to_project(row) for row in rows]
-        visible = {
-            row["id"]: [role for role in usage.ALL_ROLES if workspace._is_folder_visible(row, role)]
-            for row in rows
-        }
+        visible = {row["id"]: usage.roles_of(row) for row in rows}
         with _store().connection() as conn:
             return usage.refresh(
                 conn, projects, project_bom.existing_index, clock.now(), visible, catalog_read.identities,

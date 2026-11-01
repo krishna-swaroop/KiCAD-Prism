@@ -6133,6 +6133,7 @@ class SupplyBomRollup(TypedDict, total=True):
     short: int
     test_data: bool
     tracked: int
+    unchecked: int
     waste_cost: str | None
     watched: int
     without_stock_data: int

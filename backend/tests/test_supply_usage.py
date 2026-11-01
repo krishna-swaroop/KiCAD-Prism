@@ -67,6 +67,12 @@ class FieldNameTests(unittest.TestCase):
         self.assertTrue(bom_fields.is_fitted({"DNP": "No", "In BOM": "Yes"}))
         self.assertFalse(bom_fields.is_fitted({"DNP": "Yes"}))
         self.assertFalse(bom_fields.is_fitted({"In BOM": "No"}))
+        # As KiCad's BOM export writes them.
+        self.assertFalse(bom_fields.is_fitted({"DNP": "DNP"}))
+        self.assertFalse(bom_fields.is_fitted({"dnp": "1"}))
+        self.assertFalse(bom_fields.is_fitted({"Do Not Place": "x"}))
+        self.assertFalse(bom_fields.is_fitted({"Exclude from BOM": "Excluded from BOM"}))
+        self.assertTrue(bom_fields.is_fitted({"DNP": "", "Exclude from BOM": "", "dnp": "0"}))
 
 
 class LinesTests(unittest.TestCase):

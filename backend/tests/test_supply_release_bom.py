@@ -28,6 +28,13 @@ class ReleaseBomTests(unittest.TestCase):
         self.assertEqual([line.mpn for line in read.lines], ["R-1"])
         self.assertEqual(read.without_number, 1)
 
+    def test_rows_marked_as_kicads_bom_export_marks_them_are_left_out(self) -> None:
+        read = release_bom.lines_from_csv(
+            "Reference,Qty,MPN,Manufacturer,DNP,Exclude from BOM\n"
+            "R1,1,R-1,Acme,,\nR2,1,R-2,Acme,DNP,\nR3,1,R-3,Acme,,Excluded from BOM\n"
+        )
+        self.assertEqual([line.mpn for line in read.lines], ["R-1"])
+
     def test_the_same_part_on_two_rows_is_one_line(self) -> None:
         read = release_bom.lines_from_csv("Reference,Qty,MPN,Manufacturer\nR1,2,R-1,Acme\nR9,3,R-1,Acme\n")
         self.assertEqual([(line.mpn, line.quantity, line.references) for line in read.lines], [("R-1", 5, "R1 R9")])
