@@ -83,6 +83,8 @@ AREA_ACTIONS = {
     "catalog_write": ("catalog:write", "designer"),
     "catalog_qa": ("catalog:qa", "qa"),
     "catalog_admin": ("admin", "admin"),
+    "supply_follow": ("supply:write", "qa"),
+    "supply_write": ("supply:write", "designer"),
 }
 
 HUMAN_ONLY_ACTIONS = ("release", "admin", "catalog_qa", "catalog_admin", "supply_approve")

@@ -34,6 +34,7 @@ SCOPES_SUPPORTED: tuple[str, ...] = (
     "comments:write",
     "design:write",
     "catalog:write",
+    "supply:write",
 )
 # Never offered to an MCP client (ADR §3.5): these are person-only actions, and
 # ``api:write`` would imply every one of them.
