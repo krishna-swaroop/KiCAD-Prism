@@ -42,6 +42,7 @@ from app.api.design_compare import router as design_compare_router
 from app.api.design_compare_review import router as design_compare_review_router
 from app.api.release_studio import router as release_studio_router
 from app.api.sim_studio import router as sim_studio_router
+from app.api.extensions import router as extensions_router
 from app.api.folders import router as folders_router
 from app.api.settings import router as settings_router
 from app.api.workspace import router as workspace_router
@@ -390,6 +391,7 @@ app.include_router(design_compare_router, prefix="/api/projects", tags=["design-
 app.include_router(design_compare_review_router, prefix="/api/projects", tags=["design-compare"])
 app.include_router(release_studio_router, prefix="/api/projects", tags=["release-studio"])
 app.include_router(sim_studio_router, prefix="/api", tags=["sim-studio"])
+app.include_router(extensions_router, prefix="/api", tags=["extensions"])
 app.include_router(fabrication_view_router, prefix="/api/projects", tags=["fabrication-view"])
 app.include_router(settings_router, prefix="/api/settings", tags=["settings"])
 app.include_router(folders_router, prefix="/api/folders", tags=["folders"])

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>Prism context bridge</title>
+    <link rel="stylesheet" href="./style.css">
+    <script src="./bridge.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Extension example</p>
+        <h1>Context bridge</h1>
+        <p>Use this project and revision context to connect an independent tool to Prism.</p>
+      </header>
+      <p id="status" role="status"></p>
+      <dl>
+        <dt>Prism origin</dt><dd id="origin"></dd>
+        <dt>Project</dt><dd id="project"></dd>
+        <dt>Commit</dt><dd id="commit"></dd>
+        <dt>Branch</dt><dd id="branch"></dd>
+      </dl>
+      <label for="context">Context JSON</label>
+      <textarea id="context" readonly rows="8" spellcheck="false"></textarea>
+      <p class="hint">Select the JSON to copy it. This example does not read designs, request credentials, or contact another service.</p>
+      <section aria-labelledby="next-step">
+        <h2 id="next-step">Connect your tool</h2>
+        <p>Your bridge service can read the project at this commit through Prism's scoped HTTP API. Configure its token separately on the service; never add a token to an action URL.</p>
+        <p>Treat these query parameters as untrusted input. Verify the Prism server address against your service configuration and authorize every project request.</p>
+      </section>
+    </main>
+  </body>
+</html>

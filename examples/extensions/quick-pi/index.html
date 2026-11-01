@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Quick PI Lite</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./model.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+<main>
+  <header><p class="eyebrow">Prism extension · Manual DC screening</p><h1>Quick PI Lite</h1>
+    <p>A declared series path, from source to load. Estimate resistance, voltage drop and conductor loss.</p>
+    <p id="context" class="context"></p>
+  </header>
+  <form id="study" novalidate>
+    <fieldset><legend>Operating point</legend><div class="fields">
+      <label>Source voltage · V<input name="voltage" type="number" value="3.3" min="0" step="any" required></label>
+      <label>Load current · A<input name="current" type="number" value="2" min="0" step="any" required></label>
+      <label>Copper resistivity · nΩ·m<input name="resistivity" type="number" value="17.24" min="0" step="any" required></label>
+      <label>Drop budget · %<input name="budget" type="number" value="5" min="0" max="100" step="any" required></label>
+    </div><p class="hint">17.24 nΩ·m is the declared copper assumption at 20°C. Enter resistivity at your operating temperature; no temperature rise is solved.</p></fieldset>
+    <fieldset><legend>Series path</legend>
+      <p class="hint">Include supply and return stages. Omitted return resistance is assumed zero. Parallel count means identical paths with equal current sharing.</p>
+      <div id="stages"></div>
+      <div class="actions"><button type="button" id="add-trace">Add trace</button><button type="button" id="add-via">Add via group</button><button type="button" id="add-resistor">Add resistor</button></div>
+    </fieldset>
+    <div class="actions"><button type="button" id="calculate" class="primary">Calculate</button><button type="button" id="example">Load reference example</button></div>
+  </form>
+  <p id="error" role="alert" hidden></p>
+  <section id="results" aria-labelledby="results-title" hidden>
+    <h2 id="results-title">DC path results</h2><p id="status" role="status"></p>
+    <dl id="summary" class="summary"></dl>
+    <div class="table-scroll"><table><caption>Uniform conductor estimates per series stage</caption><thead><tr><th scope="col">Stage</th><th scope="col">R · mΩ</th><th scope="col">Drop · mV</th><th scope="col">Loss · mW</th><th scope="col">Average J · A/mm²</th></tr></thead><tbody id="stage-results"></tbody></table></div>
+    <details><summary>Study report JSON</summary><p class="hint">Select the report to copy it. This panel does not use browser storage or download files.</p><label for="report">Inputs, project context and calculated results</label><textarea id="report" readonly rows="14" spellcheck="false"></textarea></details>
+  </section>
+  <section class="limits"><h2>Model and limits</h2><p>Fixed-temperature, constant-current DC screening. Traces use R = ρL/(wt); via barrels use R = ρL/[πp(d + p)], where d is the finished hole diameter. Identical parallel paths divide resistance by their count. Drop = IR; loss = I²R.</p>
+    <p>Geometry is entered manually, not extracted from this Prism project. No copper mesh, spreading/contact resistance, current crowding, unequal via sharing, AC, transient, thermal, fusing or current-capacity qualification is performed. A drop-budget result applies only to this declared path.</p>
+    <p>Inspired by <a href="https://github.com/wayri/WayriCAD/blob/decdee0a40d82128e957150f2acc7ecc2df5b41b/quick_pi_plugin/README.md" target="_blank" rel="noopener noreferrer">WayriCAD Quick PI</a>. This independent analytical example does not embed or run its solver.</p>
+  </section>
+</main>
+</body>
+</html>

@@ -17,6 +17,7 @@ You can drive Prism from scripts, CI, AI assistants and other services. This pag
 | Let an admin's assistant look into a slow or stuck server | the ops tools and `/api/v1/ops` | [Ops diagnostics](/KiCAD-Prism/automate/ops-diagnostics/) |
 | Tell another system when something happens in Prism | outbound webhooks | [Webhooks](/KiCAD-Prism/automate/webhooks/) |
 | Link to one exact view of a design | view-state URL parameters and `window.prism` | [Links to a view](/KiCAD-Prism/automate/view-links/) |
+| Add an independently hosted tool to a project | extension actions and sandboxed panels | [Extensions](/KiCAD-Prism/automate/extensions/) |
 | Review every pull or merge request | the GitHub Actions and GitLab CI templates | [Design review in CI](/KiCAD-Prism/automate/ci/) |
 
 ## What every tool shares
