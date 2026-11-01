@@ -59073,7 +59073,7 @@
     },
     "/api/v1/remote-provider/supply/parts/{part_id}/refresh": {
       "post": {
-        "description": "Read one tracked part from its distributors now. Allowed under the read scope: it changes nothing a person sees.",
+        "description": "Read one tracked part from its distributors now. It spends the account's calls, so it takes what following a part takes:\na supply role and a person or a token that may write; read-only and KiCad provider tokens are refused.",
         "operationId": "refresh_supply_part",
         "parameters": [
           {

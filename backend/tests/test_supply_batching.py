@@ -371,10 +371,10 @@ class SchedulingTests(unittest.TestCase):
             self.watch(f"NEW-{index}")
         discoverer = self.discoverer.Discoverer(self.connectors, store=self.store, provider_for=lambda _c: self.provider(), clock=self.clock)
         connector = self.connectors.get(self.cid)
-        self.assertEqual(discoverer._spend(connector, True, 1, reads_due=True), ("oneoff", True), "reads are due: the pool pays, the committed share is kept for them")  # noqa: SLF001
+        self.assertEqual(discoverer._spend(connector, True, 1, reads_due=True), ("oneoff", True, False), "reads are due: the pool pays, the committed share is kept for them")  # noqa: SLF001
         self.poller.Poller(self.connectors, store=self.store, provider_for=lambda _c: self.provider(), clock=self.clock).poll_connector(self.cid)
         self.assertEqual(len(self.rows("SELECT 1 FROM supply_poll_state")), 2, "every due listing was read")
-        self.assertEqual(discoverer._spend(connector, True, 1, reads_due=False), ("tier1", False), "nothing due: the background allowance pays")  # noqa: SLF001
+        self.assertEqual(discoverer._spend(connector, True, 1, reads_due=False), ("tier1", False, False), "nothing due: the background allowance pays")  # noqa: SLF001
         summary = discoverer.run(self.cid)
         self.assertGreater(summary.searched, 0)
         got = {row["purpose"]: int(row["n"]) for row in self.rows("SELECT purpose, SUM(calls) AS n FROM supply_call_counts WHERE kind = 'search' GROUP BY purpose")}

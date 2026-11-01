@@ -59,6 +59,9 @@ class Alternate:
             raise ValueError("an alternate needs a part number or a distributor number")
 
 
+MAX_STOCK = 2_147_483_647
+
+
 @dataclass(frozen=True, slots=True)
 class Offer:
     """One distributor listing at one moment."""
@@ -107,6 +110,9 @@ class Offer:
             raise ValueError("provider and sku are required")
         if self.stock < 0:
             raise ValueError("stock must not be negative")
+        if self.stock > MAX_STOCK:
+            # supply_offers.stock is an INTEGER; a distributor's placeholder such as 9999999999 is held at the ceiling.
+            object.__setattr__(self, "stock", MAX_STOCK)
         if self.moq < 1 or self.order_multiple < 1:
             raise ValueError("moq and order multiple must be at least 1")
         if self.lead_time_days is not None and self.lead_time_days < 0:

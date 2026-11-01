@@ -716,6 +716,18 @@ class PollingTests(unittest.TestCase):
         self.assertEqual(len(states), 4, "the batch that was never reached is asked about too")
         self.assertTrue(all(r["error_streak"] == 0 and r["last_error_code"] == "" for r in states), "failures are forgiven")
 
+    def test_a_write_that_fails_after_a_paid_call_rests_the_batch(self) -> None:
+        from unittest import mock
+
+        cid = self.connector()
+        self.add_listing(self.watch().part_id, cid, "FAKE-ABC123-CT")
+        with mock.patch.object(self.poller_module.persist.Writer, "record", side_effect=RuntimeError("integer out of range")):
+            summary = self.poller().poll_connector(cid)
+        self.assertEqual((summary.calls, summary.polled, summary.stopped), (1, 0, "error"))
+        state = self.state_of("FAKE-ABC123-CT")
+        self.assertEqual((state["error_streak"], state["last_error_code"]), (1, "internal_error"))
+        self.assertGreater(state["next_poll_at"], self.clock.now, "not bought again on the next minute")
+
     def test_failures_back_off_further_each_time(self) -> None:
         from app.services.supply.providers.base import Unavailable
 

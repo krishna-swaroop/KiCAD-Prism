@@ -92,6 +92,20 @@ class CatalogueTests(unittest.TestCase):
         self.assertFalse(jlc_catalogue.due(now - timedelta(hours=11), now))
         self.assertTrue(jlc_catalogue.due(now - timedelta(hours=12), now))
 
+    def test_a_failed_import_waits_as_long_as_a_good_one(self) -> None:
+        now = datetime(2026, 10, 29, 12, tzinfo=timezone.utc)
+        self.assertFalse(jlc_catalogue.due(None, now, failed_at=now - timedelta(minutes=10)))
+        self.assertFalse(jlc_catalogue.due(now - timedelta(days=3), now, failed_at=now - timedelta(hours=11)))
+        self.assertTrue(jlc_catalogue.due(now - timedelta(days=3), now, failed_at=now - timedelta(hours=12)))
+
+    def test_a_file_that_unpacks_past_the_limit_is_refused(self) -> None:
+        from unittest import mock
+
+        bomb = gzip.compress(b"0" * 4096)
+        with mock.patch.object(jlc_catalogue, "MAX_UNPACKED", 1024), self.assertRaises(ProviderError):
+            jlc_catalogue._lines(bomb)
+        self.assertEqual(len(jlc_catalogue._lines(gzip.compress(b"a\nb"))), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

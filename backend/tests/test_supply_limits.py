@@ -139,6 +139,29 @@ class DatabaseTests(unittest.TestCase):
         limits.note(self.store, self.cid, {**reading, "x-ratelimit-remaining": "470"}, now + timedelta(minutes=2))
         self.assertEqual(self.spent(now), 540, "the ledger never goes down")
 
+    def test_two_answers_with_one_count_add_the_gap_once(self) -> None:
+        self.connectors.update(self.cid, actor="ana@example.com", reset_time="08:00", reset_tz="UTC", reset_from_provider=True)
+        now = at(1, 10)
+        limits.sync(self.store, self.cid, 540, now)
+        limits.sync(self.store, self.cid, 540, now)
+        self.assertEqual(self.spent(now), 540)
+
+    def test_the_count_is_not_trusted_in_the_first_hour_after_the_reset(self) -> None:
+        self.connectors.update(self.cid, actor="ana@example.com", reset_time="08:00", reset_tz="UTC", reset_from_provider=True)
+        limits.sync(self.store, self.cid, 990, at(1, 8, 30))
+        self.assertEqual(self.spent(at(1, 8, 30)), 0, "yesterday's count may still be on the answers")
+        limits.sync(self.store, self.cid, 30, at(1, 9, 1))
+        self.assertEqual(self.spent(at(1, 9, 1)), 30)
+
+    def test_extra_calls_of_a_spare_batch_are_spare(self) -> None:
+        from app.services.supply import ledger
+
+        now = at(1, 10)
+        ledger.record_calls(self.store, self.cid, 2, now=now, purpose=ledger.PURPOSE_SPARE, spare=True)
+        with self.store.connection() as conn:
+            state = ledger.get_state(conn, self.cid, daily_budget=1000, reserve_pct=10, now=now)
+        self.assertEqual((state.spent_today, state.spare_spent_today), (2, 2))
+
     def test_each_api_keeps_its_own_readings_and_only_the_largest_quota_suggests(self) -> None:
         products, notices = "https://api.digikey.com/products/v4/search", "https://api.digikey.com/ChangeNotifications/v3/Products/X"
         limits.note(self.store, self.cid, {"x-ratelimit-limit": "1000", "x-ratelimit-remaining": "465"}, at(1, 10), url=products)

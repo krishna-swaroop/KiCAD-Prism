@@ -20,9 +20,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlsplit
 
-from app.services.supply import accounts, ledger
+from app.services.supply import accounts, ledger, quota
 
 KIND_SYNCED = "synced"
+# A provider count is trusted only this long after the day reset (``sync``).
+SYNC_AFTER_RESET_SECONDS = 3600
 MARK_REMAINING, MARK_REFUSED, MARK_OK = "remaining", "refused", "ok"
 
 HISTORY_DAYS = 10
@@ -95,18 +97,17 @@ def note(store, connector_id: str, limits: Mapping[str, str], now: datetime, *, 
 
 
 def sync(store, connector_id: str, provider_spent: int, now: datetime) -> None:
-    """Raise today's ledger to what the provider counted, when something else spent calls on the same key."""
+    """Raise today's ledger to what the provider counted, when something else spent calls on the same key.
+
+    Not in the first hour of the day: a provider whose reset is stored in UTC moves by an hour where its clocks change, and for
+    that hour its answers still carry yesterday's count.
+    """
 
     with store.connection() as conn:
         account = accounts.resolve(conn, connector_id)
-        state = ledger.get_state(
-            conn, account.ledger_id, daily_budget=account.daily_budget, reserve_pct=account.reserve_pct, now=now,
-            reset_time=account.reset_time, reset_tz=account.reset_tz,
-        )
-    if provider_spent > state.spent_today:
-        ledger.record_calls(
-            store, connector_id, provider_spent - state.spent_today, now=now, kind=KIND_SYNCED, purpose=ledger.PURPOSE_COMMITTED
-        )
+    if quota.seconds_into_day(now, account.reset_time, account.reset_tz) < SYNC_AFTER_RESET_SECONDS:
+        return
+    ledger.raise_spent_to(store, connector_id, provider_spent, now=now, kind=KIND_SYNCED)
 
 
 def note_refused(store, connector_id: str, now: datetime) -> None:

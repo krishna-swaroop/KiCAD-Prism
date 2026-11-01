@@ -182,7 +182,7 @@ class Discoverer:
                 by_id = {item.part_id: item for item in todo}
                 groups = [[by_id[part_id] for part_id in ids] for ids in cut_groups(conn, list(by_id), group_size)]
             for group in groups:
-                paid = (ledger.PURPOSE_ONE_OFF, True)
+                paid = (ledger.PURPOSE_ONE_OFF, True, False)
                 if spec.metered:
                     paid = self._spend(connector, first, min(item.tier for item in group), reads_due=reads_due, spare_only=waiting or library)
                     if paid is None:
@@ -191,7 +191,7 @@ class Discoverer:
                 try:
                     results = self._search(
                         service, provider, [item.part_id for item in group], connector_id, batched=group_size > 1,
-                        charge=lambda extra, paid=paid: self._charge_extra(connector_id, extra, paid[0], interactive=paid[1]),
+                        charge=lambda extra, paid=paid: self._charge_extra(connector_id, extra, paid[0], interactive=paid[1], spare=paid[2]),
                     )
                 except ProviderError as exc:
                     return DiscoverySummary(
@@ -240,12 +240,13 @@ class Discoverer:
         with self._store.connection() as conn:
             groups = cut_groups(conn, todo, size)
         for group in groups:
-            if spec.metered and ledger.fund(self._store, connector, ledger.ONE_OFF, now=now, kind=ledger.KIND_SEARCH) is None:
+            paid = ledger.fund(self._store, connector, ledger.ONE_OFF, now=now, kind=ledger.KIND_SEARCH) if spec.metered else ledger.ONE_OFF[0]
+            if paid is None:
                 return searched, STOPPED_BUDGET
             try:
                 results = self._search(
                     service, provider, group, connector_id, batched=size > 1,
-                    charge=lambda extra: self._charge_extra(connector_id, extra, ledger.PURPOSE_ONE_OFF, interactive=True),
+                    charge=lambda extra, paid=paid: self._charge_extra(connector_id, extra, paid.purpose, interactive=paid.interactive, spare=paid.spare),
                 )
             except ProviderError as exc:
                 return searched, trouble.react(self._connectors, self._store, connector_id, exc, now)
@@ -276,7 +277,7 @@ class Discoverer:
         with self._store.connection() as conn:
             return bool(poller.due_listings(conn, connector_id, now, 1, metered=True))
 
-    def _spend(self, connector, first: bool, tier: int, *, reads_due: bool = False, spare_only: bool = False) -> tuple[str, bool] | None:
+    def _spend(self, connector, first: bool, tier: int, *, reads_due: bool = False, spare_only: bool = False) -> tuple[str, bool, bool] | None:
         """Pay for one search. A first search is scheduled work: while no committed read is due (``reads_due``) it is paid from the background allowance
         (counted as the tier's tracking), else from the pool (half of which stays for people), then from free calls; a repeat from the
         committed share. Returns what paid, as (purpose, from the pool), or None when nothing could."""
@@ -285,14 +286,16 @@ class Discoverer:
             (ledger.SPARE,) if spare_only else (ledger.committed(tier),) if not first else ledger.first_search(tier, reads_due=reads_due)
         )
         paid = ledger.fund(self._store, connector, sources, now=self._clock(), kind=ledger.KIND_SEARCH)
-        return None if paid is None else (paid.purpose, paid.interactive)
+        return None if paid is None else (paid.purpose, paid.interactive, paid.spare)
 
-    def _charge_extra(self, connector_id: str, extra: int, purpose: str, *, interactive: bool) -> None:
+    def _charge_extra(self, connector_id: str, extra: int, purpose: str, *, interactive: bool, spare: bool = False) -> None:
         """Calls a search made beyond the one it paid for are counted, so the day's figure stays the provider's."""
 
         connector = self._connectors.get(connector_id)
         if registry.get_spec(connector["provider"]).metered:
-            ledger.record_calls(self._store, connector_id, extra, now=self._clock(), interactive=interactive, kind=ledger.KIND_SEARCH, purpose=purpose)
+            ledger.record_calls(
+                self._store, connector_id, extra, now=self._clock(), interactive=interactive, kind=ledger.KIND_SEARCH, purpose=purpose, spare=spare,
+            )
 
     def _search(
         self, service: DiscoveryService, provider: SupplyProvider, group: list[str], connector_id: str, *, batched: bool,

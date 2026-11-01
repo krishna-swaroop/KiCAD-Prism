@@ -79,17 +79,19 @@ def refresh_catalogues(conn, now: datetime, *, fetch_for=_fetcher) -> int:
 
     done = 0
     for row in conn.execute(
-        "SELECT c.id, c.provider, i.imported_at FROM supply_connectors c LEFT JOIN supply_csv_imports i ON i.connector_id = c.id "
+        "SELECT c.id, c.provider, i.imported_at, CASE WHEN c.last_error_code = 'catalogue' THEN c.last_error_at END AS failed_at "
+        "FROM supply_connectors c LEFT JOIN supply_csv_imports i ON i.connector_id = c.id "
         "WHERE c.catalogue AND c.enabled ORDER BY c.id"
     ).fetchall():
         try:
             base = registry.get_spec(row["provider"]).catalogue_url
         except registry.UnknownProvider:
             continue
-        if not base or not jlc_catalogue.due(row["imported_at"], now):
+        if not base or not jlc_catalogue.due(row["imported_at"], now, failed_at=row["failed_at"]):
             continue
         try:
             wanted = {r["match_key"] for r in conn.execute("SELECT DISTINCT match_key FROM supply_parts WHERE match_key <> ''").fetchall()}
+            conn.commit()  # no transaction stays open across the download
             created, rows = jlc_catalogue.read(fetch_for(base), wanted)
         except Exception:  # noqa: BLE001 - the card shows it; the old offers stand
             logging.getLogger(__name__).info("Catalogue not read for %s", row["id"], exc_info=True)

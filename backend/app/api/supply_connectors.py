@@ -250,9 +250,15 @@ async def upload_offers_csv(
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="The file is too large")
-    content = await request.body()
-    if len(content) > MAX_BYTES:
-        raise HTTPException(status_code=413, detail="The file is too large")
+    # Read in pieces with the cap, so a body sent without a length is refused once it passes the limit, not after it is all held.
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > MAX_BYTES:
+            raise HTTPException(status_code=413, detail="The file is too large")
+        chunks.append(chunk)
+    content = b"".join(chunks)
 
     def load() -> dict[str, Any]:
         info, parsed = _csv_service().import_file(connector_id, content, actor=_actor(admin), filename=filename)

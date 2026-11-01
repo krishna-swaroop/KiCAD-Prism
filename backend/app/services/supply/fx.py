@@ -113,6 +113,7 @@ def refresh_from_ecb(conn, now: datetime | None = None, client: Any | None = Non
     recent = conn.execute("SELECT MAX(fetched_at) AS at FROM supply_fx_rates WHERE source = 'ecb'").fetchone()["at"]
     if recent is not None and now - recent < REFRESH_AFTER:
         return 0
+    conn.commit()  # no transaction stays open across the download
     http = client or SafeHttpClient(ECB_HOSTS)
     body = http.request("GET", ECB_URL).body
     day, rates = parse_ecb(body)
