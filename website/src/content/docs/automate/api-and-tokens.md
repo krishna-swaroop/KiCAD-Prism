@@ -37,10 +37,11 @@ A token's scopes limit what it may do. Its owner's role limits it further: a tok
 | `comments:write` | add comments and replies |
 | `design:write` | project and design changes that need the designer role, such as syncing a project or queuing a release build |
 | `catalog:write` | catalog edits, such as creating a component draft |
+| `supply:write` | Supply actions a supply role may take: watching or tracking a part, choosing its packaging, reading it from its distributors now. Supply approvals need a person signed in to Prism. |
 | `release:approve` | approving and publishing releases |
 | `catalog:qa` | catalog QA decisions |
 | `admin` | administrator changes |
-| `api:write` | every scope from `comments:write` to `admin` above, and the Supply writes no narrower scope allows, such as watching a part or reading it from its distributors now |
+| `api:write` | every scope from `comments:write` to `admin` above |
 | `ops:read` | the [ops diagnostics](/KiCAD-Prism/automate/ops-diagnostics/) reads |
 | `ops:act` | the ops actions, and everything `ops:read` allows |
 

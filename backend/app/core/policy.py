@@ -122,11 +122,11 @@ RULES: dict[Action, Rule] = {
     "remote_symbols": Rule(ALL_ROLES, scopes=("remote_symbols.read", "api:read"), provider_refusal=None),
     # Supply: stock, prices and the matching review queue. Reading it, watching parts, and deciding matches follow the catalog's roles.
     "supply_read": Rule(SUPPLY_READ_ROLES, "Supply read access required", ("api:read",)),
-    "supply_write": Rule(SUPPLY_WRITE_ROLES, "Supply write access required", ("api:write",), _PROVIDER_MODIFY),
+    "supply_write": Rule(SUPPLY_WRITE_ROLES, "Supply write access required", ("supply:write",), _PROVIDER_MODIFY),
     # What Prism follows (a project, a part's tier, a packaging pick) and notes on BOM lines: anyone who reads supply, with a token that may write.
-    "supply_follow": Rule(SUPPLY_READ_ROLES, "Supply read access required", ("api:write",), _PROVIDER_MODIFY),
+    "supply_follow": Rule(SUPPLY_READ_ROLES, "Supply read access required", ("supply:write",), _PROVIDER_MODIFY),
     # Waivers, accepted matches, new manufacturers: a sign-off, so an agent never gives it.
-    "supply_approve": Rule(SUPPLY_APPROVE_ROLES, "Supply review access required", ("api:write",), _PROVIDER_MODIFY, human_only=True),
+    "supply_approve": Rule(SUPPLY_APPROVE_ROLES, "Supply review access required", ("supply:write",), _PROVIDER_MODIFY, human_only=True),
     # Diagnostics (ADR scripting-and-mcp §11, D20/D21): admin reads and a few
     # bounded actions. Not human-only: they inspect and unstick, they sign nothing off.
     "ops_read": Rule(frozenset({"admin"}), "Admin role required", ("ops:read",), _PROVIDER_ADMIN),
@@ -140,6 +140,8 @@ AREA_WRITE_SCOPES: tuple[str, ...] = (
     "comments:write",
     "design:write",
     "catalog:write",
+    # Following parts and reading them now. Supply approvals stay human-only whatever a token holds.
+    "supply:write",
     "release:approve",
     "catalog:qa",
     "admin",

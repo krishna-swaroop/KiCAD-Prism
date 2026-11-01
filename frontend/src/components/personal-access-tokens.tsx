@@ -15,6 +15,7 @@ export const PERSONAL_TOKEN_SCOPES = [
     "comments:write",
     "design:write",
     "catalog:write",
+    "supply:write",
     "release:approve",
     "catalog:qa",
     "admin",

@@ -56,7 +56,7 @@ A browser session cookie isn't accepted at `/mcp`.
 
 ## Approve access
 
-A client signed in with OAuth starts with read access (`api:read`) only. The first time the assistant tries a write, Prism asks your client for just the scope that write needs, and you approve it in the browser. The scopes a client can be granted are `api:read`, `comments:write`, `design:write` and `catalog:write`, plus `ops:read` and `ops:act` for administrators when [ops diagnostics](/KiCAD-Prism/automate/ops-diagnostics/) are on.
+A client signed in with OAuth starts with read access (`api:read`) only. The first time the assistant tries a write, Prism asks your client for just the scope that write needs, and you approve it in the browser. The scopes a client can be granted are `api:read`, `comments:write`, `design:write`, `catalog:write` and `supply:write`, plus `ops:read` and `ops:act` for administrators when [ops diagnostics](/KiCAD-Prism/automate/ops-diagnostics/) are on.
 
 A client using a personal access token isn't asked. A write its token can't make fails with the code `insufficient-scope`, naming the scope it lacks.
 
@@ -112,12 +112,8 @@ To review a change, an assistant calls `compare_revisions`, polls `get_job` unti
 | `add_comment` | comments on a component, a net, a schematic sheet or one comparison change, with an optional class and severity. Prism places the comment from the design at that revision, not from coordinates. | `comments:write` |
 | `reply_to_comment` | replies in an existing thread | `comments:write` |
 | `resolve_comment` | changes nothing: returns the Prism page where you resolve the thread yourself | `comments:write` |
-| `watch_component` | puts a component's main part on watch, in the packaging you choose, so Prism reads its stock and price on a schedule. Watching again changes only the packaging. | `api:write` |
-| `refresh_component_supply` | reads a component's main part from its distributors now. It needs a supply role (designer, QA or administrator), and runs once every 15 minutes per person and part. | `api:write` |
-
-:::note
-A client signed in with OAuth can't be granted `api:write`, so `watch_component` and `refresh_component_supply` work only for a client that sends a personal access token with `api:write`.
-:::
+| `watch_component` | puts a component's main part on watch, in the packaging you choose, so Prism reads its stock and price on a schedule. Watching again changes only the packaging. | `supply:write` |
+| `refresh_component_supply` | reads a component's main part from its distributors now. It needs a supply role (designer, QA or administrator), and runs once every 15 minutes per person and part. | `supply:write` |
 
 `resolve_comment`, `request_release_approval` and `request_catalog_approval` hand the step back to you as a link. Your client opens it, and you act in Prism.
 
