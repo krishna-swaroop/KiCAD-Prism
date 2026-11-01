@@ -147,7 +147,9 @@ def sample_back(model: OutageModel | None, quote_days: int | None, ratio: float,
     """Draws of the days until a distributor that has been out ``already`` days is back, or None when nothing says."""
 
     if model is not None:
-        floor = float(np.interp(already, model.times, model.survival, left=1.0)) if already > 0 else 1.0
+        # The curve is a step: survival at ``already`` is its value at the last stock-out that ended by then.
+        ended = int(np.searchsorted(model.times, already, side="right")) if already > 0 else 0
+        floor = float(model.survival[ended - 1]) if ended else 1.0
         floor = max(min(floor, 1.0), 1e-9)
         u = rng.uniform(0.0, floor, draws)
         # The first event time whose survival is at or below u; beyond the curve means longer than any seen.
@@ -267,10 +269,13 @@ def stock_forecast(holders: Sequence[Holder], outage: Mapping[str, OutageModel |
         if draw is not None:
             low, mid, high = _quantiles(np.minimum(draw, 365.0))
             low, high = _widen(low, high, weekly)
+            # What ``sample_back`` drew from: earlier stock-outs (this distributor's, or all of them when ``pooled``), else the quote.
+            model = outage.get(holder.connector_id)
             back.append({
                 "connector_id": holder.connector_id, "name": holder.name, "provider": holder.provider,
                 "low": low, "median": mid, "high": high, "quote_days": holder.quote_days,
                 "ratio": ratios.get(holder.connector_id), "beyond": float((draw >= NEVER / 2).mean()),
+                "basis": "outages" if model is not None else "quote", "pooled": bool(model is not None and model.pooled),
             })
     steps = list(range(0, RUNOUT_HORIZON + 1, 2))
     path = [[day, *(float(v) for v in np.percentile(total[:, day], [10, 50, 90]))] for day in steps]

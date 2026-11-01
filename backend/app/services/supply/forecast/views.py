@@ -69,7 +69,8 @@ def part(conn, part_id: str, now: datetime | None = None, quantity: int | None =
             "runout": ({**_range(today, stock["runout"]), **_chance(stock["runout"]["probability"]), "state": _borrowed(state("runout"), stock)} if stock["runout"] else None),
             "back": [
                 _range(today, item, {"connector_id": item["connector_id"], "name": item["name"], "provider": item["provider"], "quote_days": item["quote_days"],
-                                      "ratio": item["ratio"], "beyond_share": item["beyond"], "state": state("back_in")})
+                                      "ratio": item["ratio"], "beyond_share": item["beyond"], "basis": item["basis"], "pooled": item["pooled"],
+                                      "state": state("back_in")})
                 for item in stock["back"]
             ],
             "path": [{"day": _day(today, offset), "low": low, "median": mid, "high": high} for offset, low, mid, high in stock["path"]],

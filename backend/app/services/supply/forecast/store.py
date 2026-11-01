@@ -94,6 +94,10 @@ def store(
     return int(row["id"])
 
 
+# Bumped when what a kept forecast holds changes, so one kept before is worked out again rather than read.
+SHAPE = 2
+
+
 def kept_part(conn, part_id: str, day: date, quantity: int) -> dict[str, Any] | None:
     """The part's forecast as kept for its sheet, while it is ``day``'s, at ``quantity``, and nothing it is made from has changed
     since (``freshness``). None otherwise: the caller works it out again."""
@@ -105,7 +109,7 @@ def kept_part(conn, part_id: str, day: date, quantity: int) -> dict[str, Any] | 
         f"AND NOT {freshness.stale_sql('forecast', 'ARRAY[f.part_id]', 'f')}",
         (part_id, day, quantity),
     ).fetchone()
-    return row["data"] if row else None
+    return row["data"] if row and row["data"].get("shape") == SHAPE else None
 
 
 def keep_part(conn, part_id: str, day: date, quantity: int, seen: tuple[str, int], data: Mapping[str, Any]) -> None:
@@ -125,7 +129,7 @@ def keep_part(conn, part_id: str, day: date, quantity: int, seen: tuple[str, int
         ON CONFLICT (part_id) DO UPDATE SET made_on = EXCLUDED.made_on, quantity = EXCLUDED.quantity, data = EXCLUDED.data,
             computed_at = EXCLUDED.computed_at, seen = EXCLUDED.seen, snap = EXCLUDED.snap, own = EXCLUDED.own
         """,
-        (part_id, day, quantity, json.dumps(data), clock.now(), seen[0], seen[1]),
+        (part_id, day, quantity, json.dumps({**data, "shape": SHAPE}), clock.now(), seen[0], seen[1]),
     )
 
 

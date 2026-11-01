@@ -55,11 +55,12 @@ function priceWhy(forecast: PartForecast): string {
 }
 
 function backWhy(item: NonNullable<PartForecast["back"]>[number]): string {
-  if (item.ratio !== null && item.quote_days) {
-    return `${item.name} quoted ${formatLeadTime(item.quote_days)}; its real waits have run ${item.ratio.toFixed(1)} times the quote, so that is what is expected.`;
+  if (item.basis === "quote") {
+    const ratio = item.ratio !== null ? `; its real waits have run ${item.ratio.toFixed(1)} times the quote, so that is what is expected` : "";
+    return item.quote_days ? `${item.name} quoted ${formatLeadTime(item.quote_days)}${ratio}.` : "";
   }
   const longer = item.beyond_share > 0.1 ? `; in ${Math.round(item.beyond_share * 100)}% of futures it is out longer than any seen` : "";
-  return `Stock-outs of this kind have lasted this long before${longer}.`;
+  return `${item.pooled ? "Stock-outs at all distributors" : `${item.name}'s stock-outs`} have lasted this long before${longer}.`;
 }
 
 /**

@@ -59,6 +59,8 @@ class BackInStock(SupplyModel):
     quote_days: Optional[int]
     ratio: Optional[float]
     beyond_share: float
+    basis: Literal["outages", "quote"] = Field(description="What the range is drawn from: earlier stock-outs, or the quoted lead time.")
+    pooled: bool = Field(description="The stock-outs are every distributor's, this one having too few of its own.")
     state: ForecastModelState
 
 

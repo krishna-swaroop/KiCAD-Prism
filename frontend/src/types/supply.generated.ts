@@ -160,12 +160,16 @@ export interface AssessmentSettingsView {
 }
 
 export interface BackInStock {
+  /** What the range is drawn from: earlier stock-outs, or the quoted lead time. */
+  basis: "outages" | "quote";
   beyond_share: number;
   connector_id: string;
   high: string;
   low: string;
   median: string;
   name: string;
+  /** The stock-outs are every distributor's, this one having too few of its own. */
+  pooled: boolean;
   provider: string;
   quote_days: number | null;
   ratio: number | null;
@@ -2527,6 +2531,9 @@ export interface SupplyBomRollup {
   currency: string | null;
   /** 0 to 10, weighted by units needed; null when nothing has data. */
   health: number | null;
+  /** Parts the health is made of; the others have nothing read yet. */
+  health_assessed: number;
+  health_parts: number;
   health_status: "ok" | "warning" | "error" | "fatal" | "unknown";
   limited_by: string | null;
   lines: number;

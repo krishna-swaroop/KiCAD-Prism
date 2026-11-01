@@ -51,6 +51,11 @@ class MetricTests(unittest.TestCase):
         result = market.metrics_of([row(None), row(None, "nrnd")])
         self.assertEqual(result, {"lifecycle_risk": 0.5})
 
+    def test_a_part_without_a_stated_lifecycle_is_not_counted_as_safe(self) -> None:
+        rows = [row(5, "obsolete", offers=[offer()]), row(5, "unknown", offers=[offer()]), row(5, "unknown", offers=[offer()])]
+        self.assertEqual(market.metrics_of(rows)["lifecycle_risk"], 1.0)
+        self.assertNotIn("lifecycle_risk", market.metrics_of([row(5, "unknown", offers=[offer()])]))
+
 
 @unittest.skipUnless(POSTGRES_URL, "PRISM_DATABASE_URL is required for supply database tests")
 class MarketDatabaseTests(unittest.TestCase):

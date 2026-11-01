@@ -19,10 +19,15 @@ from app.services.supply.vocabulary import Lifecycle
 
 
 def distributor_count(conn) -> int:
-    """Distributors Prism reads: distinct providers among enabled connectors. Files and the simulator are not distributors."""
+    """Distributors Prism reads: distinct providers among enabled connectors. Files, the simulator and assembly services (JLCPCB
+    holds stock only for its own assembly) are not distributors: none of them can be a second source."""
 
+    from app.services.supply.providers import registry
+
+    assembly = [spec.key for spec in registry.list_specs(include_dev=True) if spec.assembly_only]
     return conn.execute(
-        "SELECT COUNT(DISTINCT provider) AS n FROM supply_connectors WHERE enabled AND provider NOT IN ('csv', 'fake')"
+        "SELECT COUNT(DISTINCT provider) AS n FROM supply_connectors WHERE enabled AND provider NOT IN ('csv', 'fake') AND provider <> ALL(%s)",
+        (assembly,),
     ).fetchone()["n"]
 
 
@@ -39,6 +44,18 @@ def _quotes(offers: Sequence[Mapping[str, Any]], wanted: int, base: str, rates: 
         if name not in cheapest or found.price < cheapest[name][1]:
             cheapest[name] = (name, found.price)
     return list(cheapest.values())
+
+
+def _target_in(rules: alert_rules.Rules, currency: str, rates: fx.Rates | None) -> tuple[Decimal, str] | None:
+    """A person's target price in the currency the part is priced in, so a target set in another currency (or before the
+    base currency changed) is still checked. None without a target, a price currency or a rate between the two."""
+
+    if rules.target_price is None or not currency:
+        return None
+    if rules.target_currency == currency:
+        return rules.target_price, currency
+    converted = rates.convert(rules.target_price, rules.target_currency, currency) if rates is not None else None
+    return (converted, currency) if converted is not None else None
 
 
 def assess_one(
@@ -74,7 +91,7 @@ def assess_one(
         price_rise_percent=rules.price_rise_percent or settings.alerts.price_rise_percent,
         notice=pcn.alert_detail(notices, now.date()), notice_changes=pcn.next_change(notices, now.date()),
         price=(item["unit_price"], item.get("currency") or "", item.get("price_quantity")) if item.get("unit_price") else None,
-        target=(rules.target_price, rules.target_currency) if rules.target_price is not None else None,
+        target=_target_in(rules, item.get("currency") or "", rates),
     )
     # Findings from outside the part (a component's) are waived like the part's own.
     findings = waivers.apply([*checks.evaluate(facts, settings.assessment), *extras], part_waivers)

@@ -111,6 +111,9 @@ function HealthTile({ supply }: { supply: ProjectSupply }) {
         {rollup.health === null ? "No data" : `${rollup.health.toFixed(1)} of 10`}
         {rollup.health === null ? null : <span className="ml-2 text-xs font-normal text-muted-foreground">{STATUS_LABEL[rollup.health_status]}</span>}
       </p>
+      {rollup.health !== null && rollup.health_assessed < rollup.health_parts ? (
+        <p className="text-xs tabular-nums text-muted-foreground">{rollup.health_assessed} of {rollup.health_parts} assessed</p>
+      ) : null}
       <StatusBar group={{ statuses, count: seen.size }} className="w-full" />
       <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums text-muted-foreground">
         {LEGEND.filter((status) => (statuses[status] ?? 0) > 0).map((status) => (

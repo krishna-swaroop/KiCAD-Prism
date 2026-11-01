@@ -124,6 +124,22 @@ class ProjectAlternatesTests(unittest.TestCase):
         self.assertEqual((result["lines"]["k1"]["stock"], result["lines"]["k1"]["alternates"]), (0, []))
         self.assertEqual(result["lines"]["k2"]["part_id"], alternate_id)
 
+    def test_an_alternate_two_lines_share_is_split_between_them(self) -> None:
+        first, _main_id, alternate_id = self._with_alternate(alternate_stock=100)
+        second = self._component()
+        with self.store.connection() as conn:
+            alternate = next(part for part in self.cp.parts_of(conn, str(first["id"])) if part["part_id"] == alternate_id)
+            self.cp.sync_main(conn, [str(second["id"])])
+            self._offer(conn, self.cp.parts_of(conn, str(second["id"]))[0]["part_id"], 0)
+            shared = self.cp.propose_alternate(conn, str(second["id"]), alternate["manufacturer"], alternate["mpn"], AUTHOR)
+            self.cp.decide(conn, str(second["id"]), shared["part_id"], True, "qa@example.com")
+            rollup = self.bom.lookup(conn, [
+                self.bom.BomLine("k1", first["manufacturer"], first["mpn"], 1),
+                self.bom.BomLine("k2", second["manufacturer"], second["mpn"], 1),
+            ], 100)["rollup"]
+        self.assertEqual(shared["part_id"], alternate_id)
+        self.assertEqual(rollup["can_build"], 50, "100 shared pieces, one a board on each of two lines")
+
     def test_available_stores_stock_counts_toward_the_build_and_held_stock_does_not(self) -> None:
         component = self._component()
         component_id = str(component["id"])

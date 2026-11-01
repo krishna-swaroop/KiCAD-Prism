@@ -209,7 +209,7 @@ class BomLookupTests(unittest.TestCase):
         with self.store.connection() as conn:
             conn.execute("DELETE FROM supply_connectors")
             for index, (provider, store, enabled) in enumerate((
-                ("tme", "IT", True), ("tme", "DE", True), ("mouser", "", True), ("csv", "", True), ("fake", "", True), ("digikey", "", False),
+                ("tme", "IT", True), ("tme", "DE", True), ("mouser", "", True), ("csv", "", True), ("fake", "", True), ("digikey", "", False), ("jlcpcb", "", True),
             )):
                 conn.execute("INSERT INTO supply_connectors (id, provider, storefront, enabled) VALUES (%s, %s, %s, %s)", (f"x{index}", provider, store, enabled))
             self.assertEqual(service.distributor_count(conn), 2)
@@ -383,6 +383,15 @@ class BomLookupTests(unittest.TestCase):
         self.assertEqual((rollup["currency"], rollup["cost_build"], rollup["cost_per_board"]), ("EUR", "24.00", "2.4000"))
         self.assertEqual((rollup["can_build"], rollup["limited_by"]), (15, "b"), "30 pieces at 2 a board: 15 boards")
         self.assertEqual(rollup["unchecked"], 3, "the unread part, the unknown part and the line with no number")
+        self.assertEqual(rollup["health_parts"], 3)
+
+    def test_bom_health_says_how_many_parts_it_is_made_of(self) -> None:
+        from app.services.supply import bom_lookup
+
+        assessed = {"ok": {"health": 9.0, "status": "ok"}, **{f"n{i}": {"health": 0.0, "status": "unknown"} for i in range(40)}}
+        rolled = bom_lookup._health_rollup(assessed, {})
+        self.assertEqual((rolled["health"], rolled["health_status"]), (9.0, "ok"))
+        self.assertEqual((rolled["health_assessed"], rolled["health_parts"]), (1, 41), "one part read of forty-one")
 
     def test_a_line_never_read_leaves_the_board_count_unconfirmed(self) -> None:
         stocked = self.part("Acme", "PLENTY")

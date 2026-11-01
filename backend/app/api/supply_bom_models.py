@@ -226,6 +226,8 @@ class SupplyBomRollup(SupplyModel):
     parts: int
     health: Optional[Number] = Field(description="0 to 10, weighted by units needed; null when nothing has data.")
     health_status: SupplyStatus
+    health_assessed: int = Field(description="Parts the health is made of; the others have nothing read yet.")
+    health_parts: int
 
 
 class SupplyBomLookup(SupplyModel):
