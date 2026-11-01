@@ -37,6 +37,7 @@ import {
   getComponent,
   getInlineBundle,
   getPartManifest,
+  PanelApiError,
   refreshSupplyPart,
 } from "@/panel/lib/panel-api";
 import { refreshText } from "@/panel/lib/supply-summary";
@@ -115,18 +116,24 @@ export function PartDetailScreen({
   const [retryNonce, setRetryNonce] = useState(0);
   // One refresh at a time: the server refuses another within 15 minutes, so a second click would only be refused.
   const [refreshing, setRefreshing] = useState(false);
+  // A read spends the account's calls: a KiCad provider token or a read-only one is refused, and the button goes.
+  const [refreshAllowed, setRefreshAllowed] = useState(true);
+  // After a read, only the availability is read again: the picked representation and the open sections stay.
+  const [supplyNonce, setSupplyNonce] = useState(0);
   const refreshAvailability = async () => {
     const partId = load.phase === "ready" ? load.component.supply?.summary?.part_id : undefined;
-    if (!partId) {
-      appendLog("Not tracked");
-      return;
-    }
+    if (!partId) return;
     setRefreshing(true);
     try {
       appendLog(refreshText(await refreshSupplyPart(partId)));
-      setRetryNonce((value) => value + 1);
+      setSupplyNonce((value) => value + 1);
     } catch (err) {
-      appendLog((err as Error).message);
+      if (err instanceof PanelApiError && err.status === 403) {
+        setRefreshAllowed(false);
+        appendLog("No access");
+      } else {
+        appendLog((err as Error).message);
+      }
     } finally {
       setRefreshing(false);
     }
@@ -178,6 +185,18 @@ export function PartDetailScreen({
       });
     return () => controller.abort();
   }, [componentId, revisionId, retryNonce, prefetched, appendLog, onAuthRequired]);
+
+  useEffect(() => {
+    if (supplyNonce === 0) return undefined;
+    const controller = new AbortController();
+    getComponent(componentId, controller.signal, "", revisionId)
+      .then((detail) => {
+        if (controller.signal.aborted) return;
+        setLoad((current) => current.phase === "ready" ? { ...current, component: { ...current.component, supply: detail.supply } } : current);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [supplyNonce, componentId, revisionId]);
 
   async function runPlacement(path: "manifest" | "inline") {
     const sessionId = getSessionId();
@@ -292,7 +311,6 @@ export function PartDetailScreen({
     component.place_enabled && selectedComplete && component.identity_kind === "mpn";
 
   const sources = component.supply?.sources ?? [];
-  const vendorSources = sources.filter((s) => s.kind === "vendor");
   const localSources = sources.filter((s) => s.kind === "local");
   const symbolAssetId = selectedRepresentation?.symbol?.id;
   const footprintAssetId = selectedRepresentation?.footprint?.id;
@@ -465,7 +483,7 @@ export function PartDetailScreen({
       <Section
         label="Availability"
         action={
-          vendorSources.length > 0 || component.supply?.summary ? (
+          component.supply?.summary && refreshAllowed ? (
             <button
               aria-label="Refresh availability"
               title="Refresh availability"
@@ -481,7 +499,7 @@ export function PartDetailScreen({
       >
         {component.supply?.restriction === "not_for_new_designs" ? (
           <p role="alert" className="rounded border border-amber-500/50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-            Not for new designs. The library marked this component. Placed symbols keep working; pick another for a new design.
+            Not for new designs
           </p>
         ) : null}
         {component.supply?.summary ? <SupplyAvailability supply={component.supply} /> : null}

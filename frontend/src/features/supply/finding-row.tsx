@@ -11,6 +11,8 @@ interface FindingRowProps {
   finding: SupplyFinding;
   canPropose: boolean;
   canApprove: boolean;
+  /** The signed-in person's email: a waiver they proposed, still waiting, is theirs to withdraw. */
+  me?: string;
   /** Asks for a waiver with a reason. Without it the row offers no way to start one (the part sheet's outlook). */
   onPropose?: (reason: string) => void | Promise<void>;
   onDecide: (waiverId: string, approve: boolean) => void | Promise<void>;
@@ -18,7 +20,7 @@ interface FindingRowProps {
 }
 
 /** One finding, its severity tag above it, and what has been decided about it. */
-export function FindingRow({ finding, canPropose, canApprove, onPropose, onDecide, onRevoke }: FindingRowProps) {
+export function FindingRow({ finding, canPropose, canApprove, me, onPropose, onDecide, onRevoke }: FindingRowProps) {
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
   const waiver = finding.waiver;
@@ -48,7 +50,8 @@ export function FindingRow({ finding, canPropose, canApprove, onPropose, onDecid
             {mayAsk && waiver.outdated ? (
               <Button size="sm" variant="outline" className="h-6" onClick={() => setAsking(true)}>Waive again</Button>
             ) : null}
-            {canPropose ? (
+            {/* The server lets an approver revoke any waiver, and its proposer withdraw it while it waits. */}
+            {canApprove || (canPropose && waiver.state === "proposed" && Boolean(me) && waiver.proposed_by === me) ? (
               <Button size="sm" variant="ghost" className="h-6" onClick={() => void onRevoke(waiver.id)}>
                 {waiver.state === "proposed" ? "Withdraw" : "Revoke"}
               </Button>

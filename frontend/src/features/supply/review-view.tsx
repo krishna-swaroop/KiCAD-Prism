@@ -4,7 +4,7 @@ import { CheckCheck } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { canReviewSupply } from "@/lib/roles";
+import { canFollowSupply, canReviewSupply } from "@/lib/roles";
 import type { User } from "@/types/auth";
 import { AliasRow } from "./alias-row";
 import { CollapsibleSection } from "./collapsible-section";
@@ -77,7 +77,7 @@ export function ReviewView({ user, after, othersWaiting = false }: { user: User 
               </CollapsibleSection>
             ) : null}
 
-            <SeveralListings canDecide={canDecide} user={user} />
+            <SeveralListings canDecide={canFollowSupply(user?.role)} user={user} />
 
             <MatchedByPrism matched={queue.matched} canDecide={canDecide} onDecided={refresh} />
           </>

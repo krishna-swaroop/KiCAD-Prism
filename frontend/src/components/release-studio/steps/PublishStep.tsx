@@ -165,6 +165,7 @@ function KeepBomOffer({ projectId, buildId }: { projectId: string; buildId: stri
     const [offer, setOffer] = useState(false);
     const [done, setDone] = useState("");
     const [failed, setFailed] = useState("");
+    const [keeping, setKeeping] = useState(false);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -178,16 +179,20 @@ function KeepBomOffer({ projectId, buildId }: { projectId: string; buildId: stri
     if (!offer) return null;
     return (
         <div className="space-y-1 border p-3 text-sm">
-            <p>Prism has not read this project's BOM yet. Keep the release's BOM so supply can show what it knows of these parts.</p>
+            <p className="text-muted-foreground">BOM not read</p>
             <Button
                 size="sm"
                 variant="outline"
+                disabled={keeping}
                 onClick={() => {
+                    setKeeping(true);
                     readReleaseBom(projectId, buildId)
-                        .then((result) => setDone(`Kept ${result.parts} parts. Nothing is tracked until you choose to.`))
-                        .catch((error: Error) => setFailed(error.message));
+                        .then((result) => setDone(`Kept ${result.parts} parts`))
+                        .catch((error: Error) => setFailed(error.message))
+                        .finally(() => setKeeping(false));
                 }}
             >
+                {keeping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Keep this BOM in Prism
             </Button>
             {failed ? <p className="text-destructive">{failed}</p> : null}

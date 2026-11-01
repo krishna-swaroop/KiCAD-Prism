@@ -122,7 +122,7 @@ function Tracked({ partId, componentId, user }: { partId: string; componentId: s
           </Button>
         </span>
       </div>
-      <PartDetailSections detail={detail} canEdit={canEdit} role={user?.role} onChanged={part.refresh} wide />
+      <PartDetailSections detail={detail} canEdit={canEdit} role={user?.role} me={user?.email} onChanged={part.refresh} wide />
     </div>
   );
 }

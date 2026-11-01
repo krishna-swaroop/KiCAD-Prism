@@ -21,7 +21,7 @@ const TONE: Record<SupplyOutlook["band"], "outline" | "warning" | "destructive" 
  * Whether the part is heading for its end, and how healthy it is, on one line: the outlook with every signal behind it, then the
  * health score. One info icon opens what both rest on: the signals, the five scores and the findings.
  */
-export function OutlookSection({ outlook, partId = null, role, below = null }: { outlook: SupplyOutlook; partId?: string | null; role?: UserRole | null; below?: ReactNode }) {
+export function OutlookSection({ outlook, partId = null, role, me, below = null }: { outlook: SupplyOutlook; partId?: string | null; role?: UserRole | null; me?: string; below?: ReactNode }) {
   const { assessment, error, canPropose, canApprove, act } = useHealth(partId, role);
   const data = assessment.data;
   const scored = data ? data.status !== "unknown" : false;
@@ -47,7 +47,7 @@ export function OutlookSection({ outlook, partId = null, role, below = null }: {
               ))}
             </ul>
           ) : null}
-          {data && scored && partId ? <HealthBody partId={partId} data={data} canPropose={canPropose} canApprove={canApprove} act={act} /> : null}
+          {data && scored && partId ? <HealthBody partId={partId} data={data} canPropose={canPropose} canApprove={canApprove} me={me} act={act} /> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         </HoverDetails> : null}
       </div>
