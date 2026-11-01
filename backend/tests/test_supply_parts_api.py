@@ -785,6 +785,19 @@ class SupplyPartsApiTests(unittest.TestCase):
             rows = {row["kind"]: row for row in conn.execute("SELECT * FROM supply_stock_events WHERE listing_id = %s", (listing,)).fetchall()}
         self.assertEqual(rows["stock_out"]["resolved_on"], (day + timedelta(days=30)).date(), "the restock ends the open stock-out")
 
+    def test_a_second_stock_out_on_one_day_leaves_the_listing_out(self) -> None:
+        from app.services.supply import stock_events
+
+        cid = self.fake_connector()
+        listing = self.insert_listing(self.watch_via_api("EVT2")["part_id"], cid, "A", stock=0)
+        day = self.now
+        with self.store.connection() as conn:
+            stock_events.record(conn, listing, 10, 0, None, False, day)
+            stock_events.record(conn, listing, 0, 5, None, False, day + timedelta(hours=2))
+            stock_events.record(conn, listing, 5, 0, 30, False, day + timedelta(hours=4))
+            row = conn.execute("SELECT * FROM supply_stock_events WHERE listing_id = %s AND kind = 'stock_out'", (listing,)).fetchone()
+        self.assertEqual((row["resolved_on"], row["quoted_lead_days"]), (None, 30), "out again the same day: the stock-out is open")
+
     def seed_scorecard(self, shared: int) -> tuple[str, str]:
         """``shared`` parts each listed by two distributors; the first always restocks first and keeps its word, the second is late."""
 

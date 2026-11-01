@@ -484,11 +484,20 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True)
 
 
-def tier_of(conn, part_id: str) -> dict[str, Any] | None:
-    """The tier, rate and reasons of a part, or None for tier 3."""
+def visible_reasons(reasons: Any, visible: set[str] | None) -> list[Any]:
+    """The reasons a caller may see: a project reason names a project, so it is left out unless ``visible`` holds it (None: all)."""
+
+    return [
+        reason for reason in reasons or []
+        if visible is None or not (isinstance(reason, dict) and reason.get("kind") == "project") or str(reason.get("ref")) in visible
+    ]
+
+
+def tier_of(conn, part_id: str, visible: set[str] | None = None) -> dict[str, Any] | None:
+    """The tier, rate and reasons of a part, or None for tier 3; project reasons only for the projects ``visible`` holds."""
 
     row = conn.execute("SELECT tier, rate, reasons FROM supply_part_tiers WHERE part_id = %s", (part_id,)).fetchone()
-    return {"tier": int(row["tier"]), "rate": row["rate"], "reasons": row["reasons"]} if row else None
+    return {"tier": int(row["tier"]), "rate": row["rate"], "reasons": visible_reasons(row["reasons"], visible)} if row else None
 
 
 def counts(conn) -> dict[str, int]:
@@ -499,5 +508,5 @@ def counts(conn) -> dict[str, int]:
 
 __all__ = [
     "TrackingError", "check_tier", "track_project", "untrack_project", "untrack_projects", "sync_projects", "tracked_project", "list_tracked_projects",
-    "project_parts", "recompute", "tier_of", "counts",
+    "project_parts", "recompute", "tier_of", "visible_reasons", "counts",
 ]

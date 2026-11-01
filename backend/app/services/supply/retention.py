@@ -136,7 +136,15 @@ def drop_unused(conn, now: datetime) -> int:
     gone = [row["id"] for row in rows]
     if not gone:
         return 0
-    for table in ("supply_offers", *_PRICE_HISTORY):
+    # A read may land after the choice above: it was paid for and is kept. Locking the listings holds back new history rows (they
+    # refer to the listing); the offer is deleted only while it is still old, which a concurrent update of it re-checks.
+    conn.execute("SELECT id FROM supply_listings WHERE id = ANY(%s) ORDER BY id FOR UPDATE", (gone,))
+    with_offer = {row["listing_id"] for row in conn.execute("SELECT listing_id FROM supply_offers WHERE listing_id = ANY(%s)", (gone,)).fetchall()}
+    dropped = {row["listing_id"] for row in conn.execute(
+        "DELETE FROM supply_offers WHERE listing_id = ANY(%s) AND fetched_at < %s RETURNING listing_id", (gone, now - READ_WINDOW),
+    ).fetchall()}
+    gone = [listing_id for listing_id in gone if listing_id in dropped or listing_id not in with_offer]
+    for table in _PRICE_HISTORY:
         conn.execute(f"DELETE FROM {table} WHERE listing_id = ANY(%s)", (gone,))
     return len(gone)
 

@@ -196,7 +196,7 @@ def _watch_dto(record: watches.WatchRecord | None) -> dict[str, Any] | None:
 
 
 @router.get("/parts/{part_id}", response_model=PartTrackingState)
-async def part_state(part_id: str, _user: AuthenticatedUser = Depends(require_supply_reader)) -> dict[str, Any]:
+async def part_state(part_id: str, user: AuthenticatedUser = Depends(require_supply_reader)) -> dict[str, Any]:
     def read() -> dict[str, Any]:
         with _store().connection() as conn:
             parts.get_part(conn, part_id)
@@ -205,7 +205,7 @@ async def part_state(part_id: str, _user: AuthenticatedUser = Depends(require_su
                     "SELECT connector_id FROM supply_admissions WHERE part_id = %s AND state = 'waiting' ORDER BY connector_id", (part_id,)
                 ).fetchall()
             ]
-            return {"tier": tracking.tier_of(conn, part_id), "waiting_at": waiting, "watch": _watch_dto(watches.watch_of(conn, part_id))}
+            return {"tier": tracking.tier_of(conn, part_id, usage.visible_project_ids(user.role)), "waiting_at": waiting, "watch": _watch_dto(watches.watch_of(conn, part_id))}
 
     return await _run(read)
 
@@ -224,7 +224,7 @@ async def follow_number(body: FollowNumberIn, response: Response, user: Authenti
                 packaging=changes.get("packaging", "any"), tier=changes.get("tier"), rate=changes.get("rate"),
                 may_create_manufacturer=is_approver(user),
             )
-            return {"watch": _watch_dto(record), "tier": tracking.tier_of(conn, record.part_id)}, created
+            return {"watch": _watch_dto(record), "tier": tracking.tier_of(conn, record.part_id, usage.visible_project_ids(user.role))}, created
 
     result, created = await _run(run)
     response.status_code = 201 if created else 200
@@ -250,7 +250,7 @@ async def follow_part(part_id: str, body: FollowIn, user: AuthenticatedUser = De
             report = admission.apply(conn, lambda c: watches.follow(c, part_id, user.email, **body.changes()))
             return {
                 **{key: value for key, value in report.items() if key != "result"},
-                "tier": tracking.tier_of(conn, part_id), "watch": _watch_dto(watches.watch_of(conn, part_id)),
+                "tier": tracking.tier_of(conn, part_id, usage.visible_project_ids(user.role)), "watch": _watch_dto(watches.watch_of(conn, part_id)),
             }
 
     return await _run(run)
