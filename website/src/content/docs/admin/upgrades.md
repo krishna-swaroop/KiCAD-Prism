@@ -2,7 +2,7 @@
 title: Upgrade Prism
 description: Move an installation to a newer release, roll back if it goes wrong, and read the changes each release makes to stored data.
 sidebar:
-  order: 9
+  order: 10
 ---
 
 This page moves a Prism installation to a newer release without losing the
@@ -200,6 +200,17 @@ and 129; catalog migrations 13 and 16). Module, assembly and system components
 are deleted with their revisions; ordinary parts are untouched. Take the backup
 first if you want to keep that data. Afterwards `.kicad-prism/system-bundles/`
 and `.kicad-prism/system-steps/` can be deleted.
+
+### Unreleased development builds: supply tables are rebuilt
+
+No tagged release created supply tables, so an upgrade from a tagged release
+needs nothing here. A database that ran a pre-release development build of
+Supply recorded catalog migrations 17 or 20 with tables in an older shape. The
+backend then refuses to start and logs which tables, columns or indexes are
+missing. Rebuilding them deletes all supply data (history, tracking, settings,
+connectors, credentials and approved alternates) and keeps the catalog and
+local inventory. Follow
+[If the server refuses to start](/KiCAD-Prism/admin/supply/#if-the-server-refuses-to-start).
 
 ### Replaced draft STEP files go to quarantine
 

@@ -27,6 +27,9 @@ POOLS = frozenset({"prism", "catalog"})
 
 TRACKER_RESOURCE = "tracker_sync"
 
+#: Supply polling: distributor calls, one account at a time. A slot is left for everything else on a small worker.
+SUPPLY_RESOURCE = "supply"
+
 #: The shared memory slot. Its capacity is ``PRISM_WORKER_MEMORY_BUDGET_MIB``
 #: in units of ``MEMORY_UNIT_MIB``; a heavy kind holds one unit per 256 MiB of
 #: its measured peak. Several units of one resource are supported by the
@@ -56,6 +59,7 @@ _CAPACITIES: Mapping[str, Callable[[], int]] = {
     "catalog_worker": lambda: settings.CATALOG_WORKER_CONCURRENCY,
     "catalog_kicad": lambda: settings.CATALOG_KICAD_CONCURRENCY,
     TRACKER_RESOURCE: lambda: min(2, max(1, settings.PRISM_WORKER_CONCURRENCY - 1)),
+    SUPPLY_RESOURCE: lambda: min(2, max(1, settings.PRISM_WORKER_CONCURRENCY - 1)),
     MEMORY_RESOURCE: lambda: max(
         1, settings.PRISM_WORKER_MEMORY_BUDGET_MIB // MEMORY_UNIT_MIB
     ),

@@ -18,6 +18,7 @@ import re
 from app.core.design_bundle_config import DesignBundleSettings
 from app.core.pipeline_config import PipelineSettings
 from app.core.sim_studio_config import SimStudioSettings
+from app.core.supply_config import SupplySettings
 from app.core.worker_memory import default_worker_memory_budget_mib
 
 
@@ -38,7 +39,7 @@ _WEAK_SESSION_SECRETS = {
 _TRACKER_KEY_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
-class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings):
+class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings, SupplySettings):
     """Application settings loaded from environment variables.
 
     The only reader of process configuration in `app`. Design-pipeline fields

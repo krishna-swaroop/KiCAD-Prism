@@ -452,8 +452,13 @@ class ReleasePublisher:
         notes: str,
         actor: Actor,
         acknowledged_models: Sequence[str] = (),
+        attach: Callable[[str], Sequence[tuple[str, bytes]]] | None = None,
+        after: Callable[[str, str], None] | None = None,
     ) -> dict[str, Any]:
         """Zip the dossier, attach ready vendor packs, create the forge Release, record it.
+
+        ``attach`` is asked for more assets given the zip's file name; ``after`` is told the tag and commit once the publish is
+        recorded and must not raise (supply uses them for the compliance draft and its snapshot).
 
         A build whose 3D models are not all pinned is published only with each
         of them in *acknowledged_models*.
@@ -489,6 +494,8 @@ class ReleasePublisher:
             tag,
         )
         extras = self._vendor_pack_assets(build, configuration, filename)
+        if attach is not None:
+            extras = [*extras, *attach(filename)]
 
         # Forge. The Release name is the tag, never a browser-supplied title.
         # A tag this publish creates is deleted again by any rollback below.
@@ -525,6 +532,8 @@ class ReleasePublisher:
             except forge_publish.ForgePublishError:
                 logger.warning("Could not remove the unrecorded %s Release", tag)
             raise
+        if after is not None:
+            after(tag, commit_sha)
         return {"release": released, "filename": filename, "publish": record}
 
     # -- internals ------------------------------------------------------

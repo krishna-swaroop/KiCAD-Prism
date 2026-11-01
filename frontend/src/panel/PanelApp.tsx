@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LogTerminal } from "@/panel/components/LogTerminal";
 import {
@@ -39,7 +39,23 @@ type Screen =
       returnTo: DetailReturnTarget;
     };
 
+/** The component to open once signed in: the one whose part page in Prism was just closed (``?component=``). */
+function componentInAddress(): string | null {
+  return new URL(window.location.href).searchParams.get("component");
+}
+
+/** Drops ``?component=`` once it has been opened, so a reload starts at the finder. */
+function forgetComponentInAddress(): void {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("component")) return;
+  url.searchParams.delete("component");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 export function PanelApp() {
+  const [componentToOpen] = useState(componentInAddress);
+  // Taken by the first successful sign-in check only: a later one (KiCad handing over a token) leaves the screen alone.
+  const componentOpened = useRef(false);
   const [screen, setScreen] = useState<Screen>({ kind: "login" });
   const [finderView, setFinderView] = useState(emptyFinderView);
   const [categoryView, setCategoryView] = useState<CategoryBrowseState>(
@@ -63,7 +79,13 @@ export function PanelApp() {
       await getCategories(signal);
       if (signal?.aborted) return;
       appendLog("Session authenticated — entering finder.");
-      setScreen({ kind: "finder" });
+      const opened = componentOpened.current ? null : componentToOpen;
+      componentOpened.current = true;
+      forgetComponentInAddress();
+      setScreen((current) => {
+        if (opened) return { kind: "detail", componentId: opened, prefetched: null, returnTo: { kind: "finder" } };
+        return current.kind === "login" ? { kind: "finder" } : current;
+      });
     } catch (err) {
       if (signal?.aborted) return;
       if (isAuthError(err)) {
@@ -75,7 +97,7 @@ export function PanelApp() {
         setScreen({ kind: "finder" });
       }
     }
-  }, [appendLog]);
+  }, [appendLog, componentToOpen]);
 
   // ─── Initialize bridge ──────────────────────────────────────────
 

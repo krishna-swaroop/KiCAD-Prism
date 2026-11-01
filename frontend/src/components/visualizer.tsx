@@ -87,6 +87,8 @@ interface VisualizerProps {
     user: User | null;
     commit?: string | null;
     active?: boolean;
+    /** False when a commit was checked out from History; the BOM then shows no supply. */
+    supplyAtHead?: boolean;
 }
 
 /** The toolbar follows VIEWER_TABS, which is also the 1–6 shortcut order. */
@@ -198,7 +200,7 @@ function designDataReadFailure(error: unknown, fallback: string): DesignDataRead
 }
 
 // react-doctor-disable-next-line no-giant-component - viewer event orchestration and the comment system share the viewer refs
-export function Visualizer({ projectId, user, commit, active: viewerActive = true }: VisualizerProps) {
+export function Visualizer({ projectId, user, commit, active: viewerActive = true, supplyAtHead = true }: VisualizerProps) {
     // Open on the tab a caller asked for (e.g. clicking a changed .kicad_pcb in
     // the history file list), read once on mount; defaults to the schematic.
     const [searchParams, setSearchParams] = useSearchParams();
@@ -1639,8 +1641,11 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                     {activeTab === "bom" && (
                         <div className="absolute inset-0 z-20 bg-background">
                             <EngineeringBomTable
+                                projectId={projectId}
+                                atHead={supplyAtHead}
                                 semanticIndex={semanticIndex}
                                 components={effectiveComponents}
+                                user={user}
                                 loading={semanticIndexLoading}
                                 pending={semanticIndexPending}
                                 error={semanticIndexError}
@@ -1766,6 +1771,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 onImportComponent={globalSelection?.kind === "net" ? undefined : handleImportSelectedComponent}
                                 canImportComponent={canImportLibraryComponent}
                                 importingComponent={componentImportPending}
+                                supplyUser={supplyAtHead ? (user ?? null) : null}
                                 labelInstances={labelInstances}
                                 onNavigateLabelInstance={navigateLabelInstance}
                                 onFocusLabelInstance={(uuid) => void focusLabelInstance(uuid)}

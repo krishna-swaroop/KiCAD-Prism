@@ -160,6 +160,23 @@ function startsWith(key: ServerKey, prefix: ServerKey): boolean {
 /** A store of keyed reads. The app uses one (`serverState`); tests make their own. */
 export class ServerStateStore {
   private entries = new Map<string, Entry>();
+  /** Hear every publish, for answers about many keys at once (`outdated`). */
+  private watchers = new Set<() => void>();
+
+  watch(listener: () => void): () => void {
+    this.watchers.add(listener);
+    return () => { this.watchers.delete(listener); };
+  }
+
+  /** How many observed keys under `prefix` show data from an earlier read because the latest one failed. */
+  outdated(prefix: ServerKey): number {
+    let count = 0;
+    for (const entry of this.entries.values()) {
+      const { data, error, fetching } = entry.snapshot;
+      if (entry.observers.size > 0 && data !== undefined && error && !fetching && startsWith(entry.key, prefix)) count += 1;
+    }
+    return count;
+  }
 
   snapshot(id: string): ServerSnapshot<unknown> {
     return this.entries.get(id)?.snapshot ?? IDLE;
@@ -216,6 +233,8 @@ export class ServerStateStore {
       // changes; wait a microtask so that does not drop the entry and re-read.
       queueMicrotask(() => {
         if (current.observers.size > 0 || this.entries.get(id) !== current) return;
+        // A key nobody shows is no longer out of date on screen.
+        for (const watcher of [...this.watchers]) watcher();
         this.settle(current);
         if (current.snapshot.data === undefined || current.retainMs <= 0) {
           this.entries.delete(id);
@@ -280,6 +299,7 @@ export class ServerStateStore {
   private publish(entry: Entry, snapshot: ServerSnapshot<unknown>) {
     entry.snapshot = snapshot;
     for (const listener of [...entry.listeners]) listener();
+    for (const watcher of [...this.watchers]) watcher();
   }
 
   private read(entry: Entry, force: boolean): Promise<void> {
@@ -324,6 +344,16 @@ export class ServerStateStore {
 }
 
 const serverState = new ServerStateStore();
+
+/**
+ * How many keys on screen under `prefix` show data whose latest re-read failed: what a screen marks as out of date. The
+ * prefix is read once; a caller passes a constant.
+ */
+export function useOutdatedCount(prefix: ServerKey): number {
+  const [watched] = useState(prefix);
+  const subscribe = useCallback((listener: () => void) => serverState.watch(listener), []);
+  return useSyncExternalStore(subscribe, () => serverState.outdated(watched), () => 0);
+}
 
 /** Re-read every observed key starting with `prefix`, e.g. after a write. */
 export function invalidateServerState(prefix: ServerKey): Promise<void> {

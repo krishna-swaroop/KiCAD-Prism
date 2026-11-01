@@ -91,7 +91,7 @@ value, footprint or net name.
 3. Pick a result to select it, in this view and the others.
 
 `⌘K` (`Ctrl+K`) opens the command palette instead, which searches projects,
-views and actions across Prism. `?` lists every keyboard shortcut.
+parts, views and actions across Prism. `?` lists every keyboard shortcut.
 
 ## Inspect a selection and cross-probe
 

@@ -31,6 +31,7 @@ An AI assistant connected over MCP never signs anything off. Prism refuses these
 
 - approving or publishing a release;
 - catalog QA (accepting or rejecting a component);
+- supply approvals: approving a waiver, accepting or rejecting a work item, adding a manufacturer Prism doesn't know yet;
 - admin changes;
 - resolving or reopening a comment.
 

@@ -307,6 +307,28 @@ async def require_catalog_reader(user: AuthenticatedUser = Depends(get_current_u
     return policy.authorize(user, "catalog_read")
 
 
+async def require_supply_reader(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    return policy.authorize(user, "supply_read")
+
+
+async def require_supply_writer(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    return policy.authorize(user, "supply_write")
+
+
+async def require_supply_commenter(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    """Anyone who reads supply data may leave a note, with a token that may write."""
+    return policy.authorize(user, "supply_follow")
+
+
+async def require_supply_tracker(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    """Admin, designer and QA decide what Prism follows: a project, a part's tier, a packaging pick."""
+    return policy.authorize(user, "supply_follow")
+
+
+async def require_supply_approver(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    return policy.authorize(user, "supply_approve")
+
+
 async def require_catalog_browser(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
     """Read-only browsing of the component database; viewers included (D-P2-24)."""
     return policy.authorize(user, "catalog_browse")

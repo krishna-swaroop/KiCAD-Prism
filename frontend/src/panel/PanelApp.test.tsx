@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { PanelApp } from "./PanelApp";
@@ -11,7 +11,7 @@ vi.mock("./lib/panel-api", async (importOriginal) => ({
 }));
 vi.mock("./screens/SymbolFinderScreen", () => ({ SymbolFinderScreen: () => <div>Finder</div> }));
 vi.mock("./screens/CategoryListScreen", () => ({ CategoryListScreen: () => null }));
-vi.mock("./screens/PartDetailScreen", () => ({ PartDetailScreen: () => null }));
+vi.mock("./screens/PartDetailScreen", () => ({ PartDetailScreen: ({ componentId }: { componentId: string }) => <div>Detail {componentId}</div> }));
 
 type Envelope = { command: string; session_id: string; message_id: number; response_to?: number };
 const native = window as unknown as {
@@ -43,4 +43,19 @@ it("keeps the native bridge installed through Strict Mode effect replay", async 
   const rejected = expect(pending).rejects.toMatchObject({ kind: "unknown_outcome" });
   unmount();
   await rejected;
+});
+
+it("opens the component named in the address, the one whose part page in Prism was closed, and drops it from the address", async () => {
+  window.history.replaceState(null, "", "/remote-provider/panel?component=cmp-7");
+  const { unmount } = render(<StrictMode><PanelApp /></StrictMode>);
+  expect(await screen.findByText("Detail cmp-7")).toBeTruthy();
+  expect(window.location.search).toBe("");
+  unmount();
+});
+
+it("starts at the finder when the address names no component", async () => {
+  window.history.replaceState(null, "", "/remote-provider/panel");
+  const { unmount } = render(<PanelApp />);
+  expect(await screen.findByText("Finder")).toBeTruthy();
+  unmount();
 });

@@ -55,6 +55,8 @@ testers of unreleased behavior work from `dev`.
   jobsets, and assets.
 - [Library Manager](https://krishna-swaroop.github.io/KiCAD-Prism/use/library-manager/)
   covers component import, revisions, QA, release, KLC checks, and DBL export.
+- [Supply chain data](SUPPLY.md) covers distributor connectors, watching parts, BOM
+  stock and cost, assessment and alerts.
 - [Remote Symbol Provider](REMOTE_SYMBOL_PROVIDER.md) covers connecting desktop
   KiCad and placing released components.
 - [Design variants](https://krishna-swaroop.github.io/KiCAD-Prism/use/variants-and-bom/)

@@ -312,7 +312,10 @@ export async function fetchDesignJson<T>(
   options: DesignDataOptions = {}
 ): Promise<DesignDataResult<T>> {
   const { response, workingTreeDirty: dirty } = await designDataResponse(input, init, options);
-  return { data: (await response.json()) as T, workingTreeDirty: dirty };
+  // A write that answers 204 (or nothing) has no body to read; callers that ignore the result still succeed.
+  if (response.status === 204 || response.status === 205) return { data: undefined as T, workingTreeDirty: dirty };
+  const text = await response.text();
+  return { data: (text ? JSON.parse(text) : undefined) as T, workingTreeDirty: dirty };
 }
 
 /** A design-data text read (a viewer source) that understands the pending and failed states. */

@@ -156,6 +156,8 @@ Tables are the default output. Add `--json` to print the API's response instead.
 | `prism sync <project> [--wait]` | queues a sync with the remote |
 | `prism release build <project> --commit SHA [--config KEY] [--variant V] [--wait]` | queues a Release Studio build of a full 40-character commit |
 | `prism compare <project> <base> <head> [--wait]` | compares two revisions; with `--wait`, prints the schematic and PCB review groups |
+| `prism supply push-offers <connector> <file> [--replace]` | pushes offers from a JSON file (or `-` for stdin) to a CSV, LCSC or JLCPCB connector; see [Push offers and stock](/KiCAD-Prism/automate/supply-push/) |
+| `prism supply push-levels <source> <file>` | pushes the whole stock of a push inventory source from a JSON file |
 | `prism events [--after N] [--follow]` | prints the event log; `--follow` keeps polling |
 | `prism job <id> [--wait]` | shows a job |
 
