@@ -139,6 +139,7 @@ class ProjectAlternatesTests(unittest.TestCase):
             ], 100)["rollup"]
         self.assertEqual(shared["part_id"], alternate_id)
         self.assertEqual(rollup["can_build"], 50, "100 shared pieces, one a board on each of two lines")
+        self.assertEqual(rollup["short"], 2, "each line alone sees the 100, but the two need 200 of it together")
 
     def test_available_stores_stock_counts_toward_the_build_and_held_stock_does_not(self) -> None:
         component = self._component()

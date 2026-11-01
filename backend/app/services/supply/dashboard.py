@@ -73,19 +73,19 @@ def _alerts_by_day(conn, today: date) -> list[dict[str, Any]]:
 
 
 def _project_costs(conn, today: date, visible: set[str] | None) -> list[dict[str, Any]]:
-    """The cost of one board a day for each tracked project ``visible`` names (the base design), 90 days."""
+    """The cost of one board a day for each tracked project ``visible`` names, 90 days: its first tracked variant, the one its
+    project row shows (the base design when it tracks no variant)."""
 
     from app.services.supply import cost_history
 
     projects = [project for project in conn.execute(
-        "SELECT DISTINCT h.project_id, COALESCE(u.project_name, h.project_id) AS project_name FROM supply_bom_cost_history h "
-        "LEFT JOIN supply_bom_usage_projects u ON u.project_id = h.project_id WHERE h.variant = '' AND h.day >= %s ORDER BY 1",
-        (today - timedelta(days=COST_DAYS),),
+        "SELECT t.project_id, COALESCE(u.project_name, t.project_id) AS project_name, COALESCE(t.variants[1], '') AS variant "
+        "FROM supply_tracked_projects t LEFT JOIN supply_bom_usage_projects u ON u.project_id = t.project_id ORDER BY 1",
     ).fetchall() if visible is None or project["project_id"] in visible]
-    series = cost_history.series_of(conn, [(project["project_id"], "") for project in projects], COST_DAYS)
+    series = cost_history.series_of(conn, [(project["project_id"], project["variant"]) for project in projects], COST_DAYS)
     found: list[dict[str, Any]] = []
     for project in projects:
-        kept, _left_out = series.get((project["project_id"], ""), ([], []))
+        kept, _left_out = series.get((project["project_id"], project["variant"]), ([], []))
         if kept:
             found.append({
                 "project_id": project["project_id"], "project_name": project["project_name"], "currency": kept[-1]["currency"],

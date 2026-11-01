@@ -103,8 +103,9 @@ def _unit_in_total(buy: dict[str, Any]) -> str | None:
     return format((Decimal(buy["in_base"]) / int(buy["quantity"])).quantize(Decimal("0.0001")).normalize(), "f")
 
 
-def _releases(conn, project_id: str, now_status: dict[str, str | None]) -> list[dict[str, Any]]:
-    """Each release's frozen snapshot, with the parts that were fine then and are not today."""
+def _releases(conn, project_id: str, now_status: dict[str, str | None], boards: int) -> list[dict[str, Any]]:
+    """Each release's frozen snapshot, with the parts that were fine then and are not today. Only a snapshot assessed for the
+    build the page shows is compared: one made for another build size (or before snapshots carried one) says nothing about it."""
 
     rows = conn.execute(
         "SELECT build_id, tag, created_at, health, status, assessment FROM supply_release_snapshots WHERE project_id = %s "
@@ -114,7 +115,8 @@ def _releases(conn, project_id: str, now_status: dict[str, str | None]) -> list[
     releases = []
     for row in rows:
         changed = []
-        for line in row["assessment"].get("lines", []):
+        comparable = row["assessment"].get("boards") == boards
+        for line in row["assessment"].get("lines", []) if comparable else ():
             part_id = line.get("part_id")
             if part_id and line.get("status") in _GOOD and now_status.get(part_id) in _BAD:
                 changed.append({"part_id": part_id, "manufacturer": line["manufacturer"], "mpn": line["mpn"], "was": line.get("status"), "now": now_status[part_id]})
@@ -172,9 +174,12 @@ def _cost_history(conn, project_id: str, variant: str) -> tuple[list[dict[str, A
     return [shown(row) for row in kept], [shown(row) for row in left_out]
 
 
-def _where_the_money_goes(parts: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """The lines that cost the most for the build, with their share, then what all the other lines cost. None when nothing is priced."""
+def _where_the_money_goes(parts: list[dict[str, Any]], converted: bool) -> dict[str, Any] | None:
+    """The lines that cost the most for the build, with their share, then what all the other lines cost. None when nothing is
+    priced, or when the costs are in more than one currency (no rate to bring them to the total's): they cannot be added."""
 
+    if not converted and len({part.get("unit_currency") for part in parts if part.get("line_cost") not in (None, "")}) > 1:
+        return None
     priced = sorted(
         ((float(part["line_cost"]), part) for part in parts if part.get("line_cost") not in (None, "")), key=lambda pair: -pair[0],
     )
@@ -339,7 +344,7 @@ def overview(conn, project_id: str, variant: str = "", build_quantity: int | Non
     return {
         "available": True, "variant": variant, "build_quantity": build_quantity, "usual_build": usual, "attrition_percent": attrition_percent, "usual_spares": (tracked or {}).get("spares"),
         "variants": usage.project_variants(conn, project_id), "rollup": rollup,
-        "parts": parts, "cost_curve": curve, "money": _where_the_money_goes(parts), "cost_history": history, "cost_history_left_out": left_out, "releases": _releases(conn, project_id, status_now), "notes": notes,
+        "parts": parts, "cost_curve": curve, "money": _where_the_money_goes(parts, bool(rollup.get("converted"))), "cost_history": history, "cost_history_left_out": left_out, "releases": _releases(conn, project_id, status_now, build_quantity), "notes": notes,
     }
 
 

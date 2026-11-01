@@ -32,6 +32,12 @@ class OutlookTests(unittest.TestCase):
     def test_every_distributor_dropping_it_is_under_two_years(self) -> None:
         self.assertEqual(read(offers=[{"discontinued": True}, {"discontinued": True}])["band"], "ending")
 
+    def test_dropping_is_counted_by_distributor_not_by_listing(self) -> None:
+        offers = [{"connector_id": "a", "discontinued": True}] * 3 + [{"connector_id": "b", "discontinued": False}]
+        found = read(offers=offers)
+        self.assertNotEqual(found["band"], "ending")
+        self.assertTrue(any("1 of 2" in signal["text"] for signal in found["signals"]), found["signals"])
+
     def test_one_soft_signal_is_a_note_and_two_together_move_the_band(self) -> None:
         one = read(offers=[{"discontinued": True}, {"discontinued": False}])
         self.assertEqual((one["band"], len(one["signals"])), ("no_signs", 1))

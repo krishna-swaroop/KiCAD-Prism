@@ -110,6 +110,25 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertEqual((good["quantity"], good["status"]), (2, "ok"))
         self.assertLessEqual(result["health"], 4.0, "a fatal line caps the BOM")
 
+    def test_the_check_assesses_the_build_not_one_board(self) -> None:
+        # Two per board and 150 in stock: enough for one board, short for the 100-board build the page prices (D2).
+        self.part("GOOD-1", stock=150)
+        with self.store.connection() as conn:
+            result = self.release_check.check(conn, lines([component("R1", "Acme", "GOOD-1"), component("R2", "Acme", "GOOD-1")]), NOW)
+        self.assertEqual(result["boards"], 100)
+        self.assertNotEqual(result["lines"][0]["status"], "ok")
+
+    def test_costs_in_two_currencies_without_a_rate_are_not_added(self) -> None:
+        from app.services.supply import project_supply
+
+        parts = [
+            {"key": "a", "part_id": "p1", "mpn": "A", "manufacturer": "Acme", "line_cost": "10.00", "unit_currency": "EUR"},
+            {"key": "b", "part_id": "p2", "mpn": "B", "manufacturer": "Acme", "line_cost": "50.00", "unit_currency": "USD"},
+        ]
+        self.assertIsNone(project_supply._where_the_money_goes(parts, converted=False))  # noqa: SLF001
+        self.assertEqual(project_supply._where_the_money_goes(parts, converted=True)["total"], "60.00")  # noqa: SLF001
+        self.assertEqual(project_supply._where_the_money_goes(parts[:1], converted=False)["total"], "10.00")  # noqa: SLF001
+
     def test_a_waived_finding_no_longer_needs_a_look(self) -> None:
         self.part("OBS-1", stock=500, lifecycle="obsolete")
         from app.services.supply.assessment import waivers
@@ -252,7 +271,7 @@ class ReleaseCheckTests(unittest.TestCase):
             conn.execute(
                 "INSERT INTO supply_release_snapshots (id, project_id, build_id, tag, commit_sha, created_by, health, status, assessment) "
                 "VALUES ('s1', 'prj_8', 'b1', 'v1', 'abc', 'a@example.com', 9.0, 'ok', %s::jsonb)",
-                ('{"parts": 2, "needing_a_look": 0, "lines": [{"part_id": "%s", "manufacturer": "Acme", "mpn": "FLAKY-1", "status": "ok"}]}' % flaky,),
+                ('{"parts": 2, "boards": 100, "needing_a_look": 0, "lines": [{"part_id": "%s", "manufacturer": "Acme", "mpn": "FLAKY-1", "status": "ok"}]}' % flaky,),
             )
             conn.execute("UPDATE supply_offers SET lifecycle = 'obsolete', stock = 0 WHERE listing_id IN (SELECT id FROM supply_listings WHERE part_id = %s)", (flaky,))
         with mock.patch("app.api.supply_release.get_project_for_role_or_404", return_value=project):

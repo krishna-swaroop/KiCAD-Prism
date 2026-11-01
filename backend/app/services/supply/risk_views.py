@@ -35,7 +35,10 @@ def availability_of(item: Mapping[str, Any], held: Mapping[str, Any] | None) -> 
     if item["stock"] == 0:
         return "out"
     holders = (held or {}).get("holders")
-    return "two_plus" if holders is not None and holders >= 2 else "one"
+    if holders is None:
+        # Read, but its holders are not worked out yet (no stored insight): not single-sourced as far as anyone knows.
+        return "not_read"
+    return "two_plus" if holders >= 2 else "one"
 
 
 def risk_grid(items: Sequence[Mapping[str, Any]], kept: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from app.services.supply import component_parts, counted
 from app.services.supply.providers import registry
@@ -164,3 +164,21 @@ def packaging_of(conn, part_id: str) -> str:
         if row:
             return row["packaging"]
     return "any"
+
+
+def packagings_of(conn, rows: Sequence[Mapping[str, Any]]) -> dict[str, str]:
+    """``packaging_of`` for many parts in one read: each row's ``id`` and its own watch's ``watch_packaging``."""
+
+    found = {row["id"]: row["watch_packaging"] for row in rows if row.get("watch_packaging") not in (None, "any")}
+    rest = [row["id"] for row in rows if row["id"] not in found]
+    if rest and component_parts.library_present(conn):
+        for row in conn.execute(
+            """
+            SELECT DISTINCT ON (cp.part_id) cp.part_id, w.packaging FROM supply_component_watches w
+            JOIN component_parts cp ON cp.component_id = w.component_id AND cp.role = 'main'
+            WHERE cp.part_id = ANY(%s) AND w.packaging <> 'any' ORDER BY cp.part_id, w.created_at, w.component_id
+            """,
+            (rest,),
+        ).fetchall():
+            found[row["part_id"]] = row["packaging"]
+    return {row["id"]: found.get(row["id"], "any") for row in rows}

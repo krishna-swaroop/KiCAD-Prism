@@ -171,6 +171,7 @@ class ReleaseAssessment(SupplyModel):
     health: Optional[Number]
     status: SupplyStatus
     parts: int
+    boards: Optional[int] = Field(default=None, description="The build the parts were assessed for; none on snapshots taken before it was kept.")
     tracked: int
     not_tracked: int
     needing_a_look: int

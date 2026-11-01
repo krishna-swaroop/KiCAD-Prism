@@ -28304,6 +28304,18 @@
             "title": "Attention",
             "type": "array"
           },
+          "boards": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The build the parts were assessed for; none on snapshots taken before it was kept.",
+            "title": "Boards"
+          },
           "health": {
             "anyOf": [
               {
@@ -28526,6 +28538,18 @@
             "const": true,
             "title": "Available",
             "type": "boolean"
+          },
+          "boards": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The build the parts were assessed for; none on snapshots taken before it was kept.",
+            "title": "Boards"
           },
           "health": {
             "anyOf": [

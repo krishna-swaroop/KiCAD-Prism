@@ -60,7 +60,8 @@ def _rounds(restocks: dict[str, dict[str, list[date]]]) -> tuple[dict[str, int],
                     continue
                 group = {connector: day}
                 for other, rows in by_connector.items():
-                    near = [d for d in rows if other != connector and abs((d - day).days) <= ROUND_DAYS]
+                    # A restock already counted in a round is not used again.
+                    near = [d for d in rows if other != connector and (other, d) not in seen and abs((d - day).days) <= ROUND_DAYS]
                     if near:
                         group[other] = min(near, key=lambda d: abs((d - day).days))
                 if len(group) < 2:

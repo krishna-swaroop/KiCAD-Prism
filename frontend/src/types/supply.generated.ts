@@ -1989,6 +1989,8 @@ export interface RejectManyRequest {
 
 export interface ReleaseAssessment {
   attention: ReleaseCheckLine[];
+  /** The build the parts were assessed for; none on snapshots taken before it was kept. */
+  boards?: number | null;
   health: number | null;
   lines: ReleaseCheckLine[];
   needing_a_look: number;
@@ -2025,6 +2027,8 @@ export interface ReleaseCheckLine {
 export interface ReleaseCheckResult {
   attention: ReleaseCheckLine[];
   available: true;
+  /** The build the parts were assessed for; none on snapshots taken before it was kept. */
+  boards?: number | null;
   health: number | null;
   lines: ReleaseCheckLine[];
   needing_a_look: number;

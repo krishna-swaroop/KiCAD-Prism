@@ -233,13 +233,15 @@ def _computed(conn, rows, offers: dict[str, list[dict]], money: tuple[str, fx.Ra
     base, rates, priced_with = money or _money(conn)
     quantities = price_quantity.of_parts(conn, [r["id"] for r in rows])
     found, counted = {}, {}
+    # The packaging each part is followed in, a watched component's where the part's own watch says any (``stock.packaging_of``).
+    policies = stock.packagings_of(conn, rows)
     for row in rows:
-        here = [o for o in offers.get(row["id"], []) if stock.counts(o["packaging"], row["watch_packaging"] or "any")]
+        here = [o for o in offers.get(row["id"], []) if stock.counts(o["packaging"], policies[row["id"]])]
         price = headline_price.headline(
             [o for o in here if not o["marketplace"]], quantities[row["id"]], base, rates,
             lambda part_id=row["id"]: prices.last_in_stock(conn, part_id, base, rates, quantities[part_id]),
         )
-        summary = _offer_summary(here, row["watch_packaging"] or "any", problems.get(row["id"]), price)
+        summary = _offer_summary(here, policies[row["id"]], problems.get(row["id"]), price)
         summary["priced_with"] = priced_with
         found[row["id"]] = summary
         counted[row["id"]] = here
@@ -430,10 +432,8 @@ def summaries_with_offers(conn, part_ids: list[str], role: str | None = None) ->
     seen = freshness.seen(conn)
     rows = conn.execute(_ROW_SELECT + "WHERE p.id = ANY(%s)", [list(part_ids)]).fetchall()
     offers = offers_by_part(conn, [row["id"] for row in rows])
-    wanted = {
-        row["id"]: [o for o in offers.get(row["id"], []) if stock.counts(o["packaging"], row["watch_packaging"] or "any")]
-        for row in rows
-    }
+    policies = stock.packagings_of(conn, rows)
+    wanted = {row["id"]: [o for o in offers.get(row["id"], []) if stock.counts(o["packaging"], policies[row["id"]])] for row in rows}
     return _summaries(conn, rows, wanted, role=role, seen=seen), wanted
 
 
@@ -1067,7 +1067,7 @@ def part_detail(conn, part_id: str, *, now: datetime | None = None, role: str | 
         (part_id,),
     ).fetchall()
 
-    policy = watch_row["watch_packaging"] or "any"
+    policy = stock.packaging_of(conn, part_id)
     # Status, stock, lifecycle, problem and price are the kept summary's, so the sheet and the list agree; the stock by distributor
     # is worked out from the same listings (``counted.listing_sql`` and the watch's packaging).
     kept = _cached(conn, conn.execute(_ROW_SELECT + "WHERE p.id = %s", [part_id]).fetchall())[part_id]
