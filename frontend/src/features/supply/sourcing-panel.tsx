@@ -88,10 +88,7 @@ function Untracked({ manufacturer, mpn, canEdit, onTracked }: { manufacturer: st
   };
   return (
     <div className="space-y-3 border p-4">
-      <p className="text-sm font-medium">Prism is not tracking {mpn} yet.</p>
-      <p className="text-sm text-muted-foreground">
-        Watch it to read its stock, price and lifecycle from the connected distributors and keep the history.
-      </p>
+      <p className="text-sm font-medium">{mpn}: not tracked</p>
       {canEdit ? <Button size="sm" disabled={busy} onClick={() => void track()}>Watch this part</Button> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </div>

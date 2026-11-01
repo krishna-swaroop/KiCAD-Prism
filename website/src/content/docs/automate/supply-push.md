@@ -77,9 +77,23 @@ curl -X POST "https://prism.example.com/api/v1/supply/inventory-sources/$SOURCE/
 | `batch`, `updated` | kept with the record |
 
 Parts are matched to library components as an InvenTree read's are. Parts that
-match nothing wait under **Unmatched local stock** in **Library Manager →
-Review**. The answer gives the number of `records`, and of parts `matched` and
+match nothing wait under **Unmatched local stock** in **Supply → Review**. The answer gives the number of `records`, and of parts `matched` and
 `unmatched`.
+
+## Limits and answers
+
+Prism checks the size and the token before it reads the body.
+
+| Answer | When |
+| --- | --- |
+| `411` | The request has no `Content-Length`, for example a chunked upload. Send the body whole. |
+| `413` | The body is over 64 MB. |
+| `401` | The push token is wrong, revoked, or for another connector or source. |
+| `400` with code `offers_rejected` | An offer is wrong; nothing was taken (see above). |
+| `400` | The connector is not a CSV, LCSC or JLCPCB connector, or the source is not a push source. |
+
+One push holds at most 50,000 offers or stock records, and an offer at most 50
+prices. A `product_url` must start with `https://`.
 
 ## From the CLI or the SDK
 

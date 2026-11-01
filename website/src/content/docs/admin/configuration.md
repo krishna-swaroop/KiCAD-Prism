@@ -436,10 +436,10 @@ credentials are encrypted with `TRACKER_CREDENTIAL_ROOT_KEY`
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `SUPPLY_BASE_CURRENCY` | `EUR` | Currency a new workspace costs in, as a three-letter code such as `EUR`, `USD` or `INR`. Administrators can change it later in **Supply settings**; a workspace that saved its settings keeps its own. |
-| `SUPPLY_HTTPS_PROXY` | empty | HTTPS proxy for distributor calls, for example `http://proxy.example.com:3128`. The environment's proxy variables are ignored for these calls. With a proxy, the proxy resolves host names, so Prism checks the host but not its address. |
+| `SUPPLY_HTTPS_PROXY` | empty | HTTPS proxy for every call Supply makes (distributors, inventory servers, exchange rates and the jlcparts catalogue), for example `http://proxy.example.com:3128`. The environment's proxy variables are ignored for these calls. With a proxy, the proxy resolves host names, so Prism checks the host but not its address. |
 | `SUPPLY_INVENTORY_PRIVATE_HOSTS_STR` | empty | Comma-separated host names of inventory servers on your own network, for example `inventory.example.internal`. Only these may resolve to a private address or use a port other than 443; HTTPS and certificate checks still apply, and link-local addresses stay refused. Empty allows public addresses only. |
 | `SUPPLY_OAUTH_BASE_URL` | empty | Address a DigiKey sign-in returns to, when it must differ from `PUBLIC_BASE_URL`. Must be HTTPS. Empty uses `PUBLIC_BASE_URL`. |
-| `SUPPLY_FETCH_EXCHANGE_RATES` | `true` | Fetches the European Central Bank's daily reference rates from `www.ecb.europa.eu` once a day, to add up prices in several currencies. Set `false` to make no call there; rates are then only what administrators enter in **Supply settings**. |
+| `SUPPLY_FETCH_EXCHANGE_RATES` | `true` | Fetches the European Central Bank's daily reference rates from `www.ecb.europa.eu` once a day, to add up prices in several currencies. Set `false` to stop the daily fetch; rates are then what administrators enter in **Supply settings → Reference data**, or fetch there with **Refresh from the ECB**. |
 | `SUPPLY_ENABLE_SIMULATED_PROVIDER` | `false` | Allows connectors for a simulated distributor. For development, tests and demos only. Its figures carry a **Test data** chip. |
 
 ## Remote symbols and KiCad

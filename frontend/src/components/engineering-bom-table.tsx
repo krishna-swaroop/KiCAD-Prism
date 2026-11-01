@@ -373,9 +373,9 @@ export function EngineeringBomTable({
                 </div>
             </div>
             {!atHead && canOpenSupply(user?.role) ? (
-                <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground" title="Supply shows on the latest revision">
+                <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
                     <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span>Supply data shows on the latest revision only.</span>
+                    <span>Supply: latest revision only</span>
                 </div>
             ) : null}
             {supply.enabled ? <BomSupplyBar supply={supply} /> : null}

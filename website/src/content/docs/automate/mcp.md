@@ -85,8 +85,8 @@ These tools change nothing in Prism.
 | `get_release_status` | a project's Release Studio candidates and their builds |
 | `compare_revisions` | starts a comparison of two commits, branches or tags and returns its job id; it changes no design |
 | `get_changes` | the review rows of a finished comparison, filtered by kind (`added`, `changed`, `removed`), impact or reference, one page at a time |
-| `get_project_supply` | whether a project's BOM can be built: the cost for a build, the boards the stock covers, and the lines that need a look (at risk, short, or not in the Component Database). Lines count their components' approved alternates. |
-| `get_component_supply` | a library component's main part and approved alternates with their status, distributor stock, lifecycle and price, plus its local stock and watch |
+| `get_project_supply` | whether a project's BOM can be built, for a variant and a build size you choose (the project's usual build when left out): the cost for the build, the boards the stock covers, the lines that need a look (at risk, short, or not in the Component Database) and the health of its release snapshots. Lines count their components' approved alternates. It reads what Prism holds and calls no distributor. |
+| `get_component_supply` | a library component's main part and approved alternates with their status, distributor stock, lifecycle and price, plus its local stock and watch. It calls no distributor. |
 | `find_part_alternatives` | parts distributors list as alternatives to a component's main part, closest first, and the alternates already approved |
 
 To review a change, an assistant calls `compare_revisions`, polls `get_job` until the job is completed, then reads `get_changes`. A client that supports the MCP tasks extension gets a task for `compare_revisions` instead, and follows it with `tasks/get`.
@@ -112,8 +112,12 @@ To review a change, an assistant calls `compare_revisions`, polls `get_job` unti
 | `add_comment` | comments on a component, a net, a schematic sheet or one comparison change, with an optional class and severity. Prism places the comment from the design at that revision, not from coordinates. | `comments:write` |
 | `reply_to_comment` | replies in an existing thread | `comments:write` |
 | `resolve_comment` | changes nothing: returns the Prism page where you resolve the thread yourself | `comments:write` |
-| `watch_component` | puts a component's part on watch, so Prism reads its stock and price on a schedule | `api:write` |
-| `refresh_component_supply` | reads a component's main part from its distributors now; once every 15 minutes per person and part | `api:write` |
+| `watch_component` | puts a component's main part on watch, in the packaging you choose, so Prism reads its stock and price on a schedule. Watching again changes only the packaging. | `api:write` |
+| `refresh_component_supply` | reads a component's main part from its distributors now. It needs the designer or administrator role, and runs once every 15 minutes per person and part. | `api:write` |
+
+:::note
+A client signed in with OAuth can't be granted `api:write`, so `watch_component` and `refresh_component_supply` work only for a client that sends a personal access token with `api:write`.
+:::
 
 `resolve_comment`, `request_release_approval` and `request_catalog_approval` hand the step back to you as a link. Your client opens it, and you act in Prism.
 

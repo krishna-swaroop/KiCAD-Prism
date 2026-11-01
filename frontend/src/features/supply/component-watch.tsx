@@ -35,7 +35,7 @@ export function ComponentWatch({ componentId, canEdit, onChanged }: { componentI
   return (
     <div className="space-y-2 border p-2" aria-label="Watch this component">
       <p className="text-xs text-muted-foreground">
-        {watch ? "This component's part is watched." : "Watch the component's part."}
+        {watch ? "Main part watched" : "Main part not watched"}
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <select

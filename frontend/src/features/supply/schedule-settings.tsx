@@ -25,9 +25,6 @@ function Form({ initial, readOnly }: { initial: Schedule; readOnly: boolean }) {
   return (
     <fieldset className="space-y-3" disabled={readOnly}>
       <legend className="text-sm font-medium">Background reads</legend>
-      <p className="text-xs text-muted-foreground">
-        Calls nobody needs today go to background reads. Choose which ones.
-      </p>
       <div className="space-y-1">
         {SPARE.map((item) => (
           <span key={item.id} className="flex items-center gap-1.5">

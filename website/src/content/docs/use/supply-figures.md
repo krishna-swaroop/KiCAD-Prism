@@ -12,26 +12,30 @@ exports use the same rules. The screens themselves are described in
 
 ## A part's status
 
-A part shows one of five statuses. The first rule that applies wins:
+A part's status is the worst of its [health check](#health-checks-and-the-health-score)
+findings that nobody has waived:
 
-1. **Unknown**: nothing has been read yet. If Prism searched and no
-   distributor carries the number, or every listing has disappeared, the part
-   is **Error** instead.
-2. **Fatal**: the part is obsolete.
-3. **Error**: no distributor has stock.
-4. **Warning**: stock is at or below the part's own alert threshold, or the
-   part is not recommended for new designs (NRND) or at last time buy.
-5. **OK**: none of the above.
+| Status | When |
+| --- | --- |
+| **Critical** | a Critical finding, such as an obsolete part |
+| **At risk** | an Error finding, such as no stock or not enough for the build |
+| **Needs attention** | a Warning finding |
+| **OK** | no finding, or only notes |
+| **No data** | nothing has been read and nothing was found |
 
-**At risk** on the Dashboard and in a project counts Error and Fatal parts. A
-Warning only needs a look. When distributors disagree about the lifecycle,
-the part takes the worst one they state.
+**At risk** on the Dashboard and in a project counts Critical and At risk
+parts. Needs attention only needs a look. When distributors disagree about
+the lifecycle, the part takes the worst one they state.
 
 ### Health checks and the health score
 
 A BOM line and a part sheet also list findings from the health checks. Each
-check has a severity an administrator can change in **Supply settings →
-Health checks**; the line takes the worst finding nobody has waived.
+check has a severity (**Critical**, **Error**, **Warning** or **Note**) an
+administrator can change in
+[**Supply settings → Health checks**](/KiCAD-Prism/admin/supply/#supply-settings);
+the line takes the worst finding nobody has waived. Anyone who can propose
+supply decisions can choose **Waive** on a finding and give a reason; it
+holds once QA or an administrator approves it.
 
 | Check | Raised when | Default |
 | --- | --- | --- |
@@ -41,16 +45,22 @@ Health checks**; the line takes the worst finding nobody has waived.
 | Read is late | a reading the stock figures rest on is older than the part's reading interval plus **Read is late after (hours)** (48) | Warning |
 | Single source | only one distributor (one account) has stock, and you have more than one connected | Warning |
 | RoHS disputed | distributors disagree on whether the part is RoHS compliant; the finding names who says what | Warning |
-| Last time buy | the part is at last time buy; an Error within **Last buy date is an error within (days)** (180) of the last date to buy | Warning |
+| Last time buy | the part is at last time buy; an Error within **Last buy date is an error within (days)** (180) of the last date to buy, and once that date has passed, Critical when no distributor has stock | Warning |
 | Price outlier | one of at least three quotes is more than twice, or less than half, the median | Note |
 
-The others (NRND, distributor dropped it, maker missing, not in library,
-REACH substance, parameter or package mismatch, lifecycle disagreement, and a
-notice or last date to buy saying the part is ending) are Warnings by default.
+The others are Warnings by default: NRND, every distributor dropped it, stock
+at or below the watch's threshold, could run out soon, likely to run out
+everywhere, price rise, over the target price, an open change notice (an
+Error when its last time buy is close), maker missing, not in library, REACH
+substance, parameter or package mismatch, lifecycle disagreement, and a
+notice or last date to buy saying the part is ending.
 
 The health score runs from 0 to 10 and sits inside its status's band: OK is
-7 to 10, Warning 4 to 6.9, Error 0.1 to 3.9 and Fatal 0. Each finding after
-the first lowers it within the band.
+7 to 10, Needs attention 4 to 6.9, At risk 0.1 to 3.9 and Critical 0. Within
+the band it is lower the worse the part scores on lifecycle, sourcing,
+inventory, market and compliance, and the more findings it has after the
+first. A project's score is the parts' scores weighted by quantity, capped at
+the top of its worst part's band.
 
 ## Stock
 
@@ -66,8 +76,11 @@ count.
   of them counts. Full reels, trays, tubes and bulk are separate piles and add.
   Where a distributor says all its packagings share one pile, only the largest
   figure counts.
-- A watch set to count one packaging counts only that packaging.
+- A watch set to count one packaging counts only that packaging. When a
+  part's own watch counts any packaging, the packaging its component's watch
+  sets is counted.
 - A disabled connector's offers don't count.
+- A part no distributor has been read for shows **Not read**, never zero.
 
 A total is as old as the oldest reading it rests on: when one distributor has
 stock read months ago and another reads zero today, the part shows the old
@@ -93,18 +106,29 @@ If a part's stock is kept in mixed units, Prism gives no totals for it.
 
 **Boards** is the number of complete boards the stock covers:
 
-1. Each BOM line is matched to a part: by manufacturer and part number first;
-   by part number alone if only one part has it; through a linked LCSC number
-   as a last resort. A line that can't be matched is **unchecked**.
-2. For each part, the usable stock is distributor stock plus available stores
+1. Lines marked not fitted are left out: a **DNP**, **Do Not Place** or
+   **Exclude from BOM** column that is set, or **In BOM** set to no, however
+   the column and value are written.
+2. Each line is matched to a part. A line whose symbol has a Prism ID first
+   takes its component's manufacturer and part number. Then: by manufacturer
+   and part number; by part number alone if only one part has it; through a
+   linked LCSC number as a last resort.
+3. A line is **unchecked** when it has no tracked part (no part number, a part
+   Prism doesn't know or can't tell apart, or one it doesn't track) or its part
+   has no stock figure.
+4. For each part, the usable stock is distributor stock plus available stores
    stock, plus the stock of the component's approved alternates.
-3. Each part covers usable stock ÷ (quantity per board × (1 + spares)) boards,
-   rounded down. Two lines using the same part are checked together.
-4. **Boards** is the smallest of these, and the line that gives it is the
-   **limiting line**.
+5. Each part covers usable stock ÷ (quantity per board × (1 + spares)) boards,
+   rounded down. Two lines using the same part are checked together, and so
+   are parts that share an approved alternate, so its stock is never counted
+   twice.
+6. **Boards** is the smallest of these, and the line that gives it is the
+   limiting line.
 
-A part is **Short** when its usable stock is less than the build needs. While
-any line is unchecked, the answer reads **Unconfirmed**.
+A part is **Short** when its usable stock is less than the build needs. When
+two lines lean on one alternate that can't cover both, both are short. A short
+line makes the build short; otherwise, while any line is unchecked, the answer
+reads **Unconfirmed**.
 
 ### Spares
 
@@ -144,11 +168,14 @@ shows only when at least two sell the part.
 ### Currency
 
 Every price is converted to the workspace currency with the European Central
-Bank's daily reference rates, read once a day. Rates more than seven days old
-are marked **Out of date**; an administrator can refresh them or enter rates
-by hand in **Supply settings → Reference data**. Prism never guesses a rate:
-when one is missing, a total is shown in the offers' own currency if they all
-share one, and otherwise not at all.
+Bank's daily reference rates, read once a day unless the server is set not to
+fetch them (`SUPPLY_FETCH_EXCHANGE_RATES`, see
+[Configuration](/KiCAD-Prism/admin/configuration/#supply)). Rates more than
+seven days old are marked **Out of date**; an administrator can refresh them
+or enter rates by hand in **Supply settings → Reference data**. Prism never
+guesses a rate: when one is missing, a total is shown in the offers' own
+currency if they all share one, and otherwise not at all. A total that covers
+only some lines says **x of y lines priced**.
 
 ## Trends
 
@@ -204,7 +231,8 @@ distributor, or in the Ended or Ending band.
 Forecasts estimate what happens next: when stock runs out, the chance it is out
 everywhere on any day of the next four or eight weeks (even if restocked after),
 whether a part can be bought in four or eight weeks, its price in 30 and 90
-days, and the chance of an end-of-life change within a year. Each kind of forecast earns its place:
+days, and the chance of an end-of-life change within a year. Each kind of
+forecast earns its place:
 
 - **Learning** until it has enough checked forecasts (30 to 60, by kind).
   Shown greyed and never used for alerts.
@@ -217,7 +245,11 @@ days, and the chance of an end-of-life change within a year. Each kind of foreca
 A forecast is checked when its day arrives, and left out of the record when
 readings don't reach that day. Stock forecasts simulate 2,000 futures per
 distributor from the part's own drain, stock-outs and restocks, borrowing from
-similar parts (same maker and category) when its own history is short. Chances
+similar parts (same maker and category) when its own history is short.
+Connectors on one account are simulated as one stock. A distributor's
+back-in-stock range comes from its own past stock-outs, from every
+distributor's when it has too few, or else from the lead time it quotes
+(shown as **quoted**). Chances
 are worded **Almost certain** (90% and over), **Likely** (70%), **Uncertain**
 (40%), **Unlikely** (10%) and **Very unlikely**.
 
@@ -228,7 +260,8 @@ category (a group needs at least three parts):
 
 - **Out of stock**: the share of parts with no stock.
 - **Dropped**: the share every distributor lists as discontinued.
-- **Ending**: the share that is NRND, at last time buy or obsolete.
+- **Ending**: the share that is NRND, at last time buy or obsolete, among the
+  parts whose lifecycle a distributor states.
 - **Median lead time**: of each part's shortest quoted lead time.
 - **Price index**: 100 on the group's first day, then moved each day by the
   median price change of its parts. Each listing is compared with its own
@@ -240,26 +273,28 @@ rose by at least 14 days and 25%.
 
 ## Alerts
 
-Alerts are raised for tracked parts and shown on the Dashboard; Prism sends no
-email or chat messages.
+Alerts are raised for watched parts and shown on the Dashboard; Prism sends
+no email or chat messages. Each alert comes from a health check finding, at
+the severity set for that check, and a waived finding raises none.
 
 | Alert | Raised when |
 | --- | --- |
-| Part lost | no distributor carries it any more, or every listing disappeared |
-| Out of stock | stock is zero |
-| Below threshold | stock is at or below the part's threshold |
-| Runs out soon | stock runs out within eight weeks, with at least medium confidence, and no regular restock is due first |
-| Likely out | the out-of-stock forecast is shown, the part is read daily, and its last two forecasts both reached **Likely to run out alert (% chance)** (70%) |
-| Price up | the 30-day price change reached **Price rise alert (%)** (20%) |
-| Change notice | an open product change notice; an error within 90 days of the last time buy |
-| Lifecycle | obsolete (critical), or NRND, last time buy or dropped by every distributor |
-| Over target price | the unit price is above the part's target price |
-| Health worse | the part's status is worse than its best since the alert was last acknowledged |
+| **Part lost** | no distributor carries it any more, or every listing disappeared |
+| **Out of stock** | stock is zero |
+| **Below threshold** | stock is at or below the part's threshold |
+| **Running out** | stock runs out within eight weeks, with at least medium confidence, and no regular restock is due first |
+| **Likely out** | the out-of-stock forecast is shown, the part is read daily, and its last two forecasts both reached **Likely to run out alert (% chance)** (70%) |
+| **Price up** | the 30-day price change reached **Price rise alert (%)** (20%) |
+| **Change notice** | an open product change notice; an error within 90 days of the last time buy |
+| **End of life** | obsolete, NRND, last time buy or dropped by every distributor |
+| **Target price missed** | the unit price is above the part's target price |
+| **Assessment worse** | the part's status is worse than its best since the alert was last acknowledged |
 
 A new alert opens only when it is seen on two reads at least 30 minutes
 apart, so one odd reading raises nothing; part lost and change notices open
-at once. An alert resolves by itself when its condition stops holding. A part
-sheet's bell can mute most kinds and set its own thresholds.
+at once. An alert resolves by itself when its condition stops holding, and a
+worse severity wakes an acknowledged or snoozed one. A part sheet's bell can
+switch off most kinds and set its own thresholds.
 
 ## How often parts are read
 
