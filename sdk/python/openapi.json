@@ -1797,6 +1797,15 @@
       "BackInStock": {
         "additionalProperties": true,
         "properties": {
+          "basis": {
+            "description": "What the range is drawn from: earlier stock-outs, or the quoted lead time.",
+            "enum": [
+              "outages",
+              "quote"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
           "beyond_share": {
             "title": "Beyond Share",
             "type": "number"
@@ -1820,6 +1829,11 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "pooled": {
+            "description": "The stock-outs are every distributor's, this one having too few of its own.",
+            "title": "Pooled",
+            "type": "boolean"
           },
           "provider": {
             "title": "Provider",
@@ -1861,6 +1875,8 @@
           "quote_days",
           "ratio",
           "beyond_share",
+          "basis",
+          "pooled",
           "state"
         ],
         "title": "BackInStock",
@@ -33389,6 +33405,15 @@
             "description": "0 to 10, weighted by units needed; null when nothing has data.",
             "title": "Health"
           },
+          "health_assessed": {
+            "description": "Parts the health is made of; the others have nothing read yet.",
+            "title": "Health Assessed",
+            "type": "integer"
+          },
+          "health_parts": {
+            "title": "Health Parts",
+            "type": "integer"
+          },
           "health_status": {
             "enum": [
               "ok",
@@ -33516,7 +33541,9 @@
           "unchecked",
           "parts",
           "health",
-          "health_status"
+          "health_status",
+          "health_assessed",
+          "health_parts"
         ],
         "title": "SupplyBomRollup",
         "type": "object"

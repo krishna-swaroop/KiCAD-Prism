@@ -17,7 +17,7 @@ const mocked = vi.mocked(api);
 
 const rollup = bomRollupFixture({
   lines: 2, tracked: 1, not_tracked: 1, watched: 1, at_risk: 0, short: 0, priced: 1, lines_priced: 1, parts: 1, currency: "EUR",
-  cost_build: "5.00", cost_per_board: "5.00", can_build: 10, limited_by: null, without_stock_data: 0, unchecked: 0, health: 8, health_status: "ok",
+  cost_build: "5.00", cost_per_board: "5.00", can_build: 10, limited_by: null, without_stock_data: 0, unchecked: 0, health: 8, health_status: "ok", health_assessed: 1, health_parts: 1,
 });
 
 beforeEach(() => vi.clearAllMocks());

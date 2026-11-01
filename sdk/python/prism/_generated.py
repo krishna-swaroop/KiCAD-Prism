@@ -307,12 +307,14 @@ class AuthSuccessResponse(TypedDict, total=True):
 
 
 class BackInStock(TypedDict, total=True):
+    basis: str
     beyond_share: float
     connector_id: str
     high: str
     low: str
     median: str
     name: str
+    pooled: bool
     provider: str
     quote_days: int | None
     ratio: float | None
@@ -6120,6 +6122,8 @@ class SupplyBomRollup(TypedDict, total=True):
     cost_per_board: str | None
     currency: str | None
     health: int | float | None
+    health_assessed: int
+    health_parts: int
     health_status: str
     limited_by: str | None
     lines: int

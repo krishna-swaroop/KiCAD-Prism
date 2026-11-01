@@ -260,7 +260,7 @@ export function bomRollupFixture(overrides: Partial<SupplyBomRollup> = {}): Supp
   return {
     lines: 0, tracked: 0, not_tracked: 0, watched: 0, at_risk: 0, needs_a_look: 0, short: 0, priced: 0, lines_priced: 0, currency: null,
     converted: false, test_data: false, rates_day: null, cost_build: null, original_costs: {}, waste_cost: null, cost_per_board: null,
-    can_build: null, limited_by: null, without_stock_data: 0, unchecked: 0, parts: 0, health: null, health_status: "unknown", ...overrides,
+    can_build: null, limited_by: null, without_stock_data: 0, unchecked: 0, parts: 0, health: null, health_status: "unknown", health_assessed: 0, health_parts: 0, ...overrides,
   };
 }
 

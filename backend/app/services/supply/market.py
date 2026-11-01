@@ -52,7 +52,10 @@ def metrics_of(rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
         result["dropped"] = sum(
             1 for row in with_data if row["offers"] and all(offer["discontinued"] for offer in row["offers"])
         ) / len(with_data)
-    result["lifecycle_risk"] = sum(1 for row in rows if row["lifecycle"] in ENDING_LIFECYCLES) / len(rows)
+    # A part whose lifecycle nobody stated is left out, not counted as safe.
+    stated = [row for row in rows if row["lifecycle"] and row["lifecycle"] != "unknown"]
+    if stated:
+        result["lifecycle_risk"] = sum(1 for row in stated if row["lifecycle"] in ENDING_LIFECYCLES) / len(stated)
     leads = [lead for row in rows if (lead := offer_rules.lead_time_of(row["offers"])) is not None]
     if leads:
         result["median_lead_time_days"] = float(median(leads))

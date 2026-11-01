@@ -128,7 +128,7 @@ describe("a row's supply", () => {
 describe("the rollup in words", () => {
   const rollup = bomRollupFixture({
     lines: 10, tracked: 8, not_tracked: 2, watched: 6, at_risk: 1, short: 2, priced: 7, lines_priced: 7, parts: 8, currency: "EUR",
-    cost_build: "24.00", cost_per_board: "2.4000", can_build: 15, limited_by: "k", without_stock_data: 0, unchecked: 2, health: 7.5, health_status: "ok",
+    cost_build: "24.00", cost_per_board: "2.4000", can_build: 15, limited_by: "k", without_stock_data: 0, unchecked: 2, health: 7.5, health_status: "ok", health_assessed: 1, health_parts: 1,
   });
   const lines = [{ key: "k", manufacturer: "Acme", mpn: "B-1", quantity: 2, references: ["U1"] }];
   const text = (sentences: ReturnType<typeof rollupSentences>) => sentences.map((sentence) => sentence.text);
@@ -164,6 +164,8 @@ describe("the rollup in words", () => {
 
   it("leaves health out when nothing has data, and calls a weak one bad", () => {
     expect(text(rollupSentences({ ...rollup, health: null }, 10, lines))).not.toContain("Health");
+    const partial = rollupSentences({ ...rollup, health_assessed: 1, health_parts: 41 }, 10, lines).find((sentence) => sentence.text.startsWith("Health"));
+    expect([partial?.text, partial?.tone]).toEqual(["Health 7.5 of 10, 1 of 41 assessed", "warn"]);
     const weak = rollupSentences({ ...rollup, health: 3.2, health_status: "error" }, 10, lines).find((sentence) => sentence.text.startsWith("Health"));
     expect(weak).toMatchObject({ text: "Health 3.2 of 10", tone: "bad" });
   });

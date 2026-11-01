@@ -75,6 +75,15 @@ describe("the part sheet's Forecast section", () => {
     expect(screen.getAllByText(/real waits have run 1.4 times the quote/).length).toBeGreaterThan(0);
   });
 
+  it("explains a return by what it was drawn from, not by what else is known", () => {
+    const fixture = partForecastFixture({}, shown);
+    const back = fixture.back!.map((item) => ({ ...item, basis: "outages" as const, pooled: true }));
+    render(<ForecastSection forecast={{ ...fixture, back }} currency="EUR" />);
+    screen.getAllByRole("button", { name: "Why" }).forEach((icon) => fireEvent.mouseEnter(icon));
+    expect(screen.getAllByText(/Stock-outs at all distributors have lasted this long before/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/times the quote/), "a ratio is known, but the range did not come from it").toBeNull();
+  });
+
   it("has no counter of its own: it is made at the price quantity", () => {
     render(<ForecastSection forecast={partForecastFixture({}, shown)} currency="EUR" />);
     expect(screen.queryByLabelText("Quantity to forecast for")).toBeNull();

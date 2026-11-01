@@ -98,6 +98,20 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(checks.evaluate(facts(two_holders, distributors=2), DEFAULTS), [])
         self.assertNotIn("single_source", ids(checks.evaluate(facts([offer(stock=0)], distributors=3), DEFAULTS)))
 
+    def test_a_target_in_another_currency_is_converted_to_the_price_currency(self) -> None:
+        from decimal import Decimal
+
+        from app.services.supply import alert_rules, fx
+        from app.services.supply.assessment import service
+
+        rates = fx.Rates(None, {"USD": Decimal("1.25")})
+        rules = alert_rules.Rules(frozenset(), None, Decimal("1.00"), "EUR", None)
+        self.assertEqual(service._target_in(rules, "USD", rates), (Decimal("1.25"), "USD"))
+        self.assertEqual(service._target_in(rules, "EUR", None), (Decimal("1.00"), "EUR"))
+        self.assertIsNone(service._target_in(rules, "GBP", rates), "no rate: the target is not checked, never compared as-is")
+        missed = checks.evaluate(facts([offer()], price=("1.30", "USD", 100), target=(Decimal("1.25"), "USD")), DEFAULTS)
+        self.assertIn("target_price_missed", ids(missed))
+
     def test_marketplace_stock_does_not_count(self) -> None:
         self.assertEqual(ids(checks.evaluate(facts([offer(stock=900, marketplace=True)]), DEFAULTS)), ["no_distributor_stock"])
 

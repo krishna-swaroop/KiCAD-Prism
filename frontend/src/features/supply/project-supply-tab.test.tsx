@@ -24,7 +24,7 @@ const mocked = vi.mocked(api);
 const rollup = bomRollupFixture({
   lines: 3, tracked: 2, not_tracked: 1, watched: 2, at_risk: 1, short: 1, priced: 2, lines_priced: 2, parts: 2,
   currency: "EUR", cost_build: "12.50", cost_per_board: "12.50", can_build: 400, limited_by: "k1", without_stock_data: 0, unchecked: 1,
-  health: 7.4, health_status: "warning",
+  health: 7.4, health_status: "warning", health_assessed: 1, health_parts: 1,
 });
 
 const supply = (overrides: Partial<ProjectSupply> = {}): ProjectSupply => ({

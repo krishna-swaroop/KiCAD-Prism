@@ -185,7 +185,7 @@ def _target(facts: Facts, add) -> None:
     target, currency = facts.target
     price, priced_in, quantity = facts.price
     if price and priced_in == currency and Decimal(price) > target:
-        shown = format(target.normalize(), "f")
+        shown = format(target.quantize(Decimal("0.0001")).normalize(), "f")
         add(ids.TARGET_PRICE_MISSED, f"The price {price} {currency} is over the target of {shown}.", "target_price_missed",
             {"price": price, "target": shown, "currency": currency, "quantity": quantity})
 

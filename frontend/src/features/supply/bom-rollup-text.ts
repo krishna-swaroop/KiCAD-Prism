@@ -63,7 +63,8 @@ export function rollupSentences(rollup: SupplyBomRollup, build: number, lines: r
   if (rollup.at_risk > 0) sentences.push({ kind: "risk", short: rollup.at_risk.toLocaleString(), text: `${rollup.at_risk.toLocaleString()} at risk`, tone: "bad" });
   if (rollup.health !== null) {
     const tone = rollup.health_status === "ok" ? "plain" : rollup.health_status === "warning" ? "warn" : "bad";
-    sentences.push({ kind: "health", short: rollup.health.toFixed(1), text: `Health ${rollup.health.toFixed(1)} of 10`, tone });
+    const partial = rollup.health_assessed < rollup.health_parts ? `, ${rollup.health_assessed} of ${rollup.health_parts} assessed` : "";
+    sentences.push({ kind: "health", short: rollup.health.toFixed(1), text: `Health ${rollup.health.toFixed(1)} of 10${partial}`, tone: partial && tone === "plain" ? "warn" : tone });
   }
   if (rollup.short > 0) sentences.push({ kind: "short", short: rollup.short.toLocaleString(), text: `${rollup.short.toLocaleString()} short for this build`, tone: "bad" });
   if (rollup.not_tracked > 0) sentences.push({ kind: "untracked", short: rollup.not_tracked.toLocaleString(), text: `${rollup.not_tracked.toLocaleString()} not tracked`, tone: "warn" });
