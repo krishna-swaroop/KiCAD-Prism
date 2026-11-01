@@ -23,7 +23,7 @@ from typing import Any, Protocol, Sequence
 from app.services.supply import alternates, compliance, facts, insights, parts_view, price_breaks, pricing, promises, stock, stock_events, tiers
 from app.services.supply.discovery import remember_datasheet
 from app.services.supply.identity import match_key
-from app.services.supply.models import Offer
+from app.services.supply.models import Offer, https_link
 from app.services.supply.providers import packaging_hints
 from app.services.supply.vocabulary import Lifecycle, Packaging
 
@@ -174,7 +174,7 @@ class Writer:
             offer.moq, offer.order_multiple, offer.packaging.value,
             json.dumps([[item.quantity, str(item.unit_price)] for item in offer.price_breaks]),
             offer.currency, offer.lead_time_days, offer.lifecycle.value, offer.discontinued, offer.rohs,
-            offer.marketplace, offer.product_url, offer.reach_affected, offer.reel_size, offer.packaging_inferred, offer.price_up_to,
+            offer.marketplace, https_link(offer.product_url), offer.reach_affected, offer.reel_size, offer.packaging_inferred, offer.price_up_to,
         ))
         price_breaks.record(
             conn, row.id, offer.fetched_at, [(item.quantity, item.unit_price) for item in offer.price_breaks],

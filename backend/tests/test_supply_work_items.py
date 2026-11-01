@@ -20,8 +20,15 @@ class WorkItemTests(unittest.TestCase):
     # The release-check tests' schema, connector and part helper; imported as a module so pytest doesn't collect them twice.
     setUpClass = release_check.ReleaseCheckTests.__dict__["setUpClass"]
     tearDownClass = release_check.ReleaseCheckTests.__dict__["tearDownClass"]
-    setUp = release_check.ReleaseCheckTests.setUp
     part = release_check.ReleaseCheckTests.part
+
+    def setUp(self) -> None:
+        from support.supply_visibility import by_stored_roles
+
+        release_check.ReleaseCheckTests.setUp(self)
+        visible = by_stored_roles(self.store)
+        visible.start()
+        self.addCleanup(visible.stop)
 
     @classmethod
     def _app(cls):

@@ -67,7 +67,8 @@ describe("waiting for approval", () => {
     const alternates = toApproveFixture({
       waivers: [],
       alternates: [{ component_id: "cmp-1", component_name: "R 10k 0603", component_mpn: "RC0603", part_id: "p9", mpn: "ERJ-3EKF1002V",
-        manufacturer: "Panasonic", proposed_by: "dee@example.com", proposed_at: "2026-10-16T10:00:00Z", main_part_id: "p1", main_mpn: "RC0603FR-0710KL" }],
+        manufacturer: "Panasonic", proposed_by: "dee@example.com", proposed_at: "2026-10-16T10:00:00Z", main_part_id: "p1", main_mpn: "RC0603FR-0710KL",
+        reviewed_against_part_id: "p1", reviewed_against_mpn: "RC0603FR-0710KL" }],
     });
     render(<MemoryRouter><ToApprove items={alternates} canDecide onDecided={decided} /></MemoryRouter>);
     expect(screen.getByText("Alternate")).toBeTruthy();
@@ -76,6 +77,16 @@ describe("waiting for approval", () => {
     expect(screen.getByText(/vs RC0603FR-0710KL/)).toBeTruthy();
     await waitFor(() => expect(componentApi.decideAlternate).toHaveBeenCalledWith("cmp-1", "p9", false, "p1"));
     await waitFor(() => expect(decided).toHaveBeenCalledTimes(1));
+  });
+
+  it("says when the main part changed since an alternate was proposed", () => {
+    const alternate = { component_id: "cmp-1", component_name: "R 10k 0603", component_mpn: "RC0603", part_id: "p9", mpn: "ERJ-3EKF1002V",
+      manufacturer: "Panasonic", proposed_by: "dee@example.com", proposed_at: "2026-10-16T10:00:00Z", main_part_id: "p2", main_mpn: "NEW-MAIN",
+      reviewed_against_part_id: "p1", reviewed_against_mpn: "OLD-MAIN" };
+    const { rerender } = render(<MemoryRouter><ToApprove items={toApproveFixture({ waivers: [], alternates: [alternate] })} canDecide onDecided={vi.fn()} /></MemoryRouter>);
+    expect(screen.getByText(/vs NEW-MAIN · was vs OLD-MAIN/)).toBeTruthy();
+    rerender(<MemoryRouter><ToApprove items={toApproveFixture({ waivers: [], alternates: [{ ...alternate, reviewed_against_part_id: null, reviewed_against_mpn: null }] })} canDecide onDecided={vi.fn()} /></MemoryRouter>);
+    expect(screen.queryByText(/was vs/), "not known for a proposal from before it was kept").toBeNull();
   });
 
   it("shows nothing when nothing waits, and no buttons to those who may not decide", () => {

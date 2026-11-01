@@ -7,7 +7,7 @@ approve, reject or remove them.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -55,8 +55,9 @@ class DecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     approve: bool
-    main_part_id: Optional[str] = Field(
-        default=None, description="The main part the decider was shown (empty for none); the decision is refused (409) when it has changed since.")
+    main_part_id: str = Field(
+        max_length=64,
+        description="The main part the decider was shown (empty for none); the decision is refused (409) when it has changed since.")
 
 
 def _parts(conn, component_id: str) -> ComponentParts:

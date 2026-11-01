@@ -160,6 +160,15 @@ class PushOffersTests(unittest.TestCase):
         self.assertEqual(_request(self.app, "DELETE", f"/api/supply/connectors/{cid}/push-token", user=self.users["admin"]).status, 204)
         self.assertEqual(self._push(cid, [_offer("SKU-1")], headers=_bearer(token)).status, 401)
 
+    def test_the_caller_and_the_size_are_checked_before_the_body_is_read(self) -> None:
+        cid = self._connector()
+        path = f"/api/supply/connectors/{cid}/offers"
+        stranger = _request(self.app, "POST", path, user=self.users["admin"], raw=b"{not json", headers=_bearer("prism_push_" + "x" * 8))
+        self.assertEqual(stranger.status, 401, "a wrong token is refused before the body is parsed (it would be a 422)")
+        with mock.patch.object(self.supply_push, "MAX_PUSH_BYTES", 10):
+            large = self._push(cid, [_offer("SKU-1")])
+        self.assertEqual(large.status, 413)
+
     def test_bad_rows_take_nothing_and_say_where(self) -> None:
         cid = self._connector()
         answer = self._push(cid, [_offer("SKU-1"), _offer("SKU-2", lifecycle="sometimes")])

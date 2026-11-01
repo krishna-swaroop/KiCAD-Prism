@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Callable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api import supply_connectors
@@ -130,6 +131,10 @@ def _pusher(target_kind: str) -> Callable:
     """The caller of a push: the target's own push token, or an administrator. Returns the actor written to the audit."""
 
     async def resolve(request: Request) -> str:
+        # ``_CheckedFirst`` already found the caller, before the body was read.
+        known = getattr(request.state, "pusher", None)
+        if known is not None:
+            return known
         scheme, _, token = (request.headers.get("authorization") or "").partition(" ")
         token = token.strip()
         if scheme.casefold() == "bearer" and token.startswith(push.TOKEN_PREFIX):
@@ -149,10 +154,38 @@ def _pusher(target_kind: str) -> Callable:
     return resolve
 
 
+# The largest push body read: 50,000 offers of every column fit with room to spare.
+MAX_PUSH_BYTES = 64 * 1024 * 1024
+
+
+class _CheckedFirst(APIRoute):
+    """A push route that checks the declared size and the caller before FastAPI reads and parses the body, which it otherwise
+    does before any dependency runs: an unauthenticated caller could make the server parse a body of any size."""
+
+    def get_route_handler(self) -> Callable:
+        handler = super().get_route_handler()
+        resolve = _pusher(push.CONNECTOR if "{connector_id}" in self.path else push.INVENTORY_SOURCE)
+
+        async def checked(request: Request) -> Response:
+            declared = request.headers.get("content-length", "")
+            if not declared.isdigit():
+                raise HTTPException(status_code=411, detail="A push states its length (Content-Length)")
+            if int(declared) > MAX_PUSH_BYTES:
+                raise HTTPException(status_code=413, detail=f"A push is at most {MAX_PUSH_BYTES // (1024 * 1024)} MB")
+            request.state.pusher = await resolve(request)
+            return await handler(request)
+
+        return checked
+
+
+# Its routes join ``router`` at the end of the module, keeping their route class.
+pushes = APIRouter(route_class=_CheckedFirst)
+
+
 # --- pushes -----------------------------------------------------------------
 
 
-@router.post("/connectors/{connector_id}/offers")
+@pushes.post("/connectors/{connector_id}/offers")
 async def push_connector_offers(
     connector_id: str, body: PushOffersRequest, actor: str = Depends(_pusher(push.CONNECTOR)),
 ) -> PushOffersResult:
@@ -176,7 +209,7 @@ async def push_connector_offers(
     return await _run(run)
 
 
-@router.post("/inventory-sources/{source_id}/levels")
+@pushes.post("/inventory-sources/{source_id}/levels")
 async def push_inventory_levels(
     source_id: str, body: PushLevelsRequest, actor: str = Depends(_pusher(push.INVENTORY_SOURCE)),
 ) -> PushLevelsResult:
@@ -240,3 +273,6 @@ def _token_routes(path: str, target_kind: str, name: str) -> None:
 
 _token_routes("/connectors/{target_id}/push-token", push.CONNECTOR, "connector")
 _token_routes("/inventory-sources/{target_id}/push-token", push.INVENTORY_SOURCE, "inventory_source")
+
+
+router.include_router(pushes)

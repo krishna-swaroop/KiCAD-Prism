@@ -39,8 +39,9 @@ MATCHES_PART = """
 """
 
 
-# With the caller's role twice as parameters ([role, role]); None means every project, for internal callers.
-VISIBLE = "(%s::text IS NULL OR %s = ANY(up.visible_roles))"
+# With the projects the caller's role may see now, twice, as parameters (``role_params``); NULL means every project, for internal
+# callers. Read live from the workspace's folder rules, not the roles kept with the usage, which go stale when a folder changes.
+VISIBLE = "(%s::text[] IS NULL OR up.project_id = ANY(%s::text[]))"
 ALL_ROLES: tuple[str, ...] = ("admin", "designer", "qa")
 
 
@@ -72,8 +73,12 @@ def project_roles(project_id: str) -> list[str]:
     return [] if row is None else roles_of(row)
 
 
-def role_params(role: str | None) -> list[str | None]:
-    return [role, role]
+def role_params(role: str | None) -> list[list[str] | None]:
+    """The two parameters of ``VISIBLE`` for ``role``."""
+
+    visible = visible_project_ids(role)
+    ids = None if visible is None else sorted(visible)
+    return [ids, ids]
 
 
 def part_projects_sql(only_parts: bool) -> str:

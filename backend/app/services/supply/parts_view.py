@@ -17,6 +17,7 @@ from typing import Any, Callable, Literal, Mapping, Sequence
 from app.services.supply import attention, budget, clock, counted, facts, freshness, fx, headline_price, insights, offer_rules, outlook, params, part_history, part_insights, parts, pcn, preferences, price_behaviour, price_quantity, prices, pricing, promises, scorecard, stock, trade_marks, usage
 from app.services.supply.history import days_sql
 from app.services.supply import settings as supply_settings
+from app.services.supply.models import https_link
 from app.services.supply.forecast import store
 from app.services.supply.providers import registry
 from app.services.supply.tiers import SCHEDULES
@@ -165,7 +166,8 @@ def offers_by_part(conn, part_ids: list[str], *, every_listing: bool = False) ->
         """.replace("{state}", counted.state_sql()).replace("{read}", counted.read_sql()).replace("{pool}", stock.pool_sql()),
         (part_ids, every_listing),
     ).fetchall():
-        offers[row["part_id"]].append(dict(row))
+        # Checked again on the way out, for what was kept before links were checked on the way in.
+        offers[row["part_id"]].append(dict(row) | {"product_url": https_link(row["product_url"])})
     if not every_listing:
         _one_offer_per_pick(offers)
     return offers
@@ -1032,8 +1034,8 @@ _PAGE_URLS = {"lcsc": "https://www.lcsc.com/product-detail/{}.html", "tme": "htt
 def _page_url(provider: str, sku: str, read_url: str | None) -> str:
     """The distributor's page for a listing: the one its last reading gave, else one built from the number."""
 
-    if read_url:
-        return str(read_url)
+    if https_link(read_url):
+        return https_link(read_url)
     pattern = _PAGE_URLS.get(provider)
     return pattern.format(sku.lower() if provider == "tme" else sku) if pattern and sku and "/" not in sku else ""
 
@@ -1112,7 +1114,7 @@ def part_detail(conn, part_id: str, *, now: datetime | None = None, role: str | 
                 "rohs": r["rohs"],
                 "reach_affected": r["reach_affected"],
                 "marketplace": bool(r["marketplace"]),
-                "product_url": r["product_url"],
+                "product_url": https_link(r["product_url"]),
             } if has_offer else None,
             "poll": {
                 "tier": r["tier"],

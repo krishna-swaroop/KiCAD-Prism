@@ -209,8 +209,9 @@ async def library_component_of(part_id: str, _user: AuthenticatedUser = Depends(
 
 
 @router.post("/parts/{part_id}/view-read", response_model=PartReadOnView)
-async def read_part_on_view(part_id: str, reader: AuthenticatedUser = Depends(require_supply_reader)) -> dict[str, Any]:
-    """Read a part someone opened, when nothing follows it and its prices are older than the read window. Once every 15 minutes per part."""
+async def read_part_on_view(part_id: str, reader: AuthenticatedUser = Depends(require_supply_tracker)) -> dict[str, Any]:
+    """Read a part someone opened, when nothing follows it and its prices are older than the read window. Once every 15 minutes per part.
+    It spends distributor calls, so a read-only token may not ask (the roles are a reader's)."""
 
     return await _run(lambda: refresh.read_on_view(supply_connectors.service, [part_id], reader.email))
 

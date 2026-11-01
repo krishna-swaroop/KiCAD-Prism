@@ -123,6 +123,17 @@ class Offer:
         _check_utc(self.fetched_at, "fetched_at")
 
 
+MAX_LINK = 2000
+
+
+def https_link(url: str | None) -> str:
+    """A distributor's link as Prism shows it: an https address, else none. A page renders it as a link, so a ``javascript:``
+    or plain-http address from a provider's answer (or an offers file) never reaches one."""
+
+    text = (url or "").strip()
+    return text if text.lower().startswith("https://") and len(text) <= MAX_LINK and not any(c.isspace() for c in text) else ""
+
+
 @dataclass(frozen=True, slots=True)
 class PartMatch:
     """A search hit: enough to show a choice and to fetch details for it."""

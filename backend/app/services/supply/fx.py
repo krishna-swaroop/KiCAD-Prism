@@ -15,6 +15,9 @@ from decimal import Decimal
 from typing import Any, Mapping
 from xml.etree import ElementTree
 
+from defusedxml import DTDForbidden, EntitiesForbidden, ExternalReferenceForbidden
+from defusedxml import ElementTree as DefusedElementTree
+
 from app.services.supply import clock
 from app.services.supply.audit import actor_text, write_audit
 from app.services.supply.http_client import SafeHttpClient
@@ -47,10 +50,11 @@ class Rates:
 def parse_ecb(body: bytes) -> tuple[date, dict[str, Decimal]]:
     """The day and rates of an ECB daily file. Refuses anything that declares entities or a type."""
 
-    if b"<!DOCTYPE" in body or b"<!ENTITY" in body:
-        raise ProviderError("the exchange rate file declares a document type")
     try:
-        root = ElementTree.fromstring(body)
+        # The parser refuses a document type and entities itself, rather than a search of the bytes.
+        root = DefusedElementTree.fromstring(body, forbid_dtd=True)
+    except (DTDForbidden, EntitiesForbidden, ExternalReferenceForbidden):
+        raise ProviderError("the exchange rate file declares a document type") from None
     except ElementTree.ParseError:
         raise ProviderError("the exchange rate file is not valid XML") from None
     rates: dict[str, Decimal] = {}
