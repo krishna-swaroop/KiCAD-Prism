@@ -288,6 +288,25 @@ class RedirectTests(unittest.TestCase):
                 client.request("POST", "https://api.example.com/token", json={"client_secret": secret})
             self.assertEqual(len(transport.calls), 1, "JSON bodies too")
 
+    def test_a_403_over_quota_is_a_rate_limit_not_rejected_credentials(self) -> None:
+        for answer in (
+            _response(403, {"error": "Account Over Queries Per Day"}),
+            _response(403, "<h1>Developer Over Qps</h1>"),
+            _response(403, {}, x_mashery_error_code="ERR_403_DEVELOPER_OVER_QPS"),
+        ):
+            client, _transport = _client(answer)
+            with self.assertRaises(RateLimited):
+                client.request("GET", "https://api.example.com/x")
+        client, _transport = _client(_response(403, {"error": "Not Authorized"}))
+        with self.assertRaises(AuthError):
+            client.request("GET", "https://api.example.com/x")
+
+    def test_a_redirect_to_an_unreadable_port_is_a_provider_error(self) -> None:
+        client, transport = _client(_response(302, location="https://api.example.com:notaport/x"), _response(200, {}))
+        with self.assertRaises(ProviderError):
+            client.request("GET", "https://api.example.com/x")
+        self.assertEqual(len(transport.calls), 1)
+
     def test_a_get_still_follows_a_redirect_to_another_allowed_host(self) -> None:
         client, transport = _client(_response(307, location="https://auth.api.example.com/x"), _response(200, {}))
         client.request("GET", "https://api.example.com/x")

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from app.services.supply import clock
 from app.services.supply.store import SupplyStore
@@ -31,9 +31,11 @@ class Task:
 
 
 def _rates(conn, now: datetime, store: SupplyStore) -> None:
+    from app.core.config import settings
     from app.services.supply import fx
 
-    fx.refresh_from_ecb(conn)
+    if settings.SUPPLY_FETCH_EXCHANGE_RATES:
+        fx.refresh_from_ecb(conn)
 
 
 def _catalogues(conn, now: datetime, store: SupplyStore) -> None:
@@ -140,7 +142,7 @@ def _inventory(conn, now: datetime, store: SupplyStore) -> None:
     from app.services.supply import credentials
     from app.services.supply.inventory import sync as inventory_sync
 
-    inventory_sync.sync_due(store, credentials.default_keyring_factory())
+    inventory_sync.sync_due(store, credentials.default_keyring_factory)
 
 
 def _account_keys(conn, now: datetime, store: SupplyStore) -> None:
@@ -203,6 +205,19 @@ def _claim(store: SupplyStore, task: Task, now: datetime, force: bool) -> bool:
     return claimed is not None
 
 
+MAX_BACKOFF = timedelta(hours=6)
+
+
+def _backoff(task: Task, row: Mapping[str, Any] | None, now: datetime) -> timedelta:
+    """How long a task that just failed waits: its interval after a success, then twice the time since its last failure, up to
+    ``MAX_BACKOFF``. A task that fails every time (a catalogue that cannot be fetched) is tried less and less often."""
+
+    before = row["last_error_at"] if row else None
+    if before is None or (row["last_ok_at"] is not None and row["last_ok_at"] > before):
+        return task.every
+    return min(max(task.every, 2 * (now - before)), MAX_BACKOFF)
+
+
 def run_one(store: SupplyStore, name: str, now: datetime | None = None, *, force: bool = False) -> bool:
     """Run one task if it is due (or ``force``), in its own transaction. Returns whether it ran and worked."""
 
@@ -216,9 +231,10 @@ def run_one(store: SupplyStore, name: str, now: datetime | None = None, *, force
     except Exception as exc:  # noqa: BLE001 - one task failing never stops the others; it is recorded and tried again when next due
         logger.warning("Supply task %s failed", name, exc_info=True)
         with store.connection() as conn:
+            row = conn.execute("SELECT last_ok_at, last_error_at FROM supply_task_runs WHERE name = %s", (name,)).fetchone()
             conn.execute(
-                "UPDATE supply_task_runs SET last_error = %s, last_error_at = %s WHERE name = %s",
-                (f"{type(exc).__name__}: {exc}"[:MAX_ERROR], clock.now(), name),
+                "UPDATE supply_task_runs SET last_error = %s, last_error_at = %s, next_at = %s WHERE name = %s",
+                (f"{type(exc).__name__}: {exc}"[:MAX_ERROR], now, now + _backoff(task, row, now), name),
             )
         return False
     with store.connection() as conn:
@@ -235,9 +251,21 @@ def run_due(store: SupplyStore, now: datetime | None = None, *, force: bool = Fa
     return {name: run_one(store, name, now, force=force) for name in names}
 
 
-def state(conn) -> list[dict[str, Any]]:
-    """Each task's last run, last success and last error, for the health view."""
+# A run that has neither worked nor failed this long after it started is taken to have died with its worker.
+STUCK_AFTER = timedelta(hours=1)
 
+
+def _stuck(task: Task, row: Mapping[str, Any] | None, now: datetime) -> bool:
+    if not row or row["started_at"] is None:
+        return False
+    ended = [moment for moment in (row["last_ok_at"], row["last_error_at"]) if moment is not None]
+    return (not ended or row["started_at"] > max(ended)) and now - row["started_at"] > max(STUCK_AFTER, 3 * task.every)
+
+
+def state(conn, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Each task's last run, last success and last error, for the health view, and whether its last run never ended (``stuck``)."""
+
+    now = now or clock.now()
     rows = {row["name"]: row for row in conn.execute("SELECT * FROM supply_task_runs").fetchall()}
     return [
         {
@@ -246,6 +274,7 @@ def state(conn) -> list[dict[str, Any]]:
             **{key: (rows[task.name][key].isoformat() if rows.get(task.name) and rows[task.name][key] else None)
                for key in ("started_at", "last_ok_at", "last_error_at", "next_at")},
             "last_error": rows[task.name]["last_error"] if rows.get(task.name) else "",
+            "stuck": _stuck(task, rows.get(task.name), now),
         }
         for task in TASKS
     ]

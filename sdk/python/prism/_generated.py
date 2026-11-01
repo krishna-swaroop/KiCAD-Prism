@@ -6871,6 +6871,7 @@ class TaskRun(TypedDict, total=True):
     name: str
     next_at: str | None
     started_at: str | None
+    stuck: bool
 
 
 class ThreadPoolMetrics(TypedDict, total=True):

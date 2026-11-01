@@ -54,6 +54,14 @@ def subject_of(row: Mapping[str, Any]) -> tuple[str, str]:
 # --- rows -------------------------------------------------------------------------------------------------------------------
 
 
+def lock_subjects(conn, subject_kind: str, subject_ids: Iterable[str]) -> None:
+    """Hold these subjects' attention for the transaction, in sorted order so two writers never wait on each other. Rows that do not
+    exist yet cannot be locked with FOR UPDATE: without this, two jobs evaluating the same new part both insert its live row."""
+
+    for subject_id in sorted(set(subject_ids)):
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext('supply-attention'), hashtext(%s))", (f"{subject_kind}:{subject_id}",))
+
+
 def live(conn, subject_kind: str, subject_ids: Sequence[str], kinds: Sequence[str]) -> dict[tuple[str, str], dict[str, Any]]:
     """The live (not resolved) rows of these subjects and kinds, by (subject id, kind)."""
 
@@ -136,8 +144,9 @@ def shown_state(row: Mapping[str, Any], decided: Mapping[str, Mapping[str, Any]]
 def decide_row(conn, attention_id: int, decision: str, actor: str, *, until: datetime | None = None) -> None:
     """Acknowledge or snooze one row. A snooze replaces an acknowledgement and the other way round."""
 
+    # The row's lock makes two decisions on it take turns, so the replaced one is never left beside the new one.
+    row = conn.execute("SELECT part_id, component_id, kind, scope FROM supply_attention WHERE id = %s FOR UPDATE", (attention_id,)).fetchone()
     conn.execute("DELETE FROM supply_attention_decisions WHERE attention_id = %s AND decision = ANY(%s)", (attention_id, list(ON_ROW)))
-    row = conn.execute("SELECT part_id, component_id, kind, scope FROM supply_attention WHERE id = %s", (attention_id,)).fetchone()
     conn.execute(
         """
         INSERT INTO supply_attention_decisions (id, attention_id, part_id, component_id, kind, scope, decision, until, made_by, decided_by, decided_at)
@@ -207,6 +216,7 @@ def stand(conn, subject_kind: str, subject_id: str, kind: str, decision: str, ac
           state: str = APPROVED, decision_id: str | None = None) -> str:
     """Record a standing decision, replacing the one there was. Returns its id. Audited by the caller, which knows what it means."""
 
+    lock_subjects(conn, subject_kind, [subject_id])
     col = column(subject_kind)
     conn.execute(
         f"DELETE FROM supply_attention_decisions WHERE {col} = %s AND kind = %s AND decision = %s AND attention_id IS NULL AND state <> 'rejected'",

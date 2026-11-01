@@ -23,7 +23,7 @@ from app.services.supply.connectors import ConnectorService
 from app.services.supply.discoverer import Discoverer, pending_parts, pending_waiting
 from app.services.supply.poller import GROUP_LISTINGS, MAX_BATCHES_PER_RUN, Poller, due_listings, hold_back, spare_listings, with_siblings
 from app.services.supply.providers import registry
-from app.services.supply.providers.base import CAP_PCN, CAP_SEARCH, CAP_SUBSTANCES
+from app.services.supply.providers.base import CAP_PCN, CAP_SEARCH, CAP_SUBSTANCES, InternalError
 from app.services.supply.store import SupplyStore, supply_store
 
 POLL_JOB_KIND = "supply_poll"
@@ -350,9 +350,16 @@ def run_supply_poll_job(context: Any) -> Any:
         except Exception:  # noqa: BLE001 - without the figure no call counts as free; the job's own work goes on
             logging.getLogger(__name__).warning("Scheduled work not counted", exc_info=True)
         context.progress(stage="supply-poll", message="Reading stock and prices", percent=10, force=True)
-        polled = poller.poll_connector(connector_id)
-        context.progress(stage="supply-discover", message="Searching for listings", percent=50, force=True)
-        found = discoverer.run(connector_id)
+        try:
+            polled = poller.poll_connector(connector_id)
+            context.progress(stage="supply-discover", message="Searching for listings", percent=50, force=True)
+            found = discoverer.run(connector_id)
+        except Exception:  # noqa: BLE001 - one connector that cannot be read (credentials that will not unseal, a bug) never
+            # holds back the others on its account: it is recorded on the connector and the job goes on.
+            logging.getLogger(__name__).exception("Connector %s not read", connector_id)
+            connectors.record_result(connector_id, InternalError.code)
+            poll_stopped = InternalError.code
+            continue
         try:
             oneoff.run(discoverer, poller, connectors.store, connector_id)
         except Exception:  # noqa: BLE001 - a check that fails is tried again; it never fails the job
@@ -367,7 +374,12 @@ def run_supply_poll_job(context: Any) -> Any:
         searched, listings = searched + found.searched, listings + found.listings
         calls, polled_count, gone, holding = calls + polled.calls, polled_count + polled.polled, gone + polled.gone, holding + polled.holding
         discovery_stopped, poll_stopped = found.stopped, polled.stopped
-    details_stopped = [_read_details(connectors, connector_id, provider_for(connector_id)) for connector_id in connector_ids][-1]
+    details_stopped = None
+    for connector_id in connector_ids:
+        try:
+            details_stopped = _read_details(connectors, connector_id, provider_for(connector_id))
+        except Exception:  # noqa: BLE001 - recorded above when the connector could not be read; the others' details still come
+            logging.getLogger(__name__).warning("Details of %s not read", connector_id, exc_info=True)
     if polled_count:
         tasks.run_one(connectors.store, "rollups", force=True)
     details: Mapping[str, Any] = {

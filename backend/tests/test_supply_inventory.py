@@ -564,6 +564,25 @@ class InventorySyncTests(unittest.TestCase):
             conn.execute("UPDATE inventory_sources SET last_sync_at = %s WHERE id = %s", (NOW - timedelta(hours=2), source_id))
             self.assertNotIn(source_id, sync.due(conn, NOW), "read two hours ago, every 24 hours")
 
+    def test_with_no_source_due_no_credential_key_is_needed(self) -> None:
+        from app.services.supply.inventory import sync
+
+        def no_key():
+            raise AssertionError("the keyring was built with nothing to read")
+
+        self.assertEqual(sync.sync_due(self.store, no_key, now=NOW), [])
+
+    def test_a_token_that_will_not_unseal_fails_its_own_source_only(self) -> None:
+        source_id = self._source()
+        with self.store.connection() as conn:
+            conn.execute("UPDATE inventory_sources SET credential_envelope = 'not-a-sealed-token' WHERE id = %s", (source_id,))
+        with self.assertLogs("app.services.supply.inventory.sync", "ERROR"):
+            result = self._sync(source_id, FakeServer({}))
+        self.assertEqual(result, {"status": "error", "error": "internal_error: The read failed inside Prism."})
+        with self.store.connection() as conn:
+            row = conn.execute("SELECT last_status FROM inventory_sources WHERE id = %s", (source_id,)).fetchone()
+        self.assertEqual(row["last_status"], "error")
+
     def test_admins_manage_sources_and_the_token_never_comes_back(self) -> None:
         body = {"display_name": "Stores", "base_url": f"https://{HOST}/", "token": _token(), "category_id": 7}
         self.assertEqual(_request(self.app, "POST", "/api/supply/inventory-sources", user=self.users["designer"], body=body).status, 403)

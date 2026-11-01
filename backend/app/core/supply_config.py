@@ -20,6 +20,14 @@ class SupplySettings(BaseSettings):
         ),
     )
 
+    SUPPLY_FETCH_EXCHANGE_RATES: bool = Field(
+        default=True,
+        description=(
+            "Fetch the European Central Bank's daily reference rates from www.ecb.europa.eu, to add up prices in "
+            "several currencies. Off, rates are only what administrators enter in Supply settings."
+        ),
+    )
+
     SUPPLY_ENABLE_SIMULATED_PROVIDER: bool = Field(
         default=False,
         description="Allow connectors for the simulated distributor. For development, tests and demos only.",

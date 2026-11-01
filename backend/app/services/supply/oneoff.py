@@ -184,31 +184,45 @@ def run(discoverer, poller, store, connector_id: str, *, limit: int = PER_RUN) -
     return {"parts": len(part_ids), "done": done}
 
 
+# A part one-off checks named that nothing else holds: what ``expire`` may delete, over ``supply_parts p``, with the cut-off
+# time as its one parameter.
+_EXPIRED = """
+    EXISTS (SELECT 1 FROM supply_read_request_work w WHERE w.part_id = p.id)
+    AND NOT EXISTS (
+        SELECT 1 FROM supply_read_request_work w JOIN supply_read_requests q ON q.id = w.request_id
+        WHERE w.part_id = p.id AND q.created_at > %s)
+    AND NOT EXISTS (SELECT 1 FROM component_parts cp WHERE cp.part_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM supply_watches sw WHERE sw.part_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM supply_part_tiers t WHERE t.part_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM supply_pcn_parts n WHERE n.part_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM supply_attention a WHERE a.part_id = p.id AND a.kind = 'work')
+    AND NOT EXISTS (SELECT 1 FROM supply_attention_decisions d WHERE d.part_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM supply_alert_rules r WHERE r.part_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM supply_part_numbers pn WHERE pn.part_id = p.id AND pn.source = 'person')
+    AND NOT EXISTS (SELECT 1 FROM supply_packaging_picks pk WHERE pk.part_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM supply_part_preferences pp WHERE pp.part_id = p.id)
+    AND NOT EXISTS (SELECT 1 FROM supply_rohs_exemptions re WHERE re.part_id = p.id)
+"""
+
+
 def expire(conn, now: datetime) -> int:
     """Delete the parts only one-off checks named, ``KEEP_DAYS`` after their last check. Returns the parts deleted.
 
     A part any component names (as main part or alternate, whatever its approval), or that is watched, tiered or on a
-    change notice, is kept. Its listings go with it: their offers and samples are what the check read.
+    change notice, is kept, and so is one a person has put anything on: a work item, a decision (waiver, dismissal, snooze),
+    an alert rule, a number, a packaging pick, a preferred distributor or a RoHS exemption. Its listings go with it: their
+    offers and samples are what the check read.
     """
 
     if not component_parts.library_present(conn):
         return 0
-    rows = conn.execute(
-        """
-        SELECT p.id FROM supply_parts p
-        WHERE EXISTS (SELECT 1 FROM supply_read_request_work w WHERE w.part_id = p.id)
-          AND NOT EXISTS (
-              SELECT 1 FROM supply_read_request_work w JOIN supply_read_requests q ON q.id = w.request_id
-              WHERE w.part_id = p.id AND q.created_at > %s)
-          AND NOT EXISTS (SELECT 1 FROM component_parts cp WHERE cp.part_id = p.id)
-          AND NOT EXISTS (SELECT 1 FROM supply_watches sw WHERE sw.part_id = p.id)
-          AND NOT EXISTS (SELECT 1 FROM supply_part_tiers t WHERE t.part_id = p.id)
-          AND NOT EXISTS (SELECT 1 FROM supply_pcn_parts n WHERE n.part_id = p.id)
-        """,
-        (now - timedelta(days=KEEP_DAYS),),
-    ).fetchall()
-    gone = [row["id"] for row in rows]
-    if gone:
-        conn.execute("DELETE FROM supply_listings WHERE part_id = ANY(%s)", (gone,))
-        conn.execute("DELETE FROM supply_parts WHERE id = ANY(%s)", (gone,))
-    return len(gone)
+    cutoff = now - timedelta(days=KEEP_DAYS)
+    # Locking the candidates stops anything new from naming them until this commits; each DELETE then checks again, as a new
+    # statement that sees what was committed while the lock was awaited.
+    candidates = [row["id"] for row in conn.execute(f"SELECT p.id FROM supply_parts p WHERE {_EXPIRED} FOR UPDATE", (cutoff,)).fetchall()]
+    if not candidates:
+        return 0
+    conn.execute(
+        f"DELETE FROM supply_listings l USING supply_parts p WHERE l.part_id = p.id AND p.id = ANY(%s) AND {_EXPIRED}", (candidates, cutoff),
+    )
+    return conn.execute(f"DELETE FROM supply_parts p WHERE p.id = ANY(%s) AND {_EXPIRED}", (candidates, cutoff)).rowcount

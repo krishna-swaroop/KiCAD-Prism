@@ -344,6 +344,15 @@ class SupplyJobTests(unittest.TestCase):
         self.assertEqual(self.poller_().poll_connector(cid).stopped, "cooling_down")
         self.assertEqual(watch.part_id, self.rows("SELECT part_id FROM supply_watches")[0]["part_id"])
 
+    def test_an_unexpected_failure_in_a_poll_is_settled_like_a_provider_error(self) -> None:
+        cid = self.connector()
+        self.watch()
+        self.discoverer_().run(cid)
+        self.failing(KeyError("an answer the adapter did not expect"))
+        self.assertEqual(self.poller_().poll_connector(cid).stopped, "error")
+        self.assertEqual(self.connectors.get(cid)["last_error_code"], "internal_error")
+        self.assertEqual(self.poller_().poll_connector(cid).stopped, "cooling_down", "it rests, rather than failing every minute")
+
     # --- the scan ---------------------------------------------------------
 
     def work(self) -> list[str]:
@@ -559,6 +568,14 @@ class SupplyJobTests(unittest.TestCase):
         self.assertEqual(rows["rates"]["last_error"], "RuntimeError: ECB unreachable")
         self.assertEqual(self.rows("SELECT key FROM supply_settings WHERE key = 'probe'"), [], "the failing task's own writes were rolled back")
         self.assertEqual(rows["rates"]["next_at"], self.clock.now + tasks._TEN_MINUTES)
+
+        # Failing again, it waits twice as long as since its last failure, up to six hours.
+        with mock.patch.object(tasks, "TASKS", fake), mock.patch.dict(tasks.BY_NAME, {task.name: task for task in fake}):
+            for minutes in (10, 30, 70):
+                later = self.clock.now + timedelta(minutes=minutes)
+                tasks.run_one(self.store, "rates", later, force=True)
+                waits = self.rows("SELECT next_at - last_error_at AS wait FROM supply_task_runs WHERE name = 'rates'")[0]["wait"]
+                self.assertEqual(waits, {10: timedelta(minutes=20), 30: timedelta(minutes=40), 70: timedelta(minutes=80)}[minutes])
 
     def test_the_scan_queues_nothing_when_there_is_nothing_to_do(self) -> None:
         self.connector()

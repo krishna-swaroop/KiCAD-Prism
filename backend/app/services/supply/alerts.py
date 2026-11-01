@@ -119,6 +119,7 @@ def evaluate_parts(conn, part_ids: Iterable[str], now: datetime) -> None:
     ids = sorted(set(part_ids))
     if not ids:
         return
+    attention.lock_subjects(conn, attention.PART, ids)
     rules = alert_rules.for_parts(conn, ids)
     result, marks = _assessment_states(conn, ids, now)
     current = {

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Optional, Union
 
+from pydantic import Field
+
 from app.api.supply_models import SupplyModel
 
 
@@ -34,6 +36,7 @@ class TaskRun(SupplyModel):
     last_error_at: Optional[str]
     next_at: Optional[str]
     last_error: str
+    stuck: bool = Field(description="The last run started over an hour (or three intervals) ago and never ended: its worker died.")
 
 
 class SupplyHealth(SupplyModel):

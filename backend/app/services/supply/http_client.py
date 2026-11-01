@@ -201,7 +201,23 @@ def _origin(url: str) -> tuple[str, str, int | None]:
     """Scheme, host and port: what a redirect must keep for headers and a body to follow it."""
 
     parts = urlsplit(url)
-    return parts.scheme.lower(), (parts.hostname or "").lower(), parts.port or {"https": 443, "http": 80}.get(parts.scheme.lower())
+    try:
+        port = parts.port
+    except ValueError:
+        # A port that is not a number (``host:notaport``): the provider's answer is wrong, not Prism.
+        raise ProviderError(f"a redirect to an address that cannot be read: {_label(url)}") from None
+    return parts.scheme.lower(), (parts.hostname or "").lower(), port or {"https": 443, "http": 80}.get(parts.scheme.lower())
+
+# A 403 that is a quota, not the credentials: API gateways such as Mashery (Farnell/element14) refuse calls over the rate or the
+# day's allowance this way. Read from the error-code header and the start of the body only.
+_QUOTA_CODES = ("over_qps", "over_rate", "over_queries", "over_quota")
+_QUOTA_WORDS = (b"over qps", b"over rate", b"over queries per", b"over quota")
+
+
+def _over_quota(response: HttpResponse) -> bool:
+    code = response.headers.get("x-mashery-error-code", "").lower()
+    return any(word in code for word in _QUOTA_CODES) or any(word in response.body[:512].lower() for word in _QUOTA_WORDS)
+
 
 def _label(url: str) -> str:
     """Host and path only; never the query."""
@@ -360,6 +376,8 @@ class SafeHttpClient:
         status = response.status
         if status in (401, 403, 429) and response.is_page:
             raise Blocked(f"{_label(url)} answered a web page (HTTP {status})")
+        if status == 403 and _over_quota(response):
+            raise RateLimited(f"{_label(url)} refused the call over its quota (HTTP 403)", retry_after_seconds=_retry_after(response.headers))
         if status in (401, 403):
             raise AuthError(f"{_label(url)} rejected the credentials (HTTP {status})")
         if status == 429:
