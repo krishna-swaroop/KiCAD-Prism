@@ -3368,6 +3368,8 @@ export interface TaskRun {
   name: string;
   next_at: string | null;
   started_at: string | null;
+  /** The last run started over an hour (or three intervals) ago and never ended: its worker died. */
+  stuck: boolean;
 }
 
 export interface TierShare {

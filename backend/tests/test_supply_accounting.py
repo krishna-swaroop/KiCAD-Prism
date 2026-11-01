@@ -471,6 +471,13 @@ class AccountingTests(unittest.TestCase):
         self.assertEqual((found["block_streak"], found["last_error_code"]), (1, "blocked"))
         self.assertIsNotNone(found["cooldown_until"])
         self.assertIsNotNone(found["slow_until"], "calls are slowed for a day after a refusal")
+        self.connectors.pause(cid, actor=ACTOR, reason="Looking into the block")
+        self.assertIsNotNone(self.connectors.get(cid)["cooldown_until"], "pausing keeps the rest")
+        self.connectors.resume(cid, actor=ACTOR)
+        self.assertIsNone(self.connectors.get(cid)["cooldown_until"], "resuming means try again now")
+        self.trouble.react(self.connectors, self.store, cid, Blocked("403"), START, rng=lambda: 0.0)
+        self.connectors.record_result(cid)
+        self.assertIsNone(self.connectors.get(cid)["cooldown_until"], "a call that works, such as a test, lifts it")
         self.assertEqual([item["slow_until"] is not None for item in self.connectors.list() if item["id"] == cid], [True])
 
     def test_a_person_is_told_how_long_a_connector_rests_after_a_refusal(self) -> None:

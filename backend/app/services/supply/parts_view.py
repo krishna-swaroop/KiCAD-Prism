@@ -360,14 +360,18 @@ def _bring_up_to_date(conn, where: str, params: list[Any]) -> str:
     current, so normally few), so a list can filter, sort and page on the kept columns. Returns the pricing key."""
 
     money = _money(conn)
+    # Each part is worked out once per call. One whose row another transaction holds is not kept (``_keep``) and would be
+    # selected again on every pass; that transaction is keeping it, so it is left to it rather than worked out in a loop.
+    done: list[str] = []
     while True:
         seen = freshness.seen(conn)
         rows = conn.execute(
             _ROW_SELECT + f"LEFT JOIN supply_part_summaries s ON s.part_id = p.id WHERE {where} AND NOT COALESCE({_current_sql(money[2])}, FALSE) "
-            f"LIMIT {_BATCH}", [*params, clock.now()],
+            f"AND p.id <> ALL(%s) LIMIT {_BATCH}", [*params, clock.now(), done],
         ).fetchall()
         if rows:
             _keep(conn, _computed(conn, rows, offers_by_part(conn, [r["id"] for r in rows]), money), seen)
+            done += [r["id"] for r in rows]
         if len(rows) < _BATCH:
             return money[2]
 
@@ -543,13 +547,12 @@ def part_groups(
     groups: dict[str, dict[str, Any]] = {}
     for item in items:
         for project_id in of.get(item["id"]) or {NO_PROJECT}:
-            group = groups.setdefault(project_id, {"project_id": project_id, "count": 0, "statuses": {}})
+            group = groups.setdefault(project_id, {"project_id": project_id, "count": 0, "statuses": {}, "members": []})
             group["count"] += 1
             group["statuses"][item["status"]] = group["statuses"].get(item["status"], 0) + 1
+            group["members"].append(item)
     named = {}
     tracked: set[str] = set()
-    for key, group in groups.items():
-        group["members"] = [item for item in items if key in (of.get(item["id"]) or {NO_PROJECT})]
     real = [key for key in groups if key != NO_PROJECT]
     if real:
         named = {row["project_id"]: row["project_name"] for row in conn.execute(

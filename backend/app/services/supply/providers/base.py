@@ -91,6 +91,13 @@ class ResponseTooLarge(ProviderError):
     code = "response_too_large"
 
 
+class InternalError(ProviderError):
+    """Something other than the provider failed while reading it (a bug, an answer the adapter could not handle). It is
+    settled like an error from the provider: recorded on the connector and rested on, never a failed job."""
+
+    code = "internal_error"
+
+
 @dataclass(frozen=True, slots=True)
 class CredentialField:
     name: str

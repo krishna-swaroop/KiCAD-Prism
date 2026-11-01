@@ -54,7 +54,8 @@ def compact_samples(conn, now: datetime) -> int:
 
 
 _CUT = "%(now)s - (c.keep_days * INTERVAL '1 day')"
-_CUT_DAY = f"({_CUT})::date"
+# The day of the cut in UTC, as every stored day is, whatever the session's time zone.
+_CUT_DAY = f"(({_CUT}) AT TIME ZONE 'UTC')::date"
 
 # Each listing history and which of its rows are past the cut. A row that still describes today stays: the price breaks
 # held now (no later row ends them), a stock-out not yet over, a promise not yet resolved.
@@ -172,10 +173,17 @@ def _compact(conn, now: datetime, days: int) -> int:
 
 
 def trim_summaries(conn, now: datetime | None = None) -> int:
-    """Forget kept summaries nobody has read for a week and rollups past the age a reader accepts, then every change mark no kept
+    """Forget kept summaries, forecasts and insights nobody has read for a week and rollups past the age a reader accepts, then every change mark no kept
     answer can still depend on (``freshness.trim``). Returns how many marks were removed."""
 
     now = now or clock.now()
     conn.execute("DELETE FROM supply_part_summaries WHERE computed_at < %s", (now - timedelta(days=7),))
+    # A kept forecast is only read on the day it was made. Insights of followed parts feed the Ending list and stay; the others
+    # are worked out again when read. Neither may hold change marks back for longer than a week.
+    conn.execute("DELETE FROM supply_part_forecasts WHERE computed_at < %s", (now - timedelta(days=7),))
+    conn.execute(
+        "DELETE FROM supply_part_insights i WHERE i.computed_at < %s AND NOT EXISTS (SELECT 1 FROM supply_part_tiers t WHERE t.part_id = i.part_id)",
+        (now - timedelta(days=7),),
+    )
     conn.execute("DELETE FROM supply_project_rollups WHERE computed_at < %s", (now - ROLLUP_MAX_AGE,))
     return freshness.trim(conn)

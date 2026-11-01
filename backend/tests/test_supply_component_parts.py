@@ -208,19 +208,20 @@ class ComponentPartsTests(unittest.TestCase):
     def test_one_off_results_for_non_library_numbers_expire(self) -> None:
         from datetime import datetime, timedelta, timezone
 
-        from app.services.supply import oneoff, parts
+        from app.services.supply import oneoff, parts, work_items
 
         component = self._component()
         now = datetime.now(timezone.utc)
         with self.store.connection() as conn:
             loose = parts.ensure_part(conn, "Nobody", f"LOOSE-{uuid.uuid4().hex[:8]}", AUTHOR)
             recent = parts.ensure_part(conn, "Nobody", f"LOOSE-{uuid.uuid4().hex[:8]}", AUTHOR)
+            worked = parts.ensure_part(conn, "Nobody", f"LOOSE-{uuid.uuid4().hex[:8]}", AUTHOR)
             library = self.cp.library_part(conn, component["manufacturer"], component["mpn"], AUTHOR)
             connector = conn.execute(
                 "INSERT INTO supply_connectors (id, provider, display_name) VALUES (%s, 'csv', %s) RETURNING id",
                 (uuid.uuid4().hex, f"expiry {uuid.uuid4().hex[:6]}"),
             ).fetchone()["id"]
-            for part, age in ((loose, 8), (recent, 2), (library, 8)):
+            for part, age in ((loose, 8), (recent, 2), (library, 8), (worked, 8)):
                 request_id = uuid.uuid4().hex
                 conn.execute(
                     "INSERT INTO supply_read_requests (id, kind, requested_by, created_at) VALUES (%s, 'bom', %s, %s)",
@@ -230,11 +231,13 @@ class ComponentPartsTests(unittest.TestCase):
                     "INSERT INTO supply_read_request_work (request_id, part_id, connector_id) VALUES (%s, %s, %s)",
                     (request_id, part.id, connector),
                 )
+            work_items.create(conn, subject_kind="part", subject_id=worked.id, title="Find a second source", action=work_items.ACTIONS[0], actor=AUTHOR)
             oneoff.expire(conn, now)
             left = {row["id"] for row in conn.execute(
-                "SELECT id FROM supply_parts WHERE id = ANY(%s)", ([loose.id, recent.id, library.id],)).fetchall()}
+                "SELECT id FROM supply_parts WHERE id = ANY(%s)", ([loose.id, recent.id, library.id, worked.id],)).fetchall()}
+            conn.execute("DELETE FROM supply_attention WHERE part_id = %s", (worked.id,))
             conn.execute("DELETE FROM supply_connectors WHERE id = %s", (connector,))
-        self.assertEqual(left, {recent.id, library.id}, "only the week-old check of a non-library number is gone")
+        self.assertEqual(left, {recent.id, library.id, worked.id}, "only the week-old check of a non-library number nobody worked on is gone")
 
     def test_a_proposed_alternate_waits_in_review_until_qa_decides(self) -> None:
         from app.services.supply import review

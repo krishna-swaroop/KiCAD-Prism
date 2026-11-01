@@ -74,6 +74,13 @@ def resolve(conn, connector_id: str) -> Account:
     )
 
 
+def clear_cooldown(conn, connector_id: str) -> None:
+    """Lift the rest a refusal put on the connector's account (``trouble``): a person resumed it, gave new credentials, or a call
+    just worked. Otherwise only time clears it, up to a day after a block."""
+
+    conn.execute("UPDATE supply_connectors SET cooldown_until = NULL WHERE id = ANY(%s)", (list(resolve(conn, connector_id).members),))
+
+
 def create(conn, provider: str, account_key: str, settings: Mapping[str, Any], account_id: str | None = None) -> str:
     """The account for these credentials: the one already holding the key (whose settings stand), or a new one with ``settings``
     (its id ``account_id`` when given: a connector's own account takes the connector's id)."""

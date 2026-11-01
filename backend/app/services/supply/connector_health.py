@@ -5,10 +5,10 @@ Reads only. For an operator who wants to know whether polling keeps up, not for 
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
-from app.services.supply import clock
+from app.services.supply import clock, quota
 from app.services.supply.providers import registry
 
 # A listing is late when it was due more than this long ago.
@@ -21,16 +21,26 @@ def _iso(value: datetime | None) -> str | None:
 
 def connector_health(conn, now: datetime | None = None) -> list[dict[str, Any]]:
     now = now or clock.now()
-    rows = conn.execute(
+    rows = [dict(row) for row in conn.execute(
         """
         SELECT c.id, c.display_name, c.provider, c.enabled, c.paused_reason, a.daily_budget, c.last_ok_at,
-               c.last_error_code, c.last_error_at, COALESCE(q.spent, 0) AS spent, COALESCE(q.interactive_spent, 0) AS interactive_spent
+               c.last_error_code, c.last_error_at, c.account_id, a.reset_time, a.reset_tz
         FROM supply_connectors c JOIN supply_accounts a ON a.id = c.account_id
-        LEFT JOIN supply_quota_ledger q ON q.account_id = c.account_id AND q.day = %s
         ORDER BY lower(c.display_name), c.id
-        """,
-        (now.astimezone(timezone.utc).date(),),
-    ).fetchall()
+        """
+    ).fetchall()]
+    # The ledger is kept by the provider's day (``quota.provider_day``), which starts at the account's reset time, not at UTC midnight.
+    days = {row["account_id"]: quota.provider_day(now, row["reset_time"], row["reset_tz"]) for row in rows}
+    spent = {
+        ledger_row["account_id"]: ledger_row for ledger_row in conn.execute(
+            "SELECT q.account_id, q.spent, q.interactive_spent FROM supply_quota_ledger q "
+            "JOIN unnest(%s::text[], %s::date[]) AS d(account_id, day) ON q.account_id = d.account_id AND q.day = d.day",
+            (list(days), list(days.values())),
+        ).fetchall()
+    } if days else {}
+    for row in rows:
+        found = spent.get(row["account_id"])
+        row["spent"], row["interactive_spent"] = (found["spent"], found["interactive_spent"]) if found else (0, 0)
     polling = {
         row["connector_id"]: row
         for row in conn.execute(

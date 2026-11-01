@@ -81,6 +81,36 @@ class SupplyHealthTests(unittest.TestCase):
         self.assertEqual((row["listings"], row["late"], row["failing"], row["late_by_hours"]), (2, 1, 1, 5.0))
         self.assertTrue(row["oldest_read"].startswith("2026-02-28T06:00"))
 
+    def test_calls_today_are_the_provider_s_day_not_utc_s(self) -> None:
+        from app.services.supply import connector_health, quota
+
+        with self.store.connection() as conn:
+            # Resets at midnight in UTC+14: at noon UTC it is already the next day there.
+            conn.execute("UPDATE supply_accounts SET reset_time = '00:00', reset_tz = 'Pacific/Kiritimati' WHERE id = 'c1'")
+            day = quota.provider_day(NOW, "00:00", "Pacific/Kiritimati")
+            conn.execute("DELETE FROM supply_quota_ledger WHERE account_id = 'c1'")
+            conn.execute("INSERT INTO supply_quota_ledger (account_id, day, spent) VALUES ('c1', %s, 42)", (day,))
+            if day != NOW.date():
+                conn.execute("INSERT INTO supply_quota_ledger (account_id, day, spent) VALUES ('c1', %s, 7)", (NOW.date(),))
+            (row,) = connector_health.connector_health(conn, NOW)
+            conn.execute("DELETE FROM supply_quota_ledger WHERE account_id = 'c1'")
+            conn.execute("UPDATE supply_accounts SET reset_time = DEFAULT, reset_tz = DEFAULT WHERE id = 'c1'")
+        self.assertNotEqual(day, NOW.date(), "the moment is chosen so the two days differ")
+        self.assertEqual(row["calls_today"], 42)
+
+    def test_a_task_whose_run_never_ended_is_flagged_stuck(self) -> None:
+        from app.services.supply import tasks
+
+        with self.store.connection() as conn:
+            conn.execute("DELETE FROM supply_task_runs")
+            conn.execute(
+                "INSERT INTO supply_task_runs (name, started_at, last_ok_at) VALUES ('rates', %s, %s), ('market', %s, %s)",
+                (NOW - timedelta(hours=2), NOW - timedelta(hours=3), NOW - timedelta(minutes=2), NOW - timedelta(hours=3)),
+            )
+            found = {row["name"]: row["stuck"] for row in tasks.state(conn, NOW)}
+            conn.execute("DELETE FROM supply_task_runs")
+        self.assertEqual((found["rates"], found["market"], found["costs"]), (True, False, False), "two hours without an end; two minutes is still running")
+
     def test_only_administrators_may_look(self) -> None:
         for role in ("viewer", "qa", "designer"):
             self.assertEqual(_request(self.app, "GET", "/api/supply/health", user=self.users[role]).status, 403, role)

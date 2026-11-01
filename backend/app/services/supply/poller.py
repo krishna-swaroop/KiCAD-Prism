@@ -15,6 +15,7 @@ Reactions to trouble:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Callable, Sequence
@@ -24,7 +25,7 @@ from app.services.supply import accounts, alerts, budget, ledger, persist, tiers
 from app.services.supply.connectors import ConnectorService
 from app.services.supply.models import Offer
 from app.services.supply.providers import registry
-from app.services.supply.providers.base import AuthError, Blocked, ProviderError, RateLimited, SupplyProvider, calls_made
+from app.services.supply.providers.base import AuthError, Blocked, InternalError, ProviderError, RateLimited, SupplyProvider, calls_made
 from app.services.supply import quota
 from app.services.supply.store import SupplyStore, supply_store
 
@@ -383,6 +384,10 @@ class Poller:
                     # bad credentials say nothing about the listings.
                     self._record_failure(batch, now, exc.code)
                 stopped = trouble.react(self._connectors, self._store, connector_id, exc, now)
+                break
+            except Exception:  # noqa: BLE001 - settled as an error, so it rests and is seen, rather than failing every minute
+                logging.getLogger(__name__).exception("Reading %s failed", connector_id)
+                stopped = trouble.react(self._connectors, self._store, connector_id, InternalError("The read failed inside Prism."), now)
                 break
             with self._store.connection() as conn:
                 gone += writer.record(conn, batch, offers, now)

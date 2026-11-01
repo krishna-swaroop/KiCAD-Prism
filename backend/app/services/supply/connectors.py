@@ -341,6 +341,9 @@ class ConnectorService:
                 (envelope, json.dumps(list(cleaned)), self._clock(), connector_id),
             )
             accounts.rekey(conn, connector_id, accounts.key_for(self._keyring(), spec.key, cleaned))
+            # New credentials are a new start: the rest the old ones earned does not carry over, and the streaks start again.
+            conn.execute("UPDATE supply_connectors SET error_streak = 0, block_streak = 0 WHERE id = %s", (connector_id,))
+            accounts.clear_cooldown(conn, connector_id)
             detail: dict[str, Any] = {"names": list(cleaned)}
             if before != cleaned.get("client_id", ""):
                 # A sign-in belongs to the app (client ID) it was made for.
@@ -381,6 +384,7 @@ class ConnectorService:
                     "UPDATE supply_connectors SET last_ok_at = %s, last_error_code = '', error_streak = 0, block_streak = 0 WHERE id = %s",
                     (self._clock(), connector_id),
                 )
+                accounts.clear_cooldown(conn, connector_id)
                 limits.note_ok(conn, connector_id, self._clock())
             else:
                 conn.execute(
@@ -453,6 +457,9 @@ class ConnectorService:
             )
             if result.rowcount == 0:
                 raise ConnectorNotFound(connector_id)
+            if not reason:
+                # Resuming means try again now, whatever rest a refusal had put on it.
+                accounts.clear_cooldown(conn, connector_id)
             write_audit(conn, actor, action, connector_id, {"reason": reason} if reason else {})
             return self._dto_from(conn, _fetch(conn, connector_id))
 

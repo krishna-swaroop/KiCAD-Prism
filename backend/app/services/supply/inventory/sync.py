@@ -18,6 +18,7 @@ A part with stock that matches nothing waits in ``inventory_unmatched`` with the
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Callable, Mapping
 
@@ -194,8 +195,13 @@ def sync(
             found = client.read(row["category_id"] if spec.categories else None)
         finally:
             client.close()
-    except (ProviderError, sources.SourceError) as exc:
-        message = f"{getattr(exc, 'code', 'invalid')}: {exc}"
+    except Exception as exc:  # noqa: BLE001 - every failure is the source's to show, so one source never stops the others
+        if isinstance(exc, (ProviderError, sources.SourceError)):
+            message = f"{getattr(exc, 'code', 'invalid')}: {exc}"
+        else:
+            # A token that will not unseal (the key it was sealed with is gone), or a bug: logged here, never shown as it is.
+            logging.getLogger(__name__).exception("Inventory source %s not read", source_id)
+            message = "internal_error: The read failed inside Prism."
         with store.connection() as conn:
             if not _still(conn, source_id, read_as):
                 return SUPERSEDED
@@ -235,10 +241,17 @@ def due(conn, now: datetime) -> list[str]:
     return [row["id"] for row in rows if row["last_sync_at"] is None or row["last_sync_at"] <= now - timedelta(hours=row["interval_hours"])]
 
 
-def sync_due(store: SupplyStore, keyring: sealed.CredentialKeyring, now: datetime | None = None) -> list[dict[str, Any]]:
+def sync_due(
+    store: SupplyStore, keyring_factory: Callable[[], sealed.CredentialKeyring], now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Read the sources that are due. The keyring is only built when one is: an install with no sources needs no credential key."""
+
     moment = now or clock.now()
     with store.connection() as conn:
         ids = due(conn, moment)
+    if not ids:
+        return []
+    keyring = keyring_factory()
     return [sync(store, keyring, source_id, now=moment) for source_id in ids]
 
 

@@ -38194,6 +38194,11 @@
               }
             ],
             "title": "Started At"
+          },
+          "stuck": {
+            "description": "The last run started over an hour (or three intervals) ago and never ended: its worker died.",
+            "title": "Stuck",
+            "type": "boolean"
           }
         },
         "required": [
@@ -38203,7 +38208,8 @@
           "last_ok_at",
           "last_error_at",
           "next_at",
-          "last_error"
+          "last_error",
+          "stuck"
         ],
         "title": "TaskRun",
         "type": "object"

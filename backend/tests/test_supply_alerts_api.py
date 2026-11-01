@@ -131,6 +131,20 @@ class SupplyAlertsTests(unittest.TestCase):
 
     # --- opening and clearing -----------------------------------------------
 
+    def test_two_evaluations_of_the_same_part_take_turns(self) -> None:
+        import psycopg
+
+        from app.services.supply import alerts, attention
+
+        with self.store.connection() as first, self.store.connection() as second:
+            alerts.evaluate_parts(first, ["part-held"], datetime.now(timezone.utc))
+            second.execute("SET lock_timeout = '200ms'")
+            with self.assertRaises(psycopg.errors.LockNotAvailable):
+                attention.lock_subjects(second, attention.PART, ["part-held"])
+            second.rollback()
+            second.execute("SET lock_timeout = '200ms'")
+            attention.lock_subjects(second, attention.PART, ["another-part"])
+
     def test_a_threshold_breach_opens_only_after_a_second_look_half_an_hour_later(self) -> None:
         watch = self.watch(threshold=100)
         self.listing(watch["part_id"], "A", stock=40)

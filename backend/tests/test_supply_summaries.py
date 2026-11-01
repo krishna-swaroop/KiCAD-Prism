@@ -176,8 +176,14 @@ class SummaryCacheTests(unittest.TestCase):
         self.assertEqual(self.stock(), 100)
         with self.store.connection() as conn:
             conn.execute("UPDATE supply_part_summaries SET computed_at = NOW() - INTERVAL '8 days'")
+            from app.services.supply import freshness
+            from app.services.supply.forecast import store as forecast_store
+
+            forecast_store.keep_part(conn, self.watch.part_id, NOW.date(), 1, freshness.seen(conn), {"available": False})
+            conn.execute("UPDATE supply_part_forecasts SET computed_at = NOW() - INTERVAL '8 days'")
             retention.trim_summaries(conn)
             self.assertEqual(conn.execute("SELECT COUNT(*) AS n FROM supply_part_summaries").fetchone()["n"], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) AS n FROM supply_part_forecasts").fetchone()["n"], 0, "an old kept forecast goes too")
         # The log keeps what a transaction still open anywhere in the cluster may depend on, so what a run can trim depends on what
         # else is running (other test workers, the dev app). Rows with made-up transaction ids say the rule without that: one older
         # than any open transaction goes, one from the far future stays.
@@ -189,6 +195,38 @@ class SummaryCacheTests(unittest.TestCase):
             conn.execute("DELETE FROM supply_dirty WHERE key IN ('old', 'future')")
         self.assertEqual(kept, ["future"])
         self.assertEqual(self.stock(), 100, "worked out again when asked")
+
+    def test_a_list_does_not_wait_on_a_summary_another_transaction_holds(self) -> None:
+        import threading
+
+        self.assertEqual(self.stock(), 100)
+        with self.store.connection() as holder:
+            holder.execute("UPDATE supply_part_summaries SET version = 0 WHERE part_id = %s", (self.watch.part_id,))
+            holder.commit()
+            holder.execute("SELECT 1 FROM supply_part_summaries WHERE part_id = %s FOR UPDATE", (self.watch.part_id,))
+            finished: list[str] = []
+
+            def bring() -> None:
+                with self.store.connection() as conn:
+                    finished.append(self.parts_view._bring_up_to_date(conn, "TRUE", []))
+
+            worker = threading.Thread(target=bring, daemon=True)
+            worker.start()
+            worker.join(timeout=20)
+            holder.rollback()
+        self.assertFalse(worker.is_alive(), "it worked the held part out once and went on")
+        self.assertEqual(len(finished), 1)
+
+    def test_the_retention_day_is_the_utc_day_whatever_the_session_time_zone(self) -> None:
+        from app.services.supply import retention
+
+        with self.store.connection() as conn:
+            conn.execute("SET TIME ZONE 'Pacific/Kiritimati'")
+            day = conn.execute(
+                f"SELECT {retention._CUT_DAY} AS day FROM (SELECT 1 AS keep_days) c", {"now": NOW},
+            ).fetchone()["day"]
+            conn.rollback()
+        self.assertEqual(day.isoformat(), "2026-02-28", "a day before 12:00 UTC on 1 March, not 1 March in UTC+14")
 
     def test_one_old_summary_does_not_hold_back_the_marks_of_other_parts(self) -> None:
         from app.services.supply import retention
