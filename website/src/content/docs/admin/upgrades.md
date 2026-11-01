@@ -87,6 +87,10 @@ Do not copy the old `.env` over the new one. It carries the old image digests,
 and the stack starts the old version while everything looks upgraded.
 :::
 
+Settings added by a release need no value. One that is missing, or left empty
+as `NAME=`, uses the default in the
+[configuration reference](/KiCAD-Prism/admin/configuration/).
+
 Keep using the same directory, so the relative `data/` paths still point at your
 data.
 

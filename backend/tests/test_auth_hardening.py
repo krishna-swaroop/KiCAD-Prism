@@ -137,6 +137,25 @@ class AuthConfigurationFailClosedTests(unittest.TestCase):
                 ).SESSION_COOKIE_SECURE
             )
 
+    def test_blank_environment_values_use_defaults(self) -> None:
+        # An upgraded .env (or a compose file passing NAME=${NAME}) can carry
+        # settings added since with no value. Those used to stop every service
+        # with an int_parsing/bool_parsing error (#964).
+        blank = {
+            "CATALOG_DRAFT_MODEL_QUARANTINE_DAYS": "",
+            "REMOTE_PROVIDER_EMBED_3D_MODELS": "",
+            "REMOTE_PROVIDER_EMBED_MAX_COMPRESSED_BYTES": "",
+            "COMMENT_ATTACHMENT_LINK_TTL_DAYS": "",
+            "COMMENT_ATTACHMENT_PROJECT_QUOTA_BYTES": "",
+            "COMMENT_ATTACHMENT_MAX_BYTES": "",
+            "PRISM_GIT_FETCH_TIMEOUT_SECONDS": "",
+        }
+        with patch.dict(os.environ, blank, clear=False):
+            loaded = self._settings()
+        for name in blank:
+            with self.subTest(name=name):
+                self.assertEqual(getattr(loaded, name), Settings.model_fields[name].get_default())
+
     def test_blank_cookie_secure_falls_back_to_public_base_url(self) -> None:
         # docker-compose.yml sends SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-},
         # so leaving it commented out in .env delivers "" rather than nothing at all.

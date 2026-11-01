@@ -144,6 +144,11 @@ The project sidebar has these sections:
 
 ![The Documentation page: the Markdown documents found in the project's documentation folder, each with a size, preview and download action](../../../assets/screenshots/documentation.jpg)
 
+A workflow job commits what it changed in the project's folder, including the
+generated files, and pushes the commit to the remote. The **Assets Portal**
+lists those files. In a repository that holds several projects, the commit
+contains only the project's own folder.
+
 In **History**, expand a commit to see its changed files. Selecting a file
 does one of three things:
 

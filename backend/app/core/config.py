@@ -1138,6 +1138,9 @@ class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings, Supply
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        # `NAME=` in .env (or `NAME=${NAME}` in a compose file) means "not set":
+        # use the default instead of failing to parse "" as a number or boolean.
+        env_ignore_empty = True
         # Allow extra fields to be ignored
         extra = "ignore"
 

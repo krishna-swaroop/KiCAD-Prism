@@ -17,6 +17,9 @@ put them in one environment file:
 - a source checkout reads `.env` at the repository root;
 - an installation made with the guided installer reads `generated/.env`.
 
+Every setting has a default, shown in the tables below. A setting that is
+missing from the file, or listed with no value (`NAME=`), uses its default.
+
 Start from the `.env.example` next to the Compose file and keep the real file
 out of Git. It holds database, sign-in and Git credentials, so make it readable
 only by the administrator and the backup job.
