@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CollapsibleSection } from "./collapsible-section";
+import { ReadFailed } from "./read-failed";
 import { addMakerSpelling, listMakerSpellings, removeMakerSpelling } from "./supply-api";
 import { useConnectorSubmit } from "./use-connector-submit";
 import { useLoaded } from "./use-loaded";
@@ -24,6 +25,7 @@ export function MakerSpellings({ readOnly = false }: { readOnly?: boolean }) {
   return (
     <section aria-label="Known spellings" className="space-y-2">
       <CollapsibleSection id="settings-maker-spellings" title="Known spellings of makers" count={groups.length} startOpen={false}>
+        {loaded.status === "error" ? <ReadFailed error={loaded.error} onRetry={loaded.retry} /> : null}
         <ul className="max-h-64 divide-y themed-scrollbar overflow-y-auto">
           {groups.map((item) => (
             <li key={item.group_key} className="flex flex-wrap items-center gap-1.5 px-3 py-2 text-xs" aria-label={item.name}>

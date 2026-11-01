@@ -6,6 +6,8 @@ vi.mock("./supply-api", () => ({ getFxRates: vi.fn(), refreshFxRates: vi.fn(), e
 import { ExchangeRates } from "./exchange-rates";
 import { parseRates } from "./exchange-rates-model";
 import * as api from "./supply-api";
+import { formatDay } from "./supply-format";
+import { forgetServerState } from "@/lib/server-state";
 
 const mocked = vi.mocked(api);
 const stored = { day: "2026-03-01", currencies: ["USD", "GBP"], stale: true };
@@ -24,12 +26,23 @@ describe("reading rates", () => {
 });
 
 describe("the exchange rates", () => {
+  it("says the rates could not be read, never that none are stored", async () => {
+    forgetServerState([]);
+    mocked.getFxRates.mockRejectedValue(new Error("Could not load the exchange rates"));
+    render(<ExchangeRates />);
+    fireEvent.click(screen.getByRole("button", { name: /Exchange rates/ }));
+    expect(await screen.findByText("Could not load the exchange rates")).toBeTruthy();
+    expect(screen.queryByText("No rates stored")).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    forgetServerState([]);
+  });
+
   it("shows their day and that they are old, refreshes them and saves rates by hand", async () => {
     mocked.refreshFxRates.mockResolvedValue({ ...stored, stale: false, saved: 30 });
     mocked.enterFxRates.mockResolvedValue({ ...stored, saved: 1 });
     render(<ExchangeRates />);
     fireEvent.click(await screen.findByRole("button", { name: /Exchange rates/ }));
-    expect(await screen.findByText("From 2026-03-01")).toBeTruthy();
+    expect(await screen.findByText(`From ${formatDay("2026-03-01")}`)).toBeTruthy();
     expect(screen.getByText("Out of date")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Refresh from the ECB" }));
     await waitFor(() => expect(mocked.refreshFxRates).toHaveBeenCalled());

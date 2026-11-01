@@ -12,7 +12,7 @@ vi.mock("./supply-api", () => ({
 }));
 
 import * as api from "./supply-api";
-import { useSupplyPartsList } from "./use-supply-parts";
+import { useSupplyPartsFeed, useSupplyPartsList } from "./use-supply-parts";
 
 const mocked = vi.mocked(api);
 
@@ -55,5 +55,32 @@ describe("the parts list loader", () => {
     await waitFor(() => expect(result.current.data?.items[0].mpn).toBe("BEFORE"));
     await act(async () => { await result.current.refresh(); });
     expect(result.current.data?.items[0].mpn).toBe("AFTER");
+  });
+});
+
+describe("the parts feed", () => {
+  const rows = (prefix: string, from: number, count: number) =>
+    Array.from({ length: count }, (_, index) => partRowFixture({ id: `${prefix}${from + index}`, mpn: `${prefix}${from + index}` }));
+  const answer = (items: ReturnType<typeof rows>, offset: number, next: number | null): SupplyPartsPage =>
+    ({ items, total: 120, limit: 50, offset, next_offset: next, forecast_state: {} });
+
+  it("keeps the pages it loaded when the same list is read again, and reads them again", async () => {
+    mocked.listSupplyParts.mockReset();
+    mocked.listSupplyParts
+      .mockResolvedValueOnce(answer(rows("A", 0, 50), 0, 50))
+      .mockResolvedValueOnce(answer(rows("A", 50, 50), 50, 100));
+    const { result } = renderHook(() => useSupplyPartsFeed("watched", ""));
+    await waitFor(() => expect(result.current.items).toHaveLength(50));
+    await act(async () => { await result.current.loadMore(); });
+    expect(result.current.items).toHaveLength(100);
+
+    // A write reads the first page again; the second page is read again too, and the 100 rows never drop to 50.
+    mocked.listSupplyParts
+      .mockResolvedValueOnce(answer(rows("B", 0, 50), 0, 50))
+      .mockResolvedValueOnce(answer(rows("B", 50, 50), 50, 100));
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.items).toHaveLength(100);
+    await waitFor(() => expect(result.current.items[99].mpn).toBe("B99"));
+    expect(result.current.hasMore).toBe(true);
   });
 });

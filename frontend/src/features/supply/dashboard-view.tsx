@@ -20,6 +20,7 @@ import { getSupplyDashboard } from "./supply-api";
 import { useLoaded } from "./use-loaded";
 import { OpenPartSheet } from "./open-part-sheet";
 import { useSupplyNavigation } from "./use-supply-navigation";
+import { todayIso } from "./supply-format";
 
 const RUNWAY_FILTER: Record<keyof SupplyDashboard["runway"], PartsFilter> = {
   out_now: "out_of_stock", runs_out_2w: "runs_out_2w", runs_out_8w: "runs_out_8w", runs_out_later: "runs_out_later", steady: "steady", few_readings: "few_readings",
@@ -83,7 +84,7 @@ export function DashboardView({ user }: { user: User | null }) {
               <RunwayCard runway={data.runway} onOpen={(key) => parts(RUNWAY_FILTER[key])()} />
               <ProjectsTableCard projects={data.projects} />
               {data.forecast && data.forecast.state.state === "shown" ? (
-                <ComingUpCard events={data.forecast.coming_up} today={new Date().toISOString().slice(0, 10)} onOpenPart={openPart} />
+                <ComingUpCard events={data.forecast.coming_up} today={todayIso()} onOpenPart={openPart} />
               ) : null}
             </div>
           </>

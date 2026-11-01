@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CollapsibleSection } from "./collapsible-section";
 import { parseRates } from "./exchange-rates-model";
+import { ReadFailed } from "./read-failed";
+import { formatDay, todayIso } from "./supply-format";
 import { enterFxRates, getFxRates, refreshFxRates } from "./supply-api";
 import { useConnectorSubmit } from "./use-connector-submit";
 import { useLoaded } from "./use-loaded";
@@ -14,14 +16,15 @@ export function ExchangeRates({ readOnly = false }: { readOnly?: boolean }) {
   const loaded = useLoaded("settings/fx-rates", fetcher, "Could not load the exchange rates");
   const { busy, error, run } = useConnectorSubmit();
   const [text, setText] = useState("");
-  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [day, setDay] = useState(() => todayIso());
   const rates = parseRates(text);
   const current = loaded.data;
   return (
     <section aria-label="Exchange rates" className="space-y-2">
       <CollapsibleSection id="settings-exchange-rates" title="Exchange rates" count={current?.currencies.length ?? -1} startOpen={false}>
+        {loaded.status === "error" ? <ReadFailed error={loaded.error} onRetry={loaded.retry} /> : null}
         <div className="flex flex-wrap items-center gap-3 p-3 text-sm">
-          <span>{current?.day ? `From ${current.day}` : "No rates stored yet"}</span>
+          <span>{current?.day ? `From ${formatDay(current.day)}` : loaded.status === "ready" ? "No rates stored" : loaded.status === "loading" ? "…" : ""}</span>
           {current?.stale ? <span className="border border-warning/50 px-2 py-0.5 text-xs">Out of date</span> : null}
           {readOnly ? null : <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await refreshFxRates(); await loaded.refresh(); })}>Refresh from the ECB</Button>}
         </div>

@@ -133,7 +133,7 @@ describe("the parts list", () => {
     });
     renderView();
     const row = (await screen.findByRole("button", { name: "LM358D" })).closest("tr")!;
-    expect(within(row).getByText("None yet")).toBeTruthy();
+    expect(within(row).getByText("Not read")).toBeTruthy();
     expect(within(row).getByRole("img", { name: "No data" })).toBeTruthy();
   });
 

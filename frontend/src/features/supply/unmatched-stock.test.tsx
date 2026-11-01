@@ -85,6 +85,40 @@ describe("unmatched local stock", () => {
   });
 });
 
+describe("unmatched local stock while it reads", () => {
+  it("keeps the rows on screen while the next page loads, and says when the read failed", async () => {
+    forgetServerState([]);
+    listInventorySources.mockResolvedValue([source("a", 859)]);
+    countUnmatchedParts.mockResolvedValue(counts({ waiting: 859, no_component: 859 }));
+    let release!: () => void;
+    listUnmatchedParts.mockImplementation(async (_id: string, page: { limit: number }) => {
+      if (page.limit > UNMATCHED_PAGE + 1) await new Promise<void>((done) => { release = done; });
+      return Array.from({ length: page.limit }, (_, index) => part(String(index), 1000 - index));
+    });
+    render(<UnmatchedStockSection canDecide />);
+    const header = await screen.findByRole("button", { name: /Unmatched local stock/ });
+    // The section remembers whether it was open; open it if it is closed.
+    if (header.getAttribute("aria-expanded") !== "true") fireEvent.click(header);
+    expect(await screen.findAllByRole("listitem")).toHaveLength(UNMATCHED_PAGE);
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(listUnmatchedParts).toHaveBeenLastCalledWith("a", expect.objectContaining({ limit: UNMATCHED_PAGE * 2 + 1 })));
+    expect(screen.getAllByRole("listitem"), "the section stays while the page reads").toHaveLength(UNMATCHED_PAGE);
+    release();
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(UNMATCHED_PAGE * 2));
+
+    cleanup();
+    forgetServerState([]);
+    listInventorySources.mockRejectedValue(new Error("Inventory is down"));
+    render(<UnmatchedStockSection canDecide />);
+    expect(await screen.findByText("Inventory is down")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    listInventorySources.mockReset();
+    listUnmatchedParts.mockReset();
+    countUnmatchedParts.mockReset();
+    forgetServerState([]);
+  });
+});
+
 describe("working through unmatched stock in groups", () => {
   it("counts every group across sources and asks for the one chosen", async () => {
     listInventorySources.mockResolvedValue([source("a", 3), source("b", 1)]);

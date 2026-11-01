@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { RestrictionLevel } from "@/types/supply";
 import { getComponentsStatus } from "./catalog-supply-api";
 import { clearRestriction } from "./ending-api";
+import { ReadFailed } from "./read-failed";
 import { invalidateSupply, useLoaded } from "./use-loaded";
 
 /** "Not for new designs" on a component's Supply tab, with Clear for QA and administrators. Nothing for an unmarked component. */
@@ -12,9 +13,10 @@ export function RestrictionNotice({ componentId, manufacturer, mpn, canDecide }:
   const fetcher = useCallback(async (signal: AbortSignal): Promise<RestrictionLevel | null> => (
     (await getComponentsStatus([{ id: componentId, manufacturer, mpn }], signal))[componentId]?.restriction ?? null
   ), [componentId, manufacturer, mpn]);
-  // The mark is a note on the tab; the rest of the tab does not depend on it, so a failed read shows nothing.
-  const level = useLoaded(`components/${componentId}/restriction/${manufacturer}|${mpn}`, fetcher, "Could not read the mark").data;
-
+  const read = useLoaded(`components/${componentId}/restriction/${manufacturer}|${mpn}`, fetcher, "Could not read the mark");
+  const level = read.data;
+  // A warning that could not be read is said to be unknown, never left out as if there were none.
+  if (read.status === "error" && level === null) return <ReadFailed error={read.error} onRetry={read.retry} className="border" />;
   if (level !== "not_for_new_designs") return null;
   const clear = () => {
     clearRestriction(componentId).then(() => { void invalidateSupply(`components/${componentId}`, "catalog", "ending"); toast.success("Mark cleared"); }, (caught: Error) => toast.error(caught.message));

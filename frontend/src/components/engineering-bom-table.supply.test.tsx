@@ -295,11 +295,11 @@ describe("the part drawer", () => {
     expect(screen.queryByRole("button", { name: "Open part" })).toBeNull();
   });
 
-  it("gives a reader the facts without the watch buttons", async () => {
+  it("lets QA watch from the BOM, as the server allows anyone who opens Supply", async () => {
     renderTable("qa");
     const drawer = await openDetails("47k");
     expect(within(drawer).getByText("2 parts on this row")).toBeTruthy();
-    expect(within(drawer).queryByRole("button", { name: /Watch this part/ })).toBeNull();
+    expect(within(drawer).getAllByRole("button", { name: /Watch this part/ }).length).toBeGreaterThan(0);
   });
 
   it("explains a part with no number on its symbol", async () => {

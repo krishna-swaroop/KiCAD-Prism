@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 
-import { canEditSupply, canOpenSupply } from "@/lib/roles";
+import { canFollowSupply, canOpenSupply } from "@/lib/roles";
 import type { SemanticComponent } from "@/types/prism-selection";
 import type { User } from "@/types/auth";
 import type { SupplyBomLookup, SupplyBomWatchResult } from "@/types/supply";
@@ -81,7 +81,7 @@ export function useBomSupply(fitted: readonly SemanticComponent[], user: User | 
   const status = requestKey === null ? "idle" : loadStatus;
   return {
     enabled,
-    canWatch: canEditSupply(user?.role),
+    canWatch: canFollowSupply(user?.role),
     buildQuantity,
     attritionPercent,
     projectId,

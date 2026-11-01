@@ -5,6 +5,7 @@ import type { PartTracking, SupplyWatch, TrackingPreview } from "@/types/supply"
 import { BudgetPreview } from "./budget-preview";
 import { PackagingPickDialog } from "./packaging-pick-dialog";
 import { followPart, getPartTracking, previewFollow, stopTrackingPart, type TierChoice } from "./tracking-api";
+import { ReadFailed } from "./read-failed";
 import { useLoaded } from "./use-loaded";
 
 const CHOICES: ReadonlyArray<{ value: string; label: string; choice: TierChoice | null }> = [
@@ -35,6 +36,7 @@ export function TrackingControl({
   const [pending, setPending] = useState<{ value: string; choice: TierChoice; preview: TrackingPreview } | null>(null);
   const [error, setError] = useState("");
   const [picking, setPicking] = useState("");
+  if (loaded.status === "error" && !loaded.data) return <ReadFailed error={loaded.error} onRetry={loaded.retry} className="px-0" />;
   if (loaded.status !== "ready" || !loaded.data) return null;
   const tracking = loaded.data.tier;
   const reasons = [...new Set((tracking?.reasons ?? []).map((item) => REASON_TEXT[item.kind] ?? item.kind))];

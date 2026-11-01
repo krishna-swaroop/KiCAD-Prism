@@ -9,6 +9,7 @@ import type { User } from "@/types/auth";
 import { getLibraryComponentOf } from "./supply-api";
 import { useReviewWaiting } from "./review-page";
 import { resolvePlace, type SupplyTab } from "./supply-views";
+import { OutOfDateChip } from "./out-of-date-chip";
 
 const DashboardView = lazy(() => import("./dashboard-view").then((module) => ({ default: module.DashboardView })));
 const PartsView = lazy(() => import("./parts-view").then((module) => ({ default: module.PartsView })));
@@ -106,7 +107,10 @@ export function SupplyWorkspace({ user }: { user: User | null }) {
           <current.icon className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">{current.title}</h2>
         </div>
-        <div ref={setHeaderSlot} className="flex items-center gap-2" />
+        <div className="flex items-center gap-2">
+          <OutOfDateChip />
+          <div ref={setHeaderSlot} className="flex items-center gap-2" />
+        </div>
       </header>
       <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</div>}>
         <div className="min-h-0 flex-1 overflow-hidden">

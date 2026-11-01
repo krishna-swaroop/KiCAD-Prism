@@ -13,6 +13,11 @@ vi.mock("./supply-api", async (importOriginal) => ({
   getSupplyPart: vi.fn(),
   getSupplyAssessment: vi.fn(),
 }));
+// The "Not for new designs" mark reads the catalog status; an unmarked component here.
+vi.mock("./catalog-supply-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./catalog-supply-api")>()),
+  getComponentsStatus: vi.fn(async () => ({})),
+}));
 vi.mock("./tracking-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./tracking-api")>()),
   followNumber: vi.fn(),

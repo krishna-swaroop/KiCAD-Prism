@@ -50,7 +50,7 @@ function LineCell({ column, result }: { column: string; result: SupplyBomLineRes
     }
     case "Stock":
       return result.stock === null || result.stock === undefined ? (
-        <span className="text-muted-foreground">None yet</span>
+        <span className="text-muted-foreground">{formatStock(null)}</span>
       ) : (
         <span
           className={result.short ? "text-destructive" : undefined}
