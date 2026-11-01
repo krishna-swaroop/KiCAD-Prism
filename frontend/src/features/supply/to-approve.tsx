@@ -53,7 +53,12 @@ export function ToApprove({ items, canDecide, onDecided }: { items: SupplyToAppr
           <Row
             key={`${item.component_id}:${item.part_id}`} kind="Alternate"
             title={`${item.mpn}, ${item.manufacturer} for ${item.component_name || item.component_mpn}`}
-            detail={[item.main_mpn ? `vs ${item.main_mpn}` : "", `${item.proposed_by}, ${formatAgo(item.proposed_at)}`].filter(Boolean).join(" · ")}
+            detail={[
+              item.main_mpn ? `vs ${item.main_mpn}` : "",
+              // The main part changed since it was proposed or last decided: the decision is a re-review against the new one.
+              item.reviewed_against_part_id != null && item.reviewed_against_part_id !== item.main_part_id ? `was vs ${item.reviewed_against_mpn || "none"}` : "",
+              `${item.proposed_by}, ${formatAgo(item.proposed_at)}`,
+            ].filter(Boolean).join(" · ")}
             to={componentHref(item.component_id)}
             decide={async (approve) => { await decideAlternate(item.component_id, item.part_id, approve, item.main_part_id); }} canDecide={canDecide} onDecided={onDecided}
           />

@@ -153,8 +153,10 @@ class ComponentPartsTests(unittest.TestCase):
         self.assertEqual(alternate["approval"], "pending")
 
         decision = f"{base}/alternates/{alternate['part_id']}/decision"
-        self.assertEqual(self._call("designer", "POST", decision, {"approve": True}).status, 403, "designers do not decide")
-        approved = self._call("qa", "POST", decision, {"approve": True})
+        main = listed.json["parts"][0]["part_id"]
+        self.assertEqual(self._call("designer", "POST", decision, {"approve": True, "main_part_id": main}).status, 403, "designers do not decide")
+        self.assertEqual(self._call("qa", "POST", decision, {"approve": True}).status, 422, "a decision says which main part it was shown")
+        approved = self._call("qa", "POST", decision, {"approve": True, "main_part_id": main})
         self.assertEqual((approved.status, approved.json["parts"][1]["approval"]), (200, "approved"))
 
         self.assertEqual(self._call("qa", "DELETE", f"{base}/alternates/{alternate['part_id']}").status, 204)
@@ -276,8 +278,18 @@ class ComponentPartsTests(unittest.TestCase):
             with self.assertRaises(Clash):
                 self.cp.decide(conn, component_id, alternate, True, "qa@example.com", main_part_id=shown["main_part_id"])
             self.assertEqual({row["part_id"]: row["approval"] for row in self.cp.parts_of(conn, component_id)}[alternate], "pending")
+            # A fresh queue shows it against the new main part, and that it was proposed against the old one.
             (again,) = [item for item in review.to_approve(conn)["alternates"] if item["component_id"] == component_id]
+            self.assertNotEqual(again["main_part_id"], old_main)
+            self.assertEqual((again["reviewed_against_part_id"], again["reviewed_against_mpn"]), (old_main, component["mpn"]))
             self.cp.decide(conn, component_id, alternate, True, "qa@example.com", main_part_id=again["main_part_id"])
+            audit = conn.execute(
+                "SELECT detail FROM supply_audit_events WHERE action = 'component_part.approved' AND subject_id = %s ORDER BY id DESC LIMIT 1",
+                (component_id,),
+            ).fetchone()["detail"]
+            self.assertEqual((audit["re_review"], audit["reviewed_against"], audit["main_part_id"]), (True, old_main, again["main_part_id"]))
+            stored = conn.execute("SELECT reviewed_against FROM component_parts WHERE component_id = %s AND part_id = %s", (component_id, alternate)).fetchone()
+            self.assertEqual(stored["reviewed_against"], again["main_part_id"], "now decided against the new main part")
 
     def test_a_new_main_part_sends_approved_alternates_back_to_qa(self) -> None:
         component = self._component()

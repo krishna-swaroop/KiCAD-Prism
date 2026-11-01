@@ -61,8 +61,9 @@ def _lcsc_connector() -> str | None:
 
 
 @router.post("/usage/refresh", response_model=UsageRefreshed)
-async def refresh_usage(_user: AuthenticatedUser = Depends(require_supply_reader)) -> dict[str, int]:
-    """Read where parts are used from the projects' existing semantic indexes. Builds none, so it is cheap."""
+async def refresh_usage(_user: AuthenticatedUser = Depends(require_supply_tracker)) -> dict[str, int]:
+    """Read where parts are used from the projects' existing semantic indexes. Builds none, so it is cheap, but it writes: a
+    read-only token may not ask (the roles are a reader's)."""
 
     def run() -> dict[str, int]:
         # Imported here so the supply API loads without the project services in tests that do not need them.

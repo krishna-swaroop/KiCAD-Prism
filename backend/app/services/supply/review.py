@@ -88,11 +88,13 @@ def to_approve(conn, *, limit: int = 200) -> dict[str, list[dict[str, Any]]]:
         """
         SELECT cp.component_id, r.name AS component_name, r.mpn AS component_mpn, cp.part_id, p.mpn, m.name AS manufacturer,
                cp.created_by AS proposed_by, cp.created_at AS proposed_at,
-               COALESCE(main.part_id, '') AS main_part_id, COALESCE(mp.mpn, '') AS main_mpn
+               COALESCE(main.part_id, '') AS main_part_id, COALESCE(mp.mpn, '') AS main_mpn,
+               cp.reviewed_against AS reviewed_against_part_id, ra.mpn AS reviewed_against_mpn
         FROM component_parts cp JOIN supply_parts p ON p.id = cp.part_id JOIN supply_manufacturers m ON m.id = p.manufacturer_id
         JOIN components c ON c.id = cp.component_id JOIN component_revisions r ON r.id = c.current_revision_id
         LEFT JOIN component_parts main ON main.component_id = cp.component_id AND main.role = 'main'
         LEFT JOIN supply_parts mp ON mp.id = main.part_id
+        LEFT JOIN supply_parts ra ON ra.id = cp.reviewed_against
         WHERE cp.role = %s AND cp.approval = %s AND c.is_active = 1 ORDER BY cp.created_at LIMIT %s
         """,
         (component_parts.ALTERNATE, component_parts.PENDING, limit),

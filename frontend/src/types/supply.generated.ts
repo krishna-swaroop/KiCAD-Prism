@@ -552,7 +552,7 @@ export interface Deadline {
 export interface DecisionRequest {
   approve: boolean;
   /** The main part the decider was shown (empty for none); the decision is refused (409) when it has changed since. */
-  main_part_id?: string | null;
+  main_part_id: string;
 }
 
 /** A decision someone asked for: an approver's stands (``approved``), anyone else's waits for one (``proposed``). */
@@ -1864,6 +1864,9 @@ export interface ProposedAlternate {
   part_id: string;
   proposed_at: string;
   proposed_by: string;
+  reviewed_against_mpn: string | null;
+  /** The main part it was proposed or last decided against: when it differs from main_part_id, the main part changed since. Null for proposals from before this was kept; empty for none. */
+  reviewed_against_part_id: string | null;
 }
 
 export interface ProposedDismissal {

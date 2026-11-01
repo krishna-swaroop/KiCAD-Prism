@@ -620,6 +620,13 @@ def _supply_catalog_links(conn: Any) -> None:
     create_catalog_links(getattr(conn, "_connection", conn))
 
 
+def _component_parts_reviewed_against(conn: Any) -> None:
+    """The main part an alternate was last proposed or decided against: QA sees when it has changed since. Unknown (NULL)
+    for alternates from before."""
+
+    conn.execute("ALTER TABLE component_parts ADD COLUMN IF NOT EXISTS reviewed_against TEXT")
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (0, "baseline", _baseline),
     (1, "portable_column_types", _portable_column_types),
@@ -642,6 +649,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (18, "component_parts", _component_parts),
     (19, "inventory_sources", _inventory_sources),
     (20, "supply_catalog_links", _supply_catalog_links),
+    (21, "component_parts_reviewed_against", _component_parts_reviewed_against),
 )
 
 # Migrations that a long-lived branch database recorded under an earlier number.

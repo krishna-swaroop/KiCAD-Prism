@@ -33,7 +33,9 @@ cryptography==50.0.1
 cssselect2==0.10.1
     # via cairosvg
 defusedxml==0.7.1
-    # via cairosvg
+    # via
+    #   -r requirements/runtime.in
+    #   cairosvg
 et-xmlfile==2.0.0
     # via openpyxl
 fastapi==0.141.1

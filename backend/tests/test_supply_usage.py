@@ -147,10 +147,15 @@ class UsageDatabaseTests(unittest.TestCase):
         supply_connectors.register_validation_redaction(cls.app)
         cls.patcher = mock.patch.object(supply_connectors, "service", cls.connectors)
         cls.patcher.start()
+        from support.supply_visibility import by_stored_roles
+
+        cls.visible = by_stored_roles(cls.store)
+        cls.visible.start()
 
     @classmethod
     def tearDownClass(cls) -> None:
         cls.patcher.stop()
+        cls.visible.stop()
         from support.postgres import APPLICATION_URL, drop_schema
 
         drop_schema(cls.store.schema, url=APPLICATION_URL)
@@ -418,6 +423,16 @@ class UsageDatabaseTests(unittest.TestCase):
         self.assertEqual(seen("qa"), ["Open board"])
         counted = lambda role: self.call("GET", "/api/supply/parts", role=role, query="scope=in_use").json["items"][0]["used_in"]  # noqa: E731
         self.assertEqual((counted("admin"), counted("designer")), (2, 1))
+
+    def test_a_folder_hidden_after_its_bom_was_read_is_hidden_at_once(self) -> None:
+        part_id = self.part("Acme", "R-1", watch=True)
+        self.store_project("open", "Open board", [component("R1", "Acme", "R-1")])
+        seen = lambda role: [u["project_name"] for u in self.call("GET", f"/api/supply/parts/{part_id}", role=role).json["used_in"]]  # noqa: E731
+        self.assertEqual(seen("qa"), ["Open board"], "stored for every role")
+        # The folder is now limited to designers: the workspace answers, not the roles stored with the BOM.
+        with mock.patch("app.services.supply.usage.visible_project_ids", side_effect=lambda role: None if role is None else ({"open"} if role != "qa" else set())):
+            self.assertEqual(seen("qa"), [])
+            self.assertEqual(seen("designer"), ["Open board"])
 
     def test_a_part_used_only_in_hidden_projects_is_not_in_use_for_that_role(self) -> None:
         self.part("Acme", "R-1")

@@ -221,6 +221,13 @@ class EgressTests(unittest.TestCase):
             with self.assertRaises(EgressDenied, msg=address):
                 validate_url("https://example.org/", resolve=_resolver(address))
 
+    def test_an_ipv4_address_inside_an_ipv6_one_is_what_is_checked(self) -> None:
+        # 6to4, NAT64 and Teredo forms of the metadata address and of 10.0.0.1.
+        for address in ("2002:a9fe:a9fe::1", "64:ff9b::a9fe:a9fe", "64:ff9b:1::a00:1", "2001:0:4136:e378:8000:63bf:f5ff:fffe"):
+            with self.assertRaises(EgressDenied, msg=address):
+                validate_url("https://example.org/", resolve=_resolver(address))
+        validate_url("https://example.org/", resolve=_resolver("64:ff9b::5db8:d822"))  # 93.184.216.34 through NAT64
+
     def test_one_private_address_among_public_ones_is_enough_to_reject(self) -> None:
         with self.assertRaises(EgressDenied):
             validate_url("https://example.org/", resolve=_resolver("93.184.216.34", "10.0.0.5"))

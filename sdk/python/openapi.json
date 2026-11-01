@@ -10636,20 +10636,15 @@
             "type": "boolean"
           },
           "main_part_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "The main part the decider was shown (empty for none); the decision is refused (409) when it has changed since.",
-            "title": "Main Part Id"
+            "maxLength": 64,
+            "title": "Main Part Id",
+            "type": "string"
           }
         },
         "required": [
-          "approve"
+          "approve",
+          "main_part_id"
         ],
         "title": "DecisionRequest",
         "type": "object"
@@ -27216,6 +27211,29 @@
           "proposed_by": {
             "title": "Proposed By",
             "type": "string"
+          },
+          "reviewed_against_mpn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed Against Mpn"
+          },
+          "reviewed_against_part_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The main part it was proposed or last decided against: when it differs from main_part_id, the main part changed since. Null for proposals from before this was kept; empty for none.",
+            "title": "Reviewed Against Part Id"
           }
         },
         "required": [
@@ -27228,7 +27246,9 @@
           "proposed_by",
           "proposed_at",
           "main_part_id",
-          "main_mpn"
+          "main_mpn",
+          "reviewed_against_part_id",
+          "reviewed_against_mpn"
         ],
         "title": "ProposedAlternate",
         "type": "object"
@@ -60283,7 +60303,7 @@
     },
     "/api/v1/supply/bom/usage/refresh": {
       "post": {
-        "description": "Read where parts are used from the projects' existing semantic indexes. Builds none, so it is cheap.",
+        "description": "Read where parts are used from the projects' existing semantic indexes. Builds none, so it is cheap, but it writes: a\nread-only token may not ask (the roles are a reader's).",
         "operationId": "refresh_usage",
         "responses": {
           "200": {
@@ -64401,7 +64421,7 @@
     },
     "/api/v1/supply/parts/{part_id}/view-read": {
       "post": {
-        "description": "Read a part someone opened, when nothing follows it and its prices are older than the read window. Once every 15 minutes per part.",
+        "description": "Read a part someone opened, when nothing follows it and its prices are older than the read window. Once every 15 minutes per part.\nIt spends distributor calls, so a read-only token may not ask (the roles are a reader's).",
         "operationId": "read_part_on_view",
         "parameters": [
           {

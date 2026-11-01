@@ -55,19 +55,37 @@ def host_allowed(host: str, allowed_hosts: Collection[str]) -> bool:
     return False
 
 
-def _is_public(address: str) -> bool:
+# NAT64 prefixes (RFC 6052 well-known, RFC 8215 local use): the last 32 bits are the IPv4 address reached.
+_NAT64 = (ipaddress.IPv6Network("64:ff9b::/96"), ipaddress.IPv6Network("64:ff9b:1::/48"))
+
+
+def _unwrapped(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    """The address a packet really goes to: the IPv4 address inside an IPv4-mapped, 6to4, Teredo or NAT64 IPv6 address, which
+    would otherwise pass as a public IPv6 address while reaching a private or metadata IPv4 one."""
+
     ip = ipaddress.ip_address(address)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    if not isinstance(ip, ipaddress.IPv6Address):
+        return ip
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    if ip.sixtofour is not None:
+        return ip.sixtofour
+    if ip.teredo is not None:
+        return ip.teredo[1]
+    if any(ip in network for network in _NAT64):
+        return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    return ip
+
+
+def _is_public(address: str) -> bool:
+    ip = _unwrapped(address)
     return ip.is_global and not ip.is_multicast
 
 
 def _is_private_network(address: str) -> bool:
     """A private or loopback address, never link-local (cloud metadata), multicast, reserved or unspecified."""
 
-    ip = ipaddress.ip_address(address)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    ip = _unwrapped(address)
     if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
         return False
     return ip.is_private or ip.is_loopback

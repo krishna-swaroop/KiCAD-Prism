@@ -148,6 +148,10 @@ class ProposedAlternate(SupplyModel):
     proposed_at: str
     main_part_id: str = Field(description="The component's main part the alternate is judged against; empty when it has none. Sent back with the decision.")
     main_mpn: str
+    reviewed_against_part_id: Optional[str] = Field(
+        description="The main part it was proposed or last decided against: when it differs from main_part_id, the main part changed since. "
+        "Null for proposals from before this was kept; empty for none.")
+    reviewed_against_mpn: Optional[str]
 
 
 class ProposedDismissal(SupplyModel):

@@ -230,12 +230,13 @@ def propose_alternate(conn, component_id: str, manufacturer: str, mpn: str, acto
         with conn.transaction():
             conn.execute(
                 """
-                INSERT INTO component_parts (component_id, part_id, role, approval, created_by, created_at)
-                VALUES (%s, %s, 'alternate', 'pending', %s, %s)
+                INSERT INTO component_parts (component_id, part_id, role, approval, created_by, created_at, reviewed_against)
+                VALUES (%s, %s, 'alternate', 'pending', %s, %s, %s)
                 ON CONFLICT (component_id, part_id) DO UPDATE
-                    SET approval = 'pending', created_by = EXCLUDED.created_by, created_at = EXCLUDED.created_at, decided_by = '', decided_at = NULL
+                    SET approval = 'pending', created_by = EXCLUDED.created_by, created_at = EXCLUDED.created_at, decided_by = '', decided_at = NULL,
+                        reviewed_against = EXCLUDED.reviewed_against
                 """,
-                (component_id, part.id, actor, clock.now()),
+                (component_id, part.id, actor, clock.now(), _main_of(conn, component_id)),
             )
     except psycopg.errors.ForeignKeyViolation as exc:
         raise ComponentPartError("There is no such component.") from exc
@@ -243,31 +244,44 @@ def propose_alternate(conn, component_id: str, manufacturer: str, mpn: str, acto
     return {"part_id": part.id, "manufacturer": part.manufacturer_name, "mpn": part.mpn, "approval": PENDING}
 
 
+def _main_of(conn, component_id: str, *, lock: bool = False) -> str:
+    """The component's main part now, "" for none."""
+
+    row = conn.execute(
+        "SELECT part_id FROM component_parts WHERE component_id = %s AND role = 'main'" + (" FOR UPDATE" if lock else ""), (component_id,)
+    ).fetchone()
+    return row["part_id"] if row else ""
+
+
 def decide(conn, component_id: str, part_id: str, approve: bool, actor: str, *, main_part_id: str | None = None) -> dict[str, Any]:
     """Approve or reject an alternate. A decision can be changed later; the main part is not decided here.
 
-    ``main_part_id`` is the main part the decider was shown ("" for none): an alternate is judged against the main part, so
-    a decision taken on a screen from before the main part changed is refused. None skips the check."""
+    An alternate is judged against the main part. ``main_part_id`` is the main part the decider was shown ("" for none); a
+    decision taken on a screen from before the main part changed is refused. The API always sends it; None is for internal
+    callers. A proposal made, or last decided, against another main part (``reviewed_against``) is decided against the main
+    part now: the review queue shows both, and the audit records it as a re-review. A new revision that keeps the part number
+    keeps the main part, so it changes nothing here."""
 
     actor = actor_text(actor)
-    if main_part_id is not None:
-        current = conn.execute(
-            "SELECT part_id FROM component_parts WHERE component_id = %s AND role = 'main' FOR UPDATE", (component_id,)
-        ).fetchone()
-        if (current["part_id"] if current else "") != main_part_id:
-            raise Clash("The component's main part changed since this was shown. Look at the alternate again.")
+    current = _main_of(conn, component_id, lock=True)
+    if main_part_id is not None and current != main_part_id:
+        raise Clash("The component's main part changed since this was shown. Look at the alternate again.")
     approval = APPROVED if approve else REJECTED
     row = conn.execute(
         """
-        UPDATE component_parts SET approval = %s, decided_by = %s, decided_at = %s
-        WHERE component_id = %s AND part_id = %s AND role = 'alternate'
-        RETURNING part_id
+        UPDATE component_parts c SET approval = %s, decided_by = %s, decided_at = %s, reviewed_against = %s
+        FROM (SELECT reviewed_against FROM component_parts WHERE component_id = %s AND part_id = %s AND role = 'alternate' FOR UPDATE) before
+        WHERE c.component_id = %s AND c.part_id = %s AND c.role = 'alternate'
+        RETURNING c.part_id, before.reviewed_against AS was
         """,
-        (approval, actor, clock.now(), component_id, part_id),
+        (approval, actor, clock.now(), current, component_id, part_id, component_id, part_id),
     ).fetchone()
     if row is None:
         raise ComponentPartError("That part is not an alternate of this component.")
-    write_audit(conn, actor, f"component_part.{approval}", component_id, {"part_id": part_id}, subject_kind="component")
+    detail: dict[str, Any] = {"part_id": part_id, "main_part_id": current}
+    if row["was"] is not None and row["was"] != current:
+        detail |= {"re_review": True, "reviewed_against": row["was"]}
+    write_audit(conn, actor, f"component_part.{approval}", component_id, detail, subject_kind="component")
     return {"part_id": part_id, "approval": approval}
 
 

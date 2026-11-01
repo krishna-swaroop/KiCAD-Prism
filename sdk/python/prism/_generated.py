@@ -1888,9 +1888,9 @@ class DebugLoggingWindow(TypedDict, total=True):
     until: str
 
 
-class DecisionRequest(TypedDict, total=False):
+class DecisionRequest(TypedDict, total=True):
     approve: bool
-    main_part_id: str | None
+    main_part_id: str
 
 
 class DecisionState(TypedDict, total=True):
@@ -4952,6 +4952,8 @@ class ProposedAlternate(TypedDict, total=True):
     part_id: str
     proposed_at: str
     proposed_by: str
+    reviewed_against_mpn: str | None
+    reviewed_against_part_id: str | None
 
 
 class ProposedDismissal(TypedDict, total=True):

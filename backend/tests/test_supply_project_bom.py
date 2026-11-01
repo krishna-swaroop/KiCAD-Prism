@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from unittest import mock
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -133,8 +134,10 @@ class ProjectBomTests(unittest.TestCase):
         with self.store.connection() as conn:
             self.index = {"sourceRevisionKey": "r2", "components": [component("R1", "Acme", "A-1")]}
             self.read(conn)
-            seen = [item["type"] for item in self.alerts.recent_changes(conn, NOW, role="designer")]
-            hidden = [item["type"] for item in self.alerts.recent_changes(conn, NOW, role="qa")]
+            # The workspace lets designers see prj_1 and QA not; the change follows that, not the roles kept when it was made.
+            with mock.patch.object(self.usage, "visible_project_ids", side_effect=lambda role: {"prj_1"} if role == "designer" else set()):
+                seen = [item["type"] for item in self.alerts.recent_changes(conn, NOW, role="designer")]
+                hidden = [item["type"] for item in self.alerts.recent_changes(conn, NOW, role="qa")]
         self.assertIn("project_bom_changed", seen)
         self.assertNotIn("project_bom_changed", hidden)
 
