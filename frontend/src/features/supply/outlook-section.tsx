@@ -19,7 +19,7 @@ const TONE: Record<SupplyOutlook["band"], "outline" | "warning" | "destructive" 
 
 /**
  * Whether the part is heading for its end, and how healthy it is, on one line: the outlook with every signal behind it, then the
- * health score. One info icon opens what both rest on: how the outlook is worked out, the five scores and the findings.
+ * health score. One info icon opens what both rest on: the signals, the five scores and the findings.
  */
 export function OutlookSection({ outlook, partId = null, role, below = null }: { outlook: SupplyOutlook; partId?: string | null; role?: UserRole | null; below?: ReactNode }) {
   const { assessment, error, canPropose, canApprove, act } = useHealth(partId, role);
@@ -37,12 +37,7 @@ export function OutlookSection({ outlook, partId = null, role, below = null }: {
             <span className="text-xs text-muted-foreground">{STATUS_LABEL[data.status]}</span>
           </span>
         ) : assessment.status === "loading" && partId ? <span className="text-xs text-muted-foreground">Assessing...</span> : null}
-        <HoverDetails label="Show how the outlook and the health are worked out">
-          <p className="text-xs text-muted-foreground">
-            {outlook.band === "no_signs"
-              ? "The outlook is rule-based. Nothing found points to an end. That is not a promise of a long life."
-              : "The outlook is rule-based, from the signals below."}
-          </p>
+        {outlook.signals.length > 0 || (data && scored && partId) || error ? <HoverDetails label="Show what the outlook and the health rest on">
           {outlook.signals.length > 0 ? (
             <ul aria-label="Outlook signals" className="space-y-0.5 text-sm">
               {outlook.signals.map((signal) => (
@@ -54,7 +49,7 @@ export function OutlookSection({ outlook, partId = null, role, below = null }: {
           ) : null}
           {data && scored && partId ? <HealthBody partId={partId} data={data} canPropose={canPropose} canApprove={canApprove} act={act} /> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-        </HoverDetails>
+        </HoverDetails> : null}
       </div>
       {assessment.status === "error" && !data && partId ? (
         <p className="text-xs text-muted-foreground">
@@ -63,7 +58,7 @@ export function OutlookSection({ outlook, partId = null, role, below = null }: {
         </p>
       ) : null}
       {outlook.signals.length === 0 && outlook.band === "unknown" ? (
-        <p className="text-xs text-muted-foreground">Nothing has been read for this part yet.</p>
+        <p className="text-xs text-muted-foreground">Not read yet</p>
       ) : null}
       {below}
     </section>

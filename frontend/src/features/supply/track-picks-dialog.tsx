@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { TrackingPreview } from "@/types/supply";
 import { previewTrackComponents, type TrackChoice } from "./catalog-supply-api";
@@ -41,7 +41,6 @@ export function TrackPicksDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Track {components.length} {components.length === 1 ? "Part" : "Parts"}</DialogTitle>
-          <DialogDescription>How often they are read.</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-3 gap-2" role="group" aria-label="Tier">
           {CHOICES.map((item) => (

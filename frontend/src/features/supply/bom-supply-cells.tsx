@@ -15,9 +15,9 @@ import { TestDataChip } from "./test-data-chip";
 const MUTED = <span className="text-muted-foreground">{"-"}</span>;
 
 function manufacturerHint(result: SupplyBomLineResult): string {
-  if (result.manufacturer_match === "missing") return "Matched on the part number alone: this line names no manufacturer.";
-  if (result.manufacturer_match === "unmatched") return "Matched on the part number alone: Prism does not know this manufacturer spelling.";
-  if (result.manufacturer_match === "lcsc") return "Matched by the LCSC number on the symbol.";
+  if (result.manufacturer_match === "missing") return "Part number only · no manufacturer";
+  if (result.manufacturer_match === "unmatched") return "Part number only · unknown manufacturer spelling";
+  if (result.manufacturer_match === "lcsc") return "Matched by LCSC number";
   return "";
 }
 
@@ -54,7 +54,7 @@ function LineCell({ column, result }: { column: string; result: SupplyBomLineRes
       ) : (
         <span
           className={result.short ? "text-destructive" : undefined}
-          title={`Needs ${(result.part_need ?? result.need).toLocaleString()} for this build${result.part_need !== undefined && result.part_need !== result.need ? ", counting every line this part is on" : ""}`}
+          title={`Needs ${(result.part_need ?? result.need).toLocaleString()} for this build${result.part_need !== undefined && result.part_need !== result.need ? ", all lines" : ""}`}
         >
           {formatStock(result.stock)}
           <span className="text-muted-foreground"> / {(result.part_need ?? result.need).toLocaleString()}</span>
@@ -62,14 +62,14 @@ function LineCell({ column, result }: { column: string; result: SupplyBomLineRes
         </span>
       );
     case "Unit price":
-      if (result.bought_with) return <span className="text-muted-foreground" title="This part is on more than one line and is bought once">with another line</span>;
+      if (result.bought_with) return <span className="text-muted-foreground">with another line</span>;
       return buy ? <span><PriceAtQuantity price={formatPrice(buy.unit_price, buy.currency)} quantity={buy.quantity} /><TestDataChip show={buy.test_data} /></span> : MUTED;
     case "Extended":
       if (result.bought_with) return MUTED;
       return buy ? (
         <span
           className={buy.covers ? undefined : "text-warning"}
-          title={`Buy ${buy.quantity.toLocaleString()} from ${buy.connector_name} (${buy.sku})${alternateBought(result)}${buy.covers ? "" : ". No offer holds enough stock."}`}
+          title={`Buy ${buy.quantity.toLocaleString()} from ${buy.connector_name} (${buy.sku})${alternateBought(result)}${buy.covers ? "" : " · not enough stock"}`}
         >
           {formatPrice(buy.extended, buy.currency)}
         </span>
@@ -91,7 +91,7 @@ export function SupplyCell({ column, supply, onDetails }: { column: string; supp
   if (supply.kind === "mixed") {
     if (column !== "Supply") return <MixedIcon />;
     return (
-      <span className="flex items-center gap-1.5" title="This row holds several different parts">
+      <span className="flex items-center gap-1.5">
         {supply.worst ? <StatusDot status={supply.worst} /> : null}
         {supply.count} parts
         <DetailsButton onDetails={onDetails} />

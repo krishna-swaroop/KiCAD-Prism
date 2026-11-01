@@ -19,7 +19,7 @@ export function likelyOutTile(forecast: { likely_out_4w: number; state: Forecast
 /** The next ten expected events across the tracked parts, soonest first. Shown only once the models behind them have earned a place. */
 export function ComingUpCard({ events, today, onOpenPart }: { events: ForecastEvent[]; today: string; onOpenPart: (partId: string) => void }) {
   return (
-    <ChartCard title="Coming up" info="What Prism expects in the next weeks, from the forecasts that have a good record." answer={events.length === 0 ? "Nothing is expected soon" : undefined}>
+    <ChartCard title="Coming up" answer={events.length === 0 ? "Nothing is expected soon" : undefined}>
       {events.length === 0 ? null : (
         <ul className="space-y-1 text-sm">
           {events.map((event) => (

@@ -89,16 +89,16 @@ describe("the history on the part sheet", () => {
     expect([digikey, mouser, total].map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "true", "true"]);
     expect(mouser.textContent).not.toContain("not read lately");
     expect(mouser.textContent).toContain("10");
-    expect(mouser.getAttribute("title")).toContain("Not read for longer");
+    expect(mouser.getAttribute("title")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open the stock history larger" }));
     await waitFor(() => expect(api.getPartHistory).toHaveBeenCalledWith("p1", 90, expect.anything()));
     expect(await screen.findByRole("radio", { name: "6 months" })).toBeTruthy();
     expect(await screen.findByText("2026-03-01: Notice: End of life")).toBeTruthy();
   }, 30_000);
 
-  it("says history builds up when there is none", async () => {
+  it("says there is no history yet when there is none", async () => {
     render(<PartHistoryPanel kind="stock" partId="p2" history={{ ...HISTORY, connectors: [], total: [], events: [] }} />);
-    expect(await screen.findByText("History builds up as the part is read.")).toBeTruthy();
+    expect(await screen.findByText("No history yet")).toBeTruthy();
   });
 
   it("draws the price under its own legend, with only the distributors that have prices and no total", () => {

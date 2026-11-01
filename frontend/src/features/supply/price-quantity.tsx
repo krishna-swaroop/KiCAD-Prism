@@ -31,9 +31,7 @@ function QuantityDialog({ partId, quantity, standard, own, onClose, onChanged }:
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Price quantity</DialogTitle>
-          <DialogDescription>
-            Lists, the price history and price alerts price this part at this many pieces. Others use {standard.toLocaleString()}.
-          </DialogDescription>
+          <DialogDescription>Default {standard.toLocaleString()}</DialogDescription>
         </DialogHeader>
         {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
         <div className="space-y-1">

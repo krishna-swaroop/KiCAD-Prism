@@ -65,7 +65,6 @@ export function FillFromDistributor({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Fill from distributor</h3>
-          <p className="text-xs text-muted-foreground">Look the part number up and take the fields you want. Nothing is saved until you save the revision.</p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={!mpn || step.name === "working"} onClick={() => void search()}>
           {step.name === "working" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -100,7 +99,7 @@ function Candidates({ result, onPick }: { result: FillSearchResult; onPick: (can
   return (
     <div className="space-y-2">
       {result.candidates.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No distributor knows this part number.</p>
+        <p className="text-sm text-muted-foreground">Not found</p>
       ) : (
         <ul className="divide-y border">
           {result.candidates.map((candidate) => (

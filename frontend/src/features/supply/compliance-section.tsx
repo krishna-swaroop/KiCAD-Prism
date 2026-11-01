@@ -83,7 +83,7 @@ export function ComplianceSection({ partId, canEdit, trade, onChanged }: Complia
       ) : null}
       <RohsExemptions partId={partId} items={data.exemptions ?? []} canEdit={canEdit} onChanged={() => loaded.refresh()} />
       {!data.list.loaded ? (
-        <p className="text-xs text-muted-foreground">The REACH Candidate List is not loaded, so declared substances cannot be checked. An administrator loads it in Supply settings.</p>
+        <p className="text-xs text-muted-foreground">REACH Candidate List not loaded</p>
       ) : null}
       {canEdit ? (
         <form

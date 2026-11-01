@@ -6,10 +6,10 @@ import { formatDateTime } from "./supply-format";
 import { useConnectorSubmit } from "./use-connector-submit";
 
 const STATE_TEXT: Record<SupplySignin["state"], string> = {
-  none: "Nobody is signed in, so change notices are not read.",
+  none: "Not signed in",
   ok: "",
-  expired: "The sign-in ran out. Sign in again to keep reading change notices.",
-  refused: "DigiKey refused the sign-in. Sign in again to keep reading change notices.",
+  expired: "Sign-in expired",
+  refused: "Sign-in refused",
 };
 
 /** DigiKey change notices need a person's sign-in at DigiKey. Administrators start it and see who did it and until when. */
@@ -39,7 +39,7 @@ export function ConnectorSignin({ connectorId, status, notices }: { connectorId:
         ) : null}
       </div>
       {!status.signed_in ? (
-        <p className="break-all text-muted-foreground">The DigiKey app must list this callback address: {status.redirect_uri}</p>
+        <p className="break-all text-muted-foreground">Callback {status.redirect_uri}</p>
       ) : null}
       {error ? <p role="alert" className="text-destructive">{error}</p> : null}
     </div>

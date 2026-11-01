@@ -26,8 +26,6 @@ export function ReviewView({ user, after, othersWaiting = false }: { user: User 
   return (
     <div className="themed-scrollbar relative h-full overflow-y-auto p-4">
       <div className="space-y-6">
-        {canDecide ? null : <p className="text-sm text-muted-foreground">QA and administrators decide.</p>}
-
         {status === "loading" ? <Skeleton className="h-40 w-full" aria-label="Loading the review queue" /> : null}
         {status === "error" ? (
           <Alert variant="destructive">
@@ -44,9 +42,6 @@ export function ReviewView({ user, after, othersWaiting = false }: { user: User 
               <div className="flex flex-col items-center gap-2 border border-dashed p-10 text-center">
                 <CheckCheck className="h-8 w-8 text-muted-foreground" />
                 <p className="text-sm font-medium">Nothing to review</p>
-                <p className="max-w-md text-sm text-muted-foreground">
-                  Spellings and listings that need a decision appear here.
-                </p>
               </div>
             ) : null}
 

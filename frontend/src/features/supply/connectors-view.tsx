@@ -126,7 +126,7 @@ export function SupplyConnectorsView({ user, headerSlot, after }: { user: User |
             </AlertDescription>
           </Alert>
         ) : null}
-        {status === "ready" && connectors.length === 0 ? <EmptyState noProviders={providers.length === 0} isAdmin={isAdmin} /> : null}
+        {status === "ready" && connectors.length === 0 ? <EmptyState noProviders={providers.length === 0} /> : null}
         {status === "ready" && connectors.length > 0 ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(24rem,1fr))] gap-3">
             {connectors.map((connector) => (
@@ -188,7 +188,7 @@ export function SupplyConnectorsView({ user, headerSlot, after }: { user: User |
         open={dialog?.kind === "csv-clear" && target !== null}
         onOpenChange={(open) => { if (!open) closeDialog(); }}
         title={`Remove data from ${target?.display_name ?? "connector"}`}
-        description="The uploaded offers are deleted. Stock history already collected stays."
+        description="Stock history stays."
         confirmLabel="Remove"
         busy={clearing.busy}
         onConfirm={() => void confirmClear()}
@@ -198,7 +198,7 @@ export function SupplyConnectorsView({ user, headerSlot, after }: { user: User |
         open={dialog?.kind === "delete" && target !== null}
         onOpenChange={(open) => { if (!open) closeDialog(); }}
         title={`Delete ${target?.display_name ?? "connector"}`}
-        description="Its credentials and call history are removed. Parts and stock history already collected stay."
+        description="Parts and stock history stay."
         confirmLabel="Delete"
         busy={deletion.busy}
         onConfirm={() => void confirmDelete()}
@@ -216,18 +216,11 @@ function ConnectorsSkeleton() {
   );
 }
 
-function EmptyState({ noProviders, isAdmin }: { noProviders: boolean; isAdmin: boolean }) {
+function EmptyState({ noProviders }: { noProviders: boolean }) {
   return (
     <div className="flex flex-col items-center gap-2 border border-dashed p-10 text-center">
       <Plug className="h-8 w-8 text-muted-foreground" />
-      <p className="text-sm font-medium">No connectors yet</p>
-      <p className="max-w-md text-sm text-muted-foreground">
-        {noProviders
-          ? "No distributor providers are installed on this server."
-          : isAdmin
-            ? "Add a distributor to start collecting stock and price data."
-            : "An administrator can add a distributor connector."}
-      </p>
+      <p className="text-sm font-medium">{noProviders ? "No providers installed" : "No connectors yet"}</p>
     </div>
   );
 }

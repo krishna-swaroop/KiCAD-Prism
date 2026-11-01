@@ -35,11 +35,7 @@ function DecisionDialog({ item, decision, onClose, onDone }: { item: EndingPart;
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{retiring ? "Retire" : "Not for new designs"}: {item.component.name}</DialogTitle>
-          <DialogDescription>
-            {retiring
-              ? "The component is archived and leaves the KiCad library. Symbols already placed stop resolving."
-              : "The component stays released and keeps resolving where it is placed. It is marked in the catalog so nobody picks it for a new design."}
-          </DialogDescription>
+          {retiring ? <DialogDescription>Placed symbols stop resolving.</DialogDescription> : null}
         </DialogHeader>
         {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
         {item.projects.length > 0 ? (
@@ -47,7 +43,7 @@ function DecisionDialog({ item, decision, onClose, onDone }: { item: EndingPart;
             <p className="font-medium">{retiring ? "Tracked projects that use it" : "Used by"}</p>
             <ul className="list-disc pl-5 text-muted-foreground">{item.projects.map((project) => <li key={project.project_id}>{project.name}, {project.quantity.toLocaleString()} per board</li>)}</ul>
           </div>
-        ) : <p className="text-sm text-muted-foreground">No tracked project uses it.</p>}
+        ) : <p className="text-sm text-muted-foreground">Not used</p>}
         <div className="space-y-1">
           <Label htmlFor="ending-reason" className="text-xs">Reason</Label>
           <Textarea id="ending-reason" rows={3} value={reason} onChange={(event) => setReason(event.target.value)} />

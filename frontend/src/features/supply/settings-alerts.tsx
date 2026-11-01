@@ -26,7 +26,6 @@ export function SettingsAlerts({ view, readOnly, onSaved }: { view: AssessmentSe
               <WholeInput id="setting-likely-out" value={draft.alert_likely_out_percent} low={lowChance} high={highChance} onChange={(next) => set({ ...draft, alert_likely_out_percent: next })} />
               <DefaultNote changed={draft.alert_likely_out_percent !== defaults.alert_likely_out_percent} text={`${defaults.alert_likely_out_percent}%`} />
             </span>
-            <p className="text-xs text-muted-foreground">Chance of being out everywhere within four weeks. A part's own rule comes first.</p>
           </div>
         </>
       )}

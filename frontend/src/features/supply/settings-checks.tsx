@@ -37,7 +37,6 @@ export function SettingsChecks({ view, readOnly, onSaved }: { view: AssessmentSe
                 <WholeInput id="setting-late" value={draft.late_hours} low={lowLate} high={highLate} onChange={(next) => set({ ...draft, late_hours: next })} />
                 <DefaultNote changed={draft.late_hours !== defaults.late_hours} text={String(defaults.late_hours)} />
               </span>
-              <p className="text-xs text-muted-foreground">Counted from when the part was due for a read.</p>
             </div>
           </div>
           <fieldset className="space-y-3">

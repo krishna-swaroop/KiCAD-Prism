@@ -64,7 +64,7 @@ function byVendor(offers: readonly SupplyRowOffer[]): SupplyRowOffer[][] {
 export function PartOfferRows({ part }: { part: SupplyPartRow }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const offers = part.offers ?? [];
-  if (offers.length === 0) return <p className="px-2 py-1 text-xs text-muted-foreground">No vendor has been read yet.</p>;
+  if (offers.length === 0) return <p className="px-2 py-1 text-xs text-muted-foreground">Not read yet</p>;
   const toggle = (id: string) => setOpen((current) => {
     const next = new Set(current);
     if (next.has(id)) next.delete(id); else next.add(id);

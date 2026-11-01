@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -64,9 +63,6 @@ function CredentialsForm({
     >
       <DialogHeader>
         <DialogTitle>Replace Credentials</DialogTitle>
-        <DialogDescription>
-          Saved credentials are never shown. Enter every value to replace them.
-        </DialogDescription>
       </DialogHeader>
       <CredentialInputs
         fields={fields}

@@ -79,7 +79,7 @@ describe("FillFromDistributor", () => {
     mocked.searchFillCandidates.mockResolvedValueOnce({ candidates: [], skipped: [] });
     render(<FillFromDistributor values={form} onApply={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Look up/ }));
-    expect(await screen.findByText("No distributor knows this part number.")).toBeTruthy();
+    expect(await screen.findByText("Not found")).toBeTruthy();
     mocked.searchFillCandidates.mockRejectedValueOnce(new Error("Could not look the part up"));
     fireEvent.click(screen.getByRole("button", { name: /Look up/ }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe("Could not look the part up"));

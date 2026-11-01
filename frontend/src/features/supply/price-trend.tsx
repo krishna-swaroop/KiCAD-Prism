@@ -23,11 +23,11 @@ interface PriceTrendProps {
 function kindLine(headline: NonNullable<SupplyPartDetail["price"]["headline"]>, now: number): string | null {
   switch (headline.price_kind) {
     case "backorder":
-      return `Nothing is in stock. This is the cheapest price with a lead time${headline.price_lead_days ? `, ${formatLeadTime(headline.price_lead_days)}` : ""}.`;
+      return `Backorder price${headline.price_lead_days ? ` · ${formatLeadTime(headline.price_lead_days)}` : ""}`;
     case "last_seen":
-      return headline.price_seen_day ? `Nothing is in stock. This is the price ${daysSince(headline.price_seen_day, now)} days ago, when it last was.` : "Nothing is in stock.";
+      return headline.price_seen_day ? `Last in-stock price · ${daysSince(headline.price_seen_day, now)} days ago` : "Last in-stock price";
     case "listed":
-      return "Nothing is in stock and no lead time is quoted. This is the list price.";
+      return "List price";
     default:
       return null;
   }
@@ -41,10 +41,6 @@ export function PriceTrend({ price, partId, canEdit = false, onChanged, children
   const change = trend?.change_percent ?? null;
   const note = headline ? kindLine(headline, Date.now()) : null;
   const quantity = price.quantity ?? 100;
-  const hints = [
-    "Cheapest unit price any distributor showed.",
-    ...(change === null ? ["A move needs a week of readings."] : []),
-  ];
   return (
     <section aria-label="Price" className="space-y-2">
       <div>
@@ -57,16 +53,13 @@ export function PriceTrend({ price, partId, canEdit = false, onChanged, children
         <div className="flex items-center gap-1.5 text-2xl font-semibold tabular-nums">
           {formatPrice(latest, currency)}
           <TestDataChip show={headline?.price_test_data} />
-          <HoverDetails label="Show what the price is">
-            <p className="text-xs text-muted-foreground">{hints.join(" ")}</p>
-            {details}
-          </HoverDetails>
+          {details ? <HoverDetails label="Show how the distributors compare">{details}</HoverDetails> : null}
         </div>
       </div>
       {children}
       {note ? <p className="text-xs text-warning">{note}</p> : null}
       {headline?.price_native ? <p className="text-xs text-muted-foreground">Converted from {headline.price_native.currency}.</p> : null}
-      {headline && headline.price_unrated.length > 0 ? <p className="text-xs text-muted-foreground">No exchange rate for {headline.price_unrated.join(", ")}, so those prices are left out.</p> : null}
+      {headline && headline.price_unrated.length > 0 ? <p className="text-xs text-muted-foreground">No exchange rate: {headline.price_unrated.join(", ")}</p> : null}
       {change === null || change === 0 ? null : (
         <p className="text-xs text-muted-foreground">
           {`${change > 0 ? "Up" : change < 0 ? "Down" : "Unchanged,"} ${change === 0 ? "" : `${Math.abs(change)}% `}over ${trend?.days} days, from ${formatPrice(trend?.was ?? "", currency)}.`}

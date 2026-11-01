@@ -20,7 +20,6 @@ export function RunwayCard({ runway, onOpen }: { runway: SupplyDashboard["runway
   return (
     <ChartCard
       title="Projected stock"
-      info="Projected from each part's own readings at the rate its stock has been falling. Parts with too few readings are not guessed at."
       answer={soon === 0 ? "Nothing runs out within 2 weeks" : `${soon.toLocaleString()} ${soon === 1 ? "part is" : "parts are"} out or run out within 2 weeks`}
     >
       <ul className="space-y-1">

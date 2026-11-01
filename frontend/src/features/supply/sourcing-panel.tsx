@@ -43,7 +43,7 @@ export default function SourcingPanel({ componentId, manufacturer, mpn, user }: 
         </section>
       ) : (
         <Alert>
-          <AlertDescription>This component needs a manufacturer and a manufacturer part number before the distributors can be asked.</AlertDescription>
+          <AlertDescription>Needs a manufacturer and a manufacturer part number</AlertDescription>
         </Alert>
       )}
     </div>

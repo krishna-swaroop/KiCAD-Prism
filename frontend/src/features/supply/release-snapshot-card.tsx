@@ -10,8 +10,8 @@ import { isRunning, useLoaded } from "./use-loaded";
 export const QUEUED_POLL_MS = 5000;
 
 const WAITING: Record<string, string> = {
-  running: "The supply snapshot is being taken.",
-  none: "No supply snapshot was asked for when this release was published.",
+  running: "Taking snapshot",
+  none: "No snapshot",
 };
 
 /** What supply data said when a release was published: its health then, the parts that needed a look, and the compliance draft. */
@@ -27,7 +27,7 @@ export function ReleaseSnapshotCard({ projectId, buildId }: { projectId: string;
 
   if (state.status !== "ready" || !state.data) return null;
   if (state.data.state === "failed") {
-    return <p className="text-xs text-muted-foreground">No supply snapshot was taken: {state.data.reason || "it failed"}</p>;
+    return <p className="text-xs text-muted-foreground">No snapshot: {state.data.reason || "it failed"}</p>;
   }
   if (!taken) return <p className="text-xs text-muted-foreground">{WAITING[state.data.state]}</p>;
   if (snapshot.status !== "ready" || !snapshot.data) return null;

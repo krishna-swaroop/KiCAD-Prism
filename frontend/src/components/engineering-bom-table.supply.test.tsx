@@ -269,7 +269,7 @@ describe("the part drawer", () => {
     expect(within(drawer).getByText("2 parts on this row")).toBeTruthy();
     expect(within(drawer).getByText("R-47K-A")).toBeTruthy();
     expect(within(drawer).getByText("R-47K-B")).toBeTruthy();
-    expect(within(drawer).getAllByText(/does not know this part yet/)).toHaveLength(2);
+    expect(within(drawer).getAllByText("Unknown part.")).toHaveLength(2);
 
     const [first] = within(drawer).getAllByRole("button", { name: /Watch this part/ });
     fireEvent.click(first);
@@ -302,10 +302,10 @@ describe("the part drawer", () => {
     expect(within(drawer).getAllByRole("button", { name: /Watch this part/ }).length).toBeGreaterThan(0);
   });
 
-  it("explains a part with no number on its symbol", async () => {
+  it("labels a part with no number on its symbol", async () => {
     renderTable("designer");
     const drawer = await openDetails("LM358");
-    expect(within(drawer).getByText(/cannot track it/)).toBeTruthy();
+    expect(within(drawer).getByText("No part number.")).toBeTruthy();
     expect(within(drawer).queryByRole("button", { name: /Watch this part/ })).toBeNull();
   });
 });

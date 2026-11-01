@@ -88,7 +88,7 @@ describe("the Supply tab", () => {
 
   it("asks for a part number before it looks anything up", () => {
     renderPanel("designer", "Texas Instruments", " ");
-    expect(screen.getByText(/needs a manufacturer and a manufacturer part number/)).toBeTruthy();
+    expect(screen.getByText(/Needs a manufacturer and a manufacturer part number/)).toBeTruthy();
     expect(mocked.findSupplyPart).not.toHaveBeenCalled();
   });
 

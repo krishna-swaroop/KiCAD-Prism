@@ -22,10 +22,9 @@ export function HistoryLegend({ history, hidden, onToggle, withTotal, values }: 
           <button
             type="button" aria-pressed={!hidden.has(item.key)} onClick={() => onToggle(item.key)}
             className={`inline-flex items-center gap-1.5 hover:text-foreground ${hidden.has(item.key) ? "text-muted-foreground line-through" : ""}`}
-            title={item.stale ? "Not read for longer than its rate allows. The chart draws the rest of its line dashed." : undefined}
           >
             <span aria-hidden className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: item.color }} />
-            {item.name}{values?.[item.key] ? <span className="tabular-nums text-muted-foreground">{values[item.key]}</span> : null}
+            {item.name}{item.stale ? <span className="text-warning">stale</span> : null}{values?.[item.key] ? <span className="tabular-nums text-muted-foreground">{values[item.key]}</span> : null}
           </button>
         </li>
       ))}

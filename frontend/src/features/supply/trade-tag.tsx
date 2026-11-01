@@ -33,9 +33,7 @@ function MarkDialog({ partId, trade, onClose, onChanged }: { partId: string; tra
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Export Control</DialogTitle>
-          <DialogDescription>
-            Distributors say {trade.stated_eccn.length ? trade.stated_eccn.join(", ") : "nothing"}. What you set here wins over them.
-          </DialogDescription>
+          <DialogDescription>Distributors: {trade.stated_eccn.length ? trade.stated_eccn.join(", ") : "none"}</DialogDescription>
         </DialogHeader>
         {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
         <div role="radiogroup" aria-label="Export control" className="grid grid-cols-2 gap-2">

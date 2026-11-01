@@ -102,8 +102,8 @@ function emptyText(dashboard: SupplyDashboard | null | undefined, showCleared: b
   if (showCleared) return "Nothing here yet.";
   if (feedsFailing) return "No open alerts.";
   if (!dashboard) return "Nothing needs you.";
-  if (dashboard.connectors === 0) return "No distributor is connected. Add one under Connectors, and Prism can start reading stock.";
-  if (dashboard.figures.watched === 0) return "No parts are tracked yet. Track a part in Parts and it is read regularly.";
-  if (dashboard.no_data === dashboard.figures.watched) return "Tracked parts are waiting for their first read.";
-  return "Nothing needs you. Alerts appear here after a part has been read twice.";
+  if (dashboard.connectors === 0) return "No distributor connected.";
+  if (dashboard.figures.watched === 0) return "No tracked parts.";
+  if (dashboard.no_data === dashboard.figures.watched) return "Waiting for first reads.";
+  return "Nothing needs you.";
 }

@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -52,7 +51,6 @@ function PauseForm({ connector, onClose, onPaused }: { connector: SupplyConnecto
     >
       <DialogHeader>
         <DialogTitle>Pause {connector.display_name}</DialogTitle>
-        <DialogDescription>Polling and lookups stop until it is resumed. Stored data stays.</DialogDescription>
       </DialogHeader>
       <div className="space-y-1.5">
         <Label htmlFor="pause-reason">Reason</Label>

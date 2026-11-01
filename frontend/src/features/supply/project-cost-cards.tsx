@@ -76,7 +76,7 @@ export function ProjectCostHistory({ supply }: { supply: ProjectSupply }) {
       <Suspense fallback={<Skeleton className="h-32 w-full" />}><CostHistoryChart points={points} currency={currency} /></Suspense>
       {left.length > 0 ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          Left out as one price read wrong: {left.map((point) => `${point.day} (${formatPrice(point.cost_per_board, currency, 2)})`).join(", ")}.
+          Excluded: {left.map((point) => `${point.day} (${formatPrice(point.cost_per_board, currency, 2)})`).join(", ")}.
         </p>
       ) : null}
     </ChartCard>

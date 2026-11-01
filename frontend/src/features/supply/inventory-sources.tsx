@@ -124,7 +124,7 @@ export function InventorySourcesSection({ isAdmin }: { isAdmin: boolean }) {
         open={dialog?.kind === "delete"}
         onOpenChange={(open) => { if (!open) setDialog(null); }}
         title={`Delete ${dialog?.kind === "delete" ? dialog.source.display_name : "source"}`}
-        description="Its token, the stock it brought in and its unmatched parts are removed."
+        description="Its stock and unmatched parts go too."
         confirmLabel="Delete"
         onConfirm={() => { if (dialog?.kind === "delete") void remove(dialog.source); }}
       />

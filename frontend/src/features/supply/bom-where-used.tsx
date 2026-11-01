@@ -26,7 +26,6 @@ function Found({ manufacturer, mpn, knownProjectIds }: BomWhereUsedProps) {
   return (
     <section aria-label="In project BOMs" className="space-y-2 border p-4">
       <h3 className="text-sm font-medium">Also in project BOMs ({others.length})</h3>
-      <p className="text-xs text-muted-foreground">Found by manufacturer part number in each project&apos;s BOM, not through an import.</p>
       <ul className="space-y-1 text-sm">
         {others.map((use) => (
           <li key={use.project_id} className="flex items-baseline justify-between gap-3">

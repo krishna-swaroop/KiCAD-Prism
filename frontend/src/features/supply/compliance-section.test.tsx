@@ -92,7 +92,7 @@ describe("the compliance section", () => {
     mocked.getPartCompliance.mockResolvedValue({ ...data, list: { ...data.list, loaded: false } });
     render(<ComplianceSection partId="p1" canEdit={false} />);
     await openSection();
-    expect(await screen.findByText(/Candidate List is not loaded/)).toBeTruthy();
+    expect(await screen.findByText("REACH Candidate List not loaded")).toBeTruthy();
   });
 
   it("never shows an unknown state as clear", () => {

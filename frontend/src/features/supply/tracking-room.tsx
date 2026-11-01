@@ -85,7 +85,7 @@ export function TrackingRoomSection() {
           <TierProgress label="Tier 2" calls={first.by_tier["2"].calls} parts={first.by_tier["2"].parts} capacity={first.capacity} room={weekly.room} />
           {spend ? <p className={`text-xs ${spend.off ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>{spend.text}</p> : null}
         </div>
-      ) : <p className="text-xs text-muted-foreground">Not enough parts searched yet to tell.</p>}
+      ) : <p className="text-xs text-muted-foreground">Not enough data yet</p>}
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           <ChevronRight className={`h-3 w-3 transition-transform ${open ? "rotate-90" : ""}`} />Per distributor

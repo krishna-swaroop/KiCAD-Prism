@@ -24,9 +24,7 @@ export function TrackLinesStep({ lines, busy, onChoose }: { lines: readonly Trac
                 </Button>
               ))}
             </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Name the maker on the symbol, or choose it in Review.</p>
-          )}
+          ) : null}
         </li>
       ))}
     </ul>

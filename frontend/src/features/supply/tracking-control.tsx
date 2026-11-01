@@ -56,7 +56,7 @@ export function TrackingControl({
   return (
     <section aria-label="Tracking" className="space-y-1 text-sm">
       <p>
-        {tracking ? `Read ${tracking.rate}${tracking.tier === 1 ? " (tier 1)" : " (tier 2)"}` : "Not followed. Read only when someone asks."}
+        {tracking ? `Read ${tracking.rate}${tracking.tier === 1 ? " (tier 1)" : " (tier 2)"}` : "Not followed"}
         {reasons.length > 0 ? `, because of ${reasons.join(" and ")}.` : ""}
       </p>
       {loaded.data.waiting_at.length > 0 ? <p className="text-xs text-warning">Queued for calls at {loaded.data.waiting_at.length} distributor(s).</p> : null}

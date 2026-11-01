@@ -87,7 +87,7 @@ export function BomFileView() {
       >
         <Upload className="h-8 w-8 text-muted-foreground" />
         <p className="text-sm font-medium">{dragging ? "Drop the file to read it" : "Drop a BOM file here"}</p>
-        <p className="text-xs text-muted-foreground">Excel (.xlsx) or CSV, up to 2 MB. The first sheet is read.</p>
+        <p className="text-xs text-muted-foreground">XLSX or CSV · 2 MB</p>
         <input id="bom-file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,text/csv" className="sr-only" aria-label="BOM file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void choose(file); event.target.value = ""; }} />
         <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById("bom-file")?.click()}>
           <FileSpreadsheet className="h-4 w-4" />Choose file

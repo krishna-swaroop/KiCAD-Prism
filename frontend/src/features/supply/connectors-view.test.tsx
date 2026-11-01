@@ -83,17 +83,17 @@ describe("connectors list", () => {
     expect((screen.getByRole("button", { name: /Add connector/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("explains an empty list, with and without providers", async () => {
+  it("labels an empty list, with and without providers", async () => {
     load([], []);
     const { unmount } = render(<MemoryRouter><SupplyConnectorsView user={admin} /></MemoryRouter>);
-    expect(await screen.findByText(/No distributor providers are installed/)).toBeTruthy();
+    expect(await screen.findByText("No providers installed")).toBeTruthy();
     expect((screen.getByRole("button", { name: /Add connector/ }) as HTMLButtonElement).disabled).toBe(true);
     unmount();
     forgetServerState([]);
 
     load([], [providerFixture()]);
     render(<MemoryRouter><SupplyConnectorsView user={admin} /></MemoryRouter>);
-    expect(await screen.findByText(/Add a distributor to start/)).toBeTruthy();
+    expect(await screen.findByText("No connectors yet")).toBeTruthy();
     expect((screen.getByRole("button", { name: /Add connector/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 

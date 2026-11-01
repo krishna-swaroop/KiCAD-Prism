@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { EndOfLifeLine, ForecastSection } from "./forecast-section";
@@ -65,23 +65,10 @@ describe("the part sheet's Forecast section", () => {
     expect(screen.getAllByText("Learning").length).toBeGreaterThanOrEqual(3);
   });
 
-  it("explains each line when asked why", () => {
+  it("puts no explanation behind its lines", () => {
     render(<ForecastSection forecast={partForecastFixture({}, shown)} currency="EUR" />);
-    const icons = screen.getAllByRole("button", { name: "Why" });
-    expect(icons.length).toBeGreaterThanOrEqual(4);
-    expect(screen.queryByText(/real waits have run 1.4 times the quote/)).toBeNull();
-    // Each opens its own words on hover.
-    icons.forEach((icon) => fireEvent.mouseEnter(icon));
-    expect(screen.getAllByText(/real waits have run 1.4 times the quote/).length).toBeGreaterThan(0);
-  });
-
-  it("explains a return by what it was drawn from, not by what else is known", () => {
-    const fixture = partForecastFixture({}, shown);
-    const back = fixture.back!.map((item) => ({ ...item, basis: "outages" as const, pooled: true }));
-    render(<ForecastSection forecast={{ ...fixture, back }} currency="EUR" />);
-    screen.getAllByRole("button", { name: "Why" }).forEach((icon) => fireEvent.mouseEnter(icon));
-    expect(screen.getAllByText(/Stock-outs at all distributors have lasted this long before/).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/times the quote/), "a ratio is known, but the range did not come from it").toBeNull();
+    expect(screen.queryByRole("button", { name: "Why" })).toBeNull();
+    expect(screen.queryByText(/times the quote/)).toBeNull();
   });
 
   it("has no counter of its own: it is made at the price quantity", () => {
@@ -91,10 +78,10 @@ describe("the part sheet's Forecast section", () => {
 
   it("says a part with too few readings has none yet", () => {
     render(<ForecastSection forecast={{ available: false, reason: "too_few_readings", today: "2026-11-20", models: {} }} currency="EUR" />);
-    expect(screen.getByText("Forecasts start after a week of readings.")).toBeTruthy();
+    expect(screen.getByText("Under a week of readings")).toBeTruthy();
     cleanup();
     render(<ForecastSection forecast={{ available: false, reason: "no_readings", today: "2026-11-20", models: {} }} currency="EUR" />);
-    expect(screen.getByText("Nothing has been read for this part yet.")).toBeTruthy();
+    expect(screen.getByText("Not read yet")).toBeTruthy();
   });
 
   it("says out of stock now instead of a runout", () => {

@@ -41,7 +41,7 @@ describe("the distributor scorecard", () => {
 
   it("says so when no part is listed by two distributors", () => {
     render(<ScorecardTable scorecard={{ distributors: [], shared_parts: 0, min_events: 5 }} />);
-    expect(screen.getByText("No part is listed by two distributors yet.")).toBeTruthy();
+    expect(screen.getByText("No part has two distributors yet")).toBeTruthy();
   });
 });
 

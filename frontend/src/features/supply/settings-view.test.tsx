@@ -66,7 +66,7 @@ describe("the Supply settings window", () => {
     const currency = await screen.findByLabelText(/^Currency/);
     expect(currency.matches(":disabled")).toBe(true);
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
-    expect(screen.getByText("Only administrators can change these.")).toBeTruthy();
+    expect(screen.getByText("Read-only")).toBeTruthy();
   });
 
   it("saves one group by sending the whole settings with that group's fields changed, and shows the default beside a changed field", async () => {

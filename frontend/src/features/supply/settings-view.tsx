@@ -20,13 +20,13 @@ import { useLoaded } from "./use-loaded";
 
 type GroupId = "costing" | "checks" | "alerts" | "reading" | "matching" | "reference";
 
-const GROUPS: ReadonlyArray<{ id: GroupId; label: string; about: string; icon: LucideIcon }> = [
-  { id: "costing", label: "Costing", about: "Currency, price quantity and spares.", icon: Calculator },
-  { id: "checks", label: "Health checks", about: "What counts as a problem, and how bad.", icon: ShieldCheck },
-  { id: "alerts", label: "Alerts", about: "When to raise an alert.", icon: Bell },
-  { id: "reading", label: "Reading", about: "Background reads.", icon: RefreshCw },
-  { id: "matching", label: "Matching", about: "Maker names and part number endings.", icon: Link2 },
-  { id: "reference", label: "Reference data", about: "Exchange rates and the REACH list.", icon: Database },
+const GROUPS: ReadonlyArray<{ id: GroupId; label: string; icon: LucideIcon }> = [
+  { id: "costing", label: "Costing", icon: Calculator },
+  { id: "checks", label: "Health checks", icon: ShieldCheck },
+  { id: "alerts", label: "Alerts", icon: Bell },
+  { id: "reading", label: "Reading", icon: RefreshCw },
+  { id: "matching", label: "Matching", icon: Link2 },
+  { id: "reference", label: "Reference data", icon: Database },
 ];
 
 /**
@@ -34,7 +34,7 @@ const GROUPS: ReadonlyArray<{ id: GroupId; label: string; about: string; icon: L
  * fieldset would also lock the buttons that open a folded list, so each list leaves its own controls out.
  */
 function Lists({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
-  return <div className="space-y-4">{children}{readOnly ? <p className="text-xs text-muted-foreground">Only administrators can change these.</p> : null}</div>;
+  return <div className="space-y-4">{children}{readOnly ? <p className="text-xs text-muted-foreground">Read-only</p> : null}</div>;
 }
 
 function Group({ id, view, readOnly, onSaved }: { id: GroupId; view: AssessmentSettingsView; readOnly: boolean; onSaved: (next: AssessmentSettingsView) => void }) {
@@ -97,10 +97,7 @@ function Body({ user }: { user: User | null }) {
         ))}
       </nav>
       <section aria-label={current.label} className="themed-scrollbar min-w-0 flex-1 space-y-4 overflow-y-auto p-6">
-        <div>
-          <h3 className="text-lg font-medium">{current.label}</h3>
-          <p className="text-sm text-muted-foreground">{current.about}</p>
-        </div>
+        <h3 className="text-lg font-medium">{current.label}</h3>
         <div className="max-w-2xl">
           <Group key={`${group}:${JSON.stringify(view.settings)}`} id={group} view={view} readOnly={user?.role !== "admin"} onSaved={setSaved} />
         </div>

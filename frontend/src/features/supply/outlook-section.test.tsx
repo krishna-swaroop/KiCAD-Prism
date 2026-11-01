@@ -17,22 +17,20 @@ describe("the outlook section", () => {
     render(<OutlookSection outlook={outlook} />);
     expect(screen.getByText("Ending")).toBeTruthy();
     expect(screen.queryByText(/A last time buy has been announced\./)).toBeNull();
-    fireEvent.mouseEnter(screen.getByRole("button", { name: /Show how the outlook/ }));
-    expect(screen.getByText(/rule-based, from the signals below/)).toBeTruthy();
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /Show what the outlook/ }));
+    expect(screen.queryByText(/rule-based/)).toBeNull();
     expect(screen.getByText(/A last time buy has been announced\./)).toBeTruthy();
     expect(screen.getByText("(distributor lifecycle)")).toBeTruthy();
   });
 
-  it("does not promise a long life when nothing was found", () => {
+  it("shows no signs of an end as a good band, with no empty info icon", () => {
     render(<OutlookSection outlook={{ band: "no_signs", label: "No signs of an end", method: "rule-based", signals: [] }} />);
-    expect(screen.queryByText(/not a promise of a long life/)).toBeNull();
-    fireEvent.mouseEnter(screen.getByRole("button", { name: /Show how the outlook/ }));
-    expect(screen.getByText(/not a promise of a long life/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Show what the outlook/ })).toBeNull();
     expect(screen.getByText("No signs of an end").className).toContain("success");
   });
 
   it("says when nothing has been read", () => {
     render(<OutlookSection outlook={{ band: "unknown", label: "Not enough to say", method: "rule-based", signals: [] }} />);
-    expect(screen.getByText("Nothing has been read for this part yet.")).toBeTruthy();
+    expect(screen.getByText("Not read yet")).toBeTruthy();
   });
 });

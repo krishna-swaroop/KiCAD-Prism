@@ -64,7 +64,7 @@ export function CatalogSupplyBar({ filter, onFilter, rows, standing, role, onCha
         </Button>
       ))}
       {toWatch.length > 0 ? (
-        <Button size="sm" variant="outline" className="h-7" disabled={busy} title="Ctrl-click rows to pick which to track" onClick={() => setChoosing(true)}>
+        <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => setChoosing(true)}>
           <Eye className="h-3.5 w-3.5" /> Track {chosen ? `${toWatch.length} picked` : toWatch.length === rows.length ? "these" : `${toWatch.length} shown`}
         </Button>
       ) : null}

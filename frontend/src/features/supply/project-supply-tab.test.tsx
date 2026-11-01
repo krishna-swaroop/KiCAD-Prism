@@ -143,7 +143,7 @@ describe("the project Supply tab", () => {
     const money = screen.getByRole("region", { name: "Cost allocation" });
     expect(within(money).getByText("Other 4 lines · 28%")).toBeTruthy();
     expect(within(money).getByRole("button", { name: /FLAKY-1 · 72%/ })).toBeTruthy();
-    expect(screen.getByText(/Left out as one price read wrong: 2026-09-15/)).toBeTruthy();
+    expect(screen.getByText(/Excluded: 2026-09-15/)).toBeTruthy();
   });
 
   it("asks the server to sort by part, stock or price, as the Parts tab does, and to put the parts running out first", async () => {
@@ -281,7 +281,7 @@ describe("the project Supply tab", () => {
 
   it("is closed to a role without supply access, and never asks", () => {
     renderTab("viewer");
-    expect(screen.getByText(/not available to your role/)).toBeTruthy();
+    expect(screen.getByText("No access")).toBeTruthy();
     expect(mocked.getProjectSupply).not.toHaveBeenCalled();
   });
 

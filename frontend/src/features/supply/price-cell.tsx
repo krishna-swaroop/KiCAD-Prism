@@ -11,15 +11,15 @@ function Note({ part, now }: { part: SupplyPartRow; now: number }) {
   switch (part.price_kind) {
     case "backorder":
       return (
-        <div className="flex items-center justify-end gap-1 text-xs text-warning" title="Nothing is in stock. This is the cheapest price with a lead time quoted.">
+        <div className="flex items-center justify-end gap-1 text-xs text-warning">
           <Clock className="h-3 w-3" aria-hidden="true" />
           {part.price_lead_days ? formatLeadTime(part.price_lead_days) : ""}
         </div>
       );
     case "last_seen":
-      return <div className="text-xs text-muted-foreground" title="Nothing is in stock. This is the price when it last was.">{part.price_seen_day ? `${daysSince(part.price_seen_day, now)} days ago` : "last in stock"}</div>;
+      return <div className="text-xs text-muted-foreground">{part.price_seen_day ? `${daysSince(part.price_seen_day, now)} days ago` : "last in stock"}</div>;
     case "listed":
-      return <div className="text-xs text-muted-foreground" title="Nothing is in stock and no lead time is quoted. This is the list price.">list price</div>;
+      return <div className="text-xs text-muted-foreground">list price</div>;
     default:
       return null;
   }

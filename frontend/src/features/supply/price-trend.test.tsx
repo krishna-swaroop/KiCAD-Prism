@@ -37,11 +37,11 @@ describe("the price section", () => {
     expect(screen.queryByText(/Unchanged/)).toBeNull();
   });
 
-  it("says why there is no move yet", () => {
+  it("shows no move and no hint before a week of readings", () => {
     render(<PriceTrend price={priceFixture({ currency: "EUR", history: [history[1]], trend: null })} />);
     expect(screen.queryByText(/needs a week of readings/)).toBeNull();
-    fireEvent.mouseEnter(screen.getByRole("button", { name: "Show what the price is" }));
-    expect(screen.getByText(/A move needs a week of readings/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show what the price is" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show how the distributors compare" })).toBeNull();
   });
 
   it("shows the quantity it is priced at and lets a person change it", async () => {
@@ -75,7 +75,7 @@ describe("the price section", () => {
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("explains a price that nothing can be bought at", () => {
+  it("labels a price that nothing can be bought at", () => {
     render(
       <PriceTrend
         price={priceFixture({
@@ -84,8 +84,8 @@ describe("the price section", () => {
         })}
       />,
     );
-    expect(screen.getByText(/Nothing is in stock. This is the cheapest price with a lead time, 12 w/)).toBeTruthy();
+    expect(screen.getByText("Backorder price · 12 w")).toBeTruthy();
     expect(screen.queryByText(/Across 2 distributors/)).toBeNull();
-    expect(screen.getByText(/No exchange rate for CHF/)).toBeTruthy();
+    expect(screen.getByText("No exchange rate: CHF")).toBeTruthy();
   });
 });

@@ -9,8 +9,8 @@ import { formatDateTime } from "./supply-format";
 
 /** One line about how a provider is called, where it matters. */
 export function providerNote(provider: string, catalogue = false): string {
-  if (catalogue) return "Offers come from the jlcparts catalogue, twice a day.";
-  if (provider === "lcsc" || provider === "jlcpcb") return "Offers come from an uploaded CSV file: no calls, no credentials.";
+  if (catalogue) return "jlcparts catalogue · twice a day";
+  if (provider === "lcsc" || provider === "jlcpcb") return "CSV upload";
   if (provider === "arrow") return "Reads 100 parts a call.";
   return "";
 }
@@ -125,9 +125,7 @@ export function OffersFile({ connector }: { connector: SupplyConnector }) {
             {" "}· {upload.row_count.toLocaleString()} rows · uploaded {formatDateTime(upload.imported_at)} by {upload.imported_by}
           </span>
         </p>
-      ) : (
-        <p className="text-muted-foreground">No file uploaded. Local data, no call budget.</p>
-      )}
+      ) : null}
     </div>
   );
 }

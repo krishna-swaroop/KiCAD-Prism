@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { PackagingListing, PackagingOptions, PackagingSimilar } from "@/types/supply";
 import { PackagingChip } from "./packaging-chip";
 import { applySimilarPicks, clearPackagingPick, getPackagingOptions, pickPackaging } from "./packaging-api";
@@ -68,11 +68,6 @@ export function PackagingPickDialog({
       <DialogContent className="w-[min(95vw,64rem)] sm:max-w-none">
         <DialogHeader>
           <DialogTitle>{similar ? "Same for Similar Parts?" : "Pick a Packaging"}</DialogTitle>
-          <DialogDescription>
-            {similar
-              ? `These parts at this distributor offer the same packagings. Pick ${similar.packaging.replace("_", " ")} for the ones you tick.`
-              : "Only the listing you pick is read, and only its stock counts."}
-          </DialogDescription>
         </DialogHeader>
         {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
         {!similar && options ? (

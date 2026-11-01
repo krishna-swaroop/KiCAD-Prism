@@ -28,7 +28,7 @@ export function LineNotes({ line }: { line: ProjectSupplyPart | undefined }) {
         </div>
       ) : null}
       {line.alternates?.length ? (
-        <span className="text-xs text-muted-foreground" title="Stock of the part and its approved alternates">
+        <span className="text-xs text-muted-foreground">
           {line.stock === null ? "" : `${formatStock(line.stock)} with alternates`}
           <AlternatesNote alternates={line.alternates} statusFrom={line.status_from} />
         </span>

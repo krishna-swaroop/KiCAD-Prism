@@ -21,7 +21,7 @@ export function SvhcListUpload({ readOnly = false }: { readOnly?: boolean }) {
       <p className="text-xs text-muted-foreground">
         {info?.loaded
           ? `${info.substances.toLocaleString()} substances, from ${info.source_name || "a file"}, loaded ${info.loaded_at?.slice(0, 10)} by ${info.loaded_by}.`
-          : "Not loaded. Upload the ECHA list (CSV or Excel) with substance name and CAS number columns."}
+          : "Not loaded"}
       </p>
       {readOnly ? null : <input
         ref={input}

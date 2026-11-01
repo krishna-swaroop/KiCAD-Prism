@@ -2,7 +2,7 @@ import { ExternalLink, Eye, LibraryBig, Star } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { User } from "@/types/auth";
 import type { SupplyBomLineResult } from "@/types/supply";
 import { BomForecastLine } from "./bom-forecast-line";
@@ -37,7 +37,6 @@ export function BomRowDrawer({ lines, results, canWatch, busyKey, onClose, onWat
       <SheetContent side="right" className="w-full themed-scrollbar overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>{lines && lines.length === 1 ? "Part details" : `${lines?.length ?? 0} parts on this row`}</SheetTitle>
-          <SheetDescription>Stock and price are for the build size set above the table.</SheetDescription>
         </SheetHeader>
         <ul className="mt-4 space-y-3">
           {(lines ?? []).map((line) => (
@@ -105,9 +104,9 @@ function PartCard({ line, result, canWatch, busy, onWatch, onOpenPart, onAddToLi
 function reasonFor(result: SupplyBomLineResult | undefined): string {
   if (!result) return "Looking this up...";
   if (result.in_library === false && result.state !== "tracked") return "Not in the Component Database.";
-  if (result.state === "unknown") return "Prism does not know this part yet. Watch it and it is read within a few minutes.";
-  if (result.state === "no_mpn") return "This symbol has no part number, so Prism cannot track it.";
-  if (result.state === "ambiguous") return "Several makers have this number. Name the maker on the symbol, or choose it in Review.";
+  if (result.state === "unknown") return "Unknown part.";
+  if (result.state === "no_mpn") return "No part number.";
+  if (result.state === "ambiguous") return "Several makers.";
   return untrackedLabel(result) || "Not tracked.";
 }
 
@@ -132,18 +131,15 @@ function Tracked({ result }: { result: SupplyBomLineResult }) {
           Alternates counted: {result.alternates.map((alternate) => `${alternate.mpn} (${alternate.stock === null ? "not read" : formatStock(alternate.stock)})`).join(", ")}
         </p>
       ) : null}
-      {result.part_need !== undefined && result.part_need !== result.need ? (
-        <p className="text-xs text-muted-foreground">This part is on more than one line; the need counts all of them.</p>
-      ) : null}
       {result.manufacturer_match === "lcsc" ? (
-        <p className="text-xs text-muted-foreground">Found by the LCSC number on the symbol.</p>
+        <p className="text-xs text-muted-foreground">Matched by LCSC number</p>
       ) : result.manufacturer_match && result.manufacturer_match !== "exact" ? (
         <p className="text-xs text-warning">
-          Found by part number alone: {result.manufacturer_match === "missing" ? "this symbol names no manufacturer." : "Prism does not know this manufacturer spelling."}
+          Part number only · {result.manufacturer_match === "missing" ? "no manufacturer" : "unknown manufacturer spelling"}
         </p>
       ) : null}
       {result.lead_time_days !== null && result.lead_time_days !== undefined ? <p className="text-xs text-muted-foreground">Lead time {formatLeadTime(result.lead_time_days)}.</p> : null}
-      {result.bought_with ? <p className="text-xs text-muted-foreground">Bought together with another line of this part.</p> : null}
+      {result.bought_with ? <p className="text-xs text-muted-foreground">Bought with another line</p> : null}
       {result.part_id ? <BomForecastLine partId={result.part_id} need={result.part_need ?? result.need} /> : null}
       {result.preferred ? (
         <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
@@ -174,7 +170,7 @@ function Tracked({ result }: { result: SupplyBomLineResult }) {
           ) : null}
         </p>
       ) : result.bought_with ? null : (
-        <p className="text-xs text-muted-foreground">No price for this build size.</p>
+        <p className="text-xs text-muted-foreground">No price</p>
       )}
     </div>
   );
