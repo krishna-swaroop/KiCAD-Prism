@@ -22,6 +22,7 @@ import { keepUsualBuild } from "./tracking-api";
 import { SettleBadge } from "./settle-badge";
 import { TrackProjectButton } from "./track-project-dialog";
 import { useLoaded } from "./use-loaded";
+import { OutOfDateChip } from "./out-of-date-chip";
 
 function costingUrl(projectId: string, variant: string, boards: number): string {
   const query = new URLSearchParams({ build_quantity: String(boards) });
@@ -75,6 +76,7 @@ export function ProjectSupplyTab({ projectId, user, actionsSlot }: { projectId: 
   // The buttons sit on the page's title row when the page gives a place for them, else at the end of this row.
   const actions = (
     <>
+      <OutOfDateChip />
       <SettleBadge projectId={projectId} onChanged={loaded.retry} />
       {supply.available ? <CostingButton projectId={projectId} variant={variant} boards={boards} /> : null}
       <TrackProjectButton projectId={projectId} onChanged={loaded.retry} />

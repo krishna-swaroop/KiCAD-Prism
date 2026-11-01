@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { CheckProgress } from "@/types/supply";
 import { getCheck, startCheck } from "./tracking-api";
+import { ReadFailed } from "./read-failed";
 import { isRunning, useLoaded } from "./use-loaded";
 
 const EVERY_MS = 5000;
@@ -75,6 +76,7 @@ export function CheckOnceButton({
                 {progress.failed > 0 ? <span className="bg-warning/15 px-2 py-0.5 text-warning">{progress.failed} failed</span> : null}
                 {skipped > 0 ? <span className="bg-secondary px-2 py-0.5">{skipped} to settle first</span> : null}
               </div>
+              {read.status === "error" ? <ReadFailed error={read.error} onRetry={read.retry} className="px-0" /> : null}
               <p className="text-xs text-muted-foreground">{running ? "Reading continues if you close this." : "Done."}</p>
             </div>
           ) : (

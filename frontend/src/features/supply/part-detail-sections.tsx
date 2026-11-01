@@ -1,4 +1,4 @@
-import { canReviewSupply } from "@/lib/roles";
+import { canFollowSupply, canReviewSupply } from "@/lib/roles";
 
 import type { UserRole } from "@/types/auth";
 import type { SupplyPartDetail } from "@/types/supply";
@@ -87,7 +87,7 @@ export function PartDetailSections({ detail, canEdit, role, onChanged, wide = fa
         title={`Listings (${detail.listings.length})`} startOpen
         actions={detail.listings.length > 0 ? <TryQuantity listings={detail.listings} /> : null}
       >
-        <ListingGroups wide={wide} detail={detail} canDecide={canReviewSupply(role)} canTrack={canEdit} onChanged={onChanged} />
+        <ListingGroups wide={wide} detail={detail} canDecide={canReviewSupply(role)} canTrack={canFollowSupply(role)} onChanged={onChanged} />
       </FoldSection>
 
       <CrossReferenceSection partId={detail.part.id} canEdit={canEdit} />

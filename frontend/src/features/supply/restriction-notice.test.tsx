@@ -34,4 +34,13 @@ describe("the Not for new designs mark on a component's Supply tab", () => {
     await waitFor(() => expect(getComponentsStatus).toHaveBeenCalled());
     expect(container.textContent).toBe("");
   });
+
+  it("says the mark could not be read rather than showing nothing", async () => {
+    forgetServerState([]);
+    getComponentsStatus.mockRejectedValue(new Error("Could not read the mark"));
+    render(<RestrictionNotice componentId="c1" manufacturer="TI" mpn="LM358" canDecide />);
+    expect(await screen.findByText("Could not read the mark")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    forgetServerState([]);
+  });
 });

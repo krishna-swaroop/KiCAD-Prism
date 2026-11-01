@@ -6,7 +6,7 @@ import {
 
 describe("formatting", () => {
   it("shows stock, or says nothing has been read", () => {
-    expect(formatStock(null)).toBe("None yet");
+    expect(formatStock(null)).toBe("Not read");
     expect(formatStock(0)).toBe("0");
     expect(formatStock(12500)).toBe((12500).toLocaleString());
   });

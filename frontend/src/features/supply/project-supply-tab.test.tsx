@@ -18,6 +18,7 @@ import { ProjectSupplyTab } from "./project-supply-tab";
 import * as api from "./supply-api";
 import { keepUsualBuild } from "./tracking-api";
 import { bomRollupFixture, projectLineFixture } from "./supply-test-fixtures";
+import { formatDay } from "./supply-format";
 
 const mocked = vi.mocked(api);
 
@@ -116,7 +117,7 @@ describe("the project Supply tab", () => {
     }));
     renderTab();
     const history = await screen.findByRole("region", { name: "Cost over time" });
-    expect(within(history).getByText(/up .*1\.5.* since 2026-09-01/)).toBeTruthy();
+    expect(within(history).getByText(new RegExp(`up .*1\\.5.* since ${formatDay("2026-09-01")} · 2 of 3 lines priced`))).toBeTruthy();
     expect(screen.getByText(/3\.20.* left over from minimum orders/)).toBeTruthy();
   });
 
@@ -138,7 +139,7 @@ describe("the project Supply tab", () => {
     }));
     renderTab();
     const curve = await screen.findByRole("region", { name: "Cost per board by build size" });
-    expect(within(curve).getByText(/for one board/)).toBeTruthy();
+    expect(within(curve).getByText(/at 1 board, .* at 100 · 2 of 3 lines priced/)).toBeTruthy();
     const money = screen.getByRole("region", { name: "Cost allocation" });
     expect(within(money).getByText("Other 4 lines · 28%")).toBeTruthy();
     expect(within(money).getByRole("button", { name: /FLAKY-1 · 72%/ })).toBeTruthy();

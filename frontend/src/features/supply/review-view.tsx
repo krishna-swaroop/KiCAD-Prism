@@ -14,6 +14,7 @@ import { MatchedByPrism } from "./matched-by-prism";
 import { OtherNumberPins } from "./other-number-pins";
 import { ListingRow } from "./listing-row";
 import { SeveralListings } from "./several-listings";
+import { reviewCountOf } from "./review-count";
 import { useSupplyReview } from "./use-supply-review";
 
 /** Matches that need a person: manufacturer spellings and listings that are not proven. `after` follows the supply sections;
@@ -39,7 +40,7 @@ export function ReviewView({ user, after, othersWaiting = false }: { user: User 
         {status === "ready" && queue ? (
           <>
             {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
-            {!othersWaiting && queue.aliases.length === 0 && queue.listings.length === 0 && (queue.other_numbers ?? []).length === 0 && (queue.choices ?? []).length === 0 && !(queue.to_approve?.waivers.length) && !(queue.to_approve?.alternates?.length) && !(queue.to_approve?.dismissals?.length) && !(queue.to_approve?.mutes?.length) ? (
+            {!othersWaiting && reviewCountOf(queue) === 0 ? (
               <div className="flex flex-col items-center gap-2 border border-dashed p-10 text-center">
                 <CheckCheck className="h-8 w-8 text-muted-foreground" />
                 <p className="text-sm font-medium">Nothing to review</p>
@@ -86,7 +87,8 @@ export function ReviewView({ user, after, othersWaiting = false }: { user: User 
             <MatchedByPrism matched={queue.matched} canDecide={canDecide} onDecided={refresh} />
           </>
         ) : null}
-        {status === "ready" ? after : null}
+        {/* Work items and local stock read on their own: a failed queue read does not hide them. */}
+        {status === "loading" ? null : after}
       </div>
     </div>
   );

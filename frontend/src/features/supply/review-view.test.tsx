@@ -103,6 +103,13 @@ describe("the review queue", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("article", { name: "Spelling TI" })).toBeTruthy();
   });
+
+  it("still shows what reads on its own when the queue cannot be read", async () => {
+    mocked.getSupplyReviewQueue.mockRejectedValueOnce(new Error("Could not load the review queue"));
+    render(<ReviewView user={qa} after={<p>Work items here</p>} />);
+    expect(await screen.findByText("Could not load the review queue")).toBeTruthy();
+    expect(screen.getByText("Work items here")).toBeTruthy();
+  });
 });
 
 describe("deciding", () => {

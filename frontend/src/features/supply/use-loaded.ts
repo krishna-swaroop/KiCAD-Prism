@@ -21,25 +21,27 @@ export interface Loaded<T> {
 
 /**
  * The resource named `key` (segments split on "/"), read with `fetcher`; null reads nothing. `refresh` reads again
- * keeping what is on screen; `retry` is the same, for after an error. `refreshEvery` (ms) reads again while mounted,
- * and with `refreshWhile` only while it holds for the data on screen; null or 0 stops it. `onData` and `onError` hear
- * each answer, for a screen that acts when a job ends.
+ * keeping what is on screen; `retry` is the same, for after an error. `refreshEvery` (ms) reads again while mounted and
+ * the tab is visible, and with `refreshWhile` only while it holds for the data on screen; null or 0 stops it. With
+ * `keepPrevious` a new key (a search, another page) keeps the previous answer on screen until its own arrives. `onData`
+ * and `onError` hear each answer, for a screen that acts when a job ends.
  */
 export function useLoaded<T>(
   key: string | null,
   fetcher: (signal: AbortSignal) => Promise<T>,
   fallback: string,
-  { refreshEvery = null, refreshWhile, onData, onError }: {
+  { refreshEvery = null, refreshWhile, onData, onError, keepPrevious = false }: {
     refreshEvery?: number | null;
     refreshWhile?: (data: T) => boolean;
     onData?: (data: T) => void;
     onError?: (error: Error) => void;
+    keepPrevious?: boolean;
   } = {},
 ) {
   // Whether the data on screen asks for another read; kept in state because the read's options depend on its own data.
   const [wanted, setWanted] = useState(!refreshWhile);
   const read = useServerState<T>(key === null ? null : [SUPPLY_ROOT, ...key.split("/")], fetcher, {
-    pollMs: refreshEvery && wanted ? refreshEvery : undefined, onData, onError,
+    pollMs: refreshEvery && wanted ? refreshEvery : undefined, whileVisible: true, keepPrevious, onData, onError,
   });
   const stillWanted = !refreshWhile || (read.data !== undefined && refreshWhile(read.data));
   if (stillWanted !== wanted) setWanted(stillWanted);

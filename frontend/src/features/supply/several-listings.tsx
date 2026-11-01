@@ -7,6 +7,7 @@ import { CollapsibleSection } from "./collapsible-section";
 import { PartSheet } from "./part-sheet";
 import { PackagingPickDialog } from "./packaging-pick-dialog";
 import { listPackagingSeveral } from "./packaging-api";
+import { ReadFailed } from "./read-failed";
 import { useLoaded } from "./use-loaded";
 import { VendorName } from "./vendor-name";
 
@@ -19,11 +20,14 @@ function who(item: PackagingSeveral): string {
 /** Every tracked part that a distributor lists in more than one packaging, with the listing followed there. A place to check and change the picks. */
 export function SeveralListings({ canDecide, user = null }: { canDecide: boolean; user?: User | null }) {
   const fetcher = useCallback((signal: AbortSignal) => listPackagingSeveral(signal), []);
-  const { data, retry } = useLoaded("packaging/several", fetcher, "Could not load the listings");
+  const { data, retry, status, error } = useLoaded("packaging/several", fetcher, "Could not load the listings");
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [choosing, setChoosing] = useState<PackagingSeveral | null>(null);
   const [openPart, setOpenPart] = useState<string | null>(null);
   const items = data?.items ?? [];
+  if (status === "error" && !data) {
+    return <CollapsibleSection id="review-several" title="Several listings at a distributor" count={0} startOpen><ReadFailed error={error} onRetry={retry} /></CollapsibleSection>;
+  }
   if (items.length === 0) return null;
   const shown = onlyOpen ? items.filter((item) => !item.picked_by) : items;
   const open = items.filter((item) => !item.picked_by).length;

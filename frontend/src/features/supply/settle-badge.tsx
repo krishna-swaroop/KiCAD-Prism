@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 import { HelpCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,9 @@ export function SettleBadge({ projectId, onChanged }: { projectId: string; onCha
                   lines={data.lines} busy={busy}
                   onChoose={(line, partId) => {
                     setBusy(true);
-                    chooseTrackLine(projectId, partId, line.manufacturer).then(done).finally(() => setBusy(false));
+                    chooseTrackLine(projectId, partId, line.manufacturer).then(done, (caught: unknown) => {
+                      toast.error(caught instanceof Error ? caught.message : "Could not choose the part");
+                    }).finally(() => setBusy(false));
                   }}
                 />
               ) : null}

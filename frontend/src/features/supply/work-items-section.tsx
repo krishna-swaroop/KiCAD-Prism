@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { CollapsibleSection } from "./collapsible-section";
 import { formatAgo } from "./supply-format";
+import { ReadFailed } from "./read-failed";
 import { useLoaded } from "./use-loaded";
 import { ACTION_LABEL } from "./work-item-dialog";
 import { decideWorkItem, listWorkItems, updateWorkItem, workItemHistory, type SupplyWorkItem, type WorkItemList, type WorkItemState } from "./work-items-api";
@@ -132,9 +133,11 @@ function WorkItemSheet({ item, email, canFollow, canDecide, onClose, onChanged }
             <Button size="sm" disabled={!note.trim()} onClick={() => void add()}>Add</Button>
           </div>
         ) : null}
-        <ul aria-label="History" className="space-y-0.5 border-t pt-2 text-xs text-muted-foreground">
-          {(history.data ?? []).map((entry) => <li key={`${entry.at}:${entry.action}`}>{entry.action} · {entry.actor} · {formatAgo(entry.at)}</li>)}
-        </ul>
+        {history.status === "error" && !history.data ? <ReadFailed error={history.error} onRetry={history.retry} className="border-t px-0" /> : (
+          <ul aria-label="History" className="space-y-0.5 border-t pt-2 text-xs text-muted-foreground">
+            {(history.data ?? []).map((entry) => <li key={`${entry.at}:${entry.action}`}>{entry.action} · {entry.actor} · {formatAgo(entry.at)}</li>)}
+          </ul>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { canEditSupply, canFollowSupply } from "@/lib/roles";
+import { canEditSupply, canFollowSupply, canReviewSupply } from "@/lib/roles";
 import type { User } from "@/types/auth";
 import type { SupplyPartDetail } from "@/types/supply";
 import { PartDetailSections } from "./part-detail-sections";
@@ -97,7 +97,7 @@ function PartDetail({ detail, canEdit, role, onChanged }: { detail: SupplyPartDe
             <UsedInLinks uses={detail.used_in} />
           </div>
           <span className="flex shrink-0 items-center gap-1">
-            <PartActions detail={detail} canEdit={canEdit} canFollow={canFollowSupply(role)} onChanged={onChanged} />
+            <PartActions detail={detail} canEdit={canEdit} canFollow={canFollowSupply(role)} canReview={canReviewSupply(role)} onChanged={onChanged} />
             <LibraryComponentLink partId={detail.part.id} />
           </span>
         </div>

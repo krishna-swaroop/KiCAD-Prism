@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { EyeOff, Link2, LibraryBig, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -122,8 +123,8 @@ function useUnmatched(query: string, shown: number, group: UnmatchedGroup) {
     const all = lists.flat().sort((a, b) => Number(Boolean(a.part.linked_component_id)) - Number(Boolean(b.part.linked_component_id)) || b.part.quantity - a.part.quantity);
     return { items: all.slice(0, shown), counts, more: all.length > shown };
   }, [query, shown, group]);
-  const loaded = useLoaded(`inventory/unmatched/${group}|${shown}|${query}`, fetcher, "Could not load the unmatched stock");
-  return loaded.status === "error" ? { items: [], counts: EMPTY_COUNTS, more: false } : loaded.data;
+  // Another page, group or search keeps the rows on screen until its own answer comes.
+  return useLoaded(`inventory/unmatched/${group}|${shown}|${query}`, fetcher, "Could not load the unmatched stock", { keepPrevious: true });
 }
 
 const keyOf = (item: Waiting) => `${item.source.id}/${item.part.remote_part}`;
@@ -137,7 +138,20 @@ export function UnmatchedStockSection({ canDecide, onDecided }: { canDecide: boo
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const state = useUnmatched(query, shown, group);
+  const loaded = useUnmatched(query, shown, group);
+  const state = loaded.data;
+  if (loaded.status === "error" && !state) {
+    return (
+      <CollapsibleSection id="review-unmatched-stock" title="Unmatched local stock" count={0} startOpen>
+        <Alert variant="destructive" className="m-3 w-auto">
+          <AlertDescription className="flex items-center justify-between gap-3">
+            {loaded.error}
+            <Button size="sm" variant="outline" onClick={loaded.retry}>Retry</Button>
+          </AlertDescription>
+        </Alert>
+      </CollapsibleSection>
+    );
+  }
   const total = state ? Object.values(state.counts).reduce((sum, count) => sum + count, 0) : 0;
   if (!state || (total === 0 && !query)) return null;
   const done = () => { setPicked(new Set()); void invalidateSupply("inventory"); onDecided?.(); };

@@ -28,6 +28,8 @@ export function useSupplyPartsList(scope: PartsScope, query: string, only: Parts
 const FEED_PAGE = 50;
 
 interface MorePages {
+  /** The list the pages belong to (its scope, search, filter and sort) and the first page they follow. */
+  list: string;
   base: SupplyPartsPage | null;
   items: SupplyPartRow[];
   next: number | null;
@@ -35,24 +37,61 @@ interface MorePages {
   failed: boolean;
 }
 
-/** Parts a page at a time: the first page, then more as `loadMore` is called. A refresh starts again from the first page. */
+/**
+ * Parts a page at a time: the first page, then more as `loadMore` is called. Another list (scope, search, filter, sort)
+ * starts again from the first page; the same list read again (after a write) reads again the pages already loaded, so the
+ * rows and the place in them stay.
+ */
 export function useSupplyPartsFeed(scope: PartsScope, query: string, only: PartsFilter = "", projectId = "", vendor = "", sort = "") {
   const first = useSupplyPartsList(scope, query, only, FEED_PAGE, projectId, vendor, sort);
-  const [more, setMore] = useState<MorePages>({ base: null, items: [], next: null, failed: false });
+  const list = `${scope}|${query}|${only}|${projectId}|${vendor}|${sort}`;
+  const [more, setMore] = useState<MorePages>({ list, base: null, items: [], next: null, failed: false });
   const [loadingMore, setLoadingMore] = useState(false);
   const reading = useRef<AbortController | null>(null);
   const base = first.data;
-  // Pages loaded after a first page that has since been replaced belong to something else, and so does a read in flight.
-  const extra = useMemo<MorePages>(() => (more.base === base ? more : { base, items: [], next: base?.next_offset ?? null, failed: false }), [more, base]);
-  useEffect(() => () => reading.current?.abort(), [base]);
+  const page = useCallback(
+    (offset: number, limit: number, signal: AbortSignal) =>
+      sort ? listSupplyParts(scope, query, signal, only, offset, limit, projectId, vendor, sort) : listSupplyParts(scope, query, signal, only, offset, limit, projectId, vendor),
+    [scope, query, only, projectId, vendor, sort],
+  );
+  // Pages of another list belong to something else. Pages of this list after an earlier first page are still shown while
+  // they are read again (below).
+  const extra = useMemo<MorePages>(
+    () => (more.list === list && (more.base === base || more.items.length > 0) ? more : { list, base, items: [], next: base?.next_offset ?? null, failed: false }),
+    [more, list, base],
+  );
+  useEffect(() => () => reading.current?.abort(), [list]);
+  // The first page was read again for the same list: read again the rows loaded after it, in pages, and swap them in.
+  useEffect(() => {
+    if (!base || extra.base === base || extra.items.length === 0) return undefined;
+    const controller = new AbortController();
+    reading.current?.abort();
+    reading.current = controller;
+    const wanted = extra.items.length;
+    void (async () => {
+      const items: SupplyPartRow[] = [];
+      let next: number | null = base.next_offset ?? null;
+      while (next !== null && items.length < wanted) {
+        const answer = await page(next, FEED_PAGE, controller.signal);
+        items.push(...answer.items);
+        next = answer.next_offset ?? null;
+      }
+      return { items, next };
+    })().then(
+      ({ items, next }) => { if (!controller.signal.aborted) setMore({ list, base, items, next, failed: false }); },
+      // The rows stay as they were; the next write or Retry reads them again.
+      () => { if (!controller.signal.aborted) setMore({ ...extra, base }); },
+    );
+    return () => controller.abort();
+  }, [base, extra, list, page]);
   const loadMore = useCallback(async () => {
     if (!base || extra.next === null || loadingMore) return;
     const controller = new AbortController();
     reading.current = controller;
     setLoadingMore(true);
     try {
-      const page = await (sort ? listSupplyParts(scope, query, controller.signal, only, extra.next, FEED_PAGE, projectId, vendor, sort) : listSupplyParts(scope, query, controller.signal, only, extra.next, FEED_PAGE, projectId, vendor));
-      if (!controller.signal.aborted) setMore({ base, items: [...extra.items, ...page.items], next: page.next_offset ?? null, failed: false });
+      const answer = await page(extra.next, FEED_PAGE, controller.signal);
+      if (!controller.signal.aborted) setMore({ list, base, items: [...extra.items, ...answer.items], next: answer.next_offset ?? null, failed: false });
     } catch {
       // The rows already loaded stay; the page is read again only when asked (a Retry), not each time the end is in view.
       if (!controller.signal.aborted) setMore({ ...extra, failed: true });
@@ -61,7 +100,7 @@ export function useSupplyPartsFeed(scope: PartsScope, query: string, only: Parts
       // A read replaced by a newer one (another first page) leaves the flag to that one.
       setLoadingMore(reading.current !== null);
     }
-  }, [base, extra, loadingMore, scope, query, only, projectId, vendor, sort]);
+  }, [base, extra, list, loadingMore, page]);
   const items = base ? [...base.items, ...extra.items] : [];
   return {
     ...first, items, forecastState: base?.forecast_state, total: base?.total ?? 0,

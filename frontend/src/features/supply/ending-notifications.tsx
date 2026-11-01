@@ -12,7 +12,7 @@ import type { UserRole } from "@/types/auth";
 import type { EndingPart } from "@/types/supply";
 import { dismissEnding, getEndingParts, retireComponent, setRestriction } from "./ending-api";
 import { StatusDot } from "./status-dot";
-import { formatStock } from "./supply-format";
+import { formatDay, formatStock } from "./supply-format";
 import { WorkItemButton } from "./work-item-dialog";
 import { useLoaded } from "./use-loaded";
 
@@ -77,7 +77,7 @@ function Row({ item, canDecide, canPropose, onOpen, onChanged }: {
       .catch((caught: Error) => { toast.error(caught.message); setBusy(false); });
   };
   const used = item.projects.length === 0 ? "No tracked project" : item.projects.slice(0, 2).map((project) => project.name).join(", ") + (item.projects.length > 2 ? ` +${item.projects.length - 2}` : "");
-  const lastBuy = item.last_buy.length > 0 ? `Last buy ${item.last_buy.map((date) => date.value).join(", ")}` : "";
+  const lastBuy = item.last_buy.length > 0 ? `Last buy ${item.last_buy.map((date) => formatDay(date.value)).join(", ")}` : "";
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
       <div className="min-w-0 flex-1">
@@ -93,7 +93,7 @@ function Row({ item, canDecide, canPropose, onOpen, onChanged }: {
         </p>
       </div>
       <span className="inline-flex shrink-0 items-center gap-1.5 tabular-nums" title="Distributor stock">
-        <StatusDot status={item.status} />{item.stock === null ? "not read" : formatStock(item.stock)}
+        <StatusDot status={item.status} />{formatStock(item.stock)}
       </span>
       {canDecide ? (
         <span className="inline-flex shrink-0 gap-1">

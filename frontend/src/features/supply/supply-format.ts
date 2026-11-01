@@ -66,9 +66,9 @@ export function packagingName(value: string, reelSize: number | null = null): st
   return value === "tape_reel" && reelSize ? `Reel of ${reelSize.toLocaleString()}` : name;
 }
 
-/** A stock figure, or a dash when nothing has been read. */
+/** A stock figure, or "Not read" when no distributor has been read: never a word that could pass for none in stock. */
 export function formatStock(stock: number | null): string {
-  return stock === null ? "None yet" : stock.toLocaleString();
+  return stock === null ? "Not read" : stock.toLocaleString();
 }
 
 /** A lead time in the unit people think in: days under two weeks, whole weeks above. Empty for no quote. */
@@ -80,6 +80,11 @@ export function formatLeadTime(days: number | null | undefined): string {
 const PLAIN_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** A calendar day ("2026-03-01") or an ISO timestamp as "1 Mar", with the year when it is not `today`'s. */
+/** Today as an ISO day (YYYY-MM-DD) in the person's own time zone, not UTC's. */
+export function todayIso(now: Date = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 export function formatDay(iso: string, today?: string): string {
   const parts = PLAIN_DAY.exec(iso);
   const date = parts ? new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]))) : new Date(iso);

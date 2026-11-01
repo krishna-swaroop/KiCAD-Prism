@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CollapsibleSection } from "./collapsible-section";
+import { ReadFailed } from "./read-failed";
 import { addNumberEnding, listNumberEndings, removeNumberEnding } from "./supply-api";
 import { useConnectorSubmit } from "./use-connector-submit";
 import { useLoaded } from "./use-loaded";
@@ -24,6 +25,7 @@ export function NumberEndings({ readOnly = false }: { readOnly?: boolean }) {
   return (
     <section aria-label="Number endings" className="space-y-2">
       <CollapsibleSection id="settings-number-endings" title="Endings of part numbers" count={endings.length} startOpen={false}>
+        {loaded.status === "error" ? <ReadFailed error={loaded.error} onRetry={loaded.retry} /> : null}
         {(["packaging", "grade"] as const).map((group) => (
           <div key={group} className="flex flex-wrap items-center gap-1.5 border-b px-3 py-2 text-xs" aria-label={group === "packaging" ? "Packaging" : "Grade"}>
             <span className="mr-1 text-sm font-medium">{group === "packaging" ? "Packaging" : "Grade"}</span>

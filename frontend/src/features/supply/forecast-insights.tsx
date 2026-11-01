@@ -5,7 +5,7 @@ import { ChartCard } from "./chart-card";
 import { ComingUpCard } from "./dashboard-forecast";
 import { ModelChip } from "./forecast-chip";
 import { getForecastInsights } from "./supply-api";
-import { formatLeadTime, formatPrice } from "./supply-format";
+import { formatLeadTime, formatPrice, todayIso } from "./supply-format";
 import { useLoaded } from "./use-loaded";
 
 const STATE_LABEL = { shown: "Shown", learning: "Learning", paused: "Paused" } as const;
@@ -128,7 +128,7 @@ export function ForecastInsightsSection({ page, onOpenPart }: { page: ForecastIn
   const rising = page.prices.likeliest_up.some((item) => item.change > 0.005);
   return (
     <div className="grid gap-3 lg:grid-cols-2">
-      {shown("out_4w") && page.coming_up.length > 0 ? <ComingUpCard events={page.coming_up} today={new Date().toISOString().slice(0, 10)} onOpenPart={onOpenPart} /> : null}
+      {shown("out_4w") && page.coming_up.length > 0 ? <ComingUpCard events={page.coming_up} today={todayIso()} onOpenPart={onOpenPart} /> : null}
       {shown("lead_90") && page.lead_times.length > 0 ? <LeadTimes page={page} /> : null}
       {page.warnings.length > 0 ? <Warnings page={page} /> : null}
       {shown("price_90") && rising ? <Prices page={page} currency={page.currency} onOpenPart={onOpenPart} /> : null}

@@ -8,6 +8,7 @@ import type { EndingPart } from "@/types/supply";
 import * as api from "./ending-api";
 import { EndingNotifications } from "./ending-notifications";
 import { forgetServerState } from "@/lib/server-state";
+import { formatDay } from "./supply-format";
 
 const item = (over: Partial<EndingPart> = {}): EndingPart => ({
   component: { id: "c1", name: "Op amp", mpn: "LM358DR", manufacturer: "Texas Instruments", stage: "released" },
@@ -41,7 +42,7 @@ describe("ending parts on the Dashboard", () => {
   it("names the component with why, the last buy date, stock and the projects that use it", async () => {
     render(<EndingNotifications role="qa" onOpenComponent={vi.fn()} />);
     expect(await screen.findByText("1 library component's part is ending")).toBeTruthy();
-    expect(screen.getByText("Not recommended for new designs · Outlook: under two years · Last buy 2027-03-31 · Power board")).toBeTruthy();
+    expect(screen.getByText(`Not recommended for new designs · Outlook: under two years · Last buy ${formatDay("2027-03-31")} · Power board`)).toBeTruthy();
     expect(screen.getByText("4,200")).toBeTruthy();
   });
 

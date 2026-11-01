@@ -4,12 +4,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ProjectSupply } from "@/types/supply";
 import { BarList } from "./bar-list";
 import { ChartCard } from "./chart-card";
-import { formatPrice } from "./supply-format";
+import { formatDay, formatPrice } from "./supply-format";
 
 const CostCurveChart = lazy(() => import("./project-cost-chart"));
 const CostHistoryChart = lazy(() => import("./project-cost-chart").then((module) => ({ default: module.CostHistoryChart })));
 
 const percent = (share: number) => `${Math.round(share * 100)}%`;
+const plural = (boards: number) => `${boards.toLocaleString()} ${boards === 1 ? "board" : "boards"}`;
 
 /** The cost of a board at 1, 10, 100, 1,000 and 10,000 boards, and where the money of the chosen build goes. */
 export function ProjectCostCards({ supply, boards, onOpenPart }: { supply: ProjectSupply; boards: number; onOpenPart: (partId: string) => void }) {
@@ -19,12 +20,17 @@ export function ProjectCostCards({ supply, boards, onOpenPart }: { supply: Proje
   if (!currency || (curve.length === 0 && !money)) return null;
   const first = curve.find((point) => point.cost_per_board !== null);
   const last = [...curve].reverse().find((point) => point.cost_per_board !== null);
+  // A cost over fewer lines than the BOM has is a subtotal, and says so.
+  const partial = [first, last].find((point) => point && point.lines_priced < point.lines);
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       {first && last && first !== last ? (
         <ChartCard
           title="Cost per board by build size"
-          answer={`${formatPrice(first.cost_per_board as string, currency, 2)} for one board, ${formatPrice(last.cost_per_board as string, currency, 2)} at ${last.boards.toLocaleString()}`}
+          answer={[
+            `${formatPrice(first.cost_per_board as string, currency, 2)} at ${plural(first.boards)}, ${formatPrice(last.cost_per_board as string, currency, 2)} at ${last.boards.toLocaleString()}`,
+            partial ? `${partial.lines_priced} of ${partial.lines} lines priced` : "",
+          ].filter(Boolean).join(" · ")}
         >
           <Suspense fallback={<Skeleton className="h-44 w-full" />}><CostCurveChart curve={curve} chosen={boards} currency={currency} /></Suspense>
         </ChartCard>
@@ -57,10 +63,15 @@ export function ProjectCostHistory({ supply }: { supply: ProjectSupply }) {
   const currency = last.currency;
   const change = Number(last.cost_per_board) - Number(first.cost_per_board);
   const left = supply.cost_history_left_out ?? [];
+  const rollup = supply.rollup;
   return (
     <ChartCard
       title="Cost over time"
-      answer={`${formatPrice(last.cost_per_board, currency, 2)} a board at ${last.boards.toLocaleString()} ${last.boards === 1 ? "board" : "boards"} now, ${change === 0 ? "unchanged" : `${change > 0 ? "up" : "down"} ${formatPrice(String(Math.abs(change)), currency, 2)}`} since ${first.day}`}
+      answer={[
+        `${formatPrice(last.cost_per_board, currency, 2)} a board at ${plural(last.boards)} now, ${change === 0 ? "unchanged" : `${change > 0 ? "up" : "down"} ${formatPrice(String(Math.abs(change)), currency, 2)}`} since ${formatDay(first.day)}`,
+        // The days kept do not say how much of the BOM they priced; today's figure does.
+        rollup && rollup.lines_priced < rollup.lines ? `${rollup.lines_priced} of ${rollup.lines} lines priced` : "",
+      ].filter(Boolean).join(" · ")}
     >
       <Suspense fallback={<Skeleton className="h-32 w-full" />}><CostHistoryChart points={points} currency={currency} /></Suspense>
       {left.length > 0 ? (

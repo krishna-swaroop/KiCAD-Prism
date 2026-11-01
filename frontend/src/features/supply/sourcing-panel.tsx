@@ -114,7 +114,7 @@ function Tracked({ partId, componentId, user }: { partId: string; componentId: s
           <span className="font-medium">{STATUS_LABEL[detail.status]}</span>
         </div>
         <span className="flex items-center gap-1">
-          <PartActions detail={detail} canEdit={canEdit} canFollow={canFollowSupply(user?.role)} onChanged={part.refresh} />
+          <PartActions detail={detail} canEdit={canEdit} canFollow={canFollowSupply(user?.role)} canReview={canReviewSupply(user?.role)} onChanged={part.refresh} />
           <Button asChild size="icon" variant="outline" className="h-8 w-8 shrink-0">
             <Link to={`/?section=supply&supplyView=tracking&part=${encodeURIComponent(partId)}`} aria-label="Open in Supply Tracking" title="Open in Supply Tracking">
               <ExternalLink className="h-4 w-4" />

@@ -113,17 +113,22 @@ export function PartDetailScreen({
     preview: previewFor(componentId, prefetched),
   }));
   const [retryNonce, setRetryNonce] = useState(0);
+  // One refresh at a time: the server refuses another within 15 minutes, so a second click would only be refused.
+  const [refreshing, setRefreshing] = useState(false);
   const refreshAvailability = async () => {
     const partId = load.phase === "ready" ? load.component.supply?.summary?.part_id : undefined;
     if (!partId) {
       appendLog("Prism does not track this part's availability yet.");
       return;
     }
+    setRefreshing(true);
     try {
       appendLog(refreshText(await refreshSupplyPart(partId)));
       setRetryNonce((value) => value + 1);
     } catch (err) {
       appendLog((err as Error).message);
+    } finally {
+      setRefreshing(false);
     }
   };
   const [showAllParams, setShowAllParams] = useState(false);
@@ -299,7 +304,7 @@ export function PartDetailScreen({
     <div className="flex flex-1 flex-col gap-3">
       {/* ── Header Row ─────────────────────────────────────────── */}
       <div className="flex items-start gap-2">
-        <Button variant="ghost" size="icon-xs" onClick={onBack} className="mt-0.5 shrink-0">
+        <Button variant="ghost" size="icon-xs" onClick={onBack} className="mt-0.5 shrink-0" aria-label="Back" title="Back">
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
         <span className="mt-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
@@ -464,10 +469,12 @@ export function PartDetailScreen({
             <button
               aria-label="Refresh availability"
               title="Refresh availability"
-              className="text-muted-foreground transition-colors hover:text-primary"
+              className="text-muted-foreground transition-colors hover:text-primary disabled:opacity-50"
+              disabled={refreshing}
+              aria-busy={refreshing}
               onClick={() => void refreshAvailability()}
             >
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
             </button>
           ) : null
         }
