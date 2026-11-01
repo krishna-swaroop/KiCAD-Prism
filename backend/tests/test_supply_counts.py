@@ -20,6 +20,15 @@ class RiskColumnTests(unittest.TestCase):
         self.assertEqual(risk_views.availability_of({"stock": 0}, None), "out")
 
 
+class ReasonTests(unittest.TestCase):
+    def test_a_project_the_caller_cannot_see_is_left_out_of_the_reasons(self) -> None:
+        from app.services.supply import tracking
+
+        reasons = [{"kind": "project", "ref": "prj_open"}, {"kind": "project", "ref": "prj_hidden", "variant": "Secret"}, {"kind": "person", "ref": "ana"}]
+        self.assertEqual(tracking.visible_reasons(reasons, {"prj_open"}), [reasons[0], reasons[2]])
+        self.assertEqual(tracking.visible_reasons(reasons, None), reasons)
+
+
 class RoundTests(unittest.TestCase):
     def test_a_restock_counts_in_one_round_only(self) -> None:
         first, took_part = scorecard._rounds({"p1": {"a": [date(2026, 9, 1), date(2026, 9, 21)], "b": [date(2026, 9, 11)]}})  # noqa: SLF001

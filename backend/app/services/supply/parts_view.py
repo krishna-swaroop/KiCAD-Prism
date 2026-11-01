@@ -70,12 +70,15 @@ def _like(text: str) -> str:
     return f"%{escaped}%"
 
 
-def _tracking_dto(row) -> dict[str, Any] | None:
-    """Whether Prism follows the part and why: tier 1 or 2, how often, and the reasons (a project, a person, a component)."""
+def _tracking_dto(row, visible: set[str] | None) -> dict[str, Any] | None:
+    """Whether Prism follows the part and why: tier 1 or 2, how often, and the reasons (a project, a person, a component). A project
+    the caller may not see is left out of the reasons (``tracking.visible_reasons``)."""
+
+    from app.services.supply import tracking  # it reads this module
 
     if row["tracking_tier"] is None:
         return None
-    return {"tier": int(row["tracking_tier"]), "rate": row["tracking_rate"], "reasons": row["tracking_reasons"]}
+    return {"tier": int(row["tracking_tier"]), "rate": row["tracking_rate"], "reasons": tracking.visible_reasons(row["tracking_reasons"], visible)}
 
 
 def _watch_dto(row) -> dict[str, Any] | None:
@@ -392,6 +395,7 @@ def _summaries(
     sums = _cached(conn, rows, offers=offers, seen=seen)
     jlc = facts.jlc_classes(conn, ids)
     used = usage.projects_of_parts(conn, ids, role)
+    visible = usage.visible_project_ids(role)
 
     items = []
     for row in rows:
@@ -403,7 +407,7 @@ def _summaries(
             # Written by a person or a BOM and not yet confirmed by a distributor's answer.
             "manufacturer_provisional": bool(row["maker_provisional"]),
             "watch": _watch_dto(row),
-            "tracking": _tracking_dto(row),
+            "tracking": _tracking_dto(row, visible),
             **mine,
             "used_in": len(used.get(row["id"], ())),
             "jlc": jlc.get(row["id"]),
@@ -1142,7 +1146,7 @@ def part_detail(conn, part_id: str, *, now: datetime | None = None, role: str | 
     return {
         "part": {"id": part.id, "mpn": part.mpn, "manufacturer": part.manufacturer_name, "first_seen": _first_seen(conn, part_id)},
         "watch": _watch_dto(watch_row),
-        "tracking": _tracking_dto(watch_row),
+        "tracking": _tracking_dto(watch_row, usage.visible_project_ids(role)),
         "packaging": _packaging_state(conn, part_id),
         "preferred_connector_id": preferences.get(conn, part_id),
         "trade": trade_marks.state(conn, part_id),

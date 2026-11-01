@@ -21,7 +21,9 @@ def record(conn, listing_id: str, previous_stock: int | None, stock: int, lead_d
         expected = day + timedelta(days=lead_days) if lead_days else None
         conn.execute(
             "INSERT INTO supply_stock_events (listing_id, day, kind, stock_before, stock_after, quoted_lead_days, expected) "
-            "VALUES (%s, %s, 'stock_out', %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+            # A second stock-out on one day (it came back and went again) opens the day's event again: the listing is out now.
+            "VALUES (%s, %s, 'stock_out', %s, %s, %s, %s) ON CONFLICT (listing_id, day, kind) DO UPDATE SET resolved_on = NULL, "
+            "stock_before = EXCLUDED.stock_before, quoted_lead_days = EXCLUDED.quoted_lead_days, expected = EXCLUDED.expected",
             (listing_id, day, previous_stock, stock, lead_days or None, expected),
         )
         return "stock_out"
