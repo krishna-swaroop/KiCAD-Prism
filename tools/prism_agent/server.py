@@ -10,7 +10,7 @@ Endpoints
     GET  /settings                   -> {settings, identity, protocol}
     GET  /library                    -> is Prism KiCad's remote symbol provider, and
                                         does it point at the server we're configured for?
-    GET  /locate?id=<id>             -> where this machine keeps a project, by marker
+    GET  /locate?id=<id>             -> where this machine keeps a project, by marker or git origin
     GET  /branches?path=<path>       -> local + remote branches, for a switch picker
     GET  /checkout?path=&ref=        -> could we check this ref out, and if not, why not
     GET  /stash?path=<path>          -> what the user has set aside
@@ -1059,12 +1059,25 @@ class _Handler(BaseHTTPRequestHandler):
         looked and it is not there), and the caller has to be able to tell those
         apart rather than guessing.
         """
-        roots = settings_store.load().projects_roots
-        return {
-            "id": project_id,
-            "path": identity.find_by_id(project_id, roots),
-            "roots": roots,
-        }
+        saved = settings_store.load()
+        roots = saved.projects_roots
+        path = identity.find_by_id(project_id, roots)
+        if not path and roots:
+            # No marker: fall back to the repo's git origin, which needs the row.
+            rows = self.state.prism._request("GET", "/api/projects")
+            row = next(
+                (r for r in rows if isinstance(r, dict) and r.get("id") == project_id),
+                None,
+            ) if isinstance(rows, list) else None
+            if row:
+                path = identity.find_checkout(
+                    project_id,
+                    roots,
+                    origin_url=row.get("origin_url") or "",
+                    sub_path=row.get("sub_path") or "",
+                    server=saved.server_url,
+                )
+        return {"id": project_id, "path": path, "roots": roots}
 
 
 def _clean_roots(raw) -> list[str]:

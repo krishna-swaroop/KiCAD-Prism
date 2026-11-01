@@ -166,8 +166,6 @@ def resolve(project_id: str) -> dict:
         roots     configured projects roots (empty = we did not look anywhere)
     """
     saved = settings_store.load()
-    found = identity.find_by_id(project_id, saved.projects_roots)
-
     client = PrismClient(_config(saved))
     rows = client._request("GET", "/api/projects")
     row = None
@@ -176,6 +174,13 @@ def resolve(project_id: str) -> dict:
             (r for r in rows if isinstance(r, dict) and r.get("id") == project_id),
             None,
         )
+    found = identity.find_checkout(
+        project_id,
+        saved.projects_roots,
+        origin_url=(row or {}).get("origin_url") or "",
+        sub_path=(row or {}).get("sub_path") or "",
+        server=saved.server_url,
+    )
 
     return {
         "id": project_id,
@@ -313,10 +318,9 @@ def open_project(
     # settings change from being a silent surprise; the caller shows the note.
     added = _register_root(marker_dir)
 
-    # The clone has no marker if the project predates phase 1, and without one we
-    # would fail to find it next time and clone it all over again. Stamp it.
+    # Stamp the clone so the next link finds it by marker rather than by origin.
     if not identity.project_id(marker_dir):
-        identity.write(marker_dir, project_id, settings_store.load().server_url)
+        identity.stamp_clone(marker_dir, project_id, settings_store.load().server_url)
 
     if ref:
         # A fresh clone is clean by definition, so this cannot destroy anything and
