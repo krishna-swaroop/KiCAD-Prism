@@ -94,6 +94,12 @@ class PanelPayloadTests(unittest.TestCase):
 
     def test_the_panel_refresh_needs_supply_access_and_a_known_part(self) -> None:
         self.assertEqual(self.refresh(self.part.id, role="viewer").status, 403)
+        from app.core.security import AuthenticatedUser
+
+        # It spends the account's calls: a read-only token or a KiCad provider token may not.
+        for auth_type, scopes in (("kicad_provider", ["remote_symbols.read"]), ("agent", ["api:read"])):
+            self.users[f"qa-{auth_type}"] = AuthenticatedUser(email="qa@example.com", name="qa", role="qa", auth_type=auth_type, scopes=scopes)
+            self.assertEqual(self.refresh(self.part.id, role=f"qa-{auth_type}").status, 403, auth_type)
         self.assertEqual(self.refresh("no-such-part").status, 404)
 
     @staticmethod

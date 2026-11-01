@@ -14,7 +14,7 @@ from app.core.roles import SUPPLY_READ_ROLES
 from app.api import remote_provider_models as models
 from app.api._helpers import preview_file_response
 from app.core.errors import value_errors_as
-from app.core.security import AuthenticatedUser, require_remote_symbol_reader
+from app.core.security import AuthenticatedUser, require_remote_symbol_reader, require_supply_tracker
 from app.services import provider_auth_service, provider_revisions
 from app.services.component_catalog_service import catalog_service
 from app.services.public_url_service import resolve_public_base_url
@@ -444,11 +444,9 @@ async def get_component(
 
 
 @router.post("/api/remote-provider/supply/parts/{part_id}/refresh")
-async def refresh_supply_part(part_id: str, user: AuthenticatedUser = Depends(require_remote_symbol_reader)) -> dict:
-    """Read one tracked part from its distributors now. Allowed under the read scope: it changes nothing a person sees."""
-
-    if not _supply_visible(user):
-        raise HTTPException(status_code=403, detail="Supply data is not available to this account")
+async def refresh_supply_part(part_id: str, user: AuthenticatedUser = Depends(require_supply_tracker)) -> dict:
+    """Read one tracked part from its distributors now. It spends the account's calls, so it takes what following a part takes:
+    a supply role and a person or a token that may write; read-only and KiCad provider tokens are refused."""
 
     def run() -> dict:
         from app.api import supply_connectors

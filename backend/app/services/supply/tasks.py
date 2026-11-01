@@ -142,6 +142,7 @@ def _inventory(conn, now: datetime, store: SupplyStore) -> None:
     from app.services.supply import credentials
     from app.services.supply.inventory import sync as inventory_sync
 
+    conn.commit()  # the sync takes its own connections; this one holds no transaction while it reads the sources
     inventory_sync.sync_due(store, credentials.default_keyring_factory)
 
 

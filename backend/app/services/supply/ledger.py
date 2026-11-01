@@ -209,12 +209,13 @@ def try_spend(
 
 def record_calls(
     store, connector_id: str, units: int, *, now: datetime, interactive: bool = False,
-    kind: str = KIND_OFFERS, purpose: str | None = None,
+    kind: str = KIND_OFFERS, purpose: str | None = None, spare: bool = False,
 ) -> None:
     """Count calls that were already made beyond what was reserved, so the day's figure stays true.
 
     Unlike ``try_spend`` it never refuses: the calls happened. It is used when one batch needed more calls than
-    the one it paid for (a part whose packagings DigiKey lists under two products).
+    the one it paid for (a part whose packagings DigiKey lists under two products). The calls are charged where the batch
+    was paid from: people's share, spare calls or the committed allowance.
     """
 
     if units < 1:
@@ -224,14 +225,39 @@ def record_calls(
         day = quota.provider_day(now, account.reset_time, account.reset_tz)
         conn.execute(
             """
-            INSERT INTO supply_quota_ledger (account_id, day, spent, interactive_spent) VALUES (%s, %s, %s, %s)
+            INSERT INTO supply_quota_ledger (account_id, day, spent, interactive_spent, spare_spent) VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (account_id, day) DO UPDATE SET spent = supply_quota_ledger.spent + EXCLUDED.spent,
-                interactive_spent = supply_quota_ledger.interactive_spent + EXCLUDED.interactive_spent
+                interactive_spent = supply_quota_ledger.interactive_spent + EXCLUDED.interactive_spent,
+                spare_spent = supply_quota_ledger.spare_spent + EXCLUDED.spare_spent
             """,
-            (account.ledger_id, day, units, units if interactive else 0),
+            (account.ledger_id, day, units, units if interactive else 0, units if spare else 0),
         )
         _count(conn, connector_id, day, quota.day_hour(now, account.reset_time, account.reset_tz), kind,
                _purpose(purpose, interactive), units)
+
+
+def raise_spent_to(store, connector_id: str, total: int, *, now: datetime, kind: str) -> int:
+    """Raise today's spent figure to ``total`` when it is below it, under the day row's lock, and return what was added.
+
+    Two answers carrying the same provider count add the gap once: the second finds the row already raised.
+    """
+
+    with store.connection() as conn:
+        account = accounts.resolve(conn, connector_id)
+        day = quota.provider_day(now, account.reset_time, account.reset_tz)
+        conn.execute(
+            "INSERT INTO supply_quota_ledger (account_id, day, spent, interactive_spent) VALUES (%s, %s, 0, 0) ON CONFLICT DO NOTHING",
+            (account.ledger_id, day),
+        )
+        row = conn.execute(
+            "SELECT spent FROM supply_quota_ledger WHERE account_id = %s AND day = %s FOR UPDATE", (account.ledger_id, day),
+        ).fetchone()
+        gap = total - int(row["spent"])
+        if gap < 1:
+            return 0
+        conn.execute("UPDATE supply_quota_ledger SET spent = %s WHERE account_id = %s AND day = %s", (total, account.ledger_id, day))
+        _count(conn, connector_id, day, quota.day_hour(now, account.reset_time, account.reset_tz), kind, PURPOSE_COMMITTED, gap)
+        return gap
 
 
 def note_refusal(store, connector_id: str, *, now: datetime, purpose: str | None = None) -> None:

@@ -16,8 +16,8 @@ the connector card shows, rather than reading the files wrongly.
 
 from __future__ import annotations
 
-import gzip
 import json
+import zlib
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Callable, Iterable
@@ -32,17 +32,27 @@ VERSION = 4
 # How long an import stands before the next; jlcparts is rebuilt every eight hours.
 EVERY = timedelta(hours=12)
 MAX_BYTES = 32 * 1024 * 1024
+# What one file may unpack to: a small download that expands without bound is refused, not read into memory.
+MAX_UNPACKED = 8 * MAX_BYTES
 CURRENCY = "USD"
 
 Fetch = Callable[[str], bytes]
 
 
+def _gunzip(data: bytes) -> bytes:
+    unpacker = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    out = unpacker.decompress(data, MAX_UNPACKED + 1)
+    if len(out) > MAX_UNPACKED or unpacker.unconsumed_tail:
+        raise ProviderError("a jlcparts catalogue file unpacks to more than the limit")
+    return out
+
+
 def _json(data: bytes) -> Any:
-    return json.loads(gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data)
+    return json.loads(_gunzip(data) if data[:2] == b"\x1f\x8b" else data)
 
 
 def _lines(data: bytes) -> list[str]:
-    return gzip.decompress(data).decode("utf-8").splitlines()
+    return _gunzip(data).decode("utf-8").splitlines()
 
 
 def _attribute(lut: list, ids: Iterable[int], name: str) -> str:
@@ -125,5 +135,8 @@ def read(fetch: Fetch, wanted: set[str]) -> tuple[str, list[CsvOfferRow]]:
     return str(manifest.get("created") or ""), rows
 
 
-def due(imported_at: datetime | None, now: datetime) -> bool:
-    return imported_at is None or now - imported_at >= EVERY
+def due(imported_at: datetime | None, now: datetime, failed_at: datetime | None = None) -> bool:
+    """Every ``EVERY``; a failed read waits as long, so a file that is too big or broken is not fetched again every run."""
+
+    last = max((moment for moment in (imported_at, failed_at) if moment is not None), default=None)
+    return last is None or now - last >= EVERY
