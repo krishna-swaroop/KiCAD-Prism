@@ -77,6 +77,12 @@ def fit_width_to_content(dialog: wx.Dialog, scroll: wx.Window, content: wx.Sizer
     right edge with no way to reach it. No fixed default is right for every card,
     font and DPI, so take the minimum from the laid-out content instead.
 
+    The content is only part of it. The header (title, identity, status icons, the
+    path line) sits outside the scroll area, and its row can need more than the
+    scrolled cards do: measured live, the header wanted 570px in a 560px dialog while
+    the content wanted 274, which squashed the last button to 10px. So the dialog's
+    whole root sizer counts too, and the larger of the two wins.
+
     The non-content width (gutters, a scrollbar or ScrollThumb, the window frame) is
     measured from the dialog rather than summed from constants, so it stays right
     whatever the dialog puts beside the scroll area.
@@ -85,8 +91,12 @@ def fit_width_to_content(dialog: wx.Dialog, scroll: wx.Window, content: wx.Sizer
     keeps that, and on a small display the cap wins over the content.
     """
     size = dialog.GetSize()
+    frame = size.width - dialog.GetClientSize().width
     extra = size.width - scroll.GetClientSize().width
     need = content.GetMinSize().width + extra
+    root = dialog.GetSizer()
+    if root is not None:
+        need = max(need, root.GetMinSize().width + frame)
 
     index = wx.Display.GetFromWindow(dialog)
     if index == wx.NOT_FOUND:
