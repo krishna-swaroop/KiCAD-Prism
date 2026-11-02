@@ -118,9 +118,9 @@ describe("RunView", () => {
             const advance = screen.getByRole("button", { name: "Mark as in production" });
             const arrow = screen.getByRole("button", { name: "Set status" });
             expect(advance.parentElement).toBe(arrow.parentElement);
-            // The status choices are not duplicated in the actions menu.
-            openMenu("Production actions");
-            expect(await screen.findByRole("menuitem", { name: /Delete production/ })).toBeTruthy();
+            // Delete is its own button, not an entry in a menu, and the status choices stay in theirs.
+            expect(screen.getByRole("button", { name: "Delete production" })).toBeTruthy();
+            expect(screen.queryByRole("button", { name: "Production actions" })).toBeNull();
             expect(screen.queryByRole("menuitemradio")).toBeNull();
         });
 
@@ -185,16 +185,15 @@ describe("RunView", () => {
             deleteRun.mockResolvedValue(undefined);
             renderView(makeRun());
             await heading("JOB-2026-0001");
-            openMenu("Production actions");
-            fireEvent.click(await screen.findByRole("menuitem", { name: /Delete production/ }));
+            fireEvent.click(screen.getByRole("button", { name: "Delete production" }));
             expect(await screen.findByText("Delete production?")).toBeTruthy();
             expect(deleteRun).not.toHaveBeenCalled();
         });
 
-        it("hides the delete menu without edit rights, but QA keeps the status control", async () => {
+        it("hides the delete button without edit rights, but QA keeps the status control", async () => {
             renderView(makeRun(), { canEdit: false, canChangeStatus: true });
             await heading("JOB-2026-0001");
-            expect(screen.queryByRole("button", { name: "Production actions" })).toBeNull();
+            expect(screen.queryByRole("button", { name: "Delete production" })).toBeNull();
             expect(screen.getByRole("button", { name: "Set status" })).toBeTruthy();
         });
 

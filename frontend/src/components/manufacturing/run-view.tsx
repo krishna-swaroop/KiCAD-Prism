@@ -139,7 +139,7 @@ export function RunView({
                 onRequestDelete={() => setConfirmDelete(true)}
             />
 
-            <ScrollArea className="themed-scrollbar min-h-0 flex-1">
+            <ScrollArea className="themed-scrollbar min-h-0 flex-1 [scrollbar-gutter:stable]">
                 <main className="grid w-full gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
                     <div className="min-w-0 space-y-6">
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -34,6 +34,8 @@ export function RunDrawer({
             <SheetContent
                 side="right"
                 className="flex w-full flex-col gap-0 p-0 sm:w-[min(960px,75vw)] sm:max-w-none"
+                // The X sits in the header's row of icon buttons: same size, same line.
+                closeClassName="right-6 top-6 flex size-7 items-center justify-center rounded-none p-0 opacity-100 shadow-none"
             >
                 <SheetTitle className="sr-only">Production</SheetTitle>
                 <SheetDescription className="sr-only">

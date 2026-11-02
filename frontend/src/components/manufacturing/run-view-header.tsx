@@ -1,13 +1,12 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ExternalLink, FileDown, MoreHorizontal, Trash2 } from "lucide-react";
+import { ChevronDown, ExternalLink, FileDown, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
     DropdownMenuContent,
-    DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
@@ -49,7 +48,7 @@ export function RunHeader({ run, canEdit, canChangeStatus, projectLink, onChange
     };
 
     return (
-        <header className="shrink-0 border-b bg-background px-6 pb-4 pr-14 pt-6">
+        <header className="shrink-0 border-b bg-background pb-4 pl-6 pr-[3.75rem] pt-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -79,27 +78,21 @@ export function RunHeader({ run, canEdit, canChangeStatus, projectLink, onChange
                         </Button>
                     )}
                     {canEdit && (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button size="icon-sm" variant="outline" aria-label="Production actions">
-                                    <MoreHorizontal />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive"
-                                    onSelect={() => onRequestDelete()}
-                                >
-                                    <Trash2 />
-                                    Delete production
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        <Button
+                            size="icon-sm"
+                            variant="outline"
+                            className="text-destructive hover:text-destructive"
+                            aria-label="Delete production"
+                            title="Delete production"
+                            onClick={onRequestDelete}
+                        >
+                            <Trash2 />
+                        </Button>
                     )}
                 </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="-mr-9 mt-4 flex flex-wrap items-center gap-3">
                 {run.status === "cancelled" ? (
                     // Not a stage of the lifecycle, so there is no progress bar to show.
                     <p className="text-sm text-muted-foreground">
@@ -111,7 +104,7 @@ export function RunHeader({ run, canEdit, canChangeStatus, projectLink, onChange
                 {canChangeStatus && (
                     // One control for status: the button moves the run to the next stage,
                     // and the arrow beside it opens every stage for a correction.
-                    <div className="ml-auto flex">
+                    <div className="flex shrink-0">
                         {next && (
                             <Button size="sm" className="rounded-r-none" onClick={() => onChangeStatus(next)}>
                                 Mark as {RUN_STATUS_LABELS[next].toLowerCase()}
