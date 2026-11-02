@@ -41,8 +41,9 @@ class SettingsDialog(wx.Dialog):
             # Wider than it was (520): several cards carry explanatory lines and a
             # full email, which clipped on the right at the old width because the
             # scroll window only scrolls vertically. A minimum size below keeps it
-            # from being dragged back into that state.
-            size=wx.Size(620, 620),
+            # from being dragged back into that state, and _fit_width_to_content
+            # widens it further when the content still doesn't fit.
+            size=wx.Size(720, 620),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self.SetMinSize(wx.Size(560, 480))
@@ -113,7 +114,35 @@ class SettingsDialog(wx.Dialog):
         self.content.FitInside(self.scroll)
         self.scroll.Layout()
         self.Layout()
+        self._fit_width_to_content()
         self.Refresh()
+
+    def _fit_width_to_content(self):
+        """Widen the window until the cards fit, so nothing clips on the right.
+
+        The scroll area only scrolls vertically, so any card wider than the window
+        loses its right edge with no way to reach it. A fixed default can't be right
+        for every card, font and DPI: the two-column row and the signed-in email set
+        the real minimum. So take that minimum from the content once it is laid out.
+
+        Grow only, and never past the screen: a user who makes the window wider keeps
+        that, and on a small display the cap wins over the content.
+        """
+        gutters = 2 * self.FromDIP(th.SP_LG)
+        scrollbar = wx.SystemSettings.GetMetric(wx.SYS_VSCROLL_X, self)
+        chrome = self.GetSize().width - self.GetClientSize().width
+        need = self.content.GetMinSize().width + gutters + max(scrollbar, 0) + chrome
+
+        index = wx.Display.GetFromWindow(self)
+        if index == wx.NOT_FOUND:
+            index = 0
+        cap = int(wx.Display(index).GetClientArea().width * 0.9)
+
+        size = self.GetSize()
+        width = min(max(size.width, need), cap)
+        if width > size.width:
+            self.SetSize(wx.Size(width, size.height))
+            self.Layout()
 
     # -- data --------------------------------------------------------------
 
