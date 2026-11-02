@@ -70,6 +70,35 @@ def _surface_of(window: wx.Window, pal: dict) -> wx.Colour:
     return _c(pal["background"])
 
 
+def fit_width_to_content(dialog: wx.Dialog, scroll: wx.Window, content: wx.Sizer):
+    """Widen `dialog` until `content` fits `scroll`, so nothing clips on the right.
+
+    Both dialogs scroll only vertically, so a card wider than the window loses its
+    right edge with no way to reach it. No fixed default is right for every card,
+    font and DPI, so take the minimum from the laid-out content instead.
+
+    The non-content width (gutters, a scrollbar or ScrollThumb, the window frame) is
+    measured from the dialog rather than summed from constants, so it stays right
+    whatever the dialog puts beside the scroll area.
+
+    Grow only, and never past 90% of the screen: a user who makes the window wider
+    keeps that, and on a small display the cap wins over the content.
+    """
+    size = dialog.GetSize()
+    extra = size.width - scroll.GetClientSize().width
+    need = content.GetMinSize().width + extra
+
+    index = wx.Display.GetFromWindow(dialog)
+    if index == wx.NOT_FOUND:
+        index = 0
+    cap = int(wx.Display(index).GetClientArea().width * 0.9)
+
+    width = min(max(size.width, need), cap)
+    if width > size.width:
+        dialog.SetSize(wx.Size(width, size.height))
+        dialog.Layout()
+
+
 def _mix(a: str, b: str, t: float) -> wx.Colour:
     """Blend two hex colours, used for hover/press states, like the web UI's
     hover:bg-primary/90."""
