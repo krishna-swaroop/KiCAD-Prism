@@ -1578,7 +1578,9 @@ class Checkbox(wx.Panel):
             gc.DrawRectangle(0, y, box, box)
             # The lucide check the web component shows: a short stroke down to
             # the tail, then a long one up to the tip.
-            gc.SetPen(wx.Pen(_c(self.pal["primary_fg"]), 2.0))
+            # Integer width: wx.Pen rejects a float, and a paint handler that raises
+            # here leaves the checked box as a blank rectangle with no label.
+            gc.SetPen(wx.Pen(_c(self.pal["primary_fg"]), max(2, self.FromDIP(2))))
             check = gc.CreatePath()
             check.MoveToPoint(box * 0.25, y + box * 0.52)
             check.AddLineToPoint(box * 0.42, y + box * 0.70)
