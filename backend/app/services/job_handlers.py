@@ -29,6 +29,8 @@ KIND_MODULES = (
     "app.services.project_service",
     "app.services.catalog_worker_tasks",
     "app.services.trackers.jobs",
+    "app.services.supply.jobs",
+    "app.services.supply.release_snapshot",
     "app.sim_studio.runs",
 )
 

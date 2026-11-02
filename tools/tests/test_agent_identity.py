@@ -7,6 +7,7 @@ particular the two cases where marker-matching and path-matching disagree.
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -270,3 +271,119 @@ def test_garbage_input_is_not_a_crash(tmp_path):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+# -- finding a checkout with no marker by its git origin ---------------------
+
+
+def git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args], capture_output=True, text=True, check=True
+    ).stdout
+
+
+def hand_clone(directory: Path, origin: str = "https://github.com/x/widget.git") -> Path:
+    """A clone made outside the agent: git, an origin, and no marker."""
+    git("init", "-q", str(directory))
+    git("-C", str(directory), "remote", "add", "origin", origin)
+    return directory
+
+
+def test_finds_a_hand_made_clone_by_its_origin_and_stamps_it(tmp_path):
+    clone = hand_clone(tmp_path / "boards" / "my-widget")
+
+    found = identity.find_checkout(
+        "prj_a", [str(tmp_path)], origin_url="https://github.com/x/widget"
+    )
+
+    assert found == str(clone.resolve())
+    assert identity.project_id(clone) == "prj_a"
+    # Stamped, but git ignores it: nothing to commit, nothing that reaches the repo.
+    assert git("-C", str(clone), "status", "--porcelain") == ""
+    # And the next lookup is by marker, no origin needed.
+    assert identity.find_by_id("prj_a", [str(tmp_path)]) == str(clone.resolve())
+
+
+def test_a_project_inside_a_larger_repo_is_found_at_its_sub_path(tmp_path):
+    repo = hand_clone(tmp_path / "mono")
+    (repo / "boards" / "power").mkdir(parents=True)
+
+    found = identity.find_checkout(
+        "prj_power",
+        [str(tmp_path)],
+        origin_url="https://github.com/x/widget",
+        sub_path="boards/power",
+    )
+
+    assert found == str((repo / "boards" / "power").resolve())
+    assert identity.project_id(repo / "boards" / "power") == "prj_power"
+    assert identity.project_id(repo) == ""
+    assert git("-C", str(repo), "status", "--porcelain") == ""
+
+
+def test_a_missing_sub_path_is_not_a_match(tmp_path):
+    hand_clone(tmp_path / "mono")
+    assert identity.find_by_origin(
+        "https://github.com/x/widget", "boards/power", [str(tmp_path)]
+    ) == ""
+
+
+def test_a_clone_of_another_repo_is_not_a_match(tmp_path):
+    hand_clone(tmp_path / "other", origin="https://github.com/x/gadget.git")
+    assert identity.find_checkout(
+        "prj_a", [str(tmp_path)], origin_url="https://github.com/x/widget"
+    ) == ""
+
+
+def test_no_origin_url_means_no_origin_search(tmp_path):
+    hand_clone(tmp_path / "widget")
+    assert identity.find_by_origin("", "", [str(tmp_path)]) == ""
+
+
+def test_a_tracked_prism_json_is_found_but_never_edited(tmp_path):
+    """Adding the id to a tracked file would show up as a change to commit."""
+    clone = hand_clone(tmp_path / "widget")
+    config = {"paths": {"pcb": "main.kicad_pcb"}}
+    (clone / ".prism.json").write_text(json.dumps(config))
+    git("-C", str(clone), "add", ".prism.json")
+
+    found = identity.find_checkout(
+        "prj_a", [str(tmp_path)], origin_url="https://github.com/x/widget"
+    )
+
+    assert found == str(clone.resolve())
+    assert json.loads((clone / ".prism.json").read_text()) == config
+
+
+def test_a_marker_naming_another_project_is_not_overwritten(tmp_path):
+    clone = hand_clone(tmp_path / "widget")
+    stamp(clone, "prj_other")
+
+    assert identity.stamp_clone(clone, "prj_a") is False
+    assert identity.project_id(clone) == "prj_other"
+
+
+def test_the_exclude_line_is_written_once(tmp_path):
+    clone = hand_clone(tmp_path / "widget")
+    identity.stamp_clone(clone, "prj_a")
+    (clone / ".prism.json").unlink()
+    identity.stamp_clone(clone, "prj_a")
+
+    exclude = (clone / ".git" / "info" / "exclude").read_text().splitlines()
+    assert exclude.count("/.prism.json") == 1
+
+
+def test_locate_falls_back_to_the_origin(tmp_path, monkeypatch):
+    clone = hand_clone(tmp_path / "widget")
+
+    class FakeSettings:
+        projects_roots = [str(tmp_path)]
+        server_url = ""
+
+    monkeypatch.setattr(server.settings_store, "load", lambda: FakeSettings())
+    client = FakeClient([{"id": "prj_a", "origin_url": "https://github.com/x/widget"}])
+    handler = type("H", (), {"state": type("S", (), {"prism": client})()})()
+
+    payload = server._Handler._locate_payload(handler, "prj_a")
+
+    assert payload["path"] == str(clone.resolve())

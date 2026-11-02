@@ -22,7 +22,7 @@
 #
 #   docker run --rm kicad-prism-caddy-dns:2 caddy list-modules | grep dns.providers
 #
-# See docs/DEPLOYMENT.md.
+# See https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/.
 
 ARG CADDY_VERSION=2
 

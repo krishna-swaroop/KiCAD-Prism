@@ -45,6 +45,24 @@ class AnchorBindingSelectionTests(unittest.TestCase):
         })
         self.assertEqual(select_binding([binding], "c", self.is_ancestor, same)["reason"], "coordinate_review")
 
+    def test_freehand_area_follows_while_its_own_file_is_unchanged(self) -> None:
+        binding = {"commit": "a", "elementId": None, "sequence": 0}
+        same_file = lambda selected, newer: newer == "b"  # noqa: E731
+        self.assertEqual(select_binding([binding], "b", self.is_ancestor, None, same_file), {
+            "state": "candidate", "binding": binding, "sameFile": True,
+        })
+        self.assertEqual(select_binding([binding], "c", self.is_ancestor, None, same_file)["reason"], "coordinate_review")
+
+    def test_object_binding_never_asks_about_its_file(self) -> None:
+        binding = {"commit": "a", "elementId": "fp", "sequence": 0}
+
+        def same_file(selected, newer):
+            raise AssertionError("an object anchor is re-found by UUID")
+
+        self.assertEqual(select_binding([binding], "b", self.is_ancestor, None, same_file), {
+            "state": "candidate", "binding": binding,
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

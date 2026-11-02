@@ -98,8 +98,8 @@ Full guides:
 
 - `UPGRADES.md` in this archive
 - `scripts/prism_backup.py` in this archive
-- <https://github.com/krishna-swaroop/KiCAD-Prism/blob/main/docs/DEPLOYMENT.md>
-- <https://github.com/krishna-swaroop/KiCAD-Prism/blob/main/docs/OPERATIONS.md>
+- <https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/>
+- <https://krishna-swaroop.github.io/KiCAD-Prism/admin/operations/>
 
 ## Release notes and experimental settings
 

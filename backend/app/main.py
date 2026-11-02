@@ -49,6 +49,35 @@ from app.api.workspace import router as workspace_router
 from app.api.remote_provider import router as remote_provider_router
 from app.api.provider_oauth import router as provider_oauth_router
 from app.api.tracker_connectors import router as tracker_connectors_router
+from app.api.supply_connectors import router as supply_connectors_router
+from app.api.supply_review import router as supply_review_router
+from app.api.search_parts import router as search_parts_router
+from app.api.supply_ending import router as supply_ending_router
+from app.api.supply_work_items import router as supply_work_items_router
+from app.api.supply_forecast import router as supply_forecast_router
+from app.services.catalog import dbl_export
+from app.services.supply import ending_parts
+from app.api.supply_parts import router as supply_parts_router
+from app.api.supply_alerts import router as supply_alerts_router
+from app.api.supply_bom import router as supply_bom_router
+from app.api.supply_fill import router as supply_fill_router
+from app.api.supply_component_parts import router as supply_component_parts_router
+from app.api.supply_inventory import router as supply_inventory_router
+from app.api.supply_push import router as supply_push_router
+from app.api.supply_health import router as supply_health_router
+from app.api.supply_fx import router as supply_fx_router
+from app.api.supply_datasheets import router as supply_datasheets_router
+from app.api.supply_compliance import router as supply_compliance_router
+from app.api.supply_market import router as supply_market_router
+from app.api.supply_oauth import router as supply_oauth_router
+from app.api.supply_pcn import router as supply_pcn_router
+from app.api.supply_assessment import router as supply_assessment_router
+from app.api.supply_bom_comments import router as supply_bom_comments_router
+from app.api.supply_checks import router as supply_checks_router
+from app.api.supply_packaging import router as supply_packaging_router
+from app.api.supply_tracking import budget_router as supply_budget_router, router as supply_tracking_router
+from app.api.supply_release import router as supply_release_router
+from app.api.supply_settings import router as supply_settings_router
 from app.api.project_trackers import router as project_trackers_router
 from app.api.tracker_sync import router as tracker_sync_router
 from app.api.tracker_webhooks import router as tracker_webhooks_router
@@ -56,6 +85,7 @@ from app.api.tracker_identity import admin_router as tracker_identity_admin_rout
 from app.api.tracker_identity import router as tracker_identity_router
 from app.api.catalog_admin import router as catalog_admin_router
 from app.api.catalog_part_relations import router as catalog_part_relations_router
+from app.api.catalog_drafting import router as catalog_drafting_router
 from app.api.oauth import router as oauth_router
 from app.api.service_clients import router as service_clients_router
 from app.api.jobs import router as jobs_router
@@ -69,6 +99,7 @@ from app.services import idempotency_store, password_credential_service, session
 from app.services.design_bundle.errors import install_handlers as install_design_data_handlers
 from app.services.schema_head import bring_every_schema_to_head
 from app.services.superseded_store_cleanup import cleanup_superseded_stores
+from app.services.supply.store import initialize_supply_store
 from app.services import event_log
 from app.services.mcp import audit as mcp_audit
 from app.services.comment_live_broker import broker as comment_live_broker
@@ -78,6 +109,11 @@ from app.services.postgres_database import database
 from app.core.config import settings
 from app.core import runtime_logging
 from app.services import checkout_line_endings
+from app.services.git_credentials import (
+    configuration_warnings as git_credential_warnings,
+    git_credentials,
+    verify_git_credentials_or_exit,
+)
 from app.core.security_headers import apply_security_headers
 import asyncio
 import os
@@ -99,15 +135,19 @@ logger = logging.getLogger(__name__)
 KNOWN_GIT_HOSTS = ("github.com", "gitlab.com")
 
 def configure_git():
-    """Report how GITHUB_TOKEN will be used, without writing it anywhere.
+    """Report which HTTPS Git credentials are in use, without writing them anywhere.
 
     This used to run ``git config --global url.https://<token>@github.com/…``,
     which left the token in cleartext in the container's ``~/.gitconfig``. The
-    rewrite now travels in the environment of each Git invocation instead; see
-    ``git_remote_access._inject_github_token``.
+    rewrites now travel in the environment of each Git invocation instead; see
+    ``git_remote_access._inject_git_credentials``.
     """
-    if settings.GITHUB_TOKEN:
-        logger.info("GITHUB_TOKEN is set; HTTPS GitHub remotes will use it per invocation.")
+    for credential in git_credentials():
+        logger.info(
+            "%s is set; HTTPS remotes under %s will use it per invocation.",
+            credential.token_name,
+            credential.url_prefix,
+        )
 
 def scan_known_hosts():
     """Pin the hosted forges' SSH host keys, verifying them before trusting.
@@ -178,7 +218,7 @@ def verify_auth_configuration_or_exit() -> None:
         "",
         "      docker compose up -d backend",
         "",
-        "  Configuration guide:  docs/AUTHENTICATION_AND_ACCESS.md",
+        "  Configuration guide:  https://krishna-swaroop.github.io/KiCAD-Prism/admin/authentication/",
         "  Generate a secret:    openssl rand -base64 48",
         "",
         "  To run a local instance with no authentication at all, set",
@@ -212,11 +252,12 @@ def announce_auth_posture() -> None:
 
 def announce_configuration_warnings() -> None:
     """Log what is permitted but dangerous, so it is at least on the record."""
-    for warning in settings.configuration_warnings():
+    for warning in [*settings.configuration_warnings(), *git_credential_warnings()]:
         logger.warning("Configuration: %s", warning)
 
 
 verify_auth_configuration_or_exit()
+verify_git_credentials_or_exit("KiCAD Prism")
 
 
 @asynccontextmanager
@@ -250,6 +291,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Could not prune the MCP audit log: %s", exc)
     cleanup_superseded_stores()
+    initialize_supply_store()
     from app.services.ops import stats as ops_stats
 
     ops_stats.start("api")
@@ -405,11 +447,42 @@ app.include_router(agent_router)
 app.include_router(health_router)
 app.include_router(catalog_admin_router)
 app.include_router(catalog_part_relations_router)
+app.include_router(catalog_drafting_router)
 app.include_router(oauth_router)
 app.include_router(service_clients_router)
 app.include_router(remote_provider_router, tags=["remote-provider"])
 app.include_router(provider_oauth_router, tags=["provider-oauth"])
 app.include_router(tracker_connectors_router)
+app.include_router(supply_connectors_router)
+app.include_router(supply_review_router)
+app.include_router(supply_parts_router)
+app.include_router(search_parts_router)
+app.include_router(supply_ending_router)
+app.include_router(supply_work_items_router)
+app.include_router(supply_forecast_router)
+# The KiCad database shows "Not for new designs" in Status for components the library marked.
+dbl_export.set_status_marks(ending_parts.status_marks)
+app.include_router(supply_alerts_router)
+app.include_router(supply_bom_router)
+app.include_router(supply_fill_router)
+app.include_router(supply_component_parts_router)
+app.include_router(supply_inventory_router)
+app.include_router(supply_push_router)
+app.include_router(supply_health_router)
+app.include_router(supply_fx_router)
+app.include_router(supply_datasheets_router)
+app.include_router(supply_compliance_router)
+app.include_router(supply_market_router)
+app.include_router(supply_oauth_router)
+app.include_router(supply_pcn_router)
+app.include_router(supply_assessment_router)
+app.include_router(supply_release_router)
+app.include_router(supply_bom_comments_router)
+app.include_router(supply_tracking_router)
+app.include_router(supply_budget_router)
+app.include_router(supply_packaging_router)
+app.include_router(supply_checks_router)
+app.include_router(supply_settings_router)
 app.include_router(tracker_identity_router)
 app.include_router(tracker_identity_admin_router)
 app.include_router(project_trackers_router)

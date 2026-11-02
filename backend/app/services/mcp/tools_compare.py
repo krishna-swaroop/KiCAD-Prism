@@ -23,9 +23,8 @@ from typing import Any
 from app.core.config import settings
 from app.core.links import project_url
 from app.services.mcp import invoke
-from app.services.mcp.registry import READ_ONLY_ANNOTATIONS, Tool, register
+from app.services.mcp.registry import READ_ONLY_ANNOTATIONS, Tool, presenter, register
 
-TOOL_NAMES = frozenset({"compare_revisions", "get_changes"})
 
 #: The tool speaks ``schematic``/``pcb``; the review route speaks ``sch``/``pcb``.
 _REVIEW_DOMAIN = {"schematic": "sch", "pcb": "pcb"}
@@ -228,6 +227,7 @@ register(
 )
 
 
+@presenter("compare_revisions")
 def _present_compare(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     if result.get("isError"):
         return result
@@ -297,6 +297,7 @@ def _decode_cursor(cursor: str) -> dict[str, Any] | None:
     return decoded if isinstance(decoded, dict) else None
 
 
+@presenter("get_changes")
 def _present_changes(
     arguments: dict[str, Any], result: dict[str, Any]
 ) -> dict[str, Any]:
@@ -371,16 +372,4 @@ def _present_changes(
     return result
 
 
-def present(
-    tool_name: str, arguments: dict[str, Any], result: dict[str, Any]
-) -> dict[str, Any]:
-    """Shape one comparison tool result; other tools pass through."""
-
-    if tool_name == "compare_revisions":
-        return _present_compare(arguments, result)
-    if tool_name == "get_changes":
-        return _present_changes(arguments, result)
-    return result
-
-
-__all__ = ["TOOL_NAMES", "comparison_link", "present"]
+__all__ = ["comparison_link"]

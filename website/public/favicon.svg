@@ -1,0 +1,29 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">KiCAD Prism Icon</title>
+  <desc id="desc">Outlined prism icon with smooth blended blue facets.</desc>
+
+  <defs>
+    <linearGradient id="kpStrokeSmall" x1="6" y1="6" x2="60" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="0.55" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+
+    <linearGradient id="kpFacetTintSmall" x1="34" y1="18" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#93C5FD" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#1D4ED8" stop-opacity="0.26"/>
+    </linearGradient>
+
+    <pattern id="kpHatchSmall" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="4" stroke="#60A5FA" stroke-opacity="0.66" stroke-width="1.8" />
+    </pattern>
+  </defs>
+
+  <polygon points="32,4 58,19 32,60 6,19" stroke="url(#kpStrokeSmall)" stroke-width="4" fill="none" stroke-linejoin="round" stroke-linecap="round" />
+
+  <polygon points="58,19 32,31 32,60" fill="url(#kpFacetTintSmall)" />
+  <polygon points="58,19 32,31 32,60" fill="url(#kpHatchSmall)" />
+
+  <polyline points="6,19 32,31 32,60" stroke="url(#kpStrokeSmall)" stroke-width="4" fill="none" stroke-linejoin="round" stroke-linecap="round" />
+  <line x1="32" y1="31" x2="58" y2="19" stroke="url(#kpStrokeSmall)" stroke-width="4" stroke-linecap="round" />
+</svg>

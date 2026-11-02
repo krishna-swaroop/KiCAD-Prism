@@ -128,7 +128,25 @@ class CatalogAssetFiles:
 
     @staticmethod
     def single_symbol_payload(text: str, selected_symbol: str) -> bytes:
-        return kicad_library_reader.single_symbol_library(text, selected_symbol)
+        """``selected_symbol`` alone, as a library that loads on its own.
+
+        A derived symbol (``extends``) is stored flattened with its parents'
+        pins and graphics, the way KiCad caches it in a schematic: kept with
+        only its ``extends`` line it names a parent the file does not hold, and
+        KiCad refuses to load the library.
+        """
+        # Imported here: the project-bundle module pulls in the project import graph.
+        from app.services.project_component_bundle_assets import flatten_symbol_definition
+
+        blocks = kicad_library_reader.top_level_symbol_blocks(text)
+        if any(name == selected_symbol and "(extends" in block for name, block in blocks):
+            flattened = flatten_symbol_definition(text, selected_symbol)
+            if flattened is None:
+                raise ValueError(
+                    f"Symbol {selected_symbol} extends a symbol that is not in the uploaded library"
+                )
+            blocks = [(name, flattened if name == selected_symbol else block) for name, block in blocks]
+        return kicad_library_reader.single_symbol_library(text, selected_symbol, blocks)
 
     @staticmethod
     def write_canonical_file(runtime: CatalogRuntime, destination: Path, payload: bytes) -> Path:

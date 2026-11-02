@@ -5,10 +5,15 @@ Each declaration names one task an agent actually asks for and the typed
 ``revision``; a full commit sha is immutable, any other ref resolves at call
 time. None of these tools writes, starts a job or resolves a comment.
 
-``present`` is the small result step the route applies after invocation:
-comments can be filtered by status, and a result that names a project, a
-revision and an element carries both a browser ``link`` and a ``prism://``
-``uri``. Both are built by ``app.core.links``, never spelled here.
+Each tool's ``present`` hook (bound with ``registry.presenter``) is the small
+result step ``/mcp`` applies after invocation: comments can be filtered by
+status, and a result that names a project, a revision and an element carries
+both a browser ``link`` and a ``prism://`` ``uri``. Both are built by
+``app.core.links``, never spelled here.
+
+Importing this module registers every tool: it imports the other tool modules
+at its end. ``registry.tools()`` lists reads, then writes, then ops tools;
+import order only sets the order within each group.
 """
 
 from __future__ import annotations
@@ -17,11 +22,10 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.links import resource_uri, view_url
-from app.services.mcp.registry import READ_ONLY_ANNOTATIONS, Tool, register
+from app.services.mcp.registry import READ_ONLY_ANNOTATIONS, Tool, presenter, register
 
-# The render tool needs its own multi-step invocation, so it registers itself
-# from its own module. Importing it here, before the read set below, keeps
-# ``tools/list`` deterministic whichever module a caller imports first.
+# The render tool registers from its own module; importing it first keeps it
+# first among the reads.
 from app.services.mcp import tools_render as _tools_render  # noqa: E402,F401
 
 _FULL_SHA = 40
@@ -465,103 +469,101 @@ def _cite_search_hits(
             row["link"] = link
 
 
-def present(tool_name: str, arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-    """Shape one tool result: the status filter, the comparison rows, then citations."""
-
-    if tool_name in {"compare_revisions", "get_changes"}:
-        from app.services.mcp import tools_compare
-
-        return tools_compare.present(tool_name, arguments, result)
-
-    if tool_name in _write_tools.WRITE_TOOL_NAMES:
-        return _write_tools.present(tool_name, arguments, result)
+def _cited(arguments: dict[str, Any], result: dict[str, Any]) -> tuple[dict[str, Any], str] | None:
+    """The result's structured content and project id, when it names a project to cite."""
 
     structured = result.get("structuredContent")
-    if not isinstance(structured, dict):
-        return result
-
-    if tool_name == "list_comments":
-        wanted = str(arguments.get("status") or "").upper()
-        comments = structured.get("comments")
-        if wanted and isinstance(comments, list):
-            structured["comments"] = [
-                comment
-                for comment in comments
-                if str(comment.get("status") or "").upper() == wanted
-            ]
-        return result
-
-    if result.get("isError"):
-        return result
-
+    if result.get("isError") or not isinstance(structured, dict):
+        return None
     project_id = str(arguments.get("project_id") or "")
-    if not project_id:
-        return result
+    return (structured, project_id) if project_id else None
 
-    if tool_name in {"get_component", "get_net"}:
-        revision = structured.get("revision") or {}
-        commit = _full_sha(revision.get("commit") if isinstance(revision, dict) else None)
-        if commit:
-            if tool_name == "get_component":
-                reference = str(arguments.get("reference") or "")
-                _cite(
-                    structured,
-                    project_id,
-                    commit,
-                    "component",
-                    reference or None,
-                    tab=_view_tab(structured.get("component") or {}),
-                    sel=(reference,) if reference else (),
-                )
-            else:
-                name = str(arguments.get("net") or "")
-                _cite(
-                    structured,
-                    project_id,
-                    commit,
-                    "net",
-                    name or None,
-                    tab="pcb",
-                    nets=(name,) if name else (),
-                )
-        return result
 
-    if tool_name == "find_in_design":
-        revision = structured.get("revision") or {}
-        commit = _full_sha(revision.get("commit") if isinstance(revision, dict) else None)
-        if commit:
-            _cite_search_hits(structured, project_id, commit)
-        return result
+def _revision_commit(structured: dict[str, Any]) -> str | None:
+    revision = structured.get("revision") or {}
+    return _full_sha(revision.get("commit") if isinstance(revision, dict) else None)
 
-    if tool_name == "get_bom":
-        commit = _full_sha(structured.get("commit")) or _full_sha(arguments.get("revision"))
-        if commit:
-            _cite(structured, project_id, commit, "bom", None)
-        else:
-            link = _link(project_id, None, tab="bom")
-            if link:
-                structured["link"] = link
-        return result
 
+@presenter("list_comments")
+def _present_comments(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Keep only the threads in the requested status; the route returns every one."""
+
+    structured = result.get("structuredContent")
+    wanted = str(arguments.get("status") or "").upper()
+    comments = structured.get("comments") if isinstance(structured, dict) else None
+    if wanted and isinstance(comments, list):
+        structured["comments"] = [
+            comment for comment in comments if str(comment.get("status") or "").upper() == wanted
+        ]
     return result
 
 
-__all__ = ["present"]
+@presenter("get_component")
+def _present_component(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    found = _cited(arguments, result)
+    commit = _revision_commit(found[0]) if found else None
+    if found and commit:
+        structured, project_id = found
+        reference = str(arguments.get("reference") or "")
+        _cite(
+            structured,
+            project_id,
+            commit,
+            "component",
+            reference or None,
+            tab=_view_tab(structured.get("component") or {}),
+            sel=(reference,) if reference else (),
+        )
+    return result
 
 
-# Imported last: the comparison tools register after the v5.1 read set, so
-# ``tools/list`` keeps that order.
+@presenter("get_net")
+def _present_net(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    found = _cited(arguments, result)
+    commit = _revision_commit(found[0]) if found else None
+    if found and commit:
+        structured, project_id = found
+        name = str(arguments.get("net") or "")
+        _cite(structured, project_id, commit, "net", name or None, tab="pcb", nets=(name,) if name else ())
+    return result
+
+
+@presenter("find_in_design")
+def _present_search(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    found = _cited(arguments, result)
+    commit = _revision_commit(found[0]) if found else None
+    if found and commit:
+        _cite_search_hits(found[0], found[1], commit)
+    return result
+
+
+@presenter("get_bom")
+def _present_bom(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    found = _cited(arguments, result)
+    if found is None:
+        return result
+    structured, project_id = found
+    commit = _full_sha(structured.get("commit")) or _full_sha(arguments.get("revision"))
+    if commit:
+        _cite(structured, project_id, commit, "bom", None)
+    else:
+        link = _link(project_id, None, tab="bom")
+        if link:
+            structured["link"] = link
+    return result
+
+
+__all__: list[str] = []
+
+
+# The other tool modules. The registry groups reads, writes and ops tools
+# itself; this order is only the order within each group, which clients see.
 from app.services.mcp import tools_compare as _tools_compare  # noqa: E402, F401
-
-# The write tools register after the read set too, so a client that lists tools
-# sees every read first and every write after.
-from app.services.mcp import tools_writes as _write_tools  # noqa: E402, F401
-# The write tools follow the read set; they are declared in their own module
-# because they carry the policy action a write needs (ADR §10).
+from app.services.mcp import tools_catalog_reads as _tools_catalog_reads  # noqa: E402, F401
+from app.services.mcp import tools_writes as _tools_writes  # noqa: E402, F401
 from app.services.mcp import tools_comments as _tools_comments  # noqa: E402, F401
-
-# Ops tools register last: they are listed only while ops is on, and then after
-# every design tool (ADR §11).
+from app.services.mcp import tools_catalog_writes as _tools_catalog_writes  # noqa: E402, F401
+from app.services.mcp import tools_supply as _tools_supply  # noqa: E402, F401
 from app.services.mcp import tools_ops_jobs as _tools_ops_jobs  # noqa: E402, F401
 from app.services.mcp import tools_ops_runtime as _tools_ops_runtime  # noqa: E402, F401
 from app.services.mcp import tools_ops_profile as _tools_ops_profile  # noqa: E402, F401

@@ -234,6 +234,8 @@ def run_kicad_workflow_job_v3(context: JobContext) -> JobResult:
         workflow_type=workflow_type,
         author=author,
         routing="repository",
+        # A multi-project import's checkout is a subdirectory of the clone.
+        repository_root=getattr(project, "parent_repo_path", None) or None,
         # Keep the old project_service.Repo patch seam for the legacy handler
         # while the generic service remains independently testable.
         repository_factory=Repo,

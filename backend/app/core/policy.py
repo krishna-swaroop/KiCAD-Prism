@@ -31,6 +31,9 @@ from app.core.roles import (
     PROJECT_RELEASE_ACTOR_ROLES,
     PROJECT_VIEW_ROLES,
     ROLE_ORDER,
+    SUPPLY_APPROVE_ROLES,
+    SUPPLY_READ_ROLES,
+    SUPPLY_WRITE_ROLES,
     Role,
 )
 
@@ -55,6 +58,10 @@ Action = Literal[
     "run_status",
     "catalog_admin",
     "remote_symbols",
+    "supply_read",
+    "supply_write",
+    "supply_follow",
+    "supply_approve",
     "ops_read",
     "ops_act",
 ]
@@ -121,6 +128,13 @@ RULES: dict[Action, Rule] = {
         frozenset({"admin"}), "Administrator access required", ("admin",), _PROVIDER_CATALOG, human_only=True
     ),
     "remote_symbols": Rule(ALL_ROLES, scopes=("remote_symbols.read", "api:read"), provider_refusal=None),
+    # Supply: stock, prices and the matching review queue. Reading it, watching parts, and deciding matches follow the catalog's roles.
+    "supply_read": Rule(SUPPLY_READ_ROLES, "Supply read access required", ("api:read",)),
+    "supply_write": Rule(SUPPLY_WRITE_ROLES, "Supply write access required", ("supply:write",), _PROVIDER_MODIFY),
+    # What Prism follows (a project, a part's tier, a packaging pick) and notes on BOM lines: anyone who reads supply, with a token that may write.
+    "supply_follow": Rule(SUPPLY_READ_ROLES, "Supply read access required", ("supply:write",), _PROVIDER_MODIFY),
+    # Waivers, accepted matches, new manufacturers: a sign-off, so an agent never gives it.
+    "supply_approve": Rule(SUPPLY_APPROVE_ROLES, "Supply review access required", ("supply:write",), _PROVIDER_MODIFY, human_only=True),
     # Diagnostics (ADR scripting-and-mcp §11, D20/D21): admin reads and a few
     # bounded actions. Not human-only: they inspect and unstick, they sign nothing off.
     "ops_read": Rule(frozenset({"admin"}), "Admin role required", ("ops:read",), _PROVIDER_ADMIN),
@@ -134,6 +148,8 @@ AREA_WRITE_SCOPES: tuple[str, ...] = (
     "comments:write",
     "design:write",
     "catalog:write",
+    # Following parts and reading them now. Supply approvals stay human-only whatever a token holds.
+    "supply:write",
     "release:approve",
     "catalog:qa",
     "admin",
@@ -166,8 +182,13 @@ def has_scope(caller: Caller, *scopes: str) -> bool:
     return "*" in held or any(scope in held for scope in scopes)
 
 
-def refusal(caller: Caller, action: Action) -> str | None:
-    """Why ``caller`` may not do ``action``, or None when it may."""
+def refusal(caller: Caller, action: Action, *, check_role: bool = True) -> str | None:
+    """Why ``caller`` may not do ``action``, or None when it may.
+
+    ``check_role=False`` checks only the token side (provider, human-only,
+    scope) for a route whose role rule lives elsewhere, such as the catalog
+    workflow's ``workflow_policy.can_transition``.
+    """
     rule = RULES[action]
     if caller.auth_type == PROVIDER_AUTH_TYPE and rule.provider_refusal is not None:
         return rule.provider_refusal
@@ -175,7 +196,7 @@ def refusal(caller: Caller, action: Action) -> str | None:
         return _HUMAN_ONLY
     if rule.scopes and caller.auth_type != "session" and not has_scope(caller, *rule.scopes):
         return f"{' or '.join(rule.scopes)} scope required"
-    if caller.role not in rule.roles:
+    if check_role and caller.role not in rule.roles:
         return rule.role_detail
     return None
 
@@ -232,9 +253,9 @@ def role_allows(role: Role, action: Action) -> bool:
     return role in RULES[action].roles
 
 
-def authorize(caller: Caller, action: Action) -> Any:
+def authorize(caller: Caller, action: Action, *, check_role: bool = True) -> Any:
     """Return ``caller`` when it may do ``action``; raise 403 otherwise."""
-    detail = refusal(caller, action)
+    detail = refusal(caller, action, check_role=check_role)
     if detail is not None:
         missing = _mcp_missing_scope(caller, action)
         headers = (
@@ -323,6 +344,9 @@ ROLE_AUTHORITIES: dict[str, Action] = {
     "edit_catalog": "catalog_write",
     "review_catalog_qa": "catalog_qa",
     "administer_catalog": "catalog_admin",
+    "view_supply": "supply_read",
+    "edit_supply": "supply_write",
+    "review_supply": "supply_approve",
     "administer_workspace": "admin",
 }
 

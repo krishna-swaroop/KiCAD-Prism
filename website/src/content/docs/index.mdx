@@ -1,0 +1,51 @@
+---
+title: KiCAD Prism
+description: Browser review, release and library management for KiCad projects in Git.
+template: splash
+hero:
+  title: Open‑source, self‑hosted review, release and component‑governance platform for teams using KiCad
+  tagline: |
+    KiCad stays the editor and Git the source of truth. Prism adds the rest: every revision in the browser, reviews with comments, signed-off release packages and a governed library that desktop KiCad places parts from, all on your own hardware.
+  image:
+    file: ../../assets/screenshots/workspace.jpg
+    alt: "The Prism workspace: projects in the sidebar and a gallery of project cards with rendered board thumbnails"
+  actions:
+    - text: Try it on your machine
+      link: /KiCAD-Prism/get-started/try-it/
+      variant: primary
+    - text: What Prism is
+      link: /KiCAD-Prism/get-started/what-is-prism/
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/krishna-swaroop/KiCAD-Prism
+      variant: minimal
+      attrs:
+        rel: external
+---
+
+import FeatureCards from '../../components/FeatureCards.astro';
+
+<h2 class="prism-section-title">What your team does with it</h2>
+
+<FeatureCards />
+
+<div class="prism-credits">
+
+### Designs shown on this site
+
+| Project | Author | Source | License |
+| --- | --- | --- | --- |
+| ThunderScope | EEVengers | [EEVengers/ThunderScope](https://github.com/EEVengers/ThunderScope) | MIT |
+| Cynthion | Great Scott Gadgets | [greatscottgadgets/cynthion-hardware](https://github.com/greatscottgadgets/cynthion-hardware) | CERN-OHL-P v2 |
+| Jetson AGX Thor baseboard | Antmicro | [antmicro/jetson-agx-thor-baseboard](https://github.com/antmicro/jetson-agx-thor-baseboard) | Apache-2.0 |
+| WREN (vme-wren, vme-wren-fp-single, EDA-04903, EDA-04949) | CERN, BE-CEM | [be-cem-edl/chronos/wren/wren-hw](https://gitlab.cern.ch/be-cem-edl/chronos/wren/wren-hw) | CERN-OHL-W v2 or later and CC BY-SA 4.0, as stated on the schematic sheets |
+| OpenSwitch 10x10G carrier and LAN969x | Quentin Freimanis | [qfreiman/openswitch-10x10g-carrier](https://gitlab.com/qfreiman/openswitch-10x10g-carrier), [qfreiman/openswitch-lan969x](https://gitlab.com/qfreiman/openswitch-lan969x) | No license is stated in the repositories; see them for the author's terms |
+| USB-PD-Trigger-Board | Krishna Swaroop (Prism maintainer) | [krishna-swaroop/USB-PD-Trigger-Board](https://github.com/krishna-swaroop/USB-PD-Trigger-Board) | MIT |
+
+These are public KiCad projects by other designers, imported into Prism the way a team would
+import its own. The component catalog in the Library Manager screenshots is CERN's public KiCad
+database library. If you are an author of one of these designs and would like a screenshot
+changed, credited differently or removed, please
+[open an issue](https://github.com/krishna-swaroop/KiCAD-Prism/issues).
+
+</div>

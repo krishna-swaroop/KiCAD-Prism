@@ -1,0 +1,128 @@
+---
+// Starlight's search, plus a short list of common pages shown while the box is
+// empty, so the dialog is useful before the first keystroke.
+import Default from '@astrojs/starlight/components/Search.astro';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const groups = [
+	{
+		label: 'Start here',
+		pages: [
+			['Try it on your machine', 'get-started/try-it'],
+			['What is KiCAD Prism', 'get-started/what-is-prism'],
+			['Deploy Prism', 'admin/deployment'],
+		],
+	},
+	{
+		label: 'Everyday work',
+		pages: [
+			['View a design', 'use/viewing-designs'],
+			['Compare two revisions', 'use/design-comparison'],
+			['Review with comments', 'use/comments'],
+			['Manage components in Library Manager', 'use/library-manager'],
+			['Release a board with Release Studio', 'use/release-studio'],
+		],
+	},
+	{
+		label: 'Automate',
+		pages: [
+			['AI assistants (MCP)', 'automate/mcp'],
+			['API and tokens', 'automate/api-and-tokens'],
+			['Configuration reference', 'admin/configuration'],
+		],
+	},
+];
+---
+
+<Default {...Astro.props} />
+
+<template id="prism-search-suggestions">
+	<nav class="prism-suggestions" aria-label="Suggested pages">
+		{
+			groups.map((group) => (
+				<section>
+					<h2>{group.label}</h2>
+					<ul>
+						{group.pages.map(([title, path]) => (
+							<li>
+								<a href={`${base}/${path}/`}>{title}</a>
+							</li>
+						))}
+					</ul>
+				</section>
+			))
+		}
+	</nav>
+</template>
+
+<script>
+	// Pagefind builds its UI lazily when the dialog first opens, so wait for its
+	// input, then show the suggestions whenever the query is empty.
+	const template = document.getElementById('prism-search-suggestions') as HTMLTemplateElement | null;
+	const container = document.getElementById('starlight__search');
+
+	if (template && container) {
+		const panel = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
+		container.after(panel);
+
+		const sync = () => {
+			const input = container.querySelector<HTMLInputElement>('input');
+			panel.hidden = Boolean(input && input.value.trim());
+		};
+
+		new MutationObserver(() => {
+			const input = container.querySelector<HTMLInputElement>('input');
+			if (input && !input.dataset.prismSuggestions) {
+				input.dataset.prismSuggestions = '1';
+				input.addEventListener('input', sync);
+			}
+			sync();
+		}).observe(container, { childList: true, subtree: true });
+
+		panel.addEventListener('click', (event) => {
+			if ((event.target as HTMLElement).closest('a')) container.closest('dialog')?.close();
+		});
+	}
+</script>
+
+<style is:global>
+	.prism-suggestions {
+		display: grid;
+		gap: 1.25rem;
+		padding: 1rem 0.25rem 0.5rem;
+	}
+	.prism-suggestions[hidden] {
+		display: none;
+	}
+	.prism-suggestions h2 {
+		margin: 0 0 0.4rem;
+		font-family: var(--sl-font-mono);
+		font-size: 0.68rem;
+		font-weight: 500;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--sl-color-gray-4);
+	}
+	.prism-suggestions ul {
+		display: grid;
+		gap: 1px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		border: 1px solid var(--sl-color-hairline);
+		background: var(--sl-color-hairline);
+	}
+	.prism-suggestions a {
+		display: block;
+		padding: 0.6rem 0.8rem;
+		background: var(--sl-color-black);
+		color: var(--sl-color-white);
+		text-decoration: none;
+		font-size: var(--sl-text-sm);
+	}
+	.prism-suggestions a:hover,
+	.prism-suggestions a:focus-visible {
+		background: var(--sl-color-gray-6);
+		outline: none;
+	}
+</style>

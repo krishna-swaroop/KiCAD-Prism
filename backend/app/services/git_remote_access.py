@@ -2,22 +2,26 @@
 
 One adapter for every process that talks to a remote (import, sync, release
 configuration publishing, System Builder tracking, jobset pushes). It owns the
-noninteractive environment with pinned host keys, the per-invocation GitHub
-token, the ``ls-remote`` reading of a remote's branches, and the HTTPS to SSH
+noninteractive environment with pinned host keys, the per-invocation HTTPS
+credentials, the ``ls-remote`` reading of a remote's branches, and the HTTPS to SSH
 retry for private GitHub repositories. Moved here unchanged from
 ``project_import_service``.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import List, Optional
 
 from git import Git
 
 from app.core.config import settings
+from app.services.git_credentials import credential_for_url, git_credentials
 from app.services.git_failures import GitAccessError, as_access_error
 from app.services.git_remote_url import ParsedRemote, RemoteUrlPolicy, parse_remote_url
+
+logger = logging.getLogger(__name__)
 
 
 def remote_url_policy() -> RemoteUrlPolicy:
@@ -41,27 +45,50 @@ def describe_target(parsed: ParsedRemote) -> str:
     return f"{parsed.host}/{parsed.path.strip('/').removesuffix('.git')}"
 
 
-def _inject_github_token(env: dict) -> None:
-    """Supply GITHUB_TOKEN to one Git invocation, and leave nothing behind.
+def _inject_git_credentials(env: dict) -> None:
+    """Supply each HTTPS credential to one Git invocation, and leave nothing behind.
 
-    This used to be written into the container's ``~/.gitconfig`` at startup, so
-    the token sat in cleartext on the filesystem, in the writable layer of a
-    committed image, and in any support bundle that captured the home
+    The GitHub token used to be written into the container's ``~/.gitconfig``
+    at startup, so it sat in cleartext on the filesystem, in the writable layer
+    of a committed image, and in any support bundle that captured the home
     directory -- and it applied to every process in the container, not only the
     ones meant to reach GitHub. ``GIT_CONFIG_*`` expresses the same rewrite for
-    the duration of a single command.
+    the duration of a single command: one ``insteadOf`` per credential, so each
+    token reaches only the URLs that start with its own prefix
+    (``git_credentials``). When several prefixes match, Git picks the longest.
     """
-    token = settings.GITHUB_TOKEN.strip()
-    if not token:
+    credentials = git_credentials()
+    if not credentials:
         return
     # The parent environment may already carry GIT_CONFIG_* entries; append.
     try:
         index = int(env.get("GIT_CONFIG_COUNT", "0") or "0")
     except ValueError:
         index = 0
-    env[f"GIT_CONFIG_KEY_{index}"] = f"url.https://{token}@github.com/.insteadOf"
-    env[f"GIT_CONFIG_VALUE_{index}"] = "https://github.com/"
-    env["GIT_CONFIG_COUNT"] = str(index + 1)
+    for credential in credentials:
+        env[f"GIT_CONFIG_KEY_{index}"] = f"url.{credential.authenticated_prefix()}.insteadOf"
+        env[f"GIT_CONFIG_VALUE_{index}"] = credential.url_prefix
+        index += 1
+        if credential.path_scoped:
+            # curl keeps credentials on a redirect within the same host, so a
+            # redirect from /team/ to /other/ would carry /team/'s token out of
+            # its prefix. Redirects to another host or port already drop it.
+            env[f"GIT_CONFIG_KEY_{index}"] = f"http.{credential.url_prefix}.followRedirects"
+            env[f"GIT_CONFIG_VALUE_{index}"] = "false"
+            index += 1
+    env["GIT_CONFIG_COUNT"] = str(index)
+
+
+def warn_if_credential_in_cleartext(url: str) -> None:
+    """Log, without the token, when a credential is about to cross plain HTTP."""
+    credential = credential_for_url(url)
+    if credential is not None and credential.insecure:
+        logger.warning(
+            "Sending %s to %s over plain HTTP (IMPORT_ALLOW_INSECURE_HTTP); "
+            "anyone on the network path can read it.",
+            credential.token_name,
+            credential.url_prefix,
+        )
 
 
 def git_env() -> dict:
@@ -74,7 +101,7 @@ def git_env() -> dict:
     # action, taken after comparing the fingerprint against what the Git server's
     # operator publishes.
     env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=yes -o BatchMode=yes"
-    _inject_github_token(env)
+    _inject_git_credentials(env)
     return env
 
 
@@ -85,6 +112,7 @@ def list_remote_branches(parsed: ParsedRemote) -> tuple[List[str], Optional[str]
     trip and no disk, so the dialog can offer a branch picker before the user
     has committed to importing anything.
     """
+    warn_if_credential_in_cleartext(parsed.url)
     git = Git()
     git.update_environment(**git_env())
     try:

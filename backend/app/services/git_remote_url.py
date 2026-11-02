@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Iterable, Optional
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from app.core import errors
 
@@ -148,6 +148,7 @@ def parse_remote_url(raw: str, policy: Optional[RemoteUrlPolicy] = None) -> Pars
         host = scp_match.group("host")
         path = scp_match.group("path")
         _reject_credentials(scp_match.group("user"))
+        _reject_dot_segments(path)
         _check_host(host, policy)
         if not path.strip("/"):
             raise RemoteUrlError("Repository URL is missing a repository path.")
@@ -199,6 +200,7 @@ def parse_remote_url(raw: str, policy: Optional[RemoteUrlPolicy] = None) -> Pars
 
     if not split.path.strip("/"):
         raise RemoteUrlError("Repository URL is missing a repository path.")
+    _reject_dot_segments(split.path)
 
     return ParsedRemote(
         url=candidate, scheme=scheme, host=host, port=port, path=split.path
@@ -222,6 +224,18 @@ def _reject_credentials(username: Optional[str], password: Optional[str] = None)
     # secret, so `git@host` and `ssh://git@host/...` stay valid.
     if username and ":" in username:
         raise RemoteUrlError("Remove the credentials from the URL.")
+
+
+def _reject_dot_segments(path: str) -> None:
+    """Refuse ``.`` and ``..`` path segments, percent-encoded or not.
+
+    Git attaches an HTTPS credential by matching the URL as written against
+    its prefix, then curl removes dot segments before sending the request. So
+    ``https://host/team/../other/repo.git`` would carry ``/team/``'s token to
+    ``/other/``. No repository path needs them.
+    """
+    if any(unquote(segment) in {".", ".."} for segment in path.split("/")):
+        raise RemoteUrlError("Repository URL may not contain '.' or '..' path segments.")
 
 
 def _check_host(host: str, policy: RemoteUrlPolicy) -> None:

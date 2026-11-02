@@ -10,6 +10,7 @@ import {
   getPartManifest,
   loadPanelAssetText,
   PanelApiError,
+  refreshSupplyPart,
   primaryLocalSource,
   searchComponents,
   setApiToken,
@@ -260,5 +261,26 @@ describe("panel preview asset fetches", () => {
     setApiToken("panel-secret");
     await expect(loadPanelAssetText(url)).resolves.toBe("panel-body");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("panel supply refresh", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("posts to the part's refresh and returns the summary", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({ read: 2, connectors: 1, problems: [] }), { status: 200, headers: { "Content-Type": "application/json" } })
+    );
+    expect(await refreshSupplyPart("p 1")).toEqual({ read: 2, connectors: 1, problems: [] });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("/api/remote-provider/supply/parts/p%201/refresh");
+    expect(init?.method).toBe("POST");
+  });
+
+  it("carries the reason when it is too soon", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      new Response(JSON.stringify({ detail: "You read this part a moment ago. You can read it again in 9 minutes." }), { status: 429 })
+    );
+    await expect(refreshSupplyPart("p1")).rejects.toThrow("again in 9 minutes");
   });
 });

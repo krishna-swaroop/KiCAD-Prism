@@ -10,7 +10,7 @@
 #   2. Point the caddy service at deploy/Caddyfile.internal (see comments below)
 #   3. Distribute the CA certificate to every KiCad workstation
 #
-# See docs/DEPLOYMENT.md.
+# See https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/.
 
 services:
   caddy:

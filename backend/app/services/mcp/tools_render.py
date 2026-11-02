@@ -140,14 +140,14 @@ async def execute(
         app, "post", _request_path(project_id), "", authorization, _body(arguments)
     )
     if not 200 <= status < 300:
-        return invoke._execution_error(status, raw)
+        return invoke.route_error(status, raw)
     try:
         started = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return invoke._failure("invalid-response", "Prism answered without a render record")
+        return invoke.error_result("invalid-response", "Prism answered without a render record")
     render_id = str(started.get("renderId") or "")
     if not render_id:
-        return invoke._failure("invalid-response", "Prism answered without a renderId")
+        return invoke.error_result("invalid-response", "Prism answered without a renderId")
 
     deadline = time.monotonic() + POLL_TIMEOUT_SECONDS
     record = started
@@ -156,16 +156,16 @@ async def execute(
             app, "get", _request_path(project_id, f"/{render_id}"), "", authorization, None
         )
         if not 200 <= status < 300:
-            return invoke._execution_error(status, raw)
+            return invoke.route_error(status, raw)
         try:
             record = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            return invoke._failure("invalid-response", "Prism answered without a render record")
+            return invoke.error_result("invalid-response", "Prism answered without a render record")
         state = str(record.get("status") or "")
         if state == "completed":
             break
         if state in {"failed", "cancelled"}:
-            return invoke._execution_error(
+            return invoke.route_error(
                 422,
                 json.dumps(
                     {
@@ -183,7 +183,7 @@ async def execute(
         app, "get", _request_path(project_id, f"/{render_id}.png"), "", authorization, None
     )
     if not 200 <= status < 300:
-        return invoke._execution_error(status, png)
+        return invoke.route_error(status, png)
     return _image_result(record, png, project_id=project_id)
 
 

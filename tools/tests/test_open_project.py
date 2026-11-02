@@ -10,6 +10,7 @@ most of these tests are about them:
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -215,20 +216,49 @@ def test_accepting_clones_into_the_chosen_parent_then_opens(roots, tmp_path, mon
 
 
 def test_a_fresh_clone_gets_a_marker(roots, tmp_path, monkeypatch):
-    """Without this we would fail to find it next time and clone it all over again."""
+    """Without this we would fail to find it next time and clone it all over again.
+    The marker stays local: git ignores it, so the clone is still clean."""
     stub_server(monkeypatch, _external())
     monkeypatch.setattr(open_project.settings_store, "update", lambda **kw: None)
     parent = tmp_path / "chosen"
     parent.mkdir()
     monkeypatch.setattr(
-        open_project, "clone", lambda origin, dest: Path(dest).mkdir(parents=True)
+        open_project,
+        "clone",
+        lambda origin, dest: subprocess.run(["git", "init", "-q", str(dest)], check=True),
     )
     monkeypatch.setattr(open_project, "launch_kicad", lambda d: None)
 
     open_project.open_project("prj_a", clone_flow=lambda name, origin: str(parent))
 
-    marker = json.loads((parent / "widget" / ".prism.json").read_text())
+    clone = parent / "widget"
+    marker = json.loads((clone / ".prism.json").read_text())
     assert marker["project"]["id"] == "prj_a"
+    status = subprocess.run(
+        ["git", "-C", str(clone), "status", "--porcelain"],
+        capture_output=True, text=True, check=True,
+    )
+    assert status.stdout == ""
+
+
+def test_a_hand_made_clone_is_found_by_its_origin_not_cloned_again(roots, monkeypatch):
+    clone = roots / "my-widget"
+    subprocess.run(["git", "init", "-q", str(clone)], check=True)
+    subprocess.run(
+        ["git", "-C", str(clone), "remote", "add", "origin", "https://h/x.git"],
+        check=True,
+    )
+    stub_server(monkeypatch, _external())
+    monkeypatch.setattr(
+        open_project, "clone", lambda *a: pytest.fail("cloned a project already on disk")
+    )
+    opened = []
+    monkeypatch.setattr(open_project, "launch_kicad", lambda d: opened.append(str(d)))
+
+    open_project.open_project("prj_a")
+
+    assert opened == [str(clone.resolve())]
+    assert json.loads((clone / ".prism.json").read_text())["project"]["id"] == "prj_a"
 
 
 def test_a_clone_outside_the_roots_is_added_to_the_project_list(roots, tmp_path, monkeypatch):

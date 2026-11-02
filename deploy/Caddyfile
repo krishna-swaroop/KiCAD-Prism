@@ -8,7 +8,7 @@
 # - Ports 80 and 443 reachable for ACME HTTP-01
 # - Prism .env configured with SESSION_COOKIE_SECURE=true and an HTTPS CORS origin
 #
-# See docs/DEPLOYMENT.md.
+# See https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/
 
 prism.example.com {
 	encode gzip zstd

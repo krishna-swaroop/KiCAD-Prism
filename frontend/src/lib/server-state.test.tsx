@@ -135,6 +135,27 @@ describe("useServerState", () => {
     expect(result.current).toMatchObject({ data: "second", error: null });
   });
 
+  it("counts the keys on screen whose re-read failed, and stops when they read again or leave", async () => {
+    const store = new ServerStateStore();
+    const { load, calls } = manualLoad<string>();
+    const heard = vi.fn();
+    store.watch(heard);
+    const { result, unmount } = renderRead(store, ["area", "one"], load);
+    await act(async () => calls[0].resolve("first"));
+    expect(store.outdated(["area"])).toBe(0);
+    act(() => { void result.current.refresh(); });
+    await act(async () => calls[1].reject(new Error("offline")));
+    expect([store.outdated(["area"]), store.outdated(["other"])]).toEqual([1, 0]);
+    expect(heard).toHaveBeenCalled();
+    act(() => { void result.current.refresh(); });
+    expect(store.outdated(["area"]), "not while it reads again").toBe(0);
+    await act(async () => calls[2].reject(new Error("offline")));
+    expect(store.outdated(["area"])).toBe(1);
+    unmount();
+    await flush();
+    expect(store.outdated(["area"]), "nobody shows it").toBe(0);
+  });
+
   it("re-reads observed keys under an invalidated prefix only", async () => {
     const store = new ServerStateStore();
     const branches = manualLoad<string>();

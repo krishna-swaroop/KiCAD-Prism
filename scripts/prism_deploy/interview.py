@@ -41,8 +41,8 @@ from .schemes import (
     validate_resolver,
 )
 
-DOCS_DEPLOYMENT = "https://github.com/krishna-swaroop/KiCAD-Prism/blob/main/docs/DEPLOYMENT.md"
-DOCS_AUTH = "https://github.com/krishna-swaroop/KiCAD-Prism/blob/main/docs/AUTHENTICATION_AND_ACCESS.md"
+DOCS_DEPLOYMENT = "https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/"
+DOCS_AUTH = "https://krishna-swaroop.github.io/KiCAD-Prism/admin/authentication/"
 DOCS_CHALLENGES = "https://letsencrypt.org/docs/challenge-types/"
 DOCS_RATE_LIMITS = "https://letsencrypt.org/docs/rate-limits/"
 DOCS_CADDY_DNS = "https://github.com/caddy-dns"

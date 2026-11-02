@@ -1,0 +1,451 @@
+{
+  "provider": "farnell",
+  "mpn": "MS621FE-FL11E",
+  "calls": [
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "manuPartNum:MS621FE-FL11E",
+        "storeInfo.id": "it.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "manufacturerPartNumberSearchReturn": {
+          "numberOfResults": 2,
+          "products": [
+            {
+              "sku": "1614634",
+              "displayName": "SEIKO INSTRUMENTS - MS621FE-FL11E. - Batteria ricaricabile, 3 V, litio diossido di manganese, 5.5 mAh, pila a bottone, pin per PCB, 1",
+              "productStatus": "NO_LONGER_STOCKED",
+              "rohsStatusCode": "NA",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ",
+              "id": "pf_ITE2_1614634_0",
+              "datasheets": [
+                {
+                  "type": "S",
+                  "description": "Safety Data Sheet (202.44KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3670182.pdf"
+                },
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (938.61KB) EN",
+                  "url": "http://www.farnell.com/datasheets/2700315.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 1,
+                  "cost": 5.47
+                },
+                {
+                  "to": 24,
+                  "from": 10,
+                  "cost": 2.45
+                },
+                {
+                  "to": 49,
+                  "from": 25,
+                  "cost": 2.3
+                },
+                {
+                  "to": 99,
+                  "from": 50,
+                  "cost": 2.16
+                },
+                {
+                  "to": 999999999,
+                  "from": 100,
+                  "cost": 1.92
+                }
+              ],
+              "vendorId": "1028690",
+              "vendorName": "SEIKO INSTRUMENTS",
+              "brandName": "SEIKO INSTRUMENTS",
+              "translatedManufacturerPartNumber": "MS621FE-FL11E.",
+              "translatedMinimumOrderQuality": 1,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 120,
+                "status": -4
+              },
+              "comingSoon": false,
+              "inventoryCode": 6,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 7,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "4628014",
+              "displayName": "SEIKO INSTRUMENTS - MS621FE-FL11E - Batteria ricaricabile, 3 V, litio diossido di manganese, 5.5 mAh, pila a bottone, pin per PCB, 1",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "NA",
+              "packSize": 1000,
+              "unitOfMeasure": "CONFEZIONE DA",
+              "id": "pf_ITE2_4628014_0",
+              "datasheets": [
+                {
+                  "type": "S",
+                  "description": "Safety Data Sheet (202.44KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3670182.pdf"
+                },
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (938.61KB) EN",
+                  "url": "http://www.farnell.com/datasheets/2700315.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 999999999,
+                  "from": 1,
+                  "cost": 1476.0
+                }
+              ],
+              "vendorId": "1028690",
+              "vendorName": "SEIKO INSTRUMENTS",
+              "brandName": "SEIKO INSTRUMENTS",
+              "translatedManufacturerPartNumber": "MS621FE-FL11E",
+              "translatedMinimumOrderQuality": 1,
+              "stock": {
+                "level": 1,
+                "leastLeadTime": 155,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 50001,
+                    "region": "UK",
+                    "lead": 155,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "-",
+                    "lead": 155,
+                    "warehouse": "PE1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 155,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 50001,
+                    "leastLeadTime": 155,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  },
+                  {
+                    "level": 0,
+                    "leastLeadTime": 155,
+                    "status": 1,
+                    "warehouse": "-",
+                    "shipsFromMultipleWarehouses": false
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "id:4628014 1614634",
+        "storeInfo.id": "it.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "premierFarnellPartNumberReturn": {
+          "numberOfResults": 2,
+          "products": [
+            {
+              "sku": "1614634",
+              "displayName": "SEIKO INSTRUMENTS - MS621FE-FL11E. - Batteria ricaricabile, 3 V, litio diossido di manganese, 5.5 mAh, pila a bottone, pin per PCB, 1",
+              "productStatus": "NO_LONGER_STOCKED",
+              "rohsStatusCode": "NA",
+              "packSize": 1,
+              "unitOfMeasure": "UNITÀ",
+              "id": "pf_ITE2_1614634_0",
+              "datasheets": [
+                {
+                  "type": "S",
+                  "description": "Safety Data Sheet (202.44KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3670182.pdf"
+                },
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (938.61KB) EN",
+                  "url": "http://www.farnell.com/datasheets/2700315.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 9,
+                  "from": 1,
+                  "cost": 5.47
+                },
+                {
+                  "to": 24,
+                  "from": 10,
+                  "cost": 2.45
+                },
+                {
+                  "to": 49,
+                  "from": 25,
+                  "cost": 2.3
+                },
+                {
+                  "to": 99,
+                  "from": 50,
+                  "cost": 2.16
+                },
+                {
+                  "to": 999999999,
+                  "from": 100,
+                  "cost": 1.92
+                }
+              ],
+              "vendorId": "1028690",
+              "vendorName": "SEIKO INSTRUMENTS",
+              "brandName": "SEIKO INSTRUMENTS",
+              "translatedManufacturerPartNumber": "MS621FE-FL11E.",
+              "translatedMinimumOrderQuality": 1,
+              "stock": {
+                "level": 0,
+                "leastLeadTime": 120,
+                "status": -4
+              },
+              "comingSoon": false,
+              "inventoryCode": 6,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 7,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            },
+            {
+              "sku": "4628014",
+              "displayName": "SEIKO INSTRUMENTS - MS621FE-FL11E - Batteria ricaricabile, 3 V, litio diossido di manganese, 5.5 mAh, pila a bottone, pin per PCB, 1",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "NA",
+              "packSize": 1000,
+              "unitOfMeasure": "CONFEZIONE DA",
+              "id": "pf_ITE2_4628014_0",
+              "datasheets": [
+                {
+                  "type": "S",
+                  "description": "Safety Data Sheet (202.44KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3670182.pdf"
+                },
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (938.61KB) EN",
+                  "url": "http://www.farnell.com/datasheets/2700315.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 999999999,
+                  "from": 1,
+                  "cost": 1476.0
+                }
+              ],
+              "vendorId": "1028690",
+              "vendorName": "SEIKO INSTRUMENTS",
+              "brandName": "SEIKO INSTRUMENTS",
+              "translatedManufacturerPartNumber": "MS621FE-FL11E",
+              "translatedMinimumOrderQuality": 1,
+              "stock": {
+                "level": 1,
+                "leastLeadTime": 155,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 50001,
+                    "region": "UK",
+                    "lead": 155,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "-",
+                    "lead": 155,
+                    "warehouse": "PE1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 155,
+                    "warehouse": "GB1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 50001,
+                    "leastLeadTime": 155,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  },
+                  {
+                    "level": 0,
+                    "leastLeadTime": 155,
+                    "status": 1,
+                    "warehouse": "-",
+                    "shipsFromMultipleWarehouses": false
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/catalog/products",
+      "params": {
+        "term": "id:4628014",
+        "storeInfo.id": "it.farnell.com",
+        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.offset": "0",
+        "resultsSettings.numberOfResults": "10"
+      },
+      "answer": {
+        "premierFarnellPartNumberReturn": {
+          "numberOfResults": 1,
+          "products": [
+            {
+              "sku": "4628014",
+              "displayName": "SEIKO INSTRUMENTS - MS621FE-FL11E - Batteria ricaricabile, 3 V, litio diossido di manganese, 5.5 mAh, pila a bottone, pin per PCB, 1",
+              "productStatus": "STOCKED",
+              "rohsStatusCode": "NA",
+              "packSize": 1000,
+              "unitOfMeasure": "CONFEZIONE DA",
+              "id": "pf_ITE2_4628014_0",
+              "datasheets": [
+                {
+                  "type": "S",
+                  "description": "Safety Data Sheet (202.44KB) EN",
+                  "url": "http://www.farnell.com/datasheets/3670182.pdf"
+                },
+                {
+                  "type": "T",
+                  "description": "Technical Data Sheet (938.61KB) EN",
+                  "url": "http://www.farnell.com/datasheets/2700315.pdf"
+                }
+              ],
+              "prices": [
+                {
+                  "to": 999999999,
+                  "from": 1,
+                  "cost": 1476.0
+                }
+              ],
+              "vendorId": "1028690",
+              "vendorName": "SEIKO INSTRUMENTS",
+              "brandName": "SEIKO INSTRUMENTS",
+              "translatedManufacturerPartNumber": "MS621FE-FL11E",
+              "translatedMinimumOrderQuality": 1,
+              "stock": {
+                "level": 1,
+                "leastLeadTime": 155,
+                "status": 1,
+                "shipsFromMultipleWarehouses": false,
+                "breakdown": [
+                  {
+                    "inv": 50001,
+                    "region": "UK",
+                    "lead": 155,
+                    "warehouse": "UK1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "UK",
+                    "lead": 155,
+                    "warehouse": "GB1"
+                  },
+                  {
+                    "inv": 0,
+                    "region": "-",
+                    "lead": 155,
+                    "warehouse": "PE1"
+                  }
+                ],
+                "regionalBreakdown": [
+                  {
+                    "level": 50001,
+                    "leastLeadTime": 155,
+                    "status": 1,
+                    "warehouse": "UK",
+                    "shipsFromMultipleWarehouses": true
+                  },
+                  {
+                    "level": 0,
+                    "leastLeadTime": 155,
+                    "status": 1,
+                    "warehouse": "-",
+                    "shipsFromMultipleWarehouses": false
+                  }
+                ]
+              },
+              "comingSoon": false,
+              "inventoryCode": 5,
+              "nationalClassCode": null,
+              "publishingModule": null,
+              "vatHandlingCode": "S2",
+              "releaseStatusCode": 4,
+              "isSpecialOrder": false,
+              "isAwaitingRelease": false,
+              "reeling": false,
+              "discountReason": 30
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

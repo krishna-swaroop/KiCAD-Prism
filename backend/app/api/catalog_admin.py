@@ -1203,6 +1203,7 @@ def transition_release_status(
         )
         if not _can_transition_workflow(user, current_stage, next_stage):
             raise HTTPException(status_code=403, detail="Catalog workflow transition not allowed for this role")
+        policy.authorize(user, workflow_policy.transition_action(next_stage), check_role=False)
         override_reason = payload.self_approval_override_reason.strip()
         if override_reason and not policy.role_allows(user.role, "catalog_admin"):
             raise HTTPException(status_code=403, detail="Only administrators may override two-person approval")

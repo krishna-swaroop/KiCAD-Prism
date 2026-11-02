@@ -66,6 +66,10 @@ EXPECTED: dict[str, tuple[set[str], frozenset[str]]] = {
     "run_status": (WRITERS, frozenset({"qa", "admin"})),
     "catalog_admin": (WRITERS, frozenset({"admin"})),
     "remote_symbols": (READERS | {"provider"}, ALL),
+    "supply_read": (READERS, frozenset({"designer", "qa", "admin"})),
+    "supply_write": (WRITERS, frozenset({"designer", "admin"})),
+    "supply_follow": (WRITERS, frozenset({"designer", "qa", "admin"})),
+    "supply_approve": (WRITERS, frozenset({"qa", "admin"})),
     # Ops (ADR §11, D20): admins only, and api:write does not imply ops scopes.
     "ops_read": ({"session", "wildcard"}, frozenset({"admin"})),
     "ops_act": ({"session", "wildcard"}, frozenset({"admin"})),
@@ -80,9 +84,11 @@ AREA_ACTIONS = {
     "catalog_write": ("catalog:write", "designer"),
     "catalog_qa": ("catalog:qa", "qa"),
     "catalog_admin": ("admin", "admin"),
+    "supply_follow": ("supply:write", "qa"),
+    "supply_write": ("supply:write", "designer"),
 }
 
-HUMAN_ONLY_ACTIONS = ("release", "admin", "catalog_qa", "catalog_admin")
+HUMAN_ONLY_ACTIONS = ("release", "admin", "catalog_qa", "catalog_admin", "supply_approve")
 HUMAN_ONLY_DETAIL = "Only a person signed in to Prism can do this; open it in Prism"
 
 
@@ -300,6 +306,9 @@ class RoleMatrixContractTests(unittest.TestCase):
         "edit_catalog": ["designer", "admin"],
         "review_catalog_qa": ["qa", "admin"],
         "administer_catalog": ["admin"],
+        "view_supply": ["designer", "qa", "admin"],
+        "edit_supply": ["designer", "admin"],
+        "review_supply": ["qa", "admin"],
         "administer_workspace": ["admin"],
     }
 

@@ -107,6 +107,8 @@ function RepresentationRow({
   };
 
   const busy = !canMutate || saving;
+  const symbolName = symbols.find((asset) => asset.id === symbolId)?.target_name;
+  const footprintName = footprints.find((asset) => asset.id === footprintId)?.target_name;
   return (
     <div className={cn("flex h-11 min-w-[640px] items-center gap-1.5 border-b px-2 last:border-b-0", previewed && "bg-muted/50 shadow-[inset_2px_0_0_hsl(var(--primary))]")}>
       <Button
@@ -121,13 +123,17 @@ function RepresentationRow({
       >
         <Star className={cn("h-3.5 w-3.5", representation.is_default ? "fill-primary text-primary" : "text-muted-foreground")} />
       </Button>
-      <Input aria-label="Representation label" className="h-8 w-40 shrink-0 text-xs" value={label} onChange={(event) => setLabel(event.target.value)} disabled={busy} />
+      <Input aria-label="Representation label" title={label} className="h-8 w-40 shrink-0 text-xs" value={label} onChange={(event) => setLabel(event.target.value)} disabled={busy} />
       <Select value={symbolId || "none"} onValueChange={(value) => setSymbolId(value === "none" ? "" : value)} disabled={busy}>
-        <SelectTrigger size="sm" className="min-w-0 flex-1 text-xs" aria-label="Symbol asset"><SelectValue placeholder="No symbol" /></SelectTrigger>
+        <SelectTrigger size="sm" className="min-w-0 flex-1 basis-0 text-xs" aria-label="Symbol asset" title={symbolName || "No symbol"}>
+          <SelectValue placeholder="No symbol"><span className="block truncate">{symbolName || "No symbol"}</span></SelectValue>
+        </SelectTrigger>
         <SelectContent><SelectItem value="none">No symbol</SelectItem>{symbols.map((asset) => <SelectItem key={asset.id} value={asset.id}>{asset.target_name}</SelectItem>)}</SelectContent>
       </Select>
       <Select value={footprintId || "none"} onValueChange={(value) => setFootprintId(value === "none" ? "" : value)} disabled={busy}>
-        <SelectTrigger size="sm" className="min-w-0 flex-1 text-xs" aria-label="Footprint asset"><SelectValue placeholder="No footprint" /></SelectTrigger>
+        <SelectTrigger size="sm" className="min-w-0 flex-1 basis-0 text-xs" aria-label="Footprint asset" title={footprintName || "No footprint"}>
+          <SelectValue placeholder="No footprint"><span className="block truncate">{footprintName || "No footprint"}</span></SelectValue>
+        </SelectTrigger>
         <SelectContent><SelectItem value="none">No footprint</SelectItem>{footprints.map((asset) => <SelectItem key={asset.id} value={asset.id}>{asset.target_name}</SelectItem>)}</SelectContent>
       </Select>
       <Input aria-label="Display order" title="Display order" type="number" className="h-8 w-14 shrink-0 text-xs" value={order} onChange={(event) => setOrder(event.target.value)} disabled={busy} />
@@ -211,13 +217,11 @@ function RepresentationsPanel({
 function AssetRow({
   asset,
   canMutate,
-  downloadsAvailable,
   onDownload,
   onDetach,
 }: {
   asset: CatalogAsset;
   canMutate: boolean;
-  downloadsAvailable: boolean;
   onDownload: () => void;
   onDetach: () => void;
 }) {
@@ -228,7 +232,7 @@ function AssetRow({
       <Badge variant={asset.required ? "default" : "secondary"} className="h-4 shrink-0 px-1 text-[10px]">{asset.required ? "Required" : "Optional"}</Badge>
       <span className="w-16 shrink-0 text-right tabular-nums text-muted-foreground" title={asset.content_type || undefined}>{formatBytes(asset.size_bytes)}</span>
       <span className="hidden w-24 shrink-0 font-mono text-muted-foreground sm:inline" title={asset.sha256 ? `SHA-256 ${asset.sha256}` : asset.id}>{shortHash(asset.sha256 || asset.id)}</span>
-      <Button size="icon-sm" variant="ghost" aria-label={`Download ${asset.name}`} title={downloadsAvailable ? "Download" : "Download from the released revision"} disabled={!downloadsAvailable} onClick={onDownload}>
+      <Button size="icon-sm" variant="ghost" aria-label={`Download ${asset.name}`} title="Download" onClick={onDownload}>
         <Download className="h-3.5 w-3.5" />
       </Button>
       {canMutate ? (
@@ -262,7 +266,6 @@ export function AssetsPanel({
   onRepresentationsChanged: () => void;
 }) {
   const [picked, setPicked] = useState("");
-  const downloadsAvailable = component.revision_id === component.released_revision_id;
   const previewed =
     component.representations.find((item) => item.id === picked) ??
     component.representations.find((item) => item.is_default) ??
@@ -319,7 +322,6 @@ export function AssetsPanel({
                       key={asset.id}
                       asset={asset}
                       canMutate={canMutate}
-                      downloadsAvailable={downloadsAvailable}
                       onDownload={() => onDownload(asset)}
                       onDetach={() => onDetachAsset(asset)}
                     />

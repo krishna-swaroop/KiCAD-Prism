@@ -20,17 +20,7 @@ from typing import Any
 from app.core.config import settings
 from app.core.links import project_url
 from app.services.mcp import invoke
-from app.services.mcp.registry import Tool, register, write_annotations
-
-WRITE_TOOL_NAMES = frozenset(
-    {
-        "sync_project",
-        "start_release_build",
-        "request_release_approval",
-        "create_catalog_draft",
-        "update_import_proposal",
-    }
-)
+from app.services.mcp.registry import Presenter, Tool, presenter, register, write_annotations
 
 _FULL_SHA = r"^[0-9a-fA-F]{40}$"
 
@@ -236,7 +226,7 @@ register(
                 "extra_fields": {
                     "type": "object",
                     "additionalProperties": {"type": "string"},
-                    "description": "Custom metadata field values, keyed by field name.",
+                    "description": "Custom metadata field values, keyed by field key (see list_catalog_fields).",
                 },
             },
             (
@@ -292,25 +282,23 @@ register(
 )
 
 
-def present(tool_name: str, arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-    """Add the page a person opens next; other results pass through."""
+def _link_to(section: str) -> Presenter:
+    """A presenter adding the project page, in ``section``, a person opens next."""
 
-    if result.get("isError"):
+    def present(arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+        structured = result.get("structuredContent")
+        if result.get("isError") or not isinstance(structured, dict):
+            return result
+        link = _project_link(arguments.get("project_id"), section=section)
+        if link:
+            structured["link"] = link
         return result
-    structured = result.get("structuredContent")
-    if not isinstance(structured, dict):
-        return result
 
-    section = {
-        "sync_project": "history",
-        "start_release_build": "release-studio",
-    }.get(tool_name)
-    if section is None:
-        return result
-    link = _project_link(arguments.get("project_id"), section=section)
-    if link:
-        structured["link"] = link
-    return result
+    return present
 
 
-__all__ = ["WRITE_TOOL_NAMES", "present"]
+presenter("sync_project")(_link_to("history"))
+presenter("start_release_build")(_link_to("release-studio"))
+
+
+__all__: list[str] = []

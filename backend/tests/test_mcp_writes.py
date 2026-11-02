@@ -22,10 +22,12 @@ from app.core import policy  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.security import AuthenticatedUser  # noqa: E402
 from app.services.mcp import audit, governance, invoke, registry  # noqa: E402
-from app.services.mcp import tools as mcp_tools  # noqa: E402
+from app.services.mcp import tools as _tools  # noqa: E402,F401 - registers the tools
 from app.services.mcp import tools_writes  # noqa: E402
 
-WRITE_TOOL_ORDER = [
+#: The design and catalog-draft write tools this module checks one by one.
+#: Rules every write tool must follow are checked over the registry instead.
+DESIGN_WRITE_TOOLS = [
     "sync_project",
     "start_release_build",
     "request_release_approval",
@@ -102,22 +104,69 @@ class RegistryTests(unittest.TestCase):
         self.assertNotIn("idempotencyKey", registry.tool_definition(tool)["inputSchema"]["properties"])
 
 
+class RegistryContractTests(unittest.TestCase):
+    """What every tool gets from the registry, whichever module declares it."""
+
+    def listed(self) -> list[registry.Tool]:
+        with mock.patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
+            return list(registry.tools())
+
+    def test_tools_list_is_reads_then_writes_then_ops(self) -> None:
+        groups = [tool.group for tool in self.listed()]
+        self.assertEqual(groups, sorted(groups, key=registry.GROUP_ORDER.index))
+        self.assertEqual(set(groups), set(registry.GROUP_ORDER))
+
+    def test_a_tool_s_group_follows_what_it_declares(self) -> None:
+        for tool in self.listed():
+            with self.subTest(tool=tool.name):
+                if tool.group == "write":
+                    self.assertIsNotNone(tool.action)
+                    self.assertFalse(tool.annotations["readOnlyHint"])
+                elif tool.group == "read":
+                    self.assertTrue(tool.annotations["readOnlyHint"])
+
+    def test_every_tool_is_documented(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        automate = root / "website/src/content/docs/automate"
+        pages = sorted(automate.glob("*.md"))
+        self.assertTrue(pages, f"{automate} has no pages")
+        automate_text = "\n".join(page.read_text(encoding="utf-8") for page in pages)
+        adr = (root / "docs/architecture/adr-scripting-and-mcp.md").read_text(
+            encoding="utf-8"
+        )
+        for document, text in (
+            ("website/src/content/docs/automate/*.md", automate_text),
+            ("docs/architecture/adr-scripting-and-mcp.md", adr),
+        ):
+            missing = [tool.name for tool in self.listed() if f"`{tool.name}`" not in text]
+            self.assertEqual(missing, [], f"{document} does not name these tools")
+
+    def test_a_presenter_binds_to_one_registered_tool(self) -> None:
+        with self.assertRaises(ValueError):
+            registry.presenter("no_such_tool")(lambda arguments, result: result)
+        with self.assertRaises(ValueError):
+            registry.presenter("get_bom")(lambda arguments, result: result)
+
+    def test_a_tool_without_a_presenter_passes_results_through(self) -> None:
+        result = {"structuredContent": {"x": 1}}
+        self.assertIs(registry.present(registry.tool_named("get_job"), {}, result), result)
+
+
 class WriteToolDefinitionTests(unittest.TestCase):
     def definitions(self) -> dict[str, dict]:
         return {
             name: registry.tool_definition(registry.tool_named(name))
-            for name in WRITE_TOOL_ORDER
+            for name in DESIGN_WRITE_TOOLS
         }
 
-    def test_the_write_tools_register_after_the_read_set(self) -> None:
-        tools = registry.tools()
-        last_read = max(index for index, tool in enumerate(tools) if not tool.write)
-        writes = [tool.name for tool in tools[last_read + 1 :]]
-        self.assertEqual([name for name in writes if name in WRITE_TOOL_ORDER], WRITE_TOOL_ORDER)
-        self.assertTrue(all(tool.write for tool in tools[last_read + 1 :]))
-
     def test_every_write_tool_advertises_write_annotations_and_an_idempotency_key(self) -> None:
-        for name, definition in self.definitions().items():
+        writes = {
+            tool.name: registry.tool_definition(tool)
+            for tool in registry.tools()
+            if tool.group == "write"
+        }
+        self.assertTrue(set(DESIGN_WRITE_TOOLS) <= set(writes))
+        for name, definition in writes.items():
             with self.subTest(tool=name):
                 self.assertEqual(definition["annotations"]["readOnlyHint"], False)
                 self.assertEqual(definition["annotations"]["destructiveHint"], False)
@@ -259,8 +308,8 @@ class WriteLinkTests(unittest.TestCase):
         )
 
     def test_a_queued_sync_links_to_the_project_history(self) -> None:
-        result = mcp_tools.present(
-            "sync_project",
+        result = registry.present(
+            registry.tool_named("sync_project"),
             {"project_id": "p1"},
             {"structuredContent": {"job_id": "j1", "status": "started"}},
         )
@@ -270,8 +319,8 @@ class WriteLinkTests(unittest.TestCase):
         )
 
     def test_a_queued_build_links_to_release_studio(self) -> None:
-        result = mcp_tools.present(
-            "start_release_build",
+        result = registry.present(
+            registry.tool_named("start_release_build"),
             {"project_id": "p1", "commit": "a" * 40},
             {"structuredContent": {"job": {"id": "j1"}}},
         )
@@ -281,8 +330,8 @@ class WriteLinkTests(unittest.TestCase):
         )
 
     def test_an_error_result_is_not_cited(self) -> None:
-        result = mcp_tools.present(
-            "sync_project",
+        result = registry.present(
+            registry.tool_named("sync_project"),
             {"project_id": "p1"},
             {"structuredContent": {"error": {"code": "forbidden"}}, "isError": True},
         )

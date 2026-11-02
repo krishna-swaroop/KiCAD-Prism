@@ -26,15 +26,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { formatAgo, formatPrice as formatSupplyPrice } from "@/features/supply/supply-format";
+import { OutsideLink } from "@/panel/components/OutsideLink";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import type { PanelComponent, PanelSupplySource } from "@/panel/lib/panel-api";
+import { SupplyAvailability } from "@/panel/screens/SupplyAvailability";
 import {
   classifyPanelLoadFailure,
   getComponent,
   getInlineBundle,
   getPartManifest,
+  PanelApiError,
+  refreshSupplyPart,
 } from "@/panel/lib/panel-api";
+import { refreshText } from "@/panel/lib/supply-summary";
 import { usePanelAssetLoader } from "@/panel/lib/use-panel-asset-loader";
 import { getSessionId, KiCadRpcError, sendRpcCommand } from "@/panel/lib/kicad-bridge";
 import { formatPlacementError, PLACEMENT_RESPONSE_TIMEOUT_MS } from "@/panel/lib/panel-placement";
@@ -89,20 +95,9 @@ function formatAvailability(state: string): string {
   return "Metadata only";
 }
 
-function formatAsOf(iso: string): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "";
-  const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  const days = Math.round(hours / 24);
-  return `${days} d ago`;
-}
-
+/** A price from the panel's API as the app writes one (`formatPrice`). */
 function formatPrice(value: number, currency?: string): string {
-  return `${currency ? currency + " " : ""}${value.toFixed(value < 1 ? 3 : 2)}`;
+  return formatSupplyPrice(String(value), currency ?? "");
 }
 
 // react-doctor-disable-next-line no-giant-component - detail panel whose sections share one part resource
@@ -119,6 +114,30 @@ export function PartDetailScreen({
     preview: previewFor(componentId, prefetched),
   }));
   const [retryNonce, setRetryNonce] = useState(0);
+  // One refresh at a time: the server refuses another within 15 minutes, so a second click would only be refused.
+  const [refreshing, setRefreshing] = useState(false);
+  // A read spends the account's calls: a KiCad provider token or a read-only one is refused, and the button goes.
+  const [refreshAllowed, setRefreshAllowed] = useState(true);
+  // After a read, only the availability is read again: the picked representation and the open sections stay.
+  const [supplyNonce, setSupplyNonce] = useState(0);
+  const refreshAvailability = async () => {
+    const partId = load.phase === "ready" ? load.component.supply?.summary?.part_id : undefined;
+    if (!partId) return;
+    setRefreshing(true);
+    try {
+      appendLog(refreshText(await refreshSupplyPart(partId)));
+      setSupplyNonce((value) => value + 1);
+    } catch (err) {
+      if (err instanceof PanelApiError && err.status === 403) {
+        setRefreshAllowed(false);
+        appendLog("No access");
+      } else {
+        appendLog((err as Error).message);
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const [showAllParams, setShowAllParams] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [placementError, setPlacementError] = useState<string | null>(null);
@@ -166,6 +185,18 @@ export function PartDetailScreen({
       });
     return () => controller.abort();
   }, [componentId, revisionId, retryNonce, prefetched, appendLog, onAuthRequired]);
+
+  useEffect(() => {
+    if (supplyNonce === 0) return undefined;
+    const controller = new AbortController();
+    getComponent(componentId, controller.signal, "", revisionId)
+      .then((detail) => {
+        if (controller.signal.aborted) return;
+        setLoad((current) => current.phase === "ready" ? { ...current, component: { ...current.component, supply: detail.supply } } : current);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [supplyNonce, componentId, revisionId]);
 
   async function runPlacement(path: "manifest" | "inline") {
     const sessionId = getSessionId();
@@ -280,7 +311,6 @@ export function PartDetailScreen({
     component.place_enabled && selectedComplete && component.identity_kind === "mpn";
 
   const sources = component.supply?.sources ?? [];
-  const vendorSources = sources.filter((s) => s.kind === "vendor");
   const localSources = sources.filter((s) => s.kind === "local");
   const symbolAssetId = selectedRepresentation?.symbol?.id;
   const footprintAssetId = selectedRepresentation?.footprint?.id;
@@ -292,7 +322,7 @@ export function PartDetailScreen({
     <div className="flex flex-1 flex-col gap-3">
       {/* ── Header Row ─────────────────────────────────────────── */}
       <div className="flex items-start gap-2">
-        <Button variant="ghost" size="icon-xs" onClick={onBack} className="mt-0.5 shrink-0">
+        <Button variant="ghost" size="icon-xs" onClick={onBack} className="mt-0.5 shrink-0" aria-label="Back" title="Back">
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
         <span className="mt-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
@@ -453,22 +483,32 @@ export function PartDetailScreen({
       <Section
         label="Availability"
         action={
-          vendorSources.length > 0 ? (
+          component.supply?.summary && refreshAllowed ? (
             <button
               aria-label="Refresh availability"
               title="Refresh availability"
-              className="text-muted-foreground transition-colors hover:text-primary"
-              onClick={() => appendLog("Vendor refresh is not configured yet.")}
+              className="text-muted-foreground transition-colors hover:text-primary disabled:opacity-50"
+              disabled={refreshing}
+              aria-busy={refreshing}
+              onClick={() => void refreshAvailability()}
             >
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
             </button>
           ) : null
         }
       >
-        {sources.length === 0 ? (
-          <p className="px-0.5 py-1 text-[11px] leading-snug text-muted-foreground">
-            No availability data.
+        {component.supply?.restriction === "not_for_new_designs" ? (
+          <p role="alert" className="rounded border border-amber-500/50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+            Not for new designs
           </p>
+        ) : null}
+        {component.supply?.summary ? <SupplyAvailability supply={component.supply} /> : null}
+        {sources.length === 0 ? (
+          component.supply?.summary ? null : (
+            <p className="px-0.5 py-1 text-[11px] leading-snug text-muted-foreground">
+              No availability data.
+            </p>
+          )
         ) : (
           <div className="flex flex-col gap-1.5">
             {sources.map((source) => (
@@ -487,16 +527,14 @@ export function PartDetailScreen({
       <div className="sticky bottom-0 z-30 -mx-3 mt-auto border-t bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex items-center gap-2">
           {component.datasheet_url ? (
-            <a
+            <OutsideLink
               href={component.datasheet_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open datasheet"
+              label="Open datasheet"
               className={cn(buttonVariants({ variant: "outline" }), "shrink-0")}
             >
               <FileText data-icon="inline-start" className="h-4 w-4" />
               Datasheet
-            </a>
+            </OutsideLink>
           ) : (
             <Button variant="outline" disabled className="shrink-0" aria-label="No datasheet">
               <FileText data-icon="inline-start" className="h-4 w-4" />
@@ -601,7 +639,7 @@ function AvailabilityCard({ source }: { source: PanelSupplySource }) {
   const mixedUnits = Boolean(source.mixed_units);
   const warnings = inventoryWarnings(source);
   const uncertain = warnings.length > 0;
-  const asOf = formatAsOf(source.fetched_at);
+  const asOf = formatAgo(source.fetched_at);
   const breaks = isVendor ? (source.price_breaks ?? []) : [];
   const inStock = !uncertain && source.stock > 0;
   const plentiful = inStock && source.stock > 100;
@@ -626,15 +664,13 @@ function AvailabilityCard({ source }: { source: PanelSupplySource }) {
         <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotTone)} />
         <span className="truncate text-xs font-medium">{source.display_name}</span>
         {isVendor && source.product_url ? (
-          <a
+          <OutsideLink
             href={source.product_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Open ${source.display_name} product page`}
+            label={`Open ${source.display_name} product page`}
             className="shrink-0 text-muted-foreground/70 transition-colors hover:text-primary"
           >
             <ExternalLink className="h-3 w-3" />
-          </a>
+          </OutsideLink>
         ) : null}
         {asOf ? (
           <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/60">
@@ -675,7 +711,7 @@ function AvailabilityCard({ source }: { source: PanelSupplySource }) {
           {isVendor && source.unit_price != null ? (
             <div className="text-right">
               <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Unit{source.price_break_qty ? ` @ ${formatQuantity(source.price_break_qty)}` : ""}
+                Unit{source.price_break_qty ? ` × ${formatQuantity(source.price_break_qty)}` : ""}
               </div>
               <div className="mt-1.5 text-lg font-semibold leading-none tabular-nums">
                 {formatPrice(source.unit_price, source.currency)}

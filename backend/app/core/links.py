@@ -72,6 +72,28 @@ def project_url(
     return f"{url}?{query}" if query else url
 
 
+def catalog_component_url(public_base_url: str, component_id: str) -> str:
+    """The Library Manager page of one catalog component.
+
+    The library is a workspace section, so the link is the workspace root with
+    the component named (``componentWorkspacePath`` in the frontend's command
+    palette builds the same URL).
+    """
+
+    base = normalize_public_base_url(public_base_url)
+    if not base:
+        raise ValueError("public_base_url is required")
+    query = urlencode(
+        {
+            "section": "library-manager",
+            "libraryView": "catalog",
+            "component": component_id,
+            "componentTab": "overview",
+        }
+    )
+    return f"{base}/?{query}"
+
+
 def _joined_query_value(values: Iterable[str]) -> _RawQueryValue | None:
     """Each item quoted on its own, joined by literal commas.
 
@@ -202,6 +224,7 @@ def parse_resource_uri(uri: str) -> ResourceRef:
 __all__ = [
     "RESOURCE_KINDS",
     "ResourceRef",
+    "catalog_component_url",
     "normalize_public_base_url",
     "parse_resource_uri",
     "project_url",

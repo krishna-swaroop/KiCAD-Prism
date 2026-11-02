@@ -153,7 +153,7 @@ def _handle(func, *args, **kwargs):
 
 
 @router.get("/manufacturers", dependencies=[Depends(require_viewer)], response_model=list[dict[str, Any]])
-async def list_manufacturers():
+async def list_manufacturing_manufacturers():
     return await asyncio.to_thread(mfg.list_manufacturers)
 
 

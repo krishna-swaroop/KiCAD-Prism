@@ -245,7 +245,8 @@ def bundle_memory_budget_bytes(concurrency: int) -> int:
     """The PRISM_DESIGN_BUNDLE_MEMORY_BUDGET_BYTES for this many bundle builds.
 
     The backend refuses to start when CONCURRENCY x (largest stage cap +
-    1.25 GiB) exceeds the budget (.env.example, docs/CONFIGURATION.md). This is
+    1.25 GiB) exceeds the budget (.env.example,
+    https://krishna-swaroop.github.io/KiCAD-Prism/admin/configuration/). This is
     the smallest budget that passes, and never below the backend's own default.
     """
     needed = concurrency * (BUNDLE_LARGEST_STAGE_CAP_BYTES + BUNDLE_BACKSTOP_OVERHEAD_BYTES)

@@ -31,7 +31,7 @@ TEMPLATE_FILES = (
     "README.md",
 )
 REPOSITORY_FILES = (
-    ("docs/UPGRADES.md", "UPGRADES.md"),
+    ("website/src/content/docs/admin/upgrades.md", "UPGRADES.md"),
     ("scripts/prism_backup.py", "scripts/prism_backup.py"),
     ("scripts/prism_deploy/__init__.py", "scripts/prism_deploy/__init__.py"),
     ("scripts/prism_deploy/tui.py", "scripts/prism_deploy/tui.py"),

@@ -12,15 +12,14 @@ import type { CatalogAsset, CatalogComponent, CatalogRepresentation } from "@/ty
  * Catalog `asset.sha256` is the raw stored hash. Manifest `entry.sha256` is
  * the KiCad placement hash after `materialize_asset` and need not match.
  * The signed URL returns those placement bytes, not the raw source file.
+ * A revision that is not the released one has no manifest, so its files
+ * download as stored (`/api/catalog/assets/{id}/content`).
  */
 
 export const AUXILIARY_ASSET_TYPES = new Set<CatalogAsset["asset_type"]>([
   "3dmodel",
   "spice",
 ]);
-
-export const RELEASED_DOWNLOAD_BLOCKED_MESSAGE =
-  "Direct downloads are available for the released revision. Release this revision or open the released revision first.";
 
 export const ASSET_NOT_IN_MANIFEST_MESSAGE =
   "This asset is not present in the released download manifest.";
@@ -39,7 +38,7 @@ export type PlacementManifest = {
 };
 
 export type ReleasedAssetDownloadPlan =
-  | { status: "blocked"; message: string }
+  | { status: "stored"; url: string }
   | { status: "unavailable"; message: string }
   | {
       status: "ready";
@@ -113,6 +112,10 @@ export function resolveReleasedRepresentationForAsset(
   );
 }
 
+export function storedAssetUrl(assetId: string): string {
+  return `/api/catalog/assets/${encodeURIComponent(assetId)}/content`;
+}
+
 export function releasedAssetManifestUrl(componentId: string, representationId: string): string {
   const params = new URLSearchParams({ representation: representationId });
   return `/api/remote-provider/parts/${encodeURIComponent(componentId)}?${params.toString()}`;
@@ -136,7 +139,7 @@ export function planReleasedAssetDownload(
   asset: Pick<CatalogAsset, "id" | "asset_type">,
 ): ReleasedAssetDownloadPlan {
   if (!releasedRevisionDownloadsAllowed(currentComponent, activeComponent)) {
-    return { status: "blocked", message: RELEASED_DOWNLOAD_BLOCKED_MESSAGE };
+    return { status: "stored", url: storedAssetUrl(asset.id) };
   }
   const representation = resolveReleasedRepresentationForAsset(
     activeComponent?.representations,
@@ -211,8 +214,8 @@ export function useReleasedAssetDownload(
         activeComponent,
         asset,
       );
-      if (plan.status === "blocked") {
-        toast.info(plan.message);
+      if (plan.status === "stored") {
+        (optionsRef.current?.startDownload ?? startBrowserDownload)(plan.url, asset.name);
         return;
       }
       if (plan.status === "unavailable") {

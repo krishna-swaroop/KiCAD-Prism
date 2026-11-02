@@ -22,7 +22,7 @@ import tempfile
 from dataclasses import dataclass
 from typing import Optional
 
-__all__ = ["GitAccessError", "describe_git_failure", "git_failure_message"]
+__all__ = ["GitAccessError", "describe_git_failure", "git_failure_message", "strip_url_credentials"]
 
 
 class GitAccessError(RuntimeError):
@@ -111,10 +111,14 @@ _RULES: tuple[_Rule, ...] = (
             "authentication failed",
         ),
         template=(
-            "{target} needs credentials that Prism does not have.\n\n"
-            "Prism never prompts for a password and does not store one. Use an SSH "
-            "URL (git@{host}:org/repo.git) and grant Prism's key read access to the "
-            "repository."
+            "{target} needs credentials that Prism does not have, or refused the "
+            "token Prism sent.\n\n"
+            "If an administrator set a token for {host} (GITHUB_TOKEN, or an entry "
+            "in PRISM_GIT_CREDENTIALS), it may have expired or lack read access to "
+            "this repository; replace it. Otherwise use an SSH URL "
+            "(git@{host}:org/repo.git) and grant Prism's key read access, or ask an "
+            "administrator to add a token for {host} to PRISM_GIT_CREDENTIALS. "
+            "Prism never prompts for a password."
         ),
     ),
     _Rule(
@@ -193,6 +197,16 @@ def _sensitive_path_pattern() -> "re.Pattern[str]":
 
 _SENSITIVE_PATH_RE = _sensitive_path_pattern()
 
+# A remote URL with userinfo. Prism's HTTPS credentials are rewritten into the
+# URL Git uses (``git_remote_access._inject_git_credentials``), so any URL git
+# echoes may carry a token. Git usually strips it; this does not rely on that.
+_URL_USERINFO_RE = re.compile(r"(://)[^/\s@]+@")
+
+
+def strip_url_credentials(text: str) -> str:
+    """``text`` with the userinfo removed from every URL in it."""
+    return _URL_USERINFO_RE.sub(r"\1", text)
+
 
 def _stderr_of(error: BaseException) -> str:
     """Best-effort read of git's stderr from a GitPython error."""
@@ -220,7 +234,8 @@ def describe_git_failure(
 
     # Nothing recognised. Surface git's own words, which are more useful than a
     # generic apology, but strip the server-side paths out of them.
-    detail = _SENSITIVE_PATH_RE.sub("…", _stderr_of(error)).strip()
+    detail = _SENSITIVE_PATH_RE.sub("…", _stderr_of(error))
+    detail = strip_url_credentials(detail).strip()
     # GitPython prefixes its own repr; keep only what git actually printed.
     lines = [
         line.strip()

@@ -1,0 +1,180 @@
+---
+// The landing page's tour of what Prism does. Each card is a labelled block on
+// the sheet: a designator, the page it opens, a crop of the real screen and one
+// line on what it is for.
+import { Image } from 'astro:assets';
+import viewing from '../assets/screenshots/ts-pcb.jpg';
+import comparing from '../assets/screenshots/design-comparison.jpg';
+import commenting from '../assets/screenshots/comment-marker.jpg';
+import releasing from '../assets/screenshots/release-studio-readme.jpg';
+import automating from '../assets/screenshots/mcp-claude-code.jpg';
+import library from '../assets/screenshots/library-manager.jpg';
+import simulating from '../assets/screenshots/sim-thumb.jpg';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+// zoom and focus frame each crop on the part of the screen that tells the story.
+const cards = [
+	{ ref: 'U1', path: 'use/viewing-designs', title: 'Every revision, in the browser', text: 'Schematic, PCB, 3D and BOM at any commit, cross-probed, with nothing to install.', image: viewing, focus: '62% 42%', zoom: 1.8 },
+	{ ref: 'U2', path: 'use/design-comparison', title: 'What changed, and where', text: 'Commit against commit: parts, nets, BOM and stackup, each change classified and placed.', image: comparing, focus: '58% 42%', zoom: 1.8 },
+	{ ref: 'U3', path: 'use/comments', title: 'Comments that stay put', text: 'Pinned to a part, a net or an area at an exact commit, with class, severity and replies.', image: commenting, focus: '50% 45%', zoom: 1.35 },
+	{ ref: 'U4', path: 'use/release-studio', title: 'From commit to release', text: 'Jobset outputs, a release dossier and sign-off before anything reaches the fab.', image: releasing, focus: '55% 50%', zoom: 1.45 },
+	{ ref: 'U5', path: 'use/library-manager', title: 'One library across repos', text: 'Reviewed, immutable part revisions your designers place straight into KiCad.', image: library, focus: '42% 35%', zoom: 1.8 },
+	{ ref: 'U6', path: 'use/simulation-studio', title: 'Simulation Studio', text: 'DC IR drop on the real copper, rail by rail.', image: simulating, focus: '50% 50%', zoom: 1, tag: 'Experimental' },
+	{ ref: 'U7', path: 'automate/overview', title: 'Built for AI agents and automation', text: 'An MCP server lets Claude Code and other agents search projects, compare revisions, leave review comments and take a new part to QA review, as you and within your permissions. The same work is open to scripts and CI through the API, SDK, CLI and webhooks.', image: automating, focus: '40% 45%', zoom: 1, wide: true },
+];
+---
+
+<div class="cards">
+	{
+		cards.map((card) => (
+			<a class:list={['card', { wide: card.wide }]} href={`${base}/${card.path}/`}>
+				<div class="meta">
+					<span class="ref">{card.ref}{card.tag && <em class="tag">{card.tag}</em>}</span>
+					<span class="path">/{card.path}</span>
+				</div>
+				<div class="crop">
+					<Image src={card.image} alt="" widths={[640, 960]} sizes="(min-width: 72rem) 22rem, (min-width: 40rem) 45vw, 100vw" style={`object-position: ${card.focus}; --focus: ${card.focus}; --zoom: ${card.zoom}`} />
+				</div>
+				<div class="text">
+					<strong>{card.title}</strong>
+					<span>{card.text}</span>
+				</div>
+			</a>
+		))
+	}
+</div>
+
+<style>
+	.cards {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 1px;
+		margin-top: 1.25rem;
+		border: 1px solid var(--prism-sheet-line);
+		background: var(--prism-sheet-line);
+	}
+	@media (min-width: 40rem) {
+		.cards {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+	@media (min-width: 64rem) {
+		.cards {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+	.card {
+		display: flex;
+		flex-direction: column;
+		background: var(--prism-sheet-bg);
+		color: inherit;
+		text-decoration: none;
+		transition: background-color 160ms ease;
+	}
+	.card:hover {
+		background: var(--prism-card-hover);
+	}
+	/* The automation card spans the row: picture left, words right. */
+	.card.wide {
+		grid-column: 1 / -1;
+	}
+	@media (min-width: 64rem) {
+		.card.wide {
+			display: grid;
+			grid-template-columns: 2fr 1fr;
+			grid-template-rows: auto 1fr;
+		}
+		.card.wide .meta {
+			grid-column: 1 / -1;
+		}
+		.card.wide .crop {
+			margin-bottom: 1.1rem;
+			aspect-ratio: 2 / 1;
+		}
+		.card.wide .text {
+			align-content: center;
+			padding: 0 1.5rem 1.1rem 0.75rem;
+		}
+		.card.wide .text strong {
+			font-size: 1.35rem;
+		}
+		.card.wide .text span {
+			font-size: 0.98rem;
+		}
+	}
+	.meta {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.55rem 0.85rem;
+		font-family: var(--sl-font-mono);
+		font-size: 0.68rem;
+		letter-spacing: 0.04em;
+		color: var(--sl-color-gray-4);
+	}
+	.path {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ref {
+		flex-shrink: 0;
+		color: var(--sl-color-accent-high);
+		font-weight: 600;
+	}
+	.tag {
+		margin-left: 0.6rem;
+		padding: 0.05rem 0.4rem;
+		border: 1px solid currentColor;
+		border-radius: 0.25rem;
+		font-style: normal;
+		font-weight: 500;
+		font-size: 0.6rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: #d4a017;
+	}
+	.card:hover .path {
+		color: var(--sl-color-gray-2);
+	}
+	.crop {
+		position: relative;
+		margin: 0 0.85rem;
+		aspect-ratio: 16 / 9;
+		overflow: hidden;
+		border: 1px solid var(--prism-sheet-line);
+		background: #0b1120;
+	}
+	.crop :global(img) {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		transform: scale(var(--zoom, 1.8));
+		transform-origin: var(--focus, 50% 50%);
+		transition: transform 400ms cubic-bezier(0.2, 0.7, 0.2, 1);
+	}
+	.card:hover .crop :global(img) {
+		transform: scale(calc(var(--zoom, 1.8) * 1.05));
+	}
+	.text {
+		display: grid;
+		gap: 0.3rem;
+		padding: 0.9rem 0.85rem 1.1rem;
+	}
+	.text strong {
+		font-size: 1.02rem;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+		color: var(--sl-color-white);
+	}
+	.text span {
+		font-size: 0.9rem;
+		line-height: 1.5;
+		color: var(--sl-color-gray-3);
+	}
+	.card:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: -2px;
+	}
+</style>

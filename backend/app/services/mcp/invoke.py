@@ -170,7 +170,9 @@ def _error_detail(body: dict[str, Any], status: int) -> tuple[str, str]:
     return code, detail if isinstance(detail, str) else _json(detail)
 
 
-def _execution_error(status: int, raw: bytes) -> dict[str, Any]:
+def route_error(status: int, raw: bytes) -> dict[str, Any]:
+    """A route's refusal (``status``, its JSON ``raw`` body) as a tool execution error."""
+
     body = _error_body(status, raw)
     code, detail = _error_detail(body, status)
     structured = _structured({"error": {**body, "status": status}})
@@ -193,10 +195,6 @@ def success_result(structured: dict[str, Any]) -> dict[str, Any]:
     return _result(structured, text_block(structured), is_error=False)
 
 
-def _failure(code: str, message: str) -> dict[str, Any]:
-    return error_result(code, message)
-
-
 def tool_error(code: str, detail: str) -> dict[str, Any]:
     """A policy refusal shaped like any other tool execution error."""
 
@@ -206,11 +204,11 @@ def tool_error(code: str, detail: str) -> dict[str, Any]:
 def not_found_error() -> dict[str, Any]:
     """The refusal a hidden project already gets, so an allowlist does not leak.
 
-    The text and the ``{code, detail}`` body are exactly ``_execution_error``
+    The text and the ``{code, detail}`` body are exactly ``route_error``
     produces for the project routes' 404.
     """
 
-    return _execution_error(
+    return route_error(
         404, _json({"detail": "Project not found", "code": "not_found"}).encode("utf-8")
     )
 
@@ -224,17 +222,22 @@ async def _call_route(
     body: dict[str, Any] | None = None,
     *,
     idempotency_key: str | None = None,
+    if_match: str | None = None,
 ) -> tuple[int, bytes]:
     """One in-process ASGI request, carrying only the caller's bearer token.
 
-    A ``403`` carrying an ``insufficient_scope`` challenge raises
-    ``ScopeChallenge`` instead of returning, whichever tool made the call.
+    ``if_match`` is the guarded write's ETag (``app.core.preconditions``); a
+    tool that read the resource first passes it on. A ``403`` carrying an
+    ``insufficient_scope`` challenge raises ``ScopeChallenge`` instead of
+    returning, whichever tool made the call.
     """
 
     payload = _json(body).encode("utf-8") if body is not None else b""
     headers = [(b"authorization", authorization.encode("utf-8"))]
     if idempotency_key and method.upper() != "GET":
         headers.append((b"idempotency-key", idempotency_key.encode("utf-8")))
+    if if_match:
+        headers.append((b"if-match", if_match.encode("utf-8")))
     if body is not None:
         headers.extend(
             [
@@ -335,14 +338,14 @@ async def call_tool(
         if idempotency_key is not None and (
             not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 255
         ):
-            return _failure(
+            return error_result(
                 "invalid-arguments",
                 "Invalid arguments: idempotencyKey must be a string of 1 to 255 characters",
             )
     problems = _argument_errors(tool, arguments)
     if problems:
         message = "Invalid arguments: " + "; ".join(problems)
-        return _failure("invalid-arguments", message)
+        return error_result("invalid-arguments", message)
 
     try:
         prepared = tool.args(dict(arguments))
@@ -352,7 +355,7 @@ async def call_tool(
             raise TypeError("the request body must be an object")
         path = _build_path(tool.route[1], path_params)
     except (KeyError, TypeError, ValueError) as error:
-        return _failure("invalid-arguments", f"Invalid arguments: {error}")
+        return error_result("invalid-arguments", f"Invalid arguments: {error}")
 
     request = functools.partial(_call_route, idempotency_key=idempotency_key)
     if tool.execute is not None:
@@ -362,7 +365,7 @@ async def call_tool(
             raise
         except Exception:  # noqa: BLE001 - a tool never leaks exception detail
             logger.exception("MCP tool %s failed", tool.name)
-            return _failure("internal", "internal: the Prism request failed")
+            return error_result("internal", "internal: the Prism request failed")
 
     try:
         status, raw = await request(
@@ -377,15 +380,15 @@ async def call_tool(
         raise
     except Exception:  # noqa: BLE001 - never leak exception detail across MCP
         logger.exception("MCP tool %s failed to reach its route", tool.name)
-        return _failure("internal", "internal: the Prism request failed")
+        return error_result("internal", "internal: the Prism request failed")
 
     if not 200 <= status < 300:
-        return _execution_error(status, raw)
+        return route_error(status, raw)
 
     try:
         payload = json.loads(raw.decode("utf-8")) if raw else None
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return _failure("invalid-response", f"Prism answered {status} with a body that is not JSON")
+        return error_result("invalid-response", f"Prism answered {status} with a body that is not JSON")
 
     structured = _structured(payload)
     return _result(structured, text_block(structured), is_error=False)
@@ -393,6 +396,7 @@ async def call_tool(
 
 __all__ = [
     "DATA_PREFIX",
+    "UNTRUSTED_META",
     "HandoffRequired",
     "ScopeChallenge",
     "MAX_TEXT_BYTES",
@@ -401,6 +405,7 @@ __all__ = [
     "error_result",
     "handoff",
     "not_found_error",
+    "route_error",
     "success_result",
     "text_block",
     "tool_error",

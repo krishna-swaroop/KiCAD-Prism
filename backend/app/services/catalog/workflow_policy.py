@@ -41,6 +41,9 @@ WORKFLOW_TRANSITIONS: Mapping[str, tuple[str, ...]] = {
 
 WORKFLOW_ROLES: tuple[str, ...] = ("viewer", "designer", "qa", "admin")
 
+# Stages a reviewer's sign-off reaches: approval, and publishing what was approved.
+SIGN_OFF_STAGES: frozenset[str] = frozenset({"done", "released"})
+
 # Transitions QA may take, all from qa_review: approve, return for changes, retire.
 _QA_REVIEW_DECISIONS: frozenset[str] = frozenset({"done", "in_progress", "archived"})
 
@@ -79,6 +82,16 @@ def can_transition(role: str, current_stage: str, next_stage: str) -> bool:
     return False
 
 
+def transition_action(next_stage: str) -> str:
+    """The policy action whose token scope a move to ``next_stage`` needs.
+
+    ``can_transition`` decides the role; this decides what a bearer token must
+    hold. A sign-off needs ``catalog:qa``, which an MCP client can never hold
+    (``human_only``); every other move is ordinary catalog work.
+    """
+    return "catalog_qa" if next_stage in SIGN_OFF_STAGES else "catalog_write"
+
+
 def allowed_transitions(role: str, current_stage: str) -> tuple[str, ...]:
     """The next stages ``role`` may offer from ``current_stage``, in display order."""
     return tuple(
@@ -103,6 +116,7 @@ def workflow_policy_contract() -> dict[str, Any]:
 
 __all__ = [
     "LEGACY_WORKFLOW_STAGE_MAP",
+    "SIGN_OFF_STAGES",
     "WORKFLOW_ROLES",
     "WORKFLOW_STAGES",
     "WORKFLOW_TRANSITIONS",
@@ -110,5 +124,6 @@ __all__ = [
     "can_transition",
     "is_workflow_stage",
     "normalize_workflow_stage",
+    "transition_action",
     "workflow_policy_contract",
 ]

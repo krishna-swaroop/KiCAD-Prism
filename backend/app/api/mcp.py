@@ -44,7 +44,8 @@ from app.core.config import settings
 from app.core.links import parse_resource_uri
 from app.core.security import AuthenticatedUser, get_current_user
 from app.core.session import SESSION_COOKIE_NAME
-from app.services.mcp import audit, governance, invoke, registry, tools as mcp_tools, tools_compare
+from app.services.mcp import audit, governance, invoke, registry, tools_compare
+from app.services.mcp import tools as _tools  # noqa: F401 - importing it registers every tool
 
 router = APIRouter()
 
@@ -532,7 +533,7 @@ async def _execute_tool(
         except invoke.HandoffRequired:
             await record("refused", "handoff", None)
             raise
-        result = mcp_tools.present(tool.name, arguments, result)
+        result = registry.present(tool, arguments, result)
         if not result.get("isError"):
             governance.filter_search_projects(state, result)
 

@@ -16,7 +16,7 @@ Usage:
 VPN-like delay:
   --network-delay-ms / --network-jitter-ms inject one-way latency around each
   HTTP call (excluded from server latency metrics, included in client latency).
-  Use a dedicated load environment; see docs/OPERATIONS.md for operational guidance.
+  Use a dedicated load environment; see https://krishna-swaroop.github.io/KiCAD-Prism/admin/operations/.
 
 Requires: aiohttp (pip install aiohttp)
 """

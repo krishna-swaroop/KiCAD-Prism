@@ -1,0 +1,236 @@
+---
+// The landing page's opening, drawn as a KiCad drawing sheet: a thin frame
+// with zone numbers and letters, the headline in the sheet, the product shot
+// as the sheet's main view and a title block in the corner.
+import { Image } from 'astro:assets';
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, image, actions = [] } = data.hero || {};
+const shot = image && 'file' in image ? image.file : undefined;
+const columns = ['1', '2', '3', '4', '5', '6'];
+const rows = ['A', 'B', 'C', 'D'];
+---
+
+<section class="sheet" aria-labelledby="_top">
+	<div class="zones zones-top" aria-hidden="true">{columns.map((c) => <span>{c}</span>)}</div>
+	<div class="zones zones-left" aria-hidden="true">{rows.map((r) => <span>{r}</span>)}</div>
+
+	<div class="body">
+		<div class="intro">
+			<p class="ref">KiCAD PRISM · DOCUMENTATION</p>
+			<h1 id="_top" set:html={title} />
+			{tagline && tagline.trim().split(/\n\s*\n/).map((paragraph) => <p class="lede" set:html={paragraph} />)}
+			{
+				actions.length > 0 && (
+					<div class="actions">
+						{actions.map(({ text, link, variant, attrs }) => (
+							<a class:list={['action', variant]} href={link} {...attrs}>
+								<span>{text}</span>
+								<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" /></svg>
+							</a>
+						))}
+					</div>
+				)
+			}
+		</div>
+
+		{
+			shot && (
+				<figure class="view">
+					<Image src={shot} alt={image?.alt || ''} widths={[960, 1440, 2160]} sizes="(min-width: 90rem) 52rem, 100vw" loading="eager" />
+				</figure>
+			)
+		}
+	</div>
+
+	<dl class="title-block">
+		<div class="tb-title"><dt>Title</dt><dd>KiCAD Prism</dd></div>
+		<div><dt>Licence</dt><dd>Apache-2.0</dd></div>
+		<div><dt>Runs</dt><dd>Self-hosted</dd></div>
+		<div><dt>Reads</dt><dd>KiCad in Git</dd></div>
+	</dl>
+</section>
+
+<style>
+	.sheet {
+		position: relative;
+		margin-block: 0 1rem;
+		padding: 2.25rem 1.25rem 1.25rem 2.25rem;
+		border: 1px solid var(--prism-sheet-line);
+		background:
+			linear-gradient(var(--prism-sheet-line), var(--prism-sheet-line)) top 1.5rem left 0 / 100% 1px no-repeat,
+			linear-gradient(var(--prism-sheet-line), var(--prism-sheet-line)) top 0 left 1.5rem / 1px 100% no-repeat,
+			var(--prism-sheet-bg);
+	}
+	.zones {
+		position: absolute;
+		display: grid;
+		font-family: var(--sl-font-mono);
+		font-size: 0.65rem;
+		color: var(--sl-color-gray-4);
+	}
+	.zones-top {
+		top: 0;
+		left: 1.5rem;
+		right: 0;
+		height: 1.5rem;
+		grid-template-columns: repeat(6, 1fr);
+	}
+	.zones-left {
+		top: 1.5rem;
+		left: 0;
+		bottom: 0;
+		width: 1.5rem;
+		grid-template-rows: repeat(4, 1fr);
+	}
+	.zones span {
+		display: grid;
+		place-items: center;
+	}
+	.zones-top span + span {
+		border-left: 1px solid var(--prism-sheet-line);
+	}
+	.zones-left span + span {
+		border-top: 1px solid var(--prism-sheet-line);
+	}
+
+	.body {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 2.5rem;
+		align-items: center;
+		padding: clamp(1rem, 3vw, 2.5rem) clamp(0.5rem, 2vw, 1.5rem) 1rem;
+	}
+	@media (min-width: 72rem) {
+		.body {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		}
+	}
+	.ref {
+		margin: 0 0 1.5rem;
+		font-family: var(--sl-font-mono);
+		font-size: 0.72rem;
+		letter-spacing: 0.08em;
+		color: var(--sl-color-accent-high);
+	}
+	h1 {
+		margin: 0;
+		font-size: clamp(2rem, 3vw, 2.75rem);
+		text-wrap: pretty;
+		font-weight: 650;
+		line-height: 1.1;
+		letter-spacing: -0.03em;
+		color: var(--sl-color-white);
+	}
+	.lede {
+		max-width: 36rem;
+		margin: 1.4rem 0 0;
+	}
+	.lede {
+		font-size: 1.08rem;
+		line-height: 1.65;
+		color: var(--sl-color-gray-2);
+	}
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.6rem;
+		margin-top: 2rem;
+	}
+	.action {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.6rem 0.95rem;
+		border: 1px solid var(--prism-sheet-line);
+		border-radius: 0.375rem;
+		font-size: 0.92rem;
+		font-weight: 550;
+		text-decoration: none;
+		color: var(--sl-color-white);
+		transition:
+			border-color 150ms ease,
+			background-color 150ms ease;
+	}
+	.action svg {
+		width: 0.9rem;
+		height: 0.9rem;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.6;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		transition: transform 150ms ease;
+	}
+	.action:hover {
+		border-color: var(--sl-color-gray-4);
+		background: var(--prism-card-hover);
+	}
+	.action:hover svg {
+		transform: translateX(2px);
+	}
+	.action.primary {
+		border-color: var(--sl-color-white);
+		background: var(--sl-color-white);
+		color: var(--sl-color-black);
+	}
+	.action.primary:hover {
+		background: var(--sl-color-gray-1);
+	}
+	.action.minimal {
+		border-color: transparent;
+		color: var(--sl-color-gray-3);
+	}
+
+	.view {
+		margin: 0;
+		border: 1px solid var(--prism-sheet-line);
+		background: var(--sl-color-black);
+	}
+	.view :global(img) {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	.title-block {
+		display: grid;
+		grid-template-columns: repeat(3, auto);
+		margin: 1.5rem 0 0 auto;
+		width: fit-content;
+		border: 1px solid var(--prism-sheet-line);
+		font-size: 0.72rem;
+	}
+	.title-block > div {
+		padding: 0.4rem 0.75rem;
+		border-left: 1px solid var(--prism-sheet-line);
+		border-top: 1px solid var(--prism-sheet-line);
+	}
+	.title-block .tb-title {
+		grid-column: 1 / -1;
+		border-top: 0;
+	}
+	.title-block > div:nth-child(2) {
+		border-left: 0;
+	}
+	.tb-title {
+		border-left: 0 !important;
+	}
+	.title-block dt {
+		font-family: var(--sl-font-mono);
+		font-size: 0.6rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--sl-color-gray-4);
+	}
+	.title-block dd {
+		margin: 0.1rem 0 0;
+		color: var(--sl-color-gray-1);
+	}
+	.tb-title dd {
+		font-weight: 650;
+		font-size: 0.9rem;
+		color: var(--sl-color-white);
+	}
+</style>

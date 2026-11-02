@@ -57,8 +57,8 @@ python scripts/sync_dependencies.py
 
 The command recreates `backend/venv` from `requirements/runtime.lock` and runs
 `npm ci` for both JavaScript workspaces. Use `--python-only` or `--node-only`
-when working on one side. See [Dependency identity](docs/DEPENDENCIES.md) before
-adding or updating a package.
+when working on one side. See [Dependency identity](website/src/content/docs/contribute/dependencies.md)
+before adding or updating a package.
 
 ### Frontend
 
@@ -152,8 +152,8 @@ docker compose --env-file .env.example \
 ```
 
 For a full local application, follow
-[Getting started](docs/GETTING_STARTED.md). The supported public source-build
-default is Linux AMD64.
+[Getting started](website/src/content/docs/get-started/try-it.md). The supported
+public source-build default is Linux AMD64.
 
 ### Release tooling
 
@@ -167,7 +167,7 @@ POSTGRES_PASSWORD=ci-release-validation PRISM_ENV_FILE=.env.example \
 ```
 
 The tagged release workflow is not a developer image builder. Pull requests and
-branch pushes never publish images. See [Release process](docs/RELEASES.md).
+branch pushes never publish images. See [Release process](website/src/content/docs/contribute/release-process.md).
 
 ## Code changes
 
@@ -188,12 +188,15 @@ branch pushes never publish images. See [Release process](docs/RELEASES.md).
 
 ## Documentation changes
 
-Public documentation belongs under `docs/` and should describe current supported
-behavior. Temporary plans, benchmark transcripts, and completed migration notes
-belong in issues, discussions, pull requests, or release artifacts.
+Public user, operator, administrator and contributor documentation lives in
+`website/src/content/docs/` and should describe current supported behavior;
+follow `website/STYLE.md` for its structure and voice. Engineering records such
+as plans, reviews, ADRs, release notes and benchmark transcripts stay under
+`docs/`. Temporary plans and completed migration notes belong in issues,
+discussions, pull requests, or release artifacts.
 
-Use placeholders in examples. Verify relative links and commands. If a limitation
-matters to a user's decision, state it directly.
+Use placeholders in examples. Verify links and commands. If a limitation matters
+to a user's decision, state it directly.
 
 ## Pull-request checklist
 
@@ -215,6 +218,6 @@ current with `dev` before merge.
 
 ## Reporting and conduct
 
-See [Reporting issues](docs/REPORTING_ISSUES.md) for useful bug reports and
-feature requests. Be precise, patient, and respectful. Focus review on the code
+See [Reporting issues](website/src/content/docs/contribute/reporting-issues.md)
+for useful bug reports and feature requests. Be precise, patient, and respectful. Focus review on the code
 and engineering outcome.

@@ -280,6 +280,85 @@ class CatalogKlcValidation:
 
     # -- execution ----------------------------------------------------------
 
+    @classmethod
+    def run_checker(
+        cls,
+        asset_type: str,
+        file_path: Path,
+        junit_path: Path,
+        *,
+        object_name: str,
+    ) -> tuple[str, int | None, list[dict[str, Any]], str, str]:
+        """Run the KLC checker on one file: ``(status, exit_code, findings, stdout, stderr)``.
+
+        Persists nothing, so a draft that is not in the catalog yet can be
+        checked the same way a revision's asset is.
+        """
+        checker = cls.checker_path(asset_type)
+        findings: list[dict[str, Any]] = []
+        stdout = ""
+        stderr = ""
+        exit_code: int | None = None
+
+        if checker is None:
+            return VALIDATION_STATUS_SKIPPED, None, [], "", f"KLC checker unavailable under {cls.utils_root()}"
+        cmd = [
+            "python3",
+            str(checker),
+            str(file_path),
+            "-vv",
+            "--nocolor",
+            "--junit",
+            str(junit_path),
+        ]
+        cmd.extend(cls.rule_args(asset_type))
+        if asset_type == "symbol" and settings.CATALOG_KLC_FOOTPRINT_LIB_DIR.strip():
+            cmd.extend(["--footprints", settings.CATALOG_KLC_FOOTPRINT_LIB_DIR.strip()])
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(checker.parent),
+                capture_output=True,
+                text=True,
+                timeout=settings.CATALOG_KLC_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+            stderr = f"KLC validation timed out after {settings.CATALOG_KLC_TIMEOUT_SECONDS}s"
+            return VALIDATION_STATUS_FAILED, None, [], stdout, stderr
+        except OSError as exc:
+            return VALIDATION_STATUS_FAILED, None, [], "", str(exc)
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        exit_code = result.returncode
+        try:
+            findings = cls.parse_klc_junit(junit_path)
+        except ElementTree.ParseError as exc:
+            findings = [
+                {
+                    "severity": VALIDATION_SEVERITY_ERROR,
+                    "rule_code": "",
+                    "rule_url": "",
+                    "message": f"Could not parse KLC JUnit report: {exc}",
+                    "details": [],
+                    "object_name": object_name,
+                }
+            ]
+        if (
+            any(finding["severity"] == VALIDATION_SEVERITY_ERROR for finding in findings)
+            or result.returncode not in {0, 2, 3}
+        ):
+            status = VALIDATION_STATUS_FAILED
+        elif (
+            any(finding["severity"] == VALIDATION_SEVERITY_WARNING for finding in findings)
+            or result.returncode == 2
+        ):
+            status = VALIDATION_STATUS_WARNING
+        else:
+            status = VALIDATION_STATUS_PASSED
+        return status, exit_code, findings, stdout, stderr
+
     def run_klc_for_asset(
         self,
         conn: Any,
@@ -305,75 +384,13 @@ class CatalogKlcValidation:
         stderr_path = report_dir / "stderr.txt"
         junit_path = report_dir / "report.junit.xml"
         json_path = report_dir / "report.json"
-        checker = self.checker_path(asset_type)
         tool_version = self.tool_version()
-        findings: list[dict[str, Any]] = []
-        stdout = ""
-        stderr = ""
-        exit_code: int | None = None
-
-        if checker is None:
-            status = VALIDATION_STATUS_SKIPPED
-            stderr = f"KLC checker unavailable under {self.utils_root()}"
-        else:
-            cmd = [
-                "python3",
-                str(checker),
-                str(asset["canonical_path"]),
-                "-vv",
-                "--nocolor",
-                "--junit",
-                str(junit_path),
-            ]
-            cmd.extend(self.rule_args(asset_type))
-            if asset_type == "symbol" and settings.CATALOG_KLC_FOOTPRINT_LIB_DIR.strip():
-                cmd.extend(["--footprints", settings.CATALOG_KLC_FOOTPRINT_LIB_DIR.strip()])
-            try:
-                result = subprocess.run(
-                    cmd,
-                    cwd=str(checker.parent),
-                    capture_output=True,
-                    text=True,
-                    timeout=settings.CATALOG_KLC_TIMEOUT_SECONDS,
-                    check=False,
-                )
-                stdout = result.stdout or ""
-                stderr = result.stderr or ""
-                exit_code = result.returncode
-                try:
-                    findings = self.parse_klc_junit(junit_path)
-                except ElementTree.ParseError as exc:
-                    findings = [
-                        {
-                            "severity": VALIDATION_SEVERITY_ERROR,
-                            "rule_code": "",
-                            "rule_url": "",
-                            "message": f"Could not parse KLC JUnit report: {exc}",
-                            "details": [],
-                            "object_name": str(asset["target_name"] or asset["name"]),
-                        }
-                    ]
-                if (
-                    any(finding["severity"] == VALIDATION_SEVERITY_ERROR for finding in findings)
-                    or result.returncode not in {0, 2, 3}
-                ):
-                    status = VALIDATION_STATUS_FAILED
-                elif (
-                    any(finding["severity"] == VALIDATION_SEVERITY_WARNING for finding in findings)
-                    or result.returncode == 2
-                ):
-                    status = VALIDATION_STATUS_WARNING
-                else:
-                    status = VALIDATION_STATUS_PASSED
-            except subprocess.TimeoutExpired as exc:
-                status = VALIDATION_STATUS_FAILED
-                stdout = exc.stdout if isinstance(exc.stdout, str) else ""
-                stderr = f"KLC validation timed out after {settings.CATALOG_KLC_TIMEOUT_SECONDS}s"
-                exit_code = None
-            except OSError as exc:
-                status = VALIDATION_STATUS_FAILED
-                stderr = str(exc)
-                exit_code = None
+        status, exit_code, findings, stdout, stderr = self.run_checker(
+            asset_type,
+            Path(str(asset["canonical_path"])),
+            junit_path,
+            object_name=str(asset["target_name"] or asset["name"]),
+        )
 
         finished_at = utc_now_iso()
         stdout_path.write_text(stdout, encoding="utf-8")

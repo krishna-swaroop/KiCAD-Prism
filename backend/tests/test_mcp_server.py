@@ -26,7 +26,7 @@ from app.core.config import settings  # noqa: E402
 from app.core.session import SESSION_COOKIE_NAME, create_session_token  # noqa: E402
 from app.services import access_service, personal_tokens, session_store_service  # noqa: E402
 from app.services.mcp import invoke, registry  # noqa: E402
-from app.services.mcp import tools as mcp_tools  # noqa: E402
+from app.services.mcp import tools as _tools  # noqa: E402,F401 - registers the tools
 from support.postgres import seed_folder, seed_project, seed_repository  # noqa: E402
 
 DATABASE_URL = os.environ.get("PRISM_DATABASE_URL", "").strip()
@@ -58,6 +58,12 @@ TOOL_ORDER = [
     "get_release_status",
     "compare_revisions",
     "get_changes",
+    "list_catalog_fields",
+    "search_catalog_assets",
+    "check_catalog_asset",
+    "get_project_supply",
+    "get_component_supply",
+    "find_part_alternatives",
     "sync_project",
     "start_release_build",
     "request_release_approval",
@@ -66,21 +72,21 @@ TOOL_ORDER = [
     "add_comment",
     "reply_to_comment",
     "resolve_comment",
+    "update_catalog_component",
+    "create_asset_upload",
+    "attach_catalog_asset",
+    "reuse_catalog_asset",
+    "validate_catalog_component",
+    "update_catalog_representation",
+    "remove_catalog_representation",
+    "move_catalog_component",
+    "request_catalog_approval",
+    "watch_component",
+    "refresh_component_supply",
 ]
 
-#: Tools that change Prism; every other listed tool is a read.
-WRITE_TOOLS = frozenset(
-    {
-        "sync_project",
-        "start_release_build",
-        "request_release_approval",
-        "create_catalog_draft",
-        "update_import_proposal",
-        "add_comment",
-        "reply_to_comment",
-        "resolve_comment",
-    }
-)
+#: The one place the client-visible tool order is written down: a change to it
+#: is a change clients see. Every other list is derived from the registry.
 
 
 def unique(prefix: str) -> str:
@@ -316,7 +322,7 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual([tool["name"] for tool in listed], TOOL_ORDER)
         for tool in listed:
             with self.subTest(tool=tool["name"]):
-                if tool["name"] in WRITE_TOOLS:
+                if registry.tool_named(tool["name"]).write:
                     self.assertFalse(tool["annotations"]["readOnlyHint"])
                     self.assertFalse(tool["annotations"]["destructiveHint"])
                     self.assertIn("idempotencyKey", tool["inputSchema"]["properties"])
@@ -534,8 +540,8 @@ class McpServerTests(unittest.TestCase):
     # -------------------------------------------------------------- citations
 
     def test_results_that_name_an_element_carry_a_link_and_uri(self) -> None:
-        component = mcp_tools.present(
-            "get_component",
+        component = registry.present(
+            registry.tool_named("get_component"),
             {"project_id": "project/one", "reference": "U1"},
             {
                 "structuredContent": {
@@ -554,8 +560,8 @@ class McpServerTests(unittest.TestCase):
         )
         self.assertEqual(component["component"]["link"], component["link"])
 
-        symbol = mcp_tools.present(
-            "get_component",
+        symbol = registry.present(
+            registry.tool_named("get_component"),
             {"project_id": "project/one", "reference": "U2"},
             {
                 "structuredContent": {
@@ -567,8 +573,8 @@ class McpServerTests(unittest.TestCase):
         self.assertIn("tab=sch", symbol["link"])
         self.assertIn("sel=U2", symbol["link"])
 
-        net = mcp_tools.present(
-            "get_net",
+        net = registry.present(
+            registry.tool_named("get_net"),
             {"project_id": "project/one", "net": "Power/+12V"},
             {"structuredContent": {"revision": {"commit": COMMIT}, "net": {"name": "Power/+12V"}}},
         )["structuredContent"]
@@ -582,8 +588,8 @@ class McpServerTests(unittest.TestCase):
             f"&commit={COMMIT}&nets=Power%252F%252B12V",
         )
 
-        bom = mcp_tools.present(
-            "get_bom",
+        bom = registry.present(
+            registry.tool_named("get_bom"),
             {"project_id": "project/one", "revision": COMMIT},
             {"structuredContent": {"commit": COMMIT, "designKey": "k", "columns": [], "lines": []}},
         )["structuredContent"]
@@ -591,8 +597,8 @@ class McpServerTests(unittest.TestCase):
         self.assertIn("tab=bom", bom["link"])
 
     def test_search_rows_link_to_what_they_name(self) -> None:
-        found = mcp_tools.present(
-            "find_in_design",
+        found = registry.present(
+            registry.tool_named("find_in_design"),
             {"project_id": "project/one", "query": "U"},
             {
                 "structuredContent": {

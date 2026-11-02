@@ -66,6 +66,19 @@ export const ROLE_MATRIX = {
     "administer_catalog": [
       "admin"
     ],
+    "view_supply": [
+      "designer",
+      "qa",
+      "admin"
+    ],
+    "edit_supply": [
+      "designer",
+      "admin"
+    ],
+    "review_supply": [
+      "qa",
+      "admin"
+    ],
     "administer_workspace": [
       "admin"
     ]

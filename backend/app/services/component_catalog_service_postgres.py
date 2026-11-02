@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from app.services.catalog.locking import PostgresCatalogLocks
 from app.services.catalog.postgres_runtime import (
@@ -20,6 +20,7 @@ from app.services.catalog.postgres_projections import (
 )
 from app.services.catalog.postgres_schema import CATALOG_SCHEMA_EPOCH
 from app.services.catalog_schema_migrations import CATALOG_LEDGER
+from app.services.supply.schema.frozen import refuse_behind as refuse_supply_behind
 from app.services.component_catalog_domain import ComponentCatalogDomainService
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,20 @@ class ComponentCatalogPostgresService(ComponentCatalogDomainService):
         with self._postgres_runtime.connect() as connection:
             yield connection
 
+    def component_identities(self, component_ids: list[str]) -> dict[str, tuple[str, str]]:
+        """Manufacturer and MPN per active component id, without building any component payload."""
+        self.initialize()
+        with self._connect() as conn:
+            return self._component_read_models.identities(conn, component_ids)
+
+    def component_inventory(self, component_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Our own stock per component id (the preferred aggregate), for components that have any."""
+        if not component_ids:
+            return {}
+        self.initialize()
+        with self._connect() as conn:
+            return self._component_read_models.local_inventory_for(conn, component_ids)
+
     def initialize(self) -> None:
         runtime = self._catalog_runtime
         with runtime.initialization_lock:
@@ -59,7 +74,7 @@ class ComponentCatalogPostgresService(ComponentCatalogDomainService):
             self._ensure_storage_dirs()
             CATALOG_LEDGER.migrate(
                 self._connect,
-                before=(self._refuse_or_reset_pre_epoch,),
+                before=(self._refuse_or_reset_pre_epoch, refuse_supply_behind),
                 after=(self._reconcile_projections,),
             )
             self._ensure_postgres_search_indexes()

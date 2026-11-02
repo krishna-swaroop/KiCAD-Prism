@@ -59,7 +59,8 @@ _INTERNAL_REPOSITORY_NOTE = """\
 #   - ./deploy/certs:/certs:ro
 #
 # Distribute deploy/certs/corp-root-ca.crt (or your real root) to every
-# KiCad workstation OS trust store. See docs/DEPLOYMENT.md.
+# KiCad workstation OS trust store. See
+# https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/.
 """
 
 _INTERNAL_BUNDLE_NOTE = """\
@@ -110,8 +111,9 @@ _DNS_TLS = """\
 
 
 def _templates(folder: str, *, bundle: bool) -> dict[str, str]:
-    guide = "the Deployment guide" if bundle else "docs/DEPLOYMENT.md"
-    public = _PUBLIC_HEADER if bundle else _PUBLIC_HEADER + "#\n# See docs/DEPLOYMENT.md.\n"
+    deployment_docs = "https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/"
+    guide = f"the Deployment guide at {deployment_docs}" if bundle else deployment_docs
+    public = _PUBLIC_HEADER if bundle else _PUBLIC_HEADER + f"#\n# See {deployment_docs}\n"
     internal = _INTERNAL_HEADER + (_INTERNAL_BUNDLE_NOTE if bundle else _INTERNAL_REPOSITORY_NOTE)
     dns = _DNS_HEADER.format(
         dockerfile="Dockerfile.caddy-dns" if bundle else "deploy/Dockerfile.caddy-dns",

@@ -34,6 +34,7 @@ from app.release_studio.config import (
 from app.release_studio.git_publish import GitPublishError, run_git
 from app.services import project_revision
 from app.services import release_studio_service as store
+from app.services.git_failures import strip_url_credentials
 from app.services.job_kinds import JobKind, repository_lock
 from app.services.job_runtime import JobContext, JobResult
 from app.services.release_studio_build_service import BuildError
@@ -165,7 +166,11 @@ def save_configuration(
     network_env = git_env()
     fetched = git("fetch", "--prune", remote_name, remote_branch, env=network_env)
     if fetched.returncode != 0:
-        raise BuildError((fetched.stderr or fetched.stdout or "failed to fetch the configuration branch").strip())
+        raise BuildError(
+            strip_url_credentials(
+                fetched.stderr or fetched.stdout or "failed to fetch the configuration branch"
+            ).strip()
+        )
 
     local_head = output("rev-parse", "HEAD")
     upstream_head = output("rev-parse", remote_ref)
@@ -311,7 +316,9 @@ def save_configuration(
             env=network_env,
         )
         if pushed.returncode != 0:
-            detail = (pushed.stderr or pushed.stdout or "the remote rejected the configuration commit").strip()
+            detail = strip_url_credentials(
+                pushed.stderr or pushed.stdout or "the remote rejected the configuration commit"
+            ).strip()
             raise BuildError(
                 f"configuration was not published; the project mirror is unchanged: {detail}"
             )

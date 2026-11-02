@@ -1,0 +1,161 @@
+/*
+ * Warm, editorial palette: ivory and warm charcoal neutrals with Prism's blue
+ * as the only accent (it matches the logo). Starlight's dark theme is the
+ * default :root; light overrides it.
+ */
+:root {
+	/* Prism's own type: Inter, as in the app, with Geist Mono for labels, as in the generated ICDs. */
+	--sl-font: 'Inter Variable', 'Inter', 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--sl-font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, 'SF Mono', monospace;
+	--prism-sheet-bg: #232220;
+	--prism-sheet-line: #3a3935;
+	--prism-card-hover: #2a2927;
+	--sl-color-accent-low: #1d2a45;
+	--sl-color-accent: #7ea6f5;
+	--sl-color-accent-high: #c9dafc;
+	--sl-color-white: #f5f4ef;
+	--sl-color-gray-1: #e8e6de;
+	--sl-color-gray-2: #c4c2b9;
+	--sl-color-gray-3: #9c9a92;
+	--sl-color-gray-4: #6d6c66;
+	--sl-color-gray-5: #3f3e3a;
+	--sl-color-gray-6: #2a2927;
+	--sl-color-black: #1f1e1c;
+	--sl-color-bg-nav: #1f1e1c;
+	--sl-color-bg-sidebar: #1f1e1c;
+	--sl-color-hairline: #34332f;
+	--sl-color-hairline-light: #34332f;
+	--sl-color-hairline-shade: #34332f;
+	--prism-shot-border: rgb(232 230 222 / 0.12);
+	--prism-shot-shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 16px 40px -16px rgb(0 0 0 / 0.6);
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #e2e9fb;
+	--sl-color-accent: #2f5bd3;
+	--sl-color-accent-high: #1c3a8a;
+	--sl-color-white: #141413;
+	--sl-color-gray-1: #262624;
+	--sl-color-gray-2: #3d3d3a;
+	--sl-color-gray-3: #5e5d59;
+	--sl-color-gray-4: #8a8981;
+	--sl-color-gray-5: #d5d0c1;
+	--sl-color-gray-6: #e8e4d7;
+	--sl-color-gray-7: #ece8dc;
+	--sl-color-black: #f1ede2;
+	--sl-color-bg-nav: #f1ede2;
+	--sl-color-bg-sidebar: #f1ede2;
+	--sl-color-hairline: #dcd6c6;
+	--sl-color-hairline-light: #dcd6c6;
+	--sl-color-hairline-shade: #dcd6c6;
+	--prism-sheet-bg: #f6f3ea;
+	--prism-sheet-line: #d6d0bf;
+	--prism-card-hover: #fbf9f3;
+	--prism-shot-border: rgb(20 20 19 / 0.1);
+	--prism-shot-shadow: 0 1px 2px rgb(20 20 19 / 0.06), 0 16px 40px -18px rgb(20 20 19 / 0.22);
+}
+
+/* Tight, heavy Inter for titles and section headings. */
+.content-panel h1,
+.sl-markdown-content :is(h2, h3) {
+	font-weight: 650;
+	letter-spacing: -0.025em;
+}
+.content-panel h1 {
+	font-size: clamp(2rem, 4vw, 2.6rem);
+	line-height: 1.1;
+}
+.sl-markdown-content h2 {
+	font-size: 1.6rem;
+}
+.site-title {
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	color: var(--sl-color-white);
+}
+header.header {
+	border-bottom: 1px solid var(--sl-color-hairline);
+}
+.sl-markdown-content a {
+	text-underline-offset: 0.2em;
+	text-decoration-thickness: 1px;
+}
+
+/* Screenshots read as app windows, not loose images. */
+.sl-markdown-content img:not(.icon) {
+	border: 1px solid var(--prism-shot-border);
+	border-radius: 0.625rem;
+	box-shadow: var(--prism-shot-shadow);
+}
+
+.sl-markdown-content video {
+	width: 100%;
+	height: auto;
+	border-radius: 0.5rem;
+}
+
+.sl-markdown-content figure {
+	margin-block: 1.75rem;
+}
+
+.sl-markdown-content figcaption {
+	margin-top: 0.6rem;
+	font-size: var(--sl-text-sm);
+	color: var(--sl-color-gray-3);
+	text-align: center;
+}
+
+/* A two-up row for before/after or 2D/3D pairs. */
+.prism-pair {
+	display: grid;
+	gap: 1rem;
+	grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+	margin-block: 1.75rem;
+}
+
+.prism-pair > *,
+.prism-pair figure {
+	margin: 0 !important;
+}
+.prism-pair img {
+	width: 100%;
+	height: auto;
+}
+
+
+/* Landing page sections below the sheet. */
+.prism-section-title {
+	margin-top: 4rem !important;
+}
+.prism-credits {
+	margin-top: 4rem;
+	padding-top: 1.5rem;
+	border-top: 1px solid var(--sl-color-hairline);
+	font-size: var(--sl-text-sm);
+	color: var(--sl-color-gray-3);
+}
+.prism-credits :is(h2, h3) {
+	font-size: 1.1rem;
+}
+.prism-section-title {
+	font-size: 1.35rem !important;
+}
+
+/* The current page in the sidebar: stronger text, nothing else. */
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+	background: transparent;
+	color: var(--sl-color-white);
+	font-weight: 650;
+}
+
+/* The landing page runs wider than Starlight's splash default so the sheet has room. */
+html[data-has-hero]:not([data-has-sidebar]) {
+	--sl-content-width: 90rem;
+}
+
+/* The sheet sits as far below the header as it does from the page sides. */
+html[data-has-hero] .content-panel:has(.sheet) {
+	padding-top: var(--sl-content-pad-x);
+}

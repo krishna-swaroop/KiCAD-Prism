@@ -41,8 +41,9 @@ adoption, pending report); `schema_head.py` lists the ledgers in dependency
 order and is what startup calls. Steps live per schema:
 `workspace_schema_migrations.py` (bodies in `workspace_migrations/`),
 `auth_schema_migrations.py`, `comments_schema_migrations.py`,
-`catalog_schema_migrations.py`, `artifact_schema_migrations.py`. Add a step
-rather than DDL in a service (see `docs/UPGRADES.md`). The catalog baseline is
+`catalog_schema_migrations.py` (its `supply_tables` step creates the supply
+module's `supply_*` tables), `artifact_schema_migrations.py`. Add a step
+rather than DDL in a service (see `website/src/content/docs/admin/upgrades.md`). The catalog baseline is
 its step 0 and the catalog is forward-only: a new built-in metadata field or a
 base-table change is a new step. Only the epoch guard and derived state
 (projection versions, search indexes, integrity guards) run on every start, from
@@ -256,7 +257,7 @@ listing); `trackers/forge_client.py` is the adapters' shared HTTP helper.
 Promotion, reply/thread/state executors, webhook inboxes, and polling live under
 `trackers/`; provider-specific operations belong in a kit, never in generic
 handlers. Tests plug `backend/tests/tracker_fault_harness.py` `StatefulFakeForge` in at
-the runtime seam (`install_fake_provider`), not by patching executor privates. Read `docs/TRACKER_INTEGRATION.md` and
+the runtime seam (`install_fake_provider`), not by patching executor privates. Read `website/src/content/docs/admin/issue-trackers.md` and
 `docs/tracker-integration/CONTRACTS.md` before changing credential, idempotency,
 remote recovery, or authorization behavior.
 

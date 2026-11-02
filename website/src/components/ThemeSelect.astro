@@ -1,0 +1,98 @@
+---
+// One button that flips between light and dark, replacing Starlight's three-way select.
+// Until someone presses it, the site follows the system setting (Starlight's "auto").
+---
+
+<prism-theme-toggle>
+	<button type="button" class="theme-toggle" aria-label="Switch to light theme" title="Switch to light theme">
+		<svg class="moon" viewBox="0 0 24 24" aria-hidden="true">
+			<path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z" />
+		</svg>
+		<svg class="sun" viewBox="0 0 24 24" aria-hidden="true">
+			<circle cx="12" cy="12" r="4.2" />
+			<path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.55 1.55M17.15 17.15l1.55 1.55M5.3 18.7l1.55-1.55M17.15 6.85l1.55-1.55" />
+		</svg>
+	</button>
+</prism-theme-toggle>
+
+<script>
+	const storageKey = 'starlight-theme';
+
+	class PrismThemeToggle extends HTMLElement {
+		constructor() {
+			super();
+			const button = this.querySelector('button')!;
+			const label = () => {
+				const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+				const text = `Switch to ${next} theme`;
+				button.setAttribute('aria-label', text);
+				button.title = text;
+			};
+			label();
+			button.addEventListener('click', () => {
+				const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+				document.documentElement.dataset.theme = next;
+				try {
+					localStorage.setItem(storageKey, next);
+				} catch {}
+				label();
+			});
+			matchMedia('(prefers-color-scheme: light)').addEventListener('change', (event) => {
+				let stored: string | null = null;
+				try {
+					stored = localStorage.getItem(storageKey);
+				} catch {}
+				if (stored !== 'light' && stored !== 'dark') {
+					document.documentElement.dataset.theme = event.matches ? 'light' : 'dark';
+					label();
+				}
+			});
+		}
+	}
+	customElements.define('prism-theme-toggle', PrismThemeToggle);
+</script>
+
+<style>
+	.theme-toggle {
+		display: grid;
+		place-items: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		padding: 0;
+		border: 1px solid var(--sl-color-hairline);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--sl-color-gray-2);
+		cursor: pointer;
+		transition:
+			color 150ms ease,
+			border-color 150ms ease,
+			background-color 150ms ease;
+	}
+	.theme-toggle:hover {
+		color: var(--sl-color-white);
+		border-color: var(--sl-color-gray-4);
+		background: var(--sl-color-gray-6);
+	}
+	.theme-toggle:focus-visible {
+		outline: 2px solid var(--sl-color-accent);
+		outline-offset: 2px;
+	}
+	svg {
+		width: 1.05rem;
+		height: 1.05rem;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.7;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+	.sun circle {
+		fill: none;
+	}
+	/* Show the theme you would switch to. */
+	:global([data-theme='dark']) .moon,
+	:global([data-theme='light']) .sun {
+		display: none;
+	}
+</style>

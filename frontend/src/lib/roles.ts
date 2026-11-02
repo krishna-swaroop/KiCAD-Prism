@@ -108,6 +108,27 @@ export const ROLE_AUTHORITIES: readonly RoleAuthority[] = [
     roles: AUTHORITY_ROLES.administer_catalog,
   },
   {
+    key: "view_supply",
+    category: "Component library",
+    label: "View supply data",
+    description: "See distributor stock, prices, connectors, and the matching review queue.",
+    roles: AUTHORITY_ROLES.view_supply,
+  },
+  {
+    key: "edit_supply",
+    category: "Component library",
+    label: "Watch parts",
+    description: "Watch parts for stock, and change their thresholds and polling priority.",
+    roles: AUTHORITY_ROLES.edit_supply,
+  },
+  {
+    key: "review_supply",
+    category: "Component library",
+    label: "Decide supply matches",
+    description: "Map manufacturer spellings and confirm or reject distributor listings.",
+    roles: AUTHORITY_ROLES.review_supply,
+  },
+  {
     key: "administer_workspace",
     category: "Administration",
     label: "Administer workspace",
@@ -143,6 +164,23 @@ export function canAdministerCatalog(role?: UserRole | null): boolean {
 
 export function canOpenLibraryManager(role?: UserRole | null): boolean {
   return roleHasAuthority(role, "view_catalog");
+}
+
+export function canOpenSupply(role?: UserRole | null): boolean {
+  return roleHasAuthority(role, "view_supply");
+}
+
+export function canEditSupply(role?: UserRole | null): boolean {
+  return roleHasAuthority(role, "edit_supply");
+}
+
+/** Following parts, components and projects: anyone who opens Supply (the server's `supply_follow`). */
+export function canFollowSupply(role?: UserRole | null): boolean {
+  return canOpenSupply(role);
+}
+
+export function canReviewSupply(role?: UserRole | null): boolean {
+  return roleHasAuthority(role, "review_supply");
 }
 
 export function canWriteCatalog(role?: UserRole | null): boolean {

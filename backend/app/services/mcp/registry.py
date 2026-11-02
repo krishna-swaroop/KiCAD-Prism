@@ -4,7 +4,11 @@ A tool is declared once, beside the route it reads: its name, the JSON Schema
 an MCP client sees, the typed ``/api/v1`` route it calls, and how its arguments
 become that route's path and query. The registry is deliberately plain module
 API — the supply tools register into the same list later — and ``tools()``
-returns declarations in registration order so ``tools/list`` is deterministic.
+returns every read, then every write, then the ops tools, each group in
+registration order, so ``tools/list`` is deterministic whichever module was
+imported first. A tool's ``group`` is derived from its action and annotations,
+and its optional ``present`` hook shapes results (bound with ``presenter``).
+``backend/app/services/mcp/AGENTS.md`` walks through adding a tool.
 
 ``output_schema`` is the route's ``200`` response schema from ``app.openapi()``
 with ``$ref``s inlined. The resolver is small and depth-capped on purpose:
@@ -13,14 +17,37 @@ OpenAPI schemas are shallow, and a self-referential model must not loop.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from dataclasses import dataclass, replace
+from typing import Any, Awaitable, Callable, Protocol
 
-#: What a multi-step tool calls a route with: ``(app, method, path, query,
-#: authorization, json_body)``.
-RouteRequest = Callable[
-    [Any, str, str, str, str, dict[str, Any] | None], Awaitable[tuple[int, bytes]]
-]
+class RouteRequest(Protocol):
+    """How a multi-step tool calls one ``/api/v1`` route as its caller.
+
+    ``(app, method, path, query, authorization, json_body)`` answers
+    ``(status, body bytes)``. ``if_match`` is a guarded write's ETag. Bodies are
+    JSON only: a file travels through an upload slot (ADR §12, D30).
+    """
+
+    def __call__(
+        self,
+        app: Any,
+        method: str,
+        path: str,
+        query: str,
+        authorization: str,
+        body: dict[str, Any] | None,
+        *,
+        if_match: str | None = None,
+    ) -> Awaitable[tuple[int, bytes]]: ...
+
+#: Shapes one finished result: ``(arguments, result) -> result``. It sees error
+#: results too, and returns the result (usually the same object) unchanged when
+#: there is nothing to add.
+Presenter = Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]
+
+#: ``tools/list`` order: every read, then every write, then the ops tools
+#: (ADR §10, §11). Within a group, tools keep their registration order.
+GROUP_ORDER = ("read", "write", "ops")
 
 #: A read tool says so rather than leaving a client to infer it.
 READ_ONLY_ANNOTATIONS: dict[str, bool] = {
@@ -91,6 +118,15 @@ class Tool:
     #: ``catalog_write``). Set only on write tools: ``/mcp`` checks it before the
     #: route runs, so a client missing the scope is asked for it (D14).
     action: str | None = None
+    #: Result shaping after invocation (filters, citation links); see ``presenter``.
+    present: Presenter | None = None
+
+    @property
+    def group(self) -> str:
+        """``read``, ``write`` or ``ops``, from what the tool already declares."""
+        if self.ops:
+            return "ops"
+        return "write" if self.write else "read"
 
     @property
     def write(self) -> bool:
@@ -127,11 +163,40 @@ def register(tool: Tool) -> Tool:
     return tool
 
 
+def presenter(name: str) -> Callable[[Presenter], Presenter]:
+    """Attach the decorated function as the registered tool ``name``'s ``present`` hook.
+
+    A module registers its tools first and defines their result shaping after,
+    so the hook is bound by name rather than passed to ``Tool(...)``.
+    """
+
+    def bind(function: Presenter) -> Presenter:
+        for index, tool in enumerate(_TOOLS):
+            if tool.name == name:
+                if tool.present is not None:
+                    raise ValueError(f"tool {name!r} already has a presenter")
+                _TOOLS[index] = replace(tool, present=function)
+                return function
+        raise ValueError(f"no tool named {name!r} is registered")
+
+    return bind
+
+
+def present(tool: Tool, arguments: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """``result`` shaped by ``tool``'s hook, or unchanged when it has none."""
+
+    return tool.present(arguments, result) if tool.present is not None else result
+
+
 def tools() -> tuple[Tool, ...]:
-    """Every available tool, in registration order (ops tools only while ops is on)."""
+    """Every available tool, grouped by ``GROUP_ORDER`` (ops tools only while ops is on).
+
+    The sort is stable, so within a group the order is the registration order.
+    """
 
     enabled = ops_enabled()
-    return tuple(tool for tool in _TOOLS if enabled or not tool.ops)
+    listed = [tool for tool in _TOOLS if enabled or not tool.ops]
+    return tuple(sorted(listed, key=lambda tool: GROUP_ORDER.index(tool.group)))
 
 
 def tool_named(name: str) -> Tool | None:
@@ -185,7 +250,7 @@ def response_schema(app: Any, route: tuple[str, str]) -> dict[str, Any] | None:
     return output_schema(_inline(schema, schemas, _MAX_REF_DEPTH))
 
 
-#: Keys ``tools.present`` adds to a result to cite what it returned.
+#: Keys a tool's ``present`` hook adds to a result to cite what it returned.
 _CITATION_PROPERTIES = {
     "link": {"type": "string", "description": "The Prism page for this result."},
     "uri": {"type": "string", "description": "The prism:// resource URI for this result."},
@@ -236,9 +301,13 @@ def tool_definitions(app: Any | None = None) -> list[dict[str, Any]]:
 
 
 __all__ = [
+    "GROUP_ORDER",
     "IDEMPOTENCY_KEY",
+    "Presenter",
     "READ_ONLY_ANNOTATIONS",
     "Tool",
+    "present",
+    "presenter",
     "register",
     "response_schema",
     "tool_definition",

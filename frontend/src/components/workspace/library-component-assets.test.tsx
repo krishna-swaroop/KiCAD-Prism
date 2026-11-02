@@ -50,7 +50,7 @@ describe("AssetsPanel", () => {
     renderPanel();
     expect(within(screen.getByRole("region", { name: "Symbols" })).getAllByText(/sym-[ab]\.file/)).toHaveLength(2);
     expect(within(screen.getByRole("region", { name: "SPICE models" })).getByText("Missing")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download sym-a.file" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Download sym-a.file" })).toBeEnabled();
   });
 
   it("previews the default representation until another is picked", () => {
@@ -67,6 +67,26 @@ describe("AssetsPanel", () => {
     expect(save).toBeDisabled();
     fireEvent.change(screen.getAllByRole("textbox", { name: "Representation label" })[1], { target: { value: "Alt" } });
     expect(save).toBeEnabled();
+  });
+
+  it("truncates a long asset name in its own field and keeps it in the tooltip", () => {
+    const longName = "AMD_FBVB900_31x31mm_P1.0mm_30x30";
+    render(
+      <AssetsPanel
+        component={{ ...component, assets: [asset("sym-a", "symbol"), { ...asset("fp-a", "footprint"), target_name: longName }] } as CatalogComponent}
+        canMutate
+        busyAction=""
+        onAttach={vi.fn()}
+        onDetachAsset={vi.fn()}
+        onDownload={vi.fn()}
+        onRegeneratePreviews={vi.fn()}
+        onValidate={vi.fn()}
+        onRepresentationsChanged={vi.fn()}
+      />,
+    );
+    const footprint = screen.getAllByRole("combobox", { name: "Footprint asset" })[0];
+    expect(footprint).toHaveAttribute("title", longName);
+    expect(within(footprint).getByText(longName)).toHaveClass("truncate");
   });
 
   it("offers no edits to a reader", () => {

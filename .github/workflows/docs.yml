@@ -1,0 +1,102 @@
+name: Docs
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    name: Build site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: website
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Check whether the site changed
+        id: changed
+        working-directory: .
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if git diff --name-only "${BASE_SHA}...HEAD" | grep -q '^website/'; then
+            echo "website=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "website=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js
+        if: steps.changed.outputs.website == 'true'
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        if: steps.changed.outputs.website == 'true'
+        run: npm ci
+
+      - name: Build
+        if: steps.changed.outputs.website == 'true'
+        run: npm run build
+
+  docs-check:
+    name: Docs requirement
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Require documentation for user-facing changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          NO_DOCS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'no-docs') }}
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${BASE_SHA}...HEAD")"
+
+          if ! grep -qE '^(backend/app/|frontend/src/)' <<< "$changed"; then
+            echo "No user-facing code changed; docs not required."
+            exit 0
+          fi
+
+          if grep -q '^website/' <<< "$changed"; then
+            echo "User-facing code and website/ both changed."
+            exit 0
+          fi
+
+          if [ "$NO_DOCS_LABEL" = "true" ]; then
+            echo "User-facing code changed; the no-docs label is present."
+            exit 0
+          fi
+
+          echo "Code under backend/app or frontend/src changed but nothing under website/ did, and the PR has no no-docs label."
+          exit 1

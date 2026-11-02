@@ -10,7 +10,8 @@ const api = vi.hoisted(() => ({
   readApiError: vi.fn(async (_response: Response, fallback: string) => fallback),
 }));
 
-vi.mock("@/lib/api", () => api);
+// The rest of lib/api stays real: the Supply screens the workspace loads build their errors on its ApiHttpError.
+vi.mock("@/lib/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/api")>()), ...api }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn() } }));
 
 import { clearWorkspaceDataCache } from "@/hooks/use-workspace-data";

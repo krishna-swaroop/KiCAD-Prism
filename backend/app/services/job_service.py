@@ -110,6 +110,27 @@ class JobService:
     def _connect():
         return database.connection()
 
+    def prune_finished(self, kind: str, *, older_than_seconds: int = 7 * 24 * 60 * 60) -> int:
+        """Delete the finished jobs of one kind that completed longer ago than the cutoff, and return how many. For jobs that keep
+        no artifacts and that the scheduler queues all day (their rows would otherwise stay for ever); a job with artifacts is not
+        touched, since deleting it would take its artifact metadata with it."""
+
+        self.initialize()
+        with self._connect() as conn:
+            self._set_workspace_search_path(conn)
+            rows = conn.execute(
+                """
+                DELETE FROM ws_jobs job
+                WHERE job.kind = %s AND job.status IN ('completed', 'failed', 'cancelled')
+                  AND COALESCE(job.completed_at, job.updated_at) < NOW() - (%s * INTERVAL '1 second')
+                  AND NOT EXISTS (SELECT 1 FROM ws_artifacts artifact WHERE artifact.source_job_id = job.id)
+                RETURNING job.id
+                """,
+                (kind, max(0, int(older_than_seconds))),
+            ).fetchall()
+            conn.commit()
+        return len(rows)
+
     def configure_resource_slots(self, capacities: Mapping[str, int]) -> None:
         """Reconcile configured slot rows without evicting active leases."""
 

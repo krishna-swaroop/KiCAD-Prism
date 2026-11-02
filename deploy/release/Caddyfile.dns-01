@@ -13,7 +13,7 @@
 #
 # Replace prism.example.com and the provider directive below.
 #
-# See the Deployment guide.
+# See the Deployment guide at https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/.
 
 prism.example.com {
 	tls {

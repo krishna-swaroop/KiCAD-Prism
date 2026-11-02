@@ -8,8 +8,8 @@ are repo-root relative and CI-verified by `scripts/check_agent_docs.py`.
 **Read these before acting, not after:**
 
 - Service topology, storage domains, PostgreSQL schemas, trust boundaries —
-  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Read before changing any service
-  boundary, job class, or persistence path.
+  [website/src/content/docs/contribute/architecture.md](website/src/content/docs/contribute/architecture.md).
+  Read before changing any service boundary, job class, or persistence path.
 - Setup, check suites, branch prefixes, dependency policy —
   [CONTRIBUTING.md](CONTRIBUTING.md). Read before your first command in a fresh
   checkout, and before adding any dependency.
@@ -21,9 +21,12 @@ change:
 | --- | --- |
 | Release Studio | `backend/app/release_studio/AGENTS.md` |
 | Catalog services | `backend/app/services/AGENTS.md` |
+| Supply chain data (backend) | `backend/app/services/supply/AGENTS.md` |
+| Supply UI | `frontend/src/features/supply/AGENTS.md` |
 | Design comparison | `frontend/src/components/design-comparison/AGENTS.md` |
 | Library workspace | `frontend/src/components/workspace/AGENTS.md` |
 | Design bundles (backend: keys, store, jobs, reader) | `backend/app/services/design_bundle/AGENTS.md` |
+| MCP server (tools, registry, invocation) | `backend/app/services/mcp/AGENTS.md` |
 | Native KiCad parser and design bundle (Rust) | `native/AGENTS.md` |
 | Projection goldens and the parity runner | `native/parity/AGENTS.md` |
 
@@ -36,6 +39,7 @@ skills automatically should open the relevant linked playbook directly.
 | --- | --- |
 | Select and report verification checks | `.agents/skills/prism-quality-gate/SKILL.md` |
 | Add or change an API endpoint | `.agents/skills/prism-api-endpoint/SKILL.md` |
+| Add or change an MCP tool | `.agents/skills/prism-mcp-tool/SKILL.md` |
 | Change Prism catalog behavior or structure | `.agents/skills/prism-catalog-change/SKILL.md` |
 | Extend design-comparison semantics | `.agents/skills/prism-comparison-change-kind/SKILL.md` |
 | Rebuild the vendored ECAD viewer/parser | `.agents/skills/prism-viewer-rebuild/SKILL.md` |
@@ -166,7 +170,7 @@ in `backend/app/services/comment_anchor_bindings.py`. Read
 `backend/app/services/trackers/connector_runtime.py` →
 `backend/app/services/trackers/providers.py`. GitHub and GitLab issue
 publication are available; Gitea/Forgejo is account-linking only. See
-`docs/TRACKER_INTEGRATION.md` for credentials, destinations, and recovery.
+`website/src/content/docs/admin/issue-trackers.md` for credentials, destinations, and recovery.
 
 **Select a design variant**
 `backend/app/services/variant_catalog_service.py` (the bundle catalog) →
@@ -188,7 +192,7 @@ this tree implements it.
 · `backend/app/sim_studio/runs.py` (`sim_run` job, engines from
 `backend/sim-engines.lock.json`) →
 `frontend/src/components/sim-studio/SimStudioPanel.tsx`. See
-`docs/SIMULATION_STUDIO.md`.
+`website/src/content/docs/use/simulation-studio.md`.
 
 **Place a symbol from desktop KiCad**
 `backend/app/api/remote_provider.py` · `backend/app/api/provider_oauth.py` →
@@ -272,11 +276,11 @@ load the relevant ranges rather than reading them end to end.
 ## Release and experimental boundaries
 
 Release promotion requires reviewed `dev` to `main`, the main commit Quality
-gate, and checked-in `docs/releases/<tag>.md`; see `docs/RELEASES.md`.
+gate, and checked-in `docs/releases/<tag>.md`; see `website/src/content/docs/contribute/release-process.md`.
 The latest tag is `v4.0.0-alpha`; it superseded the unpublished v3.1 plan.
 
 Never replace the published Python toolchain with a sibling checkout; see
-`docs/DEPENDENCIES.md`.
+`website/src/content/docs/contribute/dependencies.md`.
 
 ## Generated and vendored boundaries
 

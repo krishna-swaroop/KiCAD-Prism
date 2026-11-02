@@ -13,4 +13,4 @@ Typical files in this directory (not committed):
 - `prism.key`
 - `corp-root-ca.crt` (distribute to KiCad workstations)
 
-See `../../docs/DEPLOYMENT.md`.
+See <https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/>.

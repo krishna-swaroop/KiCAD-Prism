@@ -3,6 +3,7 @@
 [![Latest release](https://img.shields.io/github/v/release/krishna-swaroop/KiCAD-Prism?include_prereleases&sort=semver&label=release)](https://github.com/krishna-swaroop/KiCAD-Prism/releases/latest)
 [![Release date](https://img.shields.io/github/release-date-pre/krishna-swaroop/KiCAD-Prism?label=released)](https://github.com/krishna-swaroop/KiCAD-Prism/releases)
 [![License](https://img.shields.io/github/license/krishna-swaroop/KiCAD-Prism)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-krishna--swaroop.github.io-blue)](https://krishna-swaroop.github.io/KiCAD-Prism/)
 
 KiCAD Prism is an open-source, self-hosted review, release and
 component-governance platform for teams that design in KiCad and keep their
@@ -13,6 +14,12 @@ happens around them: browsing every revision in the browser, reviewing changes
 with comments, building and signing off release packages, and running a governed
 component library that desktop KiCad places parts from. It runs on your own
 hardware, with no proprietary ECAD cloud.
+
+**Documentation: <https://krishna-swaroop.github.io/KiCAD-Prism/>**
+
+The documentation website covers trying Prism, using it, administering a
+deployment, automating it and contributing. This README is a summary; the
+website is the reference.
 
 ![Project workspace](assets/readme/workspace.jpg)
 
@@ -123,6 +130,8 @@ design. All rights stay with the authors under the projects' own terms.
 | WREN (vme-wren, vme-wren-fp-single, EDA-04903, EDA-04949) | CERN, BE-CEM | [be-cem-edl/chronos/wren/wren-hw](https://gitlab.cern.ch/be-cem-edl/chronos/wren/wren-hw) | CERN-OHL-W v2 or later and CC BY-SA 4.0, as stated on the schematic sheets |
 | OpenSwitch 10x10G carrier and LAN969x | Quentin Freimanis | [qfreiman/openswitch-10x10g-carrier](https://gitlab.com/qfreiman/openswitch-10x10g-carrier), [qfreiman/openswitch-lan969x](https://gitlab.com/qfreiman/openswitch-lan969x) | No license is stated in the repositories; see them for the author's terms |
 | USB-PD-Trigger-Board | Krishna Swaroop (Prism maintainer) | [krishna-swaroop/USB-PD-Trigger-Board](https://github.com/krishna-swaroop/USB-PD-Trigger-Board) | MIT |
+| ThunderScope | EEVengers | [EEVengers/ThunderScope](https://github.com/EEVengers/ThunderScope) | MIT |
+| Jetson AGX Thor baseboard | Antmicro | [antmicro/jetson-agx-thor-baseboard](https://github.com/antmicro/jetson-agx-thor-baseboard) | Apache-2.0 |
 
 The component catalog in the Library Manager screenshot is CERN's public
 KiCad database library. If you are an author of one of these designs and would
@@ -143,7 +152,7 @@ The API and both workers reuse one Prism backend image. Imported repositories
 and generated assets live under `data/projects`; Git SSH state lives under
 `data/ssh`. PostgreSQL and both directories are required for complete recovery.
 
-See [Architecture](docs/ARCHITECTURE.md).
+See [Architecture](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/architecture/).
 
 ## Deploy the latest stable release
 
@@ -168,7 +177,7 @@ docker compose up -d --wait
 The supported public deployment target is Linux AMD64. Native ARM64 release
 images are not currently published.
 
-Follow [Deployment](docs/DEPLOYMENT.md) for OIDC, TLS, storage, sizing, and
+Follow [Deployment](https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/) for OIDC, TLS, storage, sizing, and
 production checks. If a historical release predates deployment bundles, build
 that stable tag from source as documented there.
 
@@ -210,8 +219,8 @@ Useful first-run modes include:
 
 Generated configuration contains deployment secrets and is excluded from Git;
 back it up with the rest of the Prism deployment state. The installer is a
-guided configuration layer, not a replacement for the [Deployment](docs/DEPLOYMENT.md)
-and [Operations](docs/OPERATIONS.md) guides. For a stable release archive,
+guided configuration layer, not a replacement for the [Deployment](https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/)
+and [Operations](https://krishna-swaroop.github.io/KiCAD-Prism/admin/operations/) guides. For a stable release archive,
 follow the pull-only bundle instructions above and use the installer only when
 working from a source checkout that includes `deploy.sh` or `deploy.ps1`.
 
@@ -229,7 +238,7 @@ docker compose up --build -d
 For a private local evaluation, explicitly set `AUTH_ENABLED=false`. Never use
 guest administrator mode on a shared or reachable host.
 
-See [Getting started](docs/GETTING_STARTED.md) and
+See [Getting started](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/try-it/) and
 [Contributing](CONTRIBUTING.md).
 
 ## Branch and release model
@@ -242,26 +251,38 @@ See [Getting started](docs/GETTING_STARTED.md) and
   and publishes the AMD64 images and deployment bundle.
 - Pull requests and ordinary branch pushes never publish container images.
 
-See [Release process](docs/RELEASES.md).
+See [Release process](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/release-process/).
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Platform overview](docs/OVERVIEW.md)
-- [Getting started](docs/GETTING_STARTED.md)
-- [Deployment](docs/DEPLOYMENT.md)
-- [Configuration](docs/CONFIGURATION.md)
-- [Authentication and access](docs/AUTHENTICATION_AND_ACCESS.md)
-- [Project workflows](docs/PROJECT_WORKFLOWS.md)
-- [Library Manager](docs/LIBRARY_MANAGER.md)
-- [Remote Symbol Provider](docs/REMOTE_SYMBOL_PROVIDER.md)
-- [Release Studio](docs/release-studio/README.md)
-- [Issue trackers](docs/TRACKER_INTEGRATION.md)
-- [Simulation Studio](docs/SIMULATION_STUDIO.md)
-- [Team adoption](docs/TEAM_ADOPTION.md)
-- [Operations](docs/OPERATIONS.md)
-- [Upgrades and backups](docs/UPGRADES.md)
-- [Release process](docs/RELEASES.md)
+The full documentation is published at
+**<https://krishna-swaroop.github.io/KiCAD-Prism/>**, built from [`website/`](website/) on
+every change to `main`.
+
+- [Get started](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/what-is-prism/):
+  overview, [concepts](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/concepts/),
+  [try it](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/try-it/) and
+  [team adoption](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/team-adoption/).
+- [Use Prism](https://krishna-swaroop.github.io/KiCAD-Prism/use/projects/): projects,
+  viewing designs, comments, design comparison,
+  [Release Studio](https://krishna-swaroop.github.io/KiCAD-Prism/use/release-studio/),
+  [Library Manager](https://krishna-swaroop.github.io/KiCAD-Prism/use/library-manager/),
+  [Remote Symbol Provider](https://krishna-swaroop.github.io/KiCAD-Prism/use/remote-symbols/)
+  and [Simulation Studio](https://krishna-swaroop.github.io/KiCAD-Prism/use/simulation-studio/).
+- [Administer](https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/): deployment,
+  [configuration](https://krishna-swaroop.github.io/KiCAD-Prism/admin/configuration/),
+  [authentication](https://krishna-swaroop.github.io/KiCAD-Prism/admin/authentication/),
+  [issue trackers](https://krishna-swaroop.github.io/KiCAD-Prism/admin/issue-trackers/),
+  [operations](https://krishna-swaroop.github.io/KiCAD-Prism/admin/operations/) and
+  [upgrades and backups](https://krishna-swaroop.github.io/KiCAD-Prism/admin/upgrades/).
+- [Automate](https://krishna-swaroop.github.io/KiCAD-Prism/automate/overview/): API tokens,
+  SDK and CLI, CI, webhooks and MCP.
+- [Contribute](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/development-setup/):
+  development setup, [architecture](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/architecture/)
+  and [release process](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/release-process/).
+
+Release notes and in-repository design notes are indexed in
+[`docs/README.md`](docs/README.md).
 
 ## Project status
 
@@ -279,12 +300,12 @@ Current boundaries include:
 - fixed workflow types rather than first-class arbitrary workflows;
 - no real-time multi-user ECAD editing.
 
-See [Platform overview](docs/OVERVIEW.md) before planning a team rollout.
+See [Platform overview](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/what-is-prism/) before planning a team rollout.
 
 ## Contributing and issues
 
 - [Contributing guidelines](CONTRIBUTING.md)
-- [Reporting issues](docs/REPORTING_ISSUES.md)
+- [Reporting issues](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/reporting-issues/)
 - [Security policy](SECURITY.md)
 
 Changes target protected `dev` through pull requests. The required quality gate

@@ -35,7 +35,11 @@ cryptography==50.0.1
 cssselect2==0.10.1
     # via cairosvg
 defusedxml==0.7.1
-    # via cairosvg
+    # via
+    #   -r requirements/runtime.in
+    #   cairosvg
+et-xmlfile==2.0.0
+    # via openpyxl
 fastapi==0.141.1
     # via -r requirements/runtime.in
 fonttools==4.65.0
@@ -64,9 +68,12 @@ msgspec==0.21.1
     # via kicad-monkey
 numpy==2.5.3
     # via
+    #   -r requirements/runtime.in
     #   kicad-monkey
     #   shapely
     #   trimesh
+openpyxl==3.1.5
+    # via -r requirements/runtime.in
 packaging==26.3
     # via pikepdf
 pikepdf==10.13.0.post1

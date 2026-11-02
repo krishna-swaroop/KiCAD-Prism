@@ -93,6 +93,41 @@ class DesignKeyTests(_Workspace, unittest.TestCase):
         self.assertEqual(shown["anchorResolution"]["reason"], "coordinate_review")
         self.assertEqual(recorded, [])
 
+    def test_a_freehand_comment_follows_while_its_own_file_is_unchanged(self) -> None:
+        repo = self.add_project()
+        posted = git(repo, "rev-parse", "HEAD")
+
+        def area(comment_id: str, context: str, page: str) -> dict:
+            return {
+                "id": comment_id, "context": context, "elementId": None, "filePath": None,
+                "location": {"x": 1.0, "y": 2.0, "page": page},
+                "anchor": {"state": "pinned", "commit": posted, "designKey": None},
+            }
+
+        comments = [
+            area("board", "PCB", ""),
+            area("root", "SCH", ""),
+            area("power", "SCH", "Subsheets/power.kicad_sch:/aa/bb"),
+            area("gone", "SCH", "Subsheets/missing.kicad_sch"),
+        ]
+
+        def shown(commit: str) -> dict[str, dict]:
+            listed = comment_anchor_service.resolve_displayed_bindings(self._project(repo), comments, commit, {})
+            return {comment["id"]: comment["anchorResolution"] for comment in listed}
+
+        board_only = _commit(repo, "board/demo.kicad_pcb", "(kicad_pcb (version 20260206) (v2))\n", "board")
+        after_board = shown(board_only)
+        self.assertEqual(after_board["board"]["reason"], "coordinate_review")
+        for sheet in ("root", "power"):
+            self.assertEqual(after_board[sheet]["state"], "candidate")
+            self.assertTrue(after_board[sheet]["sameFile"])
+        self.assertEqual(after_board["gone"]["reason"], "coordinate_review")
+
+        root_sheet = _commit(repo, "board/demo.kicad_sch", "(kicad_sch (version 20260306) (v2))\n", "sheet")
+        after_sheet = shown(root_sheet)
+        self.assertEqual(after_sheet["root"]["reason"], "coordinate_review")
+        self.assertTrue(after_sheet["power"]["sameFile"])
+
 
 if __name__ == "__main__":
     unittest.main()

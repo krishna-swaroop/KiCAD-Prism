@@ -49,6 +49,6 @@ Operators should:
 - keep secrets and private certificates outside Git;
 - review roles, sessions, and service clients regularly.
 
-See [Deployment](docs/DEPLOYMENT.md),
-[Authentication and access](docs/AUTHENTICATION_AND_ACCESS.md), and
-[Operations](docs/OPERATIONS.md).
+See [Deployment](https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/),
+[Authentication and access](https://krishna-swaroop.github.io/KiCAD-Prism/admin/authentication/),
+and [Operations](https://krishna-swaroop.github.io/KiCAD-Prism/admin/operations/).

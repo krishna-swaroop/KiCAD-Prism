@@ -86,11 +86,11 @@ async def _set_debug(
             app, "post", "/api/v1/ops/debug-logging", "", authorization, body
         )
     if not 200 <= status < 300:
-        return invoke._execution_error(status, raw)
+        return invoke.route_error(status, raw)
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return invoke._failure("invalid-response", "Prism answered without a debug window")
+        return invoke.error_result("invalid-response", "Prism answered without a debug window")
     return invoke.success_result(payload if isinstance(payload, dict) else {"result": payload})
 
 

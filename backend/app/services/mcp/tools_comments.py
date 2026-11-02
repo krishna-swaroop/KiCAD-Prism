@@ -157,7 +157,7 @@ def _payload(status: int, raw: bytes) -> tuple[dict[str, Any] | None, dict[str, 
     """``(body, error)``: the route's JSON object, or the tool execution error."""
 
     if not 200 <= status < 300:
-        return None, invoke._execution_error(status, raw)
+        return None, invoke.route_error(status, raw)
     try:
         payload = json.loads(raw.decode("utf-8")) if raw else None
     except (UnicodeDecodeError, json.JSONDecodeError):

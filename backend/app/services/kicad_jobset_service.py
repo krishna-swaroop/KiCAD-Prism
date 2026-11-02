@@ -78,6 +78,7 @@ def execute_kicad_jobset(
     workflow_type: str,
     author: str = "anonymous",
     routing: JobsetRouting = "repository",
+    repository_root: str | Path | None = None,
     tool: KicadTool | None = None,
     repository_factory: RepositoryFactory | None = None,
     timestamp_factory: TimestampFactory | None = None,
@@ -88,6 +89,11 @@ def execute_kicad_jobset(
     ``artifact`` route deliberately does not construct a Git repository or run
     any Git mutation; the generated files remain available under the project
     path for a later artifact consumer.
+
+    ``repository_root`` is the clone that holds the project when the project is
+    a subdirectory of it (a multi-project import); it defaults to the project
+    path. Only the project's own directory is staged and committed, so files of
+    sibling projects in the same repository are left alone.
     """
 
     if routing not in {"artifact", "repository"}:
@@ -145,6 +151,7 @@ def execute_kicad_jobset(
         )
         generated_commit, warnings = _sync_repository(
             project_path_text,
+            repository_root=os.fspath(repository_root or project_path_text),
             workflow_type=workflow_type,
             author=author,
             repository_factory=repository_factory,
@@ -163,6 +170,7 @@ def execute_kicad_jobset(
 def _sync_repository(
     project_path: str,
     *,
+    repository_root: str,
     workflow_type: str,
     author: str,
     repository_factory: RepositoryFactory | None,
@@ -177,9 +185,16 @@ def _sync_repository(
         repository_constructor = (
             repository_factory if repository_factory is not None else Repo
         )
-        repo = repository_constructor(project_path)
-        if repo.is_dirty(untracked_files=True):
-            repo.git.add(".")
+        project_subpath = os.path.relpath(
+            os.path.realpath(project_path), os.path.realpath(repository_root)
+        )
+        if project_subpath == ".." or project_subpath.startswith(f"..{os.sep}"):
+            raise ValueError(
+                f"Project {project_path} is not inside its repository {repository_root}"
+            )
+        repo = repository_constructor(repository_root)
+        if repo.is_dirty(untracked_files=True, path=project_subpath):
+            repo.git.add("--", project_subpath)
             now_factory = (
                 timestamp_factory
                 if timestamp_factory is not None
@@ -191,6 +206,8 @@ def _sync_repository(
                 f"Generated {workflow_type} outputs - {timestamp} by {author}"
             )
             repo.git.commit(
+                "--",
+                project_subpath,
                 m=commit_message,
                 author="KiCAD Prism <prism@example.com>",
             )
@@ -209,7 +226,8 @@ def _sync_repository(
         else:
             print("No generated changes detected to commit", flush=True)
     except Exception as error:
-        warning = f"Git sync warning: {error}"
+        # Some Git errors (InvalidGitRepositoryError) carry only a path.
+        warning = f"Git sync warning: {type(error).__name__}: {error}"
         warnings.append(warning)
         print(warning, flush=True)
     return generated_commit, warnings
