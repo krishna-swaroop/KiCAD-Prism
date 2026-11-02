@@ -154,6 +154,8 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const [project, setProject] = useState<Project | null>(null);
     // Where the Supply section puts its buttons: on its title row, a little higher than its own controls.
     const [supplyActions, setSupplyActions] = useState<HTMLElement | null>(null);
+    const [manufacturingTabs, setManufacturingTabs] = useState<HTMLElement | null>(null);
+    const [manufacturingActions, setManufacturingActions] = useState<HTMLElement | null>(null);
     const [readme, setReadme] = useState<string>("");
     const [loading, setLoading] = useState(true);
     const [activeSection, setActiveSection] = useState<ProjectSection>(() => (
@@ -805,16 +807,24 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                             active={activeSection === "manufacturing"}
                             className="themed-scrollbar"
                         >
-                            <h2 className="mb-6 text-2xl font-bold">Manufacturing</h2>
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-4">
+                                    <h2 className="text-2xl font-bold">Manufacturing</h2>
+                                    <div ref={setManufacturingTabs} />
+                                </div>
+                                <div ref={setManufacturingActions} className="flex flex-wrap items-center gap-2" />
+                            </div>
                             {projectId && (
                                 <ErrorBoundary label="the manufacturing panel" resetKeys={[projectId, refreshKey]}>
-                                    <Suspense fallback={<div className="text-sm text-muted-foreground">Loading manufacturing...</div>}>
+                                    <Suspense fallback={<Skeleton className="h-48 w-full" aria-label="Loading manufacturing" />}>
                                         <ProjectManufacturing
                                             projectId={projectId}
                                             canEdit={canMutateProject}
                                             canLogDefects={canMutateProject || user?.role === "qa"}
                                             canChangeStatus={user?.role === "qa" || user?.role === "admin"}
                                             projectName={project ? getDisplayName(project) : undefined}
+                                            tabsSlot={manufacturingTabs}
+                                            actionsSlot={manufacturingActions}
                                         />
                                     </Suspense>
                                 </ErrorBoundary>

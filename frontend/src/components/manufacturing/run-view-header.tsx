@@ -14,7 +14,6 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 import { downloadRunReport } from "@/lib/manufacturing";
 import { ALL_RUN_STATUSES, RUN_STATUS_LABELS, type ManufacturingRun } from "@/types/manufacturing";
 import { boardName } from "./production-filters";
@@ -50,115 +49,103 @@ export function RunHeader({ run, canEdit, canChangeStatus, projectLink, onChange
     };
 
     return (
-        <header className="shrink-0 border-b bg-card">
-                <div className="px-4 py-3 pr-14">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                                <h2 className="truncate font-mono text-lg font-semibold tracking-tight">{title}</h2>
-                                <RunStatusBadge status={run.status} />
-                            </div>
-                            <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
-                                <span>
-                                    {run.project_name || run.project_id}
-                                    {board !== "—" ? ` / ${board}` : ""}
-                                    {run.manufacturer_name ? ` · ${run.manufacturer_name}` : ""}
-                                    {run.spec_name ? ` · ${run.spec_name}` : ""}
-                                </span>
-                                {projectLink && (
-                                    <Link
-                                        to={`/project/${run.project_id}?section=manufacturing`}
-                                        aria-label={`Open ${run.project_name || run.project_id} manufacturing page`}
-                                        title="Open this project's Manufacturing page"
-                                        className="shrink-0 transition-colors hover:text-primary focus-visible:text-primary"
-                                    >
-                                        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                                    </Link>
-                                )}
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => void handleDownloadReport()}
-                                disabled={downloading}
-                            >
-                                <FileDown className="mr-1.5 h-4 w-4" />
-                                {downloading ? "Preparing..." : "Download report"}
-                            </Button>
-                            {canEdit && (
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button size="icon-sm" variant="outline" aria-label="Production actions">
-                                            <MoreHorizontal className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem
-                                            className="text-destructive focus:text-destructive"
-                                            onSelect={() => onRequestDelete()}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                            Delete production
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            )}
-                        </div>
+        <header className="shrink-0 border-b bg-background px-6 pb-4 pr-14 pt-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="truncate text-lg font-semibold">{title}</h2>
+                        <RunStatusBadge status={run.status} />
                     </div>
-    
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                        {run.status === "cancelled" ? (
-                            // Not a stage of the lifecycle, so there is no progress bar to show.
-                            <p className="text-sm text-muted-foreground">
-                                This production was cancelled. Its spec, quantities and defects are kept.
-                            </p>
-                        ) : (
-                            <StatusStepper status={run.status} />
-                        )}
-                        {canChangeStatus && (
-                            // One control for status: the button moves the run to the next stage,
-                            // and the arrow beside it opens every stage for a correction.
-                            <div className="ml-auto flex">
-                                {next && (
-                                    <Button size="sm" className="rounded-r-none" onClick={() => onChangeStatus(next)}>
-                                        Mark as {RUN_STATUS_LABELS[next].toLowerCase()}
-                                    </Button>
-                                )}
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button
-                                            size="sm"
-                                            className={next ? "rounded-l-none border-l border-primary-foreground/30 px-2" : undefined}
-                                            aria-label="Set status"
-                                        >
-                                            {!next && "Set status"}
-                                            <ChevronDown className={cn("h-4 w-4", !next && "ml-1.5")} />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuLabel>Set status</DropdownMenuLabel>
-                                        <DropdownMenuRadioGroup
-                                            value={run.status}
-                                            onValueChange={(value) => onChangeStatus(value)}
-                                        >
-                                            {ALL_RUN_STATUSES.map((status) => (
-                                                <Fragment key={status}>
-                                                    {/* Cancelled is not a stage, so it sits apart from the lifecycle. */}
-                                                    {status === "cancelled" && <DropdownMenuSeparator />}
-                                                    <DropdownMenuRadioItem value={status}>
-                                                        {RUN_STATUS_LABELS[status]}
-                                                    </DropdownMenuRadioItem>
-                                                </Fragment>
-                                            ))}
-                                        </DropdownMenuRadioGroup>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        )}
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                        {run.project_name || run.project_id}
+                        {board !== "—" ? ` / ${board}` : ""}
+                        {run.manufacturer_name ? ` · ${run.manufacturer_name}` : ""}
+                        {run.spec_name ? ` · ${run.spec_name}` : ""}
+                    </p>
                 </div>
-            </header>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => void handleDownloadReport()} disabled={downloading}>
+                        <FileDown />
+                        {downloading ? "Preparing..." : "Download report"}
+                    </Button>
+                    {projectLink && (
+                        <Button asChild size="icon-sm" variant="outline" title="Open this project's Manufacturing page">
+                            <Link
+                                to={`/project/${run.project_id}?section=manufacturing`}
+                                aria-label={`Open ${run.project_name || run.project_id} manufacturing page`}
+                            >
+                                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                            </Link>
+                        </Button>
+                    )}
+                    {canEdit && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button size="icon-sm" variant="outline" aria-label="Production actions">
+                                    <MoreHorizontal />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onSelect={() => onRequestDelete()}
+                                >
+                                    <Trash2 />
+                                    Delete production
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+                </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                {run.status === "cancelled" ? (
+                    // Not a stage of the lifecycle, so there is no progress bar to show.
+                    <p className="text-sm text-muted-foreground">
+                        This production was cancelled. Its spec, quantities and defects are kept.
+                    </p>
+                ) : (
+                    <StatusStepper status={run.status} />
+                )}
+                {canChangeStatus && (
+                    // One control for status: the button moves the run to the next stage,
+                    // and the arrow beside it opens every stage for a correction.
+                    <div className="ml-auto flex">
+                        {next && (
+                            <Button size="sm" className="rounded-r-none" onClick={() => onChangeStatus(next)}>
+                                Mark as {RUN_STATUS_LABELS[next].toLowerCase()}
+                            </Button>
+                        )}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    size="sm"
+                                    className={next ? "rounded-l-none border-l border-primary-foreground/30 px-2" : undefined}
+                                    aria-label="Set status"
+                                >
+                                    {!next && "Set status"}
+                                    <ChevronDown />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Set status</DropdownMenuLabel>
+                                <DropdownMenuRadioGroup value={run.status} onValueChange={(value) => onChangeStatus(value)}>
+                                    {ALL_RUN_STATUSES.map((status) => (
+                                        <Fragment key={status}>
+                                            {/* Cancelled is not a stage, so it sits apart from the lifecycle. */}
+                                            {status === "cancelled" && <DropdownMenuSeparator />}
+                                            <DropdownMenuRadioItem value={status}>
+                                                {RUN_STATUS_LABELS[status]}
+                                            </DropdownMenuRadioItem>
+                                        </Fragment>
+                                    ))}
+                                </DropdownMenuRadioGroup>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                )}
+            </div>
+        </header>
     );
 }

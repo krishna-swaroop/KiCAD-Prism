@@ -25,7 +25,7 @@ export function StatusStepper({ status }: { status: RunStatus }) {
                     <li key={stage} aria-current={active ? "step" : undefined} className="flex items-center">
                         <span
                             className={cn(
-                                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] tabular-nums",
+                                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums",
                                 done && "border-primary bg-primary text-primary-foreground",
                                 active && "border-primary bg-background text-primary ring-2 ring-primary/30",
                                 !done && !active && "text-muted-foreground",

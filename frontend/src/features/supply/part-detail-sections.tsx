@@ -10,7 +10,7 @@ import { insightLines } from "./insight-text";
 import { behaviourLines } from "./market-behaviour-text";
 import { RestockRecordDetails } from "./restock-record";
 import { restockItems } from "./restock-items";
-import { FoldSection } from "./fold-section";
+import { FoldSection } from "@/components/ui/fold-section";
 import { EndOfLifeLine, ForecastSection } from "./forecast-section";
 import { TryQuantity } from "./price-quantity";
 import { usePartForecast } from "./use-part-forecast";

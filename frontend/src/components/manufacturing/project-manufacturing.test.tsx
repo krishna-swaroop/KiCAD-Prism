@@ -154,12 +154,51 @@ describe("ProjectManufacturing", () => {
             expect(screen.getByText(/None with Acme Fab yet/)).toBeTruthy();
         });
 
+        const attached = (count: number) =>
+            Array.from({ length: count }, (_, i) => ({ id: `m${i + 1}`, name: `Fab ${i + 1}`, ...MFR }));
+
+        it("lists up to five manufacturers side by side as tabs", async () => {
+            listProjectManufacturers.mockResolvedValue(attached(5));
+            renderTab(<ProjectManufacturing projectId="p1" canEdit />);
+            await screen.findByRole("tablist", { name: "Manufacturers" });
+            expect(screen.getAllByRole("tab", { name: /^Fab / })).toHaveLength(5);
+            expect(screen.queryByRole("combobox", { name: "Manufacturers" })).toBeNull();
+        });
+
+        it("switches to a dropdown from the sixth manufacturer on", async () => {
+            listProjectManufacturers.mockResolvedValue(attached(6));
+            renderTab(<ProjectManufacturing projectId="p1" canEdit />);
+            const picker = await screen.findByRole("combobox", { name: "Manufacturers" });
+            expect(screen.queryByRole("tablist", { name: "Manufacturers" })).toBeNull();
+            expect(picker.textContent).toContain("Fab 1");
+            fireEvent.keyDown(picker, { key: "Enter" });
+            fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Fab 6" }));
+            await waitFor(() => expect(screen.getByRole("combobox", { name: "Manufacturers" }).textContent).toContain("Fab 6"));
+        });
+
+        it("puts the sub-tabs and New production into the page's heading row when given its slots", async () => {
+            const tabsSlot = document.createElement("div");
+            const actionsSlot = document.createElement("div");
+            document.body.append(tabsSlot, actionsSlot);
+            try {
+                renderTab(<ProjectManufacturing projectId="p1" canEdit tabsSlot={tabsSlot} actionsSlot={actionsSlot} />);
+                await waitForForm();
+                expect(within(tabsSlot).getByRole("tablist", { name: "Manufacturing sections" })).toBeTruthy();
+                expect(within(actionsSlot).getByRole("button", { name: /New production/ })).toBeTruthy();
+                // They are not drawn a second time inside the tab.
+                expect(screen.getAllByRole("tablist", { name: "Manufacturing sections" })).toHaveLength(1);
+            } finally {
+                tabsSlot.remove();
+                actionsSlot.remove();
+            }
+        });
+
         it("keeps Production on its own sub-tab", async () => {
             renderTab(<ProjectManufacturing projectId="p1" canEdit />);
             await waitForForm();
             expect(screen.queryByText("No production yet.")).toBeNull();
 
-            fireEvent.mouseDown(screen.getByRole("tab", { name: /Production/ }));
+            fireEvent.click(screen.getByRole("tab", { name: /Production/ }));
             expect(await screen.findByText("No production yet.")).toBeTruthy();
             expect(screen.queryByLabelText(/Layer count/)).toBeNull();
             expect(screen.getAllByRole("button", { name: /New production/ }).length).toBeGreaterThan(0);
@@ -169,7 +208,7 @@ describe("ProjectManufacturing", () => {
             listRuns.mockResolvedValue([run({ status: "ordered" })]);
             renderTab(<ProjectManufacturing projectId="p1" canEdit />);
             await waitForForm();
-            fireEvent.mouseDown(screen.getByRole("tab", { name: /Production/ }));
+            fireEvent.click(screen.getByRole("tab", { name: /Production/ }));
             fireEvent.click(await screen.findByText("JOB-2026-0001"));
             expect(await screen.findByText("drawer:run_1")).toBeTruthy();
         });
@@ -178,7 +217,7 @@ describe("ProjectManufacturing", () => {
             listRuns.mockResolvedValue([run()]);
             renderTab(<ProjectManufacturing projectId="p1" canEdit />);
             await waitForForm();
-            fireEvent.mouseDown(screen.getByRole("tab", { name: /Production/ }));
+            fireEvent.click(screen.getByRole("tab", { name: /Production/ }));
             fireEvent.click(await screen.findByText("JOB-2026-0001"));
             const drawer = await screen.findByText("drawer:run_1");
             expect(drawer.getAttribute("data-project-link")).toBe("false");
@@ -328,7 +367,7 @@ describe("ProjectManufacturing", () => {
 
             expect(await screen.findByText("Min track width")).toBeTruthy();
             expect(screen.queryByText("Max board width")).toBeNull();
-            fireEvent.click(screen.getByRole("button", { name: "All" }));
+            fireEvent.click(screen.getByRole("tab", { name: "All" }));
             expect(await screen.findByText("Max board width")).toBeTruthy();
             expect(screen.getByText("234 mm")).toBeTruthy();
         });
@@ -366,7 +405,7 @@ describe("ProjectManufacturing", () => {
             fireEvent.click(within(layers).getByRole("radio", { name: "4" }));
             expect(within(layers).getByRole("radio", { name: "4" }).getAttribute("aria-checked")).toBe("true");
 
-            expect((screen.getByLabelText("Finish") as HTMLSelectElement).tagName).toBe("SELECT");
+            expect(screen.getByRole("combobox", { name: "Finish" })).toBeTruthy();
 
             const impedance = screen.getByRole("radiogroup", { name: "Impedance control" });
             fireEvent.click(within(impedance).getByRole("radio", { name: "Yes" }));

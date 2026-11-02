@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -73,6 +73,13 @@ function renderDialog(props: Partial<React.ComponentProps<typeof NewProductionDi
     return { onCreated, onClose };
 }
 
+// The selects are the shared Radix ones: open the trigger, then pick an option.
+const pick = (label: string, option: string | RegExp) => {
+    fireEvent.keyDown(screen.getByLabelText(label), { key: "Enter" });
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: option }));
+};
+const shown = (label: string) => screen.getByLabelText(label).textContent ?? "";
+
 describe("NewProductionDialog", () => {
     beforeEach(() => {
         listProjectManufacturers.mockResolvedValue([{ id: "m1", name: "Acme Fab", ...MFR }]);
@@ -101,8 +108,8 @@ describe("NewProductionDialog", () => {
         const create = screen.getByRole("button", { name: "Create production" });
         expect(create).toHaveProperty("disabled", true);
 
-        fireEvent.change(screen.getByLabelText("Project"), { target: { value: "p1" } });
-        await waitFor(() => expect(screen.getByLabelText("Manufacturer")).toHaveProperty("value", "m1"));
+        pick("Project", "Board One");
+        await waitFor(() => expect(shown("Manufacturer")).toContain("Acme Fab"));
         expect(create).toHaveProperty("disabled", true);
         fireEvent.change(screen.getByLabelText("Quantity ordered"), { target: { value: "50" } });
         await waitFor(() => expect(create).toHaveProperty("disabled", false));
@@ -110,19 +117,19 @@ describe("NewProductionDialog", () => {
 
     it("selects the only manufacturer and the newest release automatically", async () => {
         renderDialog({ initialProjectId: "p1" });
-        await waitFor(() => expect(screen.getByLabelText("Manufacturer")).toHaveProperty("value", "m1"));
-        await waitFor(() => expect(screen.getByLabelText("Release")).toHaveProperty("value", "v1.1"));
+        await waitFor(() => expect(shown("Manufacturer")).toContain("Acme Fab"));
+        await waitFor(() => expect(shown("Release")).toContain("v1.1"));
     });
 
     it("locks the project when opened from a project", async () => {
         renderDialog({ initialProjectId: "p1" });
         expect(screen.getByLabelText("Project")).toHaveProperty("disabled", true);
-        expect(screen.getByLabelText("Project")).toHaveProperty("value", "p1");
+        expect(shown("Project")).toContain("Board One");
     });
 
     it("creates the run with the release, its commit, the spec and the notes", async () => {
         const { onCreated } = renderDialog({ initialProjectId: "p1" });
-        await waitFor(() => expect(screen.getByLabelText("Release")).toHaveProperty("value", "v1.1"));
+        await waitFor(() => expect(shown("Release")).toContain("v1.1"));
         await waitFor(() => expect(getProjectSpec).toHaveBeenCalled());
         fireEvent.change(screen.getByLabelText("Quantity ordered"), { target: { value: "50" } });
         fireEvent.change(screen.getByLabelText("Notes (optional)"), { target: { value: "Rush" } });
@@ -144,10 +151,10 @@ describe("NewProductionDialog", () => {
 
     it("takes a commit instead when no release is chosen", async () => {
         renderDialog({ initialProjectId: "p1" });
-        await waitFor(() => expect(screen.getByLabelText("Release")).toHaveProperty("value", "v1.1"));
+        await waitFor(() => expect(shown("Release")).toContain("v1.1"));
         expect(screen.queryByLabelText("Commit (optional)")).toBeNull();
 
-        fireEvent.change(screen.getByLabelText("Release"), { target: { value: "" } });
+        pick("Release", "No release, use a commit");
         fireEvent.change(await screen.findByLabelText("Commit (optional)"), { target: { value: "deadbee" } });
         await waitFor(() => expect(getProjectSpec).toHaveBeenCalled());
         fireEvent.change(screen.getByLabelText("Quantity ordered"), { target: { value: "5" } });
@@ -163,7 +170,7 @@ describe("NewProductionDialog", () => {
             { id: "m2", name: "Beta Fab", ...MFR },
         ]);
         renderDialog({ initialProjectId: "p1", initialManufacturerId: "m2" });
-        await waitFor(() => expect(screen.getByLabelText("Manufacturer")).toHaveProperty("value", "m2"));
+        await waitFor(() => expect(shown("Manufacturer")).toContain("Beta Fab"));
     });
 
     it("leaves the manufacturer to the user when the project has several", async () => {
@@ -172,8 +179,10 @@ describe("NewProductionDialog", () => {
             { id: "m2", name: "Beta Fab", ...MFR },
         ]);
         renderDialog({ initialProjectId: "p1" });
-        await waitFor(() => expect(screen.getByRole("option", { name: "Beta Fab" })).toBeTruthy());
-        expect(screen.getByLabelText("Manufacturer")).toHaveProperty("value", "");
+        await waitFor(() => expect(screen.getByLabelText("Manufacturer")).toHaveProperty("disabled", false));
+        expect(shown("Manufacturer")).toContain("Select a manufacturer");
+        fireEvent.keyDown(screen.getByLabelText("Manufacturer"), { key: "Enter" });
+        expect(within(screen.getByRole("listbox")).getByRole("option", { name: "Beta Fab" })).toBeTruthy();
     });
 
     it("points to the project's Manufacturing tab when it has no manufacturers", async () => {

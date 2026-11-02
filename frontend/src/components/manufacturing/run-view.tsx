@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FileText, Pencil } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Gauge, Package, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FoldSection } from "@/components/ui/fold-section";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { formatRelative } from "@/lib/relative-time";
 import { deleteRun, getRun, previewSpecConfig, updateRun, updateRunStatus } from "@/lib/manufacturing";
@@ -17,6 +21,7 @@ import {
 import { DefectsSection } from "./run-defects";
 import { RunHeader } from "./run-view-header";
 import { RunReleaseLink } from "./run-release-link";
+import { StatTile } from "./stat-tile";
 
 interface RunViewProps {
     runId: string;
@@ -100,7 +105,17 @@ export function RunView({
     };
 
     if (loading) {
-        return <div className="p-6 text-sm text-muted-foreground">Loading production...</div>;
+        return (
+            <div className="space-y-6 p-6" role="status" aria-label="Loading production">
+                <Skeleton className="h-16 w-2/3" />
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[0, 1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-20" />
+                    ))}
+                </div>
+                <Skeleton className="h-40 w-full" />
+            </div>
+        );
     }
     if (!run) {
         return (
@@ -125,10 +140,10 @@ export function RunView({
             />
 
             <ScrollArea className="themed-scrollbar min-h-0 flex-1">
-                <main className="grid w-full gap-6 p-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
+                <main className="grid w-full gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
                     <div className="min-w-0 space-y-6">
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                            <Stat label="Ordered" value={run.quantity_ordered} />
+                            <StatTile icon={Package} label="Ordered" value={run.quantity_ordered} />
                             <EditableStat
                                 label="Good"
                                 value={run.quantity_good}
@@ -136,22 +151,19 @@ export function RunView({
                                 canEdit={canEdit}
                                 onCommit={(v) => void patch({ quantity_good: v })}
                             />
-                            <Stat label="Affected units" value={affected} />
-                            <Stat label="Yield" value={yieldPct === null ? "—" : `${yieldPct}%`} />
+                            <StatTile icon={AlertTriangle} label="Affected units" value={affected} />
+                            <StatTile icon={Gauge} label="Yield" value={yieldPct === null ? "—" : `${yieldPct}%`} />
                         </div>
 
                         <SpecSnapshot snapshot={run.spec_snapshot} />
 
                         <DefectsSection run={run} canLogDefects={canLogDefects} onChanged={() => void refresh()} />
-
                     </div>
 
                     <aside className="min-w-0 space-y-6">
-                        <section aria-label="Details" className="border">
-                            <div className="border-b bg-muted/30 px-4 py-2.5">
-                                <h3 className="text-sm font-medium">Details</h3>
-                            </div>
-                            <dl className="divide-y text-sm">
+                        <section aria-label="Details" className="space-y-2">
+                            <SectionHeading title="Details" />
+                            <dl className="divide-y border text-sm">
                                 <Fact label="Manufacturer" value={run.manufacturer_name || "—"} />
                                 <Fact label="Process" value={run.spec_name || "—"} />
                                 <Fact
@@ -208,18 +220,9 @@ export function RunView({
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
     return (
-        <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3 px-4 py-2">
+        <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3 px-3 py-2">
             <dt className="text-muted-foreground">{label}</dt>
             <dd className="min-w-0 break-words">{value}</dd>
-        </div>
-    );
-}
-
-function Stat({ label, value }: { label: string; value: number | string }) {
-    return (
-        <div className="border p-3">
-            <div className="text-xs text-muted-foreground">{label}</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
         </div>
     );
 }
@@ -238,22 +241,19 @@ function RunNotes({
 
     if (!canEdit && !notes.trim()) return null;
     return (
-        <section className="border">
-            <div className="border-b bg-muted/30 px-4 py-2.5">
-                <h3 className="text-sm font-medium">Notes</h3>
-            </div>
+        <section className="space-y-2">
+            <SectionHeading title="Notes" />
             {canEdit ? (
                 <Textarea
                     aria-label="Notes"
                     rows={4}
-                    className="rounded-none border-0 shadow-none focus-visible:ring-0"
                     placeholder="Add notes about this production"
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onBlur={() => draft !== notes && onCommit(draft.trim())}
                 />
             ) : (
-                <p className="whitespace-pre-wrap px-4 py-3 text-sm">{notes}</p>
+                <p className="whitespace-pre-wrap border px-3 py-2 text-sm">{notes}</p>
             )}
         </section>
     );
@@ -280,7 +280,6 @@ function SpecSnapshot({ snapshot }: { snapshot: Record<string, unknown> | null |
     const activeSections = new Set(
         Array.isArray(snapshot?.active_sections) ? (snapshot.active_sections as string[]) : [],
     );
-    const [open, setOpen] = useState(false);
     const [schema, setSchema] = useState<ParsedSpecConfig | null>(null);
 
     useEffect(() => {
@@ -319,46 +318,37 @@ function SpecSnapshot({ snapshot }: { snapshot: Record<string, unknown> | null |
     );
 
     return (
-        <section className="border">
-            <button
-                type="button"
-                aria-expanded={open}
-                onClick={() => setOpen((v) => !v)}
-                className="flex w-full items-center gap-2 bg-muted/30 px-4 py-2.5 text-left"
-            >
-                {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Spec at the time of order</h3>
-            </button>
-            {open &&
-                (schema === null ? (
-                    <p className="px-4 py-6 text-sm text-muted-foreground">Loading spec…</p>
-                ) : sections.length === 0 ? (
-                    <p className="px-4 py-6 text-sm text-muted-foreground">No spec was recorded for this run.</p>
-                ) : (
-                    <div className="divide-y border-t">
-                        {sections.map((section) => {
-                            const fields = section.fields.filter((f) => evaluateCondition(f.when, values));
-                            if (fields.length === 0) return null;
-                            return (
-                                <div key={section.title} className="px-4 py-3">
-                                    <div className="mb-2 text-sm font-medium">{section.title}</div>
-                                    <dl className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
-                                        {fields.map((field) => (
-                                            <div key={field.key} className="flex items-baseline justify-between gap-3 py-0.5">
-                                                <dt className="text-sm text-muted-foreground">{field.label}</dt>
-                                                <dd className="text-right text-sm tabular-nums">
-                                                    {displaySpecValue(field, values[field.key])}
-                                                </dd>
-                                            </div>
-                                        ))}
-                                    </dl>
-                                </div>
-                            );
-                        })}
-                    </div>
-                ))}
-        </section>
+        <FoldSection title="Spec at order">
+            {schema === null ? (
+                <p className="border px-3 py-6 text-center text-sm text-muted-foreground">Loading spec…</p>
+            ) : sections.length === 0 ? (
+                <p className="border px-3 py-6 text-center text-sm text-muted-foreground">
+                    No spec was recorded for this run.
+                </p>
+            ) : (
+                <div className="divide-y border">
+                    {sections.map((section) => {
+                        const fields = section.fields.filter((f) => evaluateCondition(f.when, values));
+                        if (fields.length === 0) return null;
+                        return (
+                            <div key={section.title} className="px-3 py-3">
+                                <div className="mb-2 text-sm font-medium">{section.title}</div>
+                                <dl className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
+                                    {fields.map((field) => (
+                                        <div key={field.key} className="flex items-baseline justify-between gap-3 py-0.5">
+                                            <dt className="text-sm text-muted-foreground">{field.label}</dt>
+                                            <dd className="text-right text-sm tabular-nums">
+                                                {displaySpecValue(field, values[field.key])}
+                                            </dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </FoldSection>
     );
 }
 
@@ -389,35 +379,36 @@ function EditableStat({
     // editable, a pencil reveals the input rather than always showing one.
     if (!canEdit || !editing) {
         return (
-            <div className="border p-3">
-                <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">{label}</span>
-                    {canEdit && (
-                        <button
+            <StatTile
+                icon={CheckCircle2}
+                label={label}
+                value={value}
+                action={
+                    canEdit ? (
+                        <Button
                             type="button"
+                            size="icon-xs"
+                            variant="ghost"
                             aria-label={`Edit ${label}`}
-                            className="text-muted-foreground hover:text-foreground"
                             onClick={() => setEditing(true)}
                         >
-                            <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                    )}
-                </div>
-                <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
-            </div>
+                            <Pencil />
+                        </Button>
+                    ) : undefined
+                }
+            />
         );
     }
 
     return (
-        <div className="border p-3">
-            <div className="text-xs text-muted-foreground">{label}</div>
-            <div className="mt-1 flex items-center gap-1">
+        <StatTile icon={CheckCircle2} label={label}>
+            <div className="flex items-center gap-1">
                 <Input
                     type="number"
                     min={0}
                     max={max || undefined}
                     autoFocus
-                    className="h-9 text-lg font-semibold tabular-nums"
+                    className="h-8 text-lg font-semibold tabular-nums"
                     value={draft}
                     aria-label={label}
                     onChange={(e) => setDraft(e.target.value)}
@@ -430,19 +421,20 @@ function EditableStat({
                         }
                     }}
                 />
-                <button
+                <Button
                     type="button"
+                    size="icon-xs"
+                    variant="ghost"
                     aria-label={`Save ${label}`}
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
                     // onMouseDown so it fires before the input's onBlur cancels it.
                     onMouseDown={(e) => {
                         e.preventDefault();
                         commit();
                     }}
                 >
-                    <Check className="h-4 w-4" />
-                </button>
+                    <Check />
+                </Button>
             </div>
-        </div>
+        </StatTile>
     );
 }

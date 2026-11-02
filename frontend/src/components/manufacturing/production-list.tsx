@@ -1,6 +1,6 @@
 import { useMemo, useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ExternalLink, Factory, Search, SlidersHorizontal, StickyNote } from "lucide-react";
+import { AlertTriangle, ExternalLink, Factory, Search, SlidersHorizontal, StickyNote, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,9 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StudioTabsList, StudioTabsTrigger } from "@/components/ui/studio-tabs";
+import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { formatRelative } from "@/lib/relative-time";
 import { ALL_RUN_STATUSES, RUN_STATUS_LABELS, type ManufacturingRun } from "@/types/manufacturing";
@@ -30,6 +33,7 @@ import {
     type StatusFilter,
 } from "./production-filters";
 import { DefectSummary } from "./defect-summary";
+import { EmptyState } from "./empty-state";
 import { RunReleaseLink } from "./run-release-link";
 import { RunStatusBadge } from "./status-badge";
 import { YieldBar } from "./yield-bar";
@@ -43,9 +47,9 @@ const CHIPS: { value: StatusFilter; label: string }[] = [
 // Column widths: job and project, manufacturer, status, yield, open defects, updated.
 // Job and project, manufacturer, status, ordered, yield, defects, [created,] updated. The
 // created column only appears on wide screens; the whole string must stay literal for Tailwind.
-const GRID_LG = "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_8.5rem_4.5rem_minmax(0,1.2fr)_9rem_5.5rem]";
+const GRID_LG = "lg:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_8.5rem_4.5rem_minmax(0,1.2fr)_9rem_5.5rem_2.25rem]";
 const GRID_XL =
-    "xl:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_8.5rem_4.5rem_minmax(0,1.2fr)_9rem_8rem_5.5rem]";
+    "xl:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_8.5rem_4.5rem_minmax(0,1.2fr)_9rem_8rem_5.5rem_2.25rem]";
 
 interface ProductionListProps {
     runs: ManufacturingRun[];
@@ -61,14 +65,10 @@ interface ProductionListProps {
     /** Actions at the right end of the filter row (e.g. New production). */
     actions?: ReactNode;
     /**
-     * A page heading. When set, the list draws itself as a page: a header band with this
-     * title (and `icon`, `headerActions`) above one toolbar row, like the Library tabs.
-     * Without it the list is an inline block, as in a project's tab.
+     * Draw the list as a page: one toolbar band under the section tabs, like the Library
+     * tabs. Without it the list is an inline block, as in a project's tab.
      */
-    title?: string;
-    icon?: ReactNode;
-    /** Buttons at the right of the heading, e.g. Refresh. */
-    headerActions?: ReactNode;
+    page?: boolean;
     className?: string;
 }
 
@@ -87,9 +87,7 @@ export function ProductionList({
     hideProject = false,
     emptyAction,
     actions,
-    title,
-    icon,
-    headerActions,
+    page = false,
     className,
 }: ProductionListProps) {
     const counts = useMemo(() => statusCounts(runs, filters), [runs, filters]);
@@ -115,63 +113,68 @@ export function ProductionList({
 
     const chips = (
         <>
-            <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1">
-                {CHIPS.map((chip) => {
-                    const pressed = filters.status === chip.value;
-                    return (
-                        <button
+            <Tabs value={filters.status} activationMode="manual" className="shrink-0">
+                <StudioTabsList aria-label="Filter by status">
+                    {CHIPS.map((chip) => (
+                        <StudioTabsTrigger
                             key={chip.value}
-                            type="button"
-                            aria-pressed={pressed}
+                            value={chip.value}
+                            className="gap-1.5"
                             onClick={() => set({ status: chip.value })}
-                            className={cn(
-                                "flex items-center gap-1.5 border px-2.5 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                pressed
-                                    ? "border-primary bg-secondary font-medium"
-                                    : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
-                            )}
                         >
                             {chip.label}
-                            <span className="text-xs tabular-nums text-muted-foreground">{counts[chip.value]}</span>
-                        </button>
-                    );
-                })}
-            </div>
+                            <span className="tabular-nums opacity-70">{counts[chip.value]}</span>
+                        </StudioTabsTrigger>
+                    ))}
+                </StudioTabsList>
+            </Tabs>
             <button
                 type="button"
                 aria-pressed={filters.openDefectsOnly}
                 onClick={() => set({ openDefectsOnly: !filters.openDefectsOnly })}
                 className={cn(
-                    "flex items-center gap-1.5 border px-2.5 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     filters.openDefectsOnly
                         ? "border-destructive bg-destructive/10 font-medium text-destructive"
-                        : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
             >
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Open defects
-                <span className="text-xs tabular-nums">{openDefectRuns}</span>
+                <span className="tabular-nums opacity-70">{openDefectRuns}</span>
             </button>
         </>
     );
 
     const searchAndView = (
         <>
-            <div className="relative w-full max-w-sm">
+            <div className="relative min-w-48 flex-1 sm:max-w-xs">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                    type="search"
+                    data-shortcut-search
                     aria-label="Search production"
-                    placeholder="Search job, project, manufacturer..."
-                    className="h-8 pl-8"
+                    placeholder="Search"
+                    className="h-8 pl-8 pr-8 text-xs"
                     value={filters.query}
                     onChange={(e) => set({ query: e.target.value })}
                 />
+                {filters.query ? (
+                    <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="Clear production search"
+                        title="Clear"
+                        className="absolute right-0.5 top-1/2 -translate-y-1/2"
+                        onClick={() => set({ query: "" })}
+                    >
+                        <X className="h-3.5 w-3.5" />
+                    </Button>
+                ) : null}
             </div>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                        <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+                    <Button variant="outline" size="sm" className="h-8 text-xs">
+                        <SlidersHorizontal />
                         View
                     </Button>
                 </DropdownMenuTrigger>
@@ -207,38 +210,44 @@ export function ProductionList({
     const table = (
         <div className="flex min-h-0 flex-1 flex-col border">
             {loading ? (
-                <div className="p-6 text-sm text-muted-foreground">Loading production...</div>
+                <div className="space-y-px p-3" role="status" aria-label="Loading production">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                        <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                </div>
             ) : runs.length === 0 ? (
-                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
-                    <Factory className="h-8 w-8 opacity-50" />
-                    <p className="text-sm">No production yet.</p>
-                    {emptyAction}
-                </div>
+                <EmptyState icon={Factory} className="min-h-64 flex-1 border-0" action={emptyAction}>
+                    No production yet.
+                </EmptyState>
             ) : visible.length === 0 ? (
-                <div className="flex min-h-64 flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
-                    <p>No production matches these filters.</p>
-                    {narrowed && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                                onFiltersChange({
-                                    ...filters,
-                                    status: DEFAULT_FILTERS.status,
-                                    query: "",
-                                    openDefectsOnly: false,
-                                })
-                            }
-                        >
-                            Clear filters
-                        </Button>
-                    )}
-                </div>
+                <EmptyState
+                    className="min-h-64 flex-1 border-0"
+                    action={
+                        narrowed ? (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    onFiltersChange({
+                                        ...filters,
+                                        status: DEFAULT_FILTERS.status,
+                                        query: "",
+                                        openDefectsOnly: false,
+                                    })
+                                }
+                            >
+                                Clear filters
+                            </Button>
+                        ) : undefined
+                    }
+                >
+                    No production matches these filters.
+                </EmptyState>
             ) : (
                 <>
                     <div
                         className={cn(
-                            "hidden shrink-0 gap-3 border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground lg:grid",
+                            "hidden shrink-0 gap-3 border-b px-3 py-2 text-xs font-medium text-muted-foreground lg:grid",
                             GRID_LG,
                             GRID_XL,
                         )}
@@ -251,6 +260,7 @@ export function ProductionList({
                         <span className="min-w-0">Defects</span>
                         <span className="hidden min-w-0 xl:block">Created</span>
                         <span className="min-w-0 text-right">Updated</span>
+                        <span className="min-w-0" aria-hidden />
                     </div>
 
                     <div ref={bodyRef} className="themed-scrollbar min-h-0 flex-1 overflow-auto" onKeyDown={handleKeyDown}>
@@ -279,37 +289,27 @@ export function ProductionList({
         </div>
     );
 
-    // A page: a header band with the title and its actions, one toolbar row under it, and
-    // the table below. Matches the Library tabs.
-    if (title) {
+    // A page: one toolbar band, then the table. Matches the Library tabs.
+    if (page) {
         return (
             <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
-                <header className="shrink-0 border-b bg-card">
-                    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                        <div className="flex items-center gap-2">
-                            {icon}
-                            <h2 className="text-lg font-semibold">{title}</h2>
-                        </div>
-                        {headerActions && <div className="flex items-center gap-2">{headerActions}</div>}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2">
-                        {chips}
-                        {searchAndView}
-                        {actions && <div className="ml-auto">{actions}</div>}
-                    </div>
+                <header className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-card px-3 py-2">
+                    {chips}
+                    {searchAndView}
+                    {actions && <div className="ml-auto">{actions}</div>}
                 </header>
-                <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">{table}</div>
+                <div className="flex min-h-0 flex-1 flex-col p-3">{table}</div>
             </div>
         );
     }
 
     return (
         <div className={cn("flex min-h-0 flex-1 flex-col gap-3", className)}>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 border bg-card px-3 py-2">
                 {chips}
+                {searchAndView}
                 {actions && <div className="ml-auto">{actions}</div>}
             </div>
-            <div className="flex flex-wrap items-center gap-2">{searchAndView}</div>
             {table}
         </div>
     );
@@ -341,7 +341,7 @@ function RunRow({
             }}
             aria-pressed={selected}
             className={cn(
-                "flex min-h-16 w-full cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:grid",
+                "flex min-h-14 w-full cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:grid",
                 GRID_LG,
                 GRID_XL,
                 selected && "bg-secondary",
@@ -349,7 +349,7 @@ function RunRow({
         >
             <div className="min-w-0">
                 {run.job_number && (
-                    <p className="truncate font-mono text-[11px] text-muted-foreground">{run.job_number}</p>
+                    <p className="truncate font-mono text-xs text-muted-foreground">{run.job_number}</p>
                 )}
                 <p className="flex items-center gap-1.5 text-sm font-medium">
                     <span className="truncate">{hideProject ? boardName(run) : run.project_name || run.project_id}</span>
@@ -357,17 +357,6 @@ function RunRow({
                         <span title={notes} aria-label="Has notes" className="shrink-0 text-muted-foreground">
                             <StickyNote className="h-3.5 w-3.5" aria-hidden />
                         </span>
-                    )}
-                    {!hideProject && (
-                        <Link
-                            to={`/project/${run.project_id}?section=manufacturing`}
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label={`Open ${run.project_name || run.project_id} manufacturing page`}
-                            title="Open this project's Manufacturing page"
-                            className="shrink-0 text-muted-foreground transition-colors hover:text-primary focus-visible:text-primary"
-                        >
-                            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                        </Link>
                     )}
                 </p>
                 {!hideProject && <p className="truncate text-xs text-muted-foreground">{boardName(run)}</p>}
@@ -407,6 +396,25 @@ function RunRow({
                 title={new Date(run.updated_at).toLocaleString()}
             >
                 {formatRelative(run.updated_at)}
+            </div>
+            <div className="flex min-w-0 justify-end">
+                {!hideProject && (
+                    <Button
+                        asChild
+                        variant="outline"
+                        size="icon"
+                        title="Open this project's Manufacturing page"
+                    >
+                        <Link
+                            to={`/project/${run.project_id}?section=manufacturing`}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            aria-label={`Open ${run.project_name || run.project_id} manufacturing page`}
+                        >
+                            <ExternalLink className="h-4 w-4" aria-hidden />
+                        </Link>
+                    </Button>
+                )}
             </div>
         </div>
     );

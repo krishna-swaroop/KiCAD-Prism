@@ -25,7 +25,7 @@ export function DefectSummary({ run }: { run: ManufacturingRun }) {
                         <Badge
                             key={severity}
                             variant={SEVERITY_VARIANT[severity]}
-                            className={cn("h-5 px-1.5 text-[11px]", severity === "critical" && SOLID_DESTRUCTIVE)}
+                            className={cn(severity === "critical" && SOLID_DESTRUCTIVE)}
                             title={`${counts[severity]} ${severity} defect(s) logged`}
                         >
                             {counts[severity]} {severity}

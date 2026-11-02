@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Factory, Plus, Building2, RefreshCw } from "lucide-react";
+import { Factory, Plus, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { User } from "@/types/auth";
 import type { Project } from "@/types/project";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StudioTabsList, StudioTabsTrigger } from "@/components/ui/studio-tabs";
+import { Tabs } from "@/components/ui/tabs";
 import { canManageProjects } from "@/lib/roles";
 import { listRuns, listManufacturers } from "@/lib/manufacturing";
 import type { Manufacturer, ManufacturingRun } from "@/types/manufacturing";
 import { NewProductionDialog, type ProjectOption } from "./new-production-dialog";
 import { ProductionList } from "./production-list";
 import { filtersFromParams, filtersToParams, type ProductionFilters } from "./production-filters";
+import { RefreshIconButton } from "./refresh-icon-button";
 import { RunDrawer } from "./run-drawer";
 import { ManufacturersPanel } from "./manufacturers-panel";
 
@@ -92,12 +93,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
         }
     };
 
-    const refreshButton = (
-        <Button size="sm" variant="outline" aria-label="Refresh" disabled={refreshing} onClick={() => void refresh()}>
-            <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
-            Refresh
-        </Button>
-    );
+    const refreshButton = <RefreshIconButton refreshing={refreshing} onClick={() => void refresh()} />;
 
     const projectOptions: ProjectOption[] = useMemo(
         () => projects.map((p) => ({ id: p.id, name: projectLabel(p) })),
@@ -106,61 +102,49 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="shrink-0 border-b bg-card px-4">
-                <Tabs value={view} onValueChange={(next) => setView(next as View)} className="gap-0">
-                    <TabsList variant="line" className="h-10 gap-2" aria-label="Manufacturing sections">
-                        <TabsTrigger value="runs" className="gap-2 px-2 text-sm">
-                            <Factory className="h-4 w-4" />
+            <header className="flex h-11 shrink-0 items-center gap-3 overflow-x-auto border-b bg-card px-2">
+                <Tabs value={view} activationMode="manual" className="shrink-0">
+                    <StudioTabsList aria-label="Manufacturing sections">
+                        <StudioTabsTrigger value="runs" className="gap-1.5" onClick={() => setView("runs")}>
+                            <Factory className="size-3.5" aria-hidden />
                             Production
-                        </TabsTrigger>
-                        <TabsTrigger value="manufacturers" className="gap-2 px-2 text-sm">
-                            <Building2 className="h-4 w-4" />
+                        </StudioTabsTrigger>
+                        <StudioTabsTrigger value="manufacturers" className="gap-1.5" onClick={() => setView("manufacturers")}>
+                            <Building2 className="size-3.5" aria-hidden />
                             Manufacturers
-                        </TabsTrigger>
-                    </TabsList>
+                        </StudioTabsTrigger>
+                    </StudioTabsList>
                 </Tabs>
-            </div>
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                    {refreshButton}
+                    {view === "manufacturers" && canEdit && (
+                        <Button size="sm" onClick={() => setAddManufacturer(true)}>
+                            <Plus />
+                            Add manufacturer
+                        </Button>
+                    )}
+                </div>
+            </header>
 
             {view === "manufacturers" ? (
-                <div className="flex min-h-0 flex-1 flex-col bg-background">
-                    <header className="shrink-0 border-b bg-card">
-                        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                            <div className="flex items-center gap-2">
-                                <Building2 className="h-5 w-5 text-primary" />
-                                <h2 className="text-lg font-semibold">Manufacturers</h2>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {refreshButton}
-                                {canEdit && (
-                                    <Button size="sm" onClick={() => setAddManufacturer(true)}>
-                                        <Plus className="mr-1.5 h-3.5 w-3.5" />
-                                        Add manufacturer
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                    </header>
-                    <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
-                        <ManufacturersPanel
-                            manufacturers={manufacturers}
-                            runs={runs}
-                            canEdit={canEdit}
-                            onOpenRun={(runId) => {
-                                setView("runs");
-                                openRun(runId);
-                            }}
-                            addOpen={addManufacturer}
-                            onAddOpenChange={setAddManufacturer}
-                            onChanged={() => void load()}
-                        />
-                    </div>
+                <div className="flex min-h-0 flex-1 flex-col bg-background px-4 pb-4 pt-3">
+                    <ManufacturersPanel
+                        manufacturers={manufacturers}
+                        runs={runs}
+                        canEdit={canEdit}
+                        onOpenRun={(runId) => {
+                            setView("runs");
+                            openRun(runId);
+                        }}
+                        addOpen={addManufacturer}
+                        onAddOpenChange={setAddManufacturer}
+                        onChanged={() => void load()}
+                    />
                 </div>
             ) : (
                 <div className="flex min-h-0 flex-1 flex-col bg-background">
                     <ProductionList
-                        title="Production"
-                        icon={<Factory className="h-5 w-5 text-primary" />}
-                        headerActions={refreshButton}
+                        page
                         runs={runs}
                         loading={loading}
                         filters={filters}
@@ -170,7 +154,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                         actions={
                             canEdit ? (
                                 <Button size="sm" onClick={() => setWizardOpen(true)}>
-                                    <Plus className="mr-1.5 h-4 w-4" />
+                                    <Plus />
                                     New production
                                 </Button>
                             ) : undefined
@@ -178,7 +162,7 @@ export function ManufacturingDashboard({ user, projects }: ManufacturingDashboar
                         emptyAction={
                             canEdit ? (
                                 <Button size="sm" onClick={() => setWizardOpen(true)}>
-                                    <Plus className="mr-1.5 h-4 w-4" />
+                                    <Plus />
                                     New production
                                 </Button>
                             ) : undefined

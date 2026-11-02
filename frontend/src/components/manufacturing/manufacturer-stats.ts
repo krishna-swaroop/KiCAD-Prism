@@ -63,3 +63,8 @@ export function keyMinimums(template: SpecTemplate, ruleFields: PcbRuleField[], 
         .slice(0, limit)
         .map((row) => ({ key: row.key, label: row.label, value: row.value, unit: row.unit }));
 }
+
+/** "1 process", "2 processes". */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+    return `${count} ${count === 1 ? singular : pluralForm}`;
+}

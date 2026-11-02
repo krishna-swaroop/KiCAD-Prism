@@ -64,11 +64,11 @@ describe("ProductionList", () => {
         expect(screen.getByText("JOB-0002")).toBeTruthy();
         expect(screen.queryByText("JOB-0003")).toBeNull();
 
-        const chips = screen.getByRole("group", { name: "Filter by status" });
-        expect(within(chips).getByRole("button", { name: /^Active 2$/ }).getAttribute("aria-pressed")).toBe("true");
-        expect(within(chips).getByRole("button", { name: /^Closed 1$/ })).toBeTruthy();
-        expect(within(chips).getByRole("button", { name: /^Cancelled 1$/ })).toBeTruthy();
-        expect(within(chips).getByRole("button", { name: /^All 4$/ })).toBeTruthy();
+        const chips = screen.getByRole("tablist", { name: "Filter by status" });
+        expect(within(chips).getByRole("tab", { name: /^Active 2$/ }).getAttribute("aria-selected")).toBe("true");
+        expect(within(chips).getByRole("tab", { name: /^Closed 1$/ })).toBeTruthy();
+        expect(within(chips).getByRole("tab", { name: /^Cancelled 1$/ })).toBeTruthy();
+        expect(within(chips).getByRole("tab", { name: /^All 4$/ })).toBeTruthy();
         // Cancelled runs are not active, so they stay out of the default list.
         expect(screen.queryByText("JOB-0004")).toBeNull();
     });
@@ -82,7 +82,7 @@ describe("ProductionList", () => {
 
     it("changes the status filter from a chip", () => {
         const { onFiltersChange } = renderList();
-        fireEvent.click(screen.getByRole("button", { name: /^Closed/ }));
+        fireEvent.click(screen.getByRole("tab", { name: /^Closed/ }));
         expect(onFiltersChange).toHaveBeenCalledWith({ ...DEFAULT_FILTERS, status: "closed" });
     });
 
@@ -172,20 +172,13 @@ describe("ProductionList", () => {
         expect(within(without).queryByLabelText("Has notes")).toBeNull();
     });
 
-    it("draws a page header with a title and its actions when given a title", () => {
+    it("draws one toolbar band, with no title, when drawn as a page", () => {
         renderList({
-            title: "Production",
-            icon: <span data-testid="icon" />,
-            headerActions: <button type="button">Refresh</button>,
+            page: true,
             actions: <button type="button">New production</button>,
         });
-        expect(screen.getByRole("heading", { level: 2, name: "Production" })).toBeTruthy();
+        expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
         const header = screen.getByRole("banner");
-        expect(within(header).getByTestId("icon")).toBeTruthy();
-        // Refresh sits with the title; the page action stays on the filter row beneath it.
-        const titleRow = screen.getByRole("heading", { level: 2 }).closest("div")!.parentElement!;
-        expect(within(titleRow).getByRole("button", { name: "Refresh" })).toBeTruthy();
-        expect(within(titleRow).queryByRole("button", { name: "New production" })).toBeNull();
         expect(within(header).getByRole("button", { name: "New production" })).toBeTruthy();
         expect(within(header).getByLabelText("Search production")).toBeTruthy();
     });

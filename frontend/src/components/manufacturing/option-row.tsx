@@ -63,7 +63,7 @@ export function ProvenanceMarker({ provenance }: { provenance: Provenance | null
     if (!provenance) return null;
     return (
         <span
-            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
             title={
                 provenance === "extracted"
                     ? "Filled from the board file"

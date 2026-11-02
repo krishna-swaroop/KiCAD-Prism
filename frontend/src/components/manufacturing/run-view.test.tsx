@@ -221,7 +221,7 @@ describe("RunView", () => {
     it("lists the spec before the defects", async () => {
         renderView(makeRun({ defects: [makeDefect()] }));
         await heading("JOB-2026-0001");
-        const spec = screen.getByRole("button", { name: /Spec at the time of order/ });
+        const spec = screen.getByRole("button", { name: /Spec at order/ });
         const defects = screen.getByRole("region", { name: "Defects" });
         expect(spec.compareDocumentPosition(defects) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
@@ -233,7 +233,7 @@ describe("RunView", () => {
             expect(screen.getByText("100")).toBeTruthy();
             expect(screen.getByText("90")).toBeTruthy();
             expect(screen.getByText("90%")).toBeTruthy();
-            expect(screen.getByText("Affected units").parentElement?.textContent).toContain("4");
+            expect(screen.getByText("Affected units").closest("div.border")?.textContent).toContain("4");
         });
 
         it("edits the good count through the pencil", async () => {
@@ -334,17 +334,17 @@ describe("RunView", () => {
         it("filters defects by open, resolved and all, with counts", async () => {
             renderView(makeRun({ defects: [open, resolved, accepted] }));
             await heading("JOB-2026-0001");
-            const filter = screen.getByRole("radiogroup", { name: "Filter defects" });
-            expect(within(filter).getByRole("radio", { name: "Open 1" })).toBeTruthy();
-            expect(within(filter).getByRole("radio", { name: "Resolved 2" })).toBeTruthy();
+            const filter = screen.getByRole("tablist", { name: "Filter defects" });
+            expect(within(filter).getByRole("tab", { name: "Open 1" })).toBeTruthy();
+            expect(within(filter).getByRole("tab", { name: "Resolved 2" })).toBeTruthy();
             expect(screen.getByText("cold joints")).toBeTruthy();
             expect(screen.getByText("bridged pins")).toBeTruthy();
 
-            fireEvent.click(within(filter).getByRole("radio", { name: "Open 1" }));
+            fireEvent.click(within(filter).getByRole("tab", { name: "Open 1" }));
             expect(screen.getByText("cold joints")).toBeTruthy();
             expect(screen.queryByText("bridged pins")).toBeNull();
 
-            fireEvent.click(within(filter).getByRole("radio", { name: "Resolved 2" }));
+            fireEvent.click(within(filter).getByRole("tab", { name: "Resolved 2" }));
             expect(screen.queryByText("cold joints")).toBeNull();
             expect(screen.getByText("scuffed silkscreen")).toBeTruthy();
         });
@@ -428,6 +428,19 @@ describe("RunView", () => {
             await waitFor(() => expect(deleteEvidence).toHaveBeenCalledWith("def_1", "abc"));
         });
 
+        it("keeps the evidence remove button reachable without a hover", async () => {
+            const evidence = [{ kind: "photo" as const, filename: "joint.jpg", digest: "abc", media_type: "image/jpeg", size: 10 }];
+            renderView(makeRun({ defects: [makeDefect({ evidence })] }));
+            await heading("JOB-2026-0001");
+            const remove = screen.getByRole("button", { name: "Remove joint.jpg" });
+            // Faded, never display:none, so keyboard focus and touch can reach it.
+            expect(remove.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+            expect(remove.className).toContain("focus-visible:opacity-100");
+            expect(remove.className).toContain("[@media(hover:none)]:opacity-100");
+            remove.focus();
+            expect(document.activeElement).toBe(remove);
+        });
+
         it("hides defect actions from viewers", async () => {
             renderView(makeRun({ defects: [open] }), { canLogDefects: false });
             await heading("JOB-2026-0001");
@@ -462,7 +475,7 @@ describe("RunView", () => {
             await heading("JOB-2026-0001");
             expect(screen.queryByText("Layer count")).toBeNull();
 
-            fireEvent.click(screen.getByRole("button", { name: /Spec at the time of order/ }));
+            fireEvent.click(screen.getByRole("button", { name: /Spec at order/ }));
             expect(await screen.findByText("Layer count")).toBeTruthy();
             expect(screen.getByText("1.6 mm")).toBeTruthy();
         });
@@ -470,7 +483,7 @@ describe("RunView", () => {
         it("says so when no spec was recorded", async () => {
             renderView(makeRun({ spec_snapshot: {} }));
             await heading("JOB-2026-0001");
-            fireEvent.click(screen.getByRole("button", { name: /Spec at the time of order/ }));
+            fireEvent.click(screen.getByRole("button", { name: /Spec at order/ }));
             expect(await screen.findByText("No spec was recorded for this run.")).toBeTruthy();
         });
     });

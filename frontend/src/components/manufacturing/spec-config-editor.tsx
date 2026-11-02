@@ -8,10 +8,13 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { StudioTabsList, StudioTabsTrigger } from "@/components/ui/studio-tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { previewSpecConfig } from "@/lib/manufacturing";
 import type { ParsedSpecConfig } from "@/types/manufacturing";
 
@@ -161,7 +164,7 @@ const ConfigEditorPane = forwardRef<
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                    <label htmlFor={textId} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <label htmlFor={textId} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         .config
                     </label>
                     <div className="flex items-center gap-1">
@@ -178,8 +181,7 @@ const ConfigEditorPane = forwardRef<
                         />
                         <Button
                             variant="ghost"
-                            size="sm"
-                            className="h-7 px-2"
+                            size="icon-sm"
                             onClick={() => fileInput.current?.click()}
                             title="Upload a .config file"
                         >
@@ -187,8 +189,7 @@ const ConfigEditorPane = forwardRef<
                         </Button>
                         <Button
                             variant="ghost"
-                            size="sm"
-                            className="h-7 px-2"
+                            size="icon-sm"
                             onClick={() => downloadText(`${tab.fileBaseName}.config`, text)}
                             title="Download this .config"
                         >
@@ -198,7 +199,7 @@ const ConfigEditorPane = forwardRef<
                 </div>
                 <textarea
                     id={textId}
-                    className="themed-scrollbar h-[clamp(22rem,calc(100vh-22rem),52rem)] w-full resize-none rounded-md border bg-background p-4 font-mono text-sm leading-relaxed"
+                    className="themed-scrollbar h-[clamp(22rem,calc(100vh-22rem),52rem)] w-full resize-none border bg-background p-3 font-mono text-sm leading-relaxed"
                     spellCheck={false}
                     value={text}
                     onChange={(e) => handleChange(e.target.value)}
@@ -206,21 +207,21 @@ const ConfigEditorPane = forwardRef<
                 />
                 <details className="text-sm text-muted-foreground">
                     <summary className="cursor-pointer">Syntax</summary>
-                    <pre className="mt-1 whitespace-pre-wrap rounded bg-muted/40 p-2">{SYNTAX_HELP}</pre>
+                    <pre className="mt-1 whitespace-pre-wrap bg-muted/40 p-2">{SYNTAX_HELP}</pre>
                 </details>
             </div>
 
             <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Preview
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                        {parsed.sections.length} section(s), {fieldCount} field(s)
-                    </span>
-                </div>
+                <SectionHeading
+                    title="Preview"
+                    actions={
+                        <span className="text-xs font-normal normal-case tracking-normal text-muted-foreground">
+                            {parsed.sections.length} section(s), {fieldCount} field(s)
+                        </span>
+                    }
+                />
 
-                <div className="themed-scrollbar h-[clamp(22rem,calc(100vh-22rem),52rem)] overflow-y-auto rounded-md border p-4">
+                <div className="themed-scrollbar h-[clamp(22rem,calc(100vh-22rem),52rem)] overflow-y-auto border p-3">
                     {parsed.errors.length > 0 && (
                         <ul className="mb-3 space-y-1">
                             {parsed.errors.map((error) => (
@@ -240,12 +241,12 @@ const ConfigEditorPane = forwardRef<
                         <div className="space-y-4">
                             {parsed.sections.map((section) => (
                                 <div key={section.title}>
-                                    <div className="text-sm font-semibold text-muted-foreground">
+                                    <div className="text-sm font-medium text-muted-foreground">
                                         {section.title}
                                     </div>
                                     <ul className="mt-1.5 space-y-1">
                                         {section.fields.map((field) => (
-                                            <li key={field.key} className="flex items-center justify-between gap-2 text-base">
+                                            <li key={field.key} className="flex items-center justify-between gap-2 text-sm">
                                                 <span>{field.label}</span>
                                                 <Badge variant="outline" className="font-mono text-xs">
                                                     {field.type === "choice"
@@ -363,21 +364,15 @@ export function SchemaCapabilitiesDialog({
                     />
                 ) : (
                     <Tabs value={active} onValueChange={setActive}>
-                        <TabsList className="h-9 gap-1">
+                        <StudioTabsList aria-label="Process documents">
                             {tabs.map((tab) => (
-                                <TabsTrigger
-                                    key={tab.id}
-                                    value={tab.id}
-                                    // The active tab is filled with the primary colour so it
-                                    // reads clearly against the muted inactive tabs.
-                                    className="px-3 text-sm data-[state=active]:bg-primary data-[state=active]:font-semibold data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-                                >
+                                <StudioTabsTrigger key={tab.id} value={tab.id}>
                                     {tab.label}
-                                </TabsTrigger>
+                                </StudioTabsTrigger>
                             ))}
-                        </TabsList>
+                        </StudioTabsList>
                         {tabs.map((tab) => (
-                            <TabsContent key={tab.id} value={tab.id} forceMount>
+                            <TabsContent key={tab.id} value={tab.id} forceMount className="mt-4">
                                 <ConfigEditorPane
                                     tab={tab}
                                     ref={(handle) => {
@@ -389,14 +384,14 @@ export function SchemaCapabilitiesDialog({
                     </Tabs>
                 )}
 
-                <div className="flex items-center justify-end gap-2">
-                    <Button variant="ghost" onClick={onClose} disabled={saving}>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose} disabled={saving}>
                         Cancel
                     </Button>
                     <Button onClick={() => void requestSave()} disabled={saving}>
                         {saving ? "Saving…" : saveLabel}
                     </Button>
-                </div>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );

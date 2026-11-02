@@ -199,6 +199,10 @@ describe("ManufacturersPanel", () => {
     });
 
     describe("scorecard and recent production", () => {
+        // A tile is its label row, then the figure.
+        const tile = (card: HTMLElement, label: string) =>
+            within(card).getByText(label).closest("div.border")?.querySelector(".text-2xl")?.textContent;
+
         const runs = [
             makeRun({ id: "r1", job_number: "JOB-1", status: "closed", quantity_ordered: 100, quantity_good: 98, defect_severity_counts: { major: 1 }, updated_at: "2026-01-02T00:00:00Z" }),
             makeRun({ id: "r2", job_number: "JOB-2", status: "received", quantity_ordered: 50, quantity_good: 49, defect_severity_counts: { minor: 2 }, updated_at: "2026-02-02T00:00:00Z" }),
@@ -208,10 +212,10 @@ describe("ManufacturersPanel", () => {
         it("summarises this manufacturer's productions only", async () => {
             renderPanel({ runs });
             const card = await screen.findByRole("region", { name: "Scorecard" });
-            expect(within(card).getByText("Productions").nextElementSibling?.textContent).toBe("2");
-            expect(within(card).getByText("Units ordered").nextElementSibling?.textContent).toBe("150");
-            expect(within(card).getByText("Yield").nextElementSibling?.textContent).toBe("98%");
-            expect(within(card).getByText("Defects").nextElementSibling?.textContent).toBe("3");
+            expect(tile(card, "Productions")).toBe("2");
+            expect(tile(card, "Units ordered")).toBe("150");
+            expect(tile(card, "Yield")).toBe("98%");
+            expect(tile(card, "Defects")).toBe("3");
             expect(within(card).getByText("1 major, 2 minor")).toBeTruthy();
         });
 

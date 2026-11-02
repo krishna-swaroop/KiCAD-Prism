@@ -1,15 +1,24 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { CheckCircle2, FileText, MoreHorizontal, Paperclip, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { StudioTabsList, StudioTabsTrigger } from "@/components/ui/studio-tabs";
+import { Tabs } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
@@ -27,8 +36,9 @@ import {
     type ManufacturingRun,
     type RunDefect,
 } from "@/types/manufacturing";
+import { EmptyState } from "./empty-state";
 import { SEVERITY_VARIANT, SOLID_DESTRUCTIVE } from "./status-badge";
-import { CompactSelect } from "./ui";
+import { OptionSelect } from "./option-select";
 
 const SEVERITY_BORDER: Record<DefectSeverity, string> = {
     aesthetic: "border-l-border",
@@ -37,7 +47,27 @@ const SEVERITY_BORDER: Record<DefectSeverity, string> = {
     critical: "border-l-destructive",
 };
 
+const SEVERITY_OPTIONS = [
+    { value: "aesthetic", label: "Aesthetic" },
+    { value: "minor", label: "Minor" },
+    { value: "major", label: "Major" },
+    { value: "critical", label: "Critical" },
+];
+
 type DefectFilter = "open" | "resolved" | "all";
+
+const FILTERS: { value: DefectFilter; label: string }[] = [
+    { value: "open", label: "Open" },
+    { value: "resolved", label: "Resolved" },
+    { value: "all", label: "All" },
+];
+
+const SEVERITY_LABEL: Record<DefectSeverity, string> = {
+    aesthetic: "Aesthetic",
+    minor: "Minor",
+    major: "Major",
+    critical: "Critical",
+};
 
 interface DefectsSectionProps {
     run: ManufacturingRun;
@@ -53,62 +83,74 @@ export function DefectsSection({ run, canLogDefects, onChanged }: DefectsSection
 
     const defects = run.defects ?? [];
     const openCount = defects.filter((d) => d.status === "open").length;
-    const resolvedCount = defects.length - openCount;
+    const counts: Record<DefectFilter, number> = {
+        open: openCount,
+        resolved: defects.length - openCount,
+        all: defects.length,
+    };
     const shown = defects.filter((d) => (filter === "all" ? true : filter === "open" ? d.status === "open" : d.status !== "open"));
 
     return (
         <>
-        <section aria-label="Defects">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="text-sm font-medium">Defects</h3>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <SegmentedControl
-                                aria-label="Filter defects"
-                                value={filter}
-                                onChange={(v) => setFilter(v as DefectFilter)}
-                                className="[&_button]:h-7 [&_button]:px-2.5 [&_button]:text-xs"
-                                options={[
-                                    { value: "open", label: `Open ${openCount}` },
-                                    { value: "resolved", label: `Resolved ${resolvedCount}` },
-                                    { value: "all", label: `All ${defects.length}` },
-                                ]}
-                            />
-                            {canLogDefects && (
-                                <Button size="sm" onClick={() => setAddOpen(true)}>
-                                    <Plus className="mr-1.5 h-4 w-4" /> Log defect
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-        
-                    {defects.length === 0 ? (
-                        <div className="flex flex-col items-center gap-2 border border-dashed p-8 text-center text-muted-foreground">
-                            <CheckCircle2 className="h-8 w-8 text-success opacity-70" />
-                            <p className="text-sm">No defects logged.</p>
-                            {canLogDefects && (
-                                <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-                                    Log defect
-                                </Button>
-                            )}
-                        </div>
-                    ) : shown.length === 0 ? (
-                        <p className="border border-dashed p-6 text-center text-sm text-muted-foreground">
-                            No {filter} defects.
-                        </p>
-                    ) : (
-                        <ul className="space-y-3">
-                            {shown.map((defect) => (
-                                <DefectCard
-                                    key={defect.id}
-                                    runId={run.id}
-                                    defect={defect}
-                                    canEdit={canLogDefects}
-                                    onChanged={() => onChanged()}
-                                />
-                            ))}
-                        </ul>
-                    )}
-                </section>
+        <section aria-label="Defects" className="space-y-2">
+            <SectionHeading
+                title="Defects"
+                actions={
+                    <>
+                        <Tabs value={filter} activationMode="manual" className="shrink-0">
+                            <StudioTabsList aria-label="Filter defects">
+                                {FILTERS.map((option) => (
+                                    <StudioTabsTrigger
+                                        key={option.value}
+                                        value={option.value}
+                                        className="gap-1.5"
+                                        onClick={() => setFilter(option.value)}
+                                    >
+                                        {option.label}
+                                        <span className="tabular-nums opacity-70">{counts[option.value]}</span>
+                                    </StudioTabsTrigger>
+                                ))}
+                            </StudioTabsList>
+                        </Tabs>
+                        {canLogDefects && (
+                            <Button size="sm" onClick={() => setAddOpen(true)}>
+                                <Plus /> Log defect
+                            </Button>
+                        )}
+                    </>
+                }
+            />
+
+            {defects.length === 0 ? (
+                <EmptyState
+                    icon={CheckCircle2}
+                    iconClassName="text-success opacity-70"
+                    action={
+                        canLogDefects ? (
+                            <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+                                Log defect
+                            </Button>
+                        ) : undefined
+                    }
+                >
+                    No defects logged.
+                </EmptyState>
+            ) : shown.length === 0 ? (
+                <EmptyState>No {filter} defects.</EmptyState>
+            ) : (
+                <ul className="space-y-2">
+                    {shown.map((defect) => (
+                        <DefectCard
+                            key={defect.id}
+                            runId={run.id}
+                            defect={defect}
+                            canEdit={canLogDefects}
+                            onChanged={() => onChanged()}
+                        />
+                    ))}
+                </ul>
+            )}
+        </section>
         
             {addOpen && (
                 <AddDefectDialog
@@ -171,22 +213,22 @@ function DefectCard({ runId, defect, canEdit, onChanged }: DefectCardProps) {
 
     return (
         <li className={cn("border border-l-4", SEVERITY_BORDER[defect.severity])}>
-            <div className="flex items-start justify-between gap-4 p-4">
+            <div className="flex items-start justify-between gap-3 p-3">
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{defectCategoryLabel(defect.category)}</span>
+                        <span className="text-sm font-medium">{defectCategoryLabel(defect.category)}</span>
                         <Badge
                             variant={SEVERITY_VARIANT[defect.severity]}
                             className={defect.severity === "critical" ? SOLID_DESTRUCTIVE : undefined}
                         >
-                            {defect.severity}
+                            {SEVERITY_LABEL[defect.severity]}
                         </Badge>
                         <Badge variant="outline">{defect.quantity_affected} affected</Badge>
                         {defect.status === "resolved" && <Badge variant="success">Resolved</Badge>}
                         {defect.status === "accepted" && <Badge variant="info">Accepted as is</Badge>}
                     </div>
                     {defect.description && (
-                        <p className="mt-1.5 text-sm text-muted-foreground">{defect.description}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{defect.description}</p>
                     )}
                     {!isOpen && (defect.resolution_note || defect.resolved_by) && (
                         <p className="mt-2 border-l-2 pl-3 text-sm">
@@ -217,8 +259,8 @@ function DefectCard({ runId, defect, canEdit, onChanged }: DefectCardProps) {
                         )}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Defect actions">
-                                    <MoreHorizontal className="h-4 w-4" />
+                                <Button variant="outline" size="icon-sm" aria-label="Defect actions">
+                                    <MoreHorizontal />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -226,7 +268,7 @@ function DefectCard({ runId, defect, canEdit, onChanged }: DefectCardProps) {
                                     className="text-destructive focus:text-destructive"
                                     onSelect={() => setConfirmDelete(true)}
                                 >
-                                    <Trash2 className="h-4 w-4" />
+                                    <Trash2 />
                                     Delete defect
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -237,7 +279,7 @@ function DefectCard({ runId, defect, canEdit, onChanged }: DefectCardProps) {
 
             {/* Evidence */}
             {(defect.evidence.length > 0 || canEdit) && (
-                <div className="flex flex-wrap items-center gap-3 border-t p-4">
+                <div className="flex flex-wrap items-center gap-2 border-t p-3">
                     {defect.evidence.map((item) => (
                         <EvidenceThumb
                             key={item.digest}
@@ -264,7 +306,7 @@ function DefectCard({ runId, defect, canEdit, onChanged }: DefectCardProps) {
                                 disabled={uploading}
                                 onClick={() => fileInput.current?.click()}
                             >
-                                <Paperclip className="mr-1.5 h-4 w-4" />
+                                <Paperclip />
                                 {uploading ? "Uploading…" : "Attach evidence"}
                             </Button>
                         </>
@@ -326,7 +368,8 @@ function DispositionDialog({
     const [saving, setSaving] = useState(false);
     const trimmed = note.trim();
 
-    const handleSave = async () => {
+    const handleSave = async (event: FormEvent) => {
+        event.preventDefault();
         setSaving(true);
         try {
             await updateDefect(defect.id, {
@@ -344,7 +387,7 @@ function DispositionDialog({
 
     return (
         <Dialog open onOpenChange={(next) => !next && onClose()}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>{accepting ? "Accept defect as is" : "Resolve defect"}</DialogTitle>
                     <DialogDescription>
@@ -353,24 +396,26 @@ function DispositionDialog({
                             : "Say what was done about it, if that helps the next reader."}
                     </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-1 py-1">
-                    <Label htmlFor="def-note">{accepting ? "Why is this acceptable?" : "Note (optional)"}</Label>
-                    <Textarea
-                        id="def-note"
-                        rows={3}
-                        autoFocus
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                    />
-                </div>
-                <div className="flex justify-end gap-2">
-                    <Button variant="ghost" onClick={onClose} disabled={saving}>
-                        Cancel
-                    </Button>
-                    <Button onClick={() => void handleSave()} disabled={saving || (accepting && !trimmed)}>
-                        {saving ? "Saving…" : accepting ? "Accept as is" : "Resolve"}
-                    </Button>
-                </div>
+                <form className="space-y-4" onSubmit={(event) => void handleSave(event)}>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="def-note">{accepting ? "Why is this acceptable?" : "Note (optional)"}</Label>
+                        <Textarea
+                            id="def-note"
+                            rows={3}
+                            autoFocus
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={saving || (accepting && !trimmed)}>
+                            {saving ? "Saving…" : accepting ? "Accept as is" : "Resolve"}
+                        </Button>
+                    </DialogFooter>
+                </form>
             </DialogContent>
         </Dialog>
     );
@@ -398,24 +443,27 @@ function EvidenceThumb({
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border bg-muted"
+                className="flex size-16 items-center justify-center overflow-hidden border bg-muted"
                 title={item.filename}
             >
                 {isPdf ? (
-                    <FileText className="h-8 w-8 text-muted-foreground" />
+                    <FileText className="h-6 w-6 text-muted-foreground" />
                 ) : (
                     <img src={url} alt={item.filename} className="h-full w-full object-cover" />
                 )}
             </a>
             {canDelete && (
-                <button
+                // Faded in on hover, but always reachable: by keyboard focus and on touch screens.
+                <Button
                     type="button"
+                    size="icon-xs"
+                    variant="outline"
                     aria-label={`Remove ${item.filename}`}
-                    className="absolute -right-2 -top-2 hidden rounded-full border bg-background p-1 text-destructive focus-visible:block group-hover:block"
+                    className="absolute -right-1.5 -top-1.5 bg-background text-destructive opacity-0 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
                     onClick={() => setConfirmRemove(true)}
                 >
-                    <Trash2 className="h-3 w-3" />
-                </button>
+                    <Trash2 />
+                </Button>
             )}
             <ConfirmDialog
                 open={confirmRemove}
@@ -451,7 +499,8 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
     const [description, setDescription] = useState("");
     const [saving, setSaving] = useState(false);
 
-    const handleSave = async () => {
+    const handleSave = async (event: FormEvent) => {
+        event.preventDefault();
         setSaving(true);
         try {
             await logDefect(runId, {
@@ -471,44 +520,33 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
 
     return (
         <Dialog open onOpenChange={(next) => !next && onClose()}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Log a defect</DialogTitle>
                     <DialogDescription>Record what went wrong and how many units it affected.</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-2.5 py-1">
+                <form className="space-y-4" onSubmit={(event) => void handleSave(event)}>
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                             <Label htmlFor="def-category">Category</Label>
-                            <CompactSelect
+                            <OptionSelect
                                 id="def-category"
-                                className="h-8"
                                 value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                            >
-                                {DEFECT_CATEGORIES.map((c) => (
-                                    <option key={c.value} value={c.value}>
-                                        {c.label}
-                                    </option>
-                                ))}
-                            </CompactSelect>
+                                onValueChange={setCategory}
+                                options={DEFECT_CATEGORIES}
+                            />
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                             <Label htmlFor="def-severity">Severity</Label>
-                            <CompactSelect
+                            <OptionSelect
                                 id="def-severity"
-                                className="h-8"
                                 value={severity}
-                                onChange={(e) => setSeverity(e.target.value as DefectSeverity)}
-                            >
-                                <option value="aesthetic">Aesthetic</option>
-                                <option value="minor">Minor</option>
-                                <option value="major">Major</option>
-                                <option value="critical">Critical</option>
-                            </CompactSelect>
+                                onValueChange={(v) => setSeverity(v as DefectSeverity)}
+                                options={SEVERITY_OPTIONS}
+                            />
                         </div>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                         <Label htmlFor="def-qty">Units affected</Label>
                         <Input
                             id="def-qty"
@@ -518,7 +556,7 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                             onChange={(e) => setQuantity(Number(e.target.value) || 1)}
                         />
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                         <Label htmlFor="def-desc">Description</Label>
                         <Textarea
                             id="def-desc"
@@ -528,15 +566,15 @@ function AddDefectDialog({ runId, onClose, onLogged }: AddDefectDialogProps) {
                             onChange={(e) => setDescription(e.target.value)}
                         />
                     </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                    <Button variant="ghost" onClick={onClose} disabled={saving}>
-                        Cancel
-                    </Button>
-                    <Button onClick={() => void handleSave()} disabled={saving}>
-                        {saving ? "Logging…" : "Log defect"}
-                    </Button>
-                </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={saving}>
+                            {saving ? "Logging…" : "Log defect"}
+                        </Button>
+                    </DialogFooter>
+                </form>
             </DialogContent>
         </Dialog>
     );

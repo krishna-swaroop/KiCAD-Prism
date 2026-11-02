@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { CrossReference } from "@/types/supply";
 import { askSubstitutes, getCrossReference } from "./supply-api";
-import { FoldSection } from "./fold-section";
+import { FoldSection } from "@/components/ui/fold-section";
 import { SuggestionsList } from "./suggestions-list";
 import { formatStock } from "./supply-format";
 import { useConnectorList } from "./use-supply-connectors";

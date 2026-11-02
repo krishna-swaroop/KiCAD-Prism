@@ -1,7 +1,9 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
     effectiveFieldValue,
@@ -11,7 +13,7 @@ import {
     type SpecSectionDef,
 } from "@/types/manufacturing";
 import { OptionRow, ProvenanceMarker, type Provenance } from "./option-row";
-import { CompactSelect } from "./ui";
+import { OptionSelect } from "./option-select";
 
 export type SpecValues = Record<string, unknown>;
 
@@ -49,7 +51,7 @@ export function SpecSection({
     const sectionKeys = new Set(section.fields.map((f) => f.key));
     return (
         <section className={cn("border", !active && "bg-muted/20")}>
-            <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+            <div className="flex items-center justify-between gap-3 px-3 py-2">
                 <button
                     type="button"
                     onClick={onToggleCollapsed}
@@ -66,9 +68,9 @@ export function SpecSection({
                     )}
                     <span className="truncate">{section.title}</span>
                     {section.optional && (
-                        <span className="rounded-none bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
-                            optional
-                        </span>
+                        <Badge variant="secondary" className="font-normal">
+                            Optional
+                        </Badge>
                     )}
                 </button>
 
@@ -79,29 +81,18 @@ export function SpecSection({
                         </span>
                     )}
                     {section.optional && (
-                        <button
-                            type="button"
-                            role="switch"
-                            aria-checked={active}
+                        <Switch
+                            checked={active}
                             aria-label={`Enable ${section.title}`}
                             disabled={!canEdit}
-                            onClick={() => onToggleActive(!active)}
-                            className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                                active ? "bg-primary" : "bg-muted-foreground/30"
-                            }`}
-                        >
-                            <span
-                                className={`inline-block h-3 w-3 transform rounded-full bg-background shadow transition-transform ${
-                                    active ? "translate-x-3.5" : "translate-x-0.5"
-                                }`}
-                            />
-                        </button>
+                            onCheckedChange={onToggleActive}
+                        />
                     )}
                 </div>
             </div>
 
             {showBody && (
-                <div className="border-t px-4 py-2">
+                <div className="border-t px-3 py-2">
                     {fields.map((field) => (
                         <SpecFieldRow
                             key={field.key}
@@ -208,20 +199,15 @@ function SpecFieldRow({ field, value, provenance, nested, disabled, onChange }: 
                         options={field.options.map((o) => ({ value: o, label: o }))}
                     />
                 ) : (
-                    <CompactSelect
+                    <OptionSelect
                         id={inputId}
-                        className="h-8 text-sm"
-                        widthClass="w-full max-w-sm"
+                        size="sm"
+                        className="max-w-sm"
                         value={current}
-                        onChange={(e) => onChange(e.target.value || undefined)}
-                    >
-                        <option value="">Not set</option>
-                        {field.options.map((option) => (
-                            <option key={option} value={option}>
-                                {option}
-                            </option>
-                        ))}
-                    </CompactSelect>
+                        onValueChange={(v) => onChange(v || undefined)}
+                        emptyLabel="Not set"
+                        options={field.options.map((o) => ({ value: o, label: o }))}
+                    />
                 )}
             </OptionRow>
         );

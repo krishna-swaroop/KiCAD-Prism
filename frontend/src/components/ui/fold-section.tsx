@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-/** A section on the part sheet that folds: the usual small heading with a chevron before it, closed until opened unless it starts open. */
+/** A section that folds (the Supply part sheet, the Manufacturing run view): the usual small heading with a chevron before it, closed until opened unless it starts open. */
 export function FoldSection({ title, startOpen = false, actions, open: shown, onOpenChange, children }: {
   title: string;
   startOpen?: boolean;

@@ -8,6 +8,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
@@ -32,7 +33,7 @@ import {
     type ProjectManufacturer,
     type ProjectSpec,
 } from "@/types/manufacturing";
-import { CompactSelect } from "./ui";
+import { OptionSelect } from "./option-select";
 
 export interface ProjectOption {
     id: string;
@@ -212,7 +213,7 @@ function ManufacturerField({
 }) {
     const none = Boolean(projectId) && context.manufacturersLoaded && context.manufacturers.length === 0;
     return (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
             <Label htmlFor="run-mfr">Manufacturer</Label>
             {none ? (
                 <p className="border border-dashed p-3 text-sm text-muted-foreground">
@@ -227,20 +228,14 @@ function ManufacturerField({
                     , then start the production.
                 </p>
             ) : (
-                <CompactSelect
+                <OptionSelect
                     id="run-mfr"
-                    className="h-9"
                     value={value}
                     disabled={!projectId}
-                    onChange={(e) => onChange(e.target.value)}
-                >
-                    <option value="">{projectId ? "Select a manufacturer…" : "Choose a project first"}</option>
-                    {context.manufacturers.map((m) => (
-                        <option key={m.id} value={m.id}>
-                            {m.name}
-                        </option>
-                    ))}
-                </CompactSelect>
+                    onValueChange={onChange}
+                    placeholder={projectId ? "Select a manufacturer…" : "Choose a project first"}
+                    options={context.manufacturers.map((m) => ({ value: m.id, label: m.name }))}
+                />
             )}
         </div>
     );
@@ -258,47 +253,39 @@ function BuildFields({
     return (
         <>
             <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                     <Label htmlFor="run-qty">Quantity ordered</Label>
                     <Input
                         id="run-qty"
                         type="number"
                         min={1}
-                        className="h-9"
                         value={form.quantity}
                         onChange={(e) => dispatch({ type: "field", field: "quantity", value: e.target.value })}
                     />
                 </div>
                 {releases.length > 0 && (
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                         <Label htmlFor="run-release">Release</Label>
-                        <CompactSelect
+                        <OptionSelect
                             id="run-release"
-                            className="h-9"
                             value={form.releaseTag}
-                            onChange={(e) => {
-                                const tag = e.target.value;
+                            onValueChange={(tag) => {
                                 const release = releases.find((r) => r.tag === tag);
                                 dispatch({ type: "release", tag, hash: release ? release.full_hash : "" });
                             }}
-                        >
-                            {releases.map((r) => (
-                                <option key={r.tag} value={r.tag}>
-                                    {r.tag} ({r.commit_hash})
-                                </option>
-                            ))}
-                            <option value={NO_RELEASE}>No release, use a commit</option>
-                        </CompactSelect>
+                            emptyLabel="No release, use a commit"
+                            emptyLast
+                            options={releases.map((r) => ({ value: r.tag, label: `${r.tag} (${r.commit_hash})` }))}
+                        />
                     </div>
                 )}
             </div>
 
             {form.releaseTag === NO_RELEASE && (
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                     <Label htmlFor="run-commit">Commit (optional)</Label>
                     <Input
                         id="run-commit"
-                        className="h-9"
                         placeholder="The revision that was built"
                         value={form.commitSha}
                         onChange={(e) => dispatch({ type: "field", field: "commitSha", value: e.target.value })}
@@ -319,7 +306,7 @@ interface Freeze {
 function FreezeSummary({ freeze, projectId, onClose }: { freeze: Freeze; projectId: string; onClose: () => void }) {
     const emptySpec = freeze.progress.total > 0 && freeze.progress.set === 0;
     return (
-        <div className="space-y-1.5 border bg-muted/30 px-3 py-2.5 text-sm">
+        <div className="space-y-1.5 border bg-muted/30 p-3 text-sm">
             <p>
                 <span className="text-muted-foreground">Freezes:</span>{" "}
                 {freeze.process ? `${freeze.process} spec` : "this spec"},{" "}
@@ -415,29 +402,25 @@ export function NewProductionDialog({
 
     return (
         <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>New production</DialogTitle>
                     <DialogDescription>Record a board order. The manufacturer&rsquo;s spec is frozen onto it.</DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-3 py-1">
-                    <div className="space-y-1">
+                {/* Not a <form>: the manufacturer and release are chosen from code, and a Radix
+                    Select inside a form echoes such a change back through its hidden native select. */}
+                <div className="space-y-4">
+                    <div className="space-y-1.5">
                         <Label htmlFor="run-project">Project</Label>
-                        <CompactSelect
+                        <OptionSelect
                             id="run-project"
-                            className="h-9"
                             value={form.projectId}
                             disabled={Boolean(initialProjectId)}
-                            onChange={(e) => dispatch({ type: "project", projectId: e.target.value })}
-                        >
-                            <option value="">Select a project…</option>
-                            {projects.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.name}
-                                </option>
-                            ))}
-                        </CompactSelect>
+                            onValueChange={(projectId) => dispatch({ type: "project", projectId })}
+                            placeholder="Select a project…"
+                            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+                        />
                     </div>
 
                     <ManufacturerField
@@ -450,7 +433,7 @@ export function NewProductionDialog({
 
                     <BuildFields form={form} releases={context.releases} dispatch={dispatch} />
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                         <Label htmlFor="run-notes">Notes (optional)</Label>
                         <Textarea
                             id="run-notes"
@@ -461,15 +444,15 @@ export function NewProductionDialog({
                     </div>
 
                     {freeze && <FreezeSummary freeze={freeze} projectId={form.projectId} onClose={onClose} />}
-                </div>
 
-                <div className="flex justify-end gap-2">
-                    <Button variant="ghost" onClick={onClose} disabled={submitting}>
-                        Cancel
-                    </Button>
-                    <Button onClick={() => void handleCreate()} disabled={!canSubmit || submitting}>
-                        {submitting ? "Creating…" : "Create production"}
-                    </Button>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+                            Cancel
+                        </Button>
+                        <Button type="button" onClick={() => void handleCreate()} disabled={!canSubmit || submitting}>
+                            {submitting ? "Creating…" : "Create production"}
+                        </Button>
+                    </DialogFooter>
                 </div>
             </DialogContent>
         </Dialog>

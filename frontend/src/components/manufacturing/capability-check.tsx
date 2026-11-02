@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
 
+import { SectionHeading } from "@/components/ui/section-heading";
+import { StudioTabsList, StudioTabsTrigger } from "@/components/ui/studio-tabs";
+import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
     checkCapabilities,
@@ -86,28 +89,30 @@ export function CapabilityCheck({ fields, capabilities, meta, boardRules, proces
     }
 
     return (
-        <section className="border">
-            <div className="border-b bg-muted/30 px-4 py-2.5">
-                <h3 className="text-sm font-medium">Capability check</h3>
-                {processName && <p className="text-xs text-muted-foreground">{processName}</p>}
-            </div>
-            <div className="space-y-3 px-4 py-3">
-                {status}
-                {processName && hasAnyCapability && (
-                    <button
-                        type="button"
-                        aria-expanded={showAll}
-                        onClick={() => setShowAll((v) => !v)}
-                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                        {showAll ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                        Show all rules
-                    </button>
+        <section aria-label="Capability check" className="space-y-2">
+            <SectionHeading
+                title="Capability check"
+                actions={processName ? <span className="text-xs text-muted-foreground">{processName}</span> : undefined}
+            />
+            <div className="border">
+                <div className="space-y-3 p-3">
+                    {status}
+                    {processName && hasAnyCapability && (
+                        <button
+                            type="button"
+                            aria-expanded={showAll}
+                            onClick={() => setShowAll((v) => !v)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                            {showAll ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            Show all rules
+                        </button>
+                    )}
+                </div>
+                {showAll && processName && hasAnyCapability && (
+                    <CapabilitiesTable rows={rows} boardRules={boardRules} belowKeys={belowKeys} />
                 )}
             </div>
-            {showAll && processName && hasAnyCapability && (
-                <CapabilitiesTable rows={rows} boardRules={boardRules} belowKeys={belowKeys} />
-            )}
         </section>
     );
 }
@@ -136,43 +141,37 @@ function CapabilitiesTable({
     return (
         <div className="border-t">
             {hasCustom && (
-                <div className="flex justify-end px-4 pt-2">
-                    <div className="inline-flex border text-xs" role="group" aria-label="Rules to show">
-                        <button
-                            type="button"
-                            className={cn("px-2.5 py-1", !showCustom ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
-                            onClick={() => setShowCustom(false)}
-                        >
-                            KiCad-tracked
-                        </button>
-                        <button
-                            type="button"
-                            className={cn("px-2.5 py-1", showCustom ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
-                            onClick={() => setShowCustom(true)}
-                        >
-                            All
-                        </button>
-                    </div>
+                <div className="flex justify-end px-3 pt-2">
+                    <Tabs value={showCustom ? "all" : "kicad"} activationMode="manual" className="shrink-0">
+                        <StudioTabsList aria-label="Rules to show">
+                            <StudioTabsTrigger value="kicad" onClick={() => setShowCustom(false)}>
+                                KiCad-tracked
+                            </StudioTabsTrigger>
+                            <StudioTabsTrigger value="all" onClick={() => setShowCustom(true)}>
+                                All
+                            </StudioTabsTrigger>
+                        </StudioTabsList>
+                    </Tabs>
                 </div>
             )}
             <div className="themed-scrollbar overflow-x-auto">
                 <table className="w-full text-xs">
                     <thead>
                         <tr className="border-b text-muted-foreground">
-                            <th className="px-4 py-2 text-left font-medium">Rule</th>
+                            <th className="px-3 py-2 text-left font-medium">Rule</th>
                             <th className="px-2 py-2 text-right font-medium">Min</th>
-                            {boardRules != null && <th className="px-4 py-2 text-right font-medium">Board</th>}
+                            {boardRules != null && <th className="px-3 py-2 text-right font-medium">Board</th>}
                         </tr>
                     </thead>
                     <tbody>
                         {rows.map((row) => (
                             <tr key={row.key} className={cn(belowKeys.has(row.key) && "bg-warning/10")}>
-                                <td className="px-4 py-1.5 text-muted-foreground">{row.label}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground">{row.label}</td>
                                 <td className="px-2 py-1.5 text-right font-medium tabular-nums">
                                     {formatValue(row.value, row.unit)}
                                 </td>
                                 {boardRules != null && (
-                                    <td className="px-4 py-1.5 text-right tabular-nums">
+                                    <td className="px-3 py-1.5 text-right tabular-nums">
                                         {row.kicad ? formatValue(boardRules[row.key], row.unit) : "—"}
                                     </td>
                                 )}
