@@ -61,6 +61,36 @@ def _purge_stale_bytecode() -> None:
 _purge_stale_bytecode()
 
 
+def _log_native_crashes() -> None:
+    """Write the Python stack to plugin-crash.log if KiCad dies inside our code.
+
+    A wx call on a window whose C++ side is already gone takes KiCad down with an
+    access violation, not a Python exception, so nothing reaches a traceback and the
+    Windows crash dump holds no Python frames. faulthandler prints every thread's
+    Python stack at the moment of the fault, which names the handler that did it.
+
+    The file sits beside the agent's settings for this profile. Opened once and kept
+    open, since faulthandler writes to the descriptor from inside the crash. Best
+    effort: no log is no worse than before.
+    """
+    import faulthandler
+
+    try:
+        from .agent_client import _config_dir
+
+        os.makedirs(_config_dir(), exist_ok=True)
+        log = open(  # noqa: SIM115 - must outlive this function
+            os.path.join(_config_dir(), "plugin-crash.log"), "a", encoding="utf-8"
+        )
+        faulthandler.enable(file=log, all_threads=True)
+        globals()["_crash_log"] = log
+    except (OSError, RuntimeError, ValueError):
+        pass
+
+
+_log_native_crashes()
+
+
 def is_dev_install() -> bool:
     """Are we the symlinked working copy, or a real installed package?
 
