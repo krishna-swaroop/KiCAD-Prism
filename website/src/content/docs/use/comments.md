@@ -123,8 +123,8 @@ is kept.
 ## Publish a thread as an issue
 
 If your administrator has connected GitHub or GitLab, a project can publish
-comment threads as issues in a repository. The project's rules are under the
-link icon (**Issue publishing settings**) in the project header: which
+comment threads as issues in a repository. The project's rules are under
+**⋯ → Issue Tracker** in the project header: which
 repository, which severities publish automatically (for example **Minor and
 above**), whether tasks always publish, and **Who can publish**.
 

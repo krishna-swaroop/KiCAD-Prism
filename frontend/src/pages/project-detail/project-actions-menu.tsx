@@ -19,7 +19,7 @@ const TrackerSettingsDialog = lazy(() =>
 
 /**
  * The header's less frequent project actions behind one button: open in
- * KiCad, issue publishing and project settings, with the dialogs they open.
+ * KiCad, the issue tracker and project settings, with the dialogs they open.
  */
 export function ProjectActionsMenu({ projectId, canManage, isAdmin }: {
     projectId: string;
@@ -48,12 +48,12 @@ export function ProjectActionsMenu({ projectId, canManage, isAdmin }: {
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setDialog("tracker")}>
                         <Link2 />
-                        Issue publishing…
+                        Issue Tracker
                     </DropdownMenuItem>
                     {canManage ? (
                         <DropdownMenuItem onSelect={() => setDialog("settings")}>
                             <Settings />
-                            Project settings…
+                            Project Settings
                         </DropdownMenuItem>
                     ) : null}
                 </DropdownMenuContent>

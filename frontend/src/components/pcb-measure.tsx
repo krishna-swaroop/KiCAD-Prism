@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Ruler, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { KeyCap } from "@/components/keyboard-shortcuts-dialog";
 import { shortcutKeys } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { useCommittedRef } from "@/hooks/use-committed-ref";
@@ -83,9 +82,21 @@ function snapName(snap: EcadMeasureSnap): string {
     return snap.label || "point";
 }
 
+const Divider = () => <span className="h-5 w-px shrink-0 bg-border" aria-hidden />;
+
+/** A label in the muted tone and its value, as one reading. */
+function Reading({ label, value }: { label: string; value: string }) {
+    return (
+        <span className="whitespace-nowrap">
+            <span className="text-muted-foreground">{label}</span>{" "}
+            <span className="text-foreground">{value}</span>
+        </span>
+    );
+}
+
 /**
- * The readout under the board while measure mode is on: the two ends, the
- * distance, ΔX, ΔY and the angle, the units, and the way out.
+ * The readout under the board while measure mode is on: the distance, ΔX,
+ * ΔY and the angle, the two ends, the units, and the way out.
  */
 export function MeasureReadout({ viewer }: { viewer: EcadViewer | null }) {
     const { on } = useMeasureMode(viewer);
@@ -94,58 +105,66 @@ export function MeasureReadout({ viewer }: { viewer: EcadViewer | null }) {
     if (!on) return null;
     const measurement = state?.measurement ?? null;
     const unit = units === "mil" ? "mil" : "mm";
+    const ends = measurement
+        ? [measurement.a, measurement.b].map((snap) => [snapName(snap), snap.net].filter(Boolean).join(" · ")).join(" → ")
+        : "";
     return (
         <section
             aria-label="Measure"
-            className="pointer-events-auto flex max-w-full items-center gap-2 border bg-background/95 px-2 py-1.5 text-xs shadow-lg backdrop-blur-sm"
+            className="pointer-events-auto flex h-9 max-w-full items-center gap-2.5 rounded-lg border bg-background/90 pl-3 pr-1 text-xs shadow-lg backdrop-blur-md"
         >
             <Ruler className="size-3.5 shrink-0 text-primary" aria-hidden />
+            <span className="shrink-0 font-mono tabular-nums" aria-label="Distance">
+                {measurement ? (
+                    <>
+                        <span className="text-sm font-semibold text-primary">{formatLength(measurement.distance, units)}</span>{" "}
+                        <span className="text-muted-foreground">{unit}</span>
+                    </>
+                ) : (
+                    <span className="text-muted-foreground">—</span>
+                )}
+            </span>
             {measurement ? (
                 <>
-                    <span className="min-w-0 truncate" title={[measurement.a, measurement.b].map((snap) => [snapName(snap), snap.net].filter(Boolean).join(" · ")).join(" → ")}>
+                    <Divider />
+                    <span className="flex shrink-0 items-center gap-3 font-mono tabular-nums">
+                        <Reading label="ΔX" value={formatLength(measurement.dx, units)} />
+                        <Reading label="ΔY" value={formatLength(measurement.dy, units)} />
+                        <Reading label="∠" value={`${measurement.angle.toFixed(2)}°`} />
+                    </span>
+                    <Divider />
+                    <span className="min-w-0 max-w-[18rem] truncate text-muted-foreground" title={ends}>
                         {snapName(measurement.a)} → {snapName(measurement.b)}
                     </span>
-                    <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-primary" aria-label="Distance">
-                        {formatLength(measurement.distance, units)} {unit}
-                    </span>
-                    <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-                        ΔX <span className="text-foreground">{formatLength(measurement.dx, units)}</span>{" "}
-                        ΔY <span className="text-foreground">{formatLength(measurement.dy, units)}</span>{" "}
-                        ∠ <span className="text-foreground">{measurement.angle.toFixed(2)}°</span>
-                    </span>
                 </>
-            ) : (
-                <span className="font-mono text-muted-foreground" aria-label="Distance">—</span>
-            )}
-            <div className="flex shrink-0 border" role="group" aria-label="Units">
+            ) : null}
+            <div className="flex shrink-0 items-center rounded-md bg-muted p-0.5" role="group" aria-label="Units">
                 {(["mm", "mil"] as const).map((option) => (
-                    <Button
+                    <button
                         key={option}
                         type="button"
-                        variant={units === option ? "secondary" : "ghost"}
-                        size="xs"
                         aria-pressed={units === option}
                         onClick={() => setUnits(option)}
+                        className={cn(
+                            "h-6 rounded-sm px-2 font-medium transition-colors",
+                            units === option
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground",
+                        )}
                     >
                         {option}
-                    </Button>
+                    </button>
                 ))}
             </div>
-            <span className="flex shrink-0 items-center gap-0.5" aria-hidden>
-                {shortcutKeys(MEASURE_SHORTCUT).map((key) => (
-                    <KeyCap key={key}>{key}</KeyCap>
-                ))}
-            </span>
             <Button
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="size-6"
                 aria-label="Leave measure mode"
-                title="Leave measure mode"
+                title={`Leave measure mode · ${shortcutKeys(MEASURE_SHORTCUT).join("")}`}
                 onClick={() => viewer?.setMeasureMode(false)}
             >
-                <X className="size-3.5" aria-hidden />
+                <X aria-hidden />
             </Button>
         </section>
     );

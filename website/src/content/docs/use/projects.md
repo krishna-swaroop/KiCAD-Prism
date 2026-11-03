@@ -197,7 +197,7 @@ Project Settings overrides what Prism detected: the display name, the
 description and the file paths.
 
 1. Open the project.
-2. Select the gear icon (**Project settings**) in the project header.
+2. Select **⋯ → Project Settings** in the project header.
 3. Change the fields you need:
    - **Project Name** and **Project Description**, shown in the workspace and
      used by search.
@@ -222,6 +222,6 @@ the design data Prism keeps for each revision. See
 
 ## Open a project in desktop KiCad
 
-The external-link icon in the project header (**Open in KiCad**) opens the
-project in desktop KiCad on your computer. It needs the Prism agent installed
-on that computer; without it, the button does nothing.
+**⋯ → Open in KiCad** in the project header opens the project in desktop
+KiCad on your computer. It needs the Prism agent installed on that computer;
+without it, nothing happens.

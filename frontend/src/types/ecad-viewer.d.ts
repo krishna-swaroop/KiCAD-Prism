@@ -420,11 +420,11 @@ export interface EcadTransitionTraceDetail {
 export type EcadMeasureUnits = "mm" | "mil";
 
 export interface EcadMeasureSnap {
-    kind: "pad" | "via" | "track-end" | "track" | "free";
+    kind: "pad" | "via" | "track-end" | "edge-corner" | "track" | "edge" | "free";
     /** Board millimetres. */
     x: number;
     y: number;
-    /** "U1 · 25", "via", "track"; empty for a free point. */
+    /** "U1 · 25", "via", "track", "board edge"; empty for a free point. */
     label: string;
     net: string | null;
 }

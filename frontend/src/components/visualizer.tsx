@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo, useReducer } from "react";
+import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo, useReducer, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Cpu, MessageSquare } from "lucide-react";
@@ -181,6 +181,26 @@ function useViewerVariant(
  * failure: it keeps its own state so a screen can offer "Check again" instead
  * of claiming the build failed.
  */
+/**
+ * A bar floating over a canvas, centred in the part the side panels leave
+ * visible rather than under them.
+ */
+function CanvasBar({ edge, left, right, children }: {
+    edge: "top" | "bottom";
+    left: number;
+    right: number;
+    children: ReactNode;
+}) {
+    return (
+        <div
+            className={`pointer-events-none absolute z-20 flex justify-center px-2 ${edge === "top" ? "top-2" : "bottom-3"}`}
+            style={{ left, right }}
+        >
+            {children}
+        </div>
+    );
+}
+
 type DesignDataReadFailure =
     | { kind: "pending" }
     | { kind: "failed"; detail: string };
@@ -1342,16 +1362,13 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                         viewer={viewers.sch}
                                         onVisibleWidthChange={setSchematicLeftInset}
                                     />
-                                    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-2">
-                                        <MeasureReadout viewer={viewers.pcb} />
-                                    </div>
-                                    <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center px-2">
+                                    <CanvasBar edge="top" left={schematicLeftInset} right={rightRailInset}>
                                         <NetHighlightBar
                                             nets={highlightedNets}
                                             onRemove={removeHighlighted}
                                             onClear={clearSelectionAndHighlights}
                                         />
-                                    </div>
+                                    </CanvasBar>
                                 </div>
                             ) : (
                                 <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -1399,17 +1416,17 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                         viewer={viewers.pcb}
                                         onVisibleWidthChange={setPcbLeftInset}
                                     />
-                                    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-2">
+                                    <CanvasBar edge="bottom" left={pcbLeftInset} right={rightRailInset}>
                                         <MeasureReadout viewer={viewers.pcb} />
-                                    </div>
-                                    <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center px-2">
+                                    </CanvasBar>
+                                    <CanvasBar edge="top" left={pcbLeftInset} right={rightRailInset}>
                                         <NetHighlightBar
                                             nets={highlightedNets}
                                             onRemove={removeHighlighted}
                                             onClear={clearSelectionAndHighlights}
                                             onFit={fitHighlightedNets}
                                         />
-                                    </div>
+                                    </CanvasBar>
                                 </div>
                             ) : (
                                 <div className="flex h-full items-center justify-center text-muted-foreground">
