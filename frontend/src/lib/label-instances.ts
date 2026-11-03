@@ -56,7 +56,7 @@ export function netLabelInstances(
         for (const uuid of ref.junctionUuids ?? []) members.add(uuid);
     }
     const leaf = (name: string) => name.slice(name.lastIndexOf("/") + 1);
-    const names = new Set([net.name, ...(net.aliases ?? [])].map(leaf).filter(Boolean));
+    const names = new Set([net.name, ...(net.aliases ?? [])].flatMap((name) => leaf(name) || []));
     const found = new Map<string, LabelInstanceRef>();
     for (const name of names) {
         for (const instance of lookup(name)) {
