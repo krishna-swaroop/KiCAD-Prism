@@ -92,13 +92,15 @@ class TrackingApiTests(unittest.TestCase):
     def connector(self, budget: int = 4, reserve: int = 50) -> str:
         return self.connectors.create(actor="x@example.com", provider="trk_demo", daily_budget=budget, interactive_reserve_pct=reserve)["id"]
 
-    def call(self, method, path, *, role="designer", body=None):
+    def call(self, method, path, *, role="designer", body=None, schematic="/projects/prj_1/board.kicad_sch"):
         def read(conn, project_id):
             lines = self.usage.lines_from_components(self.bom)
             self.usage.store_project(conn, project_id, project_id, f"r{len(self.bom)}", lines, NOW)
             return "updated"
 
-        with mock.patch("app.api.supply_tracking.get_project_for_role_or_404", return_value=SimpleNamespace(id="prj_1")), \
+        project = SimpleNamespace(id="prj_1", path="/projects/prj_1", project_file="board.kicad_pro")
+        with mock.patch("app.api.supply_tracking.get_project_for_role_or_404", return_value=project), \
+                mock.patch("app.api.supply_tracking.project_service.find_schematic_file", return_value=schematic), \
                 mock.patch.object(self.supply_tracking, "_read_project_bom", read):
             return _request(self.app, method, BASE + path, user=self.users[role], body=body)
 
@@ -115,6 +117,11 @@ class TrackingApiTests(unittest.TestCase):
             self.assertEqual(self.call("GET", "/projects/prj_1", role=role).status, 200, role)
         self.assertEqual(self.call("GET", "/projects/prj_1", role="viewer").status, 403)
         self.assertEqual(self.call("PUT", "/projects/prj_1", role="viewer", body={"variants": [""]}).status, 403)
+
+    def test_the_state_says_when_the_project_has_no_schematic_to_read(self) -> None:
+        # The BOM comes from the schematic; a board on its own has none (#1122).
+        self.assertTrue(self.call("GET", "/projects/prj_1").json["has_schematic"])
+        self.assertFalse(self.call("GET", "/projects/prj_1", schematic=None).json["has_schematic"])
 
     def test_admin_designer_and_qa_may_track_a_project(self) -> None:
         self.connector()

@@ -430,6 +430,43 @@ def kicad_cli(settings: "Settings | None" = None) -> LocalTool:
     return LocalTool(KICAD_CLI, lambda: locate_kicad_cli(settings), isolate=True)
 
 
+# kicad-cli rewrites a project's local settings when it loads a board or
+# schematic beside them (kicad-cli 10 writes layer and visibility state into
+# ``.kicad_prl``). Inside a server checkout that edit is a local change, and a
+# dirty checkout never fast-forwards on Sync.
+PROJECT_STATE_SUFFIXES = (".kicad_prl", ".kicad_pro")
+
+
+@contextmanager
+def project_state_kept(design_file: str | os.PathLike[str]) -> Iterator[None]:
+    """Put back the project files kicad-cli rewrites while it reads ``design_file`` in place.
+
+    Each ``.kicad_prl`` and ``.kicad_pro`` beside the file is restored byte for
+    byte, with its modification time, when the run changed it; one the run
+    created is removed. Runs on a scratch copy of the design do not need this.
+    """
+
+    folder = Path(design_file).parent
+    kept: dict[Path, tuple[bytes, int]] = {}
+    for path in folder.iterdir() if folder.is_dir() else ():
+        if path.suffix in PROJECT_STATE_SUFFIXES and path.is_file():
+            kept[path] = (path.read_bytes(), path.stat().st_mtime_ns)
+    try:
+        yield
+    finally:
+        for path in folder.iterdir() if folder.is_dir() else ():
+            if path.suffix in PROJECT_STATE_SUFFIXES and path.is_file() and path not in kept:
+                path.unlink(missing_ok=True)
+        for path, (data, mtime_ns) in kept.items():
+            try:
+                if path.is_file() and path.read_bytes() == data:
+                    continue
+                path.write_bytes(data)
+                os.utime(path, ns=(mtime_ns, mtime_ns))
+            except OSError:
+                continue
+
+
 # -- the set a job is handed ------------------------------------------------------
 
 
@@ -467,4 +504,5 @@ __all__ = [
     "kicad_cli",
     "kicad_cli_install_candidates",
     "locate_kicad_cli",
+    "project_state_kept",
 ]

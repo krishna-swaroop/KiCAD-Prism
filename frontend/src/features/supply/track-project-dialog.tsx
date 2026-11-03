@@ -70,6 +70,7 @@ function TrackProjectDialog({ projectId, onClose, onChanged }: { projectId: stri
   const finished = useCallback(() => onChanged(), [onChanged]);
 
   const reading = track.needsRead;
+  const noSchematic = state?.has_schematic === false && !state.tracked;
   const title = reading ? "Reading BOM" : TITLE[step];
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -88,7 +89,9 @@ function TrackProjectDialog({ projectId, onClose, onChanged }: { projectId: stri
           </div>
         ) : null}
 
-        {!reading && state?.has_usage && step === "choose" ? (
+        {noSchematic ? <Alert><AlertDescription>No schematic</AlertDescription></Alert> : null}
+
+        {!reading && !noSchematic && state?.has_usage && step === "choose" ? (
           <TrackChooseStep
             designs={["", ...state.variants]}
             followed={new Set(track.variants)}
@@ -121,7 +124,7 @@ function TrackProjectDialog({ projectId, onClose, onChanged }: { projectId: stri
               <Button variant="outline" onClick={onClose}>Cancel</Button>
               {step === "lines" ? <Button variant="outline" disabled={busy} onClick={start}>Skip these</Button> : null}
               <Button
-                disabled={busy || reading || !state?.has_usage || (track.variants.length === 0 && !track.allVariants) || preview?.fits_nowhere === true}
+                disabled={busy || reading || noSchematic || !state?.has_usage || (track.variants.length === 0 && !track.allVariants) || preview?.fits_nowhere === true}
                 onClick={step === "lines" ? start : next}
               >
                 {step === "choose" && lines.length > 0 ? "Next" : parts > 0 ? `${state?.tracked ? "Save" : "Track"} (${parts.toLocaleString()})` : state?.tracked ? "Save" : "Track"}

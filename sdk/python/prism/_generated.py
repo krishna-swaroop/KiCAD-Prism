@@ -4913,7 +4913,8 @@ class ProjectTrackingPreview(TypedDict, total=True):
     tracked: ProjectTracked
 
 
-class ProjectTrackingState(TypedDict, total=True):
+class ProjectTrackingState(TypedDict, total=False):
+    has_schematic: bool
     has_usage: bool
     tracked: TrackedProject | None
     variants: list[str]

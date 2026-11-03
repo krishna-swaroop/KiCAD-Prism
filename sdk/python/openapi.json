@@ -27011,6 +27011,11 @@
       "ProjectTrackingState": {
         "additionalProperties": true,
         "properties": {
+          "has_schematic": {
+            "default": true,
+            "title": "Has Schematic",
+            "type": "boolean"
+          },
           "has_usage": {
             "title": "Has Usage",
             "type": "boolean"

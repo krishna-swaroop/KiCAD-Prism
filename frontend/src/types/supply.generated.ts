@@ -1835,6 +1835,7 @@ export interface ProjectTrackingPreview {
 }
 
 export interface ProjectTrackingState {
+  has_schematic?: boolean;
   has_usage: boolean;
   tracked: TrackedProject | null;
   variants: string[];

@@ -228,6 +228,24 @@ class UsageDatabaseTests(unittest.TestCase):
             changed = usage.refresh(conn, [project], lambda _p: payload | {"sourceRevisionKey": "rev-2", "assembly": {}}, NOW)
             self.assertEqual((changed["updated"], usage.project_variants(conn, "pv")), (1, []), "a new revision replaces the variants too")
 
+    def test_an_a2_index_is_read_again_when_its_design_key_changes(self) -> None:
+        # The a2 semantic index names its design by designKey and has no sourceRevisionKey (#1122).
+        project = SimpleNamespace(id="pa", name="A2 board")
+        first = {"designKey": "dk-1", "components": [component("R1", "Acme", "R-1")]}
+        second = {"designKey": "dk-2", "components": [component("R1", "Acme", "R-1"), component("R2", "Acme", "R-2")]}
+        with self.store.connection() as conn:
+            self.assertEqual(usage.refresh_one(conn, project, lambda _p: first, NOW), "updated")
+            self.assertEqual(usage.refresh_one(conn, project, lambda _p: first, NOW), "unchanged")
+            self.assertEqual(usage.refresh_one(conn, project, lambda _p: second, NOW), "updated")
+            self.assertEqual([r["mpn"] for r in usage.project_rows(conn, "pa")], ["R-1", "R-2"])
+
+    def test_an_index_without_a_design_key_is_always_read_again(self) -> None:
+        project = SimpleNamespace(id="pk", name="Unkeyed")
+        payload = {"components": [component("R1", "Acme", "R-1")]}
+        with self.store.connection() as conn:
+            self.assertEqual(usage.refresh_one(conn, project, lambda _p: payload, NOW), "updated")
+            self.assertEqual(usage.refresh_one(conn, project, lambda _p: payload, NOW), "updated")
+
     def test_a_part_only_a_design_variant_fits_counts_as_in_use(self) -> None:
         def part(reference, mpn, uid, **fields):
             return {**component(reference, "Acme", mpn, **fields), "componentUid": uid}
