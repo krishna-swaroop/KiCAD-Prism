@@ -7,6 +7,7 @@ import {
     ChevronRight,
     CircuitBoard,
     Cpu,
+    FolderTree,
     ExternalLink,
     LibraryBig,
     LoaderCircle,
@@ -23,7 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { labelInstanceListLabel, type LabelInstanceRef } from "@/lib/label-instances";
 import { netFromSelection, netLeafName, sameHighlightedNet, type HighlightedNet } from "@/lib/net-highlights";
-import { selectionLabel } from "@/lib/prism-selection";
+import { isSheetSelection, selectionLabel } from "@/lib/prism-selection";
 import type { User } from "@/types/auth";
 import type { EcadNetStatistics } from "@/types/ecad-viewer";
 import type {
@@ -511,7 +512,8 @@ export function SelectionInspector({
     const component = resolveComponent(selection, semanticIndex, components);
     const net = resolveNet(selection, semanticIndex);
     const terminal = resolveTerminal(selection, semanticIndex);
-    const SelectionIcon = selection.kind === "component" ? Cpu : selection.kind === "terminal" ? Waypoints : Network;
+    const sheet = isSheetSelection(selection);
+    const SelectionIcon = sheet ? FolderTree : selection.kind === "component" ? Cpu : selection.kind === "terminal" ? Waypoints : Network;
     const title = selectionLabel(selection);
     const activeUuid = selection.uuid || selection.anchor?.uuid;
     const labelIndex = activeUuid
@@ -534,7 +536,7 @@ export function SelectionInspector({
                     <nav aria-label="Selection breadcrumb" className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
                         <span>Selection</span>
                         <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate capitalize text-foreground">{selection.kind}</span>
+                        <span className="truncate capitalize text-foreground">{sheet ? "sheet" : selection.kind}</span>
                         <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate font-mono text-foreground">{title}</span>
                     </nav>
@@ -549,7 +551,7 @@ export function SelectionInspector({
                         <SelectionIcon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1 leading-tight">
-                        <h2 className="truncate font-mono text-base font-semibold" title={title}>{title}</h2>
+                        <h2 className={cn("truncate text-base font-semibold", !sheet && "font-mono")} title={title}>{title}</h2>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <Badge variant="outline" className="px-2 py-0 text-[11px] font-medium">
                                 {capitalizeFirst(resolvedItemType(selection, viewContext))}
@@ -627,17 +629,18 @@ export function SelectionInspector({
                         </CollapsibleSection>
                     )}
 
-                    <CollapsibleSection title="Identity" icon={CircuitBoard} defaultOpen={false}>
+                    <CollapsibleSection title="Identity" icon={CircuitBoard} defaultOpen={sheet}>
                         <dl>
                             {selection.kind !== "net" && <PropertyRow label="Reference" value={selection.reference} />}
                             {selection.kind === "terminal" && <PropertyRow label="Pin / pad" value={selection.pin} />}
-                            {selection.kind === "net" && <PropertyRow label="Net" value={selection.netName} />}
+                            {selection.kind === "net" && !sheet && <PropertyRow label="Net" value={selection.netName} />}
+                            {sheet && <PropertyRow label="Sheet" value={selection.anchor?.name} />}
                             <PropertyRow label="Item type" value={resolvedItemType(selection, viewContext)} />
                             <PropertyRow label="Component UID" value={selection.kind !== "net" ? selection.componentUid : undefined} />
                             <PropertyRow label="Terminal UID" value={selection.kind === "terminal" ? selection.terminalUid : undefined} />
                             <PropertyRow label="Net UID" value={selection.kind !== "component" ? selection.netUid : undefined} />
                             <PropertyRow label="Source UUID" value={selection.uuid || selection.anchor?.uuid} />
-                            <PropertyRow label="Page" value={selection.anchor?.page} />
+                            <PropertyRow label={sheet ? "File" : "Page"} value={selection.anchor?.page} />
                             <PropertyRow
                                 label="Layer"
                                 value={selection.anchor?.layer && (

@@ -174,3 +174,31 @@ describe("SelectionInspector highlighted nets", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("SelectionInspector sheets", () => {
+  it("shows a selected sheet by its name and file, not as a net", async () => {
+    const { normalizeEcadSelection } = await import("@/lib/prism-selection");
+    const selection = normalizeEcadSelection({
+      sourceContext: "SCH",
+      itemType: "sheet",
+      uuid: "00000000-0000-0000-0000-0000000000d1",
+      name: "CONTROL Port",
+      page: "control_port.kicad_sch",
+    });
+    const { getByLabelText, getByRole, queryByText } = render(
+      <SelectionInspector
+        open
+        selection={selection}
+        semanticIndex={null}
+        onOpenChange={() => {}}
+        onClear={() => {}}
+        viewContext="SCH"
+        embedded
+      />,
+    );
+    expect(getByRole("heading", { level: 2 })).toHaveTextContent("CONTROL Port");
+    expect(getByLabelText("Selection breadcrumb")).toHaveTextContent("SelectionsheetCONTROL Port");
+    expect(queryByText("Net")).toBeNull();
+    expect(queryByText("control_port.kicad_sch")).toBeInTheDocument();
+  });
+});

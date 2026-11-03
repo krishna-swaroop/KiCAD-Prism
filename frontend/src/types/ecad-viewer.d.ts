@@ -82,6 +82,8 @@ export interface EcadSemanticSelectionDetail {
     netCode?: number;
     sheet?: string;
     page?: string;
+    /** The item's own name where it is not a reference, net or pin: a sheet's. */
+    name?: string;
     projectPath?: string;
     sheetPath?: string;
     filename?: string;
@@ -146,6 +148,14 @@ export interface EcadNetStatistics {
 }
 
 /** A board net as the viewer's highlight API refers to it. */
+/** A net's schematic items per sheet instance, for the schematic highlight. */
+export interface SchematicNetMembers {
+    name: string;
+    /** CSS colour; the viewer picks one when absent. */
+    color?: string;
+    pages: Array<{ sheetPath: string; uuids: string[] }>;
+}
+
 export interface EcadNetRef {
     /** Board net name. */
     name: string;
@@ -410,11 +420,11 @@ export interface EcadTransitionTraceDetail {
 export type EcadMeasureUnits = "mm" | "mil";
 
 export interface EcadMeasureSnap {
-    kind: "pad" | "via" | "track-end" | "track" | "free";
+    kind: "pad" | "via" | "track-end" | "edge-corner" | "track" | "edge" | "free";
     /** Board millimetres. */
     x: number;
     y: number;
-    /** "U1 · 25", "via", "track"; empty for a free point. */
+    /** "U1 · 25", "via", "track", "board edge"; empty for a free point. */
     label: string;
     net: string | null;
 }
@@ -494,6 +504,18 @@ export interface ECadViewerElement extends HTMLElement {
         options?: { focus?: boolean },
     ): { applied: EcadNetRef[]; unresolved: EcadNetRef[] };
     getHighlightedNets?(): EcadNetRef[];
+    /**
+     * Highlight nets on the schematic: everything dims and each net's members
+     * are drawn over it on whichever sheet is open. Empty clears it.
+     */
+    setSchematicHighlightedNets?(nets: readonly SchematicNetMembers[]): Promise<void>;
+    /**
+     * The world view: every sheet the net of a label, sheet entry or power
+     * symbol reaches, on one canvas, with the connections between them. `~`
+     * opens it from the schematic; Escape closes it.
+     */
+    showWorldView?(page: string, uuid: string): Promise<boolean>;
+    hideWorldView?(): void;
     /** Fit the board camera to the highlighted copper. False when empty. */
     focusHighlightedNets?(): boolean;
     /**
@@ -537,7 +559,7 @@ export interface ECadViewerElement extends HTMLElement {
         uuid: string;
         sheet: string;
         name: string;
-        kind?: "global" | "net" | "hierarchical";
+        kind?: "global" | "net" | "hierarchical" | "sheet-pin";
     }>;
     /** Switch sheet if needed, frame the label uuid, and emit selection. */
     focusLabelInstance?(uuid: string): Promise<boolean>;
