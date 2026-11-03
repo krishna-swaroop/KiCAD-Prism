@@ -26,6 +26,7 @@ export function normalizeEcadSelection(
         crossIndex: normalized.crossIndex,
         sheet: normalized.sheet,
         page: normalized.page,
+        name: normalized.name,
         layer: normalized.layer,
         sourceRevisionKey,
     } as const;
@@ -201,7 +202,13 @@ export function netStatisticsRefForSelection(
     return { name, netCode };
 }
 
+/** A hierarchical sheet symbol: reported as a uuid-only selection with its name on the anchor. */
+export const isSheetSelection = (selection: PrismSelection): boolean => selection.anchor?.itemType === "sheet";
+
 export function selectionLabel(selection: PrismSelection): string {
+    if (isSheetSelection(selection)) {
+        return selection.anchor?.name || selection.anchor?.page || selection.uuid || "Sheet";
+    }
     if (selection.kind === "component") return selection.reference;
     if (selection.kind === "terminal") return `${selection.reference}.${selection.pin}`;
     return selection.netName || selection.netUid || selection.uuid || "Unresolved net";

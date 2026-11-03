@@ -82,6 +82,8 @@ export interface EcadSemanticSelectionDetail {
     netCode?: number;
     sheet?: string;
     page?: string;
+    /** The item's own name where it is not a reference, net or pin: a sheet's. */
+    name?: string;
     projectPath?: string;
     sheetPath?: string;
     filename?: string;
