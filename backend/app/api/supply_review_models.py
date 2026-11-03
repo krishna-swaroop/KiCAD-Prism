@@ -51,6 +51,13 @@ class RejectManyRequest(BaseModel):
     listing_ids: list[str] = Field(min_length=1, max_length=500)
 
 
+class AcceptMatchedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    alias_keys: list[str] = Field(default_factory=list, max_length=500)
+    part_ids: list[str] = Field(default_factory=list, max_length=500)
+
+
 # --- the queue ------------------------------------------------------------------------
 
 
@@ -76,6 +83,7 @@ class SupplyReviewListing(SupplyModel):
     connector_name: str
     provider: str
     sku: str
+    page_url: str = Field(description="The distributor's page for it, even before it has been read.")
     raw_mpn: str
     raw_manufacturer: str
     match_state: Literal["manufacturer_unresolved", "near"]
@@ -221,6 +229,10 @@ class SettleUndone(SupplyModel):
 
 class AliasUndone(SupplyModel):
     listings: int
+
+
+class MatchedAccepted(SupplyModel):
+    accepted: int
 
 
 class AliasConfirmed(SupplyModel):

@@ -38,18 +38,21 @@ function Square({ item, preferred }: { item: NonNullable<SupplyPartRow["distribu
   const [open, setOpen] = useState(false);
   const color = vendorColor(item.provider) ?? "#6b7280";
   const held = item.stock > 0;
+  // Marketplace and assembly stock is shown apart: a dashed square, never counted in the part's stock.
+  const kind = item.marketplace ? (item.provider === "jlcpcb" ? "Assembly stock" : "Marketplace") : null;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          type="button" aria-label={`${item.name}: ${held ? `${item.stock.toLocaleString()} in stock` : "none in stock"}${preferred ? ", preferred" : ""}`}
-          className={`h-4 w-4 rounded-[3px] border-2 transition hover:scale-125 hover:shadow focus-visible:scale-125 ${preferred ? "ring-2 ring-foreground ring-offset-1" : ""}`}
-          style={{ borderColor: color, backgroundColor: held ? color : "transparent" }}
+          type="button" aria-label={`${item.name}${kind ? ` (${kind.toLowerCase()})` : ""}: ${held ? `${item.stock.toLocaleString()} in stock` : "none in stock"}${preferred ? ", preferred" : ""}`}
+          className={`h-4 w-4 rounded-[3px] border-2 transition hover:scale-125 hover:shadow focus-visible:scale-125 ${kind ? "border-dashed" : ""} ${preferred ? "ring-2 ring-foreground ring-offset-1" : ""}`}
+          style={{ borderColor: color, backgroundColor: held && !kind ? color : "transparent" }}
           onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} onClick={(event) => event.stopPropagation()}
         />
       </PopoverTrigger>
       <PopoverContent side="top" className="w-48 gap-1 p-2" onOpenAutoFocus={(event) => event.preventDefault()} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
         <p className="flex items-center gap-1.5 font-medium"><span aria-hidden className="h-2.5 w-2.5 rounded-[2px]" style={{ backgroundColor: color }} />{item.name}{preferred ? <Star className="h-3 w-3 fill-current text-primary" aria-label="Preferred" /> : null}</p>
+        {kind ? <p className="text-muted-foreground">{kind}</p> : null}
         <p className="text-muted-foreground">{held ? `${item.stock.toLocaleString()} in stock` : "None in stock"}</p>
         {item.price && item.currency ? <p className="text-muted-foreground"><PriceAtQuantity price={formatPrice(item.price, item.currency)} quantity={100} /></p> : null}
       </PopoverContent>
@@ -57,13 +60,21 @@ function Square({ item, preferred }: { item: NonNullable<SupplyPartRow["distribu
   );
 }
 
-/** One square per distributor in its colour: filled when it holds stock, hollow when it lists the part with none. The preferred one has a ring. Hovering one opens its name, stock and price. */
+/**
+ * One square per distributor in its colour: filled when it holds stock, hollow when it lists the part with none. The preferred one has a ring.
+ * Marketplace and assembly distributors follow, dashed. Hovering one opens its name, stock and price.
+ */
 export function DistributorSquares({ part }: { part: SupplyPartRow }) {
   const list = part.distributors ?? [];
   if (list.length === 0) return null;
+  const own = list.filter((item) => !item.marketplace);
+  const others = list.filter((item) => item.marketplace);
+  const square = (item: (typeof list)[number]) => <Square key={item.connector_id} item={item} preferred={item.connector_id === part.preferred_connector_id} />;
   return (
     <span className="inline-flex items-center gap-1.5" aria-label="Distributors">
-      {list.map((item) => <Square key={item.connector_id} item={item} preferred={item.connector_id === part.preferred_connector_id} />)}
+      {own.map(square)}
+      {own.length > 0 && others.length > 0 ? <span aria-hidden className="mx-0.5 h-3 w-px bg-border" /> : null}
+      {others.map(square)}
     </span>
   );
 }

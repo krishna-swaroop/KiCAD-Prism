@@ -272,6 +272,13 @@ describe("the project Supply tab", () => {
     expect(screen.getByRole("button", { name: "Track this project" })).toBeTruthy();
   });
 
+  it("says a board-only project has no schematic instead of offering to read it", async () => {
+    mocked.getProjectSupply.mockResolvedValue(supply({ available: false, has_schematic: false, parts: undefined, rollup: undefined, releases: [], notes: [] }));
+    renderTab();
+    expect(await screen.findByText("No schematic")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Read now" })).toBeNull();
+  });
+
   it("reads the variant picked", async () => {
     mocked.getProjectSupply.mockResolvedValue(supply({ variants: ["Lite"] }));
     renderTab();

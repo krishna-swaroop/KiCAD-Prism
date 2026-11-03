@@ -194,6 +194,21 @@ def part_spelling_keys(conn, part_id: str) -> set[str]:
     return {row["alias_key"] for row in conn.execute("SELECT alias_key FROM supply_part_spellings WHERE part_id = %s", (part_id,)).fetchall()}
 
 
+def maker_spellings(conn, part_id: str) -> tuple[str, ...]:
+    """Every spelling the part's maker answers to besides its name: the part's own and the maker's confirmed ones, learned
+    ones included ("Analog Devices Inc./Maxim Integrated")."""
+
+    rows = conn.execute(
+        """
+        SELECT alias_text FROM supply_part_spellings WHERE part_id = %(part)s
+        UNION SELECT a.alias_text FROM supply_manufacturer_aliases a JOIN supply_parts p ON p.manufacturer_id = a.manufacturer_id
+        WHERE p.id = %(part)s AND a.status = 'confirmed'
+        """,
+        {"part": part_id},
+    ).fetchall()
+    return tuple(sorted(row["alias_text"] for row in rows if row["alias_text"]))
+
+
 def _create_part(conn, manufacturer_id: str, mpn: str, key: str, actor: str) -> str:
     part_id = uuid.uuid4().hex
     created = conn.execute(

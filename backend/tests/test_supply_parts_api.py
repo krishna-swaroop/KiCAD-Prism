@@ -388,6 +388,20 @@ class SupplyPartsApiTests(unittest.TestCase):
         finally:
             registry.unregister("demo_chart")
 
+    def test_a_marketplace_distributor_shows_in_the_row_but_not_in_its_stock(self) -> None:
+        own = self.fake_connector()
+        market = self.fake_connector(provider="lcsc", display_name="LCSC")
+        self.watch_via_api("MKT-1")
+        part = self.part_row("MKT-1")["id"]
+        self.insert_listing(part, own, "MK-OWN", stock=40, price="0.50")
+        listing = self.insert_listing(part, market, "MK-MARKET", stock=900, price="0.40")
+        with self.store.connection() as conn:
+            conn.execute("UPDATE supply_offers SET marketplace = TRUE WHERE listing_id = %s", (listing,))
+        (row,) = self.call("GET", "/api/supply/parts", query="scope=all&q=MKT-1").json["items"]
+        shown = {item["connector_id"]: (item["stock"], item["marketplace"]) for item in row["distributors"]}
+        self.assertEqual(shown, {own: (40, False), market: (900, True)})
+        self.assertEqual(row["stock"], 40, "marketplace stock is not the part's")
+
     def test_the_chart_total_counts_two_storefronts_of_one_account_once(self) -> None:
         from app.services.supply import part_history
         from app.services.supply.providers import registry
