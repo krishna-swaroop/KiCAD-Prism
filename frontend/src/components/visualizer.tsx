@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo, useReducer } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Cpu, Box, FileText, CircuitBoard, Layers3, PackageCheck, MessageSquare, MessageSquarePlus, type LucideIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Cpu, MessageSquare } from "lucide-react";
 import { EngineeringBomTable } from "./engineering-bom-table";
 import { SelectionInspector, type HighlightedNetEntry } from "./selection-inspector";
 import { filterLabelInstances, netLabelInstances, type LabelInstanceRef } from "@/lib/label-instances";
@@ -11,13 +10,15 @@ import { PrismInsetScene3D } from "@/lib/inset-scene-3d";
 import { EcadViewerPair, useEcadViewer, type EcadSource, type EcadViewer } from "@/lib/ecad-viewer";
 import { MeasureReadout } from "./pcb-measure";
 import { EcadViewerControls } from "./ecad-viewer-controls";
-import { CommentForm, type CommentFormSubmitPayload } from "./comment-form";
+import { CommentForm } from "./comment-form";
+import { VisualizerToolbar } from "./visualizer-toolbar";
+import { useVisualizerCommentActions } from "./visualizer-comment-actions";
 import { CommentCard } from "./comment-card";
 import { CommentPanel } from "./comment-panel";
 import { ThreadUpdateContext } from "@/features/rich-comments/thread-updates";
 import { useLiveComments } from "@/features/live-comments/use-live-comments";
 import { ViewerOverlayRail, SELECTION_INSPECTOR_RAIL_RESIZE } from "./viewer-overlay-rail";
-import { fetchApi, fetchDesignJson, fetchDesignText, DesignDataPendingError, ifMatch, readApiError } from "@/lib/api";
+import { fetchApi, fetchDesignJson, fetchDesignText, DesignDataPendingError, readApiError } from "@/lib/api";
 import { throwIfJobFailed } from "@/lib/jobs";
 import { useJobWatcher } from "@/hooks/use-job-watcher";
 import { canCommentOnProjects, canWriteCatalog } from "@/lib/roles";
@@ -39,7 +40,6 @@ import {
     commentCurrentLocation,
     commentLocationFromArea,
     commentOverlaySet,
-    normalizeComment,
     type ActiveSchematicPage,
 } from "@/lib/comment-overlays";
 import { DesignSearchField } from "./design-search-field";
@@ -91,16 +91,6 @@ interface VisualizerProps {
     /** False when a commit was checked out from History; the BOM then shows no supply. */
     supplyAtHead?: boolean;
 }
-
-/** The toolbar follows VIEWER_TABS, which is also the 1–6 shortcut order. */
-const TAB_LABELS: Record<VisualizerTab, { label: string; icon: LucideIcon }> = {
-    sch: { label: "Schematic", icon: Cpu },
-    pcb: { label: "PCB", icon: CircuitBoard },
-    "3d": { label: "3D", icon: Box },
-    bom: { label: "BOM", icon: FileText },
-    stackup: { label: "Stackup", icon: Layers3 },
-    assembly: { label: "Assembly Assistant", icon: PackageCheck },
-};
 
 function selectionContextForTab(tab: VisualizerTab): PrismSelectionContext {
     if (tab === "pcb") return "PCB";
@@ -280,7 +270,6 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
     // when a tab/page change publishes the next set of overlay resolutions.
     const pendingCommentFocusRef = useRef<string | null>(null);
     const [commentCardScreenPosition, setCommentCardScreenPosition] = useState<{ x: number; y: number } | null>(null);
-    const [isSubmittingComment, setIsSubmittingComment] = useState(false);
     const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
     const lastSelectionRef = useRef<EcadSemanticSelectionDetail | null>(null);
 
@@ -1171,161 +1160,19 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         if (pcbModes.endMeasure) viewers.pcb.setMeasureMode(false);
     }, [pcbModes.commentMode, pcbModes.endMeasure, pcb.element, viewers]);
 
-    const submitComment = useCallback(async (payload: CommentFormSubmitPayload) => {
-        if (!commentDraft) return;
-        const { context, location, element } = commentDraft;
-        setIsSubmittingComment(true);
-        try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments`, {
-                method: "POST",
-                body: JSON.stringify({
-                    context,
-                    location,
-                    content: payload.content,
-                    contentFormat: payload.contentFormat,
-                    author: user?.name,
-                    elementId: element?.elementId,
-                    elementRef: element?.elementRef,
-                    elementType: element?.elementType,
-                    ...(element?.relativePoint
-                        ? { metadata: { anchorRelativePoint: element.relativePoint } }
-                        : {}),
-                    commentClass: payload.commentClass,
-                    severity: payload.severity,
-                    mentions: payload.mentions,
-                    ...(commit ? { revision: { commit } } : {}),
-                }),
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to post comment"));
-            const created = normalizeComment(await response.json() as Comment);
-            setComments((prev) => [...prev, created]);
-            dispatchMode({ type: "close-draft" });
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to post comment");
-        } finally {
-            setIsSubmittingComment(false);
-        }
-    }, [commit, commentDraft, projectId, setComments, user?.name]);
-
-    const resolveComment = useCallback(async (commentId: string, resolved: boolean) => {
-        try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${commentId}`, {
-                method: "PATCH",
-                body: JSON.stringify({ status: resolved ? "RESOLVED" : "OPEN" }),
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to update comment"));
-            const updated = normalizeComment(await response.json() as Comment);
-            setComments((prev) => prev.map((entry) => (entry.id === commentId
-                ? { ...updated, anchorResolution: entry.anchorResolution } : entry)));
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to update comment");
-        }
-    }, [projectId, setComments]);
-
-    const replyToComment = useCallback(async (commentId: string, content: string) => {
-        try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${commentId}/replies`, {
-                method: "POST",
-                body: JSON.stringify({ content, contentFormat: "md" }),
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to add reply"));
-            const payload = await response.json() as { comment: Comment };
-            setComments((prev) => prev.map((entry) => (entry.id === commentId
-                ? { ...normalizeComment(payload.comment), anchorResolution: entry.anchorResolution } : entry)));
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to add reply");
-        }
-    }, [projectId, setComments]);
-
-    const applyThread = useCallback((updated: Comment) => {
-        setComments((prev) => prev.map((entry) => (entry.id === updated.id
-            ? { ...normalizeComment(updated), anchorResolution: entry.anchorResolution } : entry)));
-    }, [setComments]);
-
-    const deleteComment = useCallback(async (commentId: string) => {
-        try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${commentId}`, {
-                method: "DELETE",
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to delete comment"));
-            setComments((prev) => prev.filter((entry) => entry.id !== commentId));
-            dispatchMode({ type: "comment-deleted", id: commentId });
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to delete comment");
-        }
-    }, [projectId, setComments]);
-
-    const promoteComment = useCallback(async (commentId: string) => {
-        try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${commentId}/promote`, {
-                method: "POST",
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to create issue"));
-            refreshComments();
-            toast.success("Issue publication queued.");
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to create issue");
-        }
-    }, [projectId, refreshComments]);
-
-    const retryCommentSync = useCallback(async (commentId: string) => {
-        try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${commentId}/tracker/retry`, {
-                method: "POST",
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to retry issue sync"));
-            refreshComments();
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to retry issue sync");
-        }
-    }, [projectId, refreshComments]);
-
-    const shareReply = useCallback(async (commentId: string, replyId: string) => {
-        try {
-            const response = await fetchApi(
-                `/api/projects/${projectId}/comments/${commentId}/replies/${replyId}/share`,
-                { method: "POST" },
-            );
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to share reply"));
-            refreshComments();
-            toast.success("Reply queued for the linked issue.");
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to share reply");
-        }
-    }, [projectId, refreshComments]);
-
-    const reattachComment = useCallback(async (comment: Comment) => {
-        const selected = lastSelectionRef.current;
-        if (!commit || !selected?.uuid || selected.x === undefined || selected.y === undefined
-            || selected.sourceContext !== comment.context || !comment.revision) {
-            toast.error("Select an object in the matching viewer revision before reattaching.");
-            return;
-        }
-        const bounds = selected.bounds;
-        const relativePoint = bounds && bounds[2] > 0 && bounds[3] > 0
-            ? [
-                Math.max(0, Math.min(1, (selected.x - bounds[0]) / bounds[2])),
-                Math.max(0, Math.min(1, (selected.y - bounds[1]) / bounds[3])),
-            ]
-            : undefined;
-        try {
-            const response = await fetchApi(`/api/projects/${projectId}/comments/${comment.id}/reattach`, {
-                method: "POST",
-                headers: ifMatch("comment", comment.id, comment.revision),
-                body: JSON.stringify({
-                    commit,
-                    elementId: selected.uuid,
-                    relativePoint,
-                    location: { x: selected.x, y: selected.y, layer: selected.layer ?? "", page: selected.page ?? "" },
-                }),
-            });
-            if (!response.ok) throw new Error(await readApiError(response, "Failed to reattach comment"));
-            refreshComments();
-            toast.success("Comment reattached on this revision.");
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to reattach comment");
-        }
-    }, [commit, projectId, refreshComments]);
+    const onCommentPosted = useCallback(() => dispatchMode({ type: "close-draft" }), []);
+    const onCommentDeleted = useCallback((id: string) => dispatchMode({ type: "comment-deleted", id }), []);
+    const commentActions = useVisualizerCommentActions({
+        projectId,
+        commit: commit ?? null,
+        author: user?.name,
+        draft: commentDraft,
+        setComments,
+        refresh: refreshComments,
+        lastSelection: lastSelectionRef,
+        onPosted: onCommentPosted,
+        onDeleted: onCommentDeleted,
+    });
 
     const handleCommentClick = useCallback((comment: Comment) => {
         dispatchMode({ type: "select-comment", id: comment.id });
@@ -1424,27 +1271,10 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 active={viewerActive}
                 onPick={handleDesignSearchPick}
             />
-            {/* Toolbar */}
-            <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-muted/20 px-1.5 py-1">
-                {VIEWER_TABS.map((tab, index) => {
-                    const { label, icon: Icon } = TAB_LABELS[tab];
-                    return (
-                        <Button
-                            key={tab}
-                            variant={activeTab === tab ? "secondary" : "ghost"}
-                            size="sm"
-                            data-visualizer-tab={tab}
-                            onClick={() => setActiveTab(tab)}
-                            title={`${label} (${index + 1})`}
-                            className="h-7 text-xs"
-                        >
-                            <Icon className="mr-1 size-3.5" />
-                            {label}
-                        </Button>
-                    );
-                })}
-                <div className="flex-1" />
-                {activeTab !== "assembly" && (
+            <VisualizerToolbar
+                activeTab={activeTab}
+                onTab={setActiveTab}
+                trailing={activeTab !== "assembly" ? (
                     <DesignVariantSelector
                         resolution={variantSelection}
                         variants={semanticIndex?.assembly?.catalog ?? []}
@@ -1452,36 +1282,13 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                         onSelect={handleVariantSelect}
                         onRetry={() => { void generateSemanticIdentity(); }}
                     />
-                )}
-                {commentModeAvailable(activeTab, canModifyComments) && (
-                    <Button
-                        variant={commentMode ? "default" : "ghost"}
-                        size="icon-sm"
-                        className={commentMode ? "bg-warning text-warning-foreground hover:bg-warning/90" : undefined}
-                        aria-pressed={commentMode}
-                        aria-label="Commenting mode"
-                        title="Commenting mode (C)"
-                        onClick={() => dispatchMode({ type: "toggle-comment-mode" })}
-                    >
-                        <MessageSquarePlus className="size-3.5" />
-                    </Button>
-                )}
-                <Button
-                    variant={rightRailTab === "comments" ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => dispatchMode({ type: "toggle-rail", tab: "comments" })}
-                    className="h-7 text-xs"
-                    aria-pressed={rightRailTab === "comments"}
-                >
-                    <MessageSquare className="mr-1 size-3.5" />
-                    Comments
-                    {comments.length > 0 && (
-                        <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
-                            {comments.length}
-                        </span>
-                    )}
-                </Button>
-            </div>
+                ) : null}
+                commentMode={commentModeAvailable(activeTab, canModifyComments) ? commentMode : null}
+                onToggleCommentMode={() => dispatchMode({ type: "toggle-comment-mode" })}
+                commentsOpen={rightRailTab === "comments"}
+                onToggleComments={() => dispatchMode({ type: "toggle-rail", tab: "comments" })}
+                commentCount={comments.length}
+            />
 
             {semanticIndexPending || bannerIndexError || workingTreeDirty ? (
                 <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b bg-muted/20 px-3 py-1.5">
@@ -1734,22 +1541,22 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                                 </div>
                             )}
                             <div className="min-h-0 flex-1">
-                            <ThreadUpdateContext.Provider value={applyThread}>
+                            <ThreadUpdateContext.Provider value={commentActions.applyThread}>
                             <CommentPanel
                                 projectId={projectId}
                                 comments={comments}
                                 onClose={() => dispatchMode({ type: "rail", tab: null })}
-                                onResolve={(commentId, resolved) => void resolveComment(commentId, resolved)}
-                                onReply={replyToComment}
-                                onDelete={deleteComment}
+                                onResolve={(commentId, resolved) => void commentActions.resolve(commentId, resolved)}
+                                onReply={commentActions.reply}
+                                onDelete={commentActions.remove}
                                 onCommentClick={handleCommentClick}
                                 canModify={canModifyComments}
                                 highlightedId={selectedCommentId}
                                 anchorStatuses={commentMarkerResolutions}
-                                onReattach={reattachComment}
-                                onPromote={promoteComment}
-                                onRetrySync={retryCommentSync}
-                                onShareReply={shareReply}
+                                onReattach={commentActions.reattach}
+                                onPromote={commentActions.promote}
+                                onRetrySync={commentActions.retrySync}
+                                onShareReply={commentActions.shareReply}
                                 embedded
                             />
                             </ThreadUpdateContext.Provider>
@@ -1796,26 +1603,26 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 key={`${commentDraft.location.x}:${commentDraft.location.y}`}
                 isOpen
                 onClose={() => dispatchMode({ type: "close-draft" })}
-                onSubmit={(payload) => void submitComment(payload)}
+                onSubmit={(payload) => void commentActions.submit(payload)}
                 location={commentDraft.location}
                 context={commentDraft.context}
-                isSubmitting={isSubmittingComment}
+                isSubmitting={commentActions.submitting}
                 mentionCandidates={mentionCandidates}
             />}
 
             {selectedComment && (
-                <ThreadUpdateContext.Provider value={applyThread}>
+                <ThreadUpdateContext.Provider value={commentActions.applyThread}>
                 <CommentCard
                     projectId={projectId}
                     comment={selectedComment}
                     screenPosition={commentCardScreenPosition}
                     canModify={canModifyComments}
                     onClose={() => dispatchMode({ type: "select-comment", id: null })}
-                    onResolve={(commentId, resolved) => void resolveComment(commentId, resolved)}
-                    onReply={replyToComment}
-                    onDelete={deleteComment}
-                    onPromote={promoteComment}
-                    onRetrySync={retryCommentSync}
+                    onResolve={(commentId, resolved) => void commentActions.resolve(commentId, resolved)}
+                    onReply={commentActions.reply}
+                    onDelete={commentActions.remove}
+                    onPromote={commentActions.promote}
+                    onRetrySync={commentActions.retrySync}
                 />
                 </ThreadUpdateContext.Provider>
             )}
