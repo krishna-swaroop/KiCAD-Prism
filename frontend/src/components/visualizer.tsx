@@ -880,10 +880,9 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         viewers.pcb.setHighlightedNets(highlightRefs(highlightedNets));
     }, [highlightedNets, pcb.element, pcb.generation, viewers]);
 
-    // The same collection on the schematic, on every sheet: members come from
-    // the semantic index, so it waits for both the sheet and the index.
     // The same collection on the schematic, on every sheet (Shift+click
-    // builds it): members come from the semantic index.
+    // builds it): members come from the semantic index, so this waits for
+    // both the sheet and the index.
     useEffect(() => {
         if (sch.generation === 0) return;
         viewers.sch.setSchematicHighlightedNets(schematicMembers(highlightedNets, semanticIndex));

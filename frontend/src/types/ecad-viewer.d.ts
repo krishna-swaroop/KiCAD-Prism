@@ -507,6 +507,13 @@ export interface ECadViewerElement extends HTMLElement {
      * are drawn over it on whichever sheet is open. Empty clears it.
      */
     setSchematicHighlightedNets?(nets: readonly SchematicNetMembers[]): Promise<void>;
+    /**
+     * The world view: every sheet the net of a label, sheet entry or power
+     * symbol reaches, on one canvas, with the connections between them. `~`
+     * opens it from the schematic; Escape closes it.
+     */
+    showWorldView?(page: string, uuid: string): Promise<boolean>;
+    hideWorldView?(): void;
     /** Fit the board camera to the highlighted copper. False when empty. */
     focusHighlightedNets?(): boolean;
     /**
