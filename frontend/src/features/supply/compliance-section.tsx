@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { SupplyCompliance, SupplyPartDetail } from "@/types/supply";
 import { ComplianceFacts } from "./compliance-facts";
-import { FoldSection } from "./fold-section";
+import { FoldSection } from "@/components/ui/fold-section";
 import { complianceBadge } from "./compliance-model";
 import { RohsExemptions } from "./rohs-exemptions";
 import { TradeTag } from "./trade-tag";

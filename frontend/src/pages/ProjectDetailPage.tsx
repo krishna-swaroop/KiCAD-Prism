@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
 import { useSimStudioAvailable } from "@/components/sim-studio/use-sim-studio-available";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical } from "lucide-react";
+import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical, Factory } from "lucide-react";
 import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
@@ -57,6 +57,9 @@ const Visualizer = lazy(() =>
 );
 const MarkdownContent = lazy(() =>
     import("@/components/markdown-content").then((module) => ({ default: module.MarkdownContent }))
+);
+const ProjectManufacturing = lazy(() =>
+    import("@/components/manufacturing/project-manufacturing").then((module) => ({ default: module.ProjectManufacturing }))
 );
 const ProjectSupplyTab = lazy(() =>
     import("@/features/supply/project-supply-tab").then((module) => ({ default: module.ProjectSupplyTab }))
@@ -111,6 +114,7 @@ function sectionFromSearchParams(searchParams: URLSearchParams): ProjectSection 
         || section === "documentation"
         || section === "workflows"
         || section === "release-studio"
+        || section === "manufacturing"
         || section === "supply"
         || section === "simulation-studio"
     ) {
@@ -126,6 +130,7 @@ const NAV_ITEMS = [
     { id: "visualizers" as ProjectSection, label: "Visualizers", icon: Box },
     { id: "workflows" as ProjectSection, label: "Workflows", icon: PlayCircle },
     { id: "release-studio" as ProjectSection, label: "Release Studio", icon: ShieldCheck },
+    { id: "manufacturing" as ProjectSection, label: "Manufacturing", icon: Factory },
     { id: "assets" as ProjectSection, label: "Assets Portal", icon: FolderOpen },
     { id: "documentation" as ProjectSection, label: "Documentation", icon: FileText },
 ];
@@ -149,6 +154,8 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const [project, setProject] = useState<Project | null>(null);
     // Where the Supply section puts its buttons: on its title row, a little higher than its own controls.
     const [supplyActions, setSupplyActions] = useState<HTMLElement | null>(null);
+    const [manufacturingTabs, setManufacturingTabs] = useState<HTMLElement | null>(null);
+    const [manufacturingActions, setManufacturingActions] = useState<HTMLElement | null>(null);
     const [readme, setReadme] = useState<string>("");
     const [loading, setLoading] = useState(true);
     const [activeSection, setActiveSection] = useState<ProjectSection>(() => (
@@ -791,6 +798,37 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                                     </Suspense>
                                 )}
                             </ErrorBoundary>
+                        </ProjectSectionPanel>
+                    )}
+
+                    {visitedSections.has("manufacturing") && (
+                        <ProjectSectionPanel
+                            key={`${projectId}:manufacturing`}
+                            active={activeSection === "manufacturing"}
+                            className="themed-scrollbar"
+                        >
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-4">
+                                    <h2 className="text-2xl font-bold">Manufacturing</h2>
+                                    <div ref={setManufacturingTabs} />
+                                </div>
+                                <div ref={setManufacturingActions} className="flex flex-wrap items-center gap-2" />
+                            </div>
+                            {projectId && (
+                                <ErrorBoundary label="the manufacturing panel" resetKeys={[projectId, refreshKey]}>
+                                    <Suspense fallback={<Skeleton className="h-48 w-full" aria-label="Loading manufacturing" />}>
+                                        <ProjectManufacturing
+                                            projectId={projectId}
+                                            canEdit={canMutateProject}
+                                            canLogDefects={canMutateProject || user?.role === "qa"}
+                                            canChangeStatus={user?.role === "qa" || user?.role === "admin"}
+                                            projectName={project ? getDisplayName(project) : undefined}
+                                            tabsSlot={manufacturingTabs}
+                                            actionsSlot={manufacturingActions}
+                                        />
+                                    </Suspense>
+                                </ErrorBoundary>
+                            )}
                         </ProjectSectionPanel>
                     )}
 

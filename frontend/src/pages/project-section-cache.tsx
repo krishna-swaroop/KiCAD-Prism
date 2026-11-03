@@ -16,6 +16,7 @@ export type ProjectSection =
     | "workflows"
     | "release-studio"
     | "simulation-studio"
+    | "manufacturing"
     | "supply";
 
 type VisitedSectionState = {
@@ -68,6 +69,7 @@ export function ProjectSectionPanel({
 }: {
     active: boolean;
     fill?: boolean;
+    /** Extra classes for the panel, e.g. `themed-scrollbar` on one that scrolls. */
     className?: string;
     children: ReactNode;
 }) {

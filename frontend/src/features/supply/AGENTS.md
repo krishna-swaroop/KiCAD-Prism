@@ -117,7 +117,7 @@ Supply tab (`component-parts-section.tsx`, `component-watch.tsx`,
 
 **Shared pieces** — `status-dot.tsx`, `vendor-name.tsx`, `vendor-colors.ts`,
 `supply-icons.tsx` (use these icons in lists, tables, bars and cards),
-`sparkline.tsx`, `chart-card.tsx`, `chart-format.ts`, `fold-section.tsx`,
+`sparkline.tsx`, `chart-card.tsx`, `chart-format.ts`, `@/components/ui/fold-section` (shared with Manufacturing),
 `collapsible-section.tsx`, `hover-details.tsx`.
 
 ## Tests

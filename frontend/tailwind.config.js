@@ -45,6 +45,10 @@ module.exports = {
                     DEFAULT: 'hsl(var(--warning))',
                     foreground: 'hsl(var(--warning-foreground))',
                 },
+                progress: {
+                    DEFAULT: 'hsl(var(--progress))',
+                    foreground: 'hsl(var(--progress-foreground))',
+                },
                 kind: {
                     board: 'hsl(var(--kind-board))',
                     module: 'hsl(var(--kind-module))',

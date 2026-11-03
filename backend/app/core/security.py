@@ -303,6 +303,19 @@ async def require_project_release_actor(
     return policy.authorize(user, "release")
 
 
+async def require_run_status_actor(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    """QA or Admin: advance a manufacturing run's status.
+
+    Mirrors the component-QA split: a designer creates and edits a run, but moving
+    it through its lifecycle (ordered, received, closed) is a QA/Admin act, so
+    not everyone with write access can change status.
+    """
+
+    return policy.authorize(user, "run_status")
+
+
 async def require_catalog_reader(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
     return policy.authorize(user, "catalog_read")
 
