@@ -136,7 +136,19 @@ export const SHORTCUT_REFERENCE: ShortcutGroupDoc[] = [
       { combo: "c", description: "Comment on the current selection" },
       { keys: ["[", "]"], description: "Previous / next schematic page" },
       { combo: "alt+backspace", description: "Go up to the parent sheet" },
+      { keys: [...shortcutKeys("shift"), "Click"], description: "Add a net to the highlight, or remove it" },
       { combo: "escape", description: "Clear selection, comment mode, and side panels" },
+    ],
+  },
+  {
+    title: "Net tracking",
+    hint: "Schematic tab. A local label traces on its own sheet; a global label, port, sheet entry, wire or power symbol opens the world view",
+    shortcuts: [
+      { keys: ["Hold", "~", "Click"], description: "Trace the item you click" },
+      { keys: ["Click", "~"], description: "Trace the selected item" },
+      { keys: ["~", "Click"], description: "In the world view, chain another net in its own colour" },
+      { keys: ["Double-click"], description: "Open a sheet from the world view" },
+      { combo: "escape", description: "Close the world view" },
     ],
   },
   {
