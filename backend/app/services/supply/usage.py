@@ -11,6 +11,7 @@ supply part later, however the part got into Prism. ``MATCHES_PART`` is that mat
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -219,6 +220,17 @@ def _datasheet_of(fields: Mapping[str, Any]) -> str:
     return "" if value in ("", "~") else value
 
 
+def revision_key(payload: Mapping[str, Any]) -> str:
+    """What a stored project's lines were read from: the index's design key, with this module's version.
+
+    An a2 semantic index names its design by ``designKey``; the a1 index called it ``sourceRevisionKey``.
+    An index with neither gets a key no stored row has, so it is always read again rather than never.
+    """
+
+    design = str(payload.get("designKey") or payload.get("sourceRevisionKey") or "").strip()
+    return f"{design or 'unkeyed:' + uuid.uuid4().hex}|u{USAGE_VERSION}"
+
+
 def store_project(
     conn,
     project_id: str,
@@ -290,7 +302,7 @@ def refresh(
             continue
         lines = lines_from_components(payload.get("components") or [], identities)
         named = {name: lines_from_components(variant_components(payload, name), identities) for name in variant_names(payload)}
-        revision = f"{payload.get('sourceRevisionKey') or ''}|u{USAGE_VERSION}"
+        revision = revision_key(payload)
         roles = (visible_roles or {}).get(str(project.id), ALL_ROLES)
         if store_project(conn, str(project.id), str(project.name), revision, lines, now, roles, named):
             updated += 1
@@ -323,7 +335,7 @@ def refresh_one(
         return "without_index"
     lines = lines_from_components(payload.get("components") or [], identities)
     named = {name: lines_from_components(variant_components(payload, name), identities) for name in variant_names(payload)}
-    revision = f"{payload.get('sourceRevisionKey') or ''}|u{USAGE_VERSION}"
+    revision = revision_key(payload)
     return "updated" if store_project(conn, str(project.id), str(project.name), revision, lines, now, visible_roles, named) else "unchanged"
 
 

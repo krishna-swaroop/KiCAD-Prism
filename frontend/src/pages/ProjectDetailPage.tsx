@@ -1,12 +1,12 @@
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
 import { useSimStudioAvailable } from "@/components/sim-studio/use-sim-studio-available";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical } from "lucide-react";
-import { fetchApi, fetchJson, readApiError } from "@/lib/api";
+import { ArrowLeft, RefreshCw } from "lucide-react";
+import { fetchJson } from "@/lib/api";
 import { toast } from "sonner";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
 import { invalidateServerState, useServerState } from "@/lib/server-state";
@@ -25,26 +25,22 @@ import {
 import { VISUALIZER_DESIGN_SEARCH_SLOT_ID } from "@/lib/design-search";
 import { installPrismScriptApi } from "@/lib/prism-script-api";
 import { canAdministerWorkspace, canCommentOnProjects, canManageProjects } from "@/lib/roles";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { projectLastUpdated } from "@/lib/project-dates";
 import { HelpMenu } from "@/features/bug-report/help-menu";
 import { LibraryUsageButton } from "@/features/library-usage/library-usage-button";
-import { SupplyNavIcon } from "@/features/supply/supply-nav-icon";
 import { canOpenSupply } from "@/lib/roles";
+import { BranchSelect, type ProjectBranch } from "./project-detail/branch-select";
+import { ProjectActionsMenu } from "./project-detail/project-actions-menu";
+import { ProjectMobileNav, ProjectSidebar, projectNavItems } from "./project-detail/project-nav";
+import { RevisionBanner } from "./project-detail/revision-banner";
+import { WorkflowsPanel } from "./project-detail/workflows-panel";
 
 const AssetsPortal = lazy(() =>
     import("@/components/assets-portal").then((module) => ({ default: module.AssetsPortal }))
 );
-const PathConfigDialog = lazy(() =>
-    import("@/components/path-config-dialog").then((module) => ({ default: module.PathConfigDialog }))
-);
 // Experimental, and its charts are heavy: loaded when the section first opens.
 const SimStudioPanel = lazy(() =>
     import("@/components/sim-studio/SimStudioPanel").then((module) => ({ default: module.SimStudioPanel }))
-);
-const TrackerSettingsDialog = lazy(() =>
-    import("@/features/tracker-integration/tracker-settings-dialog")
-        .then((module) => ({ default: module.TrackerSettingsDialog }))
 );
 const DocumentationBrowser = lazy(() =>
     import("@/components/documentation-browser").then((module) => ({ default: module.DocumentationBrowser }))
@@ -82,25 +78,12 @@ interface ProjectOverviewResponse {
     readme: string | null;
 }
 
-interface ProjectBranch {
-    name: string;
-    ref: string;
-    source: "local" | "remote" | string;
-    is_current: boolean;
-    hash: string;
-    commit: string;
-}
-
 interface ProjectBranchesResponse {
     branches: ProjectBranch[];
 }
 
 const NO_BRANCHES: ProjectBranch[] = [];
 const projectBranchesKey = (projectId: string) => ["project", projectId, "branches"] as const;
-
-interface WorkflowJobResponse {
-    job_id: string;
-}
 
 function sectionFromSearchParams(searchParams: URLSearchParams): ProjectSection {
     const section = searchParams.get("section");
@@ -118,22 +101,6 @@ function sectionFromSearchParams(searchParams: URLSearchParams): ProjectSection 
     }
     return "overview";
 }
-
-// Fixed navigation table, no closure over props: build it once.
-const NAV_ITEMS = [
-    { id: "overview" as ProjectSection, label: "Overview", icon: FileText },
-    { id: "history" as ProjectSection, label: "History", icon: History },
-    { id: "visualizers" as ProjectSection, label: "Visualizers", icon: Box },
-    { id: "workflows" as ProjectSection, label: "Workflows", icon: PlayCircle },
-    { id: "release-studio" as ProjectSection, label: "Release Studio", icon: ShieldCheck },
-    { id: "assets" as ProjectSection, label: "Assets Portal", icon: FolderOpen },
-    { id: "documentation" as ProjectSection, label: "Documentation", icon: FileText },
-];
-const SUPPLY_NAV_ITEM = { id: "supply" as ProjectSection, label: "Supply", icon: SupplyNavIcon };
-
-// Shown only when the backend serves Simulation Studio (PRISM_SIM_STUDIO_ENABLED).
-const SIM_NAV_ITEM = { id: "simulation-studio" as ProjectSection, label: "Simulation Studio", icon: FlaskConical };
-const NAV_ITEMS_WITH_SIM = NAV_ITEMS.flatMap((item) => (item.id === "release-studio" ? [item, SIM_NAV_ITEM] : [item]));
 
 // Closes over nothing in the component.
 const getDisplayName = (project: Project) => {
@@ -154,13 +121,9 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const [activeSection, setActiveSection] = useState<ProjectSection>(() => (
         sectionFromSearchParams(searchParams)
     ));
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [sidebarHovered, setSidebarHovered] = useState(false);
     const [commitsBehind, setCommitsBehind] = useState<number>(0);
     const [syncing, setSyncing] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
-    const [pathConfigOpen, setPathConfigOpen] = useState(false);
-    const [trackerSettingsOpen, setTrackerSettingsOpen] = useState(false);
     // One poller per project, kept fresh while the tab is visible. It does not
     // restart when the section, branch or commit changes.
     const branchesRead = useServerState(
@@ -177,10 +140,8 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     const branchError = branchesRead.error?.message ?? null;
     const canMutateProject = canManageProjects(user?.role);
     const simStudioAvailable = useSimStudioAvailable();
-    const sectionItems = simStudioAvailable ? NAV_ITEMS_WITH_SIM : NAV_ITEMS;
     const canComment = canCommentOnProjects(user?.role);
 
-    // Helper function to get display name
     const selectedBranchRef = searchParams.get('branch');
     const currentCommit = searchParams.get('commit');
     // Matched on ref first, then on name. Prism's clone never checks branches out, so
@@ -245,12 +206,10 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
     }, [navigate, projectId]);
 
     const visitedSections = useVisitedProjectSections(projectId, activeSection);
-    // Supply sits after Release Studio (and Simulation Studio), for the roles that read supply data.
-    const navItems = useMemo(() => {
-        if (!canOpenSupply(user?.role)) return sectionItems;
-        const at = sectionItems.reduce((last, item, index) => (item.id === "release-studio" || item.id === "simulation-studio" ? index + 1 : last), 0);
-        return [...sectionItems.slice(0, at), SUPPLY_NAV_ITEM, ...sectionItems.slice(at)];
-    }, [user?.role, sectionItems]);
+    const navItems = useMemo(
+        () => projectNavItems(user?.role, simStudioAvailable),
+        [user?.role, simStudioAvailable],
+    );
 
     const handleSectionChange = (section: ProjectSection) => {
         if (section === "visualizers" && !currentCommit && activeCommit) {
@@ -457,60 +416,30 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
 
     return (
         <div className="h-app-viewport flex flex-col bg-background">
-            <header className="border-b px-4 md:px-6 py-4 flex items-center gap-4">
-                {/* Mobile Menu */}
-                <Sheet>
-                    <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon" className="md:hidden">
-                            <Menu className="h-5 w-5" />
-                        </Button>
-                    </SheetTrigger>
-                    <SheetContent side="left" className="w-[240px] sm:w-[300px] p-0">
-                        <div className="py-4">
-                            <h2 className="px-4 text-lg font-semibold tracking-tight mb-2">Project Navigation</h2>
-                            <nav className="space-y-1 p-2">
-                                {navItems.map((item) => {
-                                    const Icon = item.icon;
-                                    return (
-                                        <button
-                                            key={item.id}
-                                            onClick={() => {
-                                                handleSectionChange(item.id);
-                                                // Close sheet hack
-                                                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-                                            }}
-                                            className={cn(
-                                                "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-                                                activeSection === item.id
-                                                    ? "bg-primary text-primary-foreground"
-                                                    : "hover:bg-muted text-foreground"
-                                            )}
-                                        >
-                                            <Icon className="h-4 w-4" />
-                                            <span className="flex-1 text-left">{item.label}</span>
-                                        </button>
-                                    );
-                                })}
-                            </nav>
-                        </div>
-                    </SheetContent>
-                </Sheet>
+            <header className="flex min-h-12 items-center gap-3 border-b px-3 py-1.5 md:px-4">
+                <ProjectMobileNav items={navItems} active={activeSection} onSelect={handleSectionChange} />
 
-                <Button variant="ghost" size="sm" onClick={handleBackNavigation} className="hidden md:flex">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleBackNavigation}
+                    className="hidden md:inline-flex"
+                    title="Back"
+                    aria-label="Back"
+                >
+                    <ArrowLeft className="h-4 w-4" />
                 </Button>
                 {/* The title takes whatever the header has left; it truncates only when
                     there is genuinely no room, rather than at a fixed pixel cap. */}
                 <div className="min-w-[7rem] flex-1">
                     <h1 className={cn(
-                        "text-xl font-bold truncate",
+                        "truncate text-base font-semibold tracking-tight",
                         activeSection === "visualizers" ? "" : "max-w-[200px] md:max-w-none",
                     )}>
                         {project ? getDisplayName(project) : ""}
                     </h1>
                     <p className={cn(
-                        "text-sm text-muted-foreground",
+                        "truncate text-xs text-muted-foreground",
                         activeSection === "visualizers" ? "hidden" : "hidden md:block",
                     )}>
                         {project?.description}
@@ -525,48 +454,14 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     />
                 ) : null}
 
-                <div className="hidden min-w-0 items-center gap-2 md:flex">
-                    <GitBranch className="h-4 w-4 text-muted-foreground" />
-                    <select
-                        // An explicit ?branch= for the current branch has no
-                        // option of its own (it lives in the default entry), so
-                        // map it back to the default value to keep the select
-                        // in sync rather than falling through to the first item.
-                        value={
-                            selectedBranch && selectedBranch.ref !== currentBranch?.ref
-                                ? selectedBranch.ref
-                                : ""
-                        }
-                        onChange={(event) => handleBranchChange(event.target.value)}
-                        disabled={branchesLoading}
-                        title={branchError || "View this project on another branch"}
-                        className="h-9 max-w-[260px] appearance-none rounded-md border border-input bg-background bg-no-repeat py-0 pl-3 pr-8 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        style={{
-                            backgroundImage:
-                                "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
-                            backgroundPosition: "right 0.5rem center",
-                            backgroundSize: "1rem",
-                        }}
-                    >
-                        <option value="">
-                            {branchesLoading
-                                ? "Loading branches..."
-                                : currentBranch?.name || "Current checkout"}
-                        </option>
-                        {/* The default option above already represents the
-                            current branch by name, so skip it here rather than
-                            listing it a second time with a "(current)" suffix. */}
-                        {branches.flatMap((branch) => (
-                            !branch.is_current
-                                ? [
-                                    <option key={branch.ref} value={branch.ref}>
-                                        {branch.name}
-                                    </option>,
-                                ]
-                                : []
-                        ))}
-                    </select>
-                </div>
+                <BranchSelect
+                    branches={branches}
+                    selected={selectedBranch}
+                    current={currentBranch}
+                    loading={branchesLoading}
+                    error={branchError}
+                    onChange={handleBranchChange}
+                />
 
                 {newerViewerRevisionAvailable && activeCommit && (
                     <Button variant="outline" size="sm"
@@ -575,166 +470,49 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     </Button>
                 )}
 
-                {/* Open in KiCad. Fires a prism:// link the local Prism agent
-                    handles: it finds the project by its marker, clones it if this
-                    machine doesn't have it, and opens it. Nothing happens if the
-                    agent isn't installed, the browser silently ignores an
-                    unregistered scheme, so we can't detect it and shouldn't pretend to. */}
-                {project && (
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => { window.location.href = `prism://open/${project.id}`; }}
-                        title="Open in KiCad (requires the Prism agent)"
-                    >
-                        <ExternalLink className="h-4 w-4" />
-                    </Button>
-                )}
-
                 {projectId && <LibraryUsageButton projectId={projectId} canScan={canMutateProject} />}
 
-                {/* Sync Button */}
                 {canMutateProject && (
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={handleSync}
                         disabled={syncing}
-                        className="flex items-center gap-2"
                         title="Sync with remote repository"
                     >
-                        <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-                        {syncing ? 'Syncing...' : 'Sync'}
+                        <RefreshCw className={cn(syncing && "animate-spin")} />
+                        {syncing ? "Syncing…" : "Sync"}
                     </Button>
                 )}
 
                 {projectId && (
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setTrackerSettingsOpen(true)}
-                        title="Issue publishing settings"
-                        aria-label="Issue publishing settings"
-                    >
-                        <Link2 className="h-4 w-4" />
-                    </Button>
-                )}
-
-                {canMutateProject && (
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setPathConfigOpen(true)}
-                        title="Project settings"
-                    >
-                        <Settings className="h-4 w-4" />
-                    </Button>
+                    <ProjectActionsMenu
+                        projectId={projectId}
+                        canManage={canMutateProject}
+                        isAdmin={canAdministerWorkspace(user?.role)}
+                    />
                 )}
 
                 <HelpMenu />
-
-                {projectId && pathConfigOpen && (
-                    <Suspense fallback={null}>
-                        <PathConfigDialog
-                            projectId={projectId}
-                            open={pathConfigOpen}
-                            onOpenChange={setPathConfigOpen}
-                        />
-                    </Suspense>
-                )}
-                {projectId && trackerSettingsOpen && (
-                    <Suspense fallback={null}>
-                        <TrackerSettingsDialog
-                            projectId={projectId}
-                            isAdmin={canAdministerWorkspace(user?.role)}
-                            open={trackerSettingsOpen}
-                            onOpenChange={setTrackerSettingsOpen}
-                        />
-                    </Suspense>
-                )}
             </header>
 
-            {/* Version Banner */}
             {(currentCommit || selectedBranch) && (
-                <div className="bg-warning/10 border-b border-warning/20 px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                        <GitBranch className="h-4 w-4 text-warning" />
-                        <span className="font-medium">
-                            {currentCommit
-                                ? `Viewing commit ${currentCommit.substring(0, 7)}`
-                                : `Viewing branch ${selectedBranch?.ref || selectedBranchRef}`}
-                            {selectedBranch && (
-                                <span className="text-muted-foreground ml-2">@ {selectedBranch.hash}</span>
-                            )}
-                            {currentCommit && commitsBehind > 0 && (
-                                <span className="text-muted-foreground ml-2">
-                                    ({commitsBehind} {commitsBehind === 1 ? 'commit' : 'commits'} behind latest)
-                                </span>
-                            )}
-                        </span>
-                    </div>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleResetToLatest}
-                        className="h-7"
-                    >
-                        <RotateCcw className="h-3 w-3 mr-2" />
-                        {currentCommit && selectedBranchRef ? "Return to Branch Head" : "Return to Current Checkout"}
-                    </Button>
-                </div>
+                <RevisionBanner
+                    commit={currentCommit}
+                    branchRef={selectedBranch?.ref || selectedBranchRef}
+                    branchHash={selectedBranch?.hash ?? null}
+                    commitsBehind={commitsBehind}
+                    onReset={handleResetToLatest}
+                />
             )}
 
             <div className="flex flex-1 overflow-hidden">
-                <aside
-                    className={cn(
-                        "hidden md:block border-r bg-muted/10 p-4 transition-all duration-300 relative",
-                        (!sidebarCollapsed || sidebarHovered) ? "w-64" : "w-16"
-                    )}
-                    onMouseEnter={() => setSidebarHovered(true)}
-                    onMouseLeave={() => setSidebarHovered(false)}
-                >
-                    <div className="absolute top-4 right-2 z-10">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                            className="h-6 w-6 p-0"
-                        >
-                            {sidebarCollapsed ? (
-                                <ChevronRight className="h-4 w-4" />
-                            ) : (
-                                <ChevronLeft className="h-4 w-4" />
-                            )}
-                        </Button>
-                    </div>
-
-                    <nav className="space-y-1 mt-8">
-                        {navItems.map((item) => {
-                            const Icon = item.icon;
-                            const isExpanded = !sidebarCollapsed || sidebarHovered;
-                            return (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleSectionChange(item.id)}
-                                    className={cn(
-                                        "w-full flex items-center rounded-md text-sm transition-colors",
-                                        isExpanded ? "gap-3 px-3 py-2" : "justify-center py-2",
-                                        activeSection === item.id
-                                            ? "bg-primary text-primary-foreground"
-                                            : "hover:bg-muted text-foreground"
-                                    )}
-                                    title={!isExpanded ? item.label : undefined}
-                                >
-                                    <Icon className="h-4 w-4 flex-shrink-0" />
-                                    {isExpanded && (
-                                        <span className="flex-1 text-left">{item.label}</span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </nav>
-                </aside>
+                <ProjectSidebar
+                    items={navItems}
+                    active={activeSection}
+                    onSelect={handleSectionChange}
+                    railByDefault={activeSection === "visualizers"}
+                />
 
                 <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
                     {visitedSections.has("overview") && (
@@ -909,142 +687,5 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 </main>
             </div>
         </div>
-    );
-}
-
-// Workflows Sub-component
-function WorkflowsPanel({ projectId, user, canRun }: { projectId: string, user: User | null, canRun: boolean }) {
-    const [runningJob, setRunningJob] = useState<{ id: string, type: string } | null>(null);
-    const [logs, setLogs] = useState<string[]>([]);
-    const [status, setStatus] = useState<string>("idle");
-
-    useEffect(() => {
-        if (!runningJob) return;
-        const controller = new AbortController();
-        void watchPrismJob(runningJob.id, {
-            signal: controller.signal,
-            includeLogs: true,
-            onUpdate: (job, nextLogs) => {
-                setLogs(nextLogs);
-                setStatus(job.status);
-            },
-        }).catch((error: unknown) => {
-            if (error instanceof DOMException && error.name === "AbortError") return;
-            setStatus("failed");
-            setLogs((current) => [
-                ...current,
-                error instanceof Error ? error.message : "Failed to poll workflow",
-            ]);
-        });
-        return () => controller.abort();
-    }, [runningJob]);
-
-    const runWorkflow = async (type: string) => {
-        if (!canRun) {
-            toast.error("Your role does not allow you to run workflows.");
-            return;
-        }
-        setLogs([]);
-        setStatus("running");
-        try {
-            const res = await fetchApi(`/api/projects/${projectId}/workflows`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    type,
-                    author: user?.name || "anonymous"
-                })
-            });
-
-            if (res.ok) {
-                const data = (await res.json()) as WorkflowJobResponse;
-                setRunningJob({ id: data.job_id, type });
-            } else {
-                const message = await readApiError(res, "Failed to start workflow");
-                toast.error(message);
-                setStatus("idle");
-            }
-        } catch (e) {
-            const message = e instanceof Error ? e.message : "Failed to start workflow";
-            toast.error(message);
-            setStatus("idle");
-        }
-    };
-
-    // Log lines arrive as whole-array snapshots from the job poller; position
-    // is their only stable identity, and the array is replaced (not appended)
-    // on every update, so index-based reconciliation is exact here.
-    const logRows = logs.map((log, i) => (
-        // react-doctor-disable-next-line react-doctor/no-array-index-as-key
-        <div key={i} className="break-all whitespace-pre-wrap">{log}</div>
-    ));
-
-    return (
-        <div className="max-w-5xl">
-            <h2 className="text-2xl font-bold mb-6">Workflows</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <WorkflowCard
-                    title="Design Outputs"
-                    desc="Generate Schematics, Netlists, and BOMs."
-                    icon={FileText}
-                    onClick={() => runWorkflow("design")}
-                    disabled={status === "running" || !canRun}
-                />
-                <WorkflowCard
-                    title="Manufacturing Outputs"
-                    desc="Generate Gerbers, Drill Files, and Pick & Place."
-                    icon={Box}
-                    onClick={() => runWorkflow("manufacturing")}
-                    disabled={status === "running" || !canRun}
-                />
-                <WorkflowCard
-                    title="3D Renders"
-                    desc="Generate Ray-Traced Renders of the PCB."
-                    icon={Box}
-                    onClick={() => runWorkflow("render")}
-                    disabled={status === "running" || !canRun}
-                />
-            </div>
-
-            {/* Terminal / Logs Area */}
-            {runningJob && (
-                <div className="bg-zinc-950 rounded-lg border border-zinc-800 p-4 font-mono text-xs md:text-sm h-96 overflow-auto shadow-inner text-zinc-300">
-                    <div className="flex items-center justify-between mb-2 text-zinc-500 border-b border-zinc-800 pb-2">
-                        <span>Job: {runningJob.type.toUpperCase()} ({status})</span>
-                        {status === 'running' && <span className="animate-pulse text-warning">Running...</span>}
-                        {status === 'completed' && <span className="text-success">Completed</span>}
-                        {status === 'failed' && <span className="text-destructive">Failed</span>}
-                    </div>
-                    <div className="space-y-1">
-                        {logRows}
-                        {logs.length === 0 && <span className="text-zinc-600">Initializing...</span>}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
-interface WorkflowCardProps {
-    title: string;
-    desc: string;
-    icon: ComponentType<{ className?: string }>;
-    onClick: () => void;
-    disabled: boolean;
-}
-
-function WorkflowCard({ title, desc, icon: Icon, onClick, disabled }: WorkflowCardProps) {
-    return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            className="flex flex-col items-start p-6 rounded-lg border bg-card text-card-foreground shadow-sm hover:border-primary/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-            <div className="p-2 bg-primary/10 rounded-md mb-4 text-primary">
-                <Icon className="h-6 w-6" />
-            </div>
-            <h3 className="font-semibold mb-1">{title}</h3>
-            <p className="text-sm text-muted-foreground">{desc}</p>
-        </button>
     );
 }

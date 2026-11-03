@@ -30,9 +30,9 @@ repository.
 2. Do one of the following:
    - **Comment on an object.** Select a part, pin, pad, net, wire or track,
      then press `C`.
-   - **Comment on a point or an area.** Select **Commenting Mode** in the
-     toolbar (or press `C` with nothing selected). Click a point, or drag to
-     mark an area.
+   - **Comment on a point or an area.** Select the speech-bubble-with-plus
+     icon (**Commenting mode**) in the toolbar, or press `C` with nothing
+     selected. Click a point, or drag to mark an area.
 3. In **Add Comment**, choose a **Class** (**General**, **Observation**,
    **Question** or **Task**) and a **Severity** (**Info**, **Minor**,
    **Major** or **Critical**).
@@ -123,8 +123,8 @@ is kept.
 ## Publish a thread as an issue
 
 If your administrator has connected GitHub or GitLab, a project can publish
-comment threads as issues in a repository. The project's rules are under the
-link icon (**Issue publishing settings**) in the project header: which
+comment threads as issues in a repository. The project's rules are under
+**⋯ → Issue Tracker** in the project header: which
 repository, which severities publish automatically (for example **Minor and
 above**), whether tasks always publish, and **Who can publish**.
 

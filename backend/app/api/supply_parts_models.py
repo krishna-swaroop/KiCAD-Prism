@@ -94,6 +94,7 @@ class RowDistributor(SupplyModel):
     stock: int
     price: Optional[str]
     currency: str
+    marketplace: bool = Field(default=False, description="Only marketplace or assembly offers: shown, never counted in the part's stock.")
 
 
 class SupplyRowOffer(SupplyModel):
@@ -590,6 +591,7 @@ class AlternativeCandidate(PartStanding):
 class SuggestionSource(SupplyModel):
     provider: str
     name: str
+    page_url: str = Field(description="The suggestion's page at this distributor, empty when its number does not give one.")
 
 
 class DistributorSuggestion(SupplyModel):
@@ -600,6 +602,7 @@ class DistributorSuggestion(SupplyModel):
     sku: str
     notes: list[str] = Field(description="Their words: the package, or how close DigiKey says it is.")
     sources: list[SuggestionSource]
+    page_url: str = Field(description="The first distributor page among its sources, empty when none has one.")
     asked: bool = Field(description="Asked for from DigiKey, not seen in an offer read.")
     part_id: Optional[str] = Field(description="The part in Prism, when it is one.")
     stock: Optional[int]

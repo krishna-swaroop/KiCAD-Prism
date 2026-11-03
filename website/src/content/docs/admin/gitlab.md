@@ -151,7 +151,7 @@ Linking only reads the person's GitLab username.
 
 ### 5. Turn on publishing for a project
 
-1. Open the project and click **Issue publishing** in its header.
+1. Open the project, click **⋯** in its header and choose **Issue Tracker**.
 2. Choose GitLab Issues and, if you have several, the connection.
 3. Choose the GitLab project: the project's own, or another the bot is a
    member of. Nested groups work.

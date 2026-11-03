@@ -4,6 +4,7 @@ import {
   highlightRefs,
   netFromSelection,
   removeHighlightedNet,
+  schematicMembers,
   sameHighlightedNets,
   toggleHighlightedNet,
   type HighlightedNet,
@@ -97,5 +98,34 @@ describe("adoptViewerNets", () => {
     expect(adoptViewerNets([A], [])).toEqual([]);
     expect(sameHighlightedNets([A], [A])).toBe(true);
     expect(sameHighlightedNets([A], [B])).toBe(false);
+  });
+});
+
+describe("schematicMembers", () => {
+  it("lists each net's wires, labels, junctions and pins per sheet instance", () => {
+    const index = {
+      ...INDEX,
+      nets: [
+        {
+          ...INDEX.nets[0],
+          schematicRefs: [
+            { sheetInstancePath: "/root", wireUuids: ["w1"], labelUuids: ["l1"], junctionUuids: ["j1"], pinUuids: ["p1"] },
+            { sheetInstancePath: "/root/power", labelUuids: ["l2"], junctionUuids: ["entry"] },
+            { wireUuids: ["unplaced"] },
+          ],
+        },
+        INDEX.nets[1],
+      ],
+    } as unknown as PrismSemanticIndex;
+    expect(schematicMembers([A, B], index)).toEqual([
+      {
+        name: "/Power/VBUS",
+        pages: [
+          { sheetPath: "/root", uuids: ["w1", "l1", "j1", "p1"] },
+          { sheetPath: "/root/power", uuids: ["l2", "entry"] },
+        ],
+      },
+    ]);
+    expect(schematicMembers([A], null)).toEqual([]);
   });
 });

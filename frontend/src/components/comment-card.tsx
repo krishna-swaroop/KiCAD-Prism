@@ -86,7 +86,7 @@ export function CommentCard({
         <dialog
             open
             className={cn(
-                "fixed z-[110] m-0 flex w-80 flex-col overflow-hidden rounded-md border bg-background p-0 text-foreground shadow-lg",
+                "fixed z-float m-0 flex w-80 flex-col overflow-hidden rounded-md border bg-background p-0 text-foreground shadow-lg",
                 isResolved && "opacity-80",
             )}
             style={style}
@@ -262,8 +262,6 @@ export function CommentCard({
                 title="Delete comment"
                 description="This removes the comment and its replies from the review thread. It cannot be undone."
                 confirmLabel="Delete comment"
-                // Above the card itself, which floats at z-110.
-                layerClassName="z-[130]"
                 onConfirm={() => {
                     setConfirmDelete(false);
                     void onDelete(comment.id);

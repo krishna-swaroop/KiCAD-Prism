@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Callable, Literal, Mapping, Sequence
 
-from app.services.supply import attention, budget, clock, counted, facts, freshness, fx, headline_price, insights, offer_rules, outlook, params, part_history, part_insights, parts, pcn, preferences, price_behaviour, price_quantity, prices, pricing, promises, scorecard, stock, trade_marks, usage
+from app.services.supply import attention, budget, clock, counted, facts, freshness, fx, headline_price, insights, offer_rules, outlook, page_links, params, part_history, part_insights, parts, pcn, preferences, price_behaviour, price_quantity, prices, pricing, promises, scorecard, stock, trade_marks, usage
 from app.services.supply.history import days_sql
 from app.services.supply import settings as supply_settings
 from app.services.supply.models import https_link
@@ -797,15 +797,20 @@ def _row_extras(conn, page: list[dict[str, Any]], kept: dict[str, dict[str, Any]
         here = [offer for offer in offers.get(item["id"], []) if not offer["marketplace"]]
         by_connector: dict[str, dict[str, Any]] = {}
         held: dict[str, list[dict]] = defaultdict(list)
-        for offer in here:
-            entry = by_connector.setdefault(offer["connector_id"], {"connector_id": offer["connector_id"], "provider": offer["provider"], "name": offer["connector_name"], "stock": 0, "price": None, "currency": ""})
+        # Marketplace and assembly stock is no part of the part's figures, but the distributor still shows, marked as such.
+        for offer in offers.get(item["id"], []):
+            entry = by_connector.setdefault(offer["connector_id"], {
+                "connector_id": offer["connector_id"], "provider": offer["provider"], "name": offer["connector_name"], "stock": 0, "price": None, "currency": "",
+                "marketplace": bool(offer["marketplace"]),
+            })
+            entry["marketplace"] = entry["marketplace"] and bool(offer["marketplace"])
             held[offer["connector_id"]].append(offer)
             price, currency, _quantity = pricing.native_price(offer, quantities[item["id"]])
             if price is not None and (entry["price"] is None or Decimal(price) < Decimal(entry["price"])):
                 entry["price"], entry["currency"] = price, currency
         for connector_id, entry in by_connector.items():
-            # By pile, as the part's stock counts it: cut tape and custom reel are one shelf.
-            entry["stock"] = stock.connector_stock(entry["provider"], held[connector_id])
+            # By pile, as the part's stock counts it: cut tape and custom reel are one shelf. A distributor with both kinds counts its own.
+            entry["stock"] = stock.connector_stock(entry["provider"], [o for o in held[connector_id] if entry["marketplace"] or not o["marketplace"]])
         flags = []
         if item["id"] in waiting:
             flags.append("waiting")
@@ -1031,19 +1036,6 @@ def _price_block(conn, part_id: str, now: datetime, kept: Mapping[str, Any]) -> 
     return block | {"currency": base, **chosen, "headline": {key: kept[key] for key in _PRICE_KEYS}}
 
 
-# Distributors whose product page is known from the number alone, for a listing not read yet.
-_PAGE_URLS = {"lcsc": "https://www.lcsc.com/product-detail/{}.html", "tme": "https://www.tme.eu/en/details/{}/"}
-
-
-def _page_url(provider: str, sku: str, read_url: str | None) -> str:
-    """The distributor's page for a listing: the one its last reading gave, else one built from the number."""
-
-    if https_link(read_url):
-        return https_link(read_url)
-    pattern = _PAGE_URLS.get(provider)
-    return pattern.format(sku.lower() if provider == "tme" else sku) if pattern and sku and "/" not in sku else ""
-
-
 def part_detail(conn, part_id: str, *, now: datetime | None = None, role: str | None = None) -> dict[str, Any]:
     now = now or clock.now()
     part = parts.get_part(conn, part_id)
@@ -1102,7 +1094,7 @@ def part_detail(conn, part_id: str, *, now: datetime | None = None, role: str | 
             "raw_mpn": r["raw_mpn"] or "",
             "raw_manufacturer": r["raw_manufacturer"] or "",
             "match_reason": r["match_reason"] or "",
-            "page_url": _page_url(r["provider"], r["sku"], r["product_url"]),
+            "page_url": page_links.page_url(r["provider"], r["sku"], r["product_url"]),
             "counted": r["match_state"] in counted.STATES,
             "offer": {
                 "fetched_at": iso(r["fetched_at"]),

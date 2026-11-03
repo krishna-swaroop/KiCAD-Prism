@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.supply import component_parts, discovery, parts, settle
+from app.services.supply import component_parts, discovery, page_links, parts, settle
 from app.services.supply.identity import alias_key, match_key
 
 # Another maker's listing of a number (near) is kept on the part and shown there; only the legacy waiting state is queued.
@@ -109,7 +109,8 @@ def to_approve(conn, *, limit: int = 200) -> dict[str, list[dict[str, Any]]]:
 
 
 def matched_by_prism(conn, *, limit: int = 100) -> dict[str, Any]:
-    """What Prism decided by itself and a person may undo: the spellings it learned for a maker, and the parts it settled."""
+    """What Prism decided by itself and a person may undo or keep: the spellings it learned for a maker, and the parts it settled
+    that nobody kept since."""
 
     learned = conn.execute(
         """
@@ -124,7 +125,9 @@ def matched_by_prism(conn, *, limit: int = 100) -> dict[str, Any]:
         """
         SELECT e.subject_id AS part_id, p.mpn, m.name AS manufacturer, e.at
         FROM supply_audit_events e JOIN supply_parts p ON p.id = e.subject_id JOIN supply_manufacturers m ON m.id = p.manufacturer_id
-        WHERE e.action = 'part.settle' AND e.actor = %s ORDER BY e.at DESC LIMIT %s
+        WHERE e.action = 'part.settle' AND e.actor = %s
+          AND NOT EXISTS (SELECT 1 FROM supply_audit_events k WHERE k.action = 'part.settle_accept' AND k.subject_id = e.subject_id AND k.at >= e.at)
+        ORDER BY e.at DESC LIMIT %s
         """,
         (settle.SYSTEM, limit),
     ).fetchall()
@@ -141,7 +144,7 @@ def review_queue(conn, *, limit: int = 200) -> dict[str, Any]:
         """
         SELECT l.id, l.connector_id, c.display_name AS connector_name, c.provider, l.sku, l.raw_mpn, l.raw_manufacturer,
                l.match_state, l.match_reason, l.first_seen_at, COALESCE(NULLIF(o.packaging, 'unknown'), l.packaging) AS packaging,
-               o.reel_size, o.packaging_inferred,
+               o.reel_size, o.packaging_inferred, o.product_url,
                p.id AS part_id, p.mpn AS part_mpn, m.name AS part_manufacturer
         FROM supply_listings l
         JOIN supply_connectors c ON c.id = l.connector_id
@@ -183,6 +186,7 @@ def review_queue(conn, *, limit: int = 200) -> dict[str, Any]:
                 "connector_name": row["connector_name"],
                 "provider": row["provider"],
                 "sku": row["sku"],
+                "page_url": page_links.page_url(row["provider"], row["sku"], row["product_url"]),
                 "raw_mpn": row["raw_mpn"],
                 "raw_manufacturer": row["raw_manufacturer"],
                 "match_state": row["match_state"],

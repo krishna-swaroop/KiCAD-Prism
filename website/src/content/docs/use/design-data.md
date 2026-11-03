@@ -55,7 +55,7 @@ shown**: what you see is the last commit, not the changed files.
 ## Check a project's design data
 
 1. Open the project.
-2. Select the gear icon (**Project settings**) in the project header.
+2. Select **⋯ → Project Settings** in the project header.
 3. Scroll to **Design data**.
 
 The summary line counts the revisions that are stored, reused from another

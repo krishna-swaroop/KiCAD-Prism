@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Iterable
 
-from app.services.supply import facts, parts
+from app.services.supply import facts, page_links, parts
 from app.services.supply.identity import match_key
 from app.services.supply.models import Alternate
 
@@ -107,12 +107,14 @@ def for_part(conn, part_id: str) -> list[dict[str, Any]]:
         })
         if row["mpn"] and not entry["mpn"]:
             entry.update(manufacturer=row["manufacturer"], mpn=row["mpn"])
-        entry["sources"].append({"provider": row["provider"], "name": facts.source_label(row["provider"])})
+        link = page_links.page_url(row["provider"], row["sku"])
+        entry["sources"].append({"provider": row["provider"], "name": facts.source_label(row["provider"]), "page_url": link})
         if row["note"] and row["note"] not in entry["notes"]:
             entry["notes"].append(row["note"])
         entry["asked"] = entry["asked"] or row["origin"] == "asked"
     for entry in merged.values():
         entry["sources"].sort(key=lambda source: source["name"].lower())
+        entry["page_url"] = next((source["page_url"] for source in entry["sources"] if source["page_url"]), "")
         found = parts.find_part(conn, entry["manufacturer"], entry["mpn"]) if entry["mpn"] else None
         entry["part_id"] = found.id if found else None
     return list(merged.values())

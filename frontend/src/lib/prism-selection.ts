@@ -26,6 +26,7 @@ export function normalizeEcadSelection(
         crossIndex: normalized.crossIndex,
         sheet: normalized.sheet,
         page: normalized.page,
+        name: normalized.name,
         layer: normalized.layer,
         sourceRevisionKey,
     } as const;
@@ -119,6 +120,13 @@ function netForSelection(
     index: PrismSemanticIndex,
 ): SemanticNet | undefined {
     const maps = index.indexes;
+    // A schematic item's uuid names its net exactly. Its text does not: a
+    // hierarchical label or sheet entry "SDA" is a different net from a
+    // global "SDA", and only the leaf name reaches us.
+    if (selection.sourceContext === "SCH" && selection.uuid) {
+        const byUuid = indexed(index.nets, maps.netBySchematicUuid?.[selection.uuid]);
+        if (byUuid) return byUuid;
+    }
     if (selection.netName) {
         const byName = indexed(index.nets, maps.netByName?.[selection.netName]);
         if (byName) return byName;
@@ -194,7 +202,13 @@ export function netStatisticsRefForSelection(
     return { name, netCode };
 }
 
+/** A hierarchical sheet symbol: reported as a uuid-only selection with its name on the anchor. */
+export const isSheetSelection = (selection: PrismSelection): boolean => selection.anchor?.itemType === "sheet";
+
 export function selectionLabel(selection: PrismSelection): string {
+    if (isSheetSelection(selection)) {
+        return selection.anchor?.name || selection.anchor?.page || selection.uuid || "Sheet";
+    }
     if (selection.kind === "component") return selection.reference;
     if (selection.kind === "terminal") return `${selection.reference}.${selection.pin}`;
     return selection.netName || selection.netUid || selection.uuid || "Unresolved net";

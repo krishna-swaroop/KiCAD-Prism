@@ -23,6 +23,7 @@ from app.api.supply_tracking_models import (
     PartTrackingState, ProjectIn, ProjectOpen, ProjectTrackingPreview, ProjectTrackingState, ScheduleIn, ScheduleSettings, TrackingPreview,
     TrackingRoom, TrackProgress, UsualBuild,
 )
+from app.services import project_service
 from app.services.supply import admission, budget_view, clock, component_watches, parts, project_bom, room, tracking, usage, watches
 from app.services.supply import settings as supply_settings
 from app.services.supply.progress import job_progress
@@ -102,15 +103,18 @@ async def choose_line(project_id: str, body: LineChoiceIn, user: AuthenticatedUs
 
 @router.get("/projects/{project_id}", response_model=ProjectTrackingState)
 async def project_state(project_id: str, user: AuthenticatedUser = Depends(require_supply_reader)) -> dict[str, Any]:
-    get_project_for_role_or_404(project_id, user.role)
+    project = get_project_for_role_or_404(project_id, user.role)
 
     def read() -> dict[str, Any]:
+        # The BOM is read from the schematic; a board on its own has no parts to read.
+        has_schematic = project_service.find_schematic_file(project.path, anchor=project.project_file) is not None
         with _store().connection() as conn:
             tracked = tracking.tracked_project(conn, project_id)
             has_usage = conn.execute("SELECT 1 FROM supply_bom_usage_projects WHERE project_id = %s", (project_id,)).fetchone() is not None
             return {
                 "tracked": {**tracked, "tracked_at": tracked["tracked_at"].isoformat()} if tracked else None,
                 "has_usage": has_usage,
+                "has_schematic": has_schematic,
                 "variants": usage.project_variants(conn, project_id) if has_usage else [],
             }
 

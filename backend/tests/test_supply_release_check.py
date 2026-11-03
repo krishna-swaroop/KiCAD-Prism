@@ -76,6 +76,10 @@ class ReleaseCheckTests(unittest.TestCase):
                 conn.execute(f"DELETE FROM {table}")
             conn.execute("INSERT INTO supply_manufacturers (id, name, name_key) VALUES ('m1', 'Acme', 'acme')")
         self.cid = self.connectors.create(actor="seed@example.com", provider="fake", currency="EUR", display_name="Sim", interactive_reserve_pct=0)["id"]
+        # The mocked projects have no folder; whether one has a schematic is the test's to say.
+        schematic = mock.patch("app.api.supply_release._has_schematic", return_value=True)
+        self.has_schematic = schematic.start()
+        self.addCleanup(schematic.stop)
 
     def part(self, mpn: str, *, stock: int, lifecycle: str = "active") -> str:
         with self.store.connection() as conn:
@@ -239,7 +243,10 @@ class ReleaseCheckTests(unittest.TestCase):
         self.part("GOOD-1", stock=5000)
         project = SimpleNamespace(id="prj_9")
         with mock.patch("app.api.supply_release.get_project_for_role_or_404", return_value=project):
-            self.assertFalse(self.request("prj_9/supply").json["available"])
+            unread = self.request("prj_9/supply").json
+            self.assertEqual((unread["available"], unread["has_schematic"]), (False, True))
+            self.has_schematic.return_value = False
+            self.assertFalse(self.request("prj_9/supply").json["has_schematic"], "a board on its own has no schematic to read")
             with self.store.connection() as conn:
                 usage.store_project(conn, "prj_9", "Nine", "rev1", usage.lines_from_components([
                     component("R1", "Acme", "GOOD-1"), component("R2", "Acme", "GOOD-1"), component("C1", "Acme", "UNKNOWN-9"),
