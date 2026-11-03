@@ -44,8 +44,9 @@ export function useTrackProject(projectId: string) {
   const [failed, setError] = useState("");
   const [again, setAgain] = useState(0);
 
-  // A project whose BOM Prism has not read: read it, or queue its index and look again until it lands.
-  const needsRead = state != null && !state.has_usage;
+  // A project whose BOM Prism has not read: read it, or queue its index and look again until it lands. A project with no
+  // schematic has no BOM to read.
+  const needsRead = state != null && !state.has_usage && state.has_schematic !== false;
   const readFetcher = useCallback(() => readProjectBom(projectId), [projectId]);
   const read = useLoaded(needsRead ? `projects/${projectId}/read/track` : null, readFetcher, "Could not read the project's BOM", {
     refreshEvery: READ_POLL_MS, refreshWhile: isRunning,

@@ -34,7 +34,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from app.services.kicad_tools import KicadTool, ToolError, ToolTimeout, kicad_cli
+from app.services.kicad_tools import KicadTool, ToolError, ToolTimeout, kicad_cli, project_state_kept
 
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,8 @@ def export_board_stats(pcb_path: str, *, tool: Optional[KicadTool] = None) -> di
             str(board),
         ]
         try:
-            completed = cli.run(argv, timeout=STATS_TIMEOUT_SECONDS, cwd=scratch)
+            with project_state_kept(board):
+                completed = cli.run(argv, timeout=STATS_TIMEOUT_SECONDS, cwd=scratch)
         except ToolTimeout as error:
             raise BoardStatsUnavailable(
                 f"kicad-cli timed out after {STATS_TIMEOUT_SECONDS}s on {board.name}"

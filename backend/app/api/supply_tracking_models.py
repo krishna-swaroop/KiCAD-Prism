@@ -106,6 +106,7 @@ class TrackedProject(SupplyModel):
 class ProjectTrackingState(SupplyModel):
     tracked: Optional[TrackedProject]
     has_usage: bool
+    has_schematic: bool = True
     variants: list[str]
 
 
