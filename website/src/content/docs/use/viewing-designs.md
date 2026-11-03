@@ -161,6 +161,8 @@ first and then press `~`.
   curved lines from the label you started at to each of its counterparts.
   The lines carry the net's name, like a net name on a board trace.
 
+![The world view with two chained nets: an orange line joins the CONTROL_VBUS_IN label on the Power Distribution and Monitoring sheet to its counterpart on the CONTROL Port sheet, and a blue line joins AUX_VBUS_IN to the AUX Port sheet, with the Selection panel showing AUX_VBUS_IN and its three instances](../../../assets/screenshots/world-view.jpg)
+
 In the world view:
 
 - Drag to pan and use the wheel to zoom, as on a single sheet. The sheets are
@@ -193,7 +195,7 @@ On the **PCB** tab:
 
 ## Open insets
 
-![A schematic with two chained insets: a PCB inset of the area around U1's CC1 pin, joined to the pin by a dashed line, and below it a schematic inset of C7 opened from a pad in the PCB inset](../../../assets/screenshots/insets.jpg)
+![A schematic with two chained insets: a PCB inset of the area around U1's CC1 pin, joined to the pin by a dashed line, and beside it a schematic inset of R3 opened from one of R3's pads in the PCB inset](../../../assets/screenshots/insets.jpg)
 
 An inset is a small live view of the other document, opened from the one you
 are reading: hover a schematic pin to see the board around its pad, or hover
