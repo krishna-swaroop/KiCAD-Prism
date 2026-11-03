@@ -233,7 +233,7 @@ export function DesignSearchField({
                     role="combobox"
                     placeholder="Search"
                     className={cn(
-                        "h-9 w-full min-w-0 border border-input bg-muted/40 py-2 pl-9 text-sm outline-none placeholder:text-muted-foreground",
+                        "h-8 w-full min-w-0 rounded-md border border-input bg-muted/40 py-1.5 pl-9 text-sm outline-none placeholder:text-muted-foreground",
                         "focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50",
                         showShortcuts ? "pr-32" : "pr-3",
                     )}

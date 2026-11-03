@@ -1425,7 +1425,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 onPick={handleDesignSearchPick}
             />
             {/* Toolbar */}
-            <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-muted/20 px-2 py-1">
+            <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-muted/20 px-1.5 py-1">
                 {VIEWER_TABS.map((tab, index) => {
                     const { label, icon: Icon } = TAB_LABELS[tab];
                     return (
@@ -1436,9 +1436,9 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                             data-visualizer-tab={tab}
                             onClick={() => setActiveTab(tab)}
                             title={`${label} (${index + 1})`}
-                            className="text-xs h-8"
+                            className="h-7 text-xs"
                         >
-                            <Icon className="w-3 h-3 mr-2" />
+                            <Icon className="mr-1 size-3.5" />
                             {label}
                         </Button>
                     );
@@ -1456,39 +1456,27 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                 {commentModeAvailable(activeTab, canModifyComments) && (
                     <Button
                         variant={commentMode ? "default" : "ghost"}
-                        size="sm"
-                        className={
-                            commentMode
-                                ? "h-8 text-xs bg-warning text-warning-foreground hover:bg-warning/90"
-                                : "h-8 text-xs"
-                        }
+                        size="icon-sm"
+                        className={commentMode ? "bg-warning text-warning-foreground hover:bg-warning/90" : undefined}
                         aria-pressed={commentMode}
+                        aria-label="Commenting mode"
+                        title="Commenting mode (C)"
                         onClick={() => dispatchMode({ type: "toggle-comment-mode" })}
                     >
-                        <MessageSquarePlus className="mr-2 h-3 w-3" />
-                        Commenting Mode
-                        <span
-                            className={
-                                commentMode
-                                    ? "ml-2 rounded bg-warning-foreground/15 px-1 text-[10px]"
-                                    : "ml-2 rounded bg-muted px-1 text-[10px] text-muted-foreground"
-                            }
-                        >
-                            C
-                        </span>
+                        <MessageSquarePlus className="size-3.5" />
                     </Button>
                 )}
                 <Button
                     variant={rightRailTab === "comments" ? "secondary" : "ghost"}
                     size="sm"
                     onClick={() => dispatchMode({ type: "toggle-rail", tab: "comments" })}
-                    className="text-xs h-8"
+                    className="h-7 text-xs"
                     aria-pressed={rightRailTab === "comments"}
                 >
-                    <MessageSquare className="w-3 h-3 mr-2" />
+                    <MessageSquare className="mr-1 size-3.5" />
                     Comments
                     {comments.length > 0 && (
-                        <span className="ml-2 rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground">
+                        <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
                             {comments.length}
                         </span>
                     )}

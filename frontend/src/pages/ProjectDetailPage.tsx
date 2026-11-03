@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ReleaseStudioPanel } from "@/components/release-studio/ReleaseStudioPanel";
 import { useSimStudioAvailable } from "@/components/sim-studio/use-sim-studio-available";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { ArrowLeft, FileText, History, Box, FolderOpen, ChevronLeft, ChevronRight, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical } from "lucide-react";
+import { ArrowLeft, FileText, History, Box, FolderOpen, PanelLeftClose, PanelLeftOpen, GitBranch, RotateCcw, PlayCircle, RefreshCw, Menu, Settings, ShieldCheck, ExternalLink, Link2, FlaskConical } from "lucide-react";
 import { fetchApi, fetchJson, readApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { throwIfJobFailed, watchPrismJob } from "@/lib/jobs";
@@ -155,7 +155,10 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
         sectionFromSearchParams(searchParams)
     ));
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    // The Visualizers keep the sidebar as an icon rail unless the reviewer opens it there.
+    const [visualizerSidebarOpen, setVisualizerSidebarOpen] = useState(false);
     const [sidebarHovered, setSidebarHovered] = useState(false);
+    const sidebarHoverTimer = useRef<number | undefined>(undefined);
     const [commitsBehind, setCommitsBehind] = useState<number>(0);
     const [syncing, setSyncing] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
@@ -448,6 +451,15 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
         navigate("/");
     };
 
+    const sidebarRail = activeSection === "visualizers" ? !visualizerSidebarOpen : sidebarCollapsed;
+    const sidebarExpanded = !sidebarRail || sidebarHovered;
+    const toggleSidebar = () => {
+        if (activeSection === "visualizers") setVisualizerSidebarOpen((open) => !open);
+        else setSidebarCollapsed((collapsed) => !collapsed);
+        window.clearTimeout(sidebarHoverTimer.current);
+        setSidebarHovered(false);
+    };
+
     const resolveProjectAssetSrc = (src: string | undefined) => {
         if (!src) return src;
         if (src.startsWith('http')) return src;
@@ -457,7 +469,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
 
     return (
         <div className="h-app-viewport flex flex-col bg-background">
-            <header className="border-b px-4 md:px-6 py-4 flex items-center gap-4">
+            <header className="flex min-h-12 items-center gap-3 border-b px-3 py-1.5 md:px-4">
                 {/* Mobile Menu */}
                 <Sheet>
                     <SheetTrigger asChild>
@@ -496,21 +508,27 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     </SheetContent>
                 </Sheet>
 
-                <Button variant="ghost" size="sm" onClick={handleBackNavigation} className="hidden md:flex">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleBackNavigation}
+                    className="hidden md:inline-flex"
+                    title="Back"
+                    aria-label="Back"
+                >
+                    <ArrowLeft className="h-4 w-4" />
                 </Button>
                 {/* The title takes whatever the header has left; it truncates only when
                     there is genuinely no room, rather than at a fixed pixel cap. */}
                 <div className="min-w-[7rem] flex-1">
                     <h1 className={cn(
-                        "text-xl font-bold truncate",
+                        "truncate text-base font-semibold tracking-tight",
                         activeSection === "visualizers" ? "" : "max-w-[200px] md:max-w-none",
                     )}>
                         {project ? getDisplayName(project) : ""}
                     </h1>
                     <p className={cn(
-                        "text-sm text-muted-foreground",
+                        "truncate text-xs text-muted-foreground",
                         activeSection === "visualizers" ? "hidden" : "hidden md:block",
                     )}>
                         {project?.description}
@@ -525,8 +543,8 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                     />
                 ) : null}
 
-                <div className="hidden min-w-0 items-center gap-2 md:flex">
-                    <GitBranch className="h-4 w-4 text-muted-foreground" />
+                <div className="hidden min-w-0 items-center gap-1.5 md:flex">
+                    <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
                     <select
                         // An explicit ?branch= for the current branch has no
                         // option of its own (it lives in the default entry), so
@@ -540,7 +558,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         onChange={(event) => handleBranchChange(event.target.value)}
                         disabled={branchesLoading}
                         title={branchError || "View this project on another branch"}
-                        className="h-9 max-w-[260px] appearance-none rounded-md border border-input bg-background bg-no-repeat py-0 pl-3 pr-8 text-sm text-foreground shadow-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        className="h-7 max-w-[240px] appearance-none rounded-md border border-input bg-background bg-no-repeat py-0 pl-2.5 pr-7 text-xs text-foreground shadow-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                         style={{
                             backgroundImage:
                                 "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
@@ -583,7 +601,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 {project && (
                     <Button
                         variant="outline"
-                        size="icon"
+                        size="icon-sm"
                         onClick={() => { window.location.href = `prism://open/${project.id}`; }}
                         title="Open in KiCad (requires the Prism agent)"
                     >
@@ -600,10 +618,10 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         size="sm"
                         onClick={handleSync}
                         disabled={syncing}
-                        className="flex items-center gap-2"
+                        className="flex items-center gap-1.5"
                         title="Sync with remote repository"
                     >
-                        <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+                        <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
                         {syncing ? 'Syncing...' : 'Sync'}
                     </Button>
                 )}
@@ -611,7 +629,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 {projectId && (
                     <Button
                         variant="outline"
-                        size="icon"
+                        size="icon-sm"
                         onClick={() => setTrackerSettingsOpen(true)}
                         title="Issue publishing settings"
                         aria-label="Issue publishing settings"
@@ -623,7 +641,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 {canMutateProject && (
                     <Button
                         variant="outline"
-                        size="icon"
+                        size="icon-sm"
                         onClick={() => setPathConfigOpen(true)}
                         title="Project settings"
                     >
@@ -656,9 +674,9 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
 
             {/* Version Banner */}
             {(currentCommit || selectedBranch) && (
-                <div className="bg-warning/10 border-b border-warning/20 px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                        <GitBranch className="h-4 w-4 text-warning" />
+                <div className="flex items-center justify-between border-b border-warning/20 bg-warning/10 px-4 py-1">
+                    <div className="flex items-center gap-2 text-xs">
+                        <GitBranch className="h-3.5 w-3.5 text-warning" />
                         <span className="font-medium">
                             {currentCommit
                                 ? `Viewing commit ${currentCommit.substring(0, 7)}`
@@ -677,7 +695,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         variant="outline"
                         size="sm"
                         onClick={handleResetToLatest}
-                        className="h-7"
+                        className="h-6"
                     >
                         <RotateCcw className="h-3 w-3 mr-2" />
                         {currentCommit && selectedBranchRef ? "Return to Branch Head" : "Return to Current Checkout"}
@@ -686,54 +704,73 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
             )}
 
             <div className="flex flex-1 overflow-hidden">
+                {/* An icon rail when collapsed. Hovering opens it over the content
+                    rather than beside it, so the viewers never resize. */}
                 <aside
                     className={cn(
-                        "hidden md:block border-r bg-muted/10 p-4 transition-all duration-300 relative",
-                        (!sidebarCollapsed || sidebarHovered) ? "w-64" : "w-16"
+                        "relative hidden shrink-0 transition-[width] duration-200 md:block",
+                        sidebarRail ? "w-14" : "w-56",
                     )}
-                    onMouseEnter={() => setSidebarHovered(true)}
-                    onMouseLeave={() => setSidebarHovered(false)}
+                    // A short delay, so passing over the rail on the way to the
+                    // viewer's own panels does not open it.
+                    onMouseEnter={() => {
+                        window.clearTimeout(sidebarHoverTimer.current);
+                        sidebarHoverTimer.current = window.setTimeout(() => setSidebarHovered(true), 180);
+                    }}
+                    onMouseLeave={() => {
+                        window.clearTimeout(sidebarHoverTimer.current);
+                        setSidebarHovered(false);
+                    }}
                 >
-                    <div className="absolute top-4 right-2 z-10">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                            className="h-6 w-6 p-0"
-                        >
-                            {sidebarCollapsed ? (
-                                <ChevronRight className="h-4 w-4" />
-                            ) : (
-                                <ChevronLeft className="h-4 w-4" />
-                            )}
-                        </Button>
+                    <div
+                        className={cn(
+                            "absolute inset-y-0 left-0 z-40 flex flex-col overflow-hidden border-r bg-background transition-[width,box-shadow] duration-200",
+                            sidebarExpanded ? "w-56" : "w-14",
+                            sidebarRail && sidebarHovered && "shadow-xl",
+                        )}
+                    >
+                        <nav className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden p-2">
+                            {navItems.map((item) => {
+                                const Icon = item.icon;
+                                const active = activeSection === item.id;
+                                return (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => handleSectionChange(item.id)}
+                                        aria-current={active ? "page" : undefined}
+                                        className={cn(
+                                            "flex h-9 w-full items-center gap-3 rounded-md px-3 text-sm transition-colors",
+                                            active
+                                                ? "bg-primary/10 font-medium text-primary"
+                                                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                                        )}
+                                        title={!sidebarExpanded ? item.label : undefined}
+                                    >
+                                        <Icon className="h-4 w-4 shrink-0" />
+                                        <span
+                                            className={cn(
+                                                "truncate text-left transition-opacity duration-150",
+                                                sidebarExpanded ? "opacity-100" : "opacity-0",
+                                            )}
+                                        >
+                                            {item.label}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </nav>
+                        <div className="border-t p-2">
+                            <button
+                                type="button"
+                                onClick={toggleSidebar}
+                                className="flex h-9 w-full items-center gap-3 rounded-md px-3 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                title={sidebarRail ? "Expand sidebar" : "Collapse sidebar"}
+                                aria-label={sidebarRail ? "Expand sidebar" : "Collapse sidebar"}
+                            >
+                                {sidebarRail ? <PanelLeftOpen className="h-4 w-4 shrink-0" /> : <PanelLeftClose className="h-4 w-4 shrink-0" />}
+                            </button>
+                        </div>
                     </div>
-
-                    <nav className="space-y-1 mt-8">
-                        {navItems.map((item) => {
-                            const Icon = item.icon;
-                            const isExpanded = !sidebarCollapsed || sidebarHovered;
-                            return (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleSectionChange(item.id)}
-                                    className={cn(
-                                        "w-full flex items-center rounded-md text-sm transition-colors",
-                                        isExpanded ? "gap-3 px-3 py-2" : "justify-center py-2",
-                                        activeSection === item.id
-                                            ? "bg-primary text-primary-foreground"
-                                            : "hover:bg-muted text-foreground"
-                                    )}
-                                    title={!isExpanded ? item.label : undefined}
-                                >
-                                    <Icon className="h-4 w-4 flex-shrink-0" />
-                                    {isExpanded && (
-                                        <span className="flex-1 text-left">{item.label}</span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </nav>
                 </aside>
 
                 <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
