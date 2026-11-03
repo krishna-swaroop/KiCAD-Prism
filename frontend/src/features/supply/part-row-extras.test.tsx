@@ -28,6 +28,22 @@ describe("what a part row shows at a glance", () => {
     expect(await screen.findByText("None in stock")).toBeTruthy();
   });
 
+  it("shows marketplace and assembly distributors apart, dashed and never filled", async () => {
+    render(<DistributorSquares part={partRowFixture({
+      distributors: [
+        distributorFixture({ connector_id: "c1", provider: "jlcpcb", name: "JLCPCB", stock: 900, marketplace: true }),
+        distributorFixture({ connector_id: "c2", provider: "digikey", name: "DigiKey", stock: 10 }),
+      ],
+    })} />);
+    const jlc = screen.getByRole("button", { name: "JLCPCB (assembly stock): 900 in stock" });
+    expect(jlc.className).toContain("border-dashed");
+    expect(jlc.getAttribute("style")).toContain("transparent");
+    const order = screen.getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+    expect(order[0]).toBe("DigiKey: 10 in stock");
+    fireEvent.mouseEnter(jlc);
+    expect(await screen.findByText("Assembly stock")).toBeTruthy();
+  });
+
   it("shows the price move and the flags", () => {
     render(<>
       <PriceMove percent={4} />

@@ -25,6 +25,7 @@ class SameMakerTests(unittest.TestCase):
             ("Maxim Integrated", "Analog Devices Inc./Maxim Integrated"),
             ("Renesas", "Renasas"), ("W" + chr(0xFFFD) + "rth Elektronik", "Wurth Elektronik"), ("W" + chr(0xFC) + "rth Elektronik", "Wurth Elektronik"),
             ("KYOCERA AVX", "AVX"),
+            ("NXP Semicon", "NXP USA Inc."), ("Vishay Semicon", "Vishay Dale"),
         ]:
             self.assertTrue(same_maker(one, two), f"{one} / {two}")
 
@@ -34,6 +35,7 @@ class SameMakerTests(unittest.TestCase):
             ("Texas Instruments", "Thomas Industries"), ("TI", "Thomas Industries"), ("Semiconductor", "ON Semiconductor"),
             ("Linear Technology", "Analog Devices"), ("Maxim", "Analog Devices"), ("", "Acme"), ("Acme", ""),
             ("Diodes", "Rohm Semiconductor"), ("Rohm", "Roam"), ("UMW", "TI"), ("Power Integrations", "Monolithic Power Systems"),
+            ("STMicroelectronics", "ST Engineering"), ("Nexperia", "NXP Semicon"), ("Microchip", "Microsemi"),
         ]:
             self.assertFalse(same_maker(one, two), f"{one} / {two}")
 

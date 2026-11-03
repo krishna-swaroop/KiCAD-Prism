@@ -81,6 +81,8 @@ stop being tracked unless something else keeps them.
 A project whose BOM Prism has not read shows **Not read**. Choose **Read now**;
 the first read of a large board can take a few minutes while its design index
 is built.
+A project with a board and no schematic shows **No schematic** instead:
+Prism reads the BOM from the schematic, so there is nothing to read.
 
 ## 3. Watch parts that aren't on a tracked project
 
@@ -235,6 +237,7 @@ it weekly; an unsettled spelling or listing means a part's stock isn't counted.
   waiting**: distributor listings and maker names to confirm. QA and
   administrators decide.
 - **Several listings at a distributor**: pick the packaging Prism reads.
-- **Matched by Prism**: what Prism settled by itself, for QA to undo if wrong.
+- **Matched by Prism**: what Prism settled by itself. QA keeps each match
+  with **Accept**, or all of them with **Accept all**, and undoes a wrong one.
 - **Work items**, then **Unmatched local stock**: inventory parts that match
   no library component, for QA and administrators to link or set aside.

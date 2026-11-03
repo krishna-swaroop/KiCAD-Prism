@@ -30,9 +30,18 @@ function SuggestionRow({ item, canEdit, onTracked }: { item: Suggestion; canEdit
   return (
     <li className="flex flex-wrap items-center justify-between gap-2 p-2">
       <span className="min-w-0">
-        <span className="font-medium">{item.mpn || item.sku}</span>{item.manufacturer ? `, ${item.manufacturer}` : ""}
+        {item.page_url ? (
+          <a href={item.page_url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{item.mpn || item.sku}</a>
+        ) : <span className="font-medium">{item.mpn || item.sku}</span>}
+        {item.manufacturer ? `, ${item.manufacturer}` : ""}
         <span className="block text-xs text-muted-foreground">
-          {item.sources.map((source) => source.name).join(", ")}{words(item) ? `: ${words(item)}` : ""}
+          {item.sources.map((source, index) => (
+            <span key={source.provider}>
+              {index > 0 ? ", " : ""}
+              {source.page_url ? <a href={source.page_url} target="_blank" rel="noreferrer" className="hover:underline">{source.name}</a> : source.name}
+            </span>
+          ))}
+          {words(item) ? `: ${words(item)}` : ""}
           {item.part_id ? ` · ${item.stock === null ? "not read yet" : `${formatStock(item.stock)} in stock`}${item.tracked ? ", tracked" : ""}` : ""}
           {!item.mpn ? " · a distributor number, not a part number" : ""}
         </span>

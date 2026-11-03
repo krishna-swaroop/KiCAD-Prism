@@ -305,7 +305,8 @@ is unchecked.
   waiting**: distributor listings and maker names for QA to confirm or reject.
 - **Several listings at a distributor**: parts a distributor sells in more
   than one packaging, to pick which one counts.
-- **Matched by Prism**: matches Prism made on its own, which QA can undo.
+- **Matched by Prism**: matches Prism made on its own. QA keeps one with
+  **Accept**, or every one with **Accept all**, or undoes it.
 - **Work items**: decisions people opened about components and parts.
 - **Unmatched local stock**: inventory parts with stock that match no library
   component. **Link** ties one to a component after showing both side by side;

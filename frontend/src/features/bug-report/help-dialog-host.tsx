@@ -85,7 +85,9 @@ function HelpDialogContent({ dialog, authConfig, onDialogChange, onClose }: Help
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="max-w-2xl">
+      {/* Opened from an error toast's Report bug, the toast leaves after the dialog opens and Sonner hands focus back to
+          what had it before; that focus lands outside the dialog and would close it at once. Focus moving out never closes it. */}
+      <DialogContent className="max-w-2xl" onFocusOutside={(event) => event.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{isReport ? "Report a bug" : "About KiCAD Prism"}</DialogTitle>
           <DialogDescription>

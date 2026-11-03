@@ -54,9 +54,13 @@ describe("alternatives to a part", () => {
   });
 
   const suggestions = [
-    { manufacturer: "Globex", mpn: "G-10K-NEW", sku: "C1", notes: ["Direct", "SOT-23-5L"], sources: [{ provider: "digikey", name: "DigiKey" }, { provider: "lcsc", name: "LCSC" }], asked: true, part_id: null, stock: null, status: null, tracked: false },
-    { manufacturer: "", mpn: "", sku: "595-R-10K", notes: ["Mouser number"], sources: [{ provider: "mouser", name: "Mouser" }], asked: false, part_id: null, stock: null, status: null, tracked: false },
-    { manufacturer: "Globex", mpn: "G-10K", sku: "", notes: [], sources: [{ provider: "lcsc", name: "LCSC" }], asked: false, part_id: "p2", stock: 500, status: "ok" as const, tracked: true },
+    {
+      manufacturer: "Globex", mpn: "G-10K-NEW", sku: "C1", notes: ["Direct", "SOT-23-5L"], page_url: "https://www.digikey.com/en/products/result?keywords=G10K",
+      sources: [{ provider: "digikey", name: "DigiKey", page_url: "https://www.digikey.com/en/products/result?keywords=G10K" }, { provider: "lcsc", name: "LCSC", page_url: "https://www.lcsc.com/product-detail/C1.html" }],
+      asked: true, part_id: null, stock: null, status: null, tracked: false,
+    },
+    { manufacturer: "", mpn: "", sku: "595-R-10K", notes: ["Mouser number"], page_url: "", sources: [{ provider: "mouser", name: "Mouser", page_url: "" }], asked: false, part_id: null, stock: null, status: null, tracked: false },
+    { manufacturer: "Globex", mpn: "G-10K", sku: "", notes: [], page_url: "", sources: [{ provider: "lcsc", name: "LCSC", page_url: "" }], asked: false, part_id: "p2", stock: 500, status: "ok" as const, tracked: true },
   ];
 
   it("lists what distributors suggest first, with who said it, in their words, and marks them unchecked", async () => {
@@ -64,7 +68,10 @@ describe("alternatives to a part", () => {
     render(<CrossReferenceSection partId="p1" canEdit />);
     fireEvent.click(screen.getByRole("button", { name: "Find alternatives" }));
     expect(await screen.findByText("Suggested by distributors")).toBeTruthy();
-    expect(screen.getByText(/DigiKey, LCSC: Direct, SOT-23-5L, asked at DigiKey/)).toBeTruthy();
+    expect(screen.getByText(/: Direct, SOT-23-5L, asked at DigiKey/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "G-10K-NEW" }).getAttribute("href")).toBe("https://www.digikey.com/en/products/result?keywords=G10K");
+    expect(screen.getByRole("link", { name: "LCSC" }).getAttribute("href")).toBe("https://www.lcsc.com/product-detail/C1.html");
+    expect(screen.queryByRole("link", { name: "Mouser" })).toBeNull();
     expect(screen.getByText(/a distributor number, not a part number/)).toBeTruthy();
     expect(screen.getByText(/500 in stock, tracked/)).toBeTruthy();
     expect(screen.getByText("Unchecked: function, footprint and pins")).toBeTruthy();

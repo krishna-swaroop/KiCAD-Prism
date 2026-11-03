@@ -107,7 +107,9 @@ export function ProjectSupplyTab({ projectId, user, actionsSlot }: { projectId: 
           <ProjectCostHistory supply={supply} />
         </div>
       ) : null}
-      {supply.available ? null : <ProjectReadNow projectId={projectId} onRead={loaded.retry} />}
+      {supply.available ? null : supply.has_schematic === false ? (
+        <div className="border border-dashed p-6 text-sm text-muted-foreground">No schematic</div>
+      ) : <ProjectReadNow projectId={projectId} onRead={loaded.retry} />}
       <ProjectSupplyReleases projectId={projectId} releases={supply.releases} />
       <ProjectSupplyNotes supply={supply} />
       {supply.available ? (

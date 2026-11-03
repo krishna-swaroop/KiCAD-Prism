@@ -40,7 +40,7 @@ import type {
   SupplySvhcList,
   UpdateSupplyConnectorInput,
 } from "@/types/supply";
-import type { AliasConfirmed, AliasUndone, Items, ListingsRejected, MakerChosen, NumbersCounted, SettleUndone, SubstitutesAsked, SupplyFxRates, SupplyFxRatesSaved, SupplyNoticeCheck, SupplyNumberEnding, UsageBuild, UsageRefreshed } from "@/types/supply.generated";
+import type { AliasConfirmed, AliasUndone, Items, ListingsRejected, MakerChosen, MatchedAccepted, NumbersCounted, SettleUndone, SubstitutesAsked, SupplyFxRates, SupplyFxRatesSaved, SupplyNoticeCheck, SupplyNumberEnding, UsageBuild, UsageRefreshed } from "@/types/supply.generated";
 import { changesSupply } from "./supply-writes";
 
 const BASE = "/api/supply";
@@ -274,6 +274,10 @@ function undoSettledPartRequest(partId: string): Promise<SettleUndone> {
 
 function undoLearnedAliasRequest(key: string): Promise<AliasUndone> {
   return post(`${BASE}/review/aliases/${encodeURIComponent(key)}/undo`, {}, "Could not undo the spelling");
+}
+
+function acceptMatchedRequest(aliasKeys: string[], partIds: string[]): Promise<MatchedAccepted> {
+  return post(`${BASE}/review/matched/accept`, { alias_keys: aliasKeys, part_ids: partIds }, "Could not keep the matches");
 }
 
 function rejectSupplyListingsRequest(listingIds: string[]): Promise<ListingsRejected> {
@@ -602,6 +606,7 @@ export const addMakerSpelling = changesSupply(addMakerSpellingRequest);
 export const removeMakerSpelling = changesSupply(removeMakerSpellingRequest);
 export const undoSettledPart = changesSupply(undoSettledPartRequest);
 export const undoLearnedAlias = changesSupply(undoLearnedAliasRequest);
+export const acceptMatched = changesSupply(acceptMatchedRequest);
 export const rejectSupplyListings = changesSupply(rejectSupplyListingsRequest);
 export const acknowledgeSupplyAlert = changesSupply(acknowledgeSupplyAlertRequest);
 export const snoozeSupplyAlert = changesSupply(snoozeSupplyAlertRequest);

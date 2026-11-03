@@ -62,6 +62,7 @@ describe("the review queue", () => {
     const near = screen.getByRole("article", { name: "Listing 595-LM358DR" });
     expect(within(near).getByText("Near match")).toBeTruthy();
     expect(within(near).getByText(/Different part number\./)).toBeTruthy();
+    expect(within(unresolved).getByRole("link", { name: "595-LM358" }).getAttribute("href")).toBe("https://www.mouser.com/ProductDetail/SKU-1");
     expect(within(screen.getByLabelText("Manufacturer spellings")).getByText("1")).toBeTruthy();
     expect(within(screen.getByLabelText("Listings waiting")).getByText("2")).toBeTruthy();
   });

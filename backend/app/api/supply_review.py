@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends
 from app.api import supply_connectors
 from app.api.supply_call import run_supply
 from app.api.supply_review_models import (
-    AliasConfirmed, AliasUndone, ChoiceRequest, ConfirmAliasRequest, ListingsRejected, MakerChosen, NumbersCounted, NumbersRequest, PinRequest,
+    AcceptMatchedRequest, AliasConfirmed, AliasUndone, ChoiceRequest, ConfirmAliasRequest, ListingsRejected, MakerChosen, MatchedAccepted, NumbersCounted, NumbersRequest, PinRequest,
     RejectManyRequest, SettleUndone, SupplyReviewQueue,
 )
 from app.core.security import AuthenticatedUser, require_supply_approver, require_supply_reader, require_supply_tracker
@@ -87,6 +87,17 @@ async def undo_alias(alias_key: str, approver: AuthenticatedUser = Depends(requi
     def run() -> dict[str, int]:
         with _store().connection() as conn:
             return {"listings": settle.undo_alias(conn, alias_key, approver.email)}
+
+    return await _run(run)
+
+
+@router.post("/matched/accept", response_model=MatchedAccepted)
+async def accept_matched(body: AcceptMatchedRequest, approver: AuthenticatedUser = Depends(require_supply_approver)) -> dict[str, int]:
+    """Keep spellings Prism learned and makers it settled, one or many: they leave Matched by Prism."""
+
+    def run() -> dict[str, int]:
+        with _store().connection() as conn:
+            return {"accepted": settle.accept_matched(conn, approver.email, body.alias_keys, body.part_ids)}
 
     return await _run(run)
 

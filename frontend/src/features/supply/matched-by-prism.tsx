@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { SupplyMatched } from "@/types/supply";
 import { partHref } from "./supply-views";
 import { CollapsibleSection } from "./collapsible-section";
-import { undoLearnedAlias, undoSettledPart } from "./supply-api";
+import { acceptMatched, undoLearnedAlias, undoSettledPart } from "./supply-api";
 import { useConnectorSubmit } from "./use-connector-submit";
 
 function SettledRow({ part, canDecide, onDecided }: { part: SupplyMatched["parts"][number]; canDecide: boolean; onDecided: () => Promise<void> }) {
@@ -14,7 +14,10 @@ function SettledRow({ part, canDecide, onDecided }: { part: SupplyMatched["parts
       <Link to={partHref(part.part_id)} className="font-medium text-primary hover:underline">{part.mpn}</Link>
       <span className="flex-1 text-muted-foreground">made by {part.manufacturer}, from what distributors list</span>
       {canDecide ? (
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await undoSettledPart(part.part_id); await onDecided(); })}>Undo</Button>
+        <span className="flex gap-1">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await acceptMatched([], [part.part_id]); await onDecided(); })}>Accept</Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await undoSettledPart(part.part_id); await onDecided(); })}>Undo</Button>
+        </span>
       ) : null}
       {error ? <p role="alert" className="basis-full text-xs text-destructive">{error}</p> : null}
     </li>
@@ -30,20 +33,37 @@ function LearnedRow({ alias, canDecide, onDecided }: { alias: SupplyMatched["ali
         <p className="text-xs text-muted-foreground">Learned from {alias.parts} {alias.parts === 1 ? "part" : "parts"}</p>
       </div>
       {canDecide ? (
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await undoLearnedAlias(alias.alias_key); await onDecided(); })}>
-          Undo
-        </Button>
+        <span className="flex gap-1">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await acceptMatched([alias.alias_key], []); await onDecided(); })}>Accept</Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(async () => { await undoLearnedAlias(alias.alias_key); await onDecided(); })}>Undo</Button>
+        </span>
       ) : null}
       {error ? <p role="alert" className="basis-full text-xs text-destructive">{error}</p> : null}
     </li>
   );
 }
 
-/** What Prism settled by itself: the spellings it learned (undoable) and the parts whose maker the distributors settled. */
+function AcceptAll({ matched, onDecided }: { matched: SupplyMatched; onDecided: () => Promise<void> }) {
+  const { busy, error, run } = useConnectorSubmit();
+  const accept = () => run(async () => {
+    await acceptMatched(matched.aliases.map((alias) => alias.alias_key), matched.parts.map((part) => part.part_id));
+    await onDecided();
+  });
+  return (
+    <div className="flex items-center justify-end gap-3 px-3 py-2">
+      {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => void accept()}>Accept all</Button>
+    </div>
+  );
+}
+
+/** What Prism settled by itself: the spellings it learned and the parts whose maker the distributors settled, each kept or undone, or all kept at once. */
 export function MatchedByPrism({ matched, canDecide, onDecided }: { matched: SupplyMatched | undefined; canDecide: boolean; onDecided: () => Promise<void> }) {
   if (!matched || (matched.aliases.length === 0 && matched.parts.length === 0)) return null;
+  const count = matched.aliases.length + matched.parts.length;
   return (
-    <CollapsibleSection id="review-matched" title="Matched by Prism" count={matched.aliases.length + matched.parts.length} startOpen={false}>
+    <CollapsibleSection id="review-matched" title="Matched by Prism" count={count} startOpen={false}>
+      {canDecide && count > 1 ? <AcceptAll matched={matched} onDecided={onDecided} /> : null}
       <ul className="divide-y">
         {matched.aliases.map((alias) => <LearnedRow key={alias.alias_key} alias={alias} canDecide={canDecide} onDecided={onDecided} />)}
         {matched.parts.map((part) => <SettledRow key={`${part.part_id}:${part.at}`} part={part} canDecide={canDecide} onDecided={onDecided} />)}

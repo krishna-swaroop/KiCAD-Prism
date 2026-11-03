@@ -31,7 +31,11 @@ export function ListingRow({ listing, canDecide, onDecided }: ListingRowProps) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold">{listing.sku}</span>
+            {listing.page_url ? (
+              <a href={listing.page_url} target="_blank" rel="noreferrer" className="text-sm font-semibold hover:underline" title={`Open ${listing.sku} at ${listing.connector_name}`}>
+                {listing.sku}
+              </a>
+            ) : <span className="text-sm font-semibold">{listing.sku}</span>}
             <VendorName provider={listing.provider} name={listing.connector_name} className="text-xs text-muted-foreground" />
             {listing.packaging && listing.packaging !== "unknown" ? <span className="text-xs text-muted-foreground"><PackagingChip packaging={listing.packaging} reelSize={listing.reel_size} inferred={listing.packaging_inferred} /></span> : null}
             <Badge variant={listing.match_state === "near" ? "outline" : "warning"}>
