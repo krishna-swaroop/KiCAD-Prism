@@ -724,7 +724,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 >
                     <div
                         className={cn(
-                            "absolute inset-y-0 left-0 z-40 flex flex-col overflow-hidden border-r bg-background transition-[width,box-shadow] duration-200",
+                            "absolute inset-y-0 left-0 z-rail flex flex-col overflow-hidden border-r bg-background transition-[width,box-shadow] duration-200",
                             sidebarExpanded ? "w-56" : "w-14",
                             sidebarRail && sidebarHovered && "shadow-xl",
                         )}

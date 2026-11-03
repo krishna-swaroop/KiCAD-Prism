@@ -263,7 +263,7 @@ export function DesignSearchField({
                     role="listbox"
                     aria-label="Design search results"
                     className={cn(
-                        "absolute inset-x-0 top-full z-50 mt-1 max-h-80 overflow-y-auto border border-border bg-popover text-popover-foreground shadow-md",
+                        "absolute inset-x-0 top-full z-popover mt-1 max-h-80 overflow-y-auto border border-border bg-popover text-popover-foreground shadow-md",
                         // Inline (the System 3D tab), hits carry board names: give them room past a narrow field.
                         inline && "right-auto min-w-full w-[28rem] max-w-[calc(100vw-2rem)]",
                     )}
