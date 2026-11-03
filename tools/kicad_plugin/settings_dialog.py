@@ -13,7 +13,15 @@ import wx
 from . import prism_theme as th
 from . import prompts
 from .agent_client import AgentClient, AgentUnavailable
-from .widgets import Badge, Button, Card, Checkbox, IconButton, ui_font
+from .widgets import (
+    Badge,
+    Button,
+    Card,
+    Checkbox,
+    IconButton,
+    fit_width_to_content,
+    ui_font,
+)
 
 
 def _c(hex_value):
@@ -41,8 +49,9 @@ class SettingsDialog(wx.Dialog):
             # Wider than it was (520): several cards carry explanatory lines and a
             # full email, which clipped on the right at the old width because the
             # scroll window only scrolls vertically. A minimum size below keeps it
-            # from being dragged back into that state.
-            size=wx.Size(620, 620),
+            # from being dragged back into that state, and fit_width_to_content
+            # widens it further when the content still doesn't fit.
+            size=wx.Size(720, 620),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self.SetMinSize(wx.Size(560, 480))
@@ -113,6 +122,7 @@ class SettingsDialog(wx.Dialog):
         self.content.FitInside(self.scroll)
         self.scroll.Layout()
         self.Layout()
+        fit_width_to_content(self, self.scroll, self.content)
         self.Refresh()
 
     # -- data --------------------------------------------------------------
