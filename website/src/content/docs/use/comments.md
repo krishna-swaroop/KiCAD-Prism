@@ -30,9 +30,9 @@ repository.
 2. Do one of the following:
    - **Comment on an object.** Select a part, pin, pad, net, wire or track,
      then press `C`.
-   - **Comment on a point or an area.** Select **Commenting Mode** in the
-     toolbar (or press `C` with nothing selected). Click a point, or drag to
-     mark an area.
+   - **Comment on a point or an area.** Select the speech-bubble-with-plus
+     icon (**Commenting mode**) in the toolbar, or press `C` with nothing
+     selected. Click a point, or drag to mark an area.
 3. In **Add Comment**, choose a **Class** (**General**, **Observation**,
    **Question** or **Task**) and a **Severity** (**Info**, **Minor**,
    **Major** or **Critical**).

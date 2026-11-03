@@ -119,7 +119,9 @@ link can hold.
 
 ## Find your way around a project
 
-The project sidebar has these sections:
+The project sidebar has these sections. In **Visualizers** it shrinks to a
+column of icons to leave room for the design; rest the pointer on it to open
+it over the page, or select the button at its foot to keep it open there.
 
 | Section | What it holds |
 | --- | --- |
