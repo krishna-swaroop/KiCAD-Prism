@@ -882,18 +882,12 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
 
     // The same collection on the schematic, on every sheet: members come from
     // the semantic index, so it waits for both the sheet and the index.
-    // The inspected net is drawn too: clicking a wire, label or pin shows its
-    // whole net on every sheet without adding it to the collection.
-    const schematicNets = useMemo(() => {
-        const inspected = netFromSelection(globalSelection ? enrichPrismSelection(globalSelection, semanticIndex) : null, semanticIndex);
-        return inspected && !highlightedNets.some((net) => sameHighlightedNet(net, inspected))
-            ? [...highlightedNets, inspected]
-            : highlightedNets;
-    }, [globalSelection, highlightedNets, semanticIndex]);
+    // The same collection on the schematic, on every sheet (Shift+click
+    // builds it): members come from the semantic index.
     useEffect(() => {
         if (sch.generation === 0) return;
-        viewers.sch.setSchematicHighlightedNets(schematicMembers(schematicNets, semanticIndex));
-    }, [schematicNets, sch.element, sch.generation, semanticIndex, viewers]);
+        viewers.sch.setSchematicHighlightedNets(schematicMembers(highlightedNets, semanticIndex));
+    }, [highlightedNets, sch.element, sch.generation, semanticIndex, viewers]);
 
     useEffect(() => {
         const applySelection = (
