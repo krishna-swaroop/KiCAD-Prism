@@ -119,6 +119,13 @@ function netForSelection(
     index: PrismSemanticIndex,
 ): SemanticNet | undefined {
     const maps = index.indexes;
+    // A schematic item's uuid names its net exactly. Its text does not: a
+    // hierarchical label or sheet entry "SDA" is a different net from a
+    // global "SDA", and only the leaf name reaches us.
+    if (selection.sourceContext === "SCH" && selection.uuid) {
+        const byUuid = indexed(index.nets, maps.netBySchematicUuid?.[selection.uuid]);
+        if (byUuid) return byUuid;
+    }
     if (selection.netName) {
         const byName = indexed(index.nets, maps.netByName?.[selection.netName]);
         if (byName) return byName;

@@ -5,7 +5,7 @@ import { Cpu, Box, FileText, CircuitBoard, Layers3, PackageCheck, MessageSquare,
 import { Button } from "@/components/ui/button";
 import { EngineeringBomTable } from "./engineering-bom-table";
 import { SelectionInspector, type HighlightedNetEntry } from "./selection-inspector";
-import { filterLabelInstances, type LabelInstanceRef } from "@/lib/label-instances";
+import { filterLabelInstances, netLabelInstances, type LabelInstanceRef } from "@/lib/label-instances";
 import { WebGpu3dTab } from "./webgpu-3d-tab";
 import { PrismInsetScene3D } from "@/lib/inset-scene-3d";
 import { EcadViewerPair, useEcadViewer, type EcadSource, type EcadViewer } from "@/lib/ecad-viewer";
@@ -25,6 +25,7 @@ import { crossProbeRequestForSelection, enrichPrismSelection, netStatisticsRefFo
 import {
     adoptViewerNets,
     highlightRefs,
+    schematicMembers,
     netFromSelection,
     removeHighlightedNet,
     sameHighlightedNet,
@@ -879,6 +880,13 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
         viewers.pcb.setHighlightedNets(highlightRefs(highlightedNets));
     }, [highlightedNets, pcb.element, pcb.generation, viewers]);
 
+    // The same collection on the schematic, on every sheet: members come from
+    // the semantic index, so it waits for both the sheet and the index.
+    useEffect(() => {
+        if (sch.generation === 0) return;
+        viewers.sch.setSchematicHighlightedNets(schematicMembers(highlightedNets, semanticIndex));
+    }, [highlightedNets, sch.element, sch.generation, semanticIndex, viewers]);
+
     useEffect(() => {
         const applySelection = (
             viewer: EcadViewer,
@@ -1057,9 +1065,15 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
     const labelInstances = useMemo<LabelInstanceRef[]>(() => {
         const selection = globalSelection;
         if (!selection || selection.kind !== "net" || selection.sourceContext !== "SCH") return [];
+        // The viewer's selection names the net by text; the index resolves it
+        // by the clicked item's uuid.
+        const enriched = enrichPrismSelection(selection, semanticIndex);
+        const netUid = enriched.kind === "net" ? enriched.netUid : undefined;
+        const net = netUid ? semanticIndex?.nets.find((entry) => entry.netUid === netUid) : undefined;
+        if (net) return netLabelInstances(net, (name) => viewers.sch.findLabelInstances(name));
         return filterLabelInstances(viewers.sch.findLabelInstances(selection.netName), selection.anchor?.itemType);
         // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read when the schematic element is replaced
-    }, [globalSelection, sch.element, viewers]);
+    }, [globalSelection, sch.element, semanticIndex, viewers]);
 
     const focusLabelInstance = useCallback(async (uuid: string) => {
         const focusing = viewers.sch.focusLabelInstance(uuid);

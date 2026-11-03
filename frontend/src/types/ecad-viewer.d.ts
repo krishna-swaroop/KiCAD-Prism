@@ -146,6 +146,14 @@ export interface EcadNetStatistics {
 }
 
 /** A board net as the viewer's highlight API refers to it. */
+/** A net's schematic items per sheet instance, for the schematic highlight. */
+export interface SchematicNetMembers {
+    name: string;
+    /** CSS colour; the viewer picks one when absent. */
+    color?: string;
+    pages: Array<{ sheetPath: string; uuids: string[] }>;
+}
+
 export interface EcadNetRef {
     /** Board net name. */
     name: string;
@@ -494,6 +502,11 @@ export interface ECadViewerElement extends HTMLElement {
         options?: { focus?: boolean },
     ): { applied: EcadNetRef[]; unresolved: EcadNetRef[] };
     getHighlightedNets?(): EcadNetRef[];
+    /**
+     * Highlight nets on the schematic: everything dims and each net's members
+     * are drawn over it on whichever sheet is open. Empty clears it.
+     */
+    setSchematicHighlightedNets?(nets: readonly SchematicNetMembers[]): Promise<void>;
     /** Fit the board camera to the highlighted copper. False when empty. */
     focusHighlightedNets?(): boolean;
     /**
@@ -537,7 +550,7 @@ export interface ECadViewerElement extends HTMLElement {
         uuid: string;
         sheet: string;
         name: string;
-        kind?: "global" | "net" | "hierarchical";
+        kind?: "global" | "net" | "hierarchical" | "sheet-pin";
     }>;
     /** Switch sheet if needed, frame the label uuid, and emit selection. */
     focusLabelInstance?(uuid: string): Promise<boolean>;
