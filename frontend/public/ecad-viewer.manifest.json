@@ -2,7 +2,7 @@
   "schema": "prism.ecad_viewer_build_a0",
   "version": "prism-native-document-diff-v1",
   "upstreamCommit": "c3537042ff7156ce077d204df00a9d4add0e29b1",
-  "adapterCommit": "b47b74d7dff1ae12e2ace95c54e006255d113021",
+  "adapterCommit": "d4b9c771f9d9a518969da5f4aba3108b4c257d20",
   "dirty": false,
   "worktreePatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "sourceTreeSha256": "4665d3d366e8ba8e7ea5c4f7bcce5895654445195b3399a15b2d4b7d924f74ef",
