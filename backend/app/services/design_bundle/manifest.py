@@ -92,6 +92,12 @@ def next_stage(manifest: Mapping[str, Any]) -> str | None:
     return next((stage for stage in STAGES if manifest["stages"][stage]["status"] == "pending"), None)
 
 
+def models_built(manifest: Mapping[str, Any]) -> bool:
+    """Whether the models stage ran to a result (complete or partial): a rerun then replaces it."""
+
+    return manifest["stages"]["models"]["status"] in ("complete", "partial")
+
+
 @dataclass(frozen=True)
 class Readiness:
     """One member's answer. ``state`` is ``ready``, ``pending``, ``unavailable``,

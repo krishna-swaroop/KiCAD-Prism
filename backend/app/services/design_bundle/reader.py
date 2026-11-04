@@ -15,7 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from app.services.design_bundle import cli, jobs, reuse, rows, store
+from app.services import kicad_libraries
+from app.services.design_bundle import cli, jobs, reuse, rows, stage_models, store
 from app.services.design_bundle.archive import Archive
 from app.services.design_bundle.manifest import Readiness, readiness
 
@@ -141,6 +142,80 @@ def open_revision(project_id: str, commit: str | None = None, *, queue: bool = F
         project_id, key.commit, revision_key, generator.digest, bundle_key, archive, active,
         archive_revision_key=stored_as, aliased=aliased, failure=failure, working_tree_dirty=dirty,
     )
+
+
+_unaffected: dict[tuple[str, str], None] = {}
+_UNAFFECTED_LIMIT = 2048
+
+
+def models_outdated(opened: OpenedRevision, *, snapshot: kicad_libraries.Snapshot | None = None) -> bool:
+    """Whether the stored component GLB was exported with other libraries than are bound now.
+
+    A board's models resolve through KiCad path variables bound to libraries
+    fetched at runtime, and a bundle is otherwise never rebuilt. A bundle
+    records, for the variables its board uses, what each pointed at when its
+    models were exported (``store.write_models_record``); it is outdated when
+    any of those differs now. Only the variables the board uses count, so a
+    library its board does not use changes nothing. A bundle with no record
+    predates this: it is outdated only if a variable its placements name is
+    bound now, which is read from the archive once per set of bindings. A
+    bundle still being built is not outdated.
+    """
+
+    archive = opened.archive
+    if archive is None or opened.job_active or not manifest_models_built(archive):
+        return False
+    stored_as = opened.archive_revision_key or opened.revision_key
+    if stored_as is None:
+        return False
+    taken = snapshot or kicad_libraries.current()
+    recorded = store.read_models_record(opened.project_id, stored_as, opened.generator_digest)
+    if recorded is not None:
+        return taken.fingerprints(recorded["variables"]) != recorded["variables"]
+    if not taken.bindings:
+        return False
+    memo = (archive.manifest_sha256, "|".join(sorted(f"{n}={b.fingerprint}" for n, b in taken.bindings.items())))
+    if memo in _unaffected:
+        return False
+    named = stage_models.referenced_variables(archive).variables
+    if any(name in taken.bindings for name in named):
+        return True
+    if len(_unaffected) >= _UNAFFECTED_LIMIT:
+        _unaffected.clear()
+    _unaffected[memo] = None
+    return False
+
+
+def manifest_models_built(archive: Archive) -> bool:
+    from app.services.design_bundle.manifest import models_built
+
+    return models_built(archive.manifest)
+
+
+def refresh_models(
+    opened: OpenedRevision, *, requested_by: str = "", priority: int | None = None, head: bool = False
+) -> str | None:
+    """Queue the models stage again over a stored bundle; returns the job id, ``None`` if none was queued.
+
+    An aliased revision's archive is its target's, so the target's commit is
+    the one refreshed (once, for every revision aliased to it).
+    """
+
+    if opened.bundle_key is None:
+        return None
+    bundle = rows.get_bundle(opened.project_id, opened.bundle_key)
+    commit = (bundle or {}).get("commit_sha") if opened.aliased else opened.commit
+    try:
+        return jobs.start_design_bundle_job(
+            opened.project_id,
+            commit=commit or opened.commit,
+            requested_by=requested_by,
+            priority=priority,
+            head=head,
+            refresh_models=True,
+        )
+    except cli.CliUnavailable:
+        return None
 
 
 def _stored(project_id: str, revision_key: str, generator: Any) -> tuple[str, str, bool, Archive | None]:

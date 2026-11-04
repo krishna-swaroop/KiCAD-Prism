@@ -45,6 +45,8 @@ class WebGpu3dStatus(WireModel):
     message: Optional[str] = None
     error: Optional[str] = None
     bundle_url: Optional[str] = None
+    # The parts are being exported again because a KiCad library the board uses changed.
+    refreshing: bool = False
 
 
 class DocumentReadiness(WireModel):

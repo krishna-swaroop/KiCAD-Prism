@@ -40,7 +40,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from app.core.config import settings
-from app.services.design_bundle import cli, jobs, reuse, rows
+from app.services import kicad_libraries
+from app.services.design_bundle import cli, jobs, reader, reuse, rows
 from app.services.design_bundle.effective_config import ProjectRef, key_at_commit
 from app.services.design_bundle.revision_key import RevisionKeyError
 
@@ -63,6 +64,8 @@ class BackfillState:
     queued: list[str] = field(default_factory=list)
     heads: dict[str, tuple[str, str]] = field(default_factory=dict)
     unkeyable: set[tuple[str, str, str]] = field(default_factory=set)
+    # Per project, the HEAD and the KiCad libraries bound when its models were last checked against them.
+    libraries: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = field(default_factory=dict)
 
 
 @dataclass
@@ -136,10 +139,44 @@ def _head_pass(project: Mapping[str, Any], run: _Tick) -> str | None:
     seen = (head, _paths(project))
     stale = run.state.heads.get(project_id) != seen
     if not stale and (run.busy or reuse.is_served(project_id, head, run.generator, connect=run.connect)):
+        if not run.busy and run.budget_left():
+            _refresh_models(project_id, head, run)
         return head
     run.state.heads[project_id] = seen
     _commit(project, repo, head, run, head=True)
     return head
+
+
+def _refresh_models(project_id: str, head: str, run: _Tick) -> None:
+    """Export a served HEAD's parts again when a KiCad library its board uses changed since they were.
+
+    Only HEAD is refreshed ahead of a request; older commits refresh when someone
+    opens them. A HEAD is looked at again only when it or the bound libraries
+    changed, so a tick with nothing new costs nothing. Runs under the same slot
+    cap and priority as a build, and an interactive request preempts it.
+    """
+
+    bound = kicad_libraries.current().bindings
+    if not bound:
+        return
+    seen = (head, tuple(sorted((name, binding.fingerprint) for name, binding in bound.items())))
+    if run.state.libraries.get(project_id) == seen:
+        return
+    run.state.libraries[project_id] = seen
+    run.outcome["keyed"] += 1
+    try:
+        opened = reader.open_revision(project_id, head)
+        if not reader.models_outdated(opened):
+            return
+        job_id = reader.refresh_models(
+            opened, requested_by=jobs.BACKFILL_REQUESTED_BY, priority=jobs.BACKFILL_PRIORITY, head=True
+        )
+    except (LookupError, cli.CliUnavailable, cli.CliFailure):
+        return
+    if job_id:
+        run.outcome["refreshed"] = [*run.outcome.get("refreshed", []), {"project_id": project_id, "commit": head, "job_id": job_id}]
+        run.state.queued.append(job_id)
+        run.free -= 1
 
 
 def _older_pass(projects: list[Mapping[str, Any]], heads: Mapping[str, str | None], run: _Tick) -> None:

@@ -16,15 +16,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from app.core.config import settings
-from app.services import kicad_libraries, kicad_tools
+from app.services import kicad_libraries, kicad_tools, kicad_variables
+from app.services.design_bundle.archive import Archive, BundleInvalid
 from app.services.design_bundle.generator import Generator
 from app.services.design_bundle.kicad_steps import KicadStepFailed
+
+logger = logging.getLogger(__name__)
 
 GLB_NAME = "components.glb"
 
@@ -53,7 +57,35 @@ def hlr_args(environ: Mapping[str, str] | None = None) -> list[str]:
     return ["--geometer", executable, "--hlr-cache", str(hlr_cache_root()), *snapshot.model_dir_args()]
 
 
-def cache_key(record: Mapping[str, Any], generator: Generator, tool_version: str = "") -> str:
+def referenced_variables(archive: Archive) -> kicad_variables.Referenced:
+    """The path variables the board's models and the project's drawing sheets name.
+
+    Read from the bundle's placements (model paths as written) and the project
+    file's own text variables, both members of the bundle, so no KiCad text is
+    parsed here. A member that cannot be read names nothing: the stage still
+    runs, and says so in its log.
+    """
+
+    placements = project = None
+    try:
+        placements = json.loads(archive.read("projections/placements.json", structured=False))
+    except (BundleInvalid, ValueError) as error:
+        logger.warning("Path variables: could not read the placements: %s", error)
+    project_file = (archive.manifest.get("config") or {}).get("project_file")
+    if project_file:
+        try:
+            project = json.loads(archive.read(f"sources/{project_file}", structured=False))
+        except (BundleInvalid, ValueError) as error:
+            logger.warning("Path variables: could not read the project file: %s", error)
+    return kicad_variables.referenced(placements, project)
+
+
+def cache_key(
+    record: Mapping[str, Any],
+    generator: Generator,
+    tool_version: str = "",
+    libraries: Mapping[str, str | None] | None = None,
+) -> str:
     board = record["config"].get("board")
     entries = record["entries"]
     board_id = next((e["object_id"] for e in entries if e["path"] == board), "")
@@ -70,6 +102,11 @@ def cache_key(record: Mapping[str, Any], generator: Generator, tool_version: str
         # The KiCad that exports may be a later patch release of the generator's (decisions.md).
         "tool_version": tool_version,
     }
+    if libraries:
+        # What each path variable the board uses points at, by what it is and not where it is
+        # mounted: a library added, moved to another commit or removed changes the models, and
+        # one the board does not use changes nothing.
+        material["libraries"] = sorted(libraries.items())
     return hashlib.sha256(json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
@@ -80,12 +117,13 @@ def export_components_glb(
     work: Path,
     *,
     cancel: Callable[[], None] | None = None,
+    libraries: Mapping[str, str | None] | None = None,
 ) -> tuple[Path, bool]:
     """``$JOB/models/components.glb`` for the record's board; returns ``(path, cache_hit)``."""
 
     from app.services.design_bundle.kicad_steps import worker_kicad_version
 
-    key = cache_key(record, generator, worker_kicad_version())
+    key = cache_key(record, generator, worker_kicad_version(), libraries)
     cached = cache_root() / f"{key}.glb"
     output_dir = work / "models"
     output_dir.mkdir(parents=True, exist_ok=True)
