@@ -694,6 +694,7 @@ export function WebGpu3dTab({
                     missing={status.missingModels ?? []}
                     canConfigure={user?.role === "admin"}
                     search={window.location.search}
+                    leftInset={leftInset}
                 />
             )}
             {(jobId || status?.status === "building") && (
