@@ -116,11 +116,7 @@ export function KicadLibrariesSettings() {
             <div className="flex flex-col items-start gap-3">
                 <div>
                     <h3 className="text-lg font-semibold">KiCad libraries</h3>
-                    <p className="text-sm text-muted-foreground max-w-xl">
-                        Boards reach files outside their repository through path variables, such as {"${LSF_KICAD_LIB}"}.
-                        Add the library behind each one and Prism fetches it, keeps it current or pinned, and hands the folder to KiCad when it renders.
-                        Every project can use every library.
-                    </p>
+                    <p className="text-sm text-muted-foreground max-w-xl">Add project dependencies and libraries.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button size="sm" onClick={() => setView({ kind: "add", preset: {} })}>

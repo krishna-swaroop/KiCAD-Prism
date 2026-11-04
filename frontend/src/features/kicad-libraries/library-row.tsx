@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { KicadLibrary } from "@/types/kicad-libraries";
 
-import { describeLibrary, formatBytes, isFetching, sourceLine, stateLine, updateAvailable } from "./library-status";
+import { describeLibrary, formatBytes, isFetching, stateLine, updateAvailable } from "./library-status";
 
 export interface LibraryActions {
     edit: (library: KicadLibrary) => void;
@@ -66,8 +66,8 @@ function Menu({ library, busy, actions }: LibraryRowProps) {
 export function LibraryRow({ library, busy, actions }: LibraryRowProps) {
     const status = describeLibrary(library);
     const showProgress = library.state === "fetching" && library.progress !== null;
+    const size = formatBytes(library.sizeBytes);
     const detail = [
-        formatBytes(library.sizeBytes),
         library.ready && library.fetchedAt ? `fetched ${new Date(library.fetchedAt).toLocaleString()}` : "",
         library.projectsUsing > 0 ? `${library.projectsUsing} project${library.projectsUsing === 1 ? "" : "s"} use it` : "",
     ]
@@ -81,13 +81,13 @@ export function LibraryRow({ library, busy, actions }: LibraryRowProps) {
                     <div className="flex items-center gap-2">
                         <span className="font-medium truncate">{library.name}</span>
                         <Badge variant={status.variant}>{status.label}</Badge>
+                        {size ? <Badge variant="outline">{size}</Badge> : null}
                     </div>
                     <div className="flex flex-wrap gap-1">
                         {library.variables.map((variable) => (
                             <code key={variable} className="rounded bg-muted px-1.5 py-0.5 text-xs">{`\${${variable}}`}</code>
                         ))}
                     </div>
-                    <p className="text-xs text-muted-foreground break-all">{sourceLine(library)}</p>
                     <p className="text-xs text-muted-foreground">{stateLine(library)}</p>
                     {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
                 </div>

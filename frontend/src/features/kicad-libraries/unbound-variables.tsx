@@ -13,7 +13,7 @@ export function UnboundVariables({ usage, onAdd }: UnboundVariablesProps) {
 
     return (
         <div className="rounded-lg border border-amber-500/40 p-4 flex flex-col gap-2">
-            <h4 className="font-medium">Variables projects use that no library defines</h4>
+            <h4 className="font-medium">Undefined Variables</h4>
             <ul className="flex flex-col gap-2">
                 {unbound.map((row) => (
                     <li key={row.variable} className="flex items-center justify-between gap-3">
