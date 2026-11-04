@@ -93,6 +93,9 @@ export function LibraryRow({ library, busy, actions }: LibraryRowProps) {
                 </div>
                 <Menu library={library} busy={busy} actions={actions} />
             </div>
+            {library.problem && (
+                <p className="text-sm text-destructive break-words">Not in use: {library.problem}</p>
+            )}
             {library.overriddenVariables.length > 0 && (
                 <p className="text-sm text-amber-600 dark:text-amber-400">
                     Overridden by the server&apos;s environment: {library.overriddenVariables.join(", ")}. This library does not bind {library.overriddenVariables.length === 1 ? "it" : "them"}.

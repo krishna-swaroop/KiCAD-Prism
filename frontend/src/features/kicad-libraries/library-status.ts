@@ -43,6 +43,7 @@ export function updateAvailable(library: KicadLibrary): boolean {
 
 /** What the badge says. The server's `ready` decides, not the fetch's last report. */
 export function describeLibrary(library: KicadLibrary): LibraryStatus {
+    if (library.problem) return { label: "Not in use", variant: "destructive" };
     if (library.state === "failed") {
         return library.ready ? { label: "Update failed", variant: "warning" } : { label: "Fetch failed", variant: "destructive" };
     }

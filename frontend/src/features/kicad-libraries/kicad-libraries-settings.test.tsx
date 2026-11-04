@@ -32,7 +32,7 @@ const lsf: KicadLibrary = {
     name: "lsf", kind: "git", variables: ["LSF_KICAD_LIB"], git: "https://example.org/lsf.git", ref: "main", subdir: "", path: "",
     updatePolicy: "follow", pinnedCommit: "", checkIntervalSeconds: 86400, lastCheckedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
     lastCheckError: null, remoteCommit: A, fetchedCommit: A, servedCommit: A, state: "ready", error: null, progress: 100,
-    sizeBytes: 5 * 1024 * 1024, fetchedAt: "2026-11-02T10:00:00Z", updatedBy: "a@example.org", ready: true, overriddenVariables: [],
+    sizeBytes: 5 * 1024 * 1024, fetchedAt: "2026-11-02T10:00:00Z", updatedBy: "a@example.org", ready: true, problem: null, overriddenVariables: [],
     etag: '"kicad-library:lsf:3"', projectsUsing: 2,
 };
 const REFS = { reachable: true, error: null, defaultBranch: "main", tags: ["v2", "v1.5"], branches: ["main", "dev"], refFound: null };

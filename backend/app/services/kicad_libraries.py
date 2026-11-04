@@ -265,6 +265,13 @@ def check_git_url(url: Any) -> str:
         or text.startswith("-")
     ):
         raise ValueError("a git library needs a plain https:// url, with no credentials in it")
+    # The rules project imports follow: IMPORT_ALLOWED_HOSTS, no dot segments, a repository path.
+    from app.services.git_remote_url import RemoteUrlError, RemoteUrlPolicy, parse_remote_url
+
+    try:
+        parse_remote_url(text, RemoteUrlPolicy.build(allowed_hosts=settings.IMPORT_ALLOWED_HOSTS))
+    except RemoteUrlError as error:
+        raise ValueError(str(error)) from error
     return text
 
 

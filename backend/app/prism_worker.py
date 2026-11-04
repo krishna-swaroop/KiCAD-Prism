@@ -613,11 +613,11 @@ class PrismWorker:
                 logger.exception("Could not check the KiCad libraries")
         if sweep:
             try:
-                keep = {
-                    row["name"]: [v["commit"] for v in kicad_library_store.versions(row["name"])]
-                    for row in kicad_library_store.list_all()
-                }
-                removed = kicad_library_fetch.sweep(keep)
+                # The names come from the database read here, never from a cache that may be empty
+                # because the database was unreachable: a folder is only removed if its row is gone.
+                names = [row["name"] for row in kicad_library_store.declared()]
+                keep = {name: [v["commit"] for v in kicad_library_store.versions(name)] for name in names}
+                removed = kicad_library_fetch.sweep(keep, declared=names)
                 if removed:
                     logger.info("KiCad library sweep removed %s", ", ".join(removed))
             except Exception:

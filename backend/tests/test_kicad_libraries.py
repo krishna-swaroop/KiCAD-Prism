@@ -91,6 +91,38 @@ class ValidationTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 libs.validate_entry(row(git=url))
 
+    def test_a_url_follows_the_hosts_project_imports_may_use(self) -> None:
+        with mock.patch.object(libs.settings, "IMPORT_ALLOWED_HOSTS_STR", "gitlab.com, git.example.org"):
+            self.assertEqual(libs.validate_entry(row(git="https://gitlab.com/kicad/x.git")).git, "https://gitlab.com/kicad/x.git")
+            with self.assertRaises(ValueError) as raised:
+                libs.validate_entry(row(git="https://github.com/acme/x.git"))
+            self.assertIn("not an allowed repository host", str(raised.exception))
+        with mock.patch.object(libs.settings, "IMPORT_ALLOWED_HOSTS_STR", ""):
+            self.assertTrue(libs.validate_entry(row(git="https://github.com/acme/x.git")).git)
+
+    def test_a_url_needs_a_repository_path_without_dot_segments(self) -> None:
+        for url in ("https://example.org/", "https://example.org/a/../b.git"):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                libs.validate_entry(row(git=url))
+
+    def test_a_row_that_no_longer_validates_says_why_and_binds_nothing(self) -> None:
+        from app.services import kicad_library_store as store
+
+        stored = {
+            "name": "lsf", "kind": "git", "variables": ["LSF_KICAD_LIB"], "git_url": "https://github.com/acme/x.git",
+            "ref": "main", "subdir": "", "path": None, "update_policy": "follow", "pinned_commit": None,
+            "check_interval_seconds": 86400, "generation": 1, "last_checked_at": None, "last_check_error": None,
+            "remote_commit": None, "fetched_commit": None, "state": "ready", "error": None, "progress": None,
+            "size_bytes": None, "fetched_at": None, "created_at": None, "updated_at": None, "updated_by": "a",
+            "row_version": 1,
+        }
+        with mock.patch.object(libs.settings, "IMPORT_ALLOWED_HOSTS_STR", "gitlab.com"):
+            view = store._view(stored)
+        self.assertFalse(view["ready"])
+        self.assertIn("not an allowed repository host", view["problem"])
+        with mock.patch.object(libs.settings, "IMPORT_ALLOWED_HOSTS_STR", ""):
+            self.assertIsNone(store._view(stored)["problem"])
+
     def test_a_ref_cannot_be_an_option_or_a_revision_expression(self) -> None:
         for ref in ("--upload-pack=x", "-b", "a..b", "HEAD~1", "a b", "main^", "x:y", ""):
             with self.subTest(ref=ref), self.assertRaises(ValueError):

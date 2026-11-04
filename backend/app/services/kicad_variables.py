@@ -7,7 +7,8 @@ variables out of them. A project can define its own text variables
 (`LIB = ${LSF_KICAD_LIB}/3d`), which KiCad expands first, so a path through
 `${LIB}` names `LSF_KICAD_LIB` and is counted there.
 
-Pure functions over parsed documents: no file or archive is opened here.
+Functions over parsed documents: no archive is opened here, and only
+``missing_models`` looks at the files a model path names.
 """
 
 from __future__ import annotations
@@ -155,6 +156,29 @@ def expand(path: str, text_variables: Mapping[str, str], folder_of: Callable[[st
     return substitute(path, 0)
 
 
+_LFS_POINTER_MAX = 1024
+
+
+def _model_file(path: str) -> bool:
+    """Whether ``path`` is a model KiCad can read: a file, and not a Git LFS pointer standing in for one.
+
+    A path library checked out without git-lfs holds pointers, which KiCad
+    skips without a word; they count as missing.
+    """
+
+    from app.services.design_bundle.materialize import lfs_pointer
+
+    try:
+        if not os.path.isfile(path):
+            return False
+        if os.path.getsize(path) > _LFS_POINTER_MAX:
+            return True
+        with open(path, "rb") as handle:
+            return lfs_pointer(handle.read(_LFS_POINTER_MAX + 1)) is None
+    except OSError:
+        return False
+
+
 def missing_models(
     placements: Mapping[str, Any] | None,
     text_variables: Mapping[str, str],
@@ -180,7 +204,7 @@ def missing_models(
             expanded = expand(path, text_variables, folder_of)
             if expanded is None or "${" in expanded:
                 continue
-            if not os.path.isfile(expanded.replace("\\", "/")):
+            if not _model_file(expanded.replace("\\", "/")):
                 for name in named:
                     counts[name] = counts.get(name, 0) + 1
     return counts

@@ -23,12 +23,17 @@ export const base: KicadLibrary = {
     name: "lsf", kind: "git", variables: ["LSF_KICAD_LIB"], git: "https://example.org/lsf.git", ref: "main", subdir: "", path: "",
     updatePolicy: "follow", pinnedCommit: "", checkIntervalSeconds: 86400, lastCheckedAt: "2026-11-04T10:00:00Z", lastCheckError: null,
     remoteCommit: A, fetchedCommit: A, servedCommit: A, state: "ready", error: null, progress: 100, sizeBytes: null, fetchedAt: null,
-    updatedBy: "", ready: true, overriddenVariables: [], etag: '"kicad-library:lsf:1"', projectsUsing: 0,
+    updatedBy: "", ready: true, problem: null, overriddenVariables: [], etag: '"kicad-library:lsf:1"', projectsUsing: 0,
 };
 
 it("says ready only when the server says the library serves a version", () => {
     expect(describeLibrary(base)).toEqual({ label: "Ready", variant: "success" });
     expect(describeLibrary({ ...base, ready: false, servedCommit: "" })).toEqual({ label: "Missing from disk", variant: "warning" });
+});
+
+it("says a declared library the server no longer accepts is not in use, whatever its last fetch said", () => {
+    expect(describeLibrary({ ...base, ready: false, problem: "'github.com' is not an allowed repository host." }))
+        .toEqual({ label: "Not in use", variant: "destructive" });
 });
 
 it("describes each stage of a fetch", () => {

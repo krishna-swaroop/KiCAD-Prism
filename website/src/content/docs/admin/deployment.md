@@ -329,6 +329,16 @@ For each library you give a name, the variables it binds, the repository (an
 folder inside the repository the variables point at. Only repositories you
 declare are fetched; a project cannot make the server clone anything.
 
+A library must be a public `https://` repository. Prism sends it no token and no
+SSH key, so the Git credentials set for project imports do not apply. Its host
+must be in `IMPORT_ALLOWED_HOSTS_STR` when that is set, as for imports; add
+`gitlab.com` for KiCad's stock 3D models. A library whose host the setting
+stops allowing goes out of service and says so in Settings; its files are kept.
+
+Files kept in Git LFS are downloaded with the library, so the image needs
+`git-lfs` (the standard image has it). Without it, a library with LFS files
+fails to fetch rather than serving pointers in place of models.
+
 ### Follow or pin
 
 Libraries change on their own schedule, apart from the projects that use them.
@@ -338,6 +348,14 @@ Each library either follows its ref or is pinned:
 | --- | --- |
 | **Follow** | Checks the tag or branch on a schedule (hourly, every 6 hours, daily or weekly) and fetches the new commit when it moves. The default for a branch. |
 | **Pinned** | Stays at one commit. A moved ref is shown in Settings and nothing is fetched until you update it. The default for a tag. |
+
+Following again fetches where the ref points now, without waiting for the next
+check.
+
+A library follows its own ref, not the commit a project recorded. A project
+that also keeps the library as a submodule records a commit the server does not
+read: the 3D view uses the version the library serves, for older revisions too.
+Pin the library if boards must match a known version.
 
 Follow means the upstream repository decides what this server downloads. Models
 are only read, never run, but KiCad's importers still parse them. Follow only

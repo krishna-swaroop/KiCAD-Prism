@@ -61,6 +61,8 @@ class LibraryView(BaseModel):
     updatedAt: datetime | None = None
     updatedBy: str
     ready: bool
+    # Why the library is not in service although declared (its row no longer validates); None when it is.
+    problem: str | None = None
     overriddenVariables: list[str]
     etag: str
     rowVersion: int
@@ -322,6 +324,8 @@ def _set_policy(policy: str) -> Callable[..., Any]:
         def change() -> dict[str, Any]:
             view = store.update(name, {"update_policy": policy}, expected_version=expected, updated_by=user.email)
             logger.info("KiCad library %s set to %s by %s", name, policy, user.email)
+            if policy == "follow":
+                _queue_fetch(view, user)  # following again: move to where the ref is now, not at the next check
             return _decorated(view)
 
         return _with_etag(await _run(change), response)

@@ -79,7 +79,7 @@ class FetchCase(unittest.TestCase):
     def declare(self, library: libs.Library) -> mock._patch:
         entry = {
             "name": library.name, "variables": list(library.variables), "git": library.git, "ref": library.ref,
-            "subdir": library.subdir,
+            "subdir": library.subdir, "update_policy": library.update_policy, "pinned_commit": library.pinned_commit,
         }
         patcher = mock.patch.object(libs, "declared_rows", return_value=[entry])
         patcher.start()
@@ -221,10 +221,11 @@ class RemoteTests(FetchCase):
             fetch.resolve_remote(self.url, "nope")
         self.assertTrue(raised.exception.permanent)
 
-    def test_an_unreachable_remote_is_a_retryable_error(self) -> None:
+    def test_an_address_with_no_repository_is_a_permanent_error(self) -> None:
         with self.assertRaises(fetch.FetchError) as raised:
             fetch.resolve_remote((self.root / "gone").as_uri(), "main")
-        self.assertFalse(raised.exception.permanent)
+        self.assertTrue(raised.exception.permanent)
+        self.assertIn("was not found, or it is private", str(raised.exception))
 
     def test_the_remote_check_lists_tags_newest_first_and_the_default_branch_first(self) -> None:
         for tag in ("9.0.9", "10.0.4", "10.0.4-rc1", "nightly"):
@@ -326,6 +327,152 @@ class SweepTests(FetchCase):
         fetch.sweep({"lsf": [second]}, grace=3600)
         self.assertNotIn(self.first, refs())
         self.assertIn(second, refs())
+
+
+    def test_a_declared_library_whose_row_no_longer_validates_is_left_alone(self) -> None:
+        library = self.library()
+        patcher = self.declare(library)
+        fetch.fetch_version(library, self.first)
+        patcher.stop()
+        # The row is still in the database but is not in force (a host the server stopped allowing,
+        # or a cache left empty by a database that did not answer): its files are not a removed library's.
+        with mock.patch.object(libs, "declared_rows", return_value=[]):
+            self.assertEqual(fetch.sweep(grace=-1, declared=["lsf"]), [])
+        self.assertIsNotNone(library.published())
+        self.assertFalse((library.clone_dir / "removed.json").exists())
+
+
+class LfsCase(FetchCase):
+    """A remote that keeps its models in Git LFS, served over git-lfs's file adapter."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        if fetch.shutil.which("git-lfs") is None:
+            self.skipTest("git-lfs is not installed")
+        self.remote = self.root / "lfs-remote"
+        init_repo(self.remote, {"README.md": "readme"})
+        git(self.remote, "config", "uploadpack.allowAnySHA1InWant", "true")
+        git(self.remote, "lfs", "install", "--local")
+        git(self.remote, "lfs", "track", "*.step")
+        self.model = os.urandom(4000)
+        write_files(self.remote, {"lsf.3dshapes/cap.step": self.model, "lsf.3dshapes/cap.txt": "plain"})
+        self.commit = commit_all(self.remote, "models in lfs")
+        self.url = self.remote.as_uri()
+        # git-lfs's file adapter reads the repository itself, not an /info/lfs endpoint.
+        patcher = mock.patch.object(fetch, "lfs_endpoint", lambda url: url)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
+class LfsTests(LfsCase):
+    def test_lfs_files_are_published_as_their_content_not_their_pointers(self) -> None:
+        library = self.library(subdir="lsf.3dshapes")
+        fetch.fetch_version(library, self.commit)
+        self.assertEqual((library.folder / "cap.step").read_bytes(), self.model)
+        self.assertEqual((library.folder / "cap.txt").read_text(encoding="utf-8"), "plain")
+        self.assertEqual(fetch.lfs_pointers(library.folder), [])
+        self.assertFalse((library.clone_dir / "store.git" / "lfs").exists(), "the version folder is the one copy kept")
+
+    def test_without_git_lfs_a_library_with_pointers_fails_for_good_and_serves_nothing(self) -> None:
+        library = self.library(subdir="lsf.3dshapes")
+        with mock.patch.object(fetch.shutil, "which", return_value=None):
+            with self.assertRaises(fetch.FetchError) as raised:
+                fetch.fetch_version(library, self.commit)
+        self.assertTrue(raised.exception.permanent)
+        self.assertIn("Git LFS", str(raised.exception))
+        self.assertIsNone(library.published())
+        self.assertEqual([p.name for p in library.clone_dir.iterdir() if p.name.endswith(".partial")], [])
+
+    def test_a_pointer_whose_object_the_server_lacks_fails_and_the_old_version_keeps_serving(self) -> None:
+        library = self.library(subdir="lsf.3dshapes")
+        fetch.fetch_version(library, self.commit)
+        served = library.published()
+        pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:" + "0" * 64 + "\nsize 12\n"
+        git(self.remote, "lfs", "untrack", "*.step")
+        write_files(self.remote, {"lsf.3dshapes/gone.step": pointer})
+        broken = commit_all(self.remote, "a pointer with no object")
+        with self.assertRaises(fetch.FetchError):
+            fetch.fetch_version(library, broken)
+        self.assertEqual(library.published(), served)
+
+    def test_a_pointer_whose_object_does_not_match_is_not_copied(self) -> None:
+        target = self.root / "pointer.step"
+        target.write_text("pointer", encoding="utf-8")
+        source = self.root / "object"
+        source.write_bytes(b"other bytes!")
+        self.assertFalse(fetch._copy_verified(source, target, "0" * 64, 12))
+        self.assertEqual(target.read_text(encoding="utf-8"), "pointer")
+
+
+class FailureTests(unittest.TestCase):
+    def test_a_private_or_missing_repository_says_so_and_is_not_retried(self) -> None:
+        stderr = "remote: Repository not found.\nfatal: repository 'https://github.com/acme/lib.git/' not found"
+        error = fetch._failure(stderr, "https://github.com/acme/lib.git", "git fetch failed")
+        self.assertTrue(error.permanent)
+        self.assertEqual(str(error), "github.com/acme/lib was not found, or it is private. Libraries must be public https repositories.")
+        prompt = "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+        self.assertTrue(fetch._failure(prompt, "https://github.com/acme/lib", "x").permanent)
+
+    def test_a_network_failure_is_retried(self) -> None:
+        error = fetch._failure("fatal: unable to access: Could not resolve host: example.org", "https://example.org/x.git", "x")
+        self.assertEqual((str(error), error.permanent), ("Could not resolve example.org.", False))
+
+    def test_an_unknown_failure_keeps_git_s_last_line_without_credentials(self) -> None:
+        error = fetch._failure("warning: x\nfatal: unable to access 'https://token@example.org/x/': SSL", "https://example.org/x", "git fetch failed")
+        self.assertEqual(str(error), "git fetch failed: fatal: unable to access 'https://example.org/x/': SSL")
+        self.assertFalse(error.permanent)
+
+    def test_the_lfs_endpoint_is_the_one_git_lfs_derives(self) -> None:
+        self.assertEqual(fetch.lfs_endpoint("https://example.org/a/lib"), "https://example.org/a/lib.git/info/lfs")
+        self.assertEqual(fetch.lfs_endpoint("https://example.org/a/lib.git/"), "https://example.org/a/lib.git/info/lfs")
+
+
+class _Context:
+    def __init__(self, payload: dict, requested_by: str = "system:library-check") -> None:
+        self.job = {"payload": payload, "requested_by": requested_by}
+
+    def progress(self, **kwargs: object) -> None:
+        pass
+
+    def check_cancelled(self) -> None:
+        pass
+
+
+class PinnedFetchTests(FetchCase):
+    def setUp(self) -> None:
+        super().setUp()
+        for name in ("record_fetch", "record_published"):
+            patcher = mock.patch.object(fetch.kicad_library_store, name)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_a_fetch_queued_before_the_library_was_pinned_fetches_nothing(self) -> None:
+        second = self.advance()
+        library = self.library(update_policy="pinned", pinned_commit=self.first)
+        self.declare(library)
+        result = fetch.run_fetch_job(_Context({"name": "lsf", "commit": second}))
+        self.assertIn("pinned", result.message)
+        self.assertIsNone(library.published())
+
+    def test_a_library_pinned_while_a_fetch_ran_ends_up_serving_its_pin(self) -> None:
+        library = self.library()
+        fetch.fetch_version(library, self.first)
+        second = self.advance()
+        self.declare(library)
+        real = fetch.fetch_version
+        calls: list[str] = []
+
+        def pinned_meanwhile(lib, commit, **kwargs):
+            calls.append(commit)
+            done = real(lib, commit, **kwargs)
+            if len(calls) == 1:  # the administrator froze the library at what it served before
+                self.declare(self.library(update_policy="pinned", pinned_commit=self.first))
+            return done
+
+        with mock.patch.object(fetch, "fetch_version", pinned_meanwhile):
+            fetch.run_fetch_job(_Context({"name": "lsf", "commit": second}))
+        self.assertEqual(calls, [second, self.first])
+        self.assertEqual(library.published().commit, self.first)
 
 
 class ProgressTests(unittest.TestCase):

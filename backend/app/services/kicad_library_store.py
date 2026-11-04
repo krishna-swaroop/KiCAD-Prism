@@ -377,11 +377,12 @@ def _require_free(library: kicad_libraries.Library, taken: dict[str, str]) -> No
 def _view(row: dict[str, Any]) -> dict[str, Any]:
     """A row as the console shows it, with what the disk says is served."""
 
-    library = None
+    library, problem = None, None
     try:
         library = kicad_libraries.validate_entry(_entry(row))
-    except ValueError:
-        pass
+    except ValueError as error:
+        # Valid when declared, not now (a host the server stopped allowing): it binds nothing until fixed.
+        problem = str(error)
     published = library.published() if library is not None else None
     taken = kicad_libraries.snapshot().overridden if library is not None and library.ready else {}
     overridden = [v for v in row["variables"] if taken.get(v) == row["name"]]
@@ -410,6 +411,7 @@ def _view(row: dict[str, Any]) -> dict[str, Any]:
         "updatedAt": row["updated_at"],
         "updatedBy": row["updated_by"],
         "ready": bool(library and library.ready),
+        "problem": problem,
         "overriddenVariables": overridden,
         "etag": etag_of(row),
         "rowVersion": row["row_version"],

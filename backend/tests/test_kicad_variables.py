@@ -112,6 +112,19 @@ class ExpansionTests(unittest.TestCase):
             counts = variables.missing_models(placements, {}, lambda name: library if name == "LSF_KICAD_LIB" else None)
         self.assertEqual(counts, {"LSF_KICAD_LIB": 2})
 
+    def test_a_git_lfs_pointer_in_place_of_a_model_counts_as_missing(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:" + "a" * 64 + "\nsize 4000\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Path(tmp)
+            (library / "pointer.step").write_text(pointer, encoding="utf-8")
+            (library / "real.step").write_bytes(b"ISO-10303-21;" * 200)
+            placements = board("${LSF_KICAD_LIB}/pointer.step", "${LSF_KICAD_LIB}/real.step")
+            counts = variables.missing_models(placements, {}, lambda name: library if name == "LSF_KICAD_LIB" else None)
+        self.assertEqual(counts, {"LSF_KICAD_LIB": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

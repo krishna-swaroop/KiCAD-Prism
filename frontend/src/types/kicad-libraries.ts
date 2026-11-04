@@ -31,6 +31,8 @@ export interface KicadLibrary {
     fetchedAt: string | null;
     updatedBy: string;
     ready: boolean;
+    /** Why a declared library is out of service (its address no longer passes the server's rules); null when it is in service. */
+    problem: string | null;
     /** Variables the server's environment sets, so this library does not bind them. */
     overriddenVariables: string[];
     etag: string;

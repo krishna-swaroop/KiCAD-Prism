@@ -18687,6 +18687,17 @@
             "title": "Pinnedcommit",
             "type": "string"
           },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
           "progress": {
             "anyOf": [
               {

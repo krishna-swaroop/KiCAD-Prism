@@ -15,6 +15,7 @@ to serve a commit by its id.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -23,10 +24,14 @@ import shutil
 import subprocess
 import tarfile
 import time
+from collections import deque
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
+from urllib.parse import urlsplit
 
 from app.services import kicad_libraries, kicad_library_store
+from app.services.design_bundle.materialize import lfs_pointer
+from app.services.git_failures import describe_git_failure, strip_url_credentials
 from app.services.job_kinds import JobKind, JobSubject, subject_lock
 from app.services.job_runtime import JobCancelled, JobContext, JobResult, PermanentJobError, RetryableJobError
 from app.services.process_tree import group_popen_kwargs, kill_tree
@@ -51,11 +56,23 @@ _SUPERSEDED = ".superseded"
 _REMOVED_FILE = "removed.json"
 _STORE = "store.git"
 _KEEP_REF = "refs/prism/keep/"
-_PHASES = (("Receiving objects", 0, 70), ("Resolving deltas", 70, 80))
+_PHASES = (("Receiving objects", 0, 70), ("Resolving deltas", 70, 80), ("Downloading LFS objects", 85, 95))
 _PERCENT = re.compile(r"^(?:remote:\s*)?(?P<phase>[A-Za-z ]+):\s+(?P<percent>\d+)%")
 # The console lists this many of a repository's tags and branches.
 _MAX_LISTED = 100
 _COMMIT = re.compile(r"[0-9a-f]{40}")
+# A Git LFS pointer is a short text file; anything larger is the file itself.
+_LFS_POINTER_MAX = 1024
+_LFS_DIR = "lfs"
+# What a failed git command means for a library, and whether it would fail the same way again.
+_PRIVATE = "{target} was not found, or it is private. Libraries must be public https repositories."
+_FAILURES = {
+    "repository-not-found": (_PRIVATE, True),
+    "credentials-required": (_PRIVATE, True),
+    "host-unresolved": ("Could not resolve {host}.", False),
+    "host-unreachable": ("Could not reach {host}.", False),
+    "disk-full": ("The server ran out of disk space.", False),
+}
 
 
 class FetchError(RuntimeError):
@@ -105,6 +122,24 @@ def _last_line(text: str) -> str:
     return lines[-1][:300] if lines else ""
 
 
+def _failure(stderr: str, url: str, fallback: str) -> FetchError:
+    """What a failed git command means, in the console's words, without credentials in it.
+
+    Read with the rules project imports use (``git_failures``). Their advice
+    about tokens and SSH keys does not apply: a library uses neither.
+    """
+
+    reason, _ = describe_git_failure(RuntimeError(stderr))
+    parts = urlsplit(url)
+    host = parts.hostname or "the server"
+    target = f"{host}{parts.path}".rstrip("/").removesuffix(".git")
+    if reason in _FAILURES:
+        template, permanent = _FAILURES[reason]
+        return FetchError(template.format(target=target, host=host), permanent=permanent)
+    line = strip_url_credentials(_last_line(stderr))
+    return FetchError(f"{fallback}: {line}" if line else fallback)
+
+
 def resolve_remote(url: str, ref: str) -> str:
     """The commit ``ref`` points at on the remote (a tag's own commit, not the tag object)."""
 
@@ -121,7 +156,7 @@ def resolve_remote(url: str, ref: str) -> str:
     except OSError as error:
         raise FetchError(f"git could not run: {error}", permanent=True) from error
     if done.returncode != 0:
-        raise FetchError(_last_line(done.stderr) or "git ls-remote failed")
+        raise _failure(done.stderr, url, "git ls-remote failed")
     found: dict[str, str] = {}
     for line in done.stdout.splitlines():
         sha, _, name = line.partition("\t")
@@ -156,7 +191,7 @@ def _run_streaming(
     on_tick: Callable[[], None],
     cwd: Path | None = None,
 ) -> tuple[int, str]:
-    """Run a git command, reading its progress from stderr; returns (exit code, last stderr line)."""
+    """Run a git command, reading its progress from stderr; returns (exit code, its last lines of stderr)."""
 
     process = subprocess.Popen(
         command,
@@ -168,20 +203,23 @@ def _run_streaming(
         **group_popen_kwargs(),
     )
     assert process.stderr is not None
-    tail, last, ticked = "", -1, time.monotonic()
+    tail: deque[str] = deque(maxlen=20)
+    last, ticked = -1, time.monotonic()
     try:
         # git redraws a progress line with carriage returns; read it as lines of either kind.
         for chunk in process.stderr:
             for line in chunk.replace("\r", "\n").splitlines():
-                tail = line.strip() or tail
                 percent = progress_of(line)
-                if percent is not None and percent != last:
-                    last = percent
-                    on_progress(percent)
+                if percent is not None:
+                    if percent != last:
+                        last = percent
+                        on_progress(percent)
+                elif line.strip():
+                    tail.append(line.strip())
             if time.monotonic() - ticked >= _TICK_SECONDS:
                 ticked = time.monotonic()
                 on_tick()
-        return process.wait(), tail
+        return process.wait(), os.linesep.join(tail)
     except BaseException:
         kill_tree(process)
         process.wait()
@@ -240,7 +278,7 @@ def fetch_into_store(
             if not _has_commit(store, commit):
                 if fetched:
                     raise FetchError(f"{library.ref} moved while it was being fetched; it will be checked again")
-                raise FetchError(f"git fetch failed: {tail}")
+                raise _failure(tail, library.git, "git fetch failed")
     done = subprocess.run(
         _git("update-ref", f"{_KEEP_REF}{commit}", commit, git_dir=store), capture_output=True, text=True, env=_environment()
     )
@@ -331,6 +369,107 @@ def extract_version(
     return total
 
 
+def lfs_pointers(folder: Path) -> list[tuple[Path, str, int]]:
+    """The files under ``folder`` that are Git LFS pointers, not content: ``(file, sha256, size)``."""
+
+    found: list[tuple[Path, str, int]] = []
+    for root, _dirs, files in os.walk(folder):
+        for name in files:
+            path = Path(root, name)
+            try:
+                if path.stat().st_size > _LFS_POINTER_MAX:
+                    continue
+                pointer = lfs_pointer(path.read_bytes())
+            except OSError:
+                continue
+            if pointer is not None:
+                found.append((path, *pointer))
+    return found
+
+
+def lfs_endpoint(url: str) -> str:
+    """Where git-lfs asks for a repository's objects: what git-lfs itself derives from the url."""
+
+    base = url.rstrip("/")
+    return f"{base if base.endswith('.git') else base + '.git'}/info/lfs"
+
+
+def _copy_verified(source: Path, target: Path, sha: str, size: int) -> bool:
+    """Copy one LFS object over its pointer, only if its bytes are the ones the pointer names."""
+
+    temp = target.with_name(f".{target.name}.prism-lfs.tmp")
+    digest = hashlib.sha256()
+    try:
+        if source.is_symlink() or not source.is_file() or source.stat().st_size != size:
+            return False
+        with source.open("rb") as reader, temp.open("wb") as writer:
+            while chunk := reader.read(1024 * 1024):
+                digest.update(chunk)
+                writer.write(chunk)
+        if digest.hexdigest() != sha:
+            temp.unlink(missing_ok=True)
+            return False
+        os.replace(temp, target)
+        return True
+    except OSError:
+        temp.unlink(missing_ok=True)
+        return False
+
+
+def hydrate_lfs(
+    library: kicad_libraries.Library,
+    commit: str,
+    folder: Path,
+    *,
+    on_progress: Callable[[int], None] = lambda percent: None,
+    on_tick: Callable[[], None] = lambda: None,
+) -> int:
+    """Replace the Git LFS pointers in an extracted version with their files; returns how many.
+
+    Model libraries often keep STEP and WRL files in LFS, and ``git archive``
+    writes the pointers. KiCad cannot read a pointer, yet the file exists, so
+    nothing would report the model missing. The objects are downloaded into the
+    store, copied over their pointers once verified, then dropped from the
+    store: the version folder is what is kept. A pointer left over fails the
+    fetch, and the version served before keeps serving.
+    """
+
+    pointers = lfs_pointers(folder)
+    if not pointers:
+        return 0
+    if shutil.which("git-lfs") is None:
+        raise FetchError(
+            f"{len(pointers)} files in this library are stored with Git LFS, and git-lfs is not installed on the server",
+            permanent=True,
+        )
+    store = library.clone_dir / _STORE
+    _require_space(library.clone_dir)
+
+    def tick() -> None:
+        on_tick()
+        if free_bytes(library.clone_dir) < MIN_FREE_BYTES // 4:
+            raise FetchError("The volume ran out of space while the library's LFS files were downloaded")
+
+    # The endpoint is given here, so a .lfsconfig in the repository cannot send git-lfs to another server.
+    command = _git(
+        "-c", f"remote.origin.url={library.git}", "-c", f"lfs.url={lfs_endpoint(library.git)}",
+        "lfs", "fetch", "origin", commit, git_dir=store,
+    )
+    if library.subdir:
+        command += ["--include", f"{library.subdir.rstrip('/')}/**"]
+    code, tail = _run_streaming(command, on_progress=on_progress, on_tick=tick)
+    if code != 0:
+        raise _failure(tail, library.git, "git lfs fetch failed")
+    objects = store / _LFS_DIR / "objects"
+    missing = [
+        path for path, sha, size in pointers if not _copy_verified(objects / sha[:2] / sha[2:4] / sha, path, sha, size)
+    ]
+    remove_tree(store / _LFS_DIR, ignore_errors=True)
+    if missing:
+        raise FetchError(f"{len(missing)} of the library's {len(pointers)} Git LFS files could not be downloaded")
+    return len(pointers)
+
+
 def _write_published(library: kicad_libraries.Library, commit: str, directory: str) -> None:
     """``current.json``, replaced in one step (retried briefly where another process holds the old one open)."""
 
@@ -383,6 +522,11 @@ def fetch_version(
         if library.subdir and not (partial / library.subdir).is_dir():
             remove_tree(partial, ignore_errors=True)
             raise FetchError(f"The repository has no folder {library.subdir!r} at this commit", permanent=True)
+        try:
+            hydrate_lfs(library, commit, partial, on_progress=on_progress, on_tick=on_tick)
+        except BaseException:
+            remove_tree(partial, ignore_errors=True)
+            raise
         partial.rename(target)
     publish(library, commit, directory)
     return folder_size(target)
@@ -421,6 +565,9 @@ def run_fetch_job(context: JobContext) -> JobResult:
     if library is None or not library.git:
         return JobResult(message=f"{name} is no longer a git library")
     requested_by = str(context.job.get("requested_by") or "")
+    if requested and library.update_policy == "pinned" and library.pinned_commit and requested != library.pinned_commit:
+        # Queued before the library was pinned (a scheduled check, an update): a pinned library serves its pin only.
+        return JobResult(message=f"{name} is pinned at {library.pinned_commit[:12]}; {requested[:12]} was not fetched")
     kicad_library_store.record_fetch(name, state="fetching", progress=0, error=None)
     checked = [time.monotonic()]
 
@@ -443,6 +590,11 @@ def run_fetch_job(context: JobContext) -> JobResult:
             )
             return JobResult(message=f"{name} is already at {commit[:12]}")
         size = fetch_version(library, commit, on_progress=on_progress, on_tick=on_tick)
+        fresh = _library(name)
+        if fresh is not None and fresh.update_policy == "pinned" and fresh.pinned_commit and fresh.pinned_commit != commit:
+            # Pinned while this fetch ran: the pin is what serves, and it is usually still on disk.
+            commit = fresh.pinned_commit
+            size = fetch_version(fresh, commit, on_progress=on_progress, on_tick=on_tick)
     except JobCancelled:
         kicad_library_store.record_fetch(name, state="failed", error="Cancelled")
         raise
@@ -487,21 +639,32 @@ def _age(path: Path) -> float | None:
         return None
 
 
-def sweep(keep_commits: dict[str, Iterable[str]] | None = None, *, grace: float = GRACE_SECONDS) -> list[str]:
+def sweep(
+    keep_commits: dict[str, Iterable[str]] | None = None,
+    *,
+    grace: float = GRACE_SECONDS,
+    declared: Iterable[str] | None = None,
+) -> list[str]:
     """Delete what the grace period has passed on: superseded versions, removed libraries, stale partials.
 
     ``keep_commits`` names, per library, the commits whose objects stay in its
     store (the published and recorded versions); the rest are unreferenced and
-    git prunes them a day later. Returns the paths removed.
+    git prunes them a day later. ``declared`` is every library name the
+    database holds, read just now: only a folder whose name is not there is a
+    removed library. A declared library whose row no longer validates (a host
+    the server stopped allowing) is left as it is. Returns the paths removed.
     """
 
     root = kicad_libraries.libraries_root()
     removed: list[str] = []
     if not root.is_dir():
         return removed
-    declared = {library.name: library for library in kicad_libraries.configured()[0]}
+    valid = {library.name: library for library in kicad_libraries.configured()[0]}
+    names = set(valid) if declared is None else set(declared)
     for library_dir in sorted(p for p in root.iterdir() if p.is_dir() and kicad_libraries._NAME.fullmatch(p.name)):
-        library = declared.get(library_dir.name)
+        library = valid.get(library_dir.name)
+        if library is None and library_dir.name in names:
+            continue
         if library is None:
             marker = library_dir / _REMOVED_FILE
             age = _age(marker)
@@ -593,7 +756,7 @@ def check_remote(url: str, ref: str = "") -> dict[str, Any]:
     except OSError as error:
         return {"reachable": False, "error": f"git could not run: {error}"}
     if done.returncode != 0:
-        return {"reachable": False, "error": _last_line(done.stderr) or "git ls-remote failed"}
+        return {"reachable": False, "error": str(_failure(done.stderr, url, "git ls-remote failed"))}
     tags, branches, default = [], [], None
     for line in done.stdout.splitlines():
         first, _, name = line.partition("\t")

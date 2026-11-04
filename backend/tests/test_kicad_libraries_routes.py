@@ -169,6 +169,14 @@ class ChangeTests(RouteCase):
                 self.assertEqual(self.call("POST", path, etag='"kicad-library:lsf:1"').status, 200)
                 self.assertEqual(self.store.update.call_args.args[1], {"update_policy": policy})
 
+    def test_unfreezing_moves_to_the_ref_now_and_freezing_fetches_nothing(self) -> None:
+        self.store.update.return_value = view(updatePolicy="pinned")
+        self.call("POST", "/lsf/freeze", etag='"kicad-library:lsf:1"')
+        self.fetch.assert_not_called()
+        self.store.update.return_value = view()
+        self.call("POST", "/lsf/unfreeze", etag='"kicad-library:lsf:1"')
+        self.fetch.assert_called_once_with("lsf", commit="", requested_by="admin@example.org")
+
     def test_using_a_version_pins_the_library_there_and_fetches_it(self) -> None:
         self.store.versions.return_value = [{"commit": COMMIT}]
         self.store.update.return_value = view(updatePolicy="pinned", pinnedCommit=COMMIT)

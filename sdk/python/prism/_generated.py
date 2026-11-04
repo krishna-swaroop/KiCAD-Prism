@@ -3392,6 +3392,7 @@ what the last check saw the ref at."""
     overriddenVariables: list[str]
     path: str
     pinnedCommit: str
+    problem: str | None
     progress: int | None
     projectsUsing: int
     ready: bool
