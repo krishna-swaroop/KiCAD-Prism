@@ -430,6 +430,22 @@ class ConsumerTests(unittest.TestCase):
         with Configured(self.root):
             self.assertNotEqual(before, key())
 
+    def test_a_3d_render_is_drawn_again_when_a_library_changes_and_a_2d_plot_is_not(self) -> None:
+        from app.services.design_render import service
+
+        three_d, plot = {"view": "3d"}, {"view": "pcb"}
+        with Configured(self.root):
+            plain = service.render_id("p", "c" * 40, three_d, service.library_fingerprints(three_d))
+            self.assertEqual(plain, service.render_id("p", "c" * 40, three_d), "no library bound: the id is unchanged")
+        with Configured(self.root, row()):
+            bound = service.render_id("p", "c" * 40, three_d, service.library_fingerprints(three_d))
+            self.assertNotEqual(bound, plain)
+            self.assertEqual(service.library_fingerprints(plot), {})
+            self.assertEqual(
+                service.render_id("p", "c" * 40, plot, service.library_fingerprints(plot)),
+                service.render_id("p", "c" * 40, plot),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

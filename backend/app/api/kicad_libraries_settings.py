@@ -299,7 +299,11 @@ async def update_now(
         try:
             commit = kicad_library_fetch.resolve_remote(view["git"], view["ref"])
         except kicad_library_fetch.FetchError as error:
-            raise Conflict(str(error), code="remote-unreachable") from error
+            logger.warning("KiCad library %s: could not resolve %s: %s", name, view["ref"], error)
+            raise Conflict(
+                "The repository did not answer for that tag or branch; check the address and ref, then try again",
+                code="remote-unreachable",
+            ) from error
         changes: dict[str, Any] = {"pinned_commit": commit} if view["updatePolicy"] == "pinned" else {}
         updated = store.update(name, changes, expected_version=expected, updated_by=user.email)
         logger.info("KiCad library %s updated to %s by %s", name, commit, user.email)
