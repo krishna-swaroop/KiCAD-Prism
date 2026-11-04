@@ -163,9 +163,10 @@ class KicadLibraryStoreTests(unittest.TestCase):
             store.refresh_path("lsf", expected_version=None, updated_by="")
 
     def test_usage_counts_projects_that_still_exist(self) -> None:
-        repository = seed_repository(self.scratch, "r1")
-        seed_project(self.scratch, "p1", repository)
-        seed_project(self.scratch, "p2", repository)
+        with self.scratch.connection() as conn:
+            seed_repository(conn, "r1")
+            seed_project(conn, "p1", "r1")
+            seed_project(conn, "p2", "r1")
         store.replace_usage("p1", "rev1", {"LSF_KICAD_LIB": 86, "KICAD10_3DMODEL_DIR": 4}, {"LSF_KICAD_LIB": 1})
         store.replace_usage("p2", "rev2", {"LSF_KICAD_LIB": 3}, {})
         store.replace_usage("deleted", "rev3", {"LSF_KICAD_LIB": 9}, {})
@@ -177,8 +178,9 @@ class KicadLibraryStoreTests(unittest.TestCase):
         self.assertEqual(store.projects_using([]), 0)
 
     def test_replacing_usage_forgets_the_variables_a_project_no_longer_uses(self) -> None:
-        repository = seed_repository(self.scratch, "r1")
-        seed_project(self.scratch, "p1", repository)
+        with self.scratch.connection() as conn:
+            seed_repository(conn, "r1")
+            seed_project(conn, "p1", "r1")
         store.replace_usage("p1", "rev1", {"A_LIB": 1, "B_LIB": 1}, {})
         store.replace_usage("p1", "rev2", {"A_LIB": 2}, {})
         self.assertEqual([(r["variable"], r["models"]) for r in store.usage()], [("A_LIB", 2)])
