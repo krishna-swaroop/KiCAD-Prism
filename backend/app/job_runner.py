@@ -4,6 +4,7 @@ import argparse
 import logging
 import sys
 
+from app.services import kicad_libraries
 from app.services.job_handlers import get_job_handler, load_builtin_job_handlers, settle_job_end
 from app.services.job_runtime import (
     JobCancelled,
@@ -55,6 +56,9 @@ def _execute(job_id: str, fence: int, worker_id: str) -> int:
         )
         return 4
 
+    # One answer to "which KiCad path variable points where" for the whole job: a library that
+    # publishes while it runs changes the next job, never what this one keyed or recorded.
+    kicad_libraries.pin()
     context = JobContext(job, worker_id=worker_id)
     try:
         context.check_cancelled()

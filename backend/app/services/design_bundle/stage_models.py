@@ -17,13 +17,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import shutil
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from app.core.config import settings
-from app.services import kicad_tools
+from app.services import kicad_libraries, kicad_tools
 from app.services.design_bundle.generator import Generator
 from app.services.design_bundle.kicad_steps import KicadStepFailed
 
@@ -34,9 +33,6 @@ def cache_root() -> Path:
     return Path(settings.KICAD_PROJECTS_ROOT).expanduser() / ".kicad-prism" / "bundle-models-cache"
 
 
-_MODEL_DIR_VARIABLE = re.compile(r"KICAD\d*_3DMODEL_DIR")
-
-
 def hlr_cache_root() -> Path:
     return Path(settings.KICAD_PROJECTS_ROOT).expanduser() / ".kicad-prism" / "hlr-cache"
 
@@ -44,19 +40,17 @@ def hlr_cache_root() -> Path:
 def hlr_args(environ: Mapping[str, str] | None = None) -> list[str]:
     """Stage `models`'s assembly HLR inputs (cli-spec.md §5.2.4); none without a Geometer runtime.
 
-    The stock model library is passed as the variables KiCad resolves
-    `kicad-library` references through, so the member resolves exactly what the
-    GLB export does.
+    The model libraries are passed as the variables KiCad resolves references
+    through, so the member resolves exactly what the GLB export does: the stock
+    variables the environment sets, then every variable a library binds
+    (the job's pinned snapshot; ``environ`` stands in for the environment).
     """
 
     executable = settings.GEOMETER_EXECUTABLE
     if not executable:
         return []
-    args = ["--geometer", executable, "--hlr-cache", str(hlr_cache_root())]
-    for name, value in sorted((os.environ if environ is None else environ).items()):
-        if _MODEL_DIR_VARIABLE.fullmatch(name) and value:
-            args += ["--model-dir", f"{name}={value}"]
-    return args
+    snapshot = kicad_libraries.current() if environ is None else kicad_libraries.snapshot(environ)
+    return ["--geometer", executable, "--hlr-cache", str(hlr_cache_root()), *snapshot.model_dir_args()]
 
 
 def cache_key(record: Mapping[str, Any], generator: Generator, tool_version: str = "") -> str:

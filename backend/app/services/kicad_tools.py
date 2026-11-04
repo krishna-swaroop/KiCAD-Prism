@@ -36,6 +36,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Protocol, Sequence
 
+from app.services import kicad_libraries
 from app.services.process_tree import group_popen_kwargs, kill_tree
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -243,11 +244,14 @@ class LocalTool:
         *,
         isolate: bool,
         cancel: CancelCheck | None = None,
+        libraries: "kicad_libraries.Snapshot | None" = None,
     ) -> None:
         self.name = name
         self._locate = locate
         self._isolate = isolate
         self._cancel = cancel
+        # None: the job's pinned snapshot of the KiCad path libraries. NO_LIBRARIES opts out.
+        self._libraries = libraries
 
     def __repr__(self) -> str:
         return f"LocalTool({self.name!r})"
@@ -262,7 +266,7 @@ class LocalTool:
         return path
 
     def with_cancel(self, cancel: CancelCheck | None) -> "LocalTool":
-        return LocalTool(self.name, self._locate, isolate=self._isolate, cancel=cancel)
+        return LocalTool(self.name, self._locate, isolate=self._isolate, cancel=cancel, libraries=self._libraries)
 
     def version(self) -> str:
         """``--version`` output; ``unavailable`` (not cached) when not installed."""
@@ -299,7 +303,7 @@ class LocalTool:
         tee: bool = False,
     ) -> ToolResult:
         argv = [self.executable(), *(str(part) for part in args)]
-        base = dict(os.environ)
+        base = (self._libraries or kicad_libraries.current()).env(os.environ)
         base.update(env or {})
         if not self._isolate:
             return _record(
@@ -424,10 +428,17 @@ def rss_bytes(maxrss: int) -> int:
     return maxrss if sys.platform == "darwin" else maxrss * 1024
 
 
-def kicad_cli(settings: "Settings | None" = None) -> LocalTool:
-    """The kicad-cli every KiCad job runs, isolated per process."""
+def kicad_cli(
+    settings: "Settings | None" = None, *, libraries: "kicad_libraries.Snapshot | None" = None
+) -> LocalTool:
+    """The kicad-cli every KiCad job runs, isolated per process.
 
-    return LocalTool(KICAD_CLI, lambda: locate_kicad_cli(settings), isolate=True)
+    It runs with the KiCad path libraries the job pinned (``kicad_libraries.current``).
+    A caller whose result must not depend on what this server fetched passes
+    ``libraries=kicad_libraries.NO_LIBRARIES``.
+    """
+
+    return LocalTool(KICAD_CLI, lambda: locate_kicad_cli(settings), isolate=True, libraries=libraries)
 
 
 # kicad-cli rewrites a project's local settings when it loads a board or
@@ -477,10 +488,12 @@ class KicadTools:
     cli: KicadTool | None
 
     @classmethod
-    def resolve(cls, settings: "Settings | None" = None) -> "KicadTools":
+    def resolve(
+        cls, settings: "Settings | None" = None, *, libraries: "kicad_libraries.Snapshot | None" = None
+    ) -> "KicadTools":
         """Locate the CLI now; a missing one is ``None``."""
 
-        cli = kicad_cli(settings)
+        cli = kicad_cli(settings, libraries=libraries)
         return cls(cli=cli if cli.available() else None)
 
     def with_cancel(self, cancel: CancelCheck | None) -> "KicadTools":

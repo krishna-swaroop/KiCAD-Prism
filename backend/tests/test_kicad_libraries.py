@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -350,6 +351,84 @@ class PathLibraryTests(unittest.TestCase):
             self.skipTest("symlinks are not permitted here")
         with Configured(self.root, self.entry(path="team/link"), mount=self.mount):
             self.assertEqual(dict(libs.snapshot({}).bindings), {})
+
+
+class ConsumerTests(unittest.TestCase):
+    """What the tools, keys and arguments that read the snapshot do with it."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.folder = publish(self.root, "lsf", COMMIT)
+
+    def run_tool(self, **kwargs: object) -> str:
+        from app.services import kicad_tools
+
+        tool = kicad_tools.LocalTool("probe", lambda: sys.executable, isolate=False, **kwargs)
+        result = tool.run(["-c", "import os; print(os.environ.get('LSF_KICAD_LIB', ''))"], timeout=30)
+        return result.stdout.strip()
+
+    def test_a_tool_runs_with_the_pinned_snapshots_variables(self) -> None:
+        with Configured(self.root, row()), libs.pinned():
+            self.assertEqual(self.run_tool(), str(self.folder))
+
+    def test_a_tool_that_opts_out_sees_no_library(self) -> None:
+        with Configured(self.root, row()), libs.pinned():
+            self.assertEqual(self.run_tool(libraries=libs.NO_LIBRARIES), "")
+
+    def test_a_tool_keeps_the_snapshot_it_started_with_when_a_library_publishes_later(self) -> None:
+        with Configured(self.root, row()), libs.pinned():
+            library = self.root / ".kicad-prism" / "libraries" / "lsf"
+            (library / OTHER).mkdir()
+            (library / libs.PUBLISHED_FILE).write_text(
+                json.dumps({"source": "https://gitlab.com/lsf/lsf-kicad-lib.git#", "commit": OTHER, "dir": OTHER}),
+                encoding="utf-8",
+            )
+            self.assertEqual(self.run_tool(), str(self.folder))
+
+    def test_the_catalogs_cli_sees_no_library(self) -> None:
+        from app.services import kicad_tools
+
+        with Configured(self.root, row()), libs.pinned():
+            tool = kicad_tools.kicad_cli(libraries=libs.NO_LIBRARIES)
+            self.assertIs(tool._libraries, libs.NO_LIBRARIES)
+            self.assertIs(tool.with_cancel(None)._libraries, libs.NO_LIBRARIES)
+
+    def test_prism_kicad_is_told_every_bound_directory(self) -> None:
+        from app.services.design_bundle import stage_models
+
+        with Configured(self.root, row()), libs.pinned(),                 mock.patch.object(stage_models.settings, "GEOMETER_EXECUTABLE", "/opt/geometer"),                 mock.patch.object(stage_models.settings, "KICAD_PROJECTS_ROOT", str(self.root)):
+            args = stage_models.hlr_args()
+        self.assertIn(f"LSF_KICAD_LIB={self.folder}", args)
+
+    def test_the_release_studio_render_key_moves_with_a_librarys_commit_and_not_its_mount(self) -> None:
+        from app.release_studio.documents import render_cache
+
+        board = self.root / "board.kicad_pcb"
+        board.write_text("(kicad_pcb)", encoding="utf-8")
+
+        def key() -> str:
+            with mock.patch.object(render_cache, "_board_inputs_digest", return_value="d"):
+                return render_cache.cache_key(board=board, render_args=["pcb"], cli_version="10", environ={})
+
+        with Configured(self.root, row()):
+            before = key()
+        with tempfile.TemporaryDirectory() as other:
+            publish(Path(other), "lsf", COMMIT)
+            with Configured(Path(other), row()):
+                elsewhere = key()
+        self.assertEqual(before, elsewhere)
+        newer = self.root / ".kicad-prism" / "libraries" / "lsf"
+        (newer / OTHER).mkdir()
+        (newer / libs.PUBLISHED_FILE).write_text(
+            json.dumps({"source": "https://gitlab.com/lsf/lsf-kicad-lib.git#", "commit": OTHER, "dir": OTHER}),
+            encoding="utf-8",
+        )
+        with Configured(self.root, row()):
+            self.assertNotEqual(before, key())
+        with Configured(self.root):
+            self.assertNotEqual(before, key())
 
 
 if __name__ == "__main__":

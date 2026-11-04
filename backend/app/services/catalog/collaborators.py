@@ -50,6 +50,7 @@ from app.services.catalog.representations import CatalogRepresentations
 from app.services.catalog.revision_comparison import CatalogRevisionComparison
 from app.services.catalog.revision_finalization import CatalogRevisionFinalizer
 from app.services.catalog.revision_kernel import CatalogRevisionKernel
+from app.services.kicad_libraries import NO_LIBRARIES
 from app.services.kicad_tools import KicadTool, kicad_cli
 
 
@@ -140,7 +141,7 @@ def build_catalog_collaborators(
     asset_files = asset_files or CatalogAssetFiles()
     asset_registry = asset_registry or CatalogAssetRegistry()
     metadata_schema = metadata_schema or CatalogMetadataSchema()
-    kicad = kicad or kicad_cli()
+    kicad = kicad or kicad_cli(libraries=NO_LIBRARIES)
     revision_kernel = CatalogRevisionKernel(catalog_locks)
     revision_comparison = CatalogRevisionComparison(revision_kernel)
     component_history_reads = CatalogComponentHistoryReads(revision_kernel)
