@@ -821,6 +821,13 @@ class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings, Supply
             "install locations. KICAD_CLI is accepted as a legacy name."
         ),
     )
+    PRISM_KICAD_LIBRARY_MOUNT_ROOT: str = Field(
+        default="",
+        description=(
+            "Folder a KiCad library added as a path in Settings must live under (mount a host "
+            "folder there). Empty: path libraries are off; git libraries need no mount."
+        ),
+    )
 
     # ===========================================
     # Computed Properties
