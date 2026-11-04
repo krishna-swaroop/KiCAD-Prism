@@ -16,6 +16,7 @@ callers take :func:`current` and ask it for an environment, fingerprints or
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -39,6 +40,7 @@ _ROWS_TTL_SECONDS = 5.0
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _VARIABLE = re.compile(r"[A-Z_][A-Z0-9_]{0,63}")
 _COMMIT = re.compile(r"[0-9a-f]{40}")
+_DIRECTORY = re.compile(r"[0-9a-f]{40}(-[0-9a-f]{8})?")
 _REF_FORBIDDEN = re.compile(r"[\s~^:?*\[\\\x00-\x1f\x7f]|\.\.|@\{|//")
 _STOCK_MODEL_DIR = re.compile(r"KICAD\d*_3DMODEL_DIR")
 
@@ -95,6 +97,17 @@ class Library:
 
         return f"path:{self.path}" if self.path else f"{self.git}#{self.subdir}"
 
+    def directory_for(self, commit: str) -> str:
+        """The folder a version of this library is extracted into: the commit, and which subfolder was taken.
+
+        A changed subfolder at the same commit is a different folder, so a version
+        already in use is never added to.
+        """
+
+        if not self.subdir:
+            return commit
+        return f"{commit}-{hashlib.sha256(self.subdir.encode('utf-8')).hexdigest()[:8]}"
+
     def published(self) -> Published | None:
         """The git library's published version, or ``None`` before the first fetch or if its folder is gone."""
 
@@ -105,7 +118,7 @@ class Library:
             commit, directory, source = str(document["commit"]), str(document["dir"]), str(document["source"])
         except (OSError, ValueError, KeyError, TypeError):
             return None
-        if not _COMMIT.fullmatch(commit) or directory != commit:
+        if not _COMMIT.fullmatch(commit) or not _DIRECTORY.fullmatch(directory) or not directory.startswith(commit):
             return None
         if not self._contained(self.clone_dir / directory, self.clone_dir):
             return None
