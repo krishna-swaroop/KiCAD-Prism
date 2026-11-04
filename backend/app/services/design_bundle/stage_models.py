@@ -57,13 +57,11 @@ def hlr_args(environ: Mapping[str, str] | None = None) -> list[str]:
     return ["--geometer", executable, "--hlr-cache", str(hlr_cache_root()), *snapshot.model_dir_args()]
 
 
-def referenced_variables(archive: Archive) -> kicad_variables.Referenced:
-    """The path variables the board's models and the project's drawing sheets name.
+def _documents(archive: Archive) -> tuple[Any, Any]:
+    """The bundle's placements and the project file, parsed; ``None`` for one that cannot be read.
 
-    Read from the bundle's placements (model paths as written) and the project
-    file's own text variables, both members of the bundle, so no KiCad text is
-    parsed here. A member that cannot be read names nothing: the stage still
-    runs, and says so in its log.
+    Both are members of the bundle, so no KiCad text is parsed here. A member
+    that cannot be read names nothing: the stage still runs, and says so in its log.
     """
 
     placements = project = None
@@ -77,7 +75,24 @@ def referenced_variables(archive: Archive) -> kicad_variables.Referenced:
             project = json.loads(archive.read(f"sources/{project_file}", structured=False))
         except (BundleInvalid, ValueError) as error:
             logger.warning("Path variables: could not read the project file: %s", error)
-    return kicad_variables.referenced(placements, project)
+    return placements, project
+
+
+def referenced_variables(archive: Archive) -> kicad_variables.Referenced:
+    """The path variables the board's models and the project's drawing sheets name."""
+
+    return kicad_variables.referenced(*_documents(archive))
+
+
+def missing_models(archive: Archive, libraries: kicad_libraries.Snapshot) -> dict[str, int]:
+    """Per variable, how many model files are not there although the server defines the variable.
+
+    A static check against the snapshot the models were exported with, so it
+    holds on a cache hit, where kicad-cli does not run.
+    """
+
+    placements, project = _documents(archive)
+    return kicad_variables.missing_models(placements, kicad_variables.project_text_variables(project), libraries.folder_of)
 
 
 def cache_key(

@@ -81,5 +81,37 @@ class BoardAndProjectTests(unittest.TestCase):
         self.assertEqual(variables.project_text_variables(None), {})
 
 
+class ExpansionTests(unittest.TestCase):
+    def folders(self, name: str):
+        from pathlib import Path
+
+        return {"LSF_KICAD_LIB": Path("/lib/lsf")}.get(name)
+
+    def test_a_path_is_expanded_through_the_projects_text_variables_and_the_defined_folders(self) -> None:
+        expanded = variables.expand("${LIB}/x.step", {"LIB": "${LSF_KICAD_LIB}/3d"}, self.folders)
+        self.assertTrue(expanded.replace(chr(92), "/").endswith("/lsf/3d/x.step"), expanded)
+
+    def test_an_undefined_variable_makes_the_path_unexpandable(self) -> None:
+        self.assertIsNone(variables.expand("${NOPE_LIB}/x.step", {}, self.folders))
+        self.assertIsNone(variables.expand(":NOPE_LIB:x.step", {}, self.folders))
+
+    def test_the_project_folder_is_left_for_kicad(self) -> None:
+        self.assertEqual(variables.expand("${KIPRJMOD}/x.step", {}, self.folders), "${KIPRJMOD}/x.step")
+
+    def test_missing_models_counts_only_files_absent_under_a_defined_variable(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Path(tmp)
+            (library / "present.step").write_text("x", encoding="utf-8")
+            placements = board(
+                "${LSF_KICAD_LIB}/present.step", "${LSF_KICAD_LIB}/gone.step", "${LSF_KICAD_LIB}/also-gone.step",
+                "${UNDEFINED_LIB}/x.step", "${KIPRJMOD}/own.step", "plain/own.step",
+            )
+            counts = variables.missing_models(placements, {}, lambda name: library if name == "LSF_KICAD_LIB" else None)
+        self.assertEqual(counts, {"LSF_KICAD_LIB": 2})
+
+
 if __name__ == "__main__":
     unittest.main()

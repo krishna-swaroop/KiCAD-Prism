@@ -7415,6 +7415,11 @@ class ValidationSummary(TypedDict, total=True):
     warning_count: int
 
 
+class VariableCount(TypedDict, total=True):
+    models: int
+    variable: str
+
+
 class VariableUsage(TypedDict, total=True):
     bound: bool
     models: int
@@ -7520,12 +7525,14 @@ class WebGpu3dStatus(TypedDict, total=False):
     generator: GeneratorTag
     job_id: str | None
     message: str | None
+    missingModels: list[VariableCount]
     readiness: StatusReadiness
     refreshing: bool
     schema: str
     sourceRevisionKey: str
     source_fingerprint: str
     status: str
+    unresolvedVariables: list[VariableCount]
 
 
 class WebhookAccepted(TypedDict, total=True):

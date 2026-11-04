@@ -41442,6 +41442,25 @@
         "title": "ValidationSummary",
         "type": "object"
       },
+      "VariableCount": {
+        "additionalProperties": true,
+        "properties": {
+          "models": {
+            "title": "Models",
+            "type": "integer"
+          },
+          "variable": {
+            "title": "Variable",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variable",
+          "models"
+        ],
+        "title": "VariableCount",
+        "type": "object"
+      },
       "VariableUsage": {
         "properties": {
           "bound": {
@@ -41989,6 +42008,14 @@
             ],
             "title": "Message"
           },
+          "missingModels": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VariableCount"
+            },
+            "title": "Missingmodels",
+            "type": "array"
+          },
           "readiness": {
             "$ref": "#/components/schemas/StatusReadiness"
           },
@@ -42012,6 +42039,14 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "unresolvedVariables": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VariableCount"
+            },
+            "title": "Unresolvedvariables",
+            "type": "array"
           }
         },
         "required": [

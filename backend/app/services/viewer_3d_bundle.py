@@ -22,6 +22,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from app.services import kicad_libraries
 from app.services.design_bundle import cli, reader, rows, store
 from app.services.design_bundle.manifest import Readiness
 
@@ -96,6 +97,27 @@ def _models_tag(opened: reader.OpenedRevision) -> str:
     return hashlib.sha256(json.dumps(record["variables"], sort_keys=True).encode("utf-8")).hexdigest()[:8]
 
 
+def _variable_report(opened: reader.OpenedRevision) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The path variables the board's models name that this server does not define, and the files missing under those it does.
+
+    From the record the models stage wrote; a bundle with none says nothing.
+    """
+
+    stored_as = opened.archive_revision_key or opened.revision_key
+    record = store.read_models_record(opened.project_id, stored_as, opened.generator_digest) if stored_as else None
+    if record is None:
+        return [], []
+    used = {str(name): int(count) for name, count in (record.get("models") or {}).items()}
+    defined = kicad_libraries.current().fingerprints(used)
+    unresolved = [{"variable": name, "models": count} for name, count in sorted(used.items()) if defined[name] is None]
+    missing = [
+        {"variable": str(name), "models": int(count)}
+        for name, count in sorted((record.get("missing") or {}).items())
+        if int(count) > 0 and defined.get(str(name)) is not None
+    ]
+    return unresolved, missing
+
+
 def _message(view: _View) -> str:
     if view.status == "missing":
         return "This revision has no board"
@@ -120,6 +142,7 @@ def status(project_id: str, commit: str | None, *, requested_by: str = "") -> di
         # The board stays on screen: only the parts are exported again.
         opened = reader.open_revision(project_id, commit, queue=False)
     view = _view(opened)
+    unresolved, missing = _variable_report(opened)
     revision_key = opened.revision_key or ""
     available = view.status == "ready"
     answer: dict[str, Any] = {
@@ -140,6 +163,8 @@ def status(project_id: str, commit: str | None, *, requested_by: str = "") -> di
             "revision": ":".join(filter(None, [opened.bundle_key or revision_key, view.stage, _models_tag(opened)])),
         },
         "job_id": _job_id(opened),
+        "unresolvedVariables": unresolved,
+        "missingModels": missing,
         "refreshing": bool(opened.job_active and view.parts is not None and view.parts.state == "ready"),
     }
     message = _message(view)

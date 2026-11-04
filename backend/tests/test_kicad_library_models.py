@@ -279,5 +279,47 @@ class TriggerTests(ModelsCase):
         self.assertEqual(run.free, 2)
 
 
+class ReportTests(ModelsCase):
+    """What the 3D tab is told about variables the server does not define and models that are not there."""
+
+    def report(self, record: dict | None, *rows_: dict, publish_as: str | None = None):
+        from app.services import viewer_3d_bundle as v3d
+
+        if record is not None:
+            store.write_models_record(PROJECT_ID, REVISION_KEY, GENERATOR_DIGEST, record)
+        if publish_as:
+            publish(self.tmp / "projects", "lsf", publish_as)
+        opened = self.opened(write_archive(self.tmp / "a.prism"))
+        with Configured(self.tmp / "projects", *rows_):
+            return v3d._variable_report(opened)
+
+    RECORD = {"variables": {}, "models": {"LSF_KICAD_LIB": 86, "KICAD10_3DMODEL_DIR": 4}, "missing": {"KICAD10_3DMODEL_DIR": 1}}
+
+    def test_a_variable_no_library_defines_is_reported_with_its_models(self) -> None:
+        unresolved, missing = self.report(self.RECORD)
+        self.assertEqual(unresolved, [{"variable": "KICAD10_3DMODEL_DIR", "models": 4}, {"variable": "LSF_KICAD_LIB", "models": 86}])
+        self.assertEqual(missing, [], "a missing file under an undefined variable is the variable's problem")
+
+    def test_once_a_library_defines_it_only_the_missing_files_remain(self) -> None:
+        unresolved, missing = self.report(self.RECORD, row(), publish_as=COMMIT)
+        self.assertEqual(unresolved, [{"variable": "KICAD10_3DMODEL_DIR", "models": 4}])
+        stock = row(name="stock", variables=("KICAD10_3DMODEL_DIR",))
+        publish(self.tmp / "projects", "stock", COMMIT)
+        unresolved, missing = self.report(None, row(), stock)
+        self.assertEqual((unresolved, missing), ([], [{"variable": "KICAD10_3DMODEL_DIR", "models": 1}]))
+
+    def test_a_bundle_with_no_record_says_nothing(self) -> None:
+        self.assertEqual(self.report(None), ([], []))
+
+    def test_the_stage_counts_missing_files_against_the_snapshot_it_used(self) -> None:
+        archive = write_archive(self.tmp / "m.prism")
+        library = self.tmp / "projects" / ".kicad-prism" / "libraries" / "lsf"
+        publish(self.tmp / "projects", "lsf", COMMIT, {"other.step": "x"})
+        with Configured(self.tmp / "projects", row()):
+            counts = stage_models.missing_models(archive, libs.snapshot({}))
+        self.assertEqual(counts, {"LSF_KICAD_LIB": 1})
+        self.assertTrue(library.is_dir())
+
+
 if __name__ == "__main__":
     unittest.main()

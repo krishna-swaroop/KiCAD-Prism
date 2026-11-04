@@ -12,9 +12,11 @@ Pure functions over parsed documents: no file or archive is opened here.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping
+from pathlib import Path
+from typing import Any, Callable, Iterable, Mapping
 
 _REFERENCE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$\(([A-Za-z_][A-Za-z0-9_]*)\)")
 # `:KICAD10_3DMODEL_DIR:Package_SO/foo.step`, the alias form a path may start with.
@@ -112,6 +114,76 @@ def referenced(placements: Mapping[str, Any] | None, project: Mapping[str, Any] 
 
     text = project_text_variables(project)
     return Referenced(models=model_variables(placements, text), sheets=sheet_variables(project, text))
+
+
+def expand(path: str, text_variables: Mapping[str, str], folder_of: Callable[[str], Path | None]) -> str | None:
+    """A model path with every variable replaced as KiCad would, or ``None`` if one of them is undefined.
+
+    The project's own text variables are expanded first; ``KIPRJMOD`` is left
+    alone (the project folder is not this server's to know here), and so is a
+    path that names none.
+    """
+
+    def value(name: str, depth: int) -> str | None:
+        if name in BUILT_IN:
+            return "${" + name + "}"
+        if name in text_variables:
+            return substitute(str(text_variables[name]), depth + 1) if depth < _MAX_DEPTH else None
+        folder = folder_of(name)
+        return None if folder is None else str(folder)
+
+    def substitute(text: str, depth: int) -> str | None:
+        failed = False
+
+        def replace(match: re.Match[str]) -> str:
+            nonlocal failed
+            found = value(match.group(1) or match.group(2), depth)
+            if found is None:
+                failed = True
+                return ""
+            return found
+
+        out = _REFERENCE.sub(replace, text)
+        return None if failed else out
+
+    alias = _ALIAS.match(path)
+    if alias:
+        folder = value(alias.group(1), 0)
+        if folder is None:
+            return None
+        return folder + "/" + path[alias.end():]
+    return substitute(path, 0)
+
+
+def missing_models(
+    placements: Mapping[str, Any] | None,
+    text_variables: Mapping[str, str],
+    folder_of: Callable[[str], Path | None],
+) -> dict[str, int]:
+    """Per variable, how many model references resolve under a defined variable to a file that is not there.
+
+    A reference through an undefined variable is not counted here: the server
+    does not define it (that is reported as unresolved). A path that does not
+    name a variable is the repository's own.
+    """
+
+    counts: dict[str, int] = {}
+    footprints = placements.get("footprints") if isinstance(placements, Mapping) else None
+    for footprint in footprints or []:
+        for model in (footprint.get("models") if isinstance(footprint, Mapping) else None) or []:
+            path = model.get("path") if isinstance(model, Mapping) else None
+            if not isinstance(path, str) or not path:
+                continue
+            named = variables_in(path, text_variables)
+            if not named:
+                continue
+            expanded = expand(path, text_variables, folder_of)
+            if expanded is None or "${" in expanded:
+                continue
+            if not os.path.isfile(expanded.replace("\\", "/")):
+                for name in named:
+                    counts[name] = counts.get(name, 0) + 1
+    return counts
 
 
 def merge(counts: Iterable[Mapping[str, int]]) -> dict[str, int]:

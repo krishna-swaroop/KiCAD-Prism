@@ -538,6 +538,7 @@ class _Run:
                 "sheets": libraries.fingerprints(found.sheets),
                 "models": dict(found.models),
                 "sheetRefs": dict(found.sheets),
+                "missing": stage_models.missing_models(archive, libraries),
             })
         self._record_variable_usage(found)
         return self._reopen("models")
