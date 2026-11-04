@@ -118,10 +118,3 @@ export function parseVariables(text: string): string[] {
         .filter(Boolean);
     return [...new Set(names)];
 }
-
-/** Where the library comes from, in one line. */
-export function sourceLine(library: KicadLibrary): string {
-    if (library.kind === "path") return `Folder ${library.path}`;
-    const where = library.subdir ? ` (${library.subdir})` : "";
-    return `${library.git} @ ${library.ref}${where}`;
-}

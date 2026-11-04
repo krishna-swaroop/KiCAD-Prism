@@ -10,7 +10,6 @@ import {
     intervalLabel,
     isFetching,
     parseVariables,
-    sourceLine,
     stateLine,
     updateAvailable,
 } from "./library-status";
@@ -104,12 +103,6 @@ it("reads variable names from free text", () => {
     expect(parseVariables("LSF_KICAD_LIB, KICAD9_3DMODEL_DIR\nLSF_KICAD_LIB")).toEqual(["LSF_KICAD_LIB", "KICAD9_3DMODEL_DIR"]);
     expect(parseVariables("${LSF_KICAD_LIB}  ${OTHER}")).toEqual(["LSF_KICAD_LIB", "OTHER"]);
     expect(parseVariables(" , ")).toEqual([]);
-});
-
-it("names the source", () => {
-    expect(sourceLine(base)).toBe("https://example.org/lsf.git @ main");
-    expect(sourceLine({ ...base, subdir: "lib" })).toBe("https://example.org/lsf.git @ main (lib)");
-    expect(sourceLine({ ...base, kind: "path", git: "", ref: "", path: "lsf" })).toBe("Folder lsf");
 });
 
 it("offers KiCad's stock 3D models as an ordinary pinned library", () => {

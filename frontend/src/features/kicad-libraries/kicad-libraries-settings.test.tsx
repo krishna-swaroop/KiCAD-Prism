@@ -68,14 +68,15 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
-it("lists each library with its variables, source, state and how many projects use it", async () => {
+it("lists each library with its variables, state, size and how many projects use it", async () => {
     mount();
     expect(await screen.findByText("lsf")).toBeTruthy();
     expect(screen.getByText("${LSF_KICAD_LIB}")).toBeTruthy();
-    expect(screen.getByText("https://example.org/lsf.git @ main")).toBeTruthy();
+    expect(screen.queryByText(/https:\/\/example\.org/)).toBeNull();
     expect(screen.getByText("Ready")).toBeTruthy();
     expect(screen.getByText(/Following main, at aaaaaaaa, checked 2 hours ago/)).toBeTruthy();
-    expect(screen.getByText(/5\.0 MB.*2 projects use it/)).toBeTruthy();
+    expect(screen.getByText("5.0 MB")).toBeTruthy();
+    expect(screen.getByText(/2 projects use it/)).toBeTruthy();
 });
 
 it("says so when there are no libraries", async () => {
@@ -111,7 +112,7 @@ it("lists variables boards use that nothing defines and starts a library for one
         { variable: "LSF_KICAD_LIB", projects: 1, models: 4, sheets: 0, bound: true },
     ] });
     mount();
-    expect(await screen.findByText("Variables projects use that no library defines")).toBeTruthy();
+    expect(await screen.findByText("Undefined Variables")).toBeTruthy();
     expect(screen.getByText(/86 models and 1 drawing sheet in 3 projects/)).toBeTruthy();
     fireEvent.click(screen.getAllByRole("button", { name: "Add library" })[1]);
     expect((await screen.findByLabelText("Path variables") as HTMLInputElement).value).toBe("NOPE_LIB");
