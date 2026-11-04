@@ -311,6 +311,76 @@ account and issued certificates), `generated/` and `sites/`, and `data/secrets`
 on a source deployment. None of these may sit on temporary container storage.
 [Operations](/KiCAD-Prism/admin/operations/#back-up) covers backing them up.
 
+## KiCad libraries and 3D models
+
+A board reaches files outside its repository through KiCad path variables,
+such as `${KICAD10_3DMODEL_DIR}` for KiCad's stock 3D models or
+`${LSF_KICAD_LIB}` for a team's own library. The image defines none of them, so
+a footprint that renders in your local KiCad shows no 3D model in Prism, and a
+drawing sheet kept in a library is missing.
+
+Declare the libraries in **Settings > KiCad libraries** (administrators only).
+Prism fetches each one into the projects volume, once, for the API and every
+worker, and hands the variables to every KiCad process. A variable you set in
+the server's environment is never overridden by a library.
+
+For each library you give a name, the variables it binds, the repository (an
+`https://` address with no credentials in it), a tag or branch, and optionally a
+folder inside the repository the variables point at. Only repositories you
+declare are fetched; a project cannot make the server clone anything.
+
+### Follow or pin
+
+Libraries change on their own schedule, apart from the projects that use them.
+Each library either follows its ref or is pinned:
+
+| Policy | What it does |
+| --- | --- |
+| **Follow** | Checks the tag or branch on a schedule (hourly, every 6 hours, daily or weekly) and fetches the new commit when it moves. The default for a branch. |
+| **Pinned** | Stays at one commit. A moved ref is shown in Settings and nothing is fetched until you update it. The default for a tag. |
+
+Follow means the upstream repository decides what this server downloads. Models
+are only read, never run, but KiCad's importers still parse them. Follow only
+repositories you trust as much as your own, and pin third-party ones.
+
+A new version is fetched beside the old one and replaces it in one step, so a
+job reading the old version is not disturbed and a failed update keeps serving.
+Only boards that use a library's variables rebuild their 3D parts, and the 3D
+tab keeps showing the board while they do. Settings lists the versions a
+library has served; **Use this version** pins it at an earlier one, which is the
+way out of a bad upstream commit.
+
+### KiCad's stock 3D models
+
+Add `kicad-packages3d` like any other library:
+
+| Field | Value |
+| --- | --- |
+| Name | `kicad-packages3d` |
+| Repository | `https://gitlab.com/kicad/libraries/kicad-packages3d.git` |
+| Variables | `KICAD10_3DMODEL_DIR` and `KICAD9_3DMODEL_DIR` |
+| Tag | the one matching the image's KiCad, for example `10.0.4` |
+| Policy | Pinned |
+
+The library is several gigabytes and needs outbound access to gitlab.com. Update
+the tag when you update the image's KiCad, in the same maintenance window, so
+boards rebuild once.
+
+### What users see
+
+The 3D tab says when a board names a variable the server does not define ("86
+models use LSF_KICAD_LIB, which this server does not define"), and how many model
+files are missing under a variable that is defined. Administrators see the same
+variables, with the projects that use them, in Settings.
+
+### Folders on the host
+
+Set `PRISM_KICAD_LIBRARY_MOUNT_ROOT` to a mounted folder to allow libraries
+declared as a path under it instead of a repository. Prism does not manage the
+folder; changed files are picked up when you choose **Refresh**.
+
+The fetched libraries are not in backups. They are fetched again at startup.
+
 ## Private Git repositories
 
 To import over SSH:

@@ -137,6 +137,9 @@ these only for a host run or a pinned install:
 # kicad-cli. Empty: PATH, then the usual KiCad install locations.
 # A set path is used as given, with no fallback. KICAD_CLI is a legacy name.
 KICAD_CLI_PATH=
+# A mounted folder that libraries added as a path in Settings > KiCad libraries must
+# live under. Empty: path libraries are off; libraries fetched from git need no setting.
+PRISM_KICAD_LIBRARY_MOUNT_ROOT=
 ```
 
 Each kicad-cli run gets its own temporary directory (KiCad's instance lock)
