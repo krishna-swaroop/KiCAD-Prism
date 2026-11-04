@@ -159,8 +159,6 @@ REGENERABLE = (
     ".kicad-prism/exports",
     ".kicad-prism/validation",
     ".kicad-prism/cache",
-    # KiCad path libraries fetched at runtime: a restore fetches them again at startup.
-    ".kicad-prism/libraries",
     ".kicad-prism/tmp",
 )
 

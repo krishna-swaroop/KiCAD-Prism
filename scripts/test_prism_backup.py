@@ -49,7 +49,6 @@ class RegenerableContentTests(unittest.TestCase):
             ".kicad-prism/bundles/project/scene.glb",
             ".kicad-prism/exports/kicad-dbl/library.sqlite",
             ".kicad-prism/validation/klc/run-3.json",
-            ".kicad-prism/libraries/kicad-packages3d/store.git/HEAD",
         ):
             self.assertTrue(prism_backup.is_regenerable(path), path)
 

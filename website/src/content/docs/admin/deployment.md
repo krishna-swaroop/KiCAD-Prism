@@ -397,8 +397,6 @@ Set `PRISM_KICAD_LIBRARY_MOUNT_ROOT` to a mounted folder to allow libraries
 declared as a path under it instead of a repository. Prism does not manage the
 folder; changed files are picked up when you choose **Refresh**.
 
-The fetched libraries are not in backups. They are fetched again at startup.
-
 ## Private Git repositories
 
 To import over SSH:
