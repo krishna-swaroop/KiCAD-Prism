@@ -6,6 +6,14 @@ module.exports = {
     ],
     theme: {
         extend: {
+            // The one stacking scale. Local overlays inside a view use 10-30;
+            // everything that floats over the app uses these names.
+            zIndex: {
+                rail: '40', // panels sliding over a canvas
+                float: '60', // comment cards pinned over a canvas
+                modal: '100', // dialogs and sheets, with their backdrops
+                popover: '110', // menus, popovers, tooltips: above dialogs, so they work inside one
+            },
             colors: {
                 background: 'hsl(var(--background))',
                 foreground: 'hsl(var(--foreground))',

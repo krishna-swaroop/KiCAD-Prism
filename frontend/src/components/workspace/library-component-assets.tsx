@@ -217,13 +217,11 @@ function RepresentationsPanel({
 function AssetRow({
   asset,
   canMutate,
-  downloadsAvailable,
   onDownload,
   onDetach,
 }: {
   asset: CatalogAsset;
   canMutate: boolean;
-  downloadsAvailable: boolean;
   onDownload: () => void;
   onDetach: () => void;
 }) {
@@ -234,7 +232,7 @@ function AssetRow({
       <Badge variant={asset.required ? "default" : "secondary"} className="h-4 shrink-0 px-1 text-[10px]">{asset.required ? "Required" : "Optional"}</Badge>
       <span className="w-16 shrink-0 text-right tabular-nums text-muted-foreground" title={asset.content_type || undefined}>{formatBytes(asset.size_bytes)}</span>
       <span className="hidden w-24 shrink-0 font-mono text-muted-foreground sm:inline" title={asset.sha256 ? `SHA-256 ${asset.sha256}` : asset.id}>{shortHash(asset.sha256 || asset.id)}</span>
-      <Button size="icon-sm" variant="ghost" aria-label={`Download ${asset.name}`} title={downloadsAvailable ? "Download" : "Download from the released revision"} disabled={!downloadsAvailable} onClick={onDownload}>
+      <Button size="icon-sm" variant="ghost" aria-label={`Download ${asset.name}`} title="Download" onClick={onDownload}>
         <Download className="h-3.5 w-3.5" />
       </Button>
       {canMutate ? (
@@ -268,7 +266,6 @@ export function AssetsPanel({
   onRepresentationsChanged: () => void;
 }) {
   const [picked, setPicked] = useState("");
-  const downloadsAvailable = component.revision_id === component.released_revision_id;
   const previewed =
     component.representations.find((item) => item.id === picked) ??
     component.representations.find((item) => item.is_default) ??
@@ -325,7 +322,6 @@ export function AssetsPanel({
                       key={asset.id}
                       asset={asset}
                       canMutate={canMutate}
-                      downloadsAvailable={downloadsAvailable}
                       onDownload={() => onDownload(asset)}
                       onDetach={() => onDetachAsset(asset)}
                     />

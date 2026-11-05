@@ -9,7 +9,7 @@ Prism talks to GitLab for three separate jobs, each with its own credential:
 
 | Job | Credential | Where you set it |
 | --- | --- | --- |
-| Import and sync repositories | Prism's SSH key | **Settings → Git & SSH** |
+| Import and sync repositories | Prism's SSH key, or a token in `PRISM_GIT_CREDENTIALS` | **Settings → Git & SSH**, or the environment file |
 | Publish Release Studio releases | A token with the `api` scope | The environment file |
 | Publish comments as issues | A bot token | **Settings → Code hosts** |
 
@@ -20,7 +20,10 @@ Prism never posts to GitLab as a person.
 Add Prism's SSH key to GitLab as a deploy key or to a machine user, and trust
 the GitLab host, as in
 [Private Git repositories](/KiCAD-Prism/admin/deployment/#private-git-repositories).
-Prism uses no token to clone from GitLab.
+To import over HTTPS instead, give Prism a token with the `read_repository`
+scope in `PRISM_GIT_CREDENTIALS`, with `username` set to `oauth2`; see
+[Git credentials](/KiCAD-Prism/admin/configuration/#git-credentials).
+`GITLAB_TOKEN` is used only for publishing.
 
 ## Publish releases
 
@@ -148,7 +151,7 @@ Linking only reads the person's GitLab username.
 
 ### 5. Turn on publishing for a project
 
-1. Open the project and click **Issue publishing** in its header.
+1. Open the project, click **⋯** in its header and choose **Issue Tracker**.
 2. Choose GitLab Issues and, if you have several, the connection.
 3. Choose the GitLab project: the project's own, or another the bot is a
    member of. Nested groups work.

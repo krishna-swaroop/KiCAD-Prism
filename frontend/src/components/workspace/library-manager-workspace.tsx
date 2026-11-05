@@ -1,6 +1,6 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Database, DownloadCloud, PackageCheck, Plug, Table2, type LucideIcon } from "lucide-react";
+import { Database, DownloadCloud, PackageCheck, Table2, type LucideIcon } from "lucide-react";
 
 import { StudioTabsList, StudioTabsTrigger } from "@/components/ui/studio-tabs";
 import { Tabs } from "@/components/ui/tabs";
@@ -13,29 +13,43 @@ const LibraryComponentWorkspace = lazy(() => import("./library-component-workspa
 const LibraryImportCenter = lazy(() => import("./library-import-center").then((module) => ({ default: module.LibraryImportCenter })));
 const LibraryReleaseQueue = lazy(() => import("./library-release-queue").then((module) => ({ default: module.LibraryReleaseQueue })));
 
-type LibraryView = "catalog" | "bulk-edit" | "imports" | "releases" | "connectors";
+type LibraryView = "catalog" | "bulk-edit" | "imports" | "releases";
 
 const VIEW_LABELS: Record<LibraryView, string> = {
   catalog: "Catalog",
   "bulk-edit": "Bulk Edit",
   imports: "Import Center",
   releases: "Release Queue",
-  connectors: "Connectors",
 };
+
+const VIEWS: LibraryView[] = ["catalog", "bulk-edit", "imports", "releases"];
+const MOVED_TO_SUPPLY: Readonly<Record<string, string>> = { ending: "dashboard", review: "review", connectors: "sources" };
 
 const VIEW_ICONS: Record<LibraryView, LucideIcon> = {
   catalog: Database,
   "bulk-edit": Table2,
   imports: DownloadCloud,
   releases: PackageCheck,
-  connectors: Plug,
 };
 
 export function LibraryManagerWorkspace({ user, projects }: { user: User | null; projects: Project[] }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const componentId = searchParams.get("component") || "";
   const requestedView = searchParams.get("libraryView") as LibraryView | null;
-  const view: LibraryView = requestedView && ["catalog", "bulk-edit", "imports", "releases", "connectors"].includes(requestedView) ? requestedView : "catalog";
+  // Ending Parts became notifications on the Supply Dashboard; Review and Connectors moved to Supply (Connectors as Sources). An old
+  // address, or a sign-in started before the move, goes there keeping its result.
+  const movedTo = MOVED_TO_SUPPLY[(requestedView as string | null) ?? ""];
+  useEffect(() => {
+    if (!movedTo) return;
+    setSearchParams((current) => {
+      const updated = new URLSearchParams(current);
+      updated.delete("libraryView");
+      updated.set("section", "supply");
+      updated.set("supplyView", movedTo);
+      return updated;
+    }, { replace: true });
+  }, [movedTo, setSearchParams]);
+  const view: LibraryView = requestedView && VIEWS.includes(requestedView) ? requestedView : "catalog";
 
   const setView = (next: LibraryView) => {
     setSearchParams((current) => {
@@ -87,14 +101,13 @@ export function LibraryManagerWorkspace({ user, projects }: { user: User | null;
             Enter selects. */}
         <Tabs value={view} activationMode="manual" className="shrink-0">
           <StudioTabsList aria-label="Library Manager sections">
-            {(["catalog", "bulk-edit", "imports", "releases", "connectors"] as LibraryView[]).map((item) => {
+            {VIEWS.map((item) => {
               const Icon = VIEW_ICONS[item];
               return (
                 <StudioTabsTrigger
                   key={item}
                   value={item}
                   className="gap-1.5"
-                  title={item === "connectors" ? "Coming soon" : undefined}
                   onClick={() => setView(item)}
                 >
                   <Icon className="size-3.5" aria-hidden />
@@ -111,12 +124,6 @@ export function LibraryManagerWorkspace({ user, projects }: { user: User | null;
         {view === "bulk-edit" && <LibraryBulkEditWorkspace user={user} />}
         {view === "imports" && <LibraryImportCenter projects={projects} user={user} initialSessionId={searchParams.get("session") || undefined} />}
         {view === "releases" && <LibraryReleaseQueue onOpenComponent={(id) => openComponent(id, "review", "releases")} />}
-        {view === "connectors" && (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Plug className="size-4" aria-hidden />
-            Connectors are not available yet
-          </div>
-        )}
       </div>
       </Suspense>
     </div>

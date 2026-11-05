@@ -2,7 +2,7 @@
 title: Operate Prism
 description: Back up and restore a Prism installation, watch its capacity, and diagnose failed jobs and common faults.
 sidebar:
-  order: 8
+  order: 9
 ---
 
 This page is the day-to-day runbook: backups, restores, disk and memory, logs

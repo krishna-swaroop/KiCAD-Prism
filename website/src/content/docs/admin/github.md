@@ -27,7 +27,9 @@ GITHUB_TOKEN=<token>
 ```
 
 The token is used only for `https://github.com/` remotes, and is handed to Git
-one command at a time rather than stored on disk.
+one command at a time rather than stored on disk. For a GitHub Enterprise Server
+or another Git server, see
+[Git credentials](/KiCAD-Prism/admin/configuration/#git-credentials).
 
 ## Publish releases
 
@@ -167,7 +169,7 @@ two callback URLs differ. They must match exactly.
 
 ### 6. Turn on publishing for a project
 
-1. Open the project and click **Issue publishing** in its header.
+1. Open the project, click **⋯** in its header and choose **Issue Tracker**.
 2. Choose GitHub Issues and, if you have several, the connection.
 3. Choose the repository: the project's own, or another the App is installed on.
 4. Set the rules for what publishes automatically and who may publish the rest.

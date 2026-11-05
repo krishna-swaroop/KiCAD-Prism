@@ -171,6 +171,18 @@ class SymbolRewriteTests(unittest.TestCase):
         self.assertIn('(property "Footprint" "Old:FP"', rewritten)
 
 
+class PrismIdFieldTests(unittest.TestCase):
+    """Supply finds the catalog component a placed symbol came from in the placement stamp, or in a plain Prism ID field."""
+
+    def test_supply_finds_the_component_id_in_the_stamp_or_the_field(self) -> None:
+        from app.services.supply.bom_fields import prism_id_of
+
+        self.assertEqual(prism_id_of({"Prism_Component": "abc"}), "abc")
+        self.assertEqual(prism_id_of({"Prism ID": "def"}), "def")
+        self.assertEqual(prism_id_of({"Prism_Component": "abc", "Prism ID": "def"}), "abc")
+        self.assertEqual(prism_id_of({}), "")
+
+
 class FootprintRewriteTests(unittest.TestCase):
     def test_model_paths_point_at_the_remote_destination(self) -> None:
         payload = (

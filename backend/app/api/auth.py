@@ -105,6 +105,7 @@ class AuthConfig(BaseModel):
     workspace_name: str
     # Its routes 404 when off; the frontend asks here instead of probing one.
     sim_studio_enabled: bool = False
+    supply_enabled: bool = True
 
 
 class ActiveSession(BaseModel):
@@ -233,6 +234,7 @@ async def get_auth_config():
         password_auth_enabled=password_auth_enabled(),
         workspace_name=settings.WORKSPACE_NAME,
         sim_studio_enabled=settings.PRISM_SIM_STUDIO_ENABLED,
+        supply_enabled=settings.PRISM_SUPPLY_ENABLED,
     )
 
 

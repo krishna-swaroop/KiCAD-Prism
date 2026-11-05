@@ -17,6 +17,7 @@ import {
 import { appendUniquePageItems, formatPanelLoadedCount } from "@/panel/lib/panel-page";
 
 import { emptyPagedList, type FinderViewState } from "@/panel/lib/view-state";
+import { SupplyDot } from "@/panel/screens/SupplyAvailability";
 
 interface SymbolFinderScreenProps {
   viewState: FinderViewState;
@@ -298,6 +299,7 @@ export function SymbolFinderScreen({
                       {comp.manufacturer || "Unknown"} · {comp.mpn || "—"} · {comp.package_name || "—"}
                     </span>
                   </span>
+                  {comp.supply?.summary ? <SupplyDot summary={comp.supply.summary} /> : null}
                   <StockDot
                     quantity={local?.stock ?? 0}
                     known={local !== null}

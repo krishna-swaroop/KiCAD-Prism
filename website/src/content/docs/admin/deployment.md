@@ -327,6 +327,8 @@ Prism does not trust a host key it has not been told to trust.
 
 For private `https://github.com/` repositories you can set `GITHUB_TOKEN`
 instead; see [Git and project import](/KiCAD-Prism/admin/configuration/#git-and-project-import).
+For HTTPS tokens on other Git servers, set `PRISM_GIT_CREDENTIALS`; see
+[Git credentials](/KiCAD-Prism/admin/configuration/#git-credentials).
 Set `IMPORT_ALLOWED_HOSTS_STR` to the Git hosts this installation should reach,
 so users cannot make the server clone from internal addresses.
 

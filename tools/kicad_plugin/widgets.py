@@ -70,6 +70,45 @@ def _surface_of(window: wx.Window, pal: dict) -> wx.Colour:
     return _c(pal["background"])
 
 
+def fit_width_to_content(dialog: wx.Dialog, scroll: wx.Window, content: wx.Sizer):
+    """Widen `dialog` until `content` fits `scroll`, so nothing clips on the right.
+
+    Both dialogs scroll only vertically, so a card wider than the window loses its
+    right edge with no way to reach it. No fixed default is right for every card,
+    font and DPI, so take the minimum from the laid-out content instead.
+
+    The content is only part of it. The header (title, identity, status icons, the
+    path line) sits outside the scroll area, and its row can need more than the
+    scrolled cards do: measured live, the header wanted 570px in a 560px dialog while
+    the content wanted 274, which squashed the last button to 10px. So the dialog's
+    whole root sizer counts too, and the larger of the two wins.
+
+    The non-content width (gutters, a scrollbar or ScrollThumb, the window frame) is
+    measured from the dialog rather than summed from constants, so it stays right
+    whatever the dialog puts beside the scroll area.
+
+    Grow only, and never past 90% of the screen: a user who makes the window wider
+    keeps that, and on a small display the cap wins over the content.
+    """
+    size = dialog.GetSize()
+    frame = size.width - dialog.GetClientSize().width
+    extra = size.width - scroll.GetClientSize().width
+    need = content.GetMinSize().width + extra
+    root = dialog.GetSizer()
+    if root is not None:
+        need = max(need, root.GetMinSize().width + frame)
+
+    index = wx.Display.GetFromWindow(dialog)
+    if index == wx.NOT_FOUND:
+        index = 0
+    cap = int(wx.Display(index).GetClientArea().width * 0.9)
+
+    width = min(max(size.width, need), cap)
+    if width > size.width:
+        dialog.SetSize(wx.Size(width, size.height))
+        dialog.Layout()
+
+
 def _mix(a: str, b: str, t: float) -> wx.Colour:
     """Blend two hex colours, used for hover/press states, like the web UI's
     hover:bg-primary/90."""
@@ -1578,7 +1617,9 @@ class Checkbox(wx.Panel):
             gc.DrawRectangle(0, y, box, box)
             # The lucide check the web component shows: a short stroke down to
             # the tail, then a long one up to the tip.
-            gc.SetPen(wx.Pen(_c(self.pal["primary_fg"]), 2.0))
+            # Integer width: wx.Pen rejects a float, and a paint handler that raises
+            # here leaves the checked box as a blank rectangle with no label.
+            gc.SetPen(wx.Pen(_c(self.pal["primary_fg"]), max(2, self.FromDIP(2))))
             check = gc.CreatePath()
             check.MoveToPoint(box * 0.25, y + box * 0.52)
             check.AddLineToPoint(box * 0.42, y + box * 0.70)

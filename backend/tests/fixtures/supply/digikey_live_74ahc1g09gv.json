@@ -1,0 +1,848 @@
+{
+  "provider": "digikey",
+  "mpn": "74AHC1G09GV",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/v1/oauth2/token",
+      "params": {},
+      "answer": {
+        "redacted": "token answer"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/products/v4/search/keyword",
+      "params": {},
+      "answer": {
+        "Products": [
+          {
+            "Description": {
+              "ProductDescription": "IC AND 1-CIR 2-IN SC-74A",
+              "DetailedDescription": "AND Gate IC 1 Channel Open Drain SC-74A"
+            },
+            "Manufacturer": {
+              "Id": 1727,
+              "Name": "Nexperia USA Inc."
+            },
+            "ManufacturerProductNumber": "74AHC1G09GV,125",
+            "UnitPrice": 0.13,
+            "ProductUrl": "https://www.digikey.it/en/products/detail/nexperia-usa-inc/74AHC1G09GV-125/1965950",
+            "DatasheetUrl": "https://assets.nexperia.com/documents/data-sheet/74AHC1G09.pdf",
+            "PhotoUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/medias/images/8889/MFG_1727%7ESOT753%7EGV%7E5.jpg",
+            "ProductVariations": [
+              {
+                "DigiKeyProductNumber": "1727-6016-2-ND",
+                "PackageType": {
+                  "Id": 1,
+                  "Name": "Tape & Reel (TR)"
+                },
+                "StandardPricing": [
+                  {
+                    "BreakQuantity": 3000,
+                    "UnitPrice": 0.04893,
+                    "TotalPrice": 146.79
+                  },
+                  {
+                    "BreakQuantity": 6000,
+                    "UnitPrice": 0.04726,
+                    "TotalPrice": 283.56
+                  },
+                  {
+                    "BreakQuantity": 9000,
+                    "UnitPrice": 0.04643,
+                    "TotalPrice": 417.87
+                  },
+                  {
+                    "BreakQuantity": 15000,
+                    "UnitPrice": 0.0455,
+                    "TotalPrice": 682.5
+                  },
+                  {
+                    "BreakQuantity": 21000,
+                    "UnitPrice": 0.04497,
+                    "TotalPrice": 944.37
+                  },
+                  {
+                    "BreakQuantity": 30000,
+                    "UnitPrice": 0.04445,
+                    "TotalPrice": 1333.5
+                  }
+                ],
+                "MyPricing": [],
+                "MarketPlace": false,
+                "TariffActive": false,
+                "Supplier": {
+                  "Id": 1727,
+                  "Name": "Nexperia USA Inc."
+                },
+                "QuantityAvailableforPackageType": 3000,
+                "MinimumOrderQuantity": 3000,
+                "DigiReelFee": 0.0
+              },
+              {
+                "DigiKeyProductNumber": "1727-6016-1-ND",
+                "PackageType": {
+                  "Id": 2,
+                  "Name": "Cut Tape (CT)"
+                },
+                "StandardPricing": [
+                  {
+                    "BreakQuantity": 1,
+                    "UnitPrice": 0.13,
+                    "TotalPrice": 0.13
+                  },
+                  {
+                    "BreakQuantity": 10,
+                    "UnitPrice": 0.086,
+                    "TotalPrice": 0.86
+                  },
+                  {
+                    "BreakQuantity": 25,
+                    "UnitPrice": 0.0756,
+                    "TotalPrice": 1.89
+                  },
+                  {
+                    "BreakQuantity": 100,
+                    "UnitPrice": 0.064,
+                    "TotalPrice": 6.4
+                  },
+                  {
+                    "BreakQuantity": 250,
+                    "UnitPrice": 0.0584,
+                    "TotalPrice": 14.6
+                  },
+                  {
+                    "BreakQuantity": 500,
+                    "UnitPrice": 0.05508,
+                    "TotalPrice": 27.54
+                  },
+                  {
+                    "BreakQuantity": 1000,
+                    "UnitPrice": 0.05233,
+                    "TotalPrice": 52.33
+                  }
+                ],
+                "MyPricing": [],
+                "MarketPlace": false,
+                "TariffActive": false,
+                "Supplier": {
+                  "Id": 1727,
+                  "Name": "Nexperia USA Inc."
+                },
+                "QuantityAvailableforPackageType": 4922,
+                "MinimumOrderQuantity": 1,
+                "DigiReelFee": 0.0
+              },
+              {
+                "DigiKeyProductNumber": "1727-6016-6-ND",
+                "PackageType": {
+                  "Id": 243,
+                  "Name": "Digi-Reel®"
+                },
+                "StandardPricing": [
+                  {
+                    "BreakQuantity": 1,
+                    "UnitPrice": 0.13,
+                    "TotalPrice": 0.13
+                  },
+                  {
+                    "BreakQuantity": 10,
+                    "UnitPrice": 0.086,
+                    "TotalPrice": 0.86
+                  },
+                  {
+                    "BreakQuantity": 25,
+                    "UnitPrice": 0.0756,
+                    "TotalPrice": 1.89
+                  },
+                  {
+                    "BreakQuantity": 100,
+                    "UnitPrice": 0.064,
+                    "TotalPrice": 6.4
+                  },
+                  {
+                    "BreakQuantity": 250,
+                    "UnitPrice": 0.0584,
+                    "TotalPrice": 14.6
+                  },
+                  {
+                    "BreakQuantity": 500,
+                    "UnitPrice": 0.05508,
+                    "TotalPrice": 27.54
+                  },
+                  {
+                    "BreakQuantity": 1000,
+                    "UnitPrice": 0.05233,
+                    "TotalPrice": 52.33
+                  }
+                ],
+                "MyPricing": [],
+                "MarketPlace": false,
+                "TariffActive": false,
+                "Supplier": {
+                  "Id": 1727,
+                  "Name": "Nexperia USA Inc."
+                },
+                "QuantityAvailableforPackageType": 4922,
+                "MinimumOrderQuantity": 1,
+                "DigiReelFee": 5.5
+              }
+            ],
+            "QuantityAvailable": 4922,
+            "ProductStatus": {
+              "Id": 0,
+              "Status": "Active"
+            },
+            "BackOrderNotAllowed": false,
+            "NormallyStocking": true,
+            "Discontinued": false,
+            "EndOfLife": false,
+            "Ncnr": false,
+            "PrimaryVideoUrl": "",
+            "Parameters": [
+              {
+                "ParameterId": 247,
+                "ParameterText": "Logic Type",
+                "ParameterType": "String",
+                "ValueId": "313906",
+                "ValueText": "AND Gate"
+              },
+              {
+                "ParameterId": 2094,
+                "ParameterText": "Number of Circuits",
+                "ParameterType": "Double",
+                "ValueId": "1",
+                "ValueText": "1"
+              },
+              {
+                "ParameterId": 667,
+                "ParameterText": "Number of Inputs",
+                "ParameterType": "String",
+                "ValueId": "121326",
+                "ValueText": "2"
+              },
+              {
+                "ParameterId": 5,
+                "ParameterText": "Features",
+                "ParameterType": "String",
+                "ValueId": "382145",
+                "ValueText": "Open Drain"
+              },
+              {
+                "ParameterId": 276,
+                "ParameterText": "Voltage - Supply",
+                "ParameterType": "String",
+                "ValueId": "169006",
+                "ValueText": "2V ~ 5.5V"
+              },
+              {
+                "ParameterId": 2116,
+                "ParameterText": "Current - Quiescent (Max)",
+                "ParameterType": "UnitOfMeasure",
+                "ValueId": "1 µA",
+                "ValueText": "1 µA"
+              },
+              {
+                "ParameterId": 592,
+                "ParameterText": "Current - Output High, Low",
+                "ParameterType": "String",
+                "ValueId": "407",
+                "ValueText": "-, 8mA"
+              },
+              {
+                "ParameterId": 1543,
+                "ParameterText": "Input Logic Level - Low",
+                "ParameterType": "String",
+                "ValueId": "28623",
+                "ValueText": "0.5V ~ 1.65V"
+              },
+              {
+                "ParameterId": 1542,
+                "ParameterText": "Input Logic Level - High",
+                "ParameterType": "String",
+                "ValueId": "55756",
+                "ValueText": "1.5V ~ 3.85V"
+              },
+              {
+                "ParameterId": 1552,
+                "ParameterText": "Max Propagation Delay @ V, Max CL",
+                "ParameterType": "String",
+                "ValueId": "270723",
+                "ValueText": "7.5ns @ 5V, 50pF"
+              },
+              {
+                "ParameterId": 252,
+                "ParameterText": "Operating Temperature",
+                "ParameterType": "String",
+                "ValueId": "212478",
+                "ValueText": "-40°C ~ 125°C"
+              },
+              {
+                "ParameterId": 69,
+                "ParameterText": "Mounting Type",
+                "ParameterType": "String",
+                "ValueId": "409393",
+                "ValueText": "Surface Mount"
+              },
+              {
+                "ParameterId": 1291,
+                "ParameterText": "Supplier Device Package",
+                "ParameterType": "String",
+                "ValueId": "400228",
+                "ValueText": "SC-74A"
+              },
+              {
+                "ParameterId": 16,
+                "ParameterText": "Package / Case",
+                "ParameterType": "String",
+                "ValueId": "400230",
+                "ValueText": "SC-74A, SOT-753"
+              }
+            ],
+            "BaseProductNumber": {
+              "Id": 48363,
+              "Name": "74AHC1G09"
+            },
+            "Category": {
+              "CategoryId": 32,
+              "ParentId": 0,
+              "Name": "Integrated Circuits (ICs)",
+              "ProductCount": 0,
+              "NewProductCount": 0,
+              "ImageUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/derivates/3/010/153/598/8-SOIC%2CM8_tmb.jpg",
+              "SeoDescription": "Integrated circuits combine a large number of transistors and other elementary electronic components in miniaturized form into a single physical device, that is designed for a specific purpose or function and characterized by its performance of that function rather than by the behavior of its component pieces. Examples include microcontrollers, battery monitors and charge controllers, analog to digital converters, operational amplifiers, logic gates, voltage regulators, gate drivers, motro controllers, and others.",
+              "ChildCategories": [
+                {
+                  "CategoryId": 2019,
+                  "ParentId": 32,
+                  "Name": "Logic",
+                  "ProductCount": 0,
+                  "NewProductCount": 0,
+                  "ImageUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/derivates/3/010/312/8-TSSOP%2C-8-MSOP-3x3mm_tmb.jpg",
+                  "SeoDescription": "Logic components operate using two voltage levels. These two levels are referred to as High or Low, On or Off, True or False, or simply 1 or 0. There are many components included in this category, such as Buffers, Drivers, Receivers, Transceivers, Comparators, Counters, Dividers, FIFOs Memory, Flip Flops, Gates, Inverters, Latches, Multivibrators, Parity Generators, Shift Registers, Signal Switches, Multiplexers, Decoders, Translators, Level Shifters, Universal Bus FUnctions, and More.",
+                  "ChildCategories": [
+                    {
+                      "CategoryId": 705,
+                      "ParentId": 2019,
+                      "Name": "Gates and Inverters",
+                      "ProductCount": 0,
+                      "NewProductCount": 0,
+                      "ImageUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/derivates/3/100/958/564/296_14-DIP_tmb.jpg",
+                      "SeoDescription": "Products in the logic gate and inverter family perform elementary logical operations on individual logic signals such as AND, NOT, OR, etc. Unlike flip-flops they do not have a capacity to store information and respond immediately to the signals presented to their inputs. Though long supplanted by implementations in integrated circuit form for realizing complex functions, discrete gates remain available for use in circumstances where only very simple logical functions are needed.",
+                      "ChildCategories": []
+                    }
+                  ]
+                }
+              ]
+            },
+            "ManufacturerLeadWeeks": "24",
+            "ManufacturerPublicQuantity": 0,
+            "Series": {
+              "Id": 435,
+              "Name": "74AHC"
+            },
+            "Classifications": {
+              "ReachStatus": "REACH Unaffected",
+              "RohsStatus": "ROHS3 Compliant",
+              "MoistureSensitivityLevel": "1  (Unlimited)",
+              "ExportControlClassNumber": "EAR99",
+              "HtsusCode": "8542.39.0070"
+            },
+            "OtherNames": [
+              "1727-6016-1",
+              "1727-6016-2",
+              "568-7708-1-ND",
+              "568-7708-2-ND",
+              "5202-74AHC1G09GV,125TR",
+              "935285716125",
+              "74AHC1G09GV,125-ND",
+              "1727-6016-6",
+              "568-7708-6",
+              "568-7708-1",
+              "568-7708-2",
+              "568-7708-6-ND",
+              "74AHC1G09GV-G",
+              "74AHC1G09GV-G-ND"
+            ]
+          },
+          {
+            "Description": {
+              "ProductDescription": "IC AND 1-CIR 2-IN SC-74A",
+              "DetailedDescription": "AND Gate IC 1 Channel Open Drain SC-74A"
+            },
+            "Manufacturer": {
+              "Id": 1727,
+              "Name": "Nexperia USA Inc."
+            },
+            "ManufacturerProductNumber": "74AHC1G09GV-Q100H",
+            "UnitPrice": 0.14,
+            "ProductUrl": "https://www.digikey.it/en/products/detail/nexperia-usa-inc/74AHC1G09GV-Q100H/4020594",
+            "DatasheetUrl": "https://assets.nexperia.com/documents/data-sheet/74AHC1G09_Q100.pdf",
+            "PhotoUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/medias/images/8889/MFG_1727%7ESOT753%7EGV%7E5.jpg",
+            "ProductVariations": [
+              {
+                "DigiKeyProductNumber": "1727-7849-2-ND",
+                "PackageType": {
+                  "Id": 1,
+                  "Name": "Tape & Reel (TR)"
+                },
+                "StandardPricing": [
+                  {
+                    "BreakQuantity": 3000,
+                    "UnitPrice": 0.05516,
+                    "TotalPrice": 165.48
+                  },
+                  {
+                    "BreakQuantity": 6000,
+                    "UnitPrice": 0.05332,
+                    "TotalPrice": 319.92
+                  },
+                  {
+                    "BreakQuantity": 9000,
+                    "UnitPrice": 0.0524,
+                    "TotalPrice": 471.6
+                  },
+                  {
+                    "BreakQuantity": 15000,
+                    "UnitPrice": 0.05138,
+                    "TotalPrice": 770.7
+                  },
+                  {
+                    "BreakQuantity": 21000,
+                    "UnitPrice": 0.05078,
+                    "TotalPrice": 1066.38
+                  },
+                  {
+                    "BreakQuantity": 30000,
+                    "UnitPrice": 0.05021,
+                    "TotalPrice": 1506.3
+                  }
+                ],
+                "MyPricing": [],
+                "MarketPlace": false,
+                "TariffActive": false,
+                "Supplier": {
+                  "Id": 1727,
+                  "Name": "Nexperia USA Inc."
+                },
+                "QuantityAvailableforPackageType": 0,
+                "MaxQuantityForDistribution": 999999999,
+                "MinimumOrderQuantity": 3000,
+                "StandardPackage": 3000,
+                "DigiReelFee": 0.0
+              },
+              {
+                "DigiKeyProductNumber": "1727-7849-1-ND",
+                "PackageType": {
+                  "Id": 2,
+                  "Name": "Cut Tape (CT)"
+                },
+                "StandardPricing": [
+                  {
+                    "BreakQuantity": 1,
+                    "UnitPrice": 0.14,
+                    "TotalPrice": 0.14
+                  },
+                  {
+                    "BreakQuantity": 10,
+                    "UnitPrice": 0.097,
+                    "TotalPrice": 0.97
+                  },
+                  {
+                    "BreakQuantity": 25,
+                    "UnitPrice": 0.0856,
+                    "TotalPrice": 2.14
+                  },
+                  {
+                    "BreakQuantity": 100,
+                    "UnitPrice": 0.0727,
+                    "TotalPrice": 7.27
+                  },
+                  {
+                    "BreakQuantity": 250,
+                    "UnitPrice": 0.06652,
+                    "TotalPrice": 16.63
+                  },
+                  {
+                    "BreakQuantity": 500,
+                    "UnitPrice": 0.0628,
+                    "TotalPrice": 31.4
+                  },
+                  {
+                    "BreakQuantity": 1000,
+                    "UnitPrice": 0.05972,
+                    "TotalPrice": 59.72
+                  }
+                ],
+                "MyPricing": [],
+                "MarketPlace": false,
+                "TariffActive": false,
+                "Supplier": {
+                  "Id": 1727,
+                  "Name": "Nexperia USA Inc."
+                },
+                "QuantityAvailableforPackageType": 1370,
+                "MaxQuantityForDistribution": 999999999,
+                "MinimumOrderQuantity": 1,
+                "StandardPackage": 1,
+                "DigiReelFee": 0.0
+              },
+              {
+                "DigiKeyProductNumber": "1727-7849-6-ND",
+                "PackageType": {
+                  "Id": 243,
+                  "Name": "Digi-Reel®"
+                },
+                "StandardPricing": [
+                  {
+                    "BreakQuantity": 1,
+                    "UnitPrice": 0.14,
+                    "TotalPrice": 0.14
+                  },
+                  {
+                    "BreakQuantity": 10,
+                    "UnitPrice": 0.097,
+                    "TotalPrice": 0.97
+                  },
+                  {
+                    "BreakQuantity": 25,
+                    "UnitPrice": 0.0856,
+                    "TotalPrice": 2.14
+                  },
+                  {
+                    "BreakQuantity": 100,
+                    "UnitPrice": 0.0727,
+                    "TotalPrice": 7.27
+                  },
+                  {
+                    "BreakQuantity": 250,
+                    "UnitPrice": 0.06652,
+                    "TotalPrice": 16.63
+                  },
+                  {
+                    "BreakQuantity": 500,
+                    "UnitPrice": 0.0628,
+                    "TotalPrice": 31.4
+                  },
+                  {
+                    "BreakQuantity": 1000,
+                    "UnitPrice": 0.05972,
+                    "TotalPrice": 59.72
+                  }
+                ],
+                "MyPricing": [],
+                "MarketPlace": false,
+                "TariffActive": false,
+                "Supplier": {
+                  "Id": 1727,
+                  "Name": "Nexperia USA Inc."
+                },
+                "QuantityAvailableforPackageType": 1370,
+                "MaxQuantityForDistribution": 999999999,
+                "MinimumOrderQuantity": 1,
+                "StandardPackage": 1,
+                "DigiReelFee": 5.5
+              }
+            ],
+            "QuantityAvailable": 1370,
+            "ProductStatus": {
+              "Id": 0,
+              "Status": "Active"
+            },
+            "BackOrderNotAllowed": false,
+            "NormallyStocking": true,
+            "Discontinued": false,
+            "EndOfLife": false,
+            "Ncnr": false,
+            "PrimaryVideoUrl": "",
+            "Parameters": [
+              {
+                "ParameterId": 247,
+                "ParameterText": "Logic Type",
+                "ParameterType": "String",
+                "ValueId": "313906",
+                "ValueText": "AND Gate"
+              },
+              {
+                "ParameterId": 2094,
+                "ParameterText": "Number of Circuits",
+                "ParameterType": "Double",
+                "ValueId": "1",
+                "ValueText": "1"
+              },
+              {
+                "ParameterId": 667,
+                "ParameterText": "Number of Inputs",
+                "ParameterType": "String",
+                "ValueId": "121326",
+                "ValueText": "2"
+              },
+              {
+                "ParameterId": 5,
+                "ParameterText": "Features",
+                "ParameterType": "String",
+                "ValueId": "382145",
+                "ValueText": "Open Drain"
+              },
+              {
+                "ParameterId": 276,
+                "ParameterText": "Voltage - Supply",
+                "ParameterType": "String",
+                "ValueId": "169006",
+                "ValueText": "2V ~ 5.5V"
+              },
+              {
+                "ParameterId": 2116,
+                "ParameterText": "Current - Quiescent (Max)",
+                "ParameterType": "UnitOfMeasure",
+                "ValueId": "1 µA",
+                "ValueText": "1 µA"
+              },
+              {
+                "ParameterId": 592,
+                "ParameterText": "Current - Output High, Low",
+                "ParameterType": "String",
+                "ValueId": "407",
+                "ValueText": "-, 8mA"
+              },
+              {
+                "ParameterId": 1543,
+                "ParameterText": "Input Logic Level - Low",
+                "ParameterType": "String",
+                "ValueId": "28623",
+                "ValueText": "0.5V ~ 1.65V"
+              },
+              {
+                "ParameterId": 1542,
+                "ParameterText": "Input Logic Level - High",
+                "ParameterType": "String",
+                "ValueId": "55756",
+                "ValueText": "1.5V ~ 3.85V"
+              },
+              {
+                "ParameterId": 1552,
+                "ParameterText": "Max Propagation Delay @ V, Max CL",
+                "ParameterType": "String",
+                "ValueId": "270723",
+                "ValueText": "7.5ns @ 5V, 50pF"
+              },
+              {
+                "ParameterId": 252,
+                "ParameterText": "Operating Temperature",
+                "ParameterType": "String",
+                "ValueId": "212478",
+                "ValueText": "-40°C ~ 125°C"
+              },
+              {
+                "ParameterId": 1977,
+                "ParameterText": "Grade",
+                "ParameterType": "String",
+                "ValueId": "316912",
+                "ValueText": "Automotive"
+              },
+              {
+                "ParameterId": 2700,
+                "ParameterText": "Qualification",
+                "ParameterType": "String",
+                "ValueId": "312102",
+                "ValueText": "AEC-Q100"
+              },
+              {
+                "ParameterId": 69,
+                "ParameterText": "Mounting Type",
+                "ParameterType": "String",
+                "ValueId": "409393",
+                "ValueText": "Surface Mount"
+              },
+              {
+                "ParameterId": 1291,
+                "ParameterText": "Supplier Device Package",
+                "ParameterType": "String",
+                "ValueId": "400228",
+                "ValueText": "SC-74A"
+              },
+              {
+                "ParameterId": 16,
+                "ParameterText": "Package / Case",
+                "ParameterType": "String",
+                "ValueId": "400230",
+                "ValueText": "SC-74A, SOT-753"
+              }
+            ],
+            "BaseProductNumber": {
+              "Id": 48363,
+              "Name": "74AHC1G09"
+            },
+            "Category": {
+              "CategoryId": 32,
+              "ParentId": 0,
+              "Name": "Integrated Circuits (ICs)",
+              "ProductCount": 0,
+              "NewProductCount": 0,
+              "ImageUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/derivates/3/010/153/598/8-SOIC%2CM8_tmb.jpg",
+              "SeoDescription": "Integrated circuits combine a large number of transistors and other elementary electronic components in miniaturized form into a single physical device, that is designed for a specific purpose or function and characterized by its performance of that function rather than by the behavior of its component pieces. Examples include microcontrollers, battery monitors and charge controllers, analog to digital converters, operational amplifiers, logic gates, voltage regulators, gate drivers, motro controllers, and others.",
+              "ChildCategories": [
+                {
+                  "CategoryId": 2019,
+                  "ParentId": 32,
+                  "Name": "Logic",
+                  "ProductCount": 0,
+                  "NewProductCount": 0,
+                  "ImageUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/derivates/3/010/312/8-TSSOP%2C-8-MSOP-3x3mm_tmb.jpg",
+                  "SeoDescription": "Logic components operate using two voltage levels. These two levels are referred to as High or Low, On or Off, True or False, or simply 1 or 0. There are many components included in this category, such as Buffers, Drivers, Receivers, Transceivers, Comparators, Counters, Dividers, FIFOs Memory, Flip Flops, Gates, Inverters, Latches, Multivibrators, Parity Generators, Shift Registers, Signal Switches, Multiplexers, Decoders, Translators, Level Shifters, Universal Bus FUnctions, and More.",
+                  "ChildCategories": [
+                    {
+                      "CategoryId": 705,
+                      "ParentId": 2019,
+                      "Name": "Gates and Inverters",
+                      "ProductCount": 0,
+                      "NewProductCount": 0,
+                      "ImageUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/derivates/3/100/958/564/296_14-DIP_tmb.jpg",
+                      "SeoDescription": "Products in the logic gate and inverter family perform elementary logical operations on individual logic signals such as AND, NOT, OR, etc. Unlike flip-flops they do not have a capacity to store information and respond immediately to the signals presented to their inputs. Though long supplanted by implementations in integrated circuit form for realizing complex functions, discrete gates remain available for use in circumstances where only very simple logical functions are needed.",
+                      "ChildCategories": []
+                    }
+                  ]
+                }
+              ]
+            },
+            "ManufacturerLeadWeeks": "24",
+            "ManufacturerPublicQuantity": 0,
+            "Series": {
+              "Id": 435,
+              "Name": "74AHC"
+            },
+            "Classifications": {
+              "ReachStatus": "REACH Unaffected",
+              "RohsStatus": "ROHS3 Compliant",
+              "MoistureSensitivityLevel": "1  (Unlimited)",
+              "ExportControlClassNumber": "EAR99",
+              "HtsusCode": "8542.39.0070"
+            },
+            "OtherNames": [
+              "1727-7849-1",
+              "1727-7849-2",
+              "935299232125",
+              "5202-74AHC1G09GV-Q100HTR",
+              "74AHC1G09GV-Q100H-ND",
+              "1727-7849-6"
+            ]
+          },
+          {
+            "Description": {
+              "ProductDescription": "IC GATE AND 1CH 2-INP 5-TSOP",
+              "DetailedDescription": ""
+            },
+            "Manufacturer": {
+              "Id": 568,
+              "Name": "NXP USA Inc."
+            },
+            "ManufacturerProductNumber": "74AHC1G09GV,125",
+            "UnitPrice": 0.0,
+            "ProductUrl": "https://www.digikey.it/en/products/detail/nxp-usa-inc/74AHC1G09GV-125/10474720",
+            "DatasheetUrl": "https://assets.nexperia.com/documents/data-sheet/74AHC1G09.pdf",
+            "PhotoUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/medias/images/828/SOT753.jpg",
+            "ProductVariations": [
+              {
+                "DigiKeyProductNumber": "568-74AHC1G09GV,125TR-ND",
+                "PackageType": {
+                  "Id": 1,
+                  "Name": "Tape & Reel (TR)"
+                },
+                "StandardPricing": [],
+                "MyPricing": [],
+                "MarketPlace": false,
+                "TariffActive": false,
+                "Supplier": {
+                  "Id": 568,
+                  "Name": "NXP USA Inc."
+                },
+                "QuantityAvailableforPackageType": 0,
+                "MaxQuantityForDistribution": 999999999,
+                "StandardPackage": 3000,
+                "DigiReelFee": 0.0
+              }
+            ],
+            "ProductStatus": {
+              "Id": 2,
+              "Status": "Discontinued at DigiKey"
+            },
+            "BackOrderNotAllowed": false,
+            "NormallyStocking": false,
+            "Discontinued": false,
+            "EndOfLife": false,
+            "Ncnr": false,
+            "PrimaryVideoUrl": "",
+            "Parameters": [],
+            "BaseProductNumber": {
+              "Id": 48363,
+              "Name": "74AHC1G09"
+            },
+            "Category": {
+              "CategoryId": 1,
+              "ParentId": 0,
+              "Name": "Uncategorized",
+              "ProductCount": 0,
+              "NewProductCount": 0,
+              "ImageUrl": "https://mm.digikey.com/Volume0/opasdata/d220001/derivates/3/010/110/1983880000_View1_tmb.jpg",
+              "SeoDescription": "",
+              "ChildCategories": [
+                {
+                  "CategoryId": 48,
+                  "ParentId": 1,
+                  "Name": "Unclassified",
+                  "ProductCount": 0,
+                  "NewProductCount": 0,
+                  "ImageUrl": "",
+                  "SeoDescription": "Products not currently assigned to a family class are temporarily assigned to unclassified products in the uncategorized category.",
+                  "ChildCategories": []
+                }
+              ]
+            },
+            "ManufacturerLeadWeeks": "52",
+            "ManufacturerPublicQuantity": 0,
+            "Series": {
+              "Id": 0,
+              "Name": "*"
+            },
+            "Classifications": {
+              "ReachStatus": "REACH Unaffected",
+              "RohsStatus": "ROHS3 Compliant",
+              "MoistureSensitivityLevel": "",
+              "ExportControlClassNumber": "EAR99",
+              "HtsusCode": "8542.39.0070"
+            },
+            "OtherNames": [
+              "2156-74AHC1G09GV,125",
+              "954-74AHC1G09GV125",
+              "568-74AHC1G09GV,125TR",
+              "NEXNXP74AHC1G09GV,125"
+            ]
+          }
+        ],
+        "ProductsCount": 3,
+        "ExactMatches": [],
+        "FilterOptions": {
+          "Manufacturers": [
+            {
+              "Id": 1727,
+              "Value": "Nexperia USA Inc.",
+              "ProductCount": 2
+            },
+            {
+              "Id": 568,
+              "Value": "NXP USA Inc.",
+              "ProductCount": 1
+            }
+          ]
+        },
+        "SearchLocaleUsed": {
+          "Site": "IT",
+          "Language": "en",
+          "Currency": "EUR"
+        },
+        "AppliedParametricFiltersDto": []
+      }
+    }
+  ]
+}

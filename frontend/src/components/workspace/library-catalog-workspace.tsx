@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowDown,
@@ -19,22 +19,12 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
 
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -42,9 +32,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { CatalogSupplyDot, RestrictionTag } from "@/features/supply/catalog-supply-dot";
+import { CatalogSupplyBar } from "@/features/supply/catalog-supply-bar";
+import { CatalogSupplyCell } from "@/features/supply/catalog-supply-cell";
+import { passesSupplyFilter, supplyFilterFrom } from "@/features/supply/catalog-supply-filter";
+import { useCatalogPicks } from "@/features/supply/use-catalog-picks";
+import { useCatalogSupply } from "@/features/supply/use-catalog-supply";
 import { useVirtualViewport } from "@/hooks/use-virtual-viewport";
-import { createComponent, getComponent, listCategories, listComponents } from "./catalog-client";
+import { getComponent, listCategories, listComponents } from "./catalog-client";
+import { CreateComponentDialog } from "./create-component-dialog";
 import {
   AVAILABILITY_BADGE_TITLE,
   AVAILABILITY_BADGE_VARIANT,
@@ -54,7 +50,7 @@ import {
   WORKFLOW_BADGE_VARIANT,
 } from "@/lib/catalog-badges";
 import { PermissionHint } from "@/components/ui/permission-hint";
-import { canAdministerCatalog, canWriteCatalog } from "@/lib/roles";
+import { canAdministerCatalog, canEditSupply, canOpenSupply, canWriteCatalog } from "@/lib/roles";
 import { useServerState } from "@/lib/server-state";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types/auth";
@@ -67,6 +63,7 @@ import type {
 import { LibraryCatalogFileCheck } from "./library-catalog-file-check";
 import { LibraryPager } from "./library-pager";
 import { LibraryComponentQuickView } from "./library-component-quick-view";
+import { useScrollBelowHead } from "@/lib/use-scroll-below-head";
 
 const PAGE_SIZE = 100;
 const CATALOG_ROW_HEIGHT = 64;
@@ -76,6 +73,8 @@ const CATALOG_ROW_HEIGHT = 64;
 // floors the header and rows scroll sideways together instead.
 const CATALOG_GRID_TEMPLATE =
   "minmax(180px,2.4fr) minmax(120px,1.5fr) minmax(120px,1.5fr) minmax(124px,1fr) minmax(104px,0.9fr) minmax(104px,0.9fr) minmax(130px,1.6fr)";
+// Supply roles see one more column: the distributors' status, price and stock, and the usable local stock.
+const CATALOG_SUPPLY_GRID_TEMPLATE = `${CATALOG_GRID_TEMPLATE} minmax(150px,1.4fr)`;
 const CATALOG_OVERSCAN = 6;
 
 type SortKey = "name" | "manufacturer" | "category" | "package_name" | "availability_state" | "workflow_stage" | "updated_at";
@@ -89,27 +88,6 @@ const VALIDATION_KEYS: CatalogValidationStatus[] = ["passed", "warning", "failed
 const enumParam = <T extends string>(value: string | null, allowed: T[], fallback: T): T =>
   value && allowed.includes(value as T) ? value as T : fallback;
 
-type CreateComponentForm = {
-  value: string;
-  manufacturer: string;
-  manufacturerPartNumber: string;
-  description: string;
-  datasheet: string;
-  category: string;
-  packageName: string;
-  changeSummary: string;
-};
-
-const EMPTY_CREATE_FORM: CreateComponentForm = {
-  value: "",
-  manufacturer: "",
-  manufacturerPartNumber: "",
-  description: "",
-  datasheet: "",
-  category: "",
-  packageName: "",
-  changeSummary: "Create component metadata record",
-};
 
 const WORKFLOW_LABELS: Record<WorkflowStage, string> = {
   open: "Open",
@@ -144,6 +122,9 @@ const formatDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? value : DATE_FORMAT.format(date);
 };
 
+// Every column heading, sortable or not, is the same box so the header row lines up.
+const HEADING = "flex min-w-0 items-center text-xs font-medium text-muted-foreground";
+
 function SortControl({
   label,
   sortKey,
@@ -162,7 +143,7 @@ function SortControl({
   return (
     <button
       type="button"
-      className={cn("inline-flex items-center gap-1 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}
+      className={cn(HEADING, "gap-1 text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}
       onClick={() => onSort(sortKey)}
       aria-label={`Sort by ${label}${active ? `, currently ${direction === "asc" ? "ascending" : "descending"}` : ""}`}
       aria-pressed={active}
@@ -214,74 +195,6 @@ function CatalogEmpty({ filtered, onClear }: { filtered: boolean; onClear: () =>
   );
 }
 
-function CreateComponentDialog({
-  open,
-  onOpenChange,
-  onCreated,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreated: (component: CatalogComponent) => void;
-}) {
-  const [form, setForm] = useState<CreateComponentForm>(EMPTY_CREATE_FORM);
-  const [submitting, setSubmitting] = useState(false);
-
-  const setField = (field: keyof CreateComponentForm, value: string) => setForm((current) => ({ ...current, [field]: value }));
-  const canSubmit = Boolean(form.value.trim() && form.manufacturer.trim() && form.manufacturerPartNumber.trim() && form.description.trim() && form.datasheet.trim() && form.changeSummary.trim());
-
-  const handleSubmit = async () => {
-    if (!canSubmit) {
-      toast.error("Required fields missing");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const component = await createComponent({
-        value: form.value.trim(),
-        manufacturer: form.manufacturer.trim(),
-        manufacturer_part_number: form.manufacturerPartNumber.trim(),
-        description: form.description.trim(),
-        datasheet: form.datasheet.trim(),
-        category: form.category.trim(),
-        package_name: form.packageName.trim(),
-        change_summary: form.changeSummary.trim(),
-      });
-      toast.success(`${component.name} v${component.revision} created`);
-      setForm(EMPTY_CREATE_FORM);
-      onOpenChange(false);
-      onCreated(component);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>New component</DialogTitle>
-          <DialogDescription className="sr-only">First metadata revision of a new component</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2"><Label htmlFor="catalog-create-value">Value *</Label><Input id="catalog-create-value" autoFocus required value={form.value} onChange={(event) => setField("value", event.target.value)} placeholder="10 kΩ, TPS55289, USB-C…" /></div>
-          <div className="space-y-2"><Label htmlFor="catalog-create-manufacturer">Manufacturer *</Label><Input id="catalog-create-manufacturer" required value={form.manufacturer} onChange={(event) => setField("manufacturer", event.target.value)} placeholder="Texas Instruments" /></div>
-          <div className="space-y-2"><Label htmlFor="catalog-create-mpn">Manufacturer part number *</Label><Input id="catalog-create-mpn" required value={form.manufacturerPartNumber} onChange={(event) => setField("manufacturerPartNumber", event.target.value)} placeholder="TPS55289RGER" /></div>
-          <div className="space-y-2"><Label htmlFor="catalog-create-datasheet">Datasheet URL *</Label><Input id="catalog-create-datasheet" type="url" required value={form.datasheet} onChange={(event) => setField("datasheet", event.target.value)} placeholder="https://…" /></div>
-          <div className="space-y-2"><Label htmlFor="catalog-create-category">Category</Label><Input id="catalog-create-category" value={form.category} onChange={(event) => setField("category", event.target.value)} placeholder="Power management" /></div>
-          <div className="space-y-2"><Label htmlFor="catalog-create-package">Package</Label><Input id="catalog-create-package" value={form.packageName} onChange={(event) => setField("packageName", event.target.value)} placeholder="VQFN-24" /></div>
-          <div className="space-y-2 sm:col-span-2"><Label htmlFor="catalog-create-description">Description *</Label><Textarea id="catalog-create-description" required value={form.description} onChange={(event) => setField("description", event.target.value)} rows={3} /></div>
-          <div className="space-y-2 sm:col-span-2"><Label htmlFor="catalog-create-summary">Change summary *</Label><Input id="catalog-create-summary" required value={form.changeSummary} onChange={(event) => setField("changeSummary", event.target.value)} /></div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={submitting || !canSubmit} onClick={() => void handleSubmit()}>{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Create revision</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 const CATEGORIES_KEY = ["catalog", "categories"] as const;
 const COMPONENTS_KEY = ["catalog", "components"] as const;
@@ -314,6 +227,15 @@ export function LibraryCatalogWorkspace({
   const [selectedError, setSelectedError] = useState("");
   const [selectedRefreshKey, setSelectedRefreshKey] = useState(0);
   const catalogViewport = useVirtualViewport();
+  // The table's scrollbar runs beside the rows, below the sticky header.
+  const catalogScroller = useRef<HTMLDivElement | null>(null);
+  const catalogHead = useRef<HTMLDivElement>(null);
+  const { viewportRef: catalogViewportRef } = catalogViewport;
+  const setCatalogScroller = useCallback((node: HTMLDivElement | null) => {
+    catalogScroller.current = node;
+    catalogViewportRef(node);
+  }, [catalogViewportRef]);
+  useScrollBelowHead(catalogScroller, catalogHead);
   const canCreate = canWriteCatalog(user?.role);
 
   const updateCatalogParams = useCallback((values: Record<string, string | null>, replace = false) => {
@@ -412,9 +334,16 @@ export function LibraryCatalogWorkspace({
   const isFiltered = Boolean(urlQuery || activeFilterCount);
   const firstItem = total ? (page - 1) * PAGE_SIZE + 1 : 0;
   const lastItem = Math.min(page * PAGE_SIZE, total);
+  const picks = useCatalogPicks();
+  const { standing: supplyStanding, refresh: refreshSupply } = useCatalogSupply(items.map((item) => ({ id: item.id, manufacturer: item.manufacturer, mpn: item.mpn })), user?.role);
+  // The Watched and At risk filters narrow the page that is loaded; the server does not know about supply.
+  const supplyFilter = supplyFilterFrom(searchParams.get("catalogSupply"));
+  const supplyColumn = canOpenSupply(user?.role);
+  const gridTemplate = supplyColumn ? CATALOG_SUPPLY_GRID_TEMPLATE : CATALOG_GRID_TEMPLATE;
+  const shownItems = supplyFilter ? items.filter((item) => passesSupplyFilter(supplyFilter, supplyStanding[item.id])) : items;
   const firstVisibleRow = Math.max(0, Math.floor(catalogViewport.scrollTop / CATALOG_ROW_HEIGHT) - CATALOG_OVERSCAN);
-  const lastVisibleRow = Math.min(items.length, Math.ceil((catalogViewport.scrollTop + catalogViewport.height) / CATALOG_ROW_HEIGHT) + CATALOG_OVERSCAN);
-  const visibleItems = items.slice(firstVisibleRow, lastVisibleRow);
+  const lastVisibleRow = Math.min(shownItems.length, Math.ceil((catalogViewport.scrollTop + catalogViewport.height) / CATALOG_ROW_HEIGHT) + CATALOG_OVERSCAN);
+  const visibleItems = shownItems.slice(firstVisibleRow, lastVisibleRow);
 
   const clearFilters = () => {
     setQuery("");
@@ -425,6 +354,7 @@ export function LibraryCatalogWorkspace({
       catalogAvailability: null,
       catalogValidation: null,
       catalogCategory: null,
+      catalogSupply: null,
     });
   };
 
@@ -452,6 +382,16 @@ export function LibraryCatalogWorkspace({
         <Select value={availability} onValueChange={(value) => updateCatalogParams({ catalogAvailability: value === "all" ? null : value, catalogPage: null })}><SelectTrigger size="sm" aria-label="Filter by CAD availability"><SelectValue placeholder="CAD" /></SelectTrigger><SelectContent><SelectItem value="all">Any CAD</SelectItem>{Object.entries(AVAILABILITY_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
         <Select value={validation} onValueChange={(value) => updateCatalogParams({ catalogValidation: value === "all" ? null : value, catalogPage: null })}><SelectTrigger size="sm" aria-label="Filter by validation"><SelectValue placeholder="Validation" /></SelectTrigger><SelectContent><SelectItem value="all">Any validation</SelectItem>{Object.entries(VALIDATION_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
         <Select value={category} onValueChange={(value) => updateCatalogParams({ catalogCategory: value === "all" ? null : value, catalogPage: null })}><SelectTrigger size="sm" aria-label="Filter by category" className="max-w-48"><SelectValue placeholder="Category" /></SelectTrigger><SelectContent><SelectItem value="all">Any category</SelectItem><SelectItem value="uncategorized">Uncategorized</SelectItem>{categories.flatMap((item) => (item.name ? [<SelectItem key={item.name} value={item.name}>{item.name} ({item.count})</SelectItem>] : []))}</SelectContent></Select>
+        <CatalogSupplyBar
+          filter={supplyFilter}
+          onFilter={(next) => updateCatalogParams({ catalogSupply: next || null })}
+          rows={shownItems}
+          standing={supplyStanding}
+          role={user?.role}
+          onChanged={() => void refreshSupply()}
+          picked={picks.picked}
+          onClearPicks={picks.clear}
+        />
         {isFiltered ? <Button size="sm" variant="ghost" className="h-7" title="Clear filters" onClick={clearFilters}><FilterX className="h-3.5 w-3.5" />{activeFilterCount ? activeFilterCount : null}</Button> : null}
         <div className="ml-auto flex items-center gap-1.5">
           {canAdministerCatalog(user?.role) ? <LibraryCatalogFileCheck /> : null}
@@ -478,37 +418,39 @@ export function LibraryCatalogWorkspace({
         ) : items.length === 0 ? <CatalogEmpty filtered={isFiltered} onClear={clearFilters} /> : (
           <div className={cn("flex min-h-0 flex-1 flex-col border transition-opacity", loading && "pointer-events-none opacity-60")} aria-busy={loading}>
             <div
-              ref={catalogViewport.viewportRef}
-              className="min-h-0 flex-1 overflow-auto"
+              ref={setCatalogScroller}
+              className="themed-scrollbar scroll-below-head min-h-0 flex-1 overflow-auto"
               onScroll={catalogViewport.onScroll}
             >
-            <div className="min-w-[980px]">
-            <div className="sticky top-0 z-10 grid gap-3 border-b bg-muted px-3 py-2" style={{ gridTemplateColumns: CATALOG_GRID_TEMPLATE }}>
-              <span className="min-w-0"><SortControl label="Component / MPN" sortKey="name" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
-              <span className="min-w-0"><SortControl label="Manufacturer" sortKey="manufacturer" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
-              <span className="min-w-0"><SortControl label="Category / Package" sortKey="category" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
-              <span className="min-w-0"><SortControl label="CAD" sortKey="availability_state" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
-              <span className="min-w-0"><SortControl label="Workflow" sortKey="workflow_stage" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
-              <span className="min-w-0 text-xs font-medium text-muted-foreground">Validation</span>
-              <span className="min-w-0"><SortControl label="Revision / Updated" sortKey="updated_at" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
+            <div className={supplyColumn ? "min-w-[1140px]" : "min-w-[980px]"}>
+            <div ref={catalogHead} className="sticky top-0 z-10 grid items-center gap-3 border-b bg-muted px-3 py-2" style={{ gridTemplateColumns: gridTemplate }}>
+              <span className="flex min-w-0"><SortControl label="Component / MPN" sortKey="name" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
+              <span className="flex min-w-0"><SortControl label="Manufacturer" sortKey="manufacturer" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
+              <span className="flex min-w-0"><SortControl label="Category / Package" sortKey="category" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
+              <span className="flex min-w-0"><SortControl label="CAD" sortKey="availability_state" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
+              <span className="flex min-w-0"><SortControl label="Workflow" sortKey="workflow_stage" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
+              <span className={HEADING}>Validation</span>
+              <span className="flex min-w-0"><SortControl label="Revision / Updated" sortKey="updated_at" activeKey={sortKey} direction={sortDirection} onSort={handleSort} /></span>
+              {supplyColumn ? <span className={HEADING}>Supply</span> : null}
             </div>
               <div className="relative" style={{ height: items.length * CATALOG_ROW_HEIGHT }}>
               {visibleItems.map((component, visibleIndex) => (
                 <button
                   key={component.id}
                   type="button"
-                  className={cn("absolute inset-x-0 grid h-16 w-full items-center gap-3 border-b px-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", selectedComponentId === component.id && "bg-secondary")}
-                  style={{ transform: `translateY(${(firstVisibleRow + visibleIndex) * CATALOG_ROW_HEIGHT}px)`, gridTemplateColumns: CATALOG_GRID_TEMPLATE }}
-                  onClick={() => selectComponent(component)}
+                  className={cn("absolute inset-x-0 grid h-16 w-full items-center gap-3 border-b px-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", selectedComponentId === component.id && "bg-secondary", picks.picked.has(component.id) && "bg-primary/10 ring-1 ring-inset ring-primary/40")}
+                  style={{ transform: `translateY(${(firstVisibleRow + visibleIndex) * CATALOG_ROW_HEIGHT}px)`, gridTemplateColumns: gridTemplate }}
+                  onClick={(event) => (event.ctrlKey || event.metaKey) && canEditSupply(user?.role) ? picks.toggle(component.id) : selectComponent(component)}
                   aria-pressed={selectedComponentId === component.id}
                 >
-                  <div className="min-w-0"><p className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium"><span className="truncate">{component.name}</span></p><p className="truncate text-xs text-muted-foreground">{component.mpn || component.value || "No part number"}</p></div>
+                  <div className="min-w-0"><p className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium"><CatalogSupplyDot standing={supplyStanding[component.id]} /><RestrictionTag standing={supplyStanding[component.id]} /><span className="truncate">{component.name}</span></p><p className="truncate text-xs text-muted-foreground">{component.mpn || component.value || "No part number"}</p></div>
                   <div className="min-w-0"><p className="truncate text-xs">{component.manufacturer || "—"}</p><p className="truncate text-xs text-muted-foreground">{component.vendor || component.source}</p></div>
                   <div className="min-w-0"><p className="truncate text-xs">{component.category || "Uncategorized"}</p><p className="truncate text-xs text-muted-foreground">{component.package_name || "No package"}</p></div>
                   <div className="flex min-w-0"><AvailabilityBadge state={component.availability_state} /></div>
                   <div className="flex min-w-0"><WorkflowBadge stage={component.workflow_stage} /></div>
                   <div className="flex min-w-0"><ValidationBadge status={component.validation.status} /></div>
                   <div className="min-w-0"><p className="text-xs font-medium">v{component.revision}</p><p className="truncate text-xs text-muted-foreground" title={component.created_by}>{formatDate(component.revision_updated_at)} · {component.created_by || "Unknown author"}</p></div>
+                  {supplyColumn ? <CatalogSupplyCell standing={supplyStanding[component.id]} /> : null}
                 </button>
               ))}
               </div>

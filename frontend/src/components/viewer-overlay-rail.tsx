@@ -149,7 +149,7 @@ function ViewerOverlayRailFrame<T extends string>({
             aria-hidden={!activeTab}
             style={widthPx == null ? undefined : { width: `${widthPx}px` }}
             className={cn(
-                "absolute inset-y-0 right-0 z-40 flex min-w-0 flex-col overflow-hidden border-l bg-background/95 shadow-xl backdrop-blur-sm transition-[transform,opacity] duration-200",
+                "absolute inset-y-0 right-0 z-rail flex min-w-0 flex-col overflow-hidden border-l bg-background/95 shadow-xl backdrop-blur-sm transition-[transform,opacity] duration-200",
                 widthPx == null && "w-96",
                 activeTab
                     ? "translate-x-0 opacity-100"

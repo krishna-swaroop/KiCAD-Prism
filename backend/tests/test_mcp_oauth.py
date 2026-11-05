@@ -111,7 +111,7 @@ class McpMetadataTests(unittest.TestCase):
         expected = {
             "resource": RESOURCE,
             "authorization_servers": [f"{BASE}/oauth/mcp"],
-            "scopes_supported": ["api:read", "comments:write", "design:write", "catalog:write"],
+            "scopes_supported": ["api:read", "comments:write", "design:write", "catalog:write", "supply:write"],
             "bearer_methods_supported": ["header"],
         }
         for path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
@@ -131,7 +131,7 @@ class McpMetadataTests(unittest.TestCase):
             "grant_types_supported": ["authorization_code", "refresh_token"],
             "code_challenge_methods_supported": ["S256"],
             "token_endpoint_auth_methods_supported": ["none"],
-            "scopes_supported": ["api:read", "comments:write", "design:write", "catalog:write"],
+            "scopes_supported": ["api:read", "comments:write", "design:write", "catalog:write", "supply:write"],
             "client_id_metadata_document_supported": True,
             "authorization_response_iss_parameter_supported": True,
         }
@@ -320,6 +320,11 @@ class McpOAuthFlowTests(unittest.TestCase):
                 response = client.get("/oauth/mcp/authorize", params=params)
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.json()["error"], "invalid_scope")
+
+    def test_an_mcp_client_may_ask_for_supply_writes(self) -> None:
+        from app.services import mcp_auth_service
+
+        self.assertEqual(mcp_auth_service.normalize_scope("supply:write api:read"), "api:read supply:write")
 
     def test_a_redirect_uri_outside_the_document_is_refused(self) -> None:
         client = self._client_for(unique_email("redirect"), "designer")

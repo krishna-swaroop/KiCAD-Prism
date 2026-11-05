@@ -177,6 +177,18 @@
   .themed-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
+  /* A table with a sticky header: the track starts below it (`useScrollBelowHead` sets the height). Chromium ignores the
+     -webkit-scrollbar rules wherever the standard scrollbar properties are set, so where it reads them they go back to
+     auto and the 8px bar above draws instead; elsewhere the thin bar stays. */
+  @supports selector(::-webkit-scrollbar) {
+    .themed-scrollbar.scroll-below-head {
+      scrollbar-width: auto;
+      scrollbar-color: auto;
+    }
+  }
+  .themed-scrollbar.scroll-below-head::-webkit-scrollbar-track {
+    margin-top: var(--scroll-head, 0px);
+  }
   .themed-scrollbar::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.3);
     border-radius: 4px;

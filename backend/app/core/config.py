@@ -7,6 +7,8 @@ Configuration can be set via:
 
 See .env.example for available configuration options.
 """
+from dotenv import dotenv_values
+from functools import lru_cache
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings
 from typing import List
@@ -16,6 +18,7 @@ import re
 from app.core.design_bundle_config import DesignBundleSettings
 from app.core.pipeline_config import PipelineSettings
 from app.core.sim_studio_config import SimStudioSettings
+from app.core.supply_config import SupplySettings
 from app.core.worker_memory import default_worker_memory_budget_mib
 
 
@@ -36,7 +39,7 @@ _WEAK_SESSION_SECRETS = {
 _TRACKER_KEY_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
-class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings):
+class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings, SupplySettings):
     """Application settings loaded from environment variables.
 
     The only reader of process configuration in `app`. Design-pipeline fields
@@ -289,6 +292,16 @@ class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings):
         description=(
             "GitHub token for HTTPS clone and Release publishing. "
             "Publishing a Release Studio zip needs contents:write, not clone-only."
+        ),
+    )
+    PRISM_GIT_CREDENTIALS: str = Field(
+        default="",
+        description=(
+            "Extra HTTPS Git credentials for clone, fetch and push, as a JSON array of "
+            "{url_prefix, token_name, username?} objects. Each token is read from the "
+            "environment variable token_name names, and is sent only to remotes whose URL "
+            "starts with url_prefix (scheme, host, port and a trailing '/'). GITHUB_TOKEN "
+            "always covers https://github.com/. Release publishing uses PRISM_FORGE_HOSTS."
         ),
     )
     GITLAB_TOKEN: str = Field(
@@ -1125,6 +1138,9 @@ class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        # `NAME=` in .env (or `NAME=${NAME}` in a compose file) means "not set":
+        # use the default instead of failing to parse "" as a number or boolean.
+        env_ignore_empty = True
         # Allow extra fields to be ignored
         extra = "ignore"
 
@@ -1136,9 +1152,40 @@ settings = Settings()
 def environment_value(name: str) -> str:
     """A variable whose name comes from data rather than code.
 
-    A forge host's `token_name` (PRISM_FORGE_HOSTS) and a KiCad path variable
+    A forge host's or Git credential's `token_name` (PRISM_FORGE_HOSTS,
+    PRISM_GIT_CREDENTIALS) and a KiCad path variable
     such as `${KICAD9_3DMODEL_DIR}` in a 3D model path name variables that no
     `Settings` field can declare. Read them here so this module stays the only
     configuration reader.
     """
     return os.environ.get(name, "")
+
+
+def configured_value(name: str) -> str:
+    """A variable named by data, read from the same sources as ``Settings``.
+
+    A Git credential's `token_name` (PRISM_GIT_CREDENTIALS) is documented as
+    another variable in the environment file. Settings reads that file without
+    exporting it, so a process started outside Compose would see the setting
+    but not the token. The process environment wins, as it does for Settings.
+    """
+    if name in os.environ:
+        return os.environ[name]
+    values = _env_file_values()
+    if name in values:
+        return values[name]
+    folded = name.casefold()
+    return next((value for key, value in values.items() if key.casefold() == folded), "")
+
+
+def _env_file_values() -> dict[str, str]:
+    path = Settings.model_config.get("env_file")
+    if not path or not os.path.isfile(path):
+        return {}
+    return _read_env_file(str(path), os.stat(path).st_mtime_ns)
+
+
+@lru_cache(maxsize=4)
+def _read_env_file(path: str, _mtime_ns: int) -> dict[str, str]:
+    encoding = Settings.model_config.get("env_file_encoding") or "utf-8"
+    return {key: value or "" for key, value in dotenv_values(path, encoding=encoding).items()}

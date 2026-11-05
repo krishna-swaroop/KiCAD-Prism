@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
     filterLabelInstances,
     labelInstanceListLabel,
+    netLabelInstances,
     type LabelInstanceRef,
 } from "./label-instances";
 
@@ -62,5 +63,29 @@ describe("labelInstanceListLabel", () => {
         expect(labelInstanceListLabel(instances[0], instances)).toBe("mcu.kicad_sch · 1");
         expect(labelInstanceListLabel(instances[1], instances)).toBe("mcu.kicad_sch · 2");
         expect(labelInstanceListLabel(instances[2], instances)).toBe("io.kicad_sch");
+    });
+});
+
+describe("netLabelInstances", () => {
+    it("keeps only the net's own labels and sheet entries, under every name it goes by", () => {
+        const net = {
+            netUid: "n",
+            name: "/Sub/SDA",
+            aliases: ["I2C_SDA"],
+            schematicRefs: [
+                { sheetInstancePath: "/r", labelUuids: ["g1"], junctionUuids: ["pin1"] },
+                { sheetInstancePath: "/r/s", labelUuids: ["h1"] },
+            ],
+        };
+        const byName: Record<string, LabelInstanceRef[]> = {
+            SDA: [
+                instance({ uuid: "h1", sheet: "sub.kicad_sch", name: "SDA", kind: "hierarchical" }),
+                instance({ uuid: "pin1", sheet: "root.kicad_sch", name: "SDA", kind: "sheet-pin" }),
+                instance({ uuid: "other", sheet: "io.kicad_sch", name: "SDA", kind: "global" }),
+            ],
+            I2C_SDA: [instance({ uuid: "g1", sheet: "root.kicad_sch", name: "I2C_SDA", kind: "global" })],
+        };
+        const found = netLabelInstances(net, (name) => byName[name] ?? []);
+        expect(found.map((item) => item.uuid).sort()).toEqual(["g1", "h1", "pin1"]);
     });
 });

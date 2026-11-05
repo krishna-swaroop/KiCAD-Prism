@@ -17,6 +17,9 @@ put them in one environment file:
 - a source checkout reads `.env` at the repository root;
 - an installation made with the guided installer reads `generated/.env`.
 
+Every setting has a default, shown in the tables below. A setting that is
+missing from the file, or listed with no value (`NAME=`), uses its default.
+
 Start from the `.env.example` next to the Compose file and keep the real file
 out of Git. It holds database, sign-in and Git credentials, so make it readable
 only by the administrator and the backup job.
@@ -224,6 +227,7 @@ that looks empty.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `GITHUB_TOKEN` | empty | Used for `https://github.com/` clones and for Release Studio publishing to GitHub. |
+| `PRISM_GIT_CREDENTIALS` | empty | HTTPS tokens for other Git servers, each tied to one URL prefix. See [Git credentials](#git-credentials). |
 | `IMPORT_ALLOWED_HOSTS_STR` | empty | Comma-separated Git hosts projects may be imported from. Empty allows any host, and Prism logs a warning. |
 | `IMPORT_ALLOW_INSECURE_HTTP` | `false` | Allows `http://` repository URLs. |
 | `PRISM_AUTO_SYNC_INTERVAL_SECONDS` | `300` | How often each project fetches from its remote. `0` turns background fetch off. |
@@ -232,6 +236,51 @@ that looks empty.
 
 Prism never imports from `file://` URLs, local paths, URLs with embedded
 credentials or Git remote-helper transports, whatever these settings say.
+
+### Git credentials
+
+To import private repositories over HTTPS from a server other than GitHub, list
+a token for each server in `PRISM_GIT_CREDENTIALS`. Prism uses these tokens to
+import, sync and push configuration commits, never to publish Releases; for
+that, see [Release Studio](#release-studio).
+
+Each entry names a URL prefix and the variable that holds its token:
+
+```env
+PRISM_GIT_CREDENTIALS='[{"url_prefix":"https://git.example.test/","token_name":"EXAMPLE_GIT_TOKEN"},{"url_prefix":"https://gitlab.example.test/","token_name":"EXAMPLE_GITLAB_TOKEN","username":"oauth2"}]'
+EXAMPLE_GIT_TOKEN=<token with read access>
+EXAMPLE_GITLAB_TOKEN=<token with read_repository scope>
+```
+
+| Field | Required | What it does |
+| --- | --- | --- |
+| `url_prefix` | yes | The remotes the token is for: `https://`, the host, an optional port and path, ending in `/`. |
+| `token_name` | yes | The variable in the same environment file that holds the token. |
+| `username` | no | Sent with the token for servers that need a user name. GitLab needs one; use `oauth2`. GitHub and Gitea do not. |
+
+A token is sent only to remote URLs that start with its prefix exactly as
+written. The scheme, host and port must all match: a token for
+`https://git.example.test/` is not sent to `https://git.example.test:8443/`,
+to `http://git.example.test/` or to `https://git.example.test.other.example/`.
+Write the prefix the way users paste clone URLs. When several prefixes match,
+the longest wins, so `https://git.example.test/team/` can carry its own token.
+Prism refuses repository URLs with `.` or `..` path segments, so a URL cannot
+climb out of a prefix's path. Git does not follow redirects for a prefix with a
+path, so the server cannot send the token elsewhere on the same host.
+
+`GITHUB_TOKEN` always covers `https://github.com/`, so don't list GitHub here.
+
+Prism checks the list when the API and the workers start, and refuses to start
+when a prefix lacks a scheme, host or trailing `/`, contains credentials, or
+when a variable that `token_name` names is empty. Tokens are handed to Git one
+command at a time, never written to disk, and left out of logs, error messages
+and job messages.
+
+An `http://` prefix needs `IMPORT_ALLOW_INSECURE_HTTP=true`. Prism then sends
+the token in cleartext and logs a warning at startup and on each import from
+that server.
+
+Repository URLs that users paste must still not contain credentials.
 
 ![Settings → Git & SSH: the workspace SSH key with its fingerprint and copy button, and Check access buttons for two projects](../../../assets/screenshots/settings-git-ssh.jpg)
 
@@ -349,7 +398,7 @@ follow redirects while it sends a token.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `TRACKER_CREDENTIAL_ROOT_KEY` | empty | Key that encrypts code host credentials, webhook secrets and linked-account tokens. A 32-byte key as 64 hex characters or base64. Generate it with `openssl rand -hex 32`. Empty: Prism cannot store tracker credentials or outbound webhooks. |
+| `TRACKER_CREDENTIAL_ROOT_KEY` | empty | Key that encrypts code host credentials, webhook secrets, linked-account tokens, distributor credentials and inventory tokens. A 32-byte key as 64 hex characters or base64. Generate it with `openssl rand -hex 32`. Empty: Prism cannot store tracker credentials or outbound webhooks. |
 | `TRACKER_CREDENTIAL_ROOT_KEY_ID` | `v1` | Name of the current key, 1 to 64 characters from `A-Z a-z 0-9 . _ -`. Change it only when you rotate the key. |
 | `TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY` | empty | The previous key, kept while you rotate. |
 | `TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID` | empty | Name of the previous key. Must differ from the current one. |
@@ -378,6 +427,24 @@ follow redirects while it sends a token.
 | `CATALOG_KLC_FOOTPRINT_RULES` | empty | Comma-separated footprint rules to run. Empty runs all. |
 | `CATALOG_KLC_FOOTPRINT_EXCLUDE_RULES` | empty | Comma-separated footprint rules to skip. |
 | `CATALOG_KLC_FOOTPRINT_LIB_DIR` | empty | Footprint library passed to the symbol checks. |
+
+## Supply
+
+Distributor connectors, inventory sources and the workspace's supply settings
+are managed in the app, in **Supply → Sources** (see
+[Connect distributors and inventory](/KiCAD-Prism/admin/supply/)). Their
+credentials are encrypted with `TRACKER_CREDENTIAL_ROOT_KEY`
+([Issue trackers](#issue-trackers)), so set that key before adding any.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `PRISM_SUPPLY_ENABLED` | `true` | Supply as a whole. `false` removes its pages, tabs and columns, its API and its MCP tools, and stops every distributor and inventory call. Its database tables are still created, and stay empty. |
+| `SUPPLY_BASE_CURRENCY` | `EUR` | Currency a new workspace costs in, as a three-letter code such as `EUR`, `USD` or `INR`. Administrators can change it later in **Supply settings**; a workspace that saved its settings keeps its own. |
+| `SUPPLY_HTTPS_PROXY` | empty | HTTPS proxy for every call Supply makes (distributors, inventory servers, exchange rates and the jlcparts catalogue), for example `http://proxy.example.com:3128`. The environment's proxy variables are ignored for these calls. With a proxy, the proxy resolves host names, so Prism checks the host but not its address. |
+| `SUPPLY_INVENTORY_PRIVATE_HOSTS_STR` | empty | Comma-separated host names of inventory servers on your own network, for example `inventory.example.internal`. Only these may resolve to a private address or use a port other than 443; HTTPS and certificate checks still apply, and link-local addresses stay refused. Empty allows public addresses only. |
+| `SUPPLY_OAUTH_BASE_URL` | empty | Address a DigiKey sign-in returns to, when it must differ from `PUBLIC_BASE_URL`. Must be HTTPS. Empty uses `PUBLIC_BASE_URL`. |
+| `SUPPLY_FETCH_EXCHANGE_RATES` | `true` | Fetches the European Central Bank's daily reference rates from `www.ecb.europa.eu` once a day, to add up prices in several currencies. Set `false` to stop the daily fetch; rates are then what administrators enter in **Supply settings → Reference data**, or fetch there with **Refresh from the ECB**. |
+| `SUPPLY_ENABLE_SIMULATED_PROVIDER` | `false` | Allows connectors for a simulated distributor. For development, tests and demos only. Its figures carry a **Test data** chip. |
 
 ## Remote symbols and KiCad
 

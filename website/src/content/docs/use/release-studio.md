@@ -133,6 +133,10 @@ The **Release checks** panel on the right has three parts:
   promises exists; for JLCPCB that is the Gerbers, the drill files,
   `bom.csv`, `cpl.csv`, `bom.xlsx` and `cpl.xlsx`.
 
+Above the outputs, people who read supply see the supply health of the BOM
+the build exported. It never blocks the release; see
+[Supply in Release Studio](/KiCAD-Prism/use/supply/#supply-in-release-studio).
+
 ## Sign off a release
 
 A release needs two approvals, one in each slot, both on this exact build. A

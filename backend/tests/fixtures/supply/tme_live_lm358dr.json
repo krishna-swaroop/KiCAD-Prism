@@ -1,0 +1,168 @@
+{
+ "_source": "Recorded from the live TME API v2 on 2026-10-11 (storefront AT, symbol LM358DR). Unedited apart from this note. products_lookup is GET /products?mpns[]=; products and products_data are the two calls of one offers read.",
+ "products_lookup": {
+  "status": "OK",
+  "data": {
+   "elements": [
+    {
+     "product_status": [
+      "BLOCKED_FOR_ZBL_BACKORDERS"
+     ],
+     "symbol": "LM358DR",
+     "ean": "",
+     "customer_symbol": "",
+     "category": {
+      "id": 112843,
+      "name": "SMD operational amplifiers"
+     },
+     "manufacturer_symbols": [
+      "LM358DR"
+     ],
+     "manufacturer": {
+      "id": 77,
+      "name": "TEXAS INSTRUMENTS"
+     },
+     "description": "IC: operational amplifier; 700kHz; Ch: 2; ±1.5÷16VDC,3÷32VDC; SO8",
+     "multiples": 1,
+     "minimal_amount": 1,
+     "weight": {
+      "value": 0.097,
+      "unit": "g"
+     },
+     "unit": {
+      "id": "ST",
+      "short_name": "pcs",
+      "singular_translation": "Piece",
+      "plural_translation": null
+     },
+     "packing": {
+      "elements": [
+       {
+        "id": "RL1",
+        "translation": "Reel",
+        "amount": 2500
+       }
+      ]
+     },
+     "assets": {
+      "primary_photo": {
+       "prime": "//ce8dc832c.cloudimg.io/v7/_cdn_/A9/A5/40/00/0/285338_1.jpg?width=640&height=480&wat=1&wat_url=_tme-wrk_%2Ftme_new.png&wat_scale=100p&ci_sign=f0bee21ffea27f905e10bd7bef271cd4e2b785fe",
+       "thumbnail": "//ce8dc832c.cloudimg.io/v7/_cdn_/A9/A5/40/00/0/285338_1.jpg?width=100&height=75&q=75&ci_sign=e896150f0f1315963e6dc4666f8716eaf0e763fd",
+       "high_resolution": null
+      }
+     },
+     "notification": null
+    }
+   ]
+  }
+ },
+ "products": {
+  "status": "OK",
+  "data": {
+   "elements": [
+    {
+     "product_status": [
+      "BLOCKED_FOR_ZBL_BACKORDERS"
+     ],
+     "symbol": "LM358DR",
+     "ean": "",
+     "customer_symbol": "",
+     "category": {
+      "id": 112843,
+      "name": "SMD operational amplifiers"
+     },
+     "manufacturer_symbols": [
+      "LM358DR"
+     ],
+     "manufacturer": {
+      "id": 77,
+      "name": "TEXAS INSTRUMENTS"
+     },
+     "description": "IC: operational amplifier; 700kHz; Ch: 2; ±1.5÷16VDC,3÷32VDC; SO8",
+     "multiples": 1,
+     "minimal_amount": 1,
+     "weight": {
+      "value": 0.097,
+      "unit": "g"
+     },
+     "unit": {
+      "id": "ST",
+      "short_name": "pcs",
+      "singular_translation": "Piece",
+      "plural_translation": null
+     },
+     "packing": {
+      "elements": [
+       {
+        "id": "RL1",
+        "translation": "Reel",
+        "amount": 2500
+       }
+      ]
+     },
+     "assets": {
+      "primary_photo": {
+       "prime": "//ce8dc832c.cloudimg.io/v7/_cdn_/A9/A5/40/00/0/285338_1.jpg?width=640&height=480&wat=1&wat_url=_tme-wrk_%2Ftme_new.png&wat_scale=100p&ci_sign=f0bee21ffea27f905e10bd7bef271cd4e2b785fe",
+       "thumbnail": "//ce8dc832c.cloudimg.io/v7/_cdn_/A9/A5/40/00/0/285338_1.jpg?width=100&height=75&q=75&ci_sign=e896150f0f1315963e6dc4666f8716eaf0e763fd",
+       "high_resolution": null
+      }
+     },
+     "notification": null
+    }
+   ]
+  }
+ },
+ "products_data": {
+  "status": "OK",
+  "data": {
+   "elements": [
+    {
+     "stock_quantity": 0,
+     "symbol": "LM358DR",
+     "unit": {
+      "id": "ST",
+      "short_name": "pcs",
+      "singular_translation": "Piece",
+      "plural_translation": null
+     },
+     "prices": {
+      "elements": [
+       {
+        "amount": 1,
+        "price": 0.22,
+        "special": false
+       },
+       {
+        "amount": 5,
+        "price": 0.18,
+        "special": false
+       },
+       {
+        "amount": 10,
+        "price": 0.156,
+        "special": false
+       },
+       {
+        "amount": 25,
+        "price": 0.128,
+        "special": false
+       },
+       {
+        "amount": 2500,
+        "price": 0.11,
+        "special": false
+       }
+      ],
+      "tax": {
+       "type": "VAT",
+       "rate": 22.0
+      },
+      "currency": "EUR",
+      "type": "GROSS"
+     },
+     "deliveries": null
+    }
+   ]
+  }
+ }
+}

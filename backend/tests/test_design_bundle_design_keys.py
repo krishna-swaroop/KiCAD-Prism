@@ -90,9 +90,46 @@ class DesignKeyTests(_Workspace, unittest.TestCase):
         [shown] = comment_anchor_service.resolve_displayed_bindings(
             self._project(repo), [comment], changed, {}, recorded.append,
         )
-        self.assertEqual(shown["anchorResolution"]["reason"], "coordinate_review")
+        self.assertEqual(shown["anchorResolution"]["state"], "candidate", "a new design key, but its sheet is still there")
+        self.assertNotIn("sameDesign", shown["anchorResolution"])
+        self.assertTrue(shown["anchorResolution"]["sheetPresent"])
         self.assertEqual(recorded, [])
 
+    def test_a_freehand_comment_follows_while_its_own_file_exists(self) -> None:
+        repo = self.add_project()
+        posted = git(repo, "rev-parse", "HEAD")
+
+        def area(comment_id: str, context: str, page: str) -> dict:
+            return {
+                "id": comment_id, "context": context, "elementId": None, "filePath": None,
+                "location": {"x": 1.0, "y": 2.0, "page": page},
+                "anchor": {"state": "pinned", "commit": posted, "designKey": None},
+            }
+
+        comments = [
+            area("board", "PCB", ""),
+            area("root", "SCH", ""),
+            area("power", "SCH", "Subsheets/power.kicad_sch:/aa/bb"),
+            area("gone", "SCH", "Subsheets/missing.kicad_sch"),
+        ]
+
+        def shown(commit: str) -> dict[str, dict]:
+            listed = comment_anchor_service.resolve_displayed_bindings(self._project(repo), comments, commit, {})
+            return {comment["id"]: comment["anchorResolution"] for comment in listed}
+
+        _commit(repo, "board/demo.kicad_pcb", "(kicad_pcb (version 20260206) (v2))\n", "board")
+        edited = _commit(repo, "board/demo.kicad_sch", "(kicad_sch (version 20260306) (v2))\n", "sheet")
+        after_edits = shown(edited)
+        for kept in ("board", "root", "power"):
+            self.assertEqual(after_edits[kept]["state"], "candidate", f"{kept}: its file was edited, not removed")
+            self.assertTrue(after_edits[kept]["sheetPresent"])
+        self.assertEqual(after_edits["gone"]["reason"], "coordinate_review")
+
+        git(repo, "rm", "-q", "board/Subsheets/power.kicad_sch")
+        git(repo, "-c", "commit.gpgsign=false", "commit", "-qm", "drop the power sheet")
+        removed = shown(git(repo, "rev-parse", "HEAD"))
+        self.assertEqual(removed["power"]["reason"], "coordinate_review", "its sheet is gone")
+        self.assertTrue(removed["root"]["sheetPresent"])
 
 if __name__ == "__main__":
     unittest.main()

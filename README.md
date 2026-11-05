@@ -3,6 +3,7 @@
 [![Latest release](https://img.shields.io/github/v/release/krishna-swaroop/KiCAD-Prism?include_prereleases&sort=semver&label=release)](https://github.com/krishna-swaroop/KiCAD-Prism/releases/latest)
 [![Release date](https://img.shields.io/github/release-date-pre/krishna-swaroop/KiCAD-Prism?label=released)](https://github.com/krishna-swaroop/KiCAD-Prism/releases)
 [![License](https://img.shields.io/github/license/krishna-swaroop/KiCAD-Prism)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-krishna--swaroop.github.io-blue)](https://krishna-swaroop.github.io/KiCAD-Prism/)
 
 KiCAD Prism is an open-source, self-hosted review, release and
 component-governance platform for teams that design in KiCad and keep their
@@ -13,6 +14,12 @@ happens around them: browsing every revision in the browser, reviewing changes
 with comments, building and signing off release packages, and running a governed
 component library that desktop KiCad places parts from. It runs on your own
 hardware, with no proprietary ECAD cloud.
+
+**Documentation: <https://krishna-swaroop.github.io/KiCAD-Prism/>**
+
+The documentation website covers trying Prism, using it, administering a
+deployment, automating it and contributing. This README is a summary; the
+website is the reference.
 
 ![Project workspace](assets/readme/workspace.jpg)
 
@@ -248,22 +255,34 @@ See [Release process](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/r
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Platform overview](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/what-is-prism/)
-- [Getting started](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/try-it/)
-- [Deployment](https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/)
-- [Configuration](docs/CONFIGURATION.md)
-- [Authentication and access](https://krishna-swaroop.github.io/KiCAD-Prism/admin/authentication/)
-- [Project workflows](https://krishna-swaroop.github.io/KiCAD-Prism/use/projects/)
-- [Library Manager](https://krishna-swaroop.github.io/KiCAD-Prism/use/library-manager/)
-- [Remote Symbol Provider](docs/REMOTE_SYMBOL_PROVIDER.md)
-- [Release Studio](docs/release-studio/README.md)
-- [Issue trackers](https://krishna-swaroop.github.io/KiCAD-Prism/admin/issue-trackers/)
-- [Simulation Studio](https://krishna-swaroop.github.io/KiCAD-Prism/use/simulation-studio/)
-- [Team adoption](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/team-adoption/)
-- [Operations](https://krishna-swaroop.github.io/KiCAD-Prism/admin/operations/)
-- [Upgrades and backups](https://krishna-swaroop.github.io/KiCAD-Prism/admin/upgrades/)
-- [Release process](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/release-process/)
+The full documentation is published at
+**<https://krishna-swaroop.github.io/KiCAD-Prism/>**, built from [`website/`](website/) on
+every change to `main`.
+
+- [Get started](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/what-is-prism/):
+  overview, [concepts](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/concepts/),
+  [try it](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/try-it/) and
+  [team adoption](https://krishna-swaroop.github.io/KiCAD-Prism/get-started/team-adoption/).
+- [Use Prism](https://krishna-swaroop.github.io/KiCAD-Prism/use/projects/): projects,
+  viewing designs, comments, design comparison,
+  [Release Studio](https://krishna-swaroop.github.io/KiCAD-Prism/use/release-studio/),
+  [Library Manager](https://krishna-swaroop.github.io/KiCAD-Prism/use/library-manager/),
+  [Remote Symbol Provider](https://krishna-swaroop.github.io/KiCAD-Prism/use/remote-symbols/)
+  and [Simulation Studio](https://krishna-swaroop.github.io/KiCAD-Prism/use/simulation-studio/).
+- [Administer](https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/): deployment,
+  [configuration](https://krishna-swaroop.github.io/KiCAD-Prism/admin/configuration/),
+  [authentication](https://krishna-swaroop.github.io/KiCAD-Prism/admin/authentication/),
+  [issue trackers](https://krishna-swaroop.github.io/KiCAD-Prism/admin/issue-trackers/),
+  [operations](https://krishna-swaroop.github.io/KiCAD-Prism/admin/operations/) and
+  [upgrades and backups](https://krishna-swaroop.github.io/KiCAD-Prism/admin/upgrades/).
+- [Automate](https://krishna-swaroop.github.io/KiCAD-Prism/automate/overview/): API tokens,
+  SDK and CLI, CI, webhooks and MCP.
+- [Contribute](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/development-setup/):
+  development setup, [architecture](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/architecture/)
+  and [release process](https://krishna-swaroop.github.io/KiCAD-Prism/contribute/release-process/).
+
+Release notes and in-repository design notes are indexed in
+[`docs/README.md`](docs/README.md).
 
 ## Project status
 

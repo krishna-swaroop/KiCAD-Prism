@@ -5,9 +5,10 @@ testers of unreleased behavior work from `dev`.
 
 ## Release notes
 
-- [v5.2.0-alpha](releases/v5.2.0-alpha.md) is the latest alpha: catalog
-  authoring over MCP and the documentation website.
-- Earlier: [v5.1.0-alpha](releases/v5.1.0-alpha.md),
+- [v5.3.0-alpha](releases/v5.3.0-alpha.md) is the latest alpha: Supply (with
+  a switch to run without it), the reworked Visualizers and nets across sheets.
+- Earlier: [v5.2.0-alpha](releases/v5.2.0-alpha.md),
+  [v5.1.0-alpha](releases/v5.1.0-alpha.md),
   [v5.0.2-alpha](releases/v5.0.2-alpha.md),
   [v5.0.1-alpha](releases/v5.0.1-alpha.md),
   [v5.0.0-alpha](releases/v5.0.0-alpha.md),
@@ -55,6 +56,8 @@ testers of unreleased behavior work from `dev`.
   jobsets, and assets.
 - [Library Manager](https://krishna-swaroop.github.io/KiCAD-Prism/use/library-manager/)
   covers component import, revisions, QA, release, KLC checks, and DBL export.
+- [Supply chain data](SUPPLY.md) covers distributor connectors, watching parts, BOM
+  stock and cost, assessment and alerts.
 - [Remote Symbol Provider](REMOTE_SYMBOL_PROVIDER.md) covers connecting desktop
   KiCad and placing released components.
 - [Design variants](https://krishna-swaroop.github.io/KiCAD-Prism/use/variants-and-bom/)

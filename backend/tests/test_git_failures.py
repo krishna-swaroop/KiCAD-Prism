@@ -90,6 +90,9 @@ class IdentifiesTheCause(unittest.TestCase):
         )
         self.assertEqual(reason, "credentials-required")
         self.assertIn("git@github.com", message)
+        # A configured token that expired or lacks scope fails the same way.
+        self.assertIn("PRISM_GIT_CREDENTIALS", message)
+        self.assertIn("expired", message)
 
     def test_unresolvable_host(self) -> None:
         reason, message = describe_git_failure(

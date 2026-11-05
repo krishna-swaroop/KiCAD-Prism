@@ -184,7 +184,7 @@ function PickField({ label, value, items, disabled, onText, onPick }: {
                     onBlur={() => { if (open) commitText(); }} />
                 {open && (
                     <PickList id={`${id}-list`} items={shown} active={keys.active} onActive={keys.setActive} onPick={pick}
-                        className="absolute right-0 top-full z-50 mt-1 w-72" />
+                        className="absolute right-0 top-full z-popover mt-1 w-72" />
                 )}
             </div>
         </Row>
