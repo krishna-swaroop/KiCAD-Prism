@@ -12,6 +12,14 @@ from pydantic_settings import BaseSettings
 
 
 class SupplySettings(BaseSettings):
+    PRISM_SUPPLY_ENABLED: bool = Field(
+        default=True,
+        description=(
+            "The Supply module: its pages, its /api/supply routes, its MCP tools and every distributor call. "
+            "Off, Prism behaves as if Supply were not installed; its tables are still created, and stay empty."
+        ),
+    )
+
     SUPPLY_BASE_CURRENCY: str = Field(
         default="EUR",
         description=(

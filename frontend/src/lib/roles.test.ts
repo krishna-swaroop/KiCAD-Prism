@@ -13,8 +13,24 @@ import {
   canReviewCatalogQa,
   canReviewSupply,
   canWriteCatalog,
+  authorityAvailable,
   roleHasAuthority,
+  setSupplyEnabled,
 } from "./roles";
+
+describe("the Supply switch", () => {
+  it("takes every Supply authority from every role while Supply is off, and nothing else", () => {
+    setSupplyEnabled(false);
+    try {
+      expect([canOpenSupply("admin"), canEditSupply("admin"), canReviewSupply("admin")]).toEqual([false, false, false]);
+      expect(authorityAvailable("view_supply")).toBe(false);
+      expect(canWriteCatalog("admin")).toBe(true);
+    } finally {
+      setSupplyEnabled(true);
+    }
+    expect(canOpenSupply("admin")).toBe(true);
+  });
+});
 
 describe("role authorities", () => {
   it("matches the project mutation roles enforced by the backend", () => {

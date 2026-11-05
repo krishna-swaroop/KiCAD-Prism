@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from app.api import supply_connectors
+from app.core.policy import supply_enabled
 from app.core.roles import CATALOG_READ_ROLES, SUPPLY_READ_ROLES
 from app.core.security import AuthenticatedUser, require_catalog_browser
 from app.services.supply import part_search
@@ -23,7 +24,7 @@ async def search_parts(
 ) -> dict[str, Any]:
     """Each side is searched only when the caller's role may read it; a caller who may read neither gets nothing."""
 
-    library, supply = user.role in CATALOG_READ_ROLES, user.role in SUPPLY_READ_ROLES
+    library, supply = user.role in CATALOG_READ_ROLES, user.role in SUPPLY_READ_ROLES and supply_enabled()
 
     def run() -> list[dict[str, Any]]:
         with supply_connectors.service.store.connection() as conn:
