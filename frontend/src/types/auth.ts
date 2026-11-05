@@ -17,6 +17,8 @@ export interface AuthConfig {
     password_auth_enabled?: boolean;
     workspace_name: string;
     sim_studio_enabled?: boolean;
+    /** Whether Supply is on (PRISM_SUPPLY_ENABLED); absent from an older backend, which always had it. */
+    supply_enabled?: boolean;
 }
 
 export interface PasswordLoginResult extends User {

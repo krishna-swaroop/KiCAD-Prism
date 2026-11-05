@@ -66,5 +66,30 @@ class MergeTests(unittest.TestCase):
         self.assertEqual([part_search._rank("lm358-dr", "LM358DR"), part_search._rank("LM35", "LM358DR"), part_search._rank("DR", "LM358DR")], [0, 1, 2])
 
 
+class SupplySwitchTests(unittest.TestCase):
+    def test_with_supply_off_the_search_is_the_library_only(self) -> None:
+        import asyncio
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from app.api import search_parts
+        from app.core.config import settings
+
+        asked: list[bool] = []
+
+        def search(conn, q, limit, *, library, supply):
+            asked.append(supply)
+            return []
+
+        store = SimpleNamespace(connection=lambda: nullcontext(None))
+        with mock.patch.object(search_parts.part_search, "search", search), \
+             mock.patch.object(search_parts.supply_connectors, "service", SimpleNamespace(store=store)):
+            for enabled in (True, False):
+                with mock.patch.object(settings, "PRISM_SUPPLY_ENABLED", enabled):
+                    asyncio.run(search_parts.search_parts(q="LM358", limit=8, user=SimpleNamespace(role="admin")))
+        self.assertEqual(asked, [True, False])
+
+
 if __name__ == "__main__":
     unittest.main()

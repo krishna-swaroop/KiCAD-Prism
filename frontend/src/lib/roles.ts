@@ -141,8 +141,30 @@ export function roleLabel(role: UserRole): string {
   return ROLE_LABELS[role] ?? role;
 }
 
+const SUPPLY_AUTHORITIES: ReadonlySet<RoleAuthorityKey> = new Set<RoleAuthorityKey>(["view_supply", "edit_supply", "review_supply"]);
+let supplyOn = true;
+
+/**
+ * Whether the deployment runs Supply (PRISM_SUPPLY_ENABLED), from the app
+ * configuration, set before any signed-in screen renders. Off, no role holds a
+ * Supply authority, so every Supply page, tab, column and action hides.
+ */
+export function setSupplyEnabled(enabled: boolean): void {
+  supplyOn = enabled;
+}
+
+/** Whether this deployment runs Supply at all, for pieces shown whatever the role (Release Studio's checks). */
+export function supplyAvailable(): boolean {
+  return supplyOn;
+}
+
+/** An authority this deployment has at all: Supply's only while Supply is on. */
+export function authorityAvailable(authority: RoleAuthorityKey): boolean {
+  return supplyOn || !SUPPLY_AUTHORITIES.has(authority);
+}
+
 export function roleHasAuthority(role: UserRole | null | undefined, authority: RoleAuthorityKey): boolean {
-  if (!role) return false;
+  if (!role || !authorityAvailable(authority)) return false;
   return AUTHORITY_ROLES[authority].includes(role);
 }
 
