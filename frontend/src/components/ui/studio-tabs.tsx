@@ -19,7 +19,15 @@ export function segmentItem(active: boolean): string {
 }
 
 export function StudioTabsList({ className, ...props }: ComponentProps<typeof TabsList>) {
-    return <TabsList className={cn(SEGMENT_GROUP, "h-auto", className)} {...props} />;
+    // TabsList pins a horizontal list to h-8 under a group variant, which a bare
+    // h-auto cannot override; at h-8 the 28px segments overflow the padding and
+    // the active fill sits unevenly inside the outline.
+    return (
+        <TabsList
+            className={cn(SEGMENT_GROUP, "h-auto group-data-[orientation=horizontal]/tabs:h-auto", className)}
+            {...props}
+        />
+    );
 }
 
 export function StudioTabsTrigger({ className, ...props }: ComponentProps<typeof TabsTrigger>) {
