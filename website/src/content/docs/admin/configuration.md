@@ -438,6 +438,7 @@ credentials are encrypted with `TRACKER_CREDENTIAL_ROOT_KEY`
 
 | Setting | Default | What it does |
 | --- | --- | --- |
+| `PRISM_SUPPLY_ENABLED` | `true` | Supply as a whole. `false` removes its pages, tabs and columns, its API and its MCP tools, and stops every distributor and inventory call. Its database tables are still created, and stay empty. |
 | `SUPPLY_BASE_CURRENCY` | `EUR` | Currency a new workspace costs in, as a three-letter code such as `EUR`, `USD` or `INR`. Administrators can change it later in **Supply settings**; a workspace that saved its settings keeps its own. |
 | `SUPPLY_HTTPS_PROXY` | empty | HTTPS proxy for every call Supply makes (distributors, inventory servers, exchange rates and the jlcparts catalogue), for example `http://proxy.example.com:3128`. The environment's proxy variables are ignored for these calls. With a proxy, the proxy resolves host names, so Prism checks the host but not its address. |
 | `SUPPLY_INVENTORY_PRIVATE_HOSTS_STR` | empty | Comma-separated host names of inventory servers on your own network, for example `inventory.example.internal`. Only these may resolve to a private address or use a port other than 443; HTTPS and certificate checks still apply, and link-local addresses stay refused. Empty allows public addresses only. |

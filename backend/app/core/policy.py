@@ -65,6 +65,17 @@ Action = Literal[
     "ops_act",
 ]
 
+#: The Supply module's actions, refused while ``PRISM_SUPPLY_ENABLED`` is off.
+SUPPLY_ACTIONS: frozenset[str] = frozenset({"supply_read", "supply_write", "supply_follow", "supply_approve"})
+_SUPPLY_OFF = "Supply is turned off on this deployment"
+
+
+def supply_enabled() -> bool:
+    from app.core.config import settings  # policy stays request-free
+
+    return bool(settings.PRISM_SUPPLY_ENABLED)
+
+
 PROVIDER_AUTH_TYPE = "kicad_provider"
 ALL_ROLES: frozenset[Role] = frozenset(ROLE_ORDER)
 
@@ -181,6 +192,8 @@ def refusal(caller: Caller, action: Action, *, check_role: bool = True) -> str |
     scope) for a route whose role rule lives elsewhere, such as the catalog
     workflow's ``workflow_policy.can_transition``.
     """
+    if action in SUPPLY_ACTIONS and not supply_enabled():
+        return _SUPPLY_OFF
     rule = RULES[action]
     if caller.auth_type == PROVIDER_AUTH_TYPE and rule.provider_refusal is not None:
         return rule.provider_refusal

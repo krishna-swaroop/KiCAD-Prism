@@ -1789,6 +1789,11 @@
             "title": "Sim Studio Enabled",
             "type": "boolean"
           },
+          "supply_enabled": {
+            "default": true,
+            "title": "Supply Enabled",
+            "type": "boolean"
+          },
           "workspace_name": {
             "title": "Workspace Name",
             "type": "string"

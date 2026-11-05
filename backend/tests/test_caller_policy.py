@@ -207,6 +207,25 @@ class CallerPolicyTableTests(unittest.TestCase):
                     self.assertEqual(policy.role_allows(role, action), role in roles)
 
 
+class SupplySwitchTests(unittest.TestCase):
+    """PRISM_SUPPLY_ENABLED off refuses every Supply action, whoever asks, and nothing else."""
+
+    def test_off_refuses_every_supply_action_even_to_an_admin(self) -> None:
+        from unittest import mock
+
+        from app.core.config import settings
+
+        admin = _Caller(role="admin")
+        with mock.patch.object(settings, "PRISM_SUPPLY_ENABLED", False):
+            for action in sorted(policy.SUPPLY_ACTIONS):
+                self.assertEqual(policy.refusal(admin, action), "Supply is turned off on this deployment", action)
+            self.assertIsNone(policy.refusal(admin, "read"))
+            with self.assertRaises(HTTPException) as refused:
+                policy.authorize(admin, "supply_read")
+            self.assertEqual(refused.exception.status_code, 403)
+        self.assertIsNone(policy.refusal(admin, "supply_read"), "on by default")
+
+
 class OwnershipTests(unittest.TestCase):
     def test_owner_comparison_is_normalised_once(self) -> None:
         caller = _Caller(role="designer", email="Designer@Example.com")

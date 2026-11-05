@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
+from app.core.policy import supply_enabled
 from app.core.roles import SUPPLY_READ_ROLES
 from app.api import remote_provider_models as models
 from app.api._helpers import preview_file_response
@@ -117,7 +118,7 @@ def _component_payload(component: dict, origin: str, representation_id: str = ""
 
 
 def _supply_visible(user: AuthenticatedUser) -> bool:
-    return user is not None and user.role in SUPPLY_READ_ROLES
+    return user is not None and user.role in SUPPLY_READ_ROLES and supply_enabled()
 
 
 def _supply_version(user: AuthenticatedUser) -> str:

@@ -303,6 +303,7 @@ class AuthConfig(TypedDict, total=False):
     oidc_provider_name: str
     password_auth_enabled: bool
     sim_studio_enabled: bool
+    supply_enabled: bool
     workspace_name: str
 
 

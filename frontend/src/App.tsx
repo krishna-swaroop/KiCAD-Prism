@@ -8,7 +8,7 @@ import { ApiHttpError, fetchApi } from '@/lib/api';
 import { fetchAuthConfig, fetchCurrentUser, isAuthCallbackPath, stashCurrentLocation } from '@/lib/auth';
 import { IS_APPLE_PLATFORM } from '@/lib/shortcuts';
 import { insideKiCad } from '@/lib/kicad-host';
-import { roleLabel } from '@/lib/roles';
+import { roleLabel, setSupplyEnabled } from '@/lib/roles';
 import { useHotkeys } from '@/hooks/use-hotkeys';
 import { useSignedInUser } from '@/hooks/use-signed-in-user';
 import { CommandPalette } from '@/components/command-palette';
@@ -137,6 +137,8 @@ function App() {
                     return;
                 }
 
+                // Before the user is signed in, so the first signed-in render already hides Supply when it is off.
+                setSupplyEnabled(config.supply_enabled !== false);
                 setAuthConfig(config);
                 setAuthError(null);
                 try {
