@@ -158,7 +158,7 @@ export interface Comment {
     anchor?: { state: string; commit?: string | null; source?: string | null;
         designKey?: string | null; sourceRevisionKey?: string | null };
     anchorResolution?:
-        | { state: "candidate"; sameDesign?: boolean; sameFile?: boolean; binding: {
+        | { state: "candidate"; sameDesign?: boolean; sheetPresent?: boolean; binding: {
             commit: string;
             elementId?: string | null;
             location: CommentLocation;
