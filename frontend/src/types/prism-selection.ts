@@ -7,6 +7,8 @@ export interface PrismSourceAnchor {
     crossIndex?: string;
     sheet?: string;
     page?: string;
+    /** The item's own name, for items that are not components, nets or pins (a sheet). */
+    name?: string;
     layer?: string;
     sourceRevisionKey?: string;
     world?: {

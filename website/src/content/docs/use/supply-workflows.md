@@ -89,7 +89,8 @@ stop being tracked unless something else keeps them.
 
 A project whose BOM Prism hasn't read yet shows **Not read**. Choose **Read now**.
 The first read of a large board can take a few minutes while its design index
-is built.
+is built. A project with a board and no schematic shows **No schematic**
+instead: Prism reads the BOM from the schematic, so there is nothing to read.
 
 ### 3. Watch parts that aren't on a tracked project
 

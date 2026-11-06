@@ -713,7 +713,7 @@ class PrismWorker:
         self._next_tracker_scan = time.monotonic() + 5
 
     def schedule_supply_jobs(self) -> None:
-        if self.worker_pool != "prism" or time.monotonic() < self._next_supply_scan:
+        if self.worker_pool != "prism" or not settings.PRISM_SUPPLY_ENABLED or time.monotonic() < self._next_supply_scan:
             return
         from app.services.supply.jobs import SCAN_SECONDS, schedule_due_supply_jobs
 

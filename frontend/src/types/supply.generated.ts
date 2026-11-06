@@ -3,6 +3,11 @@
 //
 // The models typed supply routes declare. Untyped routes still use types/supply.ts.
 
+export interface AcceptMatchedRequest {
+  alias_keys?: string[];
+  part_ids?: string[];
+}
+
 export interface AccountRoom {
   daily: number | null;
   weekly: number | null;
@@ -603,6 +608,8 @@ export interface DistributorSuggestion {
   mpn: string;
   /** Their words: the package, or how close DigiKey says it is. */
   notes: string[];
+  /** The first distributor page among its sources, empty when none has one. */
+  page_url: string;
   /** The part in Prism, when it is one. */
   part_id: string | null;
   sku: string;
@@ -1147,6 +1154,10 @@ export interface MarketSignal {
   scope: string;
   signal: "draining" | "lead_times";
   text: string;
+}
+
+export interface MatchedAccepted {
+  accepted: number;
 }
 
 export interface MoneyLine {
@@ -1759,6 +1770,8 @@ export interface ProjectSupply {
   cost_history?: CostDay[] | null;
   /** The days left out because one price was read wrong. */
   cost_history_left_out?: CostDay[] | null;
+  /** Without a BOM read: whether the project has a schematic to read it from. */
+  has_schematic?: boolean | null;
   money?: ProjectMoney | null;
   notes: SupplyBomComment[];
   parts?: ProjectSupplyPart[] | null;
@@ -1835,6 +1848,7 @@ export interface ProjectTrackingPreview {
 }
 
 export interface ProjectTrackingState {
+  has_schematic?: boolean;
   has_usage: boolean;
   tracked: TrackedProject | null;
   variants: string[];
@@ -2168,6 +2182,8 @@ export interface RoomHeadline {
 export interface RowDistributor {
   connector_id: string;
   currency: string;
+  /** Only marketplace or assembly offers: shown, never counted in the part's stock. */
+  marketplace?: boolean;
   name: string;
   price: string | null;
   provider: string;
@@ -2413,6 +2429,8 @@ export interface SuffixBody {
 
 export interface SuggestionSource {
   name: string;
+  /** The suggestion's page at this distributor, empty when its number does not give one. */
+  page_url: string;
   provider: string;
 }
 
@@ -3217,6 +3235,8 @@ export interface SupplyReviewListing {
   match_state: "manufacturer_unresolved" | "near";
   packaging: string;
   packaging_inferred: boolean;
+  /** The distributor's page for it, even before it has been read. */
+  page_url: string;
   /** The part this listing is a candidate for. */
   part: ListingPart | null;
   provider: string;

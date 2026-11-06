@@ -262,7 +262,7 @@ week: an unsettled spelling or listing means a part's stock isn't counted.
 | **To approve** | Alternates, waivers, dismissals and alerts to switch off. A proposer can withdraw a waiver while it waits. | QA |
 | **Pinned under another number**, **Manufacturer spellings**, **Listings waiting** | Distributor listings and maker names to confirm. | QA |
 | **Several listings at a distributor** | Which packaging to read. | Anyone who tracks parts |
-| **Matched by Prism** | Matches Prism made on its own. | QA can undo them |
+| **Matched by Prism** | Matches Prism made on its own. Keep one with **Accept**, all of them with **Accept all**, or undo a wrong one. | QA |
 | **Work items** | Open decisions (see [Work items](#work-items)). | QA |
 | **Unmatched local stock** | Inventory stock no component matches. **Link** it to a component (**Link anyway** when neither MPN nor SAP code agrees), **Add** a component, or **Ignore** it, for consumables. **Restore** brings an ignored part back. | QA |
 

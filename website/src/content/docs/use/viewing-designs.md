@@ -1,6 +1,6 @@
 ---
 title: View a design
-description: Read schematics, boards and the 3D model in the browser, cross-probe between them, highlight nets, measure, and open insets.
+description: Read schematics, boards and the 3D model in the browser, cross-probe between them, highlight and trace nets, measure, and open insets.
 sidebar:
   order: 2
 ---
@@ -10,7 +10,8 @@ browse the schematic, the board and the 3D model, follow a part or a net
 between them, and measure the board.
 
 1. Open the project from the workspace.
-2. Select **Visualizers** in the project sidebar.
+2. Select **Visualizers** in the project sidebar. The sidebar shrinks to icons
+   here; rest the pointer on it to open it.
 3. Pick a tab: **Schematic**, **PCB**, **3D**, **BOM**, **Stackup** or
    **Assembly Assistant**. The keys `1` to `6` switch between them in that
    order.
@@ -95,15 +96,18 @@ parts, views and actions across Prism. `?` lists every keyboard shortcut.
 
 ## Inspect a selection and cross-probe
 
-Click a symbol, footprint, pin, pad, wire or track to select it. The
-**Selection** panel on the right shows what it is:
+Click a symbol, footprint, pin, pad, wire, track or sheet to select it. The
+**Selection** panel opens on the right, over the canvas: the drawing stays
+where it is, unless the selected object would end up under the panel, in
+which case the view moves just enough to keep it in sight. The panel shows:
 
 - **Component data**: value, footprint, DNP and BOM flags, and the other
   fields of the part.
 - **Routing** (PCB, nets only): routed length, layers used, and the number of
   tracks and vias.
 - **Connectivity**: the net, its net class and the pin and pad it joins.
-- **Identity**: references and identifiers, collapsed by default.
+- **Identity**: references and identifiers, collapsed by default. For a
+  hierarchical sheet, its name and file, open by default.
 
 Selecting a part or a net also selects it in the other views: a symbol
 selected in the schematic is selected on the board and in the BOM, and the
@@ -124,8 +128,13 @@ sign-off.
 
 ![The PCB tab with the CONTROL_VBUS net highlighted: the Highlighted bar at the top with Fit and Clear, and the Selection panel showing its routed length of 10.78 mm on F.Cu and B.Cu, 15 tracks and 6 vias](../../../assets/screenshots/net-highlight-2d.jpg)
 
-Shift-click a pin, pad, wire or track to add its net to the highlighted set.
-Shift-click it again to remove it.
+Shift-click a pin, pad, wire, track or label to add its net to the
+highlighted set. Shift-click it again to remove it. A plain click only
+selects.
+
+On the schematic, a highlighted net is lit on every sheet: its wires, pins,
+junctions, labels and sheet entries glow in the net's colour, and the rest of
+the sheet dims until the set is empty.
 
 - The **Highlighted** bar at the top of the canvas lists the nets. The **×**
   on a net removes it, **Fit** (PCB) frames all of them, and **Clear** (or
@@ -138,22 +147,55 @@ Shift-click it again to remove it.
 
 A net with no copper on the board shows **No copper on this board**.
 
+## Trace a net across sheets
+
+On the **Schematic** tab, `~` traces the net of a label, hierarchical port,
+sheet entry, wire or power symbol. Hold `~` while you click it, or click it
+first and then press `~`.
+
+- **A local label** draws lines to the other labels of the same name on its
+  sheet. Press `~` on it again to remove them.
+- **Anything that leaves the sheet** (a global label, a hierarchical port or
+  sheet entry, a power symbol, or a wire carrying one of them) opens the
+  **world view**: every sheet the net reaches, laid out on one canvas, with
+  curved lines from the label you started at to each of its counterparts.
+  The lines carry the net's name, like a net name on a board trace.
+
+![The world view with two chained nets: an orange line joins the CONTROL_VBUS_IN label on the Power Distribution and Monitoring sheet to its counterpart on the CONTROL Port sheet, and a blue line joins AUX_VBUS_IN to the AUX Port sheet, with the Selection panel showing AUX_VBUS_IN and its three instances](../../../assets/screenshots/world-view.jpg)
+
+In the world view:
+
+- Drag to pan and use the wheel to zoom, as on a single sheet. The sheets are
+  live: click to select, and Shift-click to highlight.
+- `~` and a click on another label chains that net in, in its own colour.
+- Double-click a sheet to open it in the normal view.
+- `Esc` closes the world view.
+
+A power symbol leads to one symbol of the same rail on each other sheet.
+`PWR_FLAG` joins nothing.
+
 ## Measure on the board
 
 On the **PCB** tab:
 
 1. Select the ruler icon (**Measure**) in the **Board display** panel, or
    press `⌘⇧M` (`Ctrl+Shift+M`).
-2. Click two points. Points snap to the nearest object; hold `Shift` to place
-   a free point.
-3. Read the distance in the bar at the bottom of the canvas, and switch
-   between `mm` and `mil` there.
+2. Click two points. Each point snaps, in this order of preference:
+   - to a pad or via, anywhere on its copper (the point is its centre);
+   - to a pad, via, track end or board-edge corner within a few pixels;
+   - to the nearest point on a track, straight or curved, or on the board
+     edge.
+
+   Hold `Shift` to place a free point instead.
+3. Read the distance, ΔX, ΔY and the angle in the bar at the bottom of the
+   canvas, with what each end snapped to. Switch between `mm` and `mil`
+   there; the choice is remembered.
 
 `Esc` clears the points, and a second `Esc` leaves measure mode.
 
 ## Open insets
 
-![A schematic with two chained insets: a PCB inset of the area around U1's CC1 pin, joined to the pin by a dashed line, and below it a schematic inset of C7 opened from a pad in the PCB inset](../../../assets/screenshots/insets.jpg)
+![A schematic with two chained insets: a PCB inset of the area around U1's CC1 pin, joined to the pin by a dashed line, and beside it a schematic inset of R3 opened from one of R3's pads in the PCB inset](../../../assets/screenshots/insets.jpg)
 
 An inset is a small live view of the other document, opened from the one you
 are reading: hover a schematic pin to see the board around its pad, or hover

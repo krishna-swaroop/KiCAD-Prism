@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SupplyChoice, SupplyMatched } from "@/types/supply";
 
-vi.mock("./supply-api", () => ({ chooseSupplyMaker: vi.fn(), otherSupplyMaker: vi.fn(), undoLearnedAlias: vi.fn(), undoSettledPart: vi.fn(), markPartNumbers: vi.fn() }));
+vi.mock("./supply-api", () => ({ chooseSupplyMaker: vi.fn(), otherSupplyMaker: vi.fn(), undoLearnedAlias: vi.fn(), undoSettledPart: vi.fn(), acceptMatched: vi.fn(), markPartNumbers: vi.fn() }));
 
 import { MakerChoices } from "./maker-choices";
 import { MatchedByPrism } from "./matched-by-prism";
@@ -92,9 +92,20 @@ describe("what Prism matched", () => {
     await waitFor(() => expect(mocked.undoSettledPart).toHaveBeenCalledWith("p9"));
   });
 
+  it("keeps one match, or all of them", async () => {
+    mocked.acceptMatched.mockResolvedValue({ accepted: 1 });
+    render(<MemoryRouter><MatchedByPrism matched={matched} canDecide onDecided={vi.fn().mockResolvedValue(undefined)} /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: /Matched by Prism/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Accept" })[1]);
+    await waitFor(() => expect(mocked.acceptMatched).toHaveBeenCalledWith([], ["p9"]));
+    fireEvent.click(screen.getByRole("button", { name: "Accept all" }));
+    await waitFor(() => expect(mocked.acceptMatched).toHaveBeenLastCalledWith(["acme co"], ["p9"]));
+  });
+
   it("offers no undo to those who may not decide", () => {
     render(<MemoryRouter><MatchedByPrism matched={matched} canDecide={false} onDecided={vi.fn()} /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: /Matched by Prism/ }));
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Accept all" })).toBeNull();
   });
 });

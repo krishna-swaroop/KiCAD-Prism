@@ -16,6 +16,9 @@ all of which live in **Supply → Sources**.
 
 ## Before you start
 
+Supply is on unless `PRISM_SUPPLY_ENABLED` is `false`. Off, Prism has no
+Supply pages and makes no distributor calls.
+
 Set `TRACKER_CREDENTIAL_ROOT_KEY`. Prism encrypts distributor credentials and
 inventory tokens with it, and won't store them without it. See the
 [Configuration reference](/KiCAD-Prism/admin/configuration/#supply).

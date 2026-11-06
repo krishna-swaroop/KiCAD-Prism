@@ -136,3 +136,71 @@ def test_destructive_prompt_enter_still_does_nothing(frame):
     prompt._on_key(key(wx.WXK_RETURN))
     assert prompt.result is None
     prompt.Destroy()
+
+
+def test_a_ticked_checkbox_paints_its_check_mark(frame, monkeypatch):
+    # wx.Pen rejects a float width (Python 3.10+; older ones only warn), and a paint
+    # handler that raises leaves the ticked box blank with no label.
+    import warnings
+
+    errors = []
+    monkeypatch.setattr(sys, "excepthook", lambda *exc: errors.append(exc))
+    box = widgets.Checkbox(frame, "Open prism:// links", theme.LIGHT, checked=True)
+    frame.Show()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        box.Refresh()
+        box.Update()
+        wx.SafeYield()
+    assert errors == []
+
+
+def _dialog_with(scrolled_width, header_width):
+    """A dialog laid out as the plugin's are: a header row above a vertical-only scroll area."""
+    dialog = wx.Dialog(None, size=wx.Size(560, 400), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+    root = wx.BoxSizer(wx.VERTICAL)
+    header = wx.Panel(dialog)
+    header.SetMinSize(wx.Size(header_width, 30))
+    root.Add(header, 0, wx.EXPAND)
+    scroll = wx.ScrolledWindow(dialog, style=wx.VSCROLL)
+    content = wx.BoxSizer(wx.VERTICAL)
+    card = wx.Panel(scroll)
+    card.SetMinSize(wx.Size(scrolled_width, 100))
+    content.Add(card, 0, wx.EXPAND | wx.ALL, 12)
+    scroll.SetSizer(content)
+    root.Add(scroll, 1, wx.EXPAND)
+    dialog.SetSizer(root)
+    dialog.Layout()
+    return dialog, scroll, content, card
+
+
+def test_a_dialog_widens_until_its_cards_fit_and_never_shrinks(app):
+    dialog, scroll, content, card = _dialog_with(scrolled_width=700, header_width=100)
+    try:
+        widgets.fit_width_to_content(dialog, scroll, content)
+        assert scroll.GetClientSize().width >= content.GetMinSize().width
+        wider = dialog.GetSize().width
+        card.SetMinSize(wx.Size(200, 100))
+        widgets.fit_width_to_content(dialog, scroll, content)
+        assert dialog.GetSize().width == wider
+    finally:
+        dialog.Destroy()
+
+
+def test_the_header_row_counts_when_it_is_wider_than_the_cards(app):
+    dialog, scroll, content, _card = _dialog_with(scrolled_width=200, header_width=760)
+    try:
+        widgets.fit_width_to_content(dialog, scroll, content)
+        assert dialog.GetClientSize().width >= 760
+    finally:
+        dialog.Destroy()
+
+
+def test_a_dialog_never_grows_past_most_of_the_screen(app):
+    dialog, scroll, content, _card = _dialog_with(scrolled_width=20000, header_width=100)
+    try:
+        widgets.fit_width_to_content(dialog, scroll, content)
+        screen = wx.Display(max(wx.Display.GetFromWindow(dialog), 0)).GetClientArea().width
+        assert dialog.GetSize().width <= int(screen * 0.9)
+    finally:
+        dialog.Destroy()

@@ -320,6 +320,25 @@ def undo_alias(conn, key: str, actor: str) -> int:
     return moved
 
 
+def accept_matched(conn, actor: str, alias_keys: list[str], part_ids: list[str]) -> int:
+    """Keep what Prism matched by itself: a learned spelling becomes a person's (it leaves Matched by Prism and is never
+    undone as learned), a settled part's maker is marked seen. Returns how many were kept."""
+
+    actor = actor_text(actor)
+    kept = conn.execute(
+        "UPDATE supply_manufacturer_aliases SET source = 'person', confirmed_by = %s WHERE alias_key = ANY(%s) AND source = 'learned' RETURNING alias_key",
+        (actor, alias_keys),
+    ).fetchall()
+    for row in kept:
+        write_audit(conn, actor, "alias.accept", row["alias_key"], {}, subject_kind="manufacturer_alias")
+    settled = conn.execute(
+        "SELECT DISTINCT subject_id FROM supply_audit_events WHERE action = 'part.settle' AND actor = %s AND subject_id = ANY(%s)", (SYSTEM, part_ids),
+    ).fetchall()
+    for row in settled:
+        write_audit(conn, actor, "part.settle_accept", row["subject_id"], {}, subject_kind="part")
+    return len(kept) + len(settled)
+
+
 def learn_aliases(conn) -> int:
     """A spelling that two or more parts of one maker carry becomes a spelling of that maker for every part.
 

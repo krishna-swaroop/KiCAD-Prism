@@ -1,7 +1,8 @@
 import * as React from "react";
 import { useState } from "react";
-import { X, Send, MapPin } from "lucide-react";
+import { Send, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CommentSeverityPicker } from "@/components/comment-severity-badge";
 import {
     COMMENT_CLASSES,
@@ -72,28 +73,17 @@ export function CommentForm({
     };
 
     return (
-        <div
-            className="fixed inset-0 z-[120] flex items-center justify-center"
-            onClick={onClose}
-        >
-            <div className="absolute inset-0 bg-black/50" />
-
-            <div
-                className="relative bg-background border rounded-lg shadow-xl w-full max-w-lg mx-4"
-                onClick={(e) => e.stopPropagation()}
+        <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+            <DialogContent
+                className="max-w-lg gap-0 p-0"
+                aria-describedby={undefined}
+                // The composer owns Escape: it closes its mention list first,
+                // and the form only when nothing else is open.
+                onEscapeKeyDown={(event) => event.preventDefault()}
             >
-                <div className="flex items-center justify-between p-4 border-b">
-                    <h2 className="text-lg font-semibold">Add Comment</h2>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={onClose}
-                        className="h-8 w-8"
-                        aria-label="Close comment form"
-                    >
-                        <X className="h-4 w-4" />
-                    </Button>
-                </div>
+                <DialogHeader className="border-b p-4">
+                    <DialogTitle className="text-base">Add comment</DialogTitle>
+                </DialogHeader>
 
                 <div className="px-4 py-3 bg-muted/50 border-b space-y-3">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
@@ -184,7 +174,7 @@ export function CommentForm({
                         </div>
                     </div>
                 </form>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 }

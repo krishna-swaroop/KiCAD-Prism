@@ -41,6 +41,19 @@ describe("HelpDialogHost", () => {
     vi.unstubAllGlobals();
   });
 
+  it("stays open when focus is handed back outside it, as a leaving toast does", async () => {
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    render(<HelpDialogHost authConfig={authConfig} />);
+    act(() => openHelpDialog("report-bug"));
+    expect(await screen.findByRole("heading", { name: "Report a bug" })).toBeTruthy();
+
+    act(() => outside.focus());
+
+    expect(screen.getByRole("heading", { name: "Report a bug" })).toBeTruthy();
+    outside.remove();
+  });
+
   it("previews the pre-filled report and only links to GitHub", async () => {
     render(<HelpDialogHost authConfig={authConfig} />);
     act(() => openHelpDialog("report-bug"));

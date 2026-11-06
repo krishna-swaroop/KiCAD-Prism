@@ -29,6 +29,7 @@ import {
   unknownExtraFields,
   valuesFromComponent,
 } from "./library-component-metadata-form";
+import { supplyAvailable } from "@/lib/roles";
 
 export type MetadataEditSession = {
   openedAt: string;
@@ -156,7 +157,7 @@ export function MetadataEditDialog({
                 onChange={(next) => setValues({ ...values, [field.key]: next })}
               />
             ))}
-            <FillFromDistributor values={values} onApply={(changes) => setValues({ ...values, ...changes })} />
+            {supplyAvailable() ? <FillFromDistributor values={values} onApply={(changes) => setValues({ ...values, ...changes })} /> : null}
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="component-edit-unknown-extras">Additional extra fields (JSON object)</Label>
               <Textarea

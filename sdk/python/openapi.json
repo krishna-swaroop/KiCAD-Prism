@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "AcceptMatchedRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "alias_keys": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Alias Keys",
+            "type": "array"
+          },
+          "part_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Part Ids",
+            "type": "array"
+          }
+        },
+        "title": "AcceptMatchedRequest",
+        "type": "object"
+      },
       "AcceptProjectImportProposalRequest": {
         "properties": {
           "asset_links": {
@@ -1764,6 +1787,11 @@
           "sim_studio_enabled": {
             "default": false,
             "title": "Sim Studio Enabled",
+            "type": "boolean"
+          },
+          "supply_enabled": {
+            "default": true,
+            "title": "Supply Enabled",
             "type": "boolean"
           },
           "workspace_name": {
@@ -11838,6 +11866,11 @@
             "title": "Notes",
             "type": "array"
           },
+          "page_url": {
+            "description": "The first distributor page among its sources, empty when none has one.",
+            "title": "Page Url",
+            "type": "string"
+          },
           "part_id": {
             "anyOf": [
               {
@@ -11901,6 +11934,7 @@
           "sku",
           "notes",
           "sources",
+          "page_url",
           "asked",
           "part_id",
           "stock",
@@ -19573,6 +19607,20 @@
         "title": "MarketSignal",
         "type": "object"
       },
+      "MatchedAccepted": {
+        "additionalProperties": true,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "title": "MatchedAccepted",
+        "type": "object"
+      },
       "MateOut": {
         "additionalProperties": true,
         "properties": {
@@ -26530,6 +26578,18 @@
             "description": "The days left out because one price was read wrong.",
             "title": "Cost History Left Out"
           },
+          "has_schematic": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Without a BOM read: whether the project has a schematic to read it from.",
+            "title": "Has Schematic"
+          },
           "money": {
             "anyOf": [
               {
@@ -27011,6 +27071,11 @@
       "ProjectTrackingState": {
         "additionalProperties": true,
         "properties": {
+          "has_schematic": {
+            "default": true,
+            "title": "Has Schematic",
+            "type": "boolean"
+          },
           "has_usage": {
             "title": "Has Usage",
             "type": "boolean"
@@ -30437,6 +30502,12 @@
             "title": "Currency",
             "type": "string"
           },
+          "marketplace": {
+            "default": false,
+            "description": "Only marketplace or assembly offers: shown, never counted in the part's stock.",
+            "title": "Marketplace",
+            "type": "boolean"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -32604,6 +32675,11 @@
             "title": "Name",
             "type": "string"
           },
+          "page_url": {
+            "description": "The suggestion's page at this distributor, empty when its number does not give one.",
+            "title": "Page Url",
+            "type": "string"
+          },
           "provider": {
             "title": "Provider",
             "type": "string"
@@ -32611,7 +32687,8 @@
         },
         "required": [
           "provider",
-          "name"
+          "name",
+          "page_url"
         ],
         "title": "SuggestionSource",
         "type": "object"
@@ -37224,6 +37301,11 @@
             "title": "Packaging Inferred",
             "type": "boolean"
           },
+          "page_url": {
+            "description": "The distributor's page for it, even before it has been read.",
+            "title": "Page Url",
+            "type": "string"
+          },
           "part": {
             "anyOf": [
               {
@@ -37269,6 +37351,7 @@
           "connector_name",
           "provider",
           "sku",
+          "page_url",
           "raw_mpn",
           "raw_manufacturer",
           "match_state",
@@ -65668,6 +65751,48 @@
           }
         },
         "summary": "Reject Listing",
+        "tags": [
+          "supply"
+        ]
+      }
+    },
+    "/api/v1/supply/review/matched/accept": {
+      "post": {
+        "description": "Keep spellings Prism learned and makers it settled, one or many: they leave Matched by Prism.",
+        "operationId": "accept_matched",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptMatchedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchedAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Matched",
         "tags": [
           "supply"
         ]

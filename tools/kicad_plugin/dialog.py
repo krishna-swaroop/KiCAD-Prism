@@ -33,6 +33,7 @@ from .widgets import (
     ScrollThumb,
     StatusIcon,
     draw_kind_icon,
+    fit_width_to_content,
     ui_font,
 )
 
@@ -329,6 +330,7 @@ class PrismDialog(wx.Dialog):
 
         self.thumb.Refresh()  # the thumb size depends on the new content height
         self.Layout()
+        fit_width_to_content(self, self.scroll, self.content)
         self.Refresh()
         self._fit_height_to_content()
 

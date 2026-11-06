@@ -1,3 +1,5 @@
+import type { SemanticNet } from "@/types/prism-selection";
+
 /**
  * Schematic label instances used by the Selection inspector Next/Prev control.
  *
@@ -6,7 +8,7 @@
  * label that happens to share the same name.
  */
 
-export type LabelInstanceKind = "global" | "net" | "hierarchical";
+export type LabelInstanceKind = "global" | "net" | "hierarchical" | "sheet-pin";
 
 export interface LabelInstanceRef {
     uuid: string;
@@ -36,6 +38,32 @@ export function filterLabelInstances(
     if (nets.length >= 2 && nets.length >= globals.length) return nets;
     if (globals.length >= 2) return globals;
     return nets.length ? nets : globals;
+}
+
+/**
+ * The label instances that are on `net`: every name the net goes by is looked
+ * up, and only uuids the semantic index puts on this net are kept. Global,
+ * local and hierarchical labels and sheet entries all count, so following a
+ * net crosses into and out of child sheets.
+ */
+export function netLabelInstances(
+    net: SemanticNet,
+    lookup: (name: string) => LabelInstanceRef[],
+): LabelInstanceRef[] {
+    const members = new Set<string>();
+    for (const ref of net.schematicRefs ?? []) {
+        for (const uuid of ref.labelUuids ?? []) members.add(uuid);
+        for (const uuid of ref.junctionUuids ?? []) members.add(uuid);
+    }
+    const leaf = (name: string) => name.slice(name.lastIndexOf("/") + 1);
+    const names = new Set([net.name, ...(net.aliases ?? [])].flatMap((name) => leaf(name) || []));
+    const found = new Map<string, LabelInstanceRef>();
+    for (const name of names) {
+        for (const instance of lookup(name)) {
+            if (members.has(instance.uuid)) found.set(instance.uuid, instance);
+        }
+    }
+    return [...found.values()];
 }
 
 /**

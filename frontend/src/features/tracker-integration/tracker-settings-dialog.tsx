@@ -26,7 +26,7 @@ export function TrackerSettingsDialog({ projectId, isAdmin, open, onOpenChange }
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-                <DialogTitle>Issue publishing</DialogTitle>
+                <DialogTitle>Issue Tracker</DialogTitle>
                 <DialogDescription className="sr-only">Where this project's comments are published as issues.</DialogDescription>
                 <ProjectTrackerSettingsPanel
                     projectId={projectId}

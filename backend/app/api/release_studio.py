@@ -36,6 +36,7 @@ from app.services.release_studio_publish_service import (
 )
 from app.services.job_kinds import JobSubject
 from app.services.release_studio_build_service import RELEASE_BUILD
+from app.core.policy import supply_enabled
 from app.services.supply.publish_hook import queue_snapshot
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
@@ -631,9 +632,11 @@ def _publish_build(
         actor=user,
         acknowledged_models=request.acknowledged_models,
         # The compliance draft (a working document, not a declaration) goes to the forge release when asked for.
-        attach=(lambda filename: _compliance_draft_assets(build_id, filename)) if request.attach_compliance_draft else None,
+        # Both come from Supply, so neither happens while it is off (PRISM_SUPPLY_ENABLED).
+        attach=(lambda filename: _compliance_draft_assets(build_id, filename))
+        if request.attach_compliance_draft and supply_enabled() else None,
         # What supply data said at publish is taken by a worker job and kept beside the record. Evidence only; never part of a digest.
-        after=lambda tag, commit_sha: queue_snapshot(project_id, build_id, tag, commit_sha, user.email),
+        after=(lambda tag, commit_sha: queue_snapshot(project_id, build_id, tag, commit_sha, user.email)) if supply_enabled() else None,
     )
 
 

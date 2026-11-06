@@ -344,12 +344,12 @@ def resolve_displayed_bindings(
                 blobs[commit] = {}
         return blobs[commit]
 
-    def same_file_for(context: str) -> Callable[[dict, str], bool]:
-        def same_file(binding: dict, newer: str) -> bool:
+    def drawn_on_present_for(context: str) -> Callable[[dict, str], bool]:
+        def drawn_on_present(binding: dict, newer: str) -> bool:
             older = blobs_at(binding["commit"])
             path = _drawn_on(project, binding, context, list(older))
-            return path is not None and path in older and older[path] == blobs_at(newer).get(path)
-        return same_file
+            return path is not None and path in older and path in blobs_at(newer)
+        return drawn_on_present
 
     result: list[dict] = []
     for comment in comments:
@@ -368,7 +368,7 @@ def resolve_displayed_bindings(
             resolved["anchorResolution"] = {"state": "unresolved", "reason": "unpinned"}
         else:
             resolved["anchorResolution"] = comment_anchor_bindings.select_binding(
-                bindings, sha, is_ancestor, same_design, same_file_for(str(comment.get("context") or "")),
+                bindings, sha, is_ancestor, same_design, drawn_on_present_for(str(comment.get("context") or "")),
             )
         result.append(resolved)
     found = {
