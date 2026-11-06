@@ -16,6 +16,7 @@ import os
 import re
 
 from app.core.design_bundle_config import DesignBundleSettings
+from app.core.kicad_library_config import KicadLibrarySettings
 from app.core.pipeline_config import PipelineSettings
 from app.core.sim_studio_config import SimStudioSettings
 from app.core.supply_config import SupplySettings
@@ -39,7 +40,7 @@ _WEAK_SESSION_SECRETS = {
 _TRACKER_KEY_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
-class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings, SupplySettings):
+class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings, SupplySettings, KicadLibrarySettings):
     """Application settings loaded from environment variables.
 
     The only reader of process configuration in `app`. Design-pipeline fields
@@ -819,22 +820,6 @@ class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings, Supply
         description=(
             "kicad-cli every KiCad job runs. Empty: kicad-cli on PATH, then the usual "
             "install locations. KICAD_CLI is accepted as a legacy name."
-        ),
-    )
-    PRISM_KICAD_LIBRARY_MOUNT_ROOT: str = Field(
-        default="",
-        description=(
-            "Folder a KiCad library added as a path in Settings must live under (mount a host "
-            "folder there). Empty: path libraries are off; git libraries need no mount."
-        ),
-    )
-    PRISM_KICAD_LIBRARY_MAX_GB: int = Field(
-        default=10,
-        ge=1,
-        le=1000,
-        description=(
-            "Largest KiCad library a fetch writes, in GB: the download, and the extracted files "
-            "with their Git LFS objects. A larger one fails before or while it is written."
         ),
     )
 
