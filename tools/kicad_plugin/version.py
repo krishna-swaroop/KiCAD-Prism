@@ -27,7 +27,7 @@ from __future__ import annotations
 # The package's version, for the plugin and the agent alike. One constant in one
 # (vendored) file, so the two halves of a package cannot claim different versions.
 # package_plugin.py reads it rather than taking one as an argument.
-VERSION = "0.5.17"
+VERSION = "0.5.18"
 
 # The oldest agent the plugin can work with: the last release that actually changed
 # what the plugin needs, not the current one. Pinning it to VERSION forces a restart

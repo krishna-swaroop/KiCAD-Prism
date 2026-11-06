@@ -28,7 +28,7 @@ interface PendingCommentElement {
     relativePoint?: [number, number];
 }
 
-interface CommentDraft {
+export interface CommentDraft {
     context: CommentContext;
     location: CommentLocation;
     element: PendingCommentElement | null;

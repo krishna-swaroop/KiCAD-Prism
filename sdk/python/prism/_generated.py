@@ -5,6 +5,11 @@ from __future__ import annotations
 from typing import Any, TypedDict
 
 
+class AcceptMatchedRequest(TypedDict, total=False):
+    alias_keys: list[str]
+    part_ids: list[str]
+
+
 class AcceptProjectImportProposalRequest(TypedDict, total=False):
     asset_links: dict[str, str]
     asset_selections: dict[str, list[str]]
@@ -298,6 +303,7 @@ class AuthConfig(TypedDict, total=False):
     oidc_provider_name: str
     password_auth_enabled: bool
     sim_studio_enabled: bool
+    supply_enabled: bool
     workspace_name: str
 
 
@@ -2116,6 +2122,7 @@ class DistributorSuggestion(TypedDict, total=True):
     manufacturer: str
     mpn: str
     notes: list[str]
+    page_url: str
     part_id: str | None
     sku: str
     sources: list[SuggestionSource]
@@ -3641,6 +3648,10 @@ class MarketSignal(TypedDict, total=True):
     text: str
 
 
+class MatchedAccepted(TypedDict, total=True):
+    accepted: int
+
+
 class MateOut(TypedDict, total=True):
     componentId: str
     createdAt: str
@@ -4920,6 +4931,7 @@ class ProjectSupply(TypedDict, total=False):
     cost_curve: list[ProjectCostPoint] | None
     cost_history: list[CostDay] | None
     cost_history_left_out: list[CostDay] | None
+    has_schematic: bool | None
     money: ProjectMoney | None
     notes: list[SupplyBomComment]
     parts: list[ProjectSupplyPart] | None
@@ -5650,10 +5662,11 @@ class RouteLatencyRow(TypedDict, total=True):
     status5xx: int
 
 
-class RowDistributor(TypedDict, total=True):
+class RowDistributor(TypedDict, total=False):
     """A distributor that lists the part: stock above zero is filled."""
     connector_id: str
     currency: str
+    marketplace: bool
     name: str
     price: str | None
     provider: str
@@ -6099,6 +6112,7 @@ class SuffixBody(TypedDict, total=True):
 
 class SuggestionSource(TypedDict, total=True):
     name: str
+    page_url: str
     provider: str
 
 
@@ -6789,6 +6803,7 @@ class SupplyReviewListing(TypedDict, total=True):
     match_state: str
     packaging: str
     packaging_inferred: bool
+    page_url: str
     part: ListingPart | None
     provider: str
     raw_manufacturer: str
@@ -7733,6 +7748,14 @@ class GeneratedClient:
         return self._request(
             "GET",
             "/api/v1/health/about",
+        )
+
+    def accept_matched(self, *, body: dict[str, Any] | None = None) -> MatchedAccepted:
+        """Accept Matched"""
+        return self._request(
+            "POST",
+            "/api/v1/supply/review/matched/accept",
+            body=body,
         )
 
     def accept_project_import_proposal(self, proposal_id: str, *, body: dict[str, Any] | None = None) -> ImportProposalAcceptance:

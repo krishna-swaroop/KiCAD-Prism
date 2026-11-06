@@ -30,9 +30,9 @@ repository.
 2. Do one of the following:
    - **Comment on an object.** Select a part, pin, pad, net, wire or track,
      then press `C`.
-   - **Comment on a point or an area.** Select **Commenting Mode** in the
-     toolbar (or press `C` with nothing selected). Click a point, or drag to
-     mark an area.
+   - **Comment on a point or an area.** Select the speech-bubble-with-plus
+     icon (**Commenting mode**) in the toolbar, or press `C` with nothing
+     selected. Click a point, or drag to mark an area.
 3. In **Add Comment**, choose a **Class** (**General**, **Observation**,
    **Question** or **Task**) and a **Severity** (**Info**, **Minor**,
    **Major** or **Critical**).
@@ -107,8 +107,9 @@ at. When you view a later revision:
 - If the object is gone, the thread stays in the panel with **Object is
   missing on this revision** instead of pointing at the wrong place.
 - An area comment, which is not tied to an object, stays in place while the
-  sheet or board it was drawn on is unchanged. Once that file changes, it
-  shows **Area needs review on this revision**.
+  sheet or board it was drawn on exists, even when that sheet has been edited.
+  If the sheet is deleted or renamed, it shows **Area needs review on this
+  revision**.
 - Other notes you may see are **Outside this revision's history**, when you
   view a branch that does not contain the comment's commit, **Two branch
   attachments conflict** after a merge, and **Not pinned to a commit**, for
@@ -123,8 +124,8 @@ is kept.
 ## Publish a thread as an issue
 
 If your administrator has connected GitHub or GitLab, a project can publish
-comment threads as issues in a repository. The project's rules are under the
-link icon (**Issue publishing settings**) in the project header: which
+comment threads as issues in a repository. The project's rules are under
+**⋯ → Issue Tracker** in the project header: which
 repository, which severities publish automatically (for example **Minor and
 above**), whether tasks always publish, and **Who can publish**.
 

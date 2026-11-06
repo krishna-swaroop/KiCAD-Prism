@@ -233,7 +233,7 @@ export function DesignSearchField({
                     role="combobox"
                     placeholder="Search"
                     className={cn(
-                        "h-9 w-full min-w-0 border border-input bg-muted/40 py-2 pl-9 text-sm outline-none placeholder:text-muted-foreground",
+                        "h-8 w-full min-w-0 rounded-md border border-input bg-muted/40 py-1.5 pl-9 text-sm outline-none placeholder:text-muted-foreground",
                         "focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50",
                         showShortcuts ? "pr-32" : "pr-3",
                     )}
@@ -263,7 +263,7 @@ export function DesignSearchField({
                     role="listbox"
                     aria-label="Design search results"
                     className={cn(
-                        "absolute inset-x-0 top-full z-50 mt-1 max-h-80 overflow-y-auto border border-border bg-popover text-popover-foreground shadow-md",
+                        "absolute inset-x-0 top-full z-popover mt-1 max-h-80 overflow-y-auto border border-border bg-popover text-popover-foreground shadow-md",
                         // Inline (the System 3D tab), hits carry board names: give them room past a narrow field.
                         inline && "right-auto min-w-full w-[28rem] max-w-[calc(100vw-2rem)]",
                     )}

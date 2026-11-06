@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from app.services.supply import clock
 from app.api import supply_connectors
 from app.api._helpers import get_project_for_role_or_404
+from app.services import project_service
 from app.api.supply_call import run_supply
 from app.api.supply_models import JobProgress
 from app.api.supply_release_models import (
@@ -35,6 +36,12 @@ def _store():
     return supply_connectors.service.store
 
 
+def _has_schematic(project) -> bool:
+    """The BOM is read from the schematic: a board on its own has nothing to read."""
+
+    return project_service.find_schematic_file(project.path, anchor=project.project_file) is not None
+
+
 @router.get("/{project_id}/supply", response_model=ProjectSupply, response_model_exclude_unset=True)
 async def project_overview(
     project_id: str,
@@ -46,7 +53,7 @@ async def project_overview(
     """The project's parts, planned builds, releases (with what changed since) and line notes, from its stored BOM. Calls no distributor.
     ``spares`` is "auto" (by package) or a percent."""
 
-    get_project_for_role_or_404(project_id, user.role)
+    project = get_project_for_role_or_404(project_id, user.role)
     try:
         attrition = project_supply.attrition_of(spares)
     except ValueError as exc:
@@ -54,7 +61,10 @@ async def project_overview(
 
     def read() -> dict[str, Any]:
         with _store().connection() as conn:
-            return project_supply.overview(conn, project_id, variant, build_quantity, attrition)
+            found = project_supply.overview(conn, project_id, variant, build_quantity, attrition)
+        if not found["available"]:
+            found["has_schematic"] = _has_schematic(project)
+        return found
 
     return await _run(read)
 

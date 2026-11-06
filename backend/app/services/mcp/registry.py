@@ -138,6 +138,11 @@ class Tool:
         """An ops diagnostic or action (ADR §11), listed only while ops is on."""
         return self.action in OPS_ACTIONS
 
+    @property
+    def supply(self) -> bool:
+        """A Supply read or write, listed only while Supply is on (``PRISM_SUPPLY_ENABLED``)."""
+        return self.route[1].startswith("/api/v1/supply/")
+
     def advertised_input_schema(self) -> dict[str, Any]:
         """``input_schema``, plus ``idempotencyKey`` on a write tool."""
 
@@ -189,13 +194,15 @@ def present(tool: Tool, arguments: dict[str, Any], result: dict[str, Any]) -> di
 
 
 def tools() -> tuple[Tool, ...]:
-    """Every available tool, grouped by ``GROUP_ORDER`` (ops tools only while ops is on).
+    """Every available tool, grouped by ``GROUP_ORDER`` (ops tools only while ops is on, Supply's only while Supply is).
 
     The sort is stable, so within a group the order is the registration order.
     """
 
-    enabled = ops_enabled()
-    listed = [tool for tool in _TOOLS if enabled or not tool.ops]
+    from app.core.policy import supply_enabled
+
+    enabled, supply = ops_enabled(), supply_enabled()
+    listed = [tool for tool in _TOOLS if (enabled or not tool.ops) and (supply or not tool.supply)]
     return tuple(sorted(listed, key=lambda tool: GROUP_ORDER.index(tool.group)))
 
 

@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import { SHORTCUT_REFERENCE, shortcutKeys } from "@/lib/shortcuts";
 
-export function KeyCap({ children }: { children: string }) {
+function KeyCap({ children }: { children: string }) {
   // A separator inside a range ("1 – 6") is not a key, so it is rendered as
   // plain text instead of a cap.
   if (children === "–") {

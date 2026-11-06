@@ -111,6 +111,7 @@ class ProjectSupply(SupplyModel):
     """How a project stands in supply, from its stored BOM. Without a BOM read, only ``available``, the variants, releases and notes."""
 
     available: bool
+    has_schematic: Optional[bool] = Field(default=None, description="Without a BOM read: whether the project has a schematic to read it from.")
     variant: str
     variants: list[str]
     build_quantity: Optional[int] = Field(default=None, description="The boards the page is worked out for.")

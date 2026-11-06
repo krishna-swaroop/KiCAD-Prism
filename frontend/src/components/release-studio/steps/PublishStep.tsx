@@ -13,6 +13,7 @@ import * as api from "../api";
 import type { BuildDetail } from "../types";
 import type { RunFn } from "../shared";
 import { UnpinnedModelsAck, useModelAcknowledgement } from "../UnpinnedModels";
+import { supplyAvailable } from "@/lib/roles";
 
 export function PublishStep({
     projectId,
@@ -69,8 +70,12 @@ export function PublishStep({
                     </p>
                 )}
                 <p className="text-sm text-muted-foreground">Tag {tag} · {documentName || "—"}</p>
-                <ReleaseSnapshotCard projectId={projectId} buildId={detail.build.id} />
-                <KeepBomOffer projectId={projectId} buildId={detail.build.id} />
+                {supplyAvailable() ? (
+                    <>
+                        <ReleaseSnapshotCard projectId={projectId} buildId={detail.build.id} />
+                        <KeepBomOffer projectId={projectId} buildId={detail.build.id} />
+                    </>
+                ) : null}
             </div>
         );
     }
@@ -98,7 +103,7 @@ export function PublishStep({
             </div>
             {tokenHint && <p className="text-sm text-destructive">{tokenHint}</p>}
             {blocked && <p className="text-sm text-destructive">{blocked}</p>}
-            <ReleaseSupplySummary projectId={projectId} buildId={detail.build.id} />
+            {supplyAvailable() ? <ReleaseSupplySummary projectId={projectId} buildId={detail.build.id} /> : null}
             <dl className="grid gap-3 border p-3 text-sm sm:grid-cols-2">
                 <div>
                     <dt className="text-xs uppercase text-muted-foreground">Tag</dt>
@@ -127,12 +132,14 @@ export function PublishStep({
                 onCheckedChange={acknowledgement.setAcknowledged}
                 disabled={!canMutate || publishing}
             />
-            <div className="flex items-center gap-2">
-                <Checkbox id="attach-compliance" checked={attachDraft} onCheckedChange={(value) => setAttachDraft(value === true)} />
-                <Label htmlFor="attach-compliance" className="text-sm font-normal">
-                    Attach the compliance draft (RoHS and REACH, a working document) to the release
-                </Label>
-            </div>
+            {supplyAvailable() ? (
+                <div className="flex items-center gap-2">
+                    <Checkbox id="attach-compliance" checked={attachDraft} onCheckedChange={(value) => setAttachDraft(value === true)} />
+                    <Label htmlFor="attach-compliance" className="text-sm font-normal">
+                        Attach the compliance draft (RoHS and REACH, a working document) to the release
+                    </Label>
+                </div>
+            ) : null}
             <HoldToConfirmButton
                 variant="default"
                 className="self-start"

@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   ROLE_AUTHORITIES,
   ROLE_OPTIONS,
+  authorityAvailable,
   roleHasAuthority,
   roleLabel,
 } from "@/lib/roles";
@@ -23,6 +24,8 @@ interface RoleAuthorityPopoverProps {
 
 export function RoleAuthorityPopover({ role }: RoleAuthorityPopoverProps) {
   let previousCategory = "";
+  // Supply's rows only while this deployment runs Supply.
+  const authorities = ROLE_AUTHORITIES.filter((authority) => authorityAvailable(authority.key));
 
   return (
     <Popover>
@@ -74,7 +77,7 @@ export function RoleAuthorityPopover({ role }: RoleAuthorityPopoverProps) {
               </tr>
             </thead>
             <tbody>
-              {ROLE_AUTHORITIES.map((authority) => {
+              {authorities.map((authority) => {
                 const showCategory = authority.category !== previousCategory;
                 previousCategory = authority.category;
                 return (
