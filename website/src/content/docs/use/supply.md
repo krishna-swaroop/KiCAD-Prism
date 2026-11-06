@@ -5,336 +5,291 @@ sidebar:
   order: 9
 ---
 
-Prism reads stock, prices and lifecycle of your components' manufacturer parts
-from distributors and from your own inventory, keeps the history, and uses it
-to warn you before a part runs out and to tell you whether a project's BOM can
-be built. Prism never buys anything: there are no carts and no order lists.
+:::note
+Supply shows nothing until an administrator has set up its sources. See
+[Connect distributors and inventory](/KiCAD-Prism/admin/supply/).
+:::
 
-Supply follows the components in your
-[Component Database](/KiCAD-Prism/use/library-manager/). A part number that no
-library component has can be looked up, but it is never tracked or watched. To
-follow it, add it to the library first.
+Prism reads stock, prices and lifecycle for your library components' parts from
+distributors and your own inventory, and keeps the history. It warns you
+before a part runs out and tells you whether a project can be built. It never
+buys anything.
 
-Two guides walk through Supply by role:
-[Supply for component engineers](/KiCAD-Prism/use/supply-component-engineers/)
-and [Supply for supply chain teams](/KiCAD-Prism/use/supply-scm/). The rules
-behind every figure are in
+Supply follows the components in the
+[Component Database](/KiCAD-Prism/use/library-manager/). You can look up any
+part number, but to track one it has to belong to a component first.
+
+This page covers the **Supply** area and a project's supply. For a single part
+and a component's **Supply** tab, see
+[Supply for a part](/KiCAD-Prism/use/supply-components/). There are
+step-by-step guides in [Supply workflows](/KiCAD-Prism/use/supply-workflows/),
+and the rules behind every figure in
 [How supply figures are worked out](/KiCAD-Prism/use/supply-figures/).
 
-## Who can do what
+## Supply roles
 
 | Role | In Supply |
 | --- | --- |
-| Viewer | Nothing. Supply is hidden. |
-| Designer | Read everything; track projects, parts and components; pick packaging and distributors; set a part's alert rules, price quantity and trade marks; open work items; propose waivers; read a part now. Also propose alternates, acknowledge and snooze alerts, and ask QA to dismiss an ending part or switch an alert off. |
-| QA | Everything a designer does except proposing alternates and acknowledging alerts. Also approve alternates, waivers, dismissals, manufacturer spellings and listings; switch alerts off; link or ignore unmatched local stock; accept, reject or reopen work items; and decide about components whose part is ending (retiring only where the catalog workflow lets QA archive the component). |
-| Admin | Everything above, plus distributor connectors, inventory sources and Supply settings. |
+| **Viewer** | Supply is hidden. |
+| **Designer** | Reads everything. Tracks projects, parts and components; picks packaging and distributors; sets a part's alert rules, price quantity and export control; edits compliance; opens work items; reads a part now. Proposes alternates and waivers, acknowledges and snoozes alerts, and asks QA to dismiss an ending part or switch an alert off. |
+| **QA** | What a designer does, except proposing alternates, acknowledging or snoozing alerts, ctrl-click picking in the catalog and editing compliance. Approves alternates, waivers, dismissals, maker spellings and listings; switches alerts off; links or ignores unmatched local stock; accepts, rejects or reopens work items; decides on ending components (retiring only where the catalog workflow lets QA archive). |
+| **Admin** | Everything, plus connectors, inventory sources and **Supply settings**. |
 
-## Where supply shows
+## Supply UI
 
-| Place | What it answers |
+| Place | What it is for |
 | --- | --- |
-| **Supply → Dashboard** | What needs a person: parts at risk, out of stock or ending, open alerts, the tracked projects, and the library components whose part is ending. |
-| **Supply → Tracking** | Every part Prism follows, by tier, with **Track a part** and **Upload BOM** to check a BOM file. |
-| **Supply → Projects** | The parts of each project, a project at a time. |
-| **Supply → Insights** | **Signals**, **Sourcing**, **Lead times and prices**, **Stock risk**, **Market**, **Forecasts**, **Trade** and **Compliance**, across all your parts. A section shows once it has data. **Export** downloads every tracked part with its risk figures as a CSV. |
-| **Supply → Review** | What Prism could not settle alone: alternates and matches to approve, work items, and inventory stock that matches no component. |
-| **Supply → Sources** | The distributor accounts and local inventory servers Prism reads, and **Supply settings**. Everyone who opens Supply sees them; only administrators change them. |
-| A component's **Supply** tab | How one component stands: its parts, your local stock and each distributor. |
-| **Library Manager → Catalog** | A **Supply** column and filters for every component. |
-| A project's **Supply** tab | Whether a project can be built, what it costs and what stops it. |
-| The Visualizer's **BOM** tab | Supply columns for each line of the BOM. |
-| **Release Studio** | Whether what ships can be sourced, recorded with the release. |
-| The header search and `⌘K` | A part by its number. A part row opens the library component; **Open supply sheet** beside it opens the part's supply sheet. |
+| [Dashboard](#dashboard) | What needs a person today. |
+| [Tracking](#tracking) | Every part Prism follows, and BOM files to check. |
+| [Projects](#projects) | Every project that uses a known part. |
+| [Insights](#insights) | Trends across all your parts. |
+| [Review](#review) | What Prism couldn't settle alone, and work items. |
+| [Sources](#sources) | Connectors, inventory and **Supply settings**. |
+| [A part's supply sheet](/KiCAD-Prism/use/supply-components/) | One part. Every part row above opens it. |
+| [A component's Supply tab](/KiCAD-Prism/use/supply-components/#on-a-components-supply-tab) | The same sheet, plus alternates and local stock. |
+| [A project's Supply tab](#check-whether-a-project-can-be-built) | Whether it can be built, and what it costs. |
+| [The BOM tab](#supply-columns-in-the-bom) | **Supply columns** on each BOM line. |
+| [Release Studio](#supply-in-release-studio) | Supply recorded with each release. |
 
-## A component's parts and alternates
+## Dashboard
 
-A component's **main part** is the manufacturer and part number in its
-metadata. You can add **alternates**: other manufacturer parts the component
-may be built with. An alternate counts only after QA approves it. Once
-approved, its stock and offers count wherever the main part does: on the
-project page, in the BOM columns and in the release check.
+![The Supply Dashboard: tiles for tracked, at-risk, out-of-stock and ending parts and open alerts, then the risk distribution, deadlines, projected stock and tracked projects](../../../assets/screenshots/supply-dashboard.png)
 
-1. Open the component in **Library Manager** and choose its **Supply** tab.
-2. Under **Parts**, enter the **Manufacturer** and **Part number** of the
-   alternate and choose **Propose alternate**. It shows as **Waiting for QA**.
-3. A QA reviewer approves or rejects it with the buttons on its row, or in
-   **Supply → Review → To approve**. An approved alternate shows as
-   **Approved**.
+The Dashboard is where to start the day. Every tile and cell opens the parts
+behind it. **Likely out in 4 weeks** appears once the forecast has a track
+record, and deadlines turn red within 90 days. Figures from the Simulated
+market, a made-up distributor for demos, carry a **Test data** chip.
 
-Changing the component's part number in its metadata changes its main part.
-An approved alternate that the metadata now names becomes the main part. The
-other approved alternates go back to **Waiting for QA**, to be judged against
-the new main part; in **To approve** each says which main part it was last
-reviewed against (**was vs** a part number).
+If a connector or the stores feed can't be read, the figures may be stale;
+**Supply → Sources** shows which one.
 
-## A component's Supply tab
+### Ending components
 
-![The supply sheet of one part: stock per distributor with a forecast, the price for 100 pieces, and the lifecycle outlook](../../../assets/screenshots/supply-part.png)
+This list holds components whose part, or an approved alternate, is ending and
+that nobody has decided about yet. QA or an administrator decides on the row:
 
-The **Supply** tab shows, top to bottom:
+| Decision | Effect |
+| --- | --- |
+| **Not for new designs** | The component stays usable but is marked on its **Supply** tab and in the catalog. **Clear mark** removes it. |
+| **Retire** | The component is archived and leaves the KiCad library. Offered only when no other approved part is healthy. |
+| **Dismiss** | Hidden until the part gets a new reason. A designer can **Ask QA to dismiss**. |
 
-- **Parts**: the main part and its alternates, with their approval.
-- **Stores**: what your own inventory holds, when an administrator has
-  connected an [inventory source](/KiCAD-Prism/admin/supply/#connect-your-inventory).
-  With nothing held it shows one of **None**, **Not connected** or
-  **Feed down** with the time of the last good read.
-  **Available** is usable stock at your locations, less what is allocated.
-  **Held** is stock at your locations on hold, quarantined or otherwise not
-  usable. **At vendor** is stock at an external location, shown but never
-  counted as on hand. Each record shows its location, status, quantity,
-  allocation, batch and source; a **Stale** record is one whose last read
-  failed.
-- **Distributors**: the main part's status, stock, price and lifecycle at each
-  distributor, with the history. **Open in Supply Tracking** opens its full
-  part sheet.
+Retiring breaks symbols already placed, so propose an alternate or a
+replacement first. QA can't archive a released component; an administrator
+has to.
 
-To have Prism read the part on a schedule, pick which packaging to count and
-choose **Watch component**. A component whose part Prism does not know yet
-offers **Watch this part** instead.
+If the decision needs work first, the <svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Work item" style="display:inline;margin:0;vertical-align:-0.2em"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> on the row opens a
+[work item](#work-items).
 
-## Find components by supply in the catalog
+### Alerts
 
-The catalog's **Supply** column shows each component's status, distributor
-stock and unit price, and its **Stores** figure. Use the filters
-**Tracked**, **At risk** and **In local stock** to narrow the list. To track
-many components at once, choose **Track these** (or **Track N shown** when a
-filter or search narrows the list). Designers and administrators can also
-ctrl-click rows (cmd-click on a Mac) and choose **Track N picked**. Pick
-**Daily**, **Weekly** or **Monthly**; the dialog shows each distributor's
-**Daily call limit** before it starts.
+![The Dashboard's alerts list: filter chips by kind, and each alert with Acknowledge and Snooze](../../../assets/screenshots/supply-alerts.png)
 
-## How often a part is read
+A watched part raises an alert when it runs out or falls to its threshold,
+could run out, rises in price or passes its target price, gets a change notice,
+is dropped by every distributor, starts ending, or gets worse. Designers and
+administrators can **Acknowledge** or **Snooze** an alert, and it clears by
+itself once the condition ends. **Show cleared** brings back past ones.
 
-Prism follows a part at one of two tiers: **Tier 1** is read every day,
-**Tier 2** every week or month. Any other part is read when someone opens it
-and its prices are more than a day old, or when someone asks. The full
-schedule is in
-[How supply figures are worked out](/KiCAD-Prism/use/supply-figures/#how-often-parts-are-read).
-A part is in the highest tier any reason gives it, and its part sheet says why:
-a tracked project, someone's choice, or a watched component. Projects you
-can't open are left out of the reasons.
+You choose what a part alerts on with the <svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Alert rules for this part" style="display:inline;margin:0;vertical-align:-0.2em"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg> on
+its sheet (see [Alert rules](/KiCAD-Prism/use/supply-components/#alert-rules)).
+The exact conditions are in [Alerts](/KiCAD-Prism/use/supply-figures/#alerts).
+Alerts stay in Prism: no email or chat message is sent.
 
-- **Track a project:** on the project's **Supply** tab, choose **Track this
-  project**. Choose the **Designs**, the distributors it is **Bought from**,
-  the **Packaging** you prefer, the **Usual build, in boards** and the
-  **Spares**. Each distributor's **Daily call limit** shows as a bar. Parts
-  that don't fit the limit are **Queued for calls**.
-- **Read now:** **Read now** on a part sheet asks the distributors for fresh
-  figures. You can do this once every 15 minutes per part.
-- **New revisions:** a tracked project's BOM is read again every 15 minutes.
-  Parts a revision adds are tracked at tier 1; parts it removes stop being
-  tracked unless something else keeps them.
-- **Watched components:** a watched component follows its current part. When
-  the component's maker or part number changes, the new part is followed and
-  the old one is not. Stopping the watch drops the part to the tier of
-  whatever else follows it.
+## Tracking
 
-## Check whether a project can be built
+![Supply Tracking: filter chips for tiers, queued parts and packaging to pick, then each tracked part with its stock trend, price and distributors](../../../assets/screenshots/supply-tracking.png)
 
-Open a project and choose **Supply**. The page is for the project's usual
-build, or 100 boards when it has none; pick a design variant from the menu
-when the project has variants. The tiles at the top answer the main
-questions:
+**Supply → Tracking** lists every part Prism follows. The chips narrow it to a
+tier, to parts **Queued for calls** or waiting for a packaging pick, or to parts
+in use, and you can filter by lifecycle and distributor. Sort by **Runs out
+first** to see what you'll need to buy soonest.
 
-- **Build**: how many boards the stock covers, and which line limits it. Use
-  the pencil to change the number of boards; a tracked project can keep it as
-  its usual build. A line that is short makes the build short. Otherwise,
-  while any line is unchecked (no tracked part, or no stock figure), it reads
-  **Unconfirmed** with how many lines are unchecked.
-- **Cost**: what the boards cost and what one board costs, with what is left
-  over from minimum orders, the spares, and **x of y lines priced** when the
-  total covers only part of the BOM.
-- **Health**: the BOM's health score out of 10 and its parts by status.
-- **Stock coverage**: the share of all BOM lines in stock for the build. A
-  line counts as known only when its part is tracked and has a stock figure;
-  any other line counts as not covered.
+The list opens in the compact layout <svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Compact" style="display:inline;margin:0;vertical-align:-0.2em"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M21 9H3"/><path d="M21 15H3"/></svg>. Switch to the detailed layout
+<svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Detailed, a row for each vendor" style="display:inline;margin:0;vertical-align:-0.2em"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><path d="M14 4h7"/><path d="M14 9h7"/><path d="M14 15h7"/><path d="M14 20h7"/></svg> to see each distributor's stock, minimum order, packaging and price
+breaks under every part, without opening its sheet.
 
-Below them are **Cost per board by build size**, **Cost allocation** (the
-lines that cost the most), **Cost over time**, the releases, line notes and
-the parts. **Cost allocation** is left out when the prices are in several
-currencies with no exchange rate between them. Use the chips **Unchecked**, **Out of stock**, **Short for this build**,
-**Limiting the build**, **Not priced**, **End of life** and **Open alerts** to
-narrow the parts; each counts over the whole project. The list shows **Per
-board**, **Need**, **In stock**, **Price** and **Line cost** in both layouts,
-a hundred parts a page.
+![Supply Tracking in the detailed layout: each part with one row per distributor, showing stock, minimum order, packaging and price breaks from 1 to 10,000](../../../assets/screenshots/supply-tracking-detailed.png)
 
-Available stores stock counts toward the build; held and at-vendor stock does
-not. Each line shows its **Stores** figure under its references, and the BOM
-tab has a **Stores** column.
+### How often a part is read
 
-A line counts its component's approved alternates: their stock adds up, and
-the cheapest offer that covers the build may be an alternate's. Such a line
-shows **+N alt**; hover it to see each alternate's stock. When two lines lean
-on the same alternate and it can't cover both, both are short. A line that no
-library component has shows **Not in library**, with **Add to Component
-Database** for people who can edit the catalog. A fitted part with no part
-number shows **No MPN**.
+Tier 1 parts are read daily, tier 2 weekly or monthly, and anything else only
+when someone opens it. A part takes the highest tier any reason gives it. The
+<svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="How often this part is read" style="display:inline;margin:0;vertical-align:-0.2em"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></svg> on its sheet shows why, and lets you change
+it (see [Read schedule](/KiCAD-Prism/use/supply-components/#read-schedule)).
 
-**N to settle** appears when a line needs a part or a maker chosen; it opens
-the same choices as **Supply → Review**, for this project only. **Out of
-date** appears when a figure on screen is from an earlier read because the
-latest one failed; choose it to read everything again.
+| To follow | Do this |
+| --- | --- |
+| A project | On its **Supply** tab, choose **Track this project** and pick the designs, distributors, packaging, usual build and spares. A bar shows each distributor's daily call limit. New BOM revisions are picked up within 15 minutes: added parts are tracked at tier 1, and removed ones stop unless something else follows them. |
+| One part | **Supply → Tracking → Track a part**. The number has to belong to a library component. |
+| A component | **Watch component** on its **Supply** tab. It follows the component's current part; if you stop watching, the part drops to whatever else follows it. |
+| Many components | **Track these** in the [catalog](/KiCAD-Prism/use/supply-components/#find-components-by-supply-in-the-catalog). |
 
-**Costing** downloads a zip: the costing with the distributor and its part
-number for each line, the costing split by distributor, a draft RoHS and REACH
-declaration and the trade classification, each as a CSV. Prices are list
-prices without VAT or shipping.
+**Read now** on a part's sheet fetches fresh figures, once every 15 minutes.
 
-The page reads the BOM Prism stored for the project's default branch, never a
-checked-out commit.
+:::note
+Each distributor allows only so many calls a day. Parts that don't fit wait as
+**Queued for calls**, and a Dashboard tile counts them. To save calls, pick one
+packaging per distributor with **Pick** in a part's
+<svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="How often this part is read" style="display:inline;margin:0;vertical-align:-0.2em"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></svg>, or in **Supply → Review → Several listings
+at a distributor**. An administrator can also raise a connector's budget.
+:::
 
-## Supply columns in the BOM
+### Check a BOM file that isn't a project
 
-The Visualizer's **BOM** tab adds **Supply**, **Stock**, **Stores**, **Unit price**,
-**Extended**, **Distributor** and **Lead time** columns, at the latest revision
-only. Prices are for the project's usual build when it is tracked, otherwise
-for one board, and each unit price shows the quantity it is for
-(**€0.93 @ 100**). **Distributor** is where that price and stock come from,
-not the BOM's own **Vendor** field. **Supply columns** above the table keeps
-just Reference, part number, Qty and the supply columns, so they fit without
-scrolling sideways; your browser remembers the choice. A line
-whose symbol has a **Prism ID** takes its component's part; other lines are
-matched by manufacturer and part number. Choose **Show part details** on a row
-for the full picture, **Watch this part**, or **Add to Component Database**
-for a line the library doesn't have. **Check once (N)** reads the lines Prism
-has no figures for once, from each distributor's pool for one-off checks,
-without tracking them. Lines that need a maker or part number settled first
-are counted, not read. The columns cover the first 2,000 parts of a BOM.
+**Upload BOM** checks an XLSX or CSV, such as a customer's BOM or a quote,
+without saving it. Map the manufacturer part number (or LCSC number) and
+quantity columns, set how many boards to build, and choose **Check N distinct
+parts**.
 
-## Supply in Release Studio
+:::note
+Files are limited to 2 MB. The check uses figures Prism already holds and makes
+no distributor calls, so a part Prism doesn't read yet comes back without stock
+or price.
+:::
 
-From the outputs stage, Release Studio shows the supply health of the BOM the
-release build exported, with the parts to look at, for the project's usual
-build size and spares. It checks the parts the build shipped with, as the
-exported BOM names them, even if a library component has since moved to
-another part; a component's approved alternates count only while the shipped
-part is still that component's part. It informs the release and never blocks
-it. At publish you can choose **Attach the compliance draft (RoHS and REACH, a
-working document) to the release**.
+## Projects
 
-Prism records what supply said at publish with the release, including the
-build size it was assessed for; that record never changes. The project's
-**Supply** tab lists each release and the parts that have got worse since,
-comparing only releases recorded for the build size the tab shows.
+![A project's Supply tab: the Build, Cost, Health and Stock coverage tiles, with cost per board by build size and cost allocation below](../../../assets/screenshots/supply-project.png)
 
-If Prism has never read the project's BOM, the publish step shows **BOM not
-read** and **Keep this BOM in Prism**. It stores the release's BOM without
-asking any distributor or tracking anything, and then shows **Kept N parts**.
+**Supply → Projects** lists every project that uses a known part, tracked ones
+first. Each row sums up the project's cost per board, the boards it can build
+and its open alerts. Open a row to see its parts, or use the
+<svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Open the project's supply" style="display:inline;margin:0;vertical-align:-0.2em"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg> to go to the project's **Supply** tab. If the
+list is empty, designers and administrators can choose **Read project BOMs** to
+have Prism read the projects nobody has opened yet.
 
-## Act on ending parts
+### Check whether a project can be built
 
-When a library component's part, or one of its approved alternates, is ending
-(not recommended for new designs, last time buy, obsolete, dropped by every
-distributor, or an **Outlook** of Ended or Ending), the Dashboard lists it with the reasons, the last buy date, the stock and the tracked
-projects that use it. A QA reviewer or administrator decides:
+A project's **Supply** tab shows how many boards you can build, what they cost
+and which parts are in the way. It works on the usual build, or 100 boards if
+there is none; pick a variant from the menu if the project has several. Use the
+<svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Change the number of boards" style="display:inline;margin:0;vertical-align:-0.2em"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg> on **Build** to try another quantity. On a tracked project you can keep it
+as the usual build, and the Dashboard, the cost history and the next release
+snapshot will use it.
 
-- **Not for new designs**: the component is marked, and designers see the mark
-  on its **Supply** tab and in the catalog.
-- **Retire**: the component is archived in the catalog, so KiCad users can no
-  longer place it. It shows only when the catalog workflow lets your role
-  archive the component from its stage, and not while the component has
-  another healthy part.
-- **Dismiss**: the component is hidden until its part gets a new reason.
-  A designer can choose **Ask QA to dismiss**; it waits in **To approve**.
+| Tile | Shows |
+| --- | --- |
+| **Build** | Boards the stock covers and the line that limits it. **Unconfirmed** while some lines can't be checked. |
+| **Cost** | Cost of the build and of one board, including what minimum orders leave over. |
+| **Health** | The BOM's health score and its parts by status. |
+| **Stock coverage** | Share of BOM lines in stock for the build. |
 
-A QA reviewer or administrator can remove a mark with **Clear mark** on the
-component's **Supply** tab.
+Below the tiles you'll find cost by build size, the lines that cost the most,
+cost over time, releases and the parts. Chips such as **Short for this build**
+and **Limiting the build** narrow the list. Some lines carry a marker:
 
-## Work items
+| Marker | Means |
+| --- | --- |
+| **+N alt** | Approved alternates add their stock and offers to the line. |
+| **Not in library** | No component has this part. **Add to Component Database** fixes it. |
+| **No MPN** | A fitted part with no part number. |
+| **N to settle** | You need to choose the part or its maker. |
+| **Out of date** | The latest read failed. Click it to read again. |
 
-A work item records a decision about a component or a part before anyone acts
-on it: what is proposed (investigate, find an alternate, not for new designs,
-retire, replace, last time buy), who owns it, the evidence, and when to look
-again. Prism keeps the projects that used the part when the item was
-opened, so the record still names them after the BOMs change.
+**Costing** downloads CSVs for the build size shown: the full costing with each
+line's distributor and SKU, one file per distributor to turn into a quote
+request or cart, a draft RoHS and REACH declaration, and the export and tariff
+codes. Prices are list prices without VAT or shipping. An administrator sets
+the currency, price quantity, spares and preferred distributors in
+[Supply settings](/KiCAD-Prism/admin/supply/#supply-settings); a tracked
+project can use its own spares.
 
-Open one with the clipboard icon <svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Work item" style="display:inline;vertical-align:-0.2em"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> (**Work item**). It sits in two places:
+The tab reads the BOM on the default branch, not a checked-out commit. Your own
+stock counts only when it is available, not held or at a vendor. The rules are
+in [Can the project be built](/KiCAD-Prism/use/supply-figures/#can-the-project-be-built)
+and [What it costs](/KiCAD-Prism/use/supply-figures/#what-it-costs).
 
-- On a part's supply sheet, in the row of icons at the top, to the right of
-  the alert rules, read schedule and datasheet icons. It shows for designers,
-  QA and administrators.
-- On an ending component in the Dashboard's list of ending parts, after
-  **Dismiss**, for QA and administrators. The item starts as **Find an
-  alternate**.
+### Supply columns in the BOM
 
-**Supply → Review → Work items** lists them: **Open**, **Mine**,
-**Due** (the recheck date has come), **Done** and **Rejected**. Designers, QA
-and administrators open items and add notes; QA and administrators accept,
-reject or reopen them; the owner, whoever opened it or QA marks one done. An
-item's sheet shows its evidence and its history. A work item changes nothing
-by itself: retiring or marking the component still happens where it always
-does.
+![A project's BOM tab with supply columns: each line's status, stock against what the build needs, unit and extended price and distributor, with Check once above the table](../../../assets/screenshots/supply-BOM.png)
 
-## Alerts
+A project's **BOM** tab adds supply columns to the latest revision: supply
+status, stock, stores, unit price, extended price, distributor and lead time.
+Prices are for the usual build if the project is tracked, otherwise for one
+board. The distributor column shows where the price comes from, which isn't
+necessarily the vendor in your BOM. Turn on **Supply columns** to hide the rest.
 
-A watched part raises an alert on the Dashboard when it runs out, falls to its
-threshold, could run out soon or is likely to run out everywhere, rises in
-price or goes over its target price, gets a change notice, is lost by every
-distributor, reaches an ending lifecycle, or its status gets worse. The rules
-are in
-[How supply figures are worked out](/KiCAD-Prism/use/supply-figures/#alerts).
-Designers and administrators can acknowledge or snooze an alert; it clears by
-itself once the condition ends. Prism sends no email or chat messages.
+Lines are matched by the symbol's Prism ID when it has one, otherwise by
+manufacturer and part number. **Show part details** opens the part's sheet, and
+the same row lets you watch the part or add it to the library. **Check once**
+reads parts nobody tracks a single time, without tracking them; lines that
+still need a part or maker chosen are skipped. The columns cover the first
+2,000 parts of a BOM.
 
-The bell on a watched part opens its alert rules: which alerts it raises, its
-stock threshold (typed beside **At or below the threshold**), the price rise
-and chance of running out that count, and a target price. Switching an alert
-off is for QA and administrators; a designer's request shows **Asked QA**,
-waits in **To approve**, and the alert still rises until it is approved. The
-Dashboard lists the open alerts, the ones the **Open alerts** tile counts;
-**Show cleared** adds the acknowledged, snoozed and resolved ones.
+### Supply in Release Studio
 
-The ending components sit right below the tiles, folded; the alerts and
-**Recent changes** come after the charts. While the
-stores feed or a distributor connector can't be read, the figures may be out
-of date until it reads again; **Supply → Sources** shows which. When a read
-fails, the page shows the error and **Retry** instead of an empty list.
+At the outputs stage, Release Studio shows the supply health of the BOM the
+release exported, for the usual build. It's there to inform, and never blocks a
+release. When you publish, you can attach the compliance draft, and Prism keeps
+a record of what supply said. The project's **Supply** tab then lists each release
+with its health and a **Compliance CSV**. **Since then** names the parts that got
+worse after it, for releases recorded at the build size shown.
 
-Prices and stock from the Simulated market, a made-up distributor for demos
-and testing, carry a **Test data** chip wherever they show. **Ask DigiKey for
-substitutes** appears only while a DigiKey connector is on.
+The check uses the parts the release shipped with, even if a component has
+since moved to another part. If Prism has never read the project's BOM, the
+publish step offers **Keep this BOM in Prism**, which stores it without asking
+any distributor or tracking anything.
 
-Every Dashboard count opens a list with exactly that many parts: a cell of the
-risk grid opens the parts with that lifecycle and that many distributors
-(**2+ distributors**, **One**, **Out** or **Not read**). A tracked project's
-row shows the boards and the cost per board its own page shows, for its usual
-build and its first tracked design, and reads **Unconfirmed** while a BOM line
-is unchecked.
+## Insights
 
-## Review what Prism could not settle
+![Supply Insights on the Sourcing section: distributor coverage, where stock is held, a distributor scorecard and price changes, with Export at the top](../../../assets/screenshots/supply-insights.png)
 
-**Supply → Review** lists what needs a person:
+**Supply → Insights** looks across every tracked part. Each section appears
+once it has data, and every bar opens the parts behind it.
 
-- **Needs a choice**: parts whose maker a distributor search couldn't settle.
-  Anyone who can track parts can choose.
-- **To approve**: alternates, waivers, dismissals and alerts to switch off,
-  waiting for QA. A waiver's proposer can withdraw it while it waits; QA and
-  administrators can revoke any waiver.
-- **Pinned under another number**, **Manufacturer spellings** and **Listings
-  waiting**: distributor listings and maker names for QA to confirm or reject.
-- **Several listings at a distributor**: parts a distributor sells in more
-  than one packaging, to pick which one counts.
-- **Matched by Prism**: matches Prism made on its own, which QA can undo.
-- **Work items**: decisions people opened about components and parts.
-- **Unmatched local stock**: inventory parts with stock that match no library
-  component. **Link** ties one to a component after showing both side by side;
-  when neither the MPN nor the SAP code agrees, the button reads **Link
-  anyway**. A linked part stays listed under **Linked** until the next read
-  brings its stock to the component. **Add** creates the component.
+| Section | Answers |
+| --- | --- |
+| **Sourcing** | Who stocks your parts, who is cheapest, and how many parts rely on one distributor. |
+| **Lead times** and **prices** | The longest lead times and the biggest price moves of the last 30 days. |
+| **Stock risk** | Parts that will run out before an order placed today would arrive. |
+| **Market** | Out-of-stock, ending and lead-time trends by maker and category. |
+| **Forecasts** | Lead times, shortages and prices ahead, once forecasts have a track record. |
+| **Trade** and **Compliance** | Origin, export control and RoHS/REACH across your parts. |
 
-  The chips sort the list: **Waiting** (and each reason it waits:
-  **No component**, **SAP code on several components**, **MPN on several
-  components**), **Linked** and **Ignored**, each with its count across
-  every source. Search finds parts by IPN, MPN, maker or name, 50 at a time.
-  To set aside stock that will never be a library component, such as
-  consumables, tick the rows (or every row shown) and choose **Ignore**; Prism
-  asks before it changes anything. Ignored parts stay aside across reads and
-  don't count as waiting. Bring them back from **Ignored** with **Restore**.
+**Export** downloads every tracked part with its risk figures as a CSV.
+
+## Review
+
+![Supply Review: parts a distributor lists in several packagings, and the maker matches Prism made on its own, each with an Undo](../../../assets/screenshots/supply-review.png)
+
+Review collects what Prism couldn't settle on its own. Go through it every
+week: an unsettled spelling or listing means a part's stock isn't counted.
+
+| List | What is waiting | Who decides |
+| --- | --- | --- |
+| **Needs a choice** | Part numbers several makers use. | Anyone who tracks parts |
+| **To approve** | Alternates, waivers, dismissals and alerts to switch off. A proposer can withdraw a waiver while it waits. | QA |
+| **Pinned under another number**, **Manufacturer spellings**, **Listings waiting** | Distributor listings and maker names to confirm. | QA |
+| **Several listings at a distributor** | Which packaging to read. | Anyone who tracks parts |
+| **Matched by Prism** | Matches Prism made on its own. | QA can undo them |
+| **Work items** | Open decisions (see [Work items](#work-items)). | QA |
+| **Unmatched local stock** | Inventory stock no component matches. **Link** it to a component (**Link anyway** when neither MPN nor SAP code agrees), **Add** a component, or **Ignore** it, for consumables. **Restore** brings an ignored part back. | QA |
+
+### Work items
+
+A work item records a decision before anyone acts on it: the proposed action
+(investigate, find an alternate, not for new designs, retire, replace, last
+time buy), an owner, the evidence and a date to look again. It also keeps the
+projects that used the part at the time.
+
+Open one with the <svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Work item" style="display:inline;margin:0;vertical-align:-0.2em"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> on a part's sheet or on an ending
+component's row. **Supply → Review → Work items** lists them as **Open**, **Mine**,
+**Due** (the recheck date has come), **Done** and **Rejected**. Anyone in Supply can
+open items and add notes. QA and administrators accept, reject or reopen them,
+and the owner, whoever opened it or QA can mark one done.
+
+A work item doesn't change anything by itself: you still retire or mark a
+component on the Dashboard.
+
+## Sources
+
+**Supply → Sources** shows the connectors, inventory servers and **Supply
+settings**. Everyone can see them, but only administrators change them. See
+[Connect distributors and inventory](/KiCAD-Prism/admin/supply/).
 
 ## Ask an assistant
 
-An assistant connected over [MCP](/KiCAD-Prism/automate/mcp/) can read a
-project's or a component's supply, look for alternatives, watch a component
-and ask for one fresh read. Proposing and approving alternates, waivers and
-connectors stay with people.
+An assistant connected over [MCP](/KiCAD-Prism/automate/mcp/) can read supply,
+look for alternatives, watch a component and ask for a fresh read. Approving
+alternates and waivers stays with people.
