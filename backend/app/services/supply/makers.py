@@ -117,6 +117,17 @@ def _same_words(first: list[str], second: list[str]) -> bool:
     return len(first) == len(second) and all(_close(a, b) for a, b in zip(first, second))
 
 
+def _word_match(first: list[str], second: list[str]) -> bool:
+    """Rules 3 and 4, and the same words allowing a lost letter: one spelling's words start the other's, or sit inside it."""
+
+    short, long_ = sorted((first, second), key=len)
+    if _same_words(short, long_):
+        return True
+    if not short or all(word in GENERIC for word in short):
+        return False
+    return short != long_ and (short == long_[:len(short)] or (len(short) < len(long_) and _contains(long_, short)))
+
+
 def _canonical() -> dict[str, str]:
     found: dict[str, str] = {}
     for group in SEEDED:
@@ -129,6 +140,7 @@ def _canonical() -> dict[str, str]:
 _DEFAULT = _canonical()
 # What same_maker consults. It starts as the list above and is replaced by the database's (``refresh``), which an administrator edits.
 _CANON: dict[str, str] = dict(_DEFAULT)
+_SPELLINGS: dict[str, tuple[str, ...]] = {}
 _loaded_at = 0.0
 _TTL = 30.0
 
@@ -140,15 +152,26 @@ def default_spellings() -> tuple[tuple[str, ...], ...]:
 def refresh(conn, *, force: bool = False) -> None:
     """Load the known spellings from the database, at most every half minute (at once with ``force``)."""
 
-    global _CANON, _loaded_at
+    global _loaded_at
     now = time.monotonic()
     if not force and now - _loaded_at < _TTL:
         return
     # Before the migration that makes the table (an older schema being brought up) the list in this file stands.
     exists = conn.execute("SELECT to_regclass('supply_maker_seeds') AS found").fetchone()["found"] is not None
     rows = conn.execute("SELECT alias_key, group_key FROM supply_maker_seeds").fetchall() if exists else []
-    _CANON = {row["alias_key"]: row["group_key"] for row in rows} if rows else dict(_DEFAULT)
+    _set({row["alias_key"]: row["group_key"] for row in rows} if rows else dict(_DEFAULT))
     _loaded_at = now
+
+
+def _set(canon: dict[str, str]) -> None:
+    global _CANON, _SPELLINGS
+    groups: dict[str, list[str]] = {}
+    for spelling, group in canon.items():
+        groups.setdefault(group, []).append(spelling)
+    _CANON, _SPELLINGS = canon, {group: tuple(spellings) for group, spellings in groups.items()}
+
+
+_set(dict(_DEFAULT))
 
 
 def _contains(longer: list[str], shorter: list[str]) -> bool:
@@ -189,13 +212,14 @@ def same_maker(first: str, second: str, canonical: Callable[[str], str | None] |
         a, b = table(one), table(two)
         if a and b and a == b:
             return True
-    short, long_ = sorted((_words(first), _words(second)), key=len)
-    if _same_words(short, long_):
+    if _word_match(_words(first), _words(second)):
         return True
-    if short and short != long_ and short == long_[:len(short)]:
-        return not all(word in GENERIC for word in short)
-    if short and len(short) < len(long_) and _contains(long_, short) and not all(word in GENERIC for word in short):
-        return True
+    # A spelling cut short or spelled out against a known spelling of the other's maker: "NXP Semicon" starts as "NXP" does,
+    # and "NXP" is a spelling of "NXP USA Inc.". Short seeded spellings ("TI", "ST") are left out: too many names start so.
+    for spelling, other in ((one, second), (two, first)):
+        group = _CANON.get(spelling)
+        if group and any(_word_match(_words(known), _words(other)) for known in _SPELLINGS.get(group, ()) if len(known) >= 3):
+            return True
     # A person's alias outranks this guess, so it only runs when neither is a known alias of another maker.
     for letters, name in ((one, second), (two, first)):
         if " " not in letters and 2 <= len(letters) <= 4 and letters.isalpha():

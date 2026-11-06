@@ -66,11 +66,13 @@ def _figures(conn, now: datetime, store: SupplyStore) -> None:
 
 def _aliases(conn, now: datetime, store: SupplyStore) -> None:
     """A spelling two or more parts of one maker carry becomes that maker's (``settle.learn_aliases``): one pass over every
-    spelling, so it runs here rather than after each search."""
+    spelling, so it runs here rather than after each search. Then the listings that waited on a maker are sorted again under
+    what was learned (``maker_backfill.resort``)."""
 
-    from app.services.supply import settle
+    from app.services.supply import maker_backfill, settle
 
     settle.learn_aliases(conn)
+    maker_backfill.resort(conn)
 
 
 def _component_mains(conn, now: datetime, store: SupplyStore) -> None:

@@ -238,6 +238,44 @@ class SettleTests(unittest.TestCase):
         self.assertEqual(done["listings"], 1)
         self.assertEqual(self.states(), {"S0-0": "exact"})
 
+    def test_a_learned_spelling_of_the_maker_counts_a_listing_that_spells_it_short(self) -> None:
+        part = self.part("Analog Devices", "MAX3232")
+        with self.store.connection() as conn:
+            self.parts.record_spelling(conn, part.id, "Analog Devices Inc./Maxim Integrated", "learned")
+        self.search(part, 0, ("MAX3232", "MAXIM"))
+        self.assertEqual(self.states(), {"S0-0": "exact"})
+
+    def test_listings_left_near_are_counted_once_the_maker_rules_grow(self) -> None:
+        from app.services.supply import maker_backfill
+
+        part = self.part("Analog Devices", "MAX3232")
+        self.search(part, 0, ("MAX3232", "MAXIM"), ("MAX3232E", "MAXIM"))
+        self.assertEqual(self.states(), {"S0-0": "near", "S0-1": "near"})
+        with self.store.connection() as conn:
+            self.parts.record_spelling(conn, part.id, "Analog Devices Inc./Maxim Integrated", "learned")
+            self.assertEqual(maker_backfill.resort(conn), 1)
+        self.assertEqual(self.states(), {"S0-0": "exact", "S0-1": "near"}, "a listing of another number stays near")
+
+    def test_what_prism_matched_is_kept_one_at_a_time_or_all_at_once(self) -> None:
+        from app.services.supply import review
+
+        settled = self.part("", "ZZ-9")
+        self.search(settled, 0, ("ZZ-9", "Zeta Works"))
+        with self.store.connection() as conn:
+            maker = self.parts.ensure_manufacturer(conn, "Acme Components", ACTOR)
+            conn.execute(
+                "INSERT INTO supply_manufacturer_aliases (alias_key, alias_text, manufacturer_id, status, source) VALUES ('acme co', 'ACME Co', %s, 'confirmed', 'learned')",
+                (maker,),
+            )
+            matched = review.matched_by_prism(conn)
+            self.assertEqual((len(matched["aliases"]), len(matched["parts"])), (1, 1))
+            self.assertEqual(self.settle.accept_matched(conn, ACTOR, [], [settled.id]), 1)
+            self.assertEqual(review.matched_by_prism(conn)["parts"], [])
+            self.assertEqual(self.settle.accept_matched(conn, ACTOR, ["acme co"], [settled.id]), 2)
+            self.assertEqual(review.matched_by_prism(conn), {"aliases": [], "parts": []})
+            with self.assertRaises(ValueError):
+                self.settle.undo_alias(conn, "acme co", ACTOR)
+
 
 if __name__ == "__main__":
     unittest.main()

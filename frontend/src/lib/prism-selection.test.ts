@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { netStatisticsRefForSelection } from "./prism-selection";
+import { enrichPrismSelection, netStatisticsRefForSelection } from "./prism-selection";
+import type { PrismSemanticIndex } from "@/types/prism-selection";
 
 describe("netStatisticsRefForSelection", () => {
   it("passes a net's name and code through", () => {
@@ -25,5 +26,23 @@ describe("netStatisticsRefForSelection", () => {
   it("has nothing for components or an empty selection", () => {
     expect(netStatisticsRefForSelection({ kind: "component", sourceContext: "PCB", reference: "R1" })).toBeNull();
     expect(netStatisticsRefForSelection(null)).toBeNull();
+  });
+});
+
+describe("enrichPrismSelection on the schematic", () => {
+  it("names the net by the clicked item's uuid before its text", () => {
+    // A sheet entry "SDA" on the hierarchical net, while a global "SDA" is another net.
+    const index = {
+      designKey: "d",
+      components: [],
+      terminals: [],
+      nets: [
+        { netUid: "global", name: "SDA" },
+        { netUid: "child", name: "/Sub/SDA" },
+      ],
+      indexes: { netByName: { SDA: 0, "/Sub/SDA": 1 }, netBySchematicUuid: { entry: 1 } },
+    } as unknown as PrismSemanticIndex;
+    const enriched = enrichPrismSelection({ kind: "net", sourceContext: "SCH", netName: "SDA", uuid: "entry" }, index);
+    expect(enriched.kind === "net" && enriched.netUid).toBe("child");
   });
 });

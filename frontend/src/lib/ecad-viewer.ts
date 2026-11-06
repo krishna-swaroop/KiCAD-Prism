@@ -17,6 +17,7 @@ import type {
     EcadMeasureUnits,
     EcadModeChangeDetail,
     EcadNetRef,
+    SchematicNetMembers,
     EcadNetStatistics,
     EcadNetStatisticsRef,
     EcadPcbObjectVisibilityKind,
@@ -354,6 +355,10 @@ export class EcadViewer {
 
     setHighlightedNets(nets: readonly EcadNetRef[]): void {
         this.#element?.setHighlightedNets?.(nets);
+    }
+
+    setSchematicHighlightedNets(nets: readonly SchematicNetMembers[]): void {
+        void this.#element?.setSchematicHighlightedNets?.(nets);
     }
 
     focusHighlightedNets(): void {

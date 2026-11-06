@@ -111,6 +111,14 @@ class RegistryContractTests(unittest.TestCase):
         with mock.patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
             return list(registry.tools())
 
+    def test_supply_tools_are_listed_only_while_supply_is_on(self) -> None:
+        supply = {tool.name for tool in self.listed() if tool.supply}
+        self.assertIn("get_project_supply", supply)
+        with mock.patch.object(settings, "PRISM_SUPPLY_ENABLED", False):
+            names = {tool.name for tool in registry.tools()}
+        self.assertFalse(names & supply)
+        self.assertIn("search_projects", names)
+
     def test_tools_list_is_reads_then_writes_then_ops(self) -> None:
         groups = [tool.group for tool in self.listed()]
         self.assertEqual(groups, sorted(groups, key=registry.GROUP_ORDER.index))

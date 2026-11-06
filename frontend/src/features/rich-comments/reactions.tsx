@@ -88,8 +88,7 @@ export function ReactionBar({ projectId, commentId, replyId, reactions = [], can
                             <SmilePlus className="h-3.5 w-3.5" />
                         </button>
                     </PopoverTrigger>
-                    {/* Above the floating comment card, which sits at z-110. */}
-                    <PopoverContent align="start" className="z-[120] w-auto flex-row gap-0.5 rounded-md p-1">
+                    <PopoverContent align="start" className="w-auto flex-row gap-0.5 rounded-md p-1">
                         {REACTIONS.map((item) => {
                             const mine = reactions.some((r) => r.reaction === item.name && r.mine);
                             return (
