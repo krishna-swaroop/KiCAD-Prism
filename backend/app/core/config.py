@@ -828,6 +828,15 @@ class Settings(PipelineSettings, DesignBundleSettings, SimStudioSettings, Supply
             "folder there). Empty: path libraries are off; git libraries need no mount."
         ),
     )
+    PRISM_KICAD_LIBRARY_MAX_GB: int = Field(
+        default=10,
+        ge=1,
+        le=1000,
+        description=(
+            "Largest KiCad library a fetch writes, in GB: the download, and the extracted files "
+            "with their Git LFS objects. A larger one fails before or while it is written."
+        ),
+    )
 
     # ===========================================
     # Computed Properties

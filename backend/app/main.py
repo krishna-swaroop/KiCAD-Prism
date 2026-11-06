@@ -108,7 +108,7 @@ from app.services.component_catalog_service import catalog_service
 from app.services.postgres_database import database
 from app.core.config import settings
 from app.core import runtime_logging
-from app.services import checkout_line_endings, kicad_library_fetch
+from app.services import checkout_line_endings, kicad_libraries, kicad_library_fetch
 from app.services.git_credentials import (
     configuration_warnings as git_credential_warnings,
     git_credentials,
@@ -258,6 +258,7 @@ def announce_configuration_warnings() -> None:
 
 verify_auth_configuration_or_exit()
 verify_git_credentials_or_exit("KiCAD Prism")
+kicad_libraries.verify_mount_root_or_exit("KiCAD Prism")
 
 
 @asynccontextmanager

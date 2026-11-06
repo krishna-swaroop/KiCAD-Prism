@@ -179,6 +179,25 @@ def _model_file(path: str) -> bool:
         return False
 
 
+def _inside(path: str, roots: Iterable[Path | None]) -> bool:
+    """Whether ``path`` stays under one of ``roots``, read as written and then with links resolved."""
+
+    target = os.path.abspath(path)
+    for root in roots:
+        if root is None:
+            continue
+        base = os.path.abspath(str(root))
+        try:
+            if os.path.commonpath([base, target]) != base:
+                continue
+            real_base = os.path.realpath(base)
+            if os.path.commonpath([real_base, os.path.realpath(target)]) == real_base:
+                return True
+        except ValueError:  # another drive
+            continue
+    return False
+
+
 def missing_models(
     placements: Mapping[str, Any] | None,
     text_variables: Mapping[str, str],
@@ -188,7 +207,9 @@ def missing_models(
 
     A reference through an undefined variable is not counted here: the server
     does not define it (that is reported as unresolved). A path that does not
-    name a variable is the repository's own.
+    name a variable is the repository's own. A path that leaves its variable's
+    folder (``..``, a link) counts as missing without being looked at, so a
+    board cannot learn which files the server has.
     """
 
     counts: dict[str, int] = {}
@@ -204,7 +225,8 @@ def missing_models(
             expanded = expand(path, text_variables, folder_of)
             if expanded is None or "${" in expanded:
                 continue
-            if not _model_file(expanded.replace("\\", "/")):
+            expanded = expanded.replace("\\", "/")
+            if not _inside(expanded, (folder_of(name) for name in named)) or not _model_file(expanded):
                 for name in named:
                     counts[name] = counts.get(name, 0) + 1
     return counts

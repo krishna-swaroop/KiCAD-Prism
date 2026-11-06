@@ -8,8 +8,8 @@ the shared projects volume (``kicad_library_fetch``) and published as one
 folder per commit; a path library is a folder under the mount root.
 
 :class:`Snapshot` is the one answer to "which variable points where", taken
-once and used for a whole job. Per variable: a value the environment already
-sets, then a library, then unresolved. Nothing here writes ``os.environ``;
+once and used for a whole job. Per variable: a folder the environment already
+sets (``environment_folder``), then a library, then unresolved. Nothing here writes ``os.environ``;
 callers take :func:`current` and ask it for an environment, fingerprints or
 ``--model-dir`` arguments.
 """
@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -109,7 +110,18 @@ class Library:
         return f"{commit}-{hashlib.sha256(self.subdir.encode('utf-8')).hexdigest()[:8]}"
 
     def published(self) -> Published | None:
-        """The git library's published version, or ``None`` before the first fetch or if its folder is gone."""
+        """The git library's published version, or ``None`` before the first fetch or if its folder is gone.
+
+        A version fetched from another source (a library removed and declared
+        again under its name, a changed subfolder) is not this library's: it
+        serves nothing until its own fetch publishes.
+        """
+
+        published = self.last_published()
+        return published if published is not None and published.source == self.source else None
+
+    def last_published(self) -> Published | None:
+        """What ``current.json`` names, whichever source it was fetched from: for a fetch to retire it."""
 
         if self.path:
             return None
@@ -129,7 +141,7 @@ class Library:
         """The folder the variables point at; ``None`` while the library has nothing to serve."""
 
         if self.path:
-            if not settings.PRISM_KICAD_LIBRARY_MOUNT_ROOT.strip():
+            if not settings.PRISM_KICAD_LIBRARY_MOUNT_ROOT.strip() or mount_root_problem() is not None:
                 return None
             root = mount_root()
             folder = root / self.path
@@ -199,28 +211,38 @@ class Snapshot:
         return env
 
     def fingerprints(self, variables: Iterable[str]) -> dict[str, str | None]:
-        """What each variable points at, by what it is and not where: ``None`` when nothing defines it."""
+        """What each variable points at, by what it is and not where: ``None`` when nothing defines it.
+
+        A folder the environment sets is named by a hash of its value: the
+        fingerprint is written to disk, and the value is the server's own.
+        """
 
         found: dict[str, str | None] = {}
         for name in sorted(set(variables)):
             if name in self.bindings:
                 found[name] = self.bindings[name].fingerprint
-            elif self.environ.get(name):
-                found[name] = f"env:{self.environ[name]}"
             else:
-                found[name] = None
+                value = environment_folder(self.environ, name)
+                found[name] = None if value is None else f"env:{hashlib.sha256(value.encode('utf-8')).hexdigest()[:16]}"
         return found
 
     def folder_of(self, variable: str) -> Path | None:
         if variable in self.bindings:
             return self.bindings[variable].folder
-        value = self.environ.get(variable)
-        return Path(value) if value else None
+        value = environment_folder(self.environ, variable)
+        return None if value is None else Path(value)
+
+    def defines(self, variable: str) -> bool:
+        return self.folder_of(variable) is not None
 
     def model_dir_args(self) -> list[str]:
         """``--model-dir VAR=dir`` for prism-kicad: the stock variables the environment sets, then every bound one."""
 
-        directories = {name: value for name, value in self.environ.items() if _STOCK_MODEL_DIR.fullmatch(name) and value}
+        directories = {
+            name: value
+            for name in self.environ
+            if _STOCK_MODEL_DIR.fullmatch(name) and (value := environment_folder(self.environ, name)) is not None
+        }
         directories.update({name: str(binding.folder) for name, binding in self.bindings.items()})
         args: list[str] = []
         for name, directory in sorted(directories.items()):
@@ -240,6 +262,34 @@ def mount_root() -> Path:
     return Path(settings.PRISM_KICAD_LIBRARY_MOUNT_ROOT.strip()).expanduser()
 
 
+def mount_root_problem() -> str | None:
+    """Why the mount root may not be used, or ``None``: it must not hold, or sit inside, the projects root.
+
+    A path library under a mount root that reaches the projects root would
+    serve another project's repository, or Prism's own state, to every board.
+    """
+
+    if not settings.PRISM_KICAD_LIBRARY_MOUNT_ROOT.strip():
+        return None
+    mount = Path(os.path.realpath(mount_root()))
+    projects = Path(os.path.realpath(Path(settings.KICAD_PROJECTS_ROOT).expanduser()))
+    if mount == projects or mount in projects.parents or projects in mount.parents:
+        return (
+            f"PRISM_KICAD_LIBRARY_MOUNT_ROOT ({mount}) overlaps KICAD_PROJECTS_ROOT ({projects}). "
+            "Mount the libraries in a folder of their own."
+        )
+    return None
+
+
+def verify_mount_root_or_exit(process: str) -> None:
+    """Refuse to start ``process`` with a mount root that reaches the projects root."""
+
+    problem = mount_root_problem()
+    if problem is not None:
+        print(f"\n{process} did not start: {problem}\n", file=sys.stderr, flush=True)
+        raise SystemExit(3)
+
+
 def check_variable(name: Any) -> str:
     """A variable name a library may bind, or ``ValueError`` saying why not."""
 
@@ -248,6 +298,25 @@ def check_variable(name: Any) -> str:
     if name in RESERVED_NAMES or name.startswith(RESERVED_PREFIXES) or name in Settings.model_fields:
         raise ValueError(f"{name} is used by the server itself and cannot be bound to a library")
     return name
+
+
+def environment_folder(environ: Mapping[str, str], name: str) -> str | None:
+    """The folder the environment sets ``name`` to, if a board may resolve a model through it.
+
+    A board names any variable it likes. Only a name a library could bind
+    (never the server's settings or plumbing) and a value that is a folder
+    count, so a model path cannot read a secret out of the environment, or
+    learn which variables are set.
+    """
+
+    value = environ.get(name)
+    if not value:
+        return None
+    try:
+        check_variable(name)
+    except ValueError:
+        return None
+    return value if os.path.isdir(value) else None
 
 
 def check_git_url(url: Any) -> str:
@@ -399,7 +468,7 @@ def snapshot(environ: Mapping[str, str] | None = None) -> Snapshot:
         if folder is None or fingerprint is None:
             continue
         for name in library.variables:
-            if env.get(name):
+            if environment_folder(env, name) is not None:
                 overridden[name] = library.name
             else:
                 bindings[name] = Binding(name, folder, fingerprint, library.name)

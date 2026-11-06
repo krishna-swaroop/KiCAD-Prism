@@ -289,7 +289,8 @@ Repository URLs that users paste must still not contain credentials.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `KICAD_CLI_PATH` | empty | The `kicad-cli` every KiCad job runs. Empty looks on `PATH`, then in the usual install locations. A set path is used as given. `KICAD_CLI` is accepted as an older name. |
-| `PRISM_KICAD_LIBRARY_MOUNT_ROOT` | empty | A mounted folder that KiCad libraries added as a path in Settings must live under. Empty turns path libraries off; libraries fetched from a repository need no setting. See [KiCad libraries](/KiCAD-Prism/admin/deployment/#kicad-libraries-and-3d-models). |
+| `PRISM_KICAD_LIBRARY_MOUNT_ROOT` | empty | A mounted folder that KiCad libraries added as a path in Settings must live under. Empty turns path libraries off; libraries fetched from a repository need no setting. It must not be, hold or sit inside `KICAD_PROJECTS_ROOT`; Prism refuses to start if it does. See [KiCad libraries](/KiCAD-Prism/admin/deployment/#kicad-libraries-and-3d-models). |
+| `PRISM_KICAD_LIBRARY_MAX_GB` | `10` | The largest KiCad library a fetch writes, in GB: the download, and the extracted files with their Git LFS objects. A larger one fails, and the version served before keeps serving. |
 | `PRISM_KICAD_PYTHON` | empty | KiCad's Python, used for zone refills and board upgrades. Empty uses `python.exe` beside `kicad-cli.exe` on Windows, KiCad.app's Python on macOS and `/usr/bin/python3` on Linux. |
 
 The Docker image already has both. Set them only when you run Prism outside

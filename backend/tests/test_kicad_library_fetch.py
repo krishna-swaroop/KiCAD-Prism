@@ -6,12 +6,14 @@ protocol production never allows).
 
 from __future__ import annotations
 
+import email.message
 import os
 import sys
 import tarfile
 import tempfile
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -143,8 +145,8 @@ class PublishTests(FetchCase):
         fetch.fetch_version(library, self.advance())
         fetch.sweep(grace=-1)
         self.assertFalse((library.clone_dir / self.first).exists())
-        offline = self.library(git=(self.root / "gone").as_uri())
-        fetch.fetch_version(offline, self.first)
+        with mock.patch.object(fetch, "_run_streaming", side_effect=AssertionError("git fetch ran")):
+            fetch.fetch_version(library, self.first)
         self.assertEqual(library.published().commit, self.first)
         self.assertEqual((library.folder / "lsf.3dshapes" / "cap.step").read_text(encoding="utf-8"), "cap v1")
 
@@ -202,6 +204,188 @@ class PublishTests(FetchCase):
                 fetch.fetch_version(library, self.first)
         self.assertIn("free", str(raised.exception))
         self.assertIsNone(library.published())
+
+
+class SizeLimitTests(FetchCase):
+    def assert_nothing_served(self, library: libs.Library) -> None:
+        self.assertIsNone(library.published())
+        self.assertEqual([p.name for p in library.clone_dir.iterdir() if p.name.endswith(".partial")], [])
+
+    def test_a_library_larger_than_the_limit_is_refused_before_anything_is_written(self) -> None:
+        library = self.library()
+        with mock.patch.object(fetch, "max_bytes", return_value=5), \
+                mock.patch.object(fetch, "_write_member", side_effect=AssertionError("a file was written")):
+            with self.assertRaises(fetch.FetchError) as raised:
+                fetch.fetch_version(library, self.first)
+        self.assertTrue(raised.exception.permanent)
+        self.assertIn("PRISM_KICAD_LIBRARY_MAX_GB", str(raised.exception))
+        self.assert_nothing_served(library)
+
+    def test_a_library_the_volume_has_no_room_for_is_refused_before_anything_is_written(self) -> None:
+        library = self.library()
+        fetch.fetch_into_store(library, self.first)
+        with mock.patch.object(fetch, "free_bytes", return_value=fetch.MIN_FREE_BYTES), \
+                mock.patch.object(fetch, "tree_bytes", return_value=fetch.MIN_FREE_BYTES):
+            with self.assertRaises(fetch.FetchError) as raised:
+                fetch.fetch_version(library, self.first)
+        self.assertIn("free space", str(raised.exception))
+        self.assert_nothing_served(library)
+
+    def test_one_large_file_is_stopped_while_it_is_written(self) -> None:
+        write_files(self.remote, {"lsf.3dshapes/big.step": os.urandom(3 * 1024 * 1024)})
+        commit = commit_all(self.remote, "a large model")
+        library = self.library()
+        # The size read before the write is passed; the limit still holds as the file streams.
+        with mock.patch.object(fetch, "max_bytes", return_value=1024 * 1024), \
+                mock.patch.object(fetch, "tree_bytes", return_value=0):
+            with self.assertRaises(fetch.FetchError) as raised:
+                fetch.fetch_version(library, commit)
+        self.assertIn("PRISM_KICAD_LIBRARY_MAX_GB", str(raised.exception))
+        self.assert_nothing_served(library)
+
+    def test_free_space_is_read_while_a_file_is_written(self) -> None:
+        library = self.library()
+        with mock.patch.object(fetch, "_require_space"), mock.patch.object(fetch, "_SPACE_EVERY", 1), \
+                mock.patch.object(fetch, "free_bytes", return_value=1024):
+            with self.assertRaises(fetch.FetchError) as raised:
+                fetch.fetch_version(library, self.first)
+        self.assertIn("ran out of space", str(raised.exception))
+        self.assert_nothing_served(library)
+
+    def test_a_download_that_outgrows_the_limit_is_stopped(self) -> None:
+        library = self.library()
+        sizes = iter([0])
+        with mock.patch.object(fetch, "_TICK_SECONDS", 0), \
+                mock.patch.object(fetch, "folder_size", side_effect=lambda path: next(sizes, 10**12)):
+            with self.assertRaises(fetch.FetchError) as raised:
+                fetch.fetch_into_store(library, self.first)
+        self.assertIn("PRISM_KICAD_LIBRARY_MAX_GB", str(raised.exception))
+
+    def test_a_download_is_stopped_when_the_volume_runs_short(self) -> None:
+        library = self.library()
+        with mock.patch.object(fetch, "_TICK_SECONDS", 0), mock.patch.object(fetch, "_require_space"), \
+                mock.patch.object(fetch, "free_bytes", return_value=1024):
+            with self.assertRaises(fetch.FetchError) as raised:
+                fetch.fetch_into_store(library, self.first)
+        self.assertIn("ran out of space", str(raised.exception))
+
+    def test_the_tree_size_is_what_the_files_hold(self) -> None:
+        library = self.library(subdir="lsf.3dshapes")
+        fetch.fetch_into_store(library, self.first)
+        self.assertEqual(fetch.tree_bytes(library, self.first), len("cap v1"))
+        self.assertEqual(fetch.tree_bytes(self.library(), self.first), len("cap v1") + len("sheet") + len("readme"))
+
+
+class StreamingTests(unittest.TestCase):
+    def test_a_quiet_command_is_still_ticked(self) -> None:
+        ticks: list[float] = []
+        quiet = [sys.executable, "-c", "import time; time.sleep(0.6)"]
+        with mock.patch.object(fetch, "_TICK_SECONDS", 0.1):
+            code, _tail = fetch._run_streaming(quiet, on_progress=lambda percent: None, on_tick=lambda: ticks.append(1))
+        self.assertEqual(code, 0)
+        self.assertGreaterEqual(len(ticks), 3, "a command that prints nothing is checked on every tick")
+
+    def test_a_tick_that_raises_stops_the_command(self) -> None:
+        slow = [sys.executable, "-c", "import time; time.sleep(30)"]
+        started = time.monotonic()
+
+        def full() -> None:
+            raise fetch._too_large()
+
+        with mock.patch.object(fetch, "_TICK_SECONDS", 0.1):
+            with self.assertRaises(fetch.FetchError):
+                fetch._run_streaming(slow, on_progress=lambda percent: None, on_tick=full)
+        self.assertLess(time.monotonic() - started, 10)
+
+
+class RedeclaredTests(FetchCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.other = self.root / "other"
+        self.other_first = init_repo(self.other, {"cap.step": "another library"})
+        git(self.other, "config", "uploadpack.allowAnySHA1InWant", "true")
+
+    def test_a_name_declared_again_for_another_repository_serves_nothing_until_it_is_fetched(self) -> None:
+        old = self.library()
+        fetch.fetch_version(old, self.first)
+        new = self.library(git=self.other.as_uri())
+        self.declare(new)
+        self.assertIsNone(new.published())
+        self.assertIsNone(new.folder)
+        self.assertIsNone(new.fingerprint)
+        self.assertNotIn("LSF_KICAD_LIB", libs.snapshot({}).bindings)
+        fetch.fetch_version(new, self.other_first)
+        self.assertEqual((new.folder / "cap.step").read_text(encoding="utf-8"), "another library")
+        self.assertTrue((new.clone_dir / f"{self.first}.superseded").is_file(), "the old repository's version goes")
+
+    def test_a_changed_subfolder_serves_nothing_until_it_is_fetched(self) -> None:
+        fetch.fetch_version(self.library(subdir="lsf.3dshapes"), self.first)
+        self.assertIsNone(self.library(subdir="layouts").folder)
+
+
+class RedirectTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch.multiple(libs.settings, IMPORT_ALLOWED_HOSTS_STR="gitlab.com,github.com")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def answer(self, code: int, location: str = "") -> mock._patch:
+        def open_(request, timeout):
+            if code == 200:
+                return mock.MagicMock()
+            headers = email.message.Message()
+            if location:
+                headers["Location"] = location
+            raise urllib.error.HTTPError(request.full_url, code, "redirect", headers, None)
+
+        patcher = mock.patch.object(fetch._OPENER, "open", side_effect=open_)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return patcher
+
+    def test_git_never_follows_a_redirect_itself(self) -> None:
+        command = fetch._git("ls-remote", "--", "https://gitlab.com/a/lib")
+        self.assertIn("http.followRedirects=false", command)
+
+    def test_a_repository_that_answers_is_used_as_given(self) -> None:
+        self.answer(200)
+        self.assertEqual(fetch.remote_url("https://gitlab.com/a/lib"), "https://gitlab.com/a/lib")
+
+    def test_a_redirect_on_an_allowed_host_is_followed(self) -> None:
+        moved = self.headers("https://gitlab.com/a/lib.git/info/refs?service=git-upload-pack")
+        answers = [urllib.error.HTTPError("x", 301, "moved", moved, None), mock.MagicMock()]
+        with mock.patch.object(fetch._OPENER, "open", side_effect=answers) as opened:
+            self.assertEqual(fetch.remote_url("https://gitlab.com/a/lib"), "https://gitlab.com/a/lib.git")
+        self.assertEqual(opened.call_args.args[0].full_url, "https://gitlab.com/a/lib.git/info/refs?service=git-upload-pack")
+
+    def test_a_redirect_to_a_host_libraries_may_not_use_fails_for_good(self) -> None:
+        self.answer(302, "https://evil.example/a/lib.git/info/refs?service=git-upload-pack")
+        with self.assertRaises(fetch.FetchError) as raised:
+            fetch.remote_url("https://gitlab.com/a/lib")
+        self.assertTrue(raised.exception.permanent)
+        self.assertIn("evil.example", str(raised.exception))
+
+    def test_a_redirect_to_something_that_is_not_a_repository_fails_for_good(self) -> None:
+        self.answer(302, "https://gitlab.com/users/sign_in")
+        with self.assertRaises(fetch.FetchError) as raised:
+            fetch.remote_url("https://gitlab.com/a/lib")
+        self.assertTrue(raised.exception.permanent)
+
+    def test_a_host_that_does_not_answer_is_left_to_git(self) -> None:
+        with mock.patch.object(fetch._OPENER, "open", side_effect=urllib.error.URLError("down")):
+            self.assertEqual(fetch.remote_url("https://gitlab.com/a/lib"), "https://gitlab.com/a/lib")
+
+    def test_the_remote_check_reports_a_refused_redirect(self) -> None:
+        self.answer(302, "https://evil.example/a/lib.git/info/refs?service=git-upload-pack")
+        result = fetch.check_remote("https://gitlab.com/a/lib")
+        self.assertFalse(result["reachable"])
+        self.assertIn("evil.example", result["error"])
+
+    @staticmethod
+    def headers(location: str) -> email.message.Message:
+        headers = email.message.Message()
+        headers["Location"] = location
+        return headers
 
 
 class RemoteTests(FetchCase):
@@ -341,6 +525,53 @@ class SweepTests(FetchCase):
         self.assertIsNotNone(library.published())
         self.assertFalse((library.clone_dir / "removed.json").exists())
 
+    def test_a_sweep_holds_the_lock_a_fetch_and_a_removal_hold(self) -> None:
+        subject = fetch._subject("lsf")
+        self.assertEqual(fetch.SWEEP.lock(subject), [{"key": "kicad-library:lsf", "mode": "write"}])
+        self.assertEqual(fetch.SWEEP.lock(subject), fetch.FETCH.lock(subject))
+        self.assertEqual(fetch.SWEEP.lock(subject), fetch.REMOVE.lock(subject))
+
+    def test_a_sweep_job_sweeps_only_its_own_library(self) -> None:
+        lsf, other = self.library(), self.library(name="other", variables=("OTHER_LIB",))
+        rows = [
+            {"name": item.name, "variables": list(item.variables), "git": item.git, "ref": item.ref}
+            for item in (lsf, other)
+        ]
+        with mock.patch.object(libs, "declared_rows", return_value=rows):
+            stale = []
+            for item in (lsf, other):
+                fetch.fetch_version(item, self.first)
+                partial = item.clone_dir / ("c" * 40 + ".partial")
+                partial.mkdir()
+                os.utime(partial, (time.time() - 3 * fetch.GRACE_SECONDS,) * 2)
+                stale.append(partial)
+            with mock.patch.object(fetch.kicad_library_store, "declared", return_value=rows), \
+                    mock.patch.object(fetch.kicad_library_store, "versions", return_value=[]):
+                fetch.run_sweep_job(_Context({"name": "lsf"}))
+        self.assertFalse(stale[0].exists())
+        self.assertTrue(stale[1].exists(), "another library's folder waits for its own sweep")
+
+    def test_the_upkeep_queues_a_sweep_only_for_a_library_with_something_to_sweep(self) -> None:
+        library = self.library()
+        self.declare(library)
+        fetch.fetch_version(library, self.first)
+        for name in ("a-lib", "b-lib"):  # removed libraries
+            (libs.libraries_root() / name).mkdir(parents=True)
+        recorded = [{"commit": self.first}]
+        with mock.patch.object(fetch.kicad_library_store, "declared", return_value=[{"name": "lsf"}]), \
+                mock.patch.object(fetch.kicad_library_store, "versions", return_value=recorded), \
+                mock.patch.object(fetch.JobKind, "enqueue", autospec=True) as enqueue:
+            self.assertEqual(fetch.request_sweeps(), ["a-lib", "b-lib"], "lsf has nothing to sweep and costs no job")
+            self.assertEqual({call.args[0].name for call in enqueue.call_args_list}, {fetch.SWEEP_KIND})
+            self.assertEqual(
+                [call.kwargs["artifact_key"] for call in enqueue.call_args_list],
+                ["kicad_library_sweep:a-lib", "kicad_library_sweep:b-lib"],
+            )
+            enqueue.reset_mock()
+            fetch.fetch_version(library, self.advance())  # the first version is superseded, within its grace
+            self.assertEqual(fetch.request_sweeps(), ["a-lib", "b-lib"])
+            self.assertEqual(fetch.request_sweeps(grace=-1), ["a-lib", "b-lib", "lsf"])
+
 
 class LfsCase(FetchCase):
     """A remote that keeps its models in Git LFS, served over git-lfs's file adapter."""
@@ -372,6 +603,24 @@ class LfsTests(LfsCase):
         self.assertEqual((library.folder / "cap.txt").read_text(encoding="utf-8"), "plain")
         self.assertEqual(fetch.lfs_pointers(library.folder), [])
         self.assertFalse((library.clone_dir / "store.git" / "lfs").exists(), "the version folder is the one copy kept")
+
+    def test_two_pointers_to_one_object_both_get_its_content(self) -> None:
+        write_files(self.remote, {"lsf.3dshapes/cap-copy.step": self.model})
+        commit = commit_all(self.remote, "the same model twice")
+        library = self.library(subdir="lsf.3dshapes")
+        fetch.fetch_version(library, commit)
+        self.assertEqual((library.folder / "cap.step").read_bytes(), self.model)
+        self.assertEqual((library.folder / "cap-copy.step").read_bytes(), self.model)
+
+    def test_lfs_files_past_the_limit_are_refused_before_they_are_downloaded(self) -> None:
+        library = self.library(subdir="lsf.3dshapes")
+        with mock.patch.object(fetch, "max_bytes", return_value=len(self.model) // 2), \
+                mock.patch.object(fetch, "_run_streaming", wraps=fetch._run_streaming) as ran:
+            with self.assertRaises(fetch.FetchError) as raised:
+                fetch.fetch_version(library, self.commit)
+        self.assertIn("PRISM_KICAD_LIBRARY_MAX_GB", str(raised.exception))
+        self.assertFalse(any("lfs" in call.args[0] for call in ran.call_args_list), "git lfs fetch never ran")
+        self.assertIsNone(library.published())
 
     def test_without_git_lfs_a_library_with_pointers_fails_for_good_and_serves_nothing(self) -> None:
         library = self.library(subdir="lsf.3dshapes")

@@ -227,13 +227,47 @@ class PrecedenceTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         publish(self.root, "lsf", COMMIT)
 
-    def test_a_value_the_environment_sets_wins_over_the_library(self) -> None:
+    def test_a_folder_the_environment_sets_wins_over_the_library(self) -> None:
+        mine = str(self.root / "mine")
+        os.mkdir(mine)
         with Configured(self.root, row()):
-            snapshot = libs.snapshot({"LSF_KICAD_LIB": "/mnt/mine"})
+            snapshot = libs.snapshot({"LSF_KICAD_LIB": mine})
         self.assertNotIn("LSF_KICAD_LIB", snapshot.bindings)
         self.assertEqual(snapshot.overridden, {"LSF_KICAD_LIB": "lsf"})
-        self.assertEqual(snapshot.env({"LSF_KICAD_LIB": "/mnt/mine"})["LSF_KICAD_LIB"], "/mnt/mine")
-        self.assertEqual(snapshot.fingerprints(["LSF_KICAD_LIB"]), {"LSF_KICAD_LIB": "env:/mnt/mine"})
+        self.assertEqual(snapshot.env({"LSF_KICAD_LIB": mine})["LSF_KICAD_LIB"], mine)
+        self.assertEqual(snapshot.folder_of("LSF_KICAD_LIB"), Path(mine))
+        fingerprint = snapshot.fingerprints(["LSF_KICAD_LIB"])["LSF_KICAD_LIB"]
+        self.assertTrue(fingerprint.startswith("env:"))
+        self.assertNotIn(mine, fingerprint, "the value is the server's own and is written to disk")
+
+    def test_an_environment_value_that_is_not_a_folder_leaves_the_library_bound(self) -> None:
+        with Configured(self.root, row()):
+            snapshot = libs.snapshot({"LSF_KICAD_LIB": "/no/such/folder"})
+        self.assertIn("LSF_KICAD_LIB", snapshot.bindings)
+        self.assertEqual(snapshot.overridden, {})
+
+    def test_a_board_cannot_read_the_servers_own_environment(self) -> None:
+        folder = str(self.root)
+        environ = {
+            "SESSION_SECRET": folder,  # a setting, even one that names a folder
+            "HOME": folder,  # the process's plumbing
+            "GIT_DIR": folder,  # a reserved prefix
+            "POSTGRES_PASSWORD": "hunter2",  # a secret that is not a folder
+            "GITHUB_TOKEN": "ghp_x",
+        }
+        snapshot = libs.Snapshot(environ=environ)
+        for name in environ:
+            with self.subTest(name=name):
+                self.assertIsNone(snapshot.folder_of(name))
+                self.assertFalse(snapshot.defines(name))
+                self.assertEqual(snapshot.fingerprints([name]), {name: None})
+
+    def test_an_environment_folder_a_library_could_bind_is_defined(self) -> None:
+        snapshot = libs.Snapshot(environ={"TEAM_LIB": str(self.root)})
+        self.assertTrue(snapshot.defines("TEAM_LIB"))
+        first = snapshot.fingerprints(["TEAM_LIB"])
+        moved = libs.Snapshot(environ={"TEAM_LIB": str(self.root / ".kicad-prism")}).fingerprints(["TEAM_LIB"])
+        self.assertNotEqual(first, moved, "another folder is another fingerprint")
 
     def test_an_empty_environment_value_does_not_count_as_set(self) -> None:
         with Configured(self.root, row()):
@@ -264,10 +298,13 @@ class PrecedenceTests(unittest.TestCase):
         self.assertIn("PATH", problems[0])
 
     def test_model_dir_arguments_carry_the_environments_stock_variables_and_every_binding(self) -> None:
+        stock = str(self.root / "stock9")
+        os.mkdir(stock)
         with Configured(self.root, row()):
-            snapshot = libs.snapshot({"KICAD9_3DMODEL_DIR": "/stock9", "UNRELATED": "x"})
+            snapshot = libs.snapshot({"KICAD9_3DMODEL_DIR": stock, "KICAD8_3DMODEL_DIR": "/gone", "UNRELATED": "x"})
         arguments = snapshot.model_dir_args()
-        self.assertIn("KICAD9_3DMODEL_DIR=/stock9", arguments)
+        self.assertIn(f"KICAD9_3DMODEL_DIR={stock}", arguments)
+        self.assertFalse(any("KICAD8_3DMODEL_DIR" in a for a in arguments), "a value that is not a folder is not passed")
         self.assertTrue(any(a.startswith("LSF_KICAD_LIB=") for a in arguments))
         self.assertFalse(any("UNRELATED" in a for a in arguments))
 
@@ -348,25 +385,42 @@ class PathLibraryTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.mount = self.root / "mount"
         (self.mount / "team" / "3d").mkdir(parents=True)
+        self.projects = self.root / "projects"
+        self.projects.mkdir()
 
     def entry(self, **fields: object) -> dict:
         return {"name": "team", "variables": ["TEAM_LIB"], "path": "team/3d", **fields}
 
     def test_a_folder_under_the_mount_binds_and_its_fingerprint_follows_the_generation(self) -> None:
-        with Configured(self.root, self.entry(), mount=self.mount):
+        with Configured(self.projects, self.entry(), mount=self.mount):
             first = libs.snapshot({}).fingerprints(["TEAM_LIB"])
-        with Configured(self.root, self.entry(generation=2), mount=self.mount):
+        with Configured(self.projects, self.entry(generation=2), mount=self.mount):
             second = libs.snapshot({}).fingerprints(["TEAM_LIB"])
         self.assertEqual(first, {"TEAM_LIB": "path:team/3d#g1"})
         self.assertEqual(second, {"TEAM_LIB": "path:team/3d#g2"})
 
     def test_path_libraries_are_off_without_a_mount_root(self) -> None:
-        with Configured(self.root, self.entry()):
+        with Configured(self.projects, self.entry()):
             self.assertEqual(dict(libs.snapshot({}).bindings), {})
 
     def test_a_missing_folder_serves_nothing(self) -> None:
-        with Configured(self.root, self.entry(path="team/absent"), mount=self.mount):
+        with Configured(self.projects, self.entry(path="team/absent"), mount=self.mount):
             self.assertEqual(dict(libs.snapshot({}).bindings), {})
+
+    def test_a_mount_root_that_reaches_the_projects_root_serves_nothing_and_stops_startup(self) -> None:
+        (self.projects / "team" / "3d").mkdir(parents=True)
+        for label, mount in (("the same folder", self.projects), ("above it", self.root), ("inside it", self.projects / "team")):
+            entry = self.entry(path="3d") if label == "inside it" else self.entry()
+            with self.subTest(label), Configured(self.projects, entry, mount=mount):
+                self.assertIn("KICAD_PROJECTS_ROOT", libs.mount_root_problem())
+                self.assertEqual(dict(libs.snapshot({}).bindings), {})
+                with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+                    libs.verify_mount_root_or_exit("The worker")
+
+    def test_a_mount_root_beside_the_projects_root_is_fine(self) -> None:
+        with Configured(self.projects, self.entry(), mount=self.mount):
+            self.assertIsNone(libs.mount_root_problem())
+            libs.verify_mount_root_or_exit("The worker")
 
     def test_a_path_outside_the_mount_is_refused(self) -> None:
         for path in ("../mount2", "/etc", "C:/x"):
@@ -381,7 +435,7 @@ class PathLibraryTests(unittest.TestCase):
             os.symlink(outside, self.mount / "team" / "link", target_is_directory=True)
         except OSError:
             self.skipTest("symlinks are not permitted here")
-        with Configured(self.root, self.entry(path="team/link"), mount=self.mount):
+        with Configured(self.projects, self.entry(path="team/link"), mount=self.mount):
             self.assertEqual(dict(libs.snapshot({}).bindings), {})
 
 

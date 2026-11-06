@@ -125,6 +125,45 @@ class ExpansionTests(unittest.TestCase):
             counts = variables.missing_models(placements, {}, lambda name: library if name == "LSF_KICAD_LIB" else None)
         self.assertEqual(counts, {"LSF_KICAD_LIB": 1})
 
+    def test_a_path_leaving_its_variables_folder_counts_as_missing_without_being_looked_at(self) -> None:
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Path(tmp) / "lib"
+            library.mkdir()
+            (Path(tmp) / "secret.txt").write_text("x", encoding="utf-8")
+            escapes = ("${LSF_KICAD_LIB}/../secret.txt", "${LSF_KICAD_LIB}/../absent.txt", "${LSF_KICAD_LIB}/x/../../secret.txt")
+            looked: list[str] = []
+            real = os.path.isfile
+            with mock.patch.object(variables.os.path, "isfile", side_effect=lambda p: looked.append(p) or real(p)):
+                counts = variables.missing_models(
+                    board(*escapes), {}, lambda name: library if name == "LSF_KICAD_LIB" else None
+                )
+        self.assertEqual(counts, {"LSF_KICAD_LIB": 3}, "an existing file and a missing one answer the same")
+        self.assertEqual(looked, [])
+
+    def test_a_link_leaving_the_folder_counts_as_missing(self) -> None:
+        import os
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Path(tmp) / "lib"
+            library.mkdir()
+            outside = Path(tmp) / "outside.step"
+            outside.write_bytes(b"ISO-10303-21;" * 200)
+            try:
+                os.symlink(outside, library / "link.step")
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks are not permitted here")
+            counts = variables.missing_models(
+                board("${LSF_KICAD_LIB}/link.step"), {}, lambda name: library if name == "LSF_KICAD_LIB" else None
+            )
+        self.assertEqual(counts, {"LSF_KICAD_LIB": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -120,10 +120,15 @@ into `.kicad-prism/libraries`. Prism's own code that needs a library file calls
 `kicad_libraries.open_file`. A feature that caches KiCad output keys the cache
 on `current().fingerprints(<variables its input uses>)`
 (`kicad_variables.py` finds them), or runs with
-`kicad_cli(libraries=NO_LIBRARIES)` as the catalog does. Libraries are
+`kicad_cli(libraries=NO_LIBRARIES)` as the catalog does. A board names any
+variable it likes, so read the environment only through the snapshot
+(`folder_of`, `defines`, `fingerprints`): it counts a bindable name set to a
+folder, and never puts a value in a fingerprint. Libraries are
 declared in `ws_kicad_libraries` (`kicad_library_store.py`), fetched by commit
 into a per-library object store and published one folder per commit
 (`kicad_library_fetch.py`), and kept current by `kicad_library_updates.py`.
+Anything that writes a library's folder or store runs as a job holding the
+`kicad-library:<name>` lock (fetch, remove, sweep).
 
 ## KiCad library text
 

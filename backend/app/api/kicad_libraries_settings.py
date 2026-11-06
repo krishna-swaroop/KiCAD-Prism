@@ -174,8 +174,8 @@ async def list_libraries(_user: AuthenticatedUser = Depends(require_admin)) -> d
     def read() -> dict[str, Any]:
         views = [_decorated(view) for view in store.list_all()]
         bound = {name for view in views if view["ready"] for name in view["variables"]}
-        defined = {name for name, value in kicad_libraries.snapshot().environ.items() if value}
-        usage = [{**row, "bound": row["variable"] in bound or row["variable"] in defined} for row in store.usage()]
+        taken = kicad_libraries.snapshot()
+        usage = [{**row, "bound": row["variable"] in bound or taken.defines(row["variable"])} for row in store.usage()]
         return {
             "libraries": views,
             "usage": usage,
@@ -194,6 +194,8 @@ async def create_library(
 
     if body.path and not settings.PRISM_KICAD_LIBRARY_MOUNT_ROOT.strip():
         raise Invalid("Path libraries are off: set PRISM_KICAD_LIBRARY_MOUNT_ROOT on the server")
+    if body.path and (problem := kicad_libraries.mount_root_problem()):
+        raise Invalid(problem)
     fields = _fields(body, exclude_unset=False)
 
     def create() -> dict[str, Any]:

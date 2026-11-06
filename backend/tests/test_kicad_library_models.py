@@ -206,7 +206,7 @@ class OutdatedTests(ModelsCase):
     def test_the_environment_defining_a_variable_instead_of_a_library_is_a_change_too(self) -> None:
         self.record(LSF_KICAD_LIB=None, KICAD10_3DMODEL_DIR=None)
         opened = self.opened(write_archive(self.tmp / "a.prism"))
-        self.assertTrue(reader.models_outdated(opened, snapshot=libs.snapshot({"KICAD10_3DMODEL_DIR": "/models"})))
+        self.assertTrue(reader.models_outdated(opened, snapshot=libs.snapshot({"KICAD10_3DMODEL_DIR": str(self.tmp)})))
 
     def test_models_built_means_complete_or_partial(self) -> None:
         for status, expected in (("complete", True), ("partial", True), ("pending", False), ("failed", False)):

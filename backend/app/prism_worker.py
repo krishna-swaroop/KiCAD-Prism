@@ -604,7 +604,7 @@ class PrismWorker:
         self._library_upkeep.start()
 
     def _kicad_library_upkeep(self, scan: bool, sweep: bool) -> None:
-        from app.services import kicad_library_fetch, kicad_library_store, kicad_library_updates
+        from app.services import kicad_library_fetch, kicad_library_updates
 
         if scan:
             try:
@@ -613,15 +613,10 @@ class PrismWorker:
                 logger.exception("Could not check the KiCad libraries")
         if sweep:
             try:
-                # The names come from the database read here, never from a cache that may be empty
-                # because the database was unreachable: a folder is only removed if its row is gone.
-                names = [row["name"] for row in kicad_library_store.declared()]
-                keep = {name: [v["commit"] for v in kicad_library_store.versions(name)] for name in names}
-                removed = kicad_library_fetch.sweep(keep, declared=names)
-                if removed:
-                    logger.info("KiCad library sweep removed %s", ", ".join(removed))
+                # One job per library, under the library's lock, so a sweep never prunes a store a fetch is using.
+                kicad_library_fetch.request_sweeps()
             except Exception:
-                logger.exception("Could not sweep the KiCad libraries")
+                logger.exception("Could not queue the KiCad library sweeps")
 
     def schedule_design_bundles(self) -> None:
         """The paced backfill of branch-head bundles and hourly bundle retention (ADR §5, §8).
@@ -919,6 +914,9 @@ def main() -> None:
     from app.services.git_credentials import verify_git_credentials_or_exit
 
     verify_git_credentials_or_exit(f"The {args.pool} worker")
+    from app.services.kicad_libraries import verify_mount_root_or_exit
+
+    verify_mount_root_or_exit(f"The {args.pool} worker")
     from app.services.ops import stats as ops_stats
 
     ops_stats.start(f"worker:{args.pool}")

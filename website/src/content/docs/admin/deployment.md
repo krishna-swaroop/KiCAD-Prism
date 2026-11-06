@@ -321,8 +321,10 @@ drawing sheet kept in a library is missing.
 
 Declare the libraries in **Settings > KiCad libraries** (administrators only).
 Prism fetches each one into the projects volume, once, for the API and every
-worker, and hands the variables to every KiCad process. A variable you set in
-the server's environment is never overridden by a library.
+worker, and hands the variables to every KiCad process. A folder you set for a
+variable in the server's environment is never overridden by a library. Only
+names a library could bind count, and only when the value is a folder, so a
+model path cannot read the server's settings or secrets.
 
 For each library you give a name, the variables it binds, the repository (an
 `https://` address with no credentials in it), a tag or branch, and optionally a
@@ -334,10 +336,18 @@ SSH key, so the Git credentials set for project imports do not apply. Its host
 must be in `IMPORT_ALLOWED_HOSTS_STR` when that is set, as for imports; add
 `gitlab.com` for KiCad's stock 3D models. A library whose host the setting
 stops allowing goes out of service and says so in Settings; its files are kept.
+Prism follows a host's redirects itself, and only to hosts the setting allows
+(GitLab redirects an address without `.git` to the one with it).
 
 Files kept in Git LFS are downloaded with the library, so the image needs
 `git-lfs` (the standard image has it). Without it, a library with LFS files
 fails to fetch rather than serving pointers in place of models.
+
+A library may be at most 10 GB, set by `PRISM_KICAD_LIBRARY_MAX_GB`. That covers
+the download, and the extracted files with their LFS objects. A larger one fails
+before its files are written, or while they are, and the version served before
+keeps serving. A fetch also refuses to start with less than 2 GB free on the
+projects volume, and stops below 512 MB.
 
 ### Follow or pin
 
@@ -396,6 +406,10 @@ variables, with the projects that use them, in Settings.
 Set `PRISM_KICAD_LIBRARY_MOUNT_ROOT` to a mounted folder to allow libraries
 declared as a path under it instead of a repository. Prism does not manage the
 folder; changed files are picked up when you choose **Refresh**.
+
+The mount root must be a folder of its own. If it is `KICAD_PROJECTS_ROOT`, or
+holds it, or sits inside it, the API and the workers refuse to start: a path
+library could otherwise serve another project's repository to every board.
 
 ## Private Git repositories
 

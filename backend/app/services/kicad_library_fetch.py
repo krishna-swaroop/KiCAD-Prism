@@ -16,19 +16,25 @@ to serve a commit by its id.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import logging
 import os
+import queue
 import re
 import shutil
 import subprocess
 import tarfile
+import threading
 import time
+import urllib.error
+import urllib.request
 from collections import deque
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
+from app.core.config import settings
 from app.services import kicad_libraries, kicad_library_store
 from app.services.design_bundle.materialize import lfs_pointer
 from app.services.git_failures import describe_git_failure, strip_url_credentials
@@ -41,12 +47,20 @@ logger = logging.getLogger(__name__)
 
 FETCH_KIND = "kicad_library_fetch"
 REMOVE_KIND = "kicad_library_remove"
+SWEEP_KIND = "kicad_library_sweep"
 # After the interactive work and before the tracker's background polling.
 PRIORITY = 200
 #: The protocols git may use for a library. Tests add ``file``; production never does.
 ALLOWED_PROTOCOLS: tuple[str, ...] = ("https",)
-#: A fetch refuses to start, and stops, when the volume has less than this free.
+#: A fetch refuses to start when the volume has less than this free, and stops below a quarter of it.
 MIN_FREE_BYTES = 2 * 1024**3
+_RESERVE_BYTES = MIN_FREE_BYTES // 4
+# Files are written in chunks this large; free space is read again every _SPACE_EVERY bytes.
+_CHUNK = 1024 * 1024
+_SPACE_EVERY = 16 * 1024 * 1024
+# How many redirects a library's host may answer with before git is given the url.
+_MAX_REDIRECTS = 5
+_UPLOAD_PACK = "/info/refs?service=git-upload-pack"
 #: A superseded or removed version stays this long, longer than any job that could be reading it.
 GRACE_SECONDS = 6 * 3600
 _REMOTE_TIMEOUT_SECONDS = 30
@@ -106,15 +120,67 @@ def _environment() -> dict[str, str]:
 
 
 def _git(*args: str, git_dir: Path | None = None) -> list[str]:
-    """``git`` with only the allowed protocols, no credential helper and nothing to prompt with."""
+    """``git`` with only the allowed protocols, no redirects, no credential helper and nothing to prompt with.
+
+    A redirect is followed by :func:`remote_url` before git runs, where its host is checked.
+    """
 
     command = ["git", "-c", "protocol.allow=never"]
     for protocol in ALLOWED_PROTOCOLS:
         command += ["-c", f"protocol.{protocol}.allow=always"]
-    command += ["-c", "credential.helper=", "-c", "core.askPass="]
+    command += ["-c", "http.followRedirects=false", "-c", "credential.helper=", "-c", "core.askPass="]
     if git_dir is not None:
         command += ["--git-dir", str(git_dir)]
     return [*command, *args]
+
+
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None  # the 3xx is raised as an HTTPError, and read below
+
+
+_OPENER = urllib.request.build_opener(_NoRedirects)
+
+
+def remote_url(url: str) -> str:
+    """Where the repository at ``url`` answers: its host's redirects followed, each to a host a library may use.
+
+    git runs with redirects off, against this url. GitLab, for one, redirects
+    a repository url without ``.git`` to the one with it. A redirect to a host
+    IMPORT_ALLOWED_HOSTS does not list, or to something that is not a
+    repository, fails the fetch. A host that cannot be reached here is left to
+    git, which says why in its own words.
+    """
+
+    current = url
+    for _ in range(_MAX_REDIRECTS):
+        if urlsplit(current).scheme != "https":
+            return current
+        probe = current.rstrip("/") + _UPLOAD_PACK
+        request = urllib.request.Request(probe, method="GET", headers={"User-Agent": "git/2 (KiCad Prism)"})
+        try:
+            with _OPENER.open(request, timeout=_REMOTE_TIMEOUT_SECONDS):
+                return current
+        except urllib.error.HTTPError as error:
+            error.close()
+            location = error.headers.get("Location") if 300 <= error.code < 400 else None
+            if not location:
+                return current
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError):
+            return current
+        target = urljoin(probe, location)
+        host = urlsplit(url).hostname or "the server"
+        if not target.endswith(_UPLOAD_PACK):
+            raise FetchError(f"{host} redirects this library to something that is not a git repository", permanent=True)
+        try:
+            current = kicad_libraries.check_git_url(target.removesuffix(_UPLOAD_PACK))
+        except ValueError as error:
+            raise FetchError(
+                f"{host} redirects this library to {urlsplit(target).hostname or 'another server'}, "
+                f"which libraries may not use: {error}",
+                permanent=True,
+            ) from error
+    raise FetchError(f"{urlsplit(url).hostname or 'The server'} redirects this library too many times", permanent=True)
 
 
 def _last_line(text: str) -> str:
@@ -143,6 +209,7 @@ def _failure(stderr: str, url: str, fallback: str) -> FetchError:
 def resolve_remote(url: str, ref: str) -> str:
     """The commit ``ref`` points at on the remote (a tag's own commit, not the tag object)."""
 
+    url = remote_url(url)
     try:
         done = subprocess.run(
             _git("ls-remote", "--", url, f"refs/tags/{ref}", f"refs/tags/{ref}^{{}}", f"refs/heads/{ref}"),
@@ -177,11 +244,41 @@ def free_bytes(directory: Path) -> int:
     return shutil.disk_usage(probe).free
 
 
-def _require_space(directory: Path) -> None:
-    if free_bytes(directory) < MIN_FREE_BYTES:
+def _require_space(directory: Path, needed: int = 0) -> None:
+    """Refuse to start writing ``needed`` bytes unless the volume keeps MIN_FREE_BYTES besides."""
+
+    free = free_bytes(directory)
+    if free < MIN_FREE_BYTES:
         raise FetchError(
             f"Less than {MIN_FREE_BYTES // 1024**3} GB free where the libraries are stored; free some space"
         )
+    if needed and free - needed < _RESERVE_BYTES:
+        raise FetchError(f"The library needs {_gb(needed)} and there is not that much free space; free some space")
+
+
+def _gb(size: int) -> str:
+    return f"{size / 1024**3:.1f} GB"
+
+
+def max_bytes() -> int:
+    """The most one fetch of a library may write: PRISM_KICAD_LIBRARY_MAX_GB."""
+
+    return settings.PRISM_KICAD_LIBRARY_MAX_GB * 1024**3
+
+
+def _too_large(size: int | None = None) -> FetchError:
+    found = f"is {_gb(size)}" if size is not None else "is larger than that"
+    return FetchError(
+        f"A library may be at most {settings.PRISM_KICAD_LIBRARY_MAX_GB} GB (PRISM_KICAD_LIBRARY_MAX_GB); this one {found}",
+        permanent=True,
+    )
+
+
+def _check_room(directory: Path) -> None:
+    """Stop a write that is running the volume out of space."""
+
+    if free_bytes(directory) < _RESERVE_BYTES:
+        raise FetchError("The volume ran out of space while the library was being fetched")
 
 
 def _run_streaming(
@@ -191,7 +288,12 @@ def _run_streaming(
     on_tick: Callable[[], None],
     cwd: Path | None = None,
 ) -> tuple[int, str]:
-    """Run a git command, reading its progress from stderr; returns (exit code, its last lines of stderr)."""
+    """Run a git command, reading its progress from stderr; returns (exit code, its last lines of stderr).
+
+    ``on_tick`` runs every _TICK_SECONDS whether or not git prints anything, so
+    a check it makes (cancellation, free space, size) is never held up by a
+    quiet download.
+    """
 
     process = subprocess.Popen(
         command,
@@ -203,19 +305,38 @@ def _run_streaming(
         **group_popen_kwargs(),
     )
     assert process.stderr is not None
+    lines: queue.Queue[str | None] = queue.Queue()
+
+    def read(stream: Any) -> None:
+        try:
+            # git redraws a progress line with carriage returns; read it as lines of either kind.
+            for chunk in stream:
+                for line in chunk.replace("\r", "\n").splitlines():
+                    lines.put(line)
+        except (OSError, ValueError):
+            pass  # the pipe closed under a killed process
+        finally:
+            lines.put(None)
+
+    reader = threading.Thread(target=read, args=(process.stderr,), name="git-progress", daemon=True)
+    reader.start()
     tail: deque[str] = deque(maxlen=20)
     last, ticked = -1, time.monotonic()
     try:
-        # git redraws a progress line with carriage returns; read it as lines of either kind.
-        for chunk in process.stderr:
-            for line in chunk.replace("\r", "\n").splitlines():
-                percent = progress_of(line)
-                if percent is not None:
-                    if percent != last:
-                        last = percent
-                        on_progress(percent)
-                elif line.strip():
-                    tail.append(line.strip())
+        while True:
+            try:
+                line = lines.get(timeout=_TICK_SECONDS)
+            except queue.Empty:
+                line = ""
+            if line is None:
+                break
+            percent = progress_of(line)
+            if percent is not None:
+                if percent != last:
+                    last = percent
+                    on_progress(percent)
+            elif line.strip():
+                tail.append(line.strip())
             if time.monotonic() - ticked >= _TICK_SECONDS:
                 ticked = time.monotonic()
                 on_tick()
@@ -224,6 +345,8 @@ def _run_streaming(
         kill_tree(process)
         process.wait()
         raise
+    finally:
+        reader.join(timeout=5)
 
 
 def _ensure_store(store: Path) -> None:
@@ -249,15 +372,28 @@ def fetch_into_store(
     on_progress: Callable[[int], None] = lambda percent: None,
     on_tick: Callable[[], None] = lambda: None,
 ) -> None:
-    """Make ``commit`` present in the library's object store, downloading only what it adds."""
+    """Make ``commit`` present in the library's object store, downloading only what it adds.
+
+    On every tick the download is stopped if the volume runs short of space or
+    the store has grown by more than a library may be.
+    """
 
     store = library.clone_dir / _STORE
     _ensure_store(store)
     if not _has_commit(store, commit):
         _require_space(library.clone_dir)
+        url = remote_url(library.git)
+        start, limit = folder_size(store), max_bytes()
+
+        def tick() -> None:
+            on_tick()
+            _check_room(library.clone_dir)
+            if folder_size(store) - start > limit:
+                raise _too_large()
+
         flags = ["--depth", "1", "--no-tags", "--no-write-fetch-head", "--progress"]
         code, tail = _run_streaming(
-            _git("fetch", *flags, "--", library.git, commit, git_dir=store), on_progress=on_progress, on_tick=on_tick
+            _git("fetch", *flags, "--", url, commit, git_dir=store), on_progress=on_progress, on_tick=tick
         )
         if code != 0 or not _has_commit(store, commit):
             # A remote that will not serve a commit by its id: take the ref, as a branch and then as a tag
@@ -268,9 +404,9 @@ def fetch_into_store(
                 f"+refs/tags/{library.ref}:refs/prism/fetching/tag",
             ):
                 code, tail = _run_streaming(
-                    _git("fetch", *flags, "--", library.git, spec, git_dir=store),
+                    _git("fetch", *flags, "--", url, spec, git_dir=store),
                     on_progress=on_progress,
-                    on_tick=on_tick,
+                    on_tick=tick,
                 )
                 fetched = fetched or code == 0
                 if _has_commit(store, commit):
@@ -313,6 +449,43 @@ def _checked_member(member: tarfile.TarInfo) -> tarfile.TarInfo | None:
     return member
 
 
+def tree_bytes(library: kicad_libraries.Library, commit: str) -> int:
+    """The bytes ``commit``'s library folder holds, read from the store before anything is written."""
+
+    command = _git("ls-tree", "-r", "-l", "-z", commit, git_dir=library.clone_dir / _STORE)
+    if library.subdir:
+        command += ["--", library.subdir]
+    done = subprocess.run(command, capture_output=True, env=_environment())
+    if done.returncode != 0:
+        raise FetchError(f"Could not read the library's files: {_last_line(done.stderr.decode('utf-8', 'replace'))}")
+    total = 0
+    for entry in done.stdout.split(b"\0"):
+        fields = entry.split(b"\t", 1)[0].split()
+        if len(fields) == 4 and fields[1] == b"blob" and fields[3].isdigit():
+            total += int(fields[3])
+    return total
+
+
+def _write_member(archive: tarfile.TarFile, member: tarfile.TarInfo, destination: Path, check: Callable[[int], None]) -> None:
+    """Write one checked member below ``destination``, streamed, calling ``check`` with each chunk's size."""
+
+    parts = PurePosixPath(member.name).parts
+    if not parts:
+        return
+    target = destination.joinpath(*parts)
+    if member.isdir():
+        target.mkdir(parents=True, exist_ok=True)
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source = archive.extractfile(member)
+    if source is None:
+        return
+    with source, target.open("wb") as writer:
+        while chunk := source.read(_CHUNK):
+            check(len(chunk))
+            writer.write(chunk)
+
+
 def extract_version(
     library: kicad_libraries.Library,
     commit: str,
@@ -320,8 +493,18 @@ def extract_version(
     *,
     on_tick: Callable[[], None] = lambda: None,
 ) -> int:
-    """Write ``commit``'s library folder into ``destination``; returns the bytes written."""
+    """Write ``commit``'s library folder into ``destination``; returns the bytes written.
 
+    Refused before anything is written when the folder is larger than a
+    library may be or than the volume has room for. While it is written, the
+    size and the free space are checked as each file streams, so one large
+    file cannot fill the volume either.
+    """
+
+    needed, limit = tree_bytes(library, commit), max_bytes()
+    if needed > limit:
+        raise _too_large(needed)
+    _require_space(destination.parent, needed)
     store = library.clone_dir / _STORE
     command = _git("archive", "--format=tar", commit, git_dir=store)
     if library.subdir:
@@ -330,7 +513,20 @@ def extract_version(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_environment(), **group_popen_kwargs()
     )
     assert process.stdout is not None and process.stderr is not None
-    total, ticked = 0, time.monotonic()
+    written = {"total": 0, "since_space": 0, "ticked": time.monotonic()}
+
+    def check(size: int) -> None:
+        written["total"] += size
+        written["since_space"] += size
+        if written["total"] > limit:
+            raise _too_large()
+        if written["since_space"] >= _SPACE_EVERY:
+            written["since_space"] = 0
+            _check_room(destination)
+        if time.monotonic() - written["ticked"] >= _TICK_SECONDS:
+            written["ticked"] = time.monotonic()
+            on_tick()
+
     try:
         destination.mkdir(parents=True)
         unreadable = False
@@ -338,18 +534,9 @@ def extract_version(
             with tarfile.open(fileobj=process.stdout, mode="r|") as archive:
                 for member in archive:
                     allowed = _checked_member(member)
-                    if allowed is None:
-                        continue
-                    if hasattr(tarfile, "data_filter"):
-                        archive.extract(allowed, destination, set_attrs=False, filter="data")
-                    else:  # pragma: no cover - Python without extraction filters
-                        archive.extract(allowed, destination, set_attrs=False)
-                    total += allowed.size if allowed.isreg() else 0
-                    if time.monotonic() - ticked >= _TICK_SECONDS:
-                        ticked = time.monotonic()
-                        on_tick()
-                        if free_bytes(destination) < MIN_FREE_BYTES // 4:
-                            raise FetchError("The volume ran out of space while the library was being written")
+                    if allowed is not None:
+                        _write_member(archive, allowed, destination, check)
+                    check(0)
         except tarfile.ReadError:
             # git wrote no archive: its own exit status says why.
             unreadable = True
@@ -366,7 +553,7 @@ def extract_version(
         process.wait()
         remove_tree(destination, ignore_errors=True)
         raise
-    return total
+    return int(written["total"])
 
 
 def lfs_pointers(folder: Path) -> list[tuple[Path, str, int]]:
@@ -403,7 +590,7 @@ def _copy_verified(source: Path, target: Path, sha: str, size: int) -> bool:
         if source.is_symlink() or not source.is_file() or source.stat().st_size != size:
             return False
         with source.open("rb") as reader, temp.open("wb") as writer:
-            while chunk := reader.read(1024 * 1024):
+            while chunk := reader.read(_CHUNK):
                 digest.update(chunk)
                 writer.write(chunk)
         if digest.hexdigest() != sha:
@@ -416,6 +603,31 @@ def _copy_verified(source: Path, target: Path, sha: str, size: int) -> bool:
         return False
 
 
+def _place_verified(source: Path, target: Path, sha: str, size: int, placed: dict[str, Path]) -> bool:
+    """Put one LFS object over its pointer, only if its bytes are the ones the pointer names.
+
+    The object is moved out of the store, so the volume never holds it twice;
+    a second pointer to the same object gets a copy of the first.
+    """
+
+    if sha in placed:
+        return _copy_verified(placed[sha], target, sha, size)
+    digest = hashlib.sha256()
+    try:
+        if source.is_symlink() or not source.is_file() or source.stat().st_size != size:
+            return False
+        with source.open("rb") as reader:
+            while chunk := reader.read(_CHUNK):
+                digest.update(chunk)
+        if digest.hexdigest() != sha:
+            return False
+        os.replace(source, target)
+    except OSError:
+        return False
+    placed[sha] = target
+    return True
+
+
 def hydrate_lfs(
     library: kicad_libraries.Library,
     commit: str,
@@ -423,15 +635,20 @@ def hydrate_lfs(
     *,
     on_progress: Callable[[int], None] = lambda percent: None,
     on_tick: Callable[[], None] = lambda: None,
+    already: int = 0,
 ) -> int:
     """Replace the Git LFS pointers in an extracted version with their files; returns how many.
 
     Model libraries often keep STEP and WRL files in LFS, and ``git archive``
     writes the pointers. KiCad cannot read a pointer, yet the file exists, so
     nothing would report the model missing. The objects are downloaded into the
-    store, copied over their pointers once verified, then dropped from the
-    store: the version folder is what is kept. A pointer left over fails the
-    fetch, and the version served before keeps serving.
+    store, moved over their pointers once verified, then the rest is dropped
+    from the store: the version folder is what is kept. A pointer left over
+    fails the fetch, and the version served before keeps serving.
+
+    ``already`` is what the extraction wrote: with the sizes the pointers name,
+    it is checked against the library's limit before anything is downloaded,
+    and the download is stopped if it outgrows that or the volume's free space.
     """
 
     pointers = lfs_pointers(folder)
@@ -442,29 +659,41 @@ def hydrate_lfs(
             f"{len(pointers)} files in this library are stored with Git LFS, and git-lfs is not installed on the server",
             permanent=True,
         )
+    needed, limit = sum(size for _path, _sha, size in pointers), max_bytes()
+    if already + needed > limit:
+        raise _too_large(already + needed)
     store = library.clone_dir / _STORE
-    _require_space(library.clone_dir)
+    _require_space(library.clone_dir, needed)
+    downloads = store / _LFS_DIR
 
     def tick() -> None:
         on_tick()
-        if free_bytes(library.clone_dir) < MIN_FREE_BYTES // 4:
-            raise FetchError("The volume ran out of space while the library's LFS files were downloaded")
+        _check_room(library.clone_dir)
+        if already + folder_size(downloads) > limit:
+            raise _too_large()
 
+    url = remote_url(library.git)
     # The endpoint is given here, so a .lfsconfig in the repository cannot send git-lfs to another server.
     command = _git(
-        "-c", f"remote.origin.url={library.git}", "-c", f"lfs.url={lfs_endpoint(library.git)}",
+        "-c", f"remote.origin.url={url}", "-c", f"lfs.url={lfs_endpoint(url)}",
         "lfs", "fetch", "origin", commit, git_dir=store,
     )
     if library.subdir:
         command += ["--include", f"{library.subdir.rstrip('/')}/**"]
-    code, tail = _run_streaming(command, on_progress=on_progress, on_tick=tick)
-    if code != 0:
-        raise _failure(tail, library.git, "git lfs fetch failed")
-    objects = store / _LFS_DIR / "objects"
-    missing = [
-        path for path, sha, size in pointers if not _copy_verified(objects / sha[:2] / sha[2:4] / sha, path, sha, size)
-    ]
-    remove_tree(store / _LFS_DIR, ignore_errors=True)
+    try:
+        code, tail = _run_streaming(command, on_progress=on_progress, on_tick=tick)
+        if code != 0:
+            raise _failure(tail, library.git, "git lfs fetch failed")
+        objects = downloads / "objects"
+        placed: dict[str, Path] = {}
+        missing = []
+        for path, sha, size in pointers:
+            if sha in placed:
+                _check_room(library.clone_dir)
+            if not _place_verified(objects / sha[:2] / sha[2:4] / sha, path, sha, size, placed):
+                missing.append(path)
+    finally:
+        remove_tree(downloads, ignore_errors=True)
     if missing:
         raise FetchError(f"{len(missing)} of the library's {len(pointers)} Git LFS files could not be downloaded")
     return len(pointers)
@@ -488,9 +717,12 @@ def _write_published(library: kicad_libraries.Library, commit: str, directory: s
 
 
 def publish(library: kicad_libraries.Library, commit: str, directory: str) -> None:
-    """Serve ``directory`` as the library's version from now on; the one it replaces starts its grace period."""
+    """Serve ``directory`` as the library's version from now on; the one it replaces starts its grace period.
 
-    before = library.published()
+    The one it replaces may have come from another source (the name was declared again): it goes too.
+    """
+
+    before = library.last_published()
     _write_published(library, commit, directory)
     (library.clone_dir / _REMOVED_FILE).unlink(missing_ok=True)
     (library.clone_dir / f"{directory}{_SUPERSEDED}").unlink(missing_ok=True)
@@ -518,12 +750,12 @@ def fetch_version(
         on_progress(85)
         partial = target.with_name(directory + ".partial")
         remove_tree(partial, ignore_errors=True)
-        extract_version(library, commit, partial, on_tick=on_tick)
+        written = extract_version(library, commit, partial, on_tick=on_tick)
         if library.subdir and not (partial / library.subdir).is_dir():
             remove_tree(partial, ignore_errors=True)
             raise FetchError(f"The repository has no folder {library.subdir!r} at this commit", permanent=True)
         try:
-            hydrate_lfs(library, commit, partial, on_progress=on_progress, on_tick=on_tick)
+            hydrate_lfs(library, commit, partial, on_progress=on_progress, on_tick=on_tick, already=written)
         except BaseException:
             remove_tree(partial, ignore_errors=True)
             raise
@@ -644,6 +876,7 @@ def sweep(
     *,
     grace: float = GRACE_SECONDS,
     declared: Iterable[str] | None = None,
+    only: str | None = None,
 ) -> list[str]:
     """Delete what the grace period has passed on: superseded versions, removed libraries, stale partials.
 
@@ -652,7 +885,9 @@ def sweep(
     git prunes them a day later. ``declared`` is every library name the
     database holds, read just now: only a folder whose name is not there is a
     removed library. A declared library whose row no longer validates (a host
-    the server stopped allowing) is left as it is. Returns the paths removed.
+    the server stopped allowing) is left as it is. ``only`` limits the pass to
+    one library's folder: the sweep job holds that library's lock. Returns the
+    paths removed.
     """
 
     root = kicad_libraries.libraries_root()
@@ -661,7 +896,8 @@ def sweep(
         return removed
     valid = {library.name: library for library in kicad_libraries.configured()[0]}
     names = set(valid) if declared is None else set(declared)
-    for library_dir in sorted(p for p in root.iterdir() if p.is_dir() and kicad_libraries._NAME.fullmatch(p.name)):
+    folders = sorted(p for p in root.iterdir() if p.is_dir() and kicad_libraries._NAME.fullmatch(p.name))
+    for library_dir in (p for p in folders if only is None or p.name == only):
         library = valid.get(library_dir.name)
         if library is None and library_dir.name in names:
             continue
@@ -693,9 +929,11 @@ def sweep(
     return removed
 
 
-def _prune_store(store: Path, keep: set[str]) -> None:
+def _dropped_refs(store: Path, keep: set[str]) -> list[str]:
+    """The store's refs a sweep removes: a fetch's temporary ones, and kept versions no longer recorded."""
+
     if not (store / "HEAD").is_file():
-        return
+        return []
     listed = subprocess.run(
         _git("for-each-ref", "--format=%(refname)", _KEEP_REF, "refs/prism/fetching/", git_dir=store),
         capture_output=True,
@@ -703,13 +941,77 @@ def _prune_store(store: Path, keep: set[str]) -> None:
         env=_environment(),
     )
     # A fetch's own temporary refs are done with once it published; the kept versions are the recorded ones.
-    dropped = [
+    return [
         ref for ref in listed.stdout.split() if not ref.startswith(_KEEP_REF) or ref.removeprefix(_KEEP_REF) not in keep
     ]
+
+
+def _prune_store(store: Path, keep: set[str]) -> None:
+    dropped = _dropped_refs(store, keep)
     for ref in dropped:
         subprocess.run(_git("update-ref", "-d", ref, git_dir=store), capture_output=True, env=_environment())
     if dropped:
         subprocess.run(_git("gc", "-q", "--prune=1.day.ago", git_dir=store), capture_output=True, env=_environment())
+
+
+def run_sweep_job(context: JobContext) -> JobResult:
+    """One library's sweep, under its lock, so it never prunes a store a fetch is writing."""
+
+    name = str(context.job["payload"].get("name") or "")
+    if not name or not kicad_libraries._NAME.fullmatch(name):
+        return JobResult(message="Nothing to sweep")
+    # The names come from the database read here, never from a cache that may be empty
+    # because the database was unreachable: a folder is only removed if its row is gone.
+    names = [row["name"] for row in kicad_library_store.declared()]
+    keep = {name: [version["commit"] for version in kicad_library_store.versions(name)]} if name in names else {}
+    removed = sweep(keep, declared=names, only=name)
+    if removed:
+        logger.info("KiCad library sweep removed %s", ", ".join(removed))
+    return JobResult(message=f"Swept {name}", details={"removed": len(removed)})
+
+
+def _needs_sweep(
+    library_dir: Path, library: kicad_libraries.Library | None, declared: bool, keep: set[str], grace: float = GRACE_SECONDS
+) -> bool:
+    """Whether a sweep of this folder would change anything; read only, so it needs no lock."""
+
+    if library is None:
+        if declared:
+            return False  # a declared row that no longer validates is left alone
+        age = _age(library_dir / _REMOVED_FILE)
+        return age is None or age > grace
+    published = library.published()
+    for entry in library_dir.iterdir():
+        if entry.name.endswith(".partial") and entry.is_dir() and time.time() - entry.stat().st_mtime > grace:
+            return True
+        if entry.name.endswith(_SUPERSEDED):
+            directory = entry.name[: -len(_SUPERSEDED)]
+            age = _age(entry)
+            if (published is not None and published.directory == directory) or (age is not None and age > grace):
+                return True
+    return bool(_dropped_refs(library_dir / _STORE, keep | ({published.commit} if published else set())))
+
+
+def request_sweeps(*, grace: float = GRACE_SECONDS) -> list[str]:
+    """Queue a sweep of every library folder with something to remove; returns their names. For the worker's upkeep.
+
+    A library with nothing to sweep costs no job; one already queued is not queued twice.
+    """
+
+    root = kicad_libraries.libraries_root()
+    if not root.is_dir():
+        return []
+    declared = {row["name"] for row in kicad_library_store.declared()}
+    kicad_libraries.forget_rows()
+    valid = {library.name: library for library in kicad_libraries.configured()[0]}
+    queued = []
+    for library_dir in sorted(p for p in root.iterdir() if p.is_dir() and kicad_libraries._NAME.fullmatch(p.name)):
+        name = library_dir.name
+        keep = {version["commit"] for version in kicad_library_store.versions(name)} if name in valid else set()
+        if _needs_sweep(library_dir, valid.get(name), name in declared, keep, grace):
+            SWEEP.enqueue({"name": name}, subject=_subject(name), artifact_key=f"{SWEEP_KIND}:{name}", requested_by="upkeep")
+            queued.append(name)
+    return queued
 
 
 def _subject(name: str) -> JobSubject:
@@ -741,7 +1043,8 @@ def check_remote(url: str, ref: str = "") -> dict[str, Any]:
     url = url.strip()
     try:
         kicad_libraries.check_git_url(url)
-    except ValueError as error:
+        url = remote_url(url)
+    except (ValueError, FetchError) as error:
         return {"reachable": False, "error": str(error)}
     try:
         done = subprocess.run(
@@ -817,4 +1120,5 @@ FETCH = JobKind(
     max_attempts=3,
 )
 REMOVE = JobKind(REMOVE_KIND, run_remove_job, lock=subject_lock("write"), priority=PRIORITY, max_attempts=2)
-JOB_KINDS = (FETCH, REMOVE)
+SWEEP = JobKind(SWEEP_KIND, run_sweep_job, lock=subject_lock("write"), priority=PRIORITY, max_attempts=1)
+JOB_KINDS = (FETCH, REMOVE, SWEEP)
