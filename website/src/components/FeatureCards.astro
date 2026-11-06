@@ -9,6 +9,7 @@ import commenting from '../assets/screenshots/comment-marker.jpg';
 import releasing from '../assets/screenshots/release-studio-readme.jpg';
 import automating from '../assets/screenshots/mcp-claude-code.jpg';
 import library from '../assets/screenshots/library-manager.jpg';
+import supplying from '../assets/screenshots/supply-dashboard.png';
 import simulating from '../assets/screenshots/sim-thumb.jpg';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -19,8 +20,9 @@ const cards = [
 	{ ref: 'U3', path: 'use/comments', title: 'Comments that stay put', text: 'Pinned to a part, a net or an area at an exact commit, with class, severity and replies.', image: commenting, focus: '50% 45%', zoom: 1.35 },
 	{ ref: 'U4', path: 'use/release-studio', title: 'From commit to release', text: 'Jobset outputs, a release dossier and sign-off before anything reaches the fab.', image: releasing, focus: '55% 50%', zoom: 1.45 },
 	{ ref: 'U5', path: 'use/library-manager', title: 'One library across repos', text: 'Reviewed, immutable part revisions your designers place straight into KiCad.', image: library, focus: '42% 35%', zoom: 1.8 },
-	{ ref: 'U6', path: 'use/simulation-studio', title: 'Simulation Studio', text: 'DC IR drop on the real copper, rail by rail.', image: simulating, focus: '50% 50%', zoom: 1, tag: 'Experimental' },
-	{ ref: 'U7', path: 'automate/overview', title: 'Built for AI agents and automation', text: 'An MCP server lets Claude Code and other agents search projects, compare revisions, leave review comments and take a new part to QA review, as you and within your permissions. The same work is open to scripts and CI through the API, SDK, CLI and webhooks.', image: automating, focus: '40% 45%', zoom: 1, wide: true },
+	{ ref: 'U6', path: 'use/supply', title: 'Supply, before it stops a build', text: 'Stock, price and lifecycle for your library parts, with a warning before one runs out and a check on whether a project can be built.', image: supplying, focus: '30% 25%', zoom: 1.3 },
+	{ ref: 'U7', path: 'use/simulation-studio', title: 'Simulation Studio', text: 'DC IR drop on the real copper, rail by rail.', image: simulating, focus: '50% 50%', zoom: 1, tag: 'Experimental' },
+	{ ref: 'U8', path: 'automate/overview', title: 'Built for AI agents and automation', text: 'An MCP server lets Claude Code and other agents search projects, compare revisions, leave review comments and take a new part to QA review, as you and within your permissions. The same work is open to scripts and CI through the API, SDK, CLI and webhooks.', image: automating, focus: '40% 45%', zoom: 1, wide: true },
 ];
 ---
 
@@ -74,14 +76,12 @@ const cards = [
 	.card:hover {
 		background: var(--prism-card-hover);
 	}
-	/* The automation card spans the row: picture left, words right. */
-	.card.wide {
-		grid-column: 1 / -1;
-	}
+	/* The automation card spans two columns beside the last card: picture left, words right. */
 	@media (min-width: 64rem) {
 		.card.wide {
+			grid-column: span 2;
 			display: grid;
-			grid-template-columns: 2fr 1fr;
+			grid-template-columns: 1fr 1fr;
 			grid-template-rows: auto 1fr;
 		}
 		.card.wide .meta {
@@ -89,17 +89,16 @@ const cards = [
 		}
 		.card.wide .crop {
 			margin-bottom: 1.1rem;
-			aspect-ratio: 2 / 1;
 		}
 		.card.wide .text {
 			align-content: center;
 			padding: 0 1.5rem 1.1rem 0.75rem;
 		}
 		.card.wide .text strong {
-			font-size: 1.35rem;
+			font-size: 1.2rem;
 		}
 		.card.wide .text span {
-			font-size: 0.98rem;
+			font-size: 0.92rem;
 		}
 	}
 	.meta {
