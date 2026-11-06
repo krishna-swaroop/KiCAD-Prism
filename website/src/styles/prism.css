@@ -68,6 +68,12 @@
 .sl-markdown-content h2 {
 	font-size: 1.6rem;
 }
+/* Sub-subsections read as labels: close to body size, semibold. */
+.sl-markdown-content h4 {
+	font-size: 1.05rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
 .site-title {
 	font-weight: 600;
 	letter-spacing: -0.01em;

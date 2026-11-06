@@ -8,7 +8,8 @@ sidebar:
 This page explains where each supply figure comes from, so you can tell what a
 number means and when to trust it. Every screen, the KiCad panel and the
 exports use the same rules. The screens themselves are described in
-[Track supply](/KiCAD-Prism/use/supply/).
+[Track supply](/KiCAD-Prism/use/supply/) and
+[Supply for a part](/KiCAD-Prism/use/supply-components/).
 
 ## A part's status
 
@@ -23,14 +24,14 @@ findings that nobody has waived:
 | **OK** | no finding, or only notes |
 | **No data** | nothing has been read and nothing was found |
 
-**At risk** on the Dashboard and in a project counts Critical and At risk
-parts. Needs attention only needs a look. When distributors disagree about
+**At risk** on the Dashboard and in a project counts Critical and **At risk**
+parts. **Needs attention** only needs a look. When distributors disagree about
 the lifecycle, the part takes the worst one they state.
 
 ### Health checks and the health score
 
 A BOM line and a part sheet also list findings from the health checks. Each
-check has a severity (**Critical**, **Error**, **Warning** or **Note**) an
+check has a severity (Critical, Error, Warning or Note) that an
 administrator can change in
 [**Supply settings → Health checks**](/KiCAD-Prism/admin/supply/#supply-settings);
 the line takes the worst finding nobody has waived. Anyone who can propose
@@ -39,14 +40,14 @@ holds once QA or an administrator approves it.
 
 | Check | Raised when | Default |
 | --- | --- | --- |
-| Obsolete | a distributor says obsolete | Critical |
-| Not found, no stock, not enough stock, not RoHS compliant | as named | Error |
-| Lead time | the shortest quoted lead time is over **Longest lead time (days)** (84) | Warning |
-| Read is late | a reading the stock figures rest on is older than the part's reading interval plus **Read is late after (hours)** (48) | Warning |
-| Single source | only one distributor (one account) has stock, and you have more than one connected | Warning |
-| RoHS disputed | distributors disagree on whether the part is RoHS compliant; the finding names who says what | Warning |
-| Last time buy | the part is at last time buy; an Error within **Last buy date is an error within (days)** (180) of the last date to buy, and once that date has passed, Critical when no distributor has stock | Warning |
-| Price outlier | one of at least three quotes is more than twice, or less than half, the median | Note |
+| **Manufacturer lists it as obsolete** | a distributor says obsolete | Critical |
+| **No distributor carries the part number**, **No distributor has it in stock**, **Stock does not cover the build**, **Not RoHS compliant** | as named | Error |
+| **Lead time over the limit** | the shortest quoted lead time is over **Longest lead time (days)** (84) | Warning |
+| **A read is late** | a reading the stock figures rest on is older than the part's reading interval plus **Read is late after (hours)** (48) | Warning |
+| **Only one distributor has it in stock** | only one distributor (one account) has stock, and you have more than one connected | Warning |
+| **Distributors disagree on RoHS** | distributors disagree on whether the part is RoHS compliant; the finding names who says what | Warning |
+| **Last time buy announced** | the part is at last time buy; an Error within **Last buy date is an error within (days)** (180) of the last date to buy, and once that date has passed, Critical when no distributor has stock | Warning |
+| **A distributor's price is far from the others'** | one of at least three quotes is more than twice, or less than half, the median | Note |
 
 The others are Warnings by default: NRND, every distributor dropped it, stock
 at or below the watch's threshold, could run out soon, likely to run out
@@ -56,7 +57,7 @@ substance, parameter or package mismatch, lifecycle disagreement, and a
 notice or last date to buy saying the part is ending.
 
 The health score runs from 0 to 10 and sits inside its status's band: OK is
-7 to 10, Needs attention 4 to 6.9, At risk 0.1 to 3.9 and Critical 0. Within
+7 to 10, **Needs attention** 4 to 6.9, **At risk** 0.1 to 3.9 and Critical 0. Within
 the band it is lower the worse the part scores on lifecycle, sourcing,
 inventory, market and compliance, and the more findings it has after the
 first. A project's score is the parts' scores weighted by quantity, capped at
@@ -65,7 +66,7 @@ the top of its worst part's band.
 ## Stock
 
 Only listings Prism has matched to the part, or a person has confirmed,
-count. Marketplace offers (third-party sellers on a distributor's site) never
+count. **Marketplace** offers (third-party sellers on a distributor's site) never
 count.
 
 - **Across distributors**, stock adds up. Connectors on one account (the same
@@ -84,7 +85,7 @@ count.
 
 A total is as old as the oldest reading it rests on: when one distributor has
 stock read months ago and another reads zero today, the part shows the old
-date, and the **Read is late** check can fire.
+date, and the **A read is late** check can fire.
 
 Stock history uses the same rules day by day, carrying each listing's last
 reading forward. A listing that disappeared stops counting after its last
@@ -127,7 +128,7 @@ If a part's stock is kept in mixed units, Prism gives no totals for it.
 
 A part is **Short** when its usable stock is less than the build needs. When
 two lines lean on one alternate that can't cover both, both are short. A short
-line makes the build short; otherwise, while any line is unchecked, the answer
+line makes the build short; otherwise, while any line is **unchecked**, the answer
 reads **Unconfirmed**.
 
 ### Spares
@@ -197,7 +198,7 @@ distributor call is made for this.
   medium confidence.
 - **Restock expected.** With two or more restocks, the median gap between
   them; a restock overdue on that gap is **Restock late**.
-- **Often out of stock.** Out of stock on at least 20% of the days on record.
+- **Often out of stock.** **Out of stock** on at least 20% of the days on record.
 - **Unusual drop.** A drop of at least 70% from at least 50 pieces within
   three days, with the same listings.
 - **Price change.** The cheapest price now against 30 days ago, from readings
@@ -255,12 +256,12 @@ are worded **Almost certain** (90% and over), **Likely** (70%), **Uncertain**
 
 ## Market figures
 
-**Insights → Market** describes your tracked parts as a group, by maker and by
+**Supply → Insights → Market** describes your tracked parts as a group, by maker and by
 category (a group needs at least three parts):
 
 - **Out of stock**: the share of parts with no stock.
 - **Dropped**: the share every distributor lists as discontinued.
-- **Ending**: the share that is NRND, at last time buy or obsolete, among the
+- Ending: the share that is NRND, at last time buy or obsolete, among the
   parts whose lifecycle a distributor states.
 - **Median lead time**: of each part's shortest quoted lead time.
 - **Price index**: 100 on the group's first day, then moved each day by the
@@ -293,15 +294,15 @@ the severity set for that check, and a waived finding raises none.
 A new alert opens only when it is seen on two reads at least 30 minutes
 apart, so one odd reading raises nothing; part lost and change notices open
 at once. An alert resolves by itself when its condition stops holding, and a
-worse severity wakes an acknowledged or snoozed one. A part sheet's bell can
+worse severity wakes an acknowledged or snoozed one. The <svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Alert rules for this part" style="display:inline;margin:0;vertical-align:-0.2em"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg> on a part's sheet can
 switch off most kinds and set its own thresholds.
 
 ## How often parts are read
 
-A part on a tracked project, or watched at **Tier 1**, is read daily. **Tier
-2** parts are read weekly or monthly. A listing that hasn't changed for seven
+A part on a tracked project, or watched at tier 1, is read daily. Tier 2
+parts are read weekly or monthly. A listing that hasn't changed for seven
 reads, and isn't near its threshold, running out or ending, is read half as
-often until it changes. Other parts are read when someone opens them and
+often until it changes. **Other parts** are read when someone opens them and
 their prices are more than a day old, or when someone asks.
 
 When a day's calls can't cover every part due, Prism reads first the parts
