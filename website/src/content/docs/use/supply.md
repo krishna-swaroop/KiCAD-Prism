@@ -70,6 +70,8 @@ reviewed against (**was vs** a part number).
 
 ## A component's Supply tab
 
+![The supply sheet of one part: stock per distributor with a forecast, the price for 100 pieces, and the lifecycle outlook](../../../assets/screenshots/supply-part.png)
+
 The **Supply** tab shows, top to bottom:
 
 - **Parts**: the main part and its alternates, with their approval.
@@ -244,9 +246,17 @@ component's **Supply** tab.
 A work item records a decision about a component or a part before anyone acts
 on it: what is proposed (investigate, find an alternate, not for new designs,
 retire, replace, last time buy), who owns it, the evidence, and when to look
-again. Open one with the clipboard button on a part's sheet, or, for QA and
-administrators, on an ending component. Prism keeps the projects that used the part when the item was
+again. Prism keeps the projects that used the part when the item was
 opened, so the record still names them after the BOMs change.
+
+Open one with the clipboard icon <svg xmlns="http://www.w3.org/2000/svg" width="1.1em" height="1.1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Work item" style="display:inline;vertical-align:-0.2em"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg> (**Work item**). It sits in two places:
+
+- On a part's supply sheet, in the row of icons at the top, to the right of
+  the alert rules, read schedule and datasheet icons. It shows for designers,
+  QA and administrators.
+- On an ending component in the Dashboard's list of ending parts, after
+  **Dismiss**, for QA and administrators. The item starts as **Find an
+  alternate**.
 
 **Supply → Review → Work items** lists them: **Open**, **Mine**,
 **Due** (the recheck date has come), **Done** and **Rejected**. Designers, QA
