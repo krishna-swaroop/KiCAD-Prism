@@ -13,7 +13,6 @@ PostgreSQL with the fence re-validated.
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 from pathlib import Path
 from typing import Any, Mapping
@@ -41,7 +40,7 @@ from app.release_studio.steps import (
     gerber_manifest_gaps,
 )
 from app.release_studio.vendors import resolve_vendor_ids
-from app.services import project_revision
+from app.services import kicad_libraries, project_revision
 from app.services import release_build_attempts as attempts
 from app.services import release_build_failure_evidence as failure_evidence
 from app.services import release_studio_model_inputs as model_inputs
@@ -221,7 +220,7 @@ def prepare_candidate(
         # The cover render and the assembly views inherit this environment, so
         # a model outside the closure is hashed the way they will find it,
         # and staged so they read the bytes that were hashed.
-        model_env=os.environ,
+        model_env=kicad_libraries.current().env(),
         model_stage=model_stage,
         # C3d: the closure's documents and path references come from
         # prism.project.a0, so no KiCad text is parsed in Python.

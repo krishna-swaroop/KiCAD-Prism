@@ -76,16 +76,20 @@ class HlrArgsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root, \
                 mock.patch.object(stage_models.settings, "GEOMETER_EXECUTABLE", "/opt/geometer/geometer"), \
                 mock.patch.object(stage_models.settings, "KICAD_PROJECTS_ROOT", root):
+            stock10, stock9 = str(Path(root) / "3dmodels"), str(Path(root) / "old")
+            os.mkdir(stock10)
+            os.mkdir(stock9)
             args = stage_models.hlr_args({
-                "KICAD10_3DMODEL_DIR": "/usr/share/kicad/3dmodels",
-                "KICAD9_3DMODEL_DIR": "/old",
-                "KICAD10_3DMODEL_DIR_EXTRA": "/ignored",
+                "KICAD10_3DMODEL_DIR": stock10,
+                "KICAD9_3DMODEL_DIR": stock9,
+                "KICAD10_3DMODEL_DIR_EXTRA": stock10,
                 "KICAD8_3DMODEL_DIR": "",
-                "HOME": "/root",
+                "KICAD7_3DMODEL_DIR": "/not/a/folder",
+                "HOME": root,
             })
         self.assertEqual(args, [
             "--geometer", "/opt/geometer/geometer",
             "--hlr-cache", str(Path(root) / ".kicad-prism" / "hlr-cache"),
-            "--model-dir", "KICAD10_3DMODEL_DIR=/usr/share/kicad/3dmodels",
-            "--model-dir", "KICAD9_3DMODEL_DIR=/old",
+            "--model-dir", f"KICAD10_3DMODEL_DIR={stock10}",
+            "--model-dir", f"KICAD9_3DMODEL_DIR={stock9}",
         ])

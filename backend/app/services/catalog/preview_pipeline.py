@@ -37,6 +37,7 @@ from app.services.catalog.preview_files import stored_file
 from app.services.catalog.preview_store import CatalogPreviewStore
 from app.services.catalog.revision_kernel import CatalogRevisionKernel
 from app.services.catalog.runtime import CatalogRuntime
+from app.services.kicad_libraries import NO_LIBRARIES
 from app.services.kicad_tools import KicadTool, ToolError, ToolTimeout, kicad_cli
 
 
@@ -95,7 +96,7 @@ class CatalogPreviewPipeline:
         store: CatalogPreviewStore | None = None,
         kicad: KicadTool | None = None,
     ) -> None:
-        self._kicad = kicad or kicad_cli()
+        self._kicad = kicad or kicad_cli(libraries=NO_LIBRARIES)
         self._catalog_locks = catalog_locks
         self._revision_kernel = revision_kernel
         self._read_models = read_models

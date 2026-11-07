@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from app.core.config import settings
+from app.services import kicad_libraries
 
 #: Bump when the key or the stored payload changes, so old entries stop matching.
 CACHE_VERSION = "board-render-v1"
@@ -95,11 +96,19 @@ def cache_key(
         _board_inputs_digest(board).encode("ascii"),
         *(str(argument).encode("utf-8") for argument in render_args),
     ]
+    # A library's variable is keyed by what the library is, not by where it is
+    # mounted: the same library on another host renders the same bytes. Every
+    # bound variable counts, so a board that uses it re-renders when it changes.
+    bound = {name: binding.fingerprint for name, binding in kicad_libraries.current().bindings.items()}
     for name, value in sorted((environ if environ is not None else os.environ).items()):
-        if value and _KEYED_ENVIRONMENT.fullmatch(name):
+        if name not in bound and value and _KEYED_ENVIRONMENT.fullmatch(name):
             parts.append(b"env")
             parts.append(name.encode("utf-8"))
             parts.append(str(value).encode("utf-8"))
+    for name, fingerprint in sorted(bound.items()):
+        parts.append(b"library")
+        parts.append(name.encode("utf-8"))
+        parts.append(fingerprint.encode("utf-8"))
     return hashlib.sha256(b"\0".join(parts)).hexdigest()
 
 

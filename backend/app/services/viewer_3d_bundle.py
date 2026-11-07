@@ -17,10 +17,13 @@ mesh (the mesh path went at System Builder v2, stage 0):
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from app.services.design_bundle import cli, reader, rows
+from app.services import kicad_libraries
+from app.services.design_bundle import cli, reader, rows, store
 from app.services.design_bundle.manifest import Readiness
 
 STATUS_SCHEMA = "prism.webgpu_3d_status_a0"
@@ -84,6 +87,37 @@ def _job_id(opened: reader.OpenedRevision) -> str | None:
     return str(bundle["job_id"]) if bundle and bundle.get("job_id") else None
 
 
+def _models_tag(opened: reader.OpenedRevision) -> str:
+    """Changes when the parts are exported again with other libraries, so the tab reloads the viewer."""
+
+    stored_as = opened.archive_revision_key or opened.revision_key
+    record = store.read_models_record(opened.project_id, stored_as, opened.generator_digest) if stored_as else None
+    if record is None:
+        return ""
+    return hashlib.sha256(json.dumps(record["variables"], sort_keys=True).encode("utf-8")).hexdigest()[:8]
+
+
+def _variable_report(opened: reader.OpenedRevision) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The path variables the board's models name that this server does not define, and the files missing under those it does.
+
+    From the record the models stage wrote; a bundle with none says nothing.
+    """
+
+    stored_as = opened.archive_revision_key or opened.revision_key
+    record = store.read_models_record(opened.project_id, stored_as, opened.generator_digest) if stored_as else None
+    if record is None:
+        return [], []
+    used = {str(name): int(count) for name, count in (record.get("models") or {}).items()}
+    defined = kicad_libraries.current().fingerprints(used)
+    unresolved = [{"variable": name, "models": count} for name, count in sorted(used.items()) if defined[name] is None]
+    missing = [
+        {"variable": str(name), "models": int(count)}
+        for name, count in sorted((record.get("missing") or {}).items())
+        if int(count) > 0 and defined.get(str(name)) is not None
+    ]
+    return unresolved, missing
+
+
 def _message(view: _View) -> str:
     if view.status == "missing":
         return "This revision has no board"
@@ -104,7 +138,11 @@ def status(project_id: str, commit: str | None, *, requested_by: str = "") -> di
     """The tab's status for ``project_id`` at ``commit``, queueing the bundle's build when it needs one."""
 
     opened = reader.open_revision(project_id, commit, queue=True, requested_by=requested_by)
+    if reader.models_outdated(opened) and reader.refresh_models(opened, requested_by=requested_by):
+        # The board stays on screen: only the parts are exported again.
+        opened = reader.open_revision(project_id, commit, queue=False)
     view = _view(opened)
+    unresolved, missing = _variable_report(opened)
     revision_key = opened.revision_key or ""
     available = view.status == "ready"
     answer: dict[str, Any] = {
@@ -122,9 +160,12 @@ def status(project_id: str, commit: str | None, *, requested_by: str = "") -> di
             "progress": view.progress,
             "available_assets": [name for name, path in MEMBERS.items() if _ready(view, path)],
             # Changes whenever the tab must reload the viewer: a new bundle or a new stage.
-            "revision": f"{opened.bundle_key or revision_key}:{view.stage}",
+            "revision": ":".join(filter(None, [opened.bundle_key or revision_key, view.stage, _models_tag(opened)])),
         },
         "job_id": _job_id(opened),
+        "unresolvedVariables": unresolved,
+        "missingModels": missing,
+        "refreshing": bool(opened.job_active and view.parts is not None and view.parts.state == "ready"),
     }
     message = _message(view)
     if message:

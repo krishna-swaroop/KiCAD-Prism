@@ -31,6 +31,11 @@ class StatusReadiness(WireModel):
     revision: str
 
 
+class VariableCount(WireModel):
+    variable: str
+    models: int
+
+
 class WebGpu3dStatus(WireModel):
     schema_: str = Field(alias="schema", serialization_alias="schema")
     status: str
@@ -45,6 +50,12 @@ class WebGpu3dStatus(WireModel):
     message: Optional[str] = None
     error: Optional[str] = None
     bundle_url: Optional[str] = None
+    # The parts are being exported again because a KiCad library the board uses changed.
+    refreshing: bool = False
+    # KiCad path variables the board's models use that this server does not define, with how many models each.
+    unresolvedVariables: list[VariableCount] = []
+    # Models a defined variable points to that are not in the library, grouped by variable.
+    missingModels: list[VariableCount] = []
 
 
 class DocumentReadiness(WireModel):

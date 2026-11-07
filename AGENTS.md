@@ -103,6 +103,18 @@ stackup and parts GLB) → `frontend/src/components/webgpu-3d-tab.tsx` →
 `kicad-prism-viewer/viewer/src/analytic-board.js` (lowering in workers with the
 WASM build of `native/src/rs/prism-kicad-wasm`)
 
+**Resolve a KiCad path variable**
+`backend/app/api/kicad_libraries_settings.py` (Settings > KiCad libraries) →
+`backend/app/services/kicad_library_store.py` (`ws_kicad_libraries`) →
+`backend/app/services/kicad_library_fetch.py` (fetch by commit, publish, sweep) ·
+`backend/app/services/kicad_library_updates.py` (the scheduled check, started by
+`backend/app/prism_worker.py`) → `backend/app/services/kicad_libraries.py` (the
+snapshot a job pins in `backend/app/job_runner.py`) →
+`backend/app/services/kicad_tools.py` (every KiCad process) ·
+`backend/app/services/kicad_variables.py` (which variables a board names) →
+`backend/app/services/design_bundle/reader.py` (`models_outdated`) →
+`backend/app/services/viewer_3d_bundle.py` (what the 3D tab is told)
+
 **Compare two commits**
 `backend/app/api/design_compare.py` →
 `backend/app/services/design_compare_service.py` (job, cache, status) →

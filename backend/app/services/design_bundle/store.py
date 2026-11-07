@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import json
 import os
 import re
 import shutil
@@ -75,6 +76,41 @@ def archive_path(project_id: str, revision_key: str, generator_digest: str) -> P
 def marker_path(project_id: str, revision_key: str, generator_digest: str) -> Path:
     _checked(project_id, revision_key, generator_digest)
     return revision_dir(project_id, revision_key) / f"{generator_digest}.prism.verified"
+
+
+def models_record_path(project_id: str, revision_key: str, generator_digest: str) -> Path:
+    _checked(project_id, revision_key, generator_digest)
+    return revision_dir(project_id, revision_key) / f"{generator_digest}.models.json"
+
+
+def write_models_record(project_id: str, revision_key: str, generator_digest: str, record: Mapping[str, Any]) -> None:
+    """Record the KiCad path variables a bundle's models were exported with, and what each pointed at.
+
+    The archive format has no place for them, and a board's models resolve
+    through them: a bundle built before a library was ready has a component GLB
+    without that library's models. Best effort: a bundle with no record is
+    judged from its placements, so a failed write never causes a rebuild.
+    """
+
+    path = models_record_path(project_id, revision_key, generator_digest)
+    temp = path.parent / f".{path.name}.prism-kicad-{os.getpid()}-{time.monotonic_ns()}.tmp"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp.write_text(json.dumps(dict(record), sort_keys=True), encoding="utf-8")
+        os.replace(temp, path)
+    except OSError:
+        temp.unlink(missing_ok=True)
+        logger.warning("Could not record the models of bundle %s/%s", project_id, revision_key, exc_info=True)
+
+
+def read_models_record(project_id: str, revision_key: str, generator_digest: str) -> dict[str, Any] | None:
+    """The record written by :func:`write_models_record`, or ``None`` for a bundle with none."""
+
+    try:
+        value = json.loads(models_record_path(project_id, revision_key, generator_digest).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) and isinstance(value.get("variables"), dict) else None
 
 
 def write_marker(archive: Archive, project_id: str, revision_key: str, generator_digest: str) -> None:
@@ -167,6 +203,7 @@ def open_bundle(project_id: str, revision_key: str, generator_digest: str, bundl
 def delete(project_id: str, revision_key: str, generator_digest: str) -> None:
     archive_path(project_id, revision_key, generator_digest).unlink(missing_ok=True)
     marker_path(project_id, revision_key, generator_digest).unlink(missing_ok=True)
+    models_record_path(project_id, revision_key, generator_digest).unlink(missing_ok=True)
     shutil.rmtree(cache_dir(project_id, revision_key, generator_digest), ignore_errors=True)
     _remove_empty(revision_dir(project_id, revision_key))
 
@@ -187,7 +224,7 @@ def remove_other_generators(project_id: str, revision_key: str, keep_digest: str
     if not directory.is_dir():
         return removed
     for item in directory.iterdir():
-        for suffix in (".prism.verified", ".prism"):
+        for suffix in (".models.json", ".prism.verified", ".prism"):
             if item.name.endswith(suffix):
                 digest = item.name[: -len(suffix)]
                 break

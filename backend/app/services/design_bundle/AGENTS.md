@@ -15,7 +15,7 @@ is an ADR amendment.
 | `schemas.py` | Validators for the committed JSON Schema, every schema registered by `$id`. |
 | `archive.py` | The `.prism` reader: bundle-format.md §9, strict zip, bounded inflation, member digests and schemas. |
 | `manifest.py` | Member readiness (§3.3) and the manifest invariants (§3.4). |
-| `store.py` | `.kicad-prism/bundles/<project>/<revision key>/<generator digest>.prism`, its `.prism.verified` marker (step 7 ran once), the unpacked cache, deletion. |
+| `store.py` | `.kicad-prism/bundles/<project>/<revision key>/<generator digest>.prism`, its `.prism.verified` marker (step 7 ran once), the unpacked cache, deletion, and a models record beside the archive: the KiCad path variables the board's models use and what each pointed at when they were exported. |
 | `rows.py` | The commit index, bundle, alias and outcome tables (workspace migrations 100-103 and 118). |
 | `cli.py` | Runs `prism-kicad`: exit codes, stdout validation, timeouts, cancel, peak memory. |
 | `materialize.py`, `kicad_steps.py`, `stage_models.py` | What the job does around the CLI: sources (LFS, gitlinks), the seeded upgrade and its persistent cache, the zone refill and its persistent cache, the component GLB and its persistent cache. `stage_models.py` passes to WP-V1 in Wave 2. |
@@ -25,7 +25,7 @@ is an ADR amendment.
 | `backfill.py`, `retention.py` | The worker's paced prebuild (alias or queue, one build at a time; an interactive request preempts a queued or running backfill build) and bundle retention, which keeps the prebuild set and every aliased archive. |
 | `regenerate.py` | A designer's forced rebuild of one commit's or a whole project's design data, skipping reuse. |
 | `repo_hydration.py` | Submodules and LFS objects for import and sync. |
-| `reader.py` | How a consumer opens a revision's bundle and reads members. A request without a commit reads the checkout's HEAD; a dirty read set is reported through the read's response headers. |
+| `reader.py` | How a consumer opens a revision's bundle and reads members. A request without a commit reads the checkout's HEAD; a dirty read set is reported through the read's response headers. `models_outdated` says the stored parts were exported with other KiCad libraries than are bound now (only the variables the board uses count); `refresh_models` queues the models stage alone over the stored archive. |
 | `consumer.py` | `bundle_read`: a consumer opens its members, or raises the typed pending/failed answer (not a legacy fallback). `bundle_read_if_ready` is Design Comparison's source-tree mode. Every consumer goes through it. |
 | `errors.py` | `DesignDataPending` (HTTP 202) and `DesignDataFailed` (HTTP 422) and the one handler pair `app.main` registers for every design-data route. |
 

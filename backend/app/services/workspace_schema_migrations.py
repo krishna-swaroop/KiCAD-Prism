@@ -62,6 +62,7 @@ from app.services.workspace_migrations import m139_ops_instrumentation
 from app.services.workspace_migrations import m140_ops_workers_settings
 from app.services.workspace_migrations import m141_pg_stat_statements
 from app.services.workspace_migrations import m142_ops_profiles
+from app.services.workspace_migrations import m143_kicad_libraries
 
 
 Migration = Callable[[Any], None]
@@ -120,6 +121,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (140, "ops_workers_settings", m140_ops_workers_settings.migrate),
     (141, "pg_stat_statements", m141_pg_stat_statements.migrate),
     (142, "ops_profiles", m142_ops_profiles.migrate),
+    (143, "kicad_libraries", m143_kicad_libraries.migrate),
 )
 
 # Migrations that a long-lived branch database recorded under an earlier number.

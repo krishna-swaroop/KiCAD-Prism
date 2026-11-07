@@ -289,10 +289,112 @@ Repository URLs that users paste must still not contain credentials.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `KICAD_CLI_PATH` | empty | The `kicad-cli` every KiCad job runs. Empty looks on `PATH`, then in the usual install locations. A set path is used as given. `KICAD_CLI` is accepted as an older name. |
+| `PRISM_KICAD_LIBRARY_MOUNT_ROOT` | empty | A mounted folder that KiCad libraries added as a path in Settings must live under. Empty turns path libraries off; libraries fetched from a repository need no setting. It must not be, hold or sit inside `KICAD_PROJECTS_ROOT`; Prism refuses to start if it does. See [KiCad libraries](#kicad-libraries-and-3d-models). |
+| `PRISM_KICAD_LIBRARY_MAX_GB` | `10` | The largest KiCad library a fetch writes, in GB: the download, and the extracted files with their Git LFS objects. A larger one fails, and the version served before keeps serving. |
 | `PRISM_KICAD_PYTHON` | empty | KiCad's Python, used for zone refills and board upgrades. Empty uses `python.exe` beside `kicad-cli.exe` on Windows, KiCad.app's Python on macOS and `/usr/bin/python3` on Linux. |
 
 The Docker image already has both. Set them only when you run Prism outside
 Docker.
+
+## KiCad libraries and 3D models
+
+A board reaches files outside its repository through KiCad path variables,
+such as `${KICAD10_3DMODEL_DIR}` for KiCad's stock 3D models or
+`${LSF_KICAD_LIB}` for a team's own library. The image defines none of them, so
+a footprint that renders in your local KiCad shows no 3D model in Prism, and a
+drawing sheet kept in a library is missing.
+
+Declare the libraries in **Settings > KiCad libraries** (administrators only).
+Prism fetches each one into the projects volume, once, for the API and every
+worker, and hands the variables to every KiCad process. A folder you set for a
+variable in the server's environment is never overridden by a library. Only
+names a library could bind count, and only when the value is a folder, so a
+model path cannot read the server's settings or secrets.
+
+For each library you give a name, the variables it binds, the repository (an
+`https://` address with no credentials in it), a tag or branch, and optionally a
+folder inside the repository the variables point at. Only repositories you
+declare are fetched; a project cannot make the server clone anything.
+
+A library must be a public `https://` repository. Prism sends it no token and no
+SSH key, so the Git credentials set for project imports do not apply. Its host
+must be in `IMPORT_ALLOWED_HOSTS_STR` when that is set, as for imports; add
+`gitlab.com` for KiCad's stock 3D models. A library whose host the setting
+stops allowing goes out of service and says so in Settings; its files are kept.
+Prism follows a host's redirects itself, and only to hosts the setting allows
+(GitLab redirects an address without `.git` to the one with it).
+
+Files kept in Git LFS are downloaded with the library, so the image needs
+`git-lfs` (the standard image has it). Without it, a library with LFS files
+fails to fetch rather than serving pointers in place of models.
+
+A library may be at most 10 GB, set by `PRISM_KICAD_LIBRARY_MAX_GB`. That covers
+the download, and the extracted files with their LFS objects. A larger one fails
+before its files are written, or while they are, and the version served before
+keeps serving. A fetch also refuses to start with less than 2 GB free on the
+projects volume, and stops below 512 MB.
+
+### Follow or pin
+
+Libraries change on their own schedule, apart from the projects that use them.
+Each library either follows its ref or is pinned:
+
+| Policy | What it does |
+| --- | --- |
+| **Follow** | Checks the tag or branch on a schedule (hourly, every 6 hours, daily or weekly) and fetches the new commit when it moves. The default for a branch. |
+| **Pinned** | Stays at one commit. A moved ref is shown in Settings and nothing is fetched until you update it. The default for a tag. |
+
+Following again fetches where the ref points now, without waiting for the next
+check.
+
+A library follows its own ref, not the commit a project recorded. A project
+that also keeps the library as a submodule records a commit the server does not
+read: the 3D view uses the version the library serves, for older revisions too.
+Pin the library if boards must match a known version.
+
+Follow means the upstream repository decides what this server downloads. Models
+are only read, never run, but KiCad's importers still parse them. Follow only
+repositories you trust as much as your own, and pin third-party ones.
+
+A new version is fetched beside the old one and replaces it in one step, so a
+job reading the old version is not disturbed and a failed update keeps serving.
+Only boards that use a library's variables rebuild their 3D parts, and the 3D
+tab keeps showing the board while they do. Settings lists the versions a
+library has served; **Use this version** pins it at an earlier one, which is the
+way out of a bad upstream commit.
+
+### KiCad's stock 3D models
+
+Add `kicad-packages3d` like any other library:
+
+| Field | Value |
+| --- | --- |
+| Name | `kicad-packages3d` |
+| Repository | `https://gitlab.com/kicad/libraries/kicad-packages3d.git` |
+| Variables | `KICAD10_3DMODEL_DIR` and `KICAD9_3DMODEL_DIR` |
+| Tag | the one matching the image's KiCad, for example `10.0.4` |
+| Policy | Pinned |
+
+The library is several gigabytes and needs outbound access to gitlab.com. Update
+the tag when you update the image's KiCad, in the same maintenance window, so
+boards rebuild once.
+
+### What users see
+
+The 3D tab says when a board names a variable the server does not define ("86
+models use LSF_KICAD_LIB, which this server does not define"), and how many model
+files are missing under a variable that is defined. Administrators see the same
+variables, with the projects that use them, in Settings.
+
+### Folders on the host
+
+Set `PRISM_KICAD_LIBRARY_MOUNT_ROOT` to a mounted folder to allow libraries
+declared as a path under it instead of a repository. Prism does not manage the
+folder; changed files are picked up when you choose **Refresh**.
+
+The mount root must be a folder of its own. If it is `KICAD_PROJECTS_ROOT`, or
+holds it, or sits inside it, the API and the workers refuse to start: a path
+library could otherwise serve another project's repository to every board.
 
 ## Design bundles
 

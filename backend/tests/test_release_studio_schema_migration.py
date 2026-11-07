@@ -1761,6 +1761,7 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 (140, "ops_workers_settings"),
                 (141, "pg_stat_statements"),
                 (142, "ops_profiles"),
+                (143, "kicad_libraries"),
             ],
         )
 

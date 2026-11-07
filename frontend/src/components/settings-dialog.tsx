@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { GitBranch, Copy, Shield, Plus, Trash2, KeyRound, Cpu, Link2, MoreHorizontal, Server, Webhook, type LucideIcon } from "lucide-react";
+import { GitBranch, Copy, Shield, Plus, Trash2, KeyRound, Cpu, Link2, MoreHorizontal, Server, Webhook, Library, type LucideIcon } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -17,6 +17,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CodeHostsSettings } from "@/features/code-hosts/code-hosts-settings";
 import { ConnectedAccounts } from "@/features/code-hosts/connected-accounts";
+import { KicadLibrariesSettings } from "@/features/kicad-libraries/kicad-libraries-settings";
 import { User, UserRole } from "@/types/auth";
 import { fetchApi, readApiError } from "@/lib/api";
 import { changeOwnPassword, fetchAuthConfig } from "@/lib/auth";
@@ -67,6 +68,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
         items: [
             { tab: "code-hosts", label: "Code hosts", icon: Server, adminOnly: true },
             { tab: "git", label: "Git & SSH", icon: GitBranch, adminOnly: true },
+            { tab: "kicad-libraries", label: "KiCad libraries", icon: Library, adminOnly: true },
             { tab: "access", label: "Access control", icon: Shield, adminOnly: true },
         ],
     },
@@ -138,6 +140,7 @@ export function SettingsDialog({ open, onOpenChange, user, initialTab }: Setting
                     {activeTab === "code-hosts" && isAdmin && (
                         <CodeHostsSettings />
                     )}
+                    {activeTab === "kicad-libraries" && isAdmin && <KicadLibrariesSettings />}
                     {activeTab === "git" && isAdmin && <GitSettings user={user} />}
                     {activeTab === "access" && isAdmin && <AccessControlSettings isAdmin={isAdmin} currentUser={user} />}
                 </div>

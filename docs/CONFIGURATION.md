@@ -137,6 +137,12 @@ these only for a host run or a pinned install:
 # kicad-cli. Empty: PATH, then the usual KiCad install locations.
 # A set path is used as given, with no fallback. KICAD_CLI is a legacy name.
 KICAD_CLI_PATH=
+# A mounted folder that libraries added as a path in Settings > KiCad libraries must
+# live under. Empty: path libraries are off; libraries fetched from git need no setting.
+# It must not be, hold or sit inside KICAD_PROJECTS_ROOT; Prism refuses to start if it does.
+PRISM_KICAD_LIBRARY_MOUNT_ROOT=
+# Largest library a fetch writes, in GB (the download, and the files with their LFS objects).
+PRISM_KICAD_LIBRARY_MAX_GB=10
 ```
 
 Each kicad-cli run gets its own temporary directory (KiCad's instance lock)
