@@ -298,6 +298,7 @@ class AuditVerification(TypedDict, total=False):
 class AuthConfig(TypedDict, total=False):
     """Authentication configuration exposed to frontend."""
     auth_enabled: bool
+    comment_live_enabled: bool
     dev_mode: bool
     oidc_enabled: bool
     oidc_provider_name: str
