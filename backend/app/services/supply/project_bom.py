@@ -59,6 +59,21 @@ def existing_index(project: Any, commit: str | None = None) -> Mapping[str, Any]
         return None
 
 
+def index_failed(project: Any) -> bool:
+    """Whether the project's semantic index ended failed, rather than still being prepared."""
+
+    from app.services import semantic_index_service
+    from app.services.design_bundle.errors import DesignDataFailed
+
+    try:
+        semantic_index_service.get_index(project)
+    except DesignDataFailed:
+        return True
+    except Exception:  # noqa: BLE001 - pending or unreadable is still to come, not a failure
+        return False
+    return False
+
+
 def queue_index(project_id: str, requested_by: str = "supply") -> None:
     """Queue the project's design bundle, which holds its semantic index."""
 
@@ -86,23 +101,27 @@ def read(
     existing: Callable[[Any], Mapping[str, Any] | None] = existing_index,
     queue: Callable[[str], None] = queue_index,
     identities: Any = None,
+    failed: Callable[[Any], bool] = index_failed,
 ) -> str:
     """Read a project's BOM into usage. ``reading`` when its newest revision has no index yet and one was queued (or was
-    queued lately); otherwise what ``usage.refresh_one`` says."""
+    queued lately); ``without_index`` once the index ended failed (a terminal state, retried after ``REQUEUE_AFTER``);
+    otherwise what ``usage.refresh_one`` says."""
 
     project_id = str(project.id)
     status = usage.refresh_one(conn, project, existing, now, roles, identities if identities is not None else _identities())
     if status != "without_index":
         _queued_at.pop(project_id, None)
         return status
+    index_failed_now = failed(project)
     last = _queued_at.get(project_id)
     if last is None or time.monotonic() - last >= REQUEUE_AFTER:
         _queued_at[project_id] = time.monotonic()
         try:
             queue(project_id)
         except Exception:  # noqa: BLE001 - a project that cannot be queued is tried again later
+            _queued_at.pop(project_id, None)
             logging.getLogger(__name__).info("Index not queued for %s", project_id, exc_info=True)
-    return "reading"
+    return "without_index" if index_failed_now else "reading"
 
 
 def _event(conn, project: Any, roles: Sequence[str], before: Mapping[str, tuple[str, str]], after: Mapping[str, tuple[str, str]], now: datetime) -> None:
@@ -124,6 +143,7 @@ def refresh_tracked(
     conn, now: datetime, *, force: bool = False, projects: Projects = _workspace_projects,
     existing: Callable[[Any], Mapping[str, Any] | None] = existing_index,
     queue: Callable[[str], None] = queue_index, identities: Any = None,
+    failed: Callable[[Any], bool] = index_failed,
 ) -> dict[str, int]:
     """Read every tracked project's BOM again, at most every ``REFRESH_EVERY``, and record what changed."""
 
@@ -139,7 +159,7 @@ def refresh_tracked(
     for project, roles in found:
         variants = list(tracked[str(project.id)]["variants"])
         before = _lines(conn, str(project.id), variants)
-        status = read(conn, project, roles, now, existing=existing, queue=queue, identities=identities)
+        status = read(conn, project, roles, now, existing=existing, queue=queue, identities=identities, failed=failed)
         counts[status] = counts.get(status, 0) + 1
         if status == "updated":
             _event(conn, project, roles, before, _lines(conn, str(project.id), variants), now)
