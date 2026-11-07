@@ -296,10 +296,45 @@ class PipelineTracker:
         self._progress(**kwargs)
 
 
+def settle_pipeline_steps(pipeline: Mapping[str, Any] | None, status: str) -> bool:
+    """End the steps a dead build left open; whether anything changed.
+
+    The step that was running takes ``status`` (``failure`` or ``cancelled``);
+    steps that never started become ``cancelled`` whatever the job's end, so one
+    failed step does not read as dozens. Each job's status is then recomputed
+    from its steps, keeping a real ``failure`` on cancel.
+    """
+
+    if not isinstance(pipeline, Mapping):
+        return False
+    changed = False
+    for job in pipeline.get("jobs") or []:
+        if not isinstance(job, dict):
+            continue
+        steps = [step for step in job.get("steps") or [] if isinstance(step, dict)]
+        job_changed = False
+        for step in steps:
+            current = str(step.get("status") or "queued")
+            if current == "in_progress":
+                step["status"] = status
+                job_changed = True
+            elif current == "queued":
+                step["status"] = "cancelled"
+                job_changed = True
+        if job_changed:
+            job["status"] = _job_status(steps)
+            changed = True
+    return changed
+
+
 def _job_status(steps: Sequence[Mapping[str, Any]]) -> str:
     statuses = [str(step.get("status") or "queued") for step in steps]
     if any(status == "failure" for status in statuses):
         return "failure"
+    if any(status == "cancelled" for status in statuses) and not any(
+        status in {"queued", "in_progress"} for status in statuses
+    ):
+        return "cancelled"
     if all(status in {"success", "skipped"} for status in statuses):
         return "success"
     if any(status == "in_progress" for status in statuses):

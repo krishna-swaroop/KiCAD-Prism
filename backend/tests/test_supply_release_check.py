@@ -723,6 +723,29 @@ class ReleaseCheckTests(unittest.TestCase):
             self.assertFalse(release_snapshot.queue("prj_1", "bld_q", "vq", "d" * 40, "qa@example.com", job_service=broken))
             self.assertEqual(self.status_of("prj_1", "bld_q")["state"], "failed")
 
+    def test_a_snapshot_job_that_ended_without_success_reports_failed(self) -> None:
+        from app.services.supply import release_snapshot
+
+        with self.store.connection() as conn:
+            conn.execute(
+                "INSERT INTO supply_release_snapshot_jobs (build_id, project_id, state) VALUES ('bld_dead', 'prj_1', 'queued')"
+            )
+        with mock.patch.object(
+            release_snapshot,
+            "_ended_job",
+            return_value={"status": "failed", "error_message": "The worker running the snapshot died"},
+        ):
+            self.assertEqual(
+                self.status_of("prj_1", "bld_dead"),
+                {
+                    "state": "failed",
+                    "done": 0,
+                    "total": 1,
+                    "failed": 1,
+                    "reason": "The worker running the snapshot died",
+                },
+            )
+
     def status_of(self, project_id: str, build_id: str) -> dict:
         from app.services.supply import release_snapshot
 

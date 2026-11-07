@@ -9,7 +9,9 @@ from typing import Any
 from app.core.errors import Conflict, NotFound
 from app.services.catalog.normalization import json_loads
 
-_RUNNING_STATUSES = frozenset({"queued", "uploading", "scanning"})
+RUNNING_STATUSES = frozenset({"queued", "uploading", "scanning"})
+#: The job kinds that run an import session (their payload carries ``session_id``).
+IMPORT_JOB_KINDS = frozenset({"project_component_import", "folder_library_import"})
 
 
 class CatalogProjectImportSessions:
@@ -196,16 +198,19 @@ class CatalogProjectImportSessions:
         if result.rowcount == 0:
             raise ValueError("Project import proposal was not found or has already been resolved")
 
-    def delete_session(self, conn: Any, session_id: str) -> None:
+    def delete_session(
+        self, conn: Any, session_id: str, *, allow_running: bool = False
+    ) -> None:
         """Remove a session and its proposals. Components already accepted stay
-        in the catalog; a session still scanning or accepting is refused."""
+        in the catalog; a session still scanning or accepting is refused unless
+        its job is known to be terminal."""
         session = conn.execute(
             "SELECT status FROM project_component_import_sessions WHERE id = %s FOR UPDATE",
             (session_id,),
         ).fetchone()
         if not session:
             raise NotFound("Import session not found")
-        if session["status"] in _RUNNING_STATUSES:
+        if session["status"] in RUNNING_STATUSES and not allow_running:
             raise Conflict("The import session is still running")
         statuses = conn.execute(
             "SELECT status FROM project_component_import_proposals WHERE session_id = %s FOR UPDATE",
@@ -214,6 +219,18 @@ class CatalogProjectImportSessions:
         if any(row["status"] == "accepting" for row in statuses):
             raise Conflict("A component from this import session is being accepted")
         conn.execute("DELETE FROM project_component_import_sessions WHERE id = %s", (session_id,))
+
+    def running_session_ids(self, conn: Any, session_ids: list[str]) -> set[str]:
+        if not session_ids:
+            return set()
+        rows = conn.execute(
+            """
+            SELECT id FROM project_component_import_sessions
+            WHERE id = ANY(%s) AND status = ANY(%s)
+            """,
+            (list(session_ids), sorted(RUNNING_STATUSES)),
+        ).fetchall()
+        return {str(row["id"]) for row in rows}
 
     def list_resolved_session_ids(self, conn: Any, *, older_than: str) -> list[str]:
         rows = conn.execute(
@@ -261,4 +278,4 @@ class CatalogProjectImportSessions:
         return proposal
 
 
-__all__ = ["CatalogProjectImportSessions"]
+__all__ = ["IMPORT_JOB_KINDS", "RUNNING_STATUSES", "CatalogProjectImportSessions"]

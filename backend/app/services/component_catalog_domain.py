@@ -459,10 +459,10 @@ class ComponentCatalogDomainService:
             conn.commit()
         return self.get_project_import_proposal(proposal_id) or {}
 
-    def delete_project_import_session(self, session_id: str) -> None:
+    def delete_project_import_session(self, session_id: str, *, job_terminal: bool = False) -> None:
         self.initialize()
         with self._connect() as conn:
-            self._project_import_sessions.delete_session(conn, session_id)
+            self._project_import_sessions.delete_session(conn, session_id, allow_running=job_terminal)
             conn.commit()
         self._project_import_sessions.remove_staging_directories(store_root=self.store_root, session_ids=[session_id])
 
