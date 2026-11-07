@@ -3268,6 +3268,9 @@ async function loadComponents(token = activeViewerToken, b = board) {
     return;
   }
   b.scene.componentTier = "loaded";
+  // Only consecutive failures count toward the retry cap.
+  b.scene.componentFailures = 0;
+  b.scene.componentRetryAt = 0;
   b.loadedBytes += loaded.byteLength;
   for (const model of loaded.models) {
     for (const placement of model.placements) {
