@@ -204,6 +204,18 @@ class LocalRunTests(unittest.TestCase):
         self.assertEqual(tool.version(), "10.0.4")
         self.assertEqual(counter.read_text(), "x")
 
+    def test_a_failed_version_probe_is_not_cached(self) -> None:
+        marker = self.root / "ready"
+        tool = self._tool(
+            f"if not os.path.exists({str(marker)!r}): sys.exit(1)\n"
+            "print('10.0.4')"
+        )
+        kicad_tools._versions.pop(tool.executable(), None)
+
+        self.assertEqual(tool.version(), "unknown")
+        marker.write_text("", encoding="utf-8")
+        self.assertEqual(tool.version(), "10.0.4")
+
 
 class CallersShareTheLocatorTests(unittest.TestCase):
     """KICAD_CLI_PATH reaches jobsets and catalog previews (it used not to)."""

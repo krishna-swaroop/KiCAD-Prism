@@ -35,9 +35,10 @@ _kicad_cli_version: str | None = None
 def kicad_cli_version() -> str:
     """Return the backend's ``kicad-cli --version``, cached once it resolves.
 
-    A missing binary is not cached, so a later install is picked up without a
-    restart. Only the first output line is kept: it is the bare version number,
-    and nothing after it is useful in a bug report.
+    A missing binary and a failed probe are not cached, so a later install or
+    a recovered CLI is picked up without a restart. Only the first output line
+    is kept: it is the bare version number, and nothing after it is useful in a
+    bug report.
     """
     global _kicad_cli_version
     with _kicad_cli_version_lock:
@@ -58,7 +59,8 @@ def kicad_cli_version() -> str:
             version = lines[0].strip() if result.returncode == 0 and lines else "unknown"
         except (OSError, subprocess.TimeoutExpired):
             version = "unknown"
-        _kicad_cli_version = version
+        if version != "unknown":
+            _kicad_cli_version = version
         return version
 
 

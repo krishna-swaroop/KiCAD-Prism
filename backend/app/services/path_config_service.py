@@ -206,6 +206,32 @@ def _get_prism_mtime(project_path: str) -> Optional[float]:
         return None
 
 
+_DESIGN_SOURCE_SUFFIXES = (".kicad_sch", ".kicad_pcb", ".kicad_pro")
+
+
+def _design_source_mtimes(project_path: str) -> tuple[tuple[str, int], ...]:
+    """Names and mtimes of the root files detection chooses between.
+
+    A sync that adds or renames a schematic or board runs in the worker
+    process. Validating the cache against these means every process notices
+    the new source without a process-local invalidation.
+    """
+
+    try:
+        entries = list(Path(project_path).iterdir())
+    except OSError:
+        return ()
+    sources: list[tuple[str, int]] = []
+    for entry in entries:
+        if entry.suffix not in _DESIGN_SOURCE_SUFFIXES:
+            continue
+        try:
+            sources.append((entry.name, entry.stat().st_mtime_ns))
+        except OSError:
+            continue
+    return tuple(sorted(sources))
+
+
 def _flatten_prism_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Flatten one `.prism.json` object into a single mapping of settings."""
     result: Dict[str, Any] = {}
@@ -556,11 +582,16 @@ def get_path_config(
     cache_key = _cache_key(project_path, anchor)
     prism_mtime = _get_prism_mtime(project_path)
     stored = _stored_settings(project_path, anchor)
+    source_mtimes = _design_source_mtimes(project_path)
 
     # Check cache
     if use_cache and cache_key in _config_cache:
         cached_entry = _config_cache[cache_key]
-        if cached_entry.get("prism_mtime") == prism_mtime and cached_entry.get("stored") == stored:
+        if (
+            cached_entry.get("prism_mtime") == prism_mtime
+            and cached_entry.get("stored") == stored
+            and cached_entry.get("source_mtimes") == source_mtimes
+        ):
             return PathConfig(**cached_entry["config"])
 
     project_dir = Path(project_path)
@@ -585,6 +616,7 @@ def get_path_config(
             "config": merged.dict(),
             "prism_mtime": prism_mtime,
             "stored": stored,
+            "source_mtimes": source_mtimes,
         }
     return merged
 
