@@ -140,7 +140,7 @@ purely local. Backend calls degrade to "not registered" rather than failing.
 ### API
 
 ```
-GET  /health                       {ok, version, backend_reachable}     no auth
+GET  /health                       {ok, version, backend, backend_reachable}  no auth
 GET  /project?path=<path>          {project, git, prism}
 GET  /changes?path=<path>          {changes, project, prism}
 GET  /settings                     {settings, identity, protocol}

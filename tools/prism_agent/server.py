@@ -4,7 +4,7 @@ Binds an ephemeral port on 127.0.0.1 only. Every route except /health requires t
 shared token (see discovery.py for why that matters on loopback).
 
 Endpoints
-    GET  /health                     -> {ok, version, backend_reachable}
+    GET  /health                     -> {ok, version, backend, backend_reachable}
     GET  /project?path=<path>        -> {project, git, prism}   (the one the UI needs)
     GET  /changes?path=<path>        -> {changes: [...]}        uncommitted, item-level
     GET  /settings                   -> {settings, identity, protocol}
@@ -127,18 +127,21 @@ class AgentState:
         self._backend_lock = threading.Lock()
         self._backend_checked = 0.0
         self._backend_checking = False
-        self._backend_reachable = False
+        # "unknown" until the first check finishes, then "up", "down" or "refused".
+        self._backend_status = "unknown"
         # Kept once known: a release doesn't change under a running agent.
         self._server_plugin: dict | None = None
 
-    def backend_status(self) -> tuple[bool, dict | None]:
-        """Whether the backend answered, and the plugin version it expects.
+    def backend_status(self) -> tuple[str, dict | None]:
+        """What /health should report about the backend, and the plugin version it expects.
 
         Never waits on the backend. /health is how the plugin tells whether the agent
         is alive, so it has to answer at once: when it waited, a hung backend made a
         healthy agent look dead, and the plugin started another one. This returns the
         last check and starts a new one in the background when that is stale.
 
+        The state is "unknown" until the first check finishes, so the plugin can say
+        "checking" rather than claiming an unreachable server it has not tried yet.
         The plugin version is None for both an unreachable backend and one too old to
         have the endpoint. Either way the plugin should carry on rather than refuse to
         work.
@@ -150,21 +153,27 @@ class AgentState:
                 threading.Thread(
                     target=self._check_backend, name="prism-backend-check", daemon=True
                 ).start()
-            return self._backend_reachable, self._server_plugin
+            return self._backend_status, self._server_plugin
 
     def _check_backend(self) -> None:
         prism = self.prism
+        status = None
+        plugin = None
         try:
-            reachable = prism.health()
+            status = prism.health()
             plugin = self._server_plugin or prism.plugin_version()
+        except Exception:
+            # An unexpected failure leaves the last answer alone; the stale check
+            # starts another one on the next /health.
+            log.exception("backend health check failed")
         finally:
             with self._backend_lock:
                 self._backend_checking = False
                 # A check against a client rebuild_client has since replaced describes
                 # the old server. Drop it; the next /health starts a fresh one.
-                if prism is self.prism:
+                if status is not None and prism is self.prism:
                     self._backend_checked = time.monotonic()
-                    self._backend_reachable = reachable
+                    self._backend_status = status
                     self._server_plugin = plugin
 
     def rebuild_client(self, saved) -> None:
@@ -182,7 +191,7 @@ class AgentState:
         with self._backend_lock:
             self._server_plugin = None
             self._backend_checked = 0.0
-            self._backend_reachable = False
+            self._backend_status = "unknown"
         with self._changes_lock:
             self._changes_cache = {}
 
@@ -323,7 +332,7 @@ class _Handler(BaseHTTPRequestHandler):
         query = parse_qs(route.query)
 
         if route.path == "/health":
-            reachable, server_plugin = self.state.backend_status()
+            backend, server_plugin = self.state.backend_status()
             self._send(
                 200,
                 {
@@ -335,7 +344,13 @@ class _Handler(BaseHTTPRequestHandler):
                     # means an old agent routinely meets a new plugin after an
                     # update, and a stale plugin can meet a new agent too.
                     "plugin_min": PLUGIN_MIN,
-                    "backend_reachable": reachable,
+                    # "unknown" before the first check finishes, "up", "down" when
+                    # nothing answered, "refused" when the backend answered 401/403
+                    # (usually a revoked token: the fix is to sign in, not to check
+                    # the server address).
+                    "backend": backend,
+                    # Kept for plugins from before "backend" existed.
+                    "backend_reachable": backend == "up",
                     # What the SERVER expects of the plugin. The plugin follows the
                     # server it talks to, so this is what stops the two drifting.
                     "server_plugin": server_plugin,
