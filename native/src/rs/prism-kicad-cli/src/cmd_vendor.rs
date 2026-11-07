@@ -13,7 +13,7 @@ use crate::inputs;
 use crate::output::Stderr;
 use prism_bundle::reader::BundleReader;
 use prism_bundle::zip::FileSource;
-use prism_bundle::{Failure, Outcome};
+use prism_bundle::{Failure, Outcome, temp};
 use prism_kicad_contracts::generated::prism_occurrences_a0::OccurrencesA0;
 use prism_kicad_contracts::generated::prism_placements_a1::PlacementsA1;
 use prism_vendors::design::BoardFacts;
@@ -253,6 +253,7 @@ fn write_files(directory: &Path, files: &[prism_vendors::VendorFile]) -> Outcome
             ".{name}.prism-kicad-{}-{serial}.tmp",
             std::process::id()
         ));
+        temp::register(temp.clone());
         let result = (|| {
             let mut output = std::fs::File::create(&temp)?;
             output.write_all(&file.bytes)?;
@@ -261,12 +262,14 @@ fn write_files(directory: &Path, files: &[prism_vendors::VendorFile]) -> Outcome
         })();
         if let Err(error) = result {
             let _ = std::fs::remove_file(&temp);
+            temp::unregister(&temp);
             return Err(Failure::output(
                 "output-write-failed",
                 format!("{} could not be written: {error}", file.path),
             )
             .argument("output"));
         }
+        temp::unregister(&temp);
     }
     if let Ok(directory) = std::fs::File::open(directory) {
         let _ = directory.sync_all();
